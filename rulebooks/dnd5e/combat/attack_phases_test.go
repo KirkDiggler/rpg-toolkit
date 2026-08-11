@@ -13,6 +13,7 @@ import (
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	mock_combat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/mock"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -105,6 +106,31 @@ func (s *AttackPhasesTestSuite) TestResolveAttackHit_BasicHit() {
 	s.True(result.WouldHit, "20 vs AC 15 hits")
 	s.False(result.IsNaturalTwenty)
 	s.False(result.IsNaturalOne)
+}
+
+func (s *AttackPhasesTestSuite) TestResolveAttackHit_LegacyRangedWeaponPreservesTargeting() {
+	longbow := &weapons.Weapon{
+		ID:         weapons.Longbow,
+		Name:       "Longbow",
+		Category:   weapons.CategoryMartialRanged,
+		Damage:     "1d8",
+		DamageType: damage.Piercing,
+		Range:      &weapons.Range{Normal: 150, Long: 600},
+	}
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
+
+	result, err := combat.ResolveAttackHit(s.ctx, &combat.ResolveAttackHitInput{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Weapon:     longbow,
+		EventBus:   s.eventBus,
+		Roller:     s.mockRoller,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(result.Attack)
+	s.Equal(attack.Ranged(30, 120), result.Attack.Targeting)
+	s.False(result.IsMelee)
 }
 
 // TestResolveAttackHit_BasicMiss verifies phase 1 returns WouldHit=false when roll is low.
@@ -707,6 +733,17 @@ func (s *AttackPhasesTestSuite) TestResolveAttackHit_Validation() {
 		_, err := combat.ResolveAttackHit(s.ctx, &combat.ResolveAttackHitInput{
 			AttackerID: "fighter-1",
 			TargetID:   "goblin-1",
+			EventBus:   s.eventBus,
+		})
+		s.Error(err)
+	})
+
+	s.Run("both attack and weapon", func() {
+		_, err := combat.ResolveAttackHit(s.ctx, &combat.ResolveAttackHitInput{
+			AttackerID: "fighter-1",
+			TargetID:   "goblin-1",
+			Attack:     &attack.Definition{},
+			Weapon:     s.longsword,
 			EventBus:   s.eventBus,
 		})
 		s.Error(err)

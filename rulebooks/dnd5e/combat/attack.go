@@ -235,6 +235,10 @@ func normalizeAttackDefinition(definition *attack.Definition, weapon *weapons.We
 	if err := damageSpec.Validate(); err != nil {
 		return nil, err
 	}
+	targeting, err := legacyWeaponTargeting(weapon)
+	if err != nil {
+		return nil, err
+	}
 
 	actionID := string(weapon.ID)
 	if actionID == "" {
@@ -249,10 +253,30 @@ func normalizeAttackDefinition(definition *attack.Definition, weapon *weapons.We
 		DisplayName:     weapon.Name,
 		Category:        attack.CategoryEquipmentWeapon,
 		Bonus:           attack.DerivedBonus(),
-		Targeting:       attack.MeleeReach(1),
+		Targeting:       targeting,
 		EquipmentWeapon: weapon,
 		Damage:          damageSpec,
 	}, nil
+}
+
+func legacyWeaponTargeting(weapon *weapons.Weapon) (attack.Targeting, error) {
+	if weapon.IsRanged() {
+		if weapon.Range == nil {
+			return attack.Targeting{}, rpgerr.New(rpgerr.CodeInvalidArgument, "ranged weapon range is required")
+		}
+		const feetPerHex = 5
+		targeting := attack.Ranged(weapon.Range.Normal/feetPerHex, weapon.Range.Long/feetPerHex)
+		if err := targeting.Validate(); err != nil {
+			return attack.Targeting{}, err
+		}
+		return targeting, nil
+	}
+
+	reach := 1
+	if weapon.HasProperty(weapons.PropertyReach) {
+		reach = 2
+	}
+	return attack.MeleeReach(reach), nil
 }
 
 // rollDamageDice rolls the damage pool the specified number of times and combines results

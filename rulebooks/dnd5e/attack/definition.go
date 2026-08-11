@@ -88,8 +88,10 @@ func (r BonusRule) Validate() error {
 
 // Targeting describes the target range supported by an attack.
 type Targeting struct {
-	Mode  TargetingMode
-	Reach int
+	Mode        TargetingMode
+	Reach       int
+	RangeNormal int
+	RangeLong   int
 }
 
 // TargetingMode identifies the targeting range model used by an attack.
@@ -98,6 +100,8 @@ type TargetingMode string
 const (
 	// TargetingMeleeReach identifies a melee attack with a reach measured in hexes.
 	TargetingMeleeReach TargetingMode = "melee_reach"
+	// TargetingRanged identifies a ranged attack with normal and long ranges measured in hexes.
+	TargetingRanged TargetingMode = "ranged"
 )
 
 // MeleeReach returns targeting metadata for a melee attack with the specified reach in hexes.
@@ -105,13 +109,27 @@ func MeleeReach(reach int) Targeting {
 	return Targeting{Mode: TargetingMeleeReach, Reach: reach}
 }
 
-// Validate verifies that targeting uses a supported model and positive reach.
+// Ranged returns targeting metadata for a ranged attack with normal and long ranges in hexes.
+func Ranged(normalRange, longRange int) Targeting {
+	return Targeting{Mode: TargetingRanged, RangeNormal: normalRange, RangeLong: longRange}
+}
+
+// Validate verifies that targeting uses a supported model and valid distances.
 func (t Targeting) Validate() error {
-	if t.Mode != TargetingMeleeReach {
+	switch t.Mode {
+	case TargetingMeleeReach:
+		if t.Reach <= 0 {
+			return rpgerr.New(rpgerr.CodeInvalidArgument, "attack reach must be positive")
+		}
+	case TargetingRanged:
+		if t.RangeNormal <= 0 {
+			return rpgerr.New(rpgerr.CodeInvalidArgument, "attack normal range must be positive")
+		}
+		if t.RangeLong < t.RangeNormal {
+			return rpgerr.New(rpgerr.CodeInvalidArgument, "attack long range must be at least the normal range")
+		}
+	default:
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "unknown attack targeting mode")
-	}
-	if t.Reach <= 0 {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "attack reach must be positive")
 	}
 	return nil
 }

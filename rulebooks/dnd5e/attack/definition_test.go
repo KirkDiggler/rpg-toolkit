@@ -34,6 +34,12 @@ func TestDefinitionsWithSameActionIDRemainIndependent(t *testing.T) {
 	require.NotEqual(t, gray.Bonus, ochre.Bonus)
 }
 
+func TestRangedTargetingValidation(t *testing.T) {
+	require.NoError(t, attack.Ranged(30, 120).Validate())
+	require.Error(t, attack.Ranged(0, 120).Validate())
+	require.Error(t, attack.Ranged(30, 29).Validate())
+}
+
 func validNatural(actionID string, bonus int) attack.Definition {
 	return attack.Definition{
 		ActionID: actionID, Category: attack.CategoryNatural,
