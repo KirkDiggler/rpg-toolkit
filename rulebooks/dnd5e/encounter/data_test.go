@@ -91,7 +91,11 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 // endpoints round-trip through ToData -> LoadEncounter intact, and
 // connection order is sorted by ID regardless of declaration order (C8
 // determinism — persisted order must not leak the caller's declaration
-// sequence).
+// sequence). Every connection's FromPosition != ToPosition (X != Y within
+// each, and neither is the other transposed) so a From/To swap anywhere in
+// the round-trip — most notably in convertConnectionDataToConnectionInput,
+// which only ever sees pre-sorted, already-round-tripped ToData output in
+// other tests — would change the observed values, not just their order.
 func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	setup := &encounter.SetupInput{
 		Field: encounter.FieldInput{
@@ -101,9 +105,9 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 			},
 			// Declared out of ID order — persistence must not echo this order.
 			Connections: []encounter.ConnectionInput{
-				{ID: "z-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 0, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
-				{ID: "a-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 0}, ToPosition: spatial.Position{X: 1, Y: 0}},
-				{ID: "m-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 2, Y: 0}, ToPosition: spatial.Position{X: 2, Y: 0}},
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 0, Y: 3}, ToPosition: spatial.Position{X: 2, Y: 1}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 4}, ToPosition: spatial.Position{X: 3, Y: 2}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 2, Y: 0}, ToPosition: spatial.Position{X: 4, Y: 3}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -117,9 +121,9 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 
 	data1 := enc1.ToData()
 	expected := []encounter.ConnectionData{
-		{ID: "a-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 1, Y: 0}, ToPosition: encounter.PositionData{X: 1, Y: 0}},
-		{ID: "m-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 2, Y: 0}, ToPosition: encounter.PositionData{X: 2, Y: 0}},
-		{ID: "z-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 0, Y: 0}, ToPosition: encounter.PositionData{X: 0, Y: 0}},
+		{ID: "a-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 1, Y: 4}, ToPosition: encounter.PositionData{X: 3, Y: 2}},
+		{ID: "m-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 2, Y: 0}, ToPosition: encounter.PositionData{X: 4, Y: 3}},
+		{ID: "z-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 0, Y: 3}, ToPosition: encounter.PositionData{X: 2, Y: 1}},
 	}
 	s.Equal(expected, data1.Field.Connections, "connections persist sorted by ID with endpoints intact")
 
@@ -128,6 +132,45 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 
 	data2 := enc2.ToData()
 	s.Equal(expected, data2.Field.Connections, "connections stay sorted and intact across a second round-trip")
+}
+
+// TestLoadSortsUnsortedConnections pins LoadEncounter's own sort in
+// isolation (#922 T1 Opus review): every other test's EncounterData either
+// comes from ToData (already sorted by construction, since NewEncounter and
+// LoadEncounter both sort connectionsInput on the way in) or carries a
+// single connection (trivially sorted) — so LoadEncounter's sort.Slice call
+// is never exercised on genuinely unsorted input elsewhere in this suite.
+// This hand-authors an EncounterData directly, bypassing NewEncounter/ToData
+// entirely, with connections declared out of ID order.
+func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5},
+			},
+			// Hand-authored out of ID order — NOT produced by ToData.
+			Connections: []encounter.ConnectionData{
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 0, Y: 0}, ToPosition: encounter.PositionData{X: 1, Y: 1}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 2, Y: 0}, ToPosition: encounter.PositionData{X: 3, Y: 1}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: encounter.PositionData{X: 4, Y: 0}, ToPosition: encounter.PositionData{X: 0, Y: 4}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+
+	enc, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err)
+
+	got := enc.ToData().Field.Connections
+	s.Require().Len(got, 3)
+	gotIDs := []string{got[0].ID, got[1].ID, got[2].ID}
+	s.Equal([]string{"a-door", "m-door", "z-door"}, gotIDs,
+		"LoadEncounter's own sort must run even when the input was never produced by ToData")
 }
 
 // TestSetupInputNotAliased pins T6 review M4: a caller that edits its
@@ -971,23 +1014,29 @@ func validEncounterData() encounter.EncounterData {
 	}
 }
 
-// validEncounterDataWithConnection extends validEncounterData with a second
-// room (r2) and a fully valid connection between them — the base for the
-// connection defect rows below (one-defect discipline: each row breaks
-// exactly one thing about this otherwise-valid connection). r1 carries an
-// occluder at (2,2) and r2 an occluder at (3,3), so both the from- and
-// to-side "endpoint on occluder" rows have something to hit.
+// validEncounterDataWithConnection extends validEncounterData with a second,
+// DELIBERATELY mismatched room (r1 resized to 10x4, r2 added at 3x9) and one
+// fully valid connection between them — the base for the connection defect
+// rows below (one-defect discipline: each row breaks exactly one thing about
+// this otherwise-valid connection). FromPosition{7,1} is valid ONLY in r1
+// and ToPosition{1,7} valid ONLY in r2: same-sized rooms and equal From/To
+// positions would make a check that validates an endpoint against the WRONG
+// room (or a From/To transposition in convertConnectionDataToConnectionInput)
+// invisible. r1 carries an occluder at (2,2) and r2 an occluder at (1,3), so
+// both the from- and to-side "endpoint on occluder" rows have something to hit.
 func validEncounterDataWithConnection() encounter.EncounterData {
 	d := validEncounterData()
+	d.Field.Rooms[0].Width = 10
+	d.Field.Rooms[0].Height = 4
 	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
 	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{
-		ID: "r2", Width: 5, Height: 5,
-		Occluders: []encounter.PositionData{{X: 3, Y: 3}},
+		ID: "r2", Width: 3, Height: 9,
+		Occluders: []encounter.PositionData{{X: 1, Y: 3}},
 	})
 	d.Field.Connections = []encounter.ConnectionData{
 		{ID: "c1", From: "r1", To: "r2",
-			FromPosition: encounter.PositionData{X: 0, Y: 0},
-			ToPosition:   encounter.PositionData{X: 0, Y: 0}},
+			FromPosition: encounter.PositionData{X: 7, Y: 1},
+			ToPosition:   encounter.PositionData{X: 1, Y: 7}},
 	}
 	return d
 }
@@ -1058,7 +1107,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 		}, "from-position on occluder", encounter.ErrBadConnection},
 		{"connection to-position on occluder", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
-			d.Field.Connections[0].ToPosition = encounter.PositionData{X: 3, Y: 3}
+			d.Field.Connections[0].ToPosition = encounter.PositionData{X: 1, Y: 3}
 		}, "to-position on occluder", encounter.ErrBadConnection},
 		{"outcome undeclared ending", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
@@ -1097,6 +1146,94 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// means something if zero defects pass.
 	_, err := encounter.LoadEncounter(validEncounterData(), nil)
 	s.Require().NoError(err, "the valid base fixture must load")
+
+	// The valid CONNECTION base must also load. Since FromPosition{7,1} is
+	// valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive
+	// control pins that each endpoint is checked against ITS OWN room (a
+	// check wired to the wrong room would reject this valid connection),
+	// and that endpoints survive Load unswapped (a From/To transposition
+	// in convertConnectionDataToConnectionInput would not error here —
+	// it would silently swap the values — so the values are re-inspected,
+	// not just the absence of an error).
+	connEnc, err := encounter.LoadEncounter(validEncounterDataWithConnection(), nil)
+	s.Require().NoError(err, "the valid connection base fixture must load")
+	connData := connEnc.ToData()
+	s.Require().Len(connData.Field.Connections, 1)
+	s.Equal(encounter.PositionData{X: 7, Y: 1}, connData.Field.Connections[0].FromPosition,
+		"from-position must survive Load unswapped")
+	s.Equal(encounter.PositionData{X: 1, Y: 7}, connData.Field.Connections[0].ToPosition,
+		"to-position must survive Load unswapped")
+}
+
+// connBoundsData returns a fresh EncounterData with a 4x3 room r1 (valid
+// coordinates 0..3 x 0..2) and one connection — the Load-seam counterpart to
+// encounter_test.go's connBoundsSetup, pinning positionInBounds' strictly-
+// less-than semantics at Load independent of any cross-room concern.
+func connBoundsData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 4, Height: 3},
+				{ID: "r2", Width: 4, Height: 3},
+			},
+			Connections: []encounter.ConnectionData{
+				{ID: "c1", From: "r1", To: "r2",
+					FromPosition: encounter.PositionData{X: 0, Y: 0},
+					ToPosition:   encounter.PositionData{X: 0, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestConnectionEndpointBoundsBoundariesLoad is the Load-seam counterpart to
+// encounter_test.go's TestConnectionEndpointBoundsBoundaries (#922 T1 Opus
+// review, minor M3/M4): a coordinate exactly at the room's Width/Height is
+// out of bounds, a negative coordinate is out of bounds, and Width-1/Height-1
+// — the last valid cell — is accepted.
+func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
+	s.Run("X exactly at width is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = encounter.PositionData{X: 4, Y: 0}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Y exactly at height is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = encounter.PositionData{X: 0, Y: 3}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative X is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = encounter.PositionData{X: -1, Y: 0}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative Y is rejected", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = encounter.PositionData{X: 0, Y: -1}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Width-1,Height-1 is accepted (positive control)", func() {
+		data := connBoundsData()
+		data.Field.Connections[0].FromPosition = encounter.PositionData{X: 3, Y: 2}
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().NoError(err, "the last valid cell must be accepted")
+	})
 }
 
 // TestLoadRejectsPlayerWithDecider pins C2 at the third seam: a player

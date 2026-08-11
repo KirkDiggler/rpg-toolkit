@@ -274,6 +274,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		}
 		_, err := encounter.NewEncounter(setup)
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
+		s.Require().Contains(err.Error(), "duplicate member alice",
+			"the duplicate-ID rejection must name the duplicated ID, not echo the empty-ID message")
 	})
 
 	s.Run("atomicity: after error, valid setup works", func() {
@@ -308,22 +310,26 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 	})
 }
 
-// validConnSetup returns a fresh SetupInput with two rooms (r1 carries an
-// occluder at (2,2), r2 carries an occluder at (3,3)) and one fully valid
-// connection between them — the base for TestSetupConnectionValidation's
-// one-defect rows, mirroring the same defect classes rejected at Load
-// (TestLoadRejections).
+// validConnSetup returns a fresh SetupInput with two DELIBERATELY
+// mismatched rooms — r1 is 10x4 (occluder at (2,2)), r2 is 3x9 (occluder
+// at (1,3)) — and one fully valid connection between them, with
+// FromPosition{7,1} valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2.
+// Same-sized rooms and equal From/To positions would make a check that
+// validates an endpoint against the WRONG room (or a Load-side From/To
+// transposition) invisible: this is the base for
+// TestSetupConnectionValidation's one-defect rows, mirroring the same
+// defect classes rejected at Load (TestLoadRejections).
 func validConnSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "r2", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
+				{ID: "r1", Width: 10, Height: 4, Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "r2", Width: 3, Height: 9, Occluders: []spatial.Position{{X: 1, Y: 3}}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
-					FromPosition: spatial.Position{X: 0, Y: 0},
-					ToPosition:   spatial.Position{X: 0, Y: 0}},
+					FromPosition: spatial.Position{X: 7, Y: 1},
+					ToPosition:   spatial.Position{X: 1, Y: 7}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -369,7 +375,7 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 2, Y: 2}
 		}, "from-position on occluder"},
 		{"connection to-position on occluder", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].ToPosition = spatial.Position{X: 3, Y: 3}
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 3}
 		}, "to-position on occluder"},
 	}
 	for _, tc := range cases {
@@ -385,9 +391,89 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 	}
 
 	// The valid base itself must construct — the one-defect discipline only
-	// means something if zero defects pass.
-	_, err := encounter.NewEncounter(validConnSetup())
+	// means something if zero defects pass. Since FromPosition{7,1} is valid
+	// ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive control
+	// also pins that each endpoint is checked against ITS OWN room: a check
+	// wired to the wrong room would reject this valid connection.
+	enc, err := encounter.NewEncounter(validConnSetup())
 	s.Require().NoError(err, "the valid base fixture must construct")
+	data := enc.ToData()
+	s.Require().Len(data.Field.Connections, 1)
+	s.Equal(encounter.PositionData{X: 7, Y: 1}, data.Field.Connections[0].FromPosition,
+		"from-position must survive unswapped")
+	s.Equal(encounter.PositionData{X: 1, Y: 7}, data.Field.Connections[0].ToPosition,
+		"to-position must survive unswapped")
+}
+
+// connBoundsSetup returns a fresh SetupInput with a 4x3 room r1 (valid
+// coordinates 0..3 x 0..2) and an r2 large enough to always hold the
+// connection's fixed ToPosition — used to pin positionInBounds' strictly-
+// less-than semantics against FromPosition in r1, independent of any
+// cross-room concern (that's validConnSetup's job).
+func connBoundsSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 4, Height: 3},
+				{ID: "r2", Width: 4, Height: 3},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "c1", From: "r1", To: "r2",
+					FromPosition: spatial.Position{X: 0, Y: 0},
+					ToPosition:   spatial.Position{X: 0, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestConnectionEndpointBoundsBoundaries pins positionInBounds' strictly-
+// less-than semantics at the Setup seam (#922 T1 Opus review, minor M3/M4):
+// a coordinate exactly at the room's Width/Height is out of bounds (valid
+// range is 0..dimension-1, matching member placement), a negative coordinate
+// is out of bounds, and Width-1/Height-1 — the last valid cell — is accepted.
+func (s *EncounterTestSuite) TestConnectionEndpointBoundsBoundaries() {
+	s.Run("X exactly at width is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 4, Y: 0}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Y exactly at height is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 0, Y: 3}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative X is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: -1, Y: 0}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("negative Y is rejected", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 0, Y: -1}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().ErrorIs(err, encounter.ErrBadConnection)
+		s.Require().Contains(err.Error(), "from-position out of bounds")
+	})
+
+	s.Run("Width-1,Height-1 is accepted (positive control)", func() {
+		setup := connBoundsSetup()
+		setup.Field.Connections[0].FromPosition = spatial.Position{X: 3, Y: 2}
+		_, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err, "the last valid cell must be accepted")
+	})
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {

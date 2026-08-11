@@ -51,12 +51,6 @@ type Encounter struct {
 	connectionsInput []ConnectionInput
 }
 
-// NewEncounter constructs and initializes an encounter from SetupInput.
-// Validation order (first failure wins, R5 atomicity): nil input, no rooms,
-// no endings, reserved ending key, empty member ID, duplicate member IDs,
-// connection defects (empty/duplicate ID, unknown room, self-connection,
-// endpoint out of bounds or on an occluder), spatial placement errors.
-
 // deepCopyRoomInputs snapshots the caller's room descriptions — the
 // persistence source must never alias caller-owned slices (T6 review
 // M4: a caller editing its SetupInput after construction silently
@@ -133,6 +127,11 @@ func validateConnectionInputs(rooms []RoomInput, connections []ConnectionInput) 
 	return nil
 }
 
+// NewEncounter constructs and initializes an encounter from SetupInput.
+// Validation order (first failure wins, R5 atomicity): nil input, no rooms,
+// no endings, reserved ending key, empty member ID, duplicate member IDs,
+// connection defects (empty/duplicate ID, unknown room, self-connection,
+// endpoint out of bounds or on an occluder), spatial placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
@@ -161,7 +160,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoMember)
 		}
 		if seenIDs[m.ID] {
-			return nil, fmt.Errorf("newencounter: %w", ErrNoMember)
+			return nil, fmt.Errorf("newencounter: duplicate member %s: %w", m.ID, ErrNoMember)
 		}
 		seenIDs[m.ID] = true
 
