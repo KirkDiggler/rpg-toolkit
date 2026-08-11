@@ -1,4 +1,4 @@
-.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module freeroam
+.PHONY: test lint fmt coverage clean pre-commit help install-tools install-hooks test-all lint-all fmt-all check-versions tag-module release-module freeroam verify-encounter
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "  tag-module   - Tag a specific module with a new version"
 	@echo "  release-module - Create a release for a module (runs tests first)"
 	@echo "  freeroam     - Play the free-roam encounter workbench in the terminal"
+	@echo "  verify-encounter - Run the encounter verification steps + print the proven transcript"
 	@echo "  help         - Show this help message"
 
 # Run tests for all modules
@@ -239,3 +240,7 @@ release-module:
 # Play the free-roam encounter workbench (the pre-UI loop)
 freeroam:
 	@./scripts/freeroam-workbench.sh
+
+# Verify the free-roam encounter and print the pinned transcript
+verify-encounter:
+	@./scripts/verify-encounter.sh
