@@ -273,9 +273,13 @@ func (e *Encounter) ToData() EncounterData {
 // goldens keep omitting the field entirely. No GridShapeGridless case
 // (#929 T2 second review round: deleted — write-only wire value at this
 // point, since no RoomInput this function is ever called with can hold
-// GridShapeGridless — buildValidRoomGrids rejects it at both Setup and
-// Load, per gridDataToShape's own doc comment, well before a room is
-// ever stored in fieldInput and later handed to ToData). The default
+// GridShapeGridless. At Setup, buildValidRoomGrids' shape-legality switch
+// rejects it explicitly (encounter.go's doc comment on that switch); at
+// Load it never even reaches that switch — gridDataToShape below rejects
+// a stored "gridless" string at the wire layer, before a RoomInput ever
+// exists, closing the load-side hole T1 left open — see gridDataToShape's
+// own doc comment. Either way, a room is never stored in fieldInput and
+// later handed to ToData while holding GridShapeGridless). The default
 // case already returns "" for it, same as any other unreachable value.
 func gridShapeToData(shape spatial.GridShape) string {
 	switch shape {
@@ -311,24 +315,33 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 }
 
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
-// Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
-// no rooms, no endings, empty/reserved ending keys (and kind/reached_position checks),
-// undeclared outcome ending; THEN, per room list, a wire-only ID pre-pass (empty/duplicate
-// room ID — #929 T2 second review round, so a later presence error can never misname an
-// empty/ambiguous ID), grid-shape resolution (unrecognized-or-no-longer-supported string)
-// and origin presence (W5) per room; THEN room-list defects via the SAME
-// buildValidRoomGrids Setup uses: shape legality, non-integral occluder position in any
-// family (#929 T3 Opus round F2), W1 (one grid family per field), room legality
-// (non-positive/oversized/over-cell-budget dimensions, out-of-bounds origin —
-// maxRoomSpan/maxAnchorCoord/maxRoomCells/maxFieldCells), origin legality
-// (non-representable origin, every family), W2 (rooms never overlap); THEN, per
-// connection list, the SAME wire-only ID pre-pass and endpoint presence, then connection
-// defects via validateConnectionInputs: unknown or self-referencing room, endpoint out of
-// bounds or on an occluder, W3 (non-kissing doorway); THEN duplicate member IDs, member's
-// room not in field, member position out of bounds or non-integral (hex), ending trigger
-// validity (unknown room or unreachable position on a TriggerReachedPosition — #929 T3
-// Opus round F5, the SAME validateEndingTriggers Setup uses), outcome member room/bounds
-// checks, everMembers missing a current member.
+// Validation order (R5 — validate all before constructing): no rooms, no endings,
+// empty/reserved ending keys (and kind/reached_position checks), undeclared outcome
+// ending; THEN, per room list, a wire-only ID pre-pass (empty/duplicate room ID — #929 T2
+// second review round, so a later presence error can never misname an empty/ambiguous
+// ID), grid-shape resolution (unrecognized-or-no-longer-supported string) and origin
+// presence (W5) per room; THEN room-list defects via the SAME buildValidRoomGrids Setup
+// uses: shape legality, non-integral occluder position in any family (#929 T3 Opus round
+// F2), W1 (one grid family per field), room legality (non-positive/oversized/over-cell-
+// budget dimensions, out-of-bounds origin — maxRoomSpan/maxAnchorCoord/maxRoomCells/
+// maxFieldCells), origin legality (non-representable origin, every family), W2 (rooms
+// never overlap); THEN, per connection list, the SAME wire-only ID pre-pass and endpoint
+// presence, then connection defects via validateConnectionInputs: unknown or
+// self-referencing room, endpoint out of bounds, non-integral (hex), or on an occluder,
+// W3 (non-kissing doorway); THEN empty or duplicate member IDs, member's room not in
+// field, member position out of bounds or non-integral (hex), ending trigger validity
+// (unknown room or unreachable position on a TriggerReachedPosition — #929 T3 Opus round
+// F5, the SAME validateEndingTriggers Setup uses), an abandoned outcome with members
+// still present, outcome member room/bounds checks, everMembers missing a current
+// member.
+//
+// One check runs OUTSIDE this up-front pass, later, during member re-placement and
+// decider re-attachment (construction has already begun by then): a player member
+// naming a Decider in the reattachment map (design law C2, enforced identically at
+// Setup, Join, and here). This is not an R5 violation — nothing external is mutated,
+// and the partially-built Encounter is discarded on this error like any other — but it
+// is a real ordering asymmetry against the up-front list above; a future cleanup could
+// hoist it into the member validation loop instead.
 //
 // #929 T2: the room-list and connection validation is deliberately the SAME Setup
 // runs, not a parallel reimplementation — Setup and Load diverging on the W-laws was

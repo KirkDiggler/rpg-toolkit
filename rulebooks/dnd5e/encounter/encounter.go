@@ -25,14 +25,15 @@ type SightPayload struct {
 	Y    float64 `json:"y"`
 }
 
-// Encounter is the aggregate encounter composition: members, field, clock,
-// intel, and record. Construct via NewEncounter; zero value unusable.
 // declaredEnding pairs an ending key with its trigger, in Setup order.
 type declaredEnding struct {
 	key     string
 	trigger Trigger
 }
 
+// Encounter is the aggregate encounter composition: members, field, clock,
+// intel, and record. Construct via NewEncounter or LoadEncounter; the zero
+// value is unusable.
 type Encounter struct {
 	orchestrator *spatial.BasicRoomOrchestrator
 	clock        *clock.Tick
@@ -80,13 +81,19 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 // gridDataToShape BEFORE this is ever called (gridDataToShape's doc
 // comment — a stored "gridless" or otherwise unrecognized string is
 // rejected there, at the string layer), and Setup's buildValidRoomGrids
-// rejects gridless and any unrecognized value before calling this too —
-// so the switch's default (square, for an unrecognized value) is
-// unreachable from EITHER path and exists only so a caller that somehow
-// bypasses both validators degrades to square rather than panicking.
-// GridShapeGridless itself has no case here at all as of T2: gridless
-// left the composition in T1 (shape legality) and now has no reachable
-// caller anywhere in this module, Setup or Load.
+// rejects gridless and any unrecognized value before calling this too.
+// The switch's default case covers TWO things, only one of which is
+// unreachable: it IS the normal, constantly-exercised path for every
+// square room (GridShapeSquare is the zero value, so it falls to
+// default rather than needing its own case) — that part is reachable on
+// every square-family construction. Only the OTHER thing default
+// covers — an unrecognized shape value degrading to square instead of
+// panicking — is unreachable from either validated path, and exists
+// only so a caller that somehow bypasses both validators degrades
+// gracefully rather than panicking. GridShapeGridless itself has no
+// case here at all as of T2: gridless left the composition in T1 (shape
+// legality) and now has no reachable caller anywhere in this module,
+// Setup or Load.
 //
 // Hex rooms build spatial.AxialHexGrid, NOT spatial.HexGrid: the wire (and
 // Platform's pathing) speaks cube coordinates natively, and axial (Q, R,
@@ -115,12 +122,19 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 // position like (0.5, 0.5) would otherwise persist as a distinct
 // position that behaves exactly like (0,0) — an invisible collision with
 // an unrelated, legitimately-placed cell. Applies ONLY to hex rooms:
-// square stays fractional-tolerant as today, and gridless is continuous
-// by design — call this next to every grid-deferred IsValidPosition
-// check (or, where no such check exists at a seam, next to where the
-// position first enters) so every externally supplied hex-room position
-// is covered: member/Move/Join positions, connection endpoints, and
-// occluders.
+// square stays fractional-tolerant by design (RoomInput.Grid's doc
+// comment) — call this next to every grid-deferred IsValidPosition check
+// (or, where no such check exists at a seam, next to where the position
+// first enters) so every externally supplied hex-room position is
+// covered: member positions at Setup and Load (NewEncounter,
+// LoadEncounter), Move's target (moveMember), Join's position,
+// connection endpoints (validateConnectionInputs, shared by both
+// construction seams), a TriggerReachedPosition ending's target
+// (validateEndingTriggers, #929 T3 Opus round F5), and the two
+// local/absolute bridges' own positions (Absolute, Locate, #929 T3).
+// Occluder positions do NOT go through this — they use the universal
+// isIntegralPosition instead, every family, not just hex (#929 T3 Opus
+// round F2; isIntegralPosition's own doc comment).
 func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
 	if grid.GetShape() != spatial.GridShapeHex {
 		return true
@@ -193,7 +207,7 @@ const (
 
 // maxRoomCells bounds a single room's total cell count (Width*Height —
 // EQUAL for both grid families: axisBounds' span always equals the
-// dimension itself, every parity, hex included — see atlasCells' doc
+// dimension itself, every parity, hex included — see axisBounds' doc
 // comment), and maxFieldCells bounds the SUM of every room's cell count
 // across one field. ALLOCATION-SAFETY bounds for Atlas, distinct in
 // PURPOSE from maxRoomSpan/maxAnchorCoord above (coordinate-OVERFLOW
@@ -203,38 +217,47 @@ const (
 // each) multiply to up to 1<<60 — the amplification is exactly what
 // makes a SEPARATE bound necessary: a 2^30 x 2^30 room passes
 // maxRoomSpan's per-axis check cleanly but PANICS atlasCells' make()
-// (a 2^60-capacity argument), reachable from a 394-byte persisted blob —
-// two integers, no bulk data (#929 T3 Opus round F1). Enforced HERE, in
-// room legality — the shared path both NewEncounter and LoadEncounter
-// route through — not inside Atlas itself: see the comment at
-// atlasCells' allocation site (atlas.go) for why no redundant check
-// lives there.
+// (a 2^60-capacity argument), reachable from a persisted blob a few
+// hundred bytes long — two integers, no bulk data (#929 T3 Opus round
+// F1). Enforced HERE, in room legality — the shared path both
+// NewEncounter and LoadEncounter route through — not inside Atlas
+// itself: see the comment at atlasCells' allocation site (atlas.go) for
+// why no redundant check lives there.
 const (
 	maxRoomCells  = 1 << 20
 	maxFieldCells = 1 << 22
 )
 
 // buildValidRoomGrids rejects room defects before construction (R5
-// atomicity — no observable state until Setup succeeds), in this order per
-// defect class (docs/ideas/encounter-anchoring/design.md's Validation
-// section, Opus-round amendment): empty or duplicate room ID; an
-// unrecognized or no-longer-supported grid shape; non-integral occluder
-// positions in EVERY family, not just hex (#929 T3 Opus round F2 — see
-// isIntegralPosition; the occluder loop below); W1 (one grid family per
-// field — validateGridFamilies); room legality (non-positive OR oversized
+// atomicity — no observable state until Setup succeeds). The first three
+// defect classes — empty or duplicate room ID, an unrecognized or
+// no-longer-supported grid shape, and non-integral occluder positions in
+// EVERY family, not just hex (#929 T3 Opus round F2 — see
+// isIntegralPosition; the occluder loop below) — are checked inside ONE
+// per-room loop, not as three separate global passes: for a GIVEN room,
+// that room's own ID defect wins before its shape defect, which wins
+// before its occluder defect, but WHICH ROOM's defect is reported first
+// depends on slice order, not defect-class priority — a field with an
+// unrecognized shape on room A and an empty ID on room B (A listed
+// first) reports A's shape defect, not B's empty ID, even though ID is
+// listed first in this prose. Every defect class AFTER those three (W1
+// onward) genuinely IS a separate pass over every room, run in the order
+// named here (docs/ideas/encounter-anchoring/design.md's Validation
+// section, Opus-round amendment): W1 (one grid family per field —
+// validateGridFamilies); room legality (non-positive OR oversized
 // Width/Height, a per-room cell count exceeding maxRoomCells, AND an
 // out-of-bounds Origin — checked per room in one pass; ONLY AFTER every
 // room clears that pass does a separate, final check compare the summed
 // cell count against maxFieldCells, so its error names the TRUE total
 // over every room, not a partial sum from wherever the loop happened to
-// stop — #929 T3 trailing round N3); a negative dimension used to panic
+// stop — #929 T3 trailing round N3). A negative dimension used to panic
 // NewEncounter via a negative-capacity make() in the since-deleted
-// enumeration path, an unbounded dimension or origin can overflow int64
-// arithmetic downstream (maxRoomSpan/maxAnchorCoord), and an oversized
+// enumeration path; an unbounded dimension or origin can overflow int64
+// arithmetic downstream (maxRoomSpan/maxAnchorCoord); and an oversized
 // CELL COUNT — legal per-axis but catastrophic multiplied — panics
 // Atlas's own allocation instead (maxRoomCells/maxFieldCells, #929 T3
-// Opus round F1); a panic or a
-// silent overflow is not a rejection); origin legality (non-representable
+// Opus round F1). In every one of those three cases, a panic or a silent
+// overflow is not a rejection. Then origin legality (non-representable
 // Origin, for EVERY family now, not just hex — a fractional origin
 // defeats W2's disjointness promise for ANY grid, not only hex: see
 // isIntegralPosition); and W2 (rooms never overlap in absolute space —
@@ -290,8 +313,8 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		// Occluders must be integral in EVERY family, not just hex (#929 T3
 		// Opus round F2 — the identical square-vs-hex asymmetry T1 already
 		// fixed for Origin: see isIntegralPosition's doc comment). Two
-		// reinforcing reasons: (1) Atlas.Occluders must be a subset of
-		// Atlas.Cells (Cells only enumerates INTEGER cells — atlasCells'
+		// reinforcing reasons: (1) AtlasRoom.Occluders must be a subset of
+		// AtlasRoom.Cells (Cells only enumerates INTEGER cells — atlasCells'
 		// doc comment), so a fractional occluder would appear in Occluders
 		// while absent from Cells, breaking the host contract "floor from
 		// Cells, blockage from Occluders"; (2) the occluder entity ID built
@@ -509,7 +532,8 @@ func validateRoomsDisjoint(rooms []RoomInput) error {
 // (R5 atomicity — no observable state until Setup succeeds): empty or
 // duplicate ID, an unknown or self-referencing room, an endpoint outside
 // its room's bounds (per that room's own constructed Grid, from roomGrids —
-// see buildValidRoomGrids) or on an occluder position, and (W3) endpoints
+// see buildValidRoomGrids) or non-integral (hex rooms only — see
+// isIntegralAxialPosition) or on an occluder position, and (W3) endpoints
 // that do not kiss — are not adjacent absolute cells once each is anchored
 // to its own room's Origin. Error messages carry NO verb prefix — shared
 // with LoadEncounter, same reasoning as buildValidRoomGrids' doc comment.
@@ -631,14 +655,18 @@ func validateEndingTriggers(endings []EndingInput, roomGrids map[string]spatial.
 
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
-// no endings, reserved ending key, empty member ID, duplicate member IDs,
-// room defects (empty/duplicate ID, unrecognized or no-longer-supported
-// grid shape, non-integral occluder position in any family, W1 mixed grid
-// families, non-positive/oversized/over-cell-budget dimensions, non-integral
-// origin, W2 overlapping absolute footprints), connection defects
-// (empty/duplicate ID, unknown room, self-connection, endpoint out of
-// bounds or on an occluder, W3 endpoints not adjacent once anchored),
-// member position integrality, ending trigger validity (unknown room or
+// no endings, empty-or-reserved ending key, empty member ID, duplicate
+// member IDs, a player member carrying a Decider (design law C2 — runs in
+// the SAME member-ID loop, before room defects; Join's own doc comment
+// lists this check too, at its own seam), room defects (empty/duplicate
+// ID, unrecognized or no-longer-supported grid shape, non-integral
+// occluder position in any family, W1 mixed grid families,
+// non-positive/oversized/over-cell-budget dimensions, an out-of-bounds
+// Origin (maxAnchorCoord) or a non-representable one, W2 overlapping
+// absolute footprints), connection defects (empty/duplicate ID, unknown
+// room, self-connection, endpoint out of bounds, non-integral (hex), or
+// on an occluder, W3 endpoints not adjacent once anchored), member
+// position integrality, ending trigger validity (unknown room or
 // unreachable position on a TriggerReachedPosition — #929 T3 Opus round
 // F5), spatial placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {

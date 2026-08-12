@@ -75,9 +75,11 @@ func goblinPatrol() *patrol {
 // newCrypt (#929 T5 trailing) so main_test.go can construct it directly:
 // the demo fixture is now smoke-tested by `go test`, not just by a human
 // running the binary. This is exactly what closes the gap the workbench's
-// own startup regression exposed (see this file's package doc comment) —
-// a future W-law addition that invalidates this fixture now fails CI
-// instead of surfacing only when someone launches the workbench by hand.
+// own startup regression exposed (the ossuary room's Origin comment
+// below, and TestDungeonSetupConstructs' own doc comment in
+// main_test.go, both tell the story) — a future W-law addition that
+// invalidates this fixture now fails CI instead of surfacing only when
+// someone launches the workbench by hand.
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{

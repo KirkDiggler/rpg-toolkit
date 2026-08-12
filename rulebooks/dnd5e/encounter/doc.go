@@ -26,8 +26,12 @@
 //   - W4 (projection is a read) — rules and verbs stay room-local; absolute
 //     coordinates appear only in query outputs (Atlas, Absolute, Locate),
 //     never in a rule's own logic.
-//   - W5 (anchors are construction data) — Origin is validated identically
-//     at Setup and Load, never derived or inferred.
+//   - W5 (anchors are construction data) — Origin's LEGALITY (bounds,
+//     integrality) is validated identically at Setup and Load, never
+//     derived or inferred; PRESENCE is structurally Load-only — Origin is
+//     a plain value at Setup (RoomInput) but a pointer at Load
+//     (RoomData), so only Load can distinguish a missing Origin from a
+//     declared zero one.
 //
 // Room and field size are allocation-bounded (a legal-but-absurd room or
 // field could otherwise demand an allocation Atlas cannot safely make);

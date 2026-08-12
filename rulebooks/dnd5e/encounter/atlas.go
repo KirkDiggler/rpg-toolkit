@@ -126,19 +126,19 @@ type LocateOutput struct {
 // practically carry" one — both wrong (#929 T3 Opus round F1): a
 // 2^30 x 2^30 room, legal under maxRoomSpan's per-axis check alone,
 // PANICS atlasCells' make() (a 2^60-capacity argument), and the wire
-// carries the two integers that produce it in 394 bytes — not
+// carries the two integers that produce it in a few hundred bytes — not
 // impractically, trivially. Reject-never-crash is module law
 // (LoadEncounter's doc comment); this was the trust boundary.
 //
-// Occluders are map data, not entities: every occluder cell is also a
-// Cells entry (Occluders is a SUBSET of Cells —
-// TestAtlasRoomCellsAndOccludersAreAbsolute), which is why occluders must
-// be integral in every family (encounter.go's occluder-integrality
-// check, #929 T3 Opus round F2). A MEMBER's position is different in
-// kind — an entity's position, not a map cell — and on a
-// fractional-tolerant square grid it may sit anywhere in a room's
-// continuous span, coinciding with no integer cell in Cells at all; hex
-// forbids fractional member positions entirely
+// Occluders are map data, not entities: every occluder cell is also an
+// AtlasRoom.Cells entry (AtlasRoom.Occluders is a SUBSET of
+// AtlasRoom.Cells — TestAtlasRoomCellsAndOccludersAreAbsolute), which is
+// why occluders must be integral in every family (encounter.go's
+// occluder-integrality check, #929 T3 Opus round F2). A MEMBER's
+// position is different in kind — an entity's position, not a map cell
+// — and on a fractional-tolerant square grid it may sit anywhere in a
+// room's continuous span, coinciding with no integer cell in
+// AtlasRoom.Cells at all; hex forbids fractional member positions entirely
 // (isIntegralAxialPosition), so this only affects square hosts (#929 T3
 // Opus round F4). The asymmetry — occluders must be integral, member
 // positions may be fractional — is deliberate: one is floor/blockage
@@ -291,8 +291,8 @@ func (e *Encounter) roomInput(id string) (RoomInput, bool) {
 
 // atlasCells re-derives a room's local, integral cell coordinates for
 // Atlas. T1 deleted the original enumeration helper (roomLocalCells)
-// when W2 went interval-based (roomAbsoluteBounds' doc comment) — this
-// is a fresh implementation, not a resurrection, proven against
+// when W2 went interval-based (axisBounds' doc comment, encounter.go) —
+// this is a fresh implementation, not a resurrection, proven against
 // spatial's own IsValidPosition by TestAtlasCellsMatchIsValidPosition
 // (#929 T3 ruling 4).
 //
@@ -306,7 +306,7 @@ func atlasCells(shape spatial.GridShape, width, height int) []spatial.Position {
 	rMin, rMax := axisBounds(shape, height)
 
 	// SAFE: (qMax-qMin+1)*(rMax-rMin+1) always equals width*height (both
-	// families — this function's doc comment), and width*height is
+	// families — axisBounds' doc comment, encounter.go), and width*height is
 	// bounded by maxRoomCells at room legality (encounter.go) BEFORE any
 	// RoomInput reaches here — the only path to a RoomInput is
 	// buildValidRoomGrids, which every construction seam routes through.

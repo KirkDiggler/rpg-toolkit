@@ -1249,13 +1249,16 @@ func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap
 // arithmetic. r1 is 1000 wide at the zero-value Origin (absolute Q span
 // [0,999]); r2 is math.MaxInt wide, anchored at (999,0) — TRUE
 // (infinite-precision) math says these overlap by exactly one column, at
-// Q=999 (r2's own left edge sits exactly on r1's own right edge). But
-// r2's absolute qMax is 999 + math.MaxInt - 1, which OVERFLOWS int64 and
-// wraps to a large NEGATIVE number — see this test's own mutation-evidence
-// entry in the T2 second-round report for the exact wrapped value and the
-// resulting false "disjoint" verdict WITHOUT this bound. WITH it, r2's
-// Width alone is already rejected — oversized, not evaluated for overlap
-// at all.
+// Q=999 (r2's own left edge sits exactly on r1's own right edge). r2's
+// absolute qMax is axisBounds(math.MaxInt).max + 999 = (math.MaxInt-1) +
+// 999, which OVERFLOWS int64 and wraps to -9223372036854774811 (verified
+// by running the exact interval-sum arithmetic standalone, not hand
+// computed): with r2's qMin at 999 and its qMax wrapped to that large
+// NEGATIVE number, validateRoomsDisjoint's overlap check
+// (bs[i].qMin <= bs[j].qMax && bs[j].qMin <= bs[i].qMax) sees
+// 0 <= -9223372036854774811 as false and wrongly reports the rooms
+// disjoint — WITHOUT this bound. WITH it, r2's Width alone is already
+// rejected — oversized, not evaluated for overlap at all.
 func (s *EncounterTestSuite) TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{

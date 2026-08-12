@@ -10,16 +10,23 @@ var (
 	// Indicates a caller defect.
 	ErrNilInput = errors.New("nil input")
 
-	// ErrNoMember is returned when an input contains an empty member ID.
+	// ErrNoMember is returned when an input contains an empty or
+	// duplicate member ID (Setup, Join), a member is declared a player
+	// while carrying a Decider — design law C2 — at any of the three
+	// seams that accept one (NewEncounter, LoadEncounter, Join), Join
+	// names a member ID already in the encounter, Exit is called with an
+	// empty member ID, or Story's audience never joined.
 	ErrNoMember = errors.New("empty member id")
 
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("not a member")
 
-	// ErrNoEnding is returned when Setup is called with zero endings, End
-	// is called with an undeclared key, or a TriggerReachedPosition
-	// ending names an unknown room or an unreachable position (#929 T3
-	// Opus round F5, checked identically at Setup and Load — see
+	// ErrNoEnding is returned when Setup or Load is called with zero
+	// endings, a declared ending's key is empty or the reserved
+	// "abandoned", End is called with an undeclared key or one whose
+	// Trigger is not TriggerExternal, or a TriggerReachedPosition ending
+	// names an unknown room or an unreachable position (#929 T3 Opus
+	// round F5, checked identically at Setup and Load — see
 	// validateEndingTriggers). An encounter that cannot end — whether it
 	// declares zero endings or one that can never fire — is a liveness
 	// hole.
@@ -64,18 +71,32 @@ var (
 	// ErrNoConnection's split from ErrBadConnection below.
 	ErrNoField = errors.New("no field")
 
-	// ErrBadPlacement is returned when a placement fails spatial validation.
-	// Wraps the underlying spatial error.
+	// ErrBadPlacement is returned when a placement or position is bad in
+	// a way runtime spatial state can catch (not declaration-time
+	// validation — that's ErrNoField/ErrBadConnection): a room or entity
+	// lookup miss, a position out of bounds or (hex) non-integral, a
+	// member not standing at a connection's threshold, or an actual
+	// underlying spatial-package call (AddRoom, PlaceEntity,
+	// TransitionEntity, RemoveEntity) failing. Only the LAST class wraps
+	// an underlying spatial error — most call sites (Absolute, Locate,
+	// moveMember's own bounds/integrality checks, Traverse's threshold
+	// check, Pump's snapshot lookups, Join's/Exit's own lookups) reject
+	// before ever reaching spatial, with nothing beneath ErrBadPlacement
+	// to wrap.
 	ErrBadPlacement = errors.New("bad placement")
 
 	// ErrBadConnection is returned when a connection's ID is empty or
-	// duplicated, its From/To names an unknown room or itself, or an
-	// endpoint lies outside its room's bounds or on an occluder position —
-	// or (W3) its two endpoints, once anchored to their rooms' Origin, are
-	// not adjacent absolute cells. Checked identically at Setup and Load
-	// (#929 T2 — see ErrNoField's doc comment): LoadEncounter routes
-	// connection validation through the SAME validateConnectionInputs
-	// Setup uses.
+	// duplicated, its From/To names an unknown room or itself, an
+	// endpoint lies outside its room's bounds, is non-integral (hex
+	// rooms only), or sits on an occluder position — or (W3) its two
+	// endpoints, once anchored to their rooms' Origin, are not adjacent
+	// absolute cells — or, Load-only, since ConnectionInput's endpoints
+	// are plain values and can't be absent the way ConnectionData's
+	// pointers can, a MISSING FromPosition or ToPosition (the connection
+	// analogue of ErrNoField's missing-Origin case). Checked identically
+	// at Setup and Load (#929 T2 — see ErrNoField's doc comment):
+	// LoadEncounter routes connection validation through the SAME
+	// validateConnectionInputs Setup uses.
 	ErrBadConnection = errors.New("bad connection")
 
 	// ErrNoConnection is returned by Traverse when the given connection ID

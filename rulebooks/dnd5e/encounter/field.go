@@ -84,14 +84,17 @@ type RoomInput struct {
 	// area — a fractional origin defeats the very disjointness this field
 	// exists to guarantee, not just a hex-specific edge case.
 	//
-	// Setup validates every field against the W-laws: W1 (one grid family
-	// per field), W2 (rooms never overlap in absolute space), and W3
-	// (every connection's endpoints are adjacent absolute cells). Rules
-	// and verbs (Move, View, Traverse, ...) stay room-local — absolute
-	// coordinates only ever appear in query OUTPUTS: Atlas, Absolute, and
-	// Locate project through Origin (W4 — "projection is a read", #929
-	// T3), never a rule's own logic. Origin also round-trips through
-	// persistence (RoomData.Origin, #929 T2).
+	// Both construction seams — Setup and Load — validate every field
+	// against the W-laws identically (#929 T2: LoadEncounter routes
+	// through the SAME shared validators Setup uses, not a parallel
+	// reimplementation): W1 (one grid family per field), W2 (rooms never
+	// overlap in absolute space), and W3 (every connection's endpoints
+	// are adjacent absolute cells). Rules and verbs (Move, View,
+	// Traverse, ...) stay room-local — absolute coordinates only ever
+	// appear in query OUTPUTS: Atlas, Absolute, and Locate project
+	// through Origin (W4 — "projection is a read", #929 T3), never a
+	// rule's own logic. Origin also round-trips through persistence
+	// (RoomData.Origin, #929 T2).
 	Origin spatial.Position
 }
 
