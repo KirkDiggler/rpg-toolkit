@@ -10,7 +10,9 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -66,6 +68,34 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 	}
 	s.Assert().True(hasShortsword, "should have shortsword action")
 	s.Assert().True(hasShortbow, "should have shortbow action")
+}
+
+func (s *SkeletonTestSuite) TestSkeletonShortbowPublishesDefinition() {
+	skeleton := NewSkeleton("skeleton-1")
+	target := NewSkeleton("target")
+	bus := events.NewEventBus()
+	var received dnd5eEvents.AttackEvent
+	_, err := dnd5eEvents.AttackTopic.On(bus).Subscribe(context.Background(), func(_ context.Context, event dnd5eEvents.AttackEvent) error {
+		received = event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	for _, action := range skeleton.Actions() {
+		if action.GetID() == "shortbow" {
+			err = action.Activate(context.Background(), skeleton, monster.MonsterActionInput{
+				Bus: bus, Target: target, Perception: &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 80}}},
+			})
+			break
+		}
+	}
+	s.Require().NoError(err)
+	s.Equal(attack.FixedBonus(4), received.Definition.Bonus)
+	s.Equal(attack.Ranged(80, 320), received.Definition.Targeting)
+	s.Equal([]damage.Damage{{
+		Dice: "1d6+2", Terms: []damage.DiceTerm{{Dice: "1d6", Sign: 1}}, Type: damage.Piercing,
+		FlatBonus: 2, Properties: []damage.Property{damage.PropertyCritEligible},
+	}}, received.Definition.Damage.Pools)
 }
 
 func (s *SkeletonTestSuite) TestSkeletonTraits() {

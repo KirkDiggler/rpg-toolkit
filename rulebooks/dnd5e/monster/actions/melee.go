@@ -64,24 +64,42 @@ func NewMeleeAction(config MeleeConfig) *MeleeAction {
 // A provided DamageSpec is authoritative; otherwise components take precedence
 // over the legacy single dice and type fields.
 func convertMeleeDamage(config MeleeConfig) (damage.DamageSpec, []dnd5eEvents.AttackDamageComponent, error) {
-	if config.DamageSpec != nil {
-		spec := cloneDamageSpec(*config.DamageSpec)
+	return convertLegacyDamage(damageConversionConfig{
+		damageDice: config.DamageDice, damageType: config.DamageType,
+		damageSpec: config.DamageSpec, damageComponents: config.DamageComponents,
+		context: "melee",
+	})
+}
+
+type damageConversionConfig struct {
+	damageDice       string
+	damageType       damage.Type
+	damageSpec       *damage.DamageSpec
+	damageComponents []dnd5eEvents.AttackDamageComponent
+	context          string
+}
+
+// convertLegacyDamage converts old single-pool or component damage data into
+// a validated structured spec while retaining components for compatibility.
+func convertLegacyDamage(config damageConversionConfig) (damage.DamageSpec, []dnd5eEvents.AttackDamageComponent, error) {
+	if config.damageSpec != nil {
+		spec := cloneDamageSpec(*config.damageSpec)
 		if err := spec.Validate(); err != nil {
-			return damage.DamageSpec{}, nil, rpgerr.Wrap(err, "invalid melee damage spec")
+			return damage.DamageSpec{}, nil, rpgerr.Wrapf(err, "invalid %s damage spec", config.context)
 		}
 		return spec, componentsFromDamageSpec(spec), nil
 	}
 
-	components := append([]dnd5eEvents.AttackDamageComponent(nil), config.DamageComponents...)
+	components := append([]dnd5eEvents.AttackDamageComponent(nil), config.damageComponents...)
 	if len(components) == 0 {
-		components = []dnd5eEvents.AttackDamageComponent{{Dice: config.DamageDice, DamageType: config.DamageType}}
+		components = []dnd5eEvents.AttackDamageComponent{{Dice: config.damageDice, DamageType: config.damageType}}
 	}
 
 	spec := damage.DamageSpec{Pools: make([]damage.Damage, len(components))}
 	for i, component := range components {
 		expression, err := damage.ParseExpression(component.Dice)
 		if err != nil {
-			return damage.DamageSpec{}, nil, rpgerr.Wrap(err, "invalid legacy melee damage")
+			return damage.DamageSpec{}, nil, rpgerr.Wrapf(err, "invalid legacy %s damage", config.context)
 		}
 		spec.Pools[i] = damage.Damage{
 			Dice:       component.Dice,
@@ -92,7 +110,7 @@ func convertMeleeDamage(config MeleeConfig) (damage.DamageSpec, []dnd5eEvents.At
 		}
 	}
 	if err := spec.Validate(); err != nil {
-		return damage.DamageSpec{}, nil, rpgerr.Wrap(err, "invalid legacy melee damage")
+		return damage.DamageSpec{}, nil, rpgerr.Wrapf(err, "invalid legacy %s damage", config.context)
 	}
 	return spec, components, nil
 }

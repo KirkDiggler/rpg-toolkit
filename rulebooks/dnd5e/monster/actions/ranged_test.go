@@ -5,12 +5,14 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -246,6 +248,67 @@ func (s *RangedActionTestSuite) TestActivate_PublishesAttackEvent() {
 	s.Assert().Equal("hero-1", receivedEvent.TargetID)
 	s.Assert().Equal("shortbow", receivedEvent.WeaponRef)
 	s.Assert().False(receivedEvent.IsMelee)
+	s.Assert().Equal(attack.Definition{
+		ActionID:    "shortbow",
+		DisplayName: "shortbow",
+		Category:    attack.CategoryNatural,
+		Bonus:       attack.FixedBonus(4),
+		Targeting:   attack.Ranged(16, 64),
+		Damage: damage.DamageSpec{Pools: []damage.Damage{{
+			Dice:       "1d6+2",
+			Terms:      []damage.DiceTerm{{Dice: "1d6", Sign: 1}},
+			Type:       damage.Piercing,
+			FlatBonus:  2,
+			Properties: []damage.Property{damage.PropertyCritEligible},
+		}}},
+	}, receivedEvent.Definition)
+}
+
+func (s *RangedActionTestSuite) TestActivate_MalformedLegacyDamagePreventsEventPublication() {
+	action := NewRangedAction(RangedConfig{
+		Name: "shortbow", AttackBonus: 4, DamageDice: "1d6++2",
+		RangeNormal: 16, RangeLong: 64, DamageType: damage.Piercing,
+	})
+	owner := &mockEntity{id: "bandit-1"}
+	target := &mockEntity{id: "hero-1"}
+	perception := &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 12}}}
+	published := false
+	_, err := dnd5eEvents.AttackTopic.On(s.bus).Subscribe(context.Background(), func(_ context.Context, _ dnd5eEvents.AttackEvent) error {
+		published = true
+		return nil
+	})
+	s.Require().NoError(err)
+
+	err = action.Activate(context.Background(), owner, monster.MonsterActionInput{
+		Bus: s.bus, Target: target, Perception: perception,
+	})
+
+	s.Require().Error(err)
+	s.False(published)
+}
+
+func (s *RangedActionTestSuite) TestLegacyRangedRoundTripPreservesTextAndStructuredDamage() {
+	action := NewRangedAction(RangedConfig{
+		Name: "light crossbow", AttackBonus: 3, DamageDice: "1d8+1",
+		RangeNormal: 80, RangeLong: 320, DamageType: damage.Piercing,
+	})
+
+	data := action.ToData()
+	var persisted RangedConfig
+	s.Require().NoError(json.Unmarshal(data.Config, &persisted))
+	s.Equal("1d8+1", persisted.DamageDice)
+	s.Equal(damage.Piercing, persisted.DamageType)
+	s.Equal([]damage.Damage{{
+		Dice: "1d8+1", Terms: []damage.DiceTerm{{Dice: "1d8", Sign: 1}}, Type: damage.Piercing,
+		FlatBonus: 1, Properties: []damage.Property{damage.PropertyCritEligible},
+	}}, persisted.DamageSpec.Pools)
+
+	loaded, err := LoadAction(data)
+	s.Require().NoError(err)
+	loadedRanged, ok := loaded.(*RangedAction)
+	s.Require().True(ok)
+	s.Equal("1d8+1", loadedRanged.damageDice)
+	s.Equal(persisted.DamageSpec, &loadedRanged.damageSpec)
 }
 
 func (s *RangedActionTestSuite) TestScore_NoAdjacentEnemy() {

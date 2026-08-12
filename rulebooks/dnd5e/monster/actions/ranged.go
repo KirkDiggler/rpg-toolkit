@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -17,22 +18,27 @@ import (
 
 // RangedConfig holds configuration for creating a ranged action
 type RangedConfig struct {
-	Name        string      `json:"name"`         // e.g., "shortbow", "light crossbow"
-	AttackBonus int         `json:"attack_bonus"` // e.g., +4
-	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
-	RangeNormal int         `json:"range_normal"` // in hexes, typically 16 (80ft / 5)
-	RangeLong   int         `json:"range_long"`   // in hexes, typically 64 (320ft / 5)
-	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing
+	Name             string                              `json:"name"`         // e.g., "shortbow", "light crossbow"
+	AttackBonus      int                                 `json:"attack_bonus"` // e.g., +4
+	DamageDice       string                              `json:"damage_dice"`  // e.g., "1d6+2"
+	RangeNormal      int                                 `json:"range_normal"` // in hexes, typically 16 (80ft / 5)
+	RangeLong        int                                 `json:"range_long"`   // in hexes, typically 64 (320ft / 5)
+	DamageType       damage.Type                         `json:"damage_type"`  // e.g., piercing
+	DamageSpec       *damage.DamageSpec                  `json:"damage_spec,omitempty"`
+	DamageComponents []dnd5eEvents.AttackDamageComponent `json:"damage_components,omitempty"`
 }
 
 // RangedAction implements a generic ranged weapon attack.
 type RangedAction struct {
-	name        string
-	attackBonus int
-	damageDice  string
-	rangeNormal int
-	rangeLong   int
-	damageType  damage.Type
+	name             string
+	attackBonus      int
+	damageDice       string
+	rangeNormal      int
+	rangeLong        int
+	damageType       damage.Type
+	damageSpec       damage.DamageSpec
+	damageComponents []dnd5eEvents.AttackDamageComponent
+	damageErr        error
 }
 
 // Ensure RangedAction implements MonsterAction
@@ -40,13 +46,21 @@ var _ monster.MonsterAction = (*RangedAction)(nil)
 
 // NewRangedAction creates a ranged action with the given config
 func NewRangedAction(config RangedConfig) *RangedAction {
+	damageSpec, components, damageErr := convertLegacyDamage(damageConversionConfig{
+		damageDice: config.DamageDice, damageType: config.DamageType,
+		damageSpec: config.DamageSpec, damageComponents: config.DamageComponents,
+		context: "ranged",
+	})
 	return &RangedAction{
-		name:        config.Name,
-		attackBonus: config.AttackBonus,
-		damageDice:  config.DamageDice,
-		rangeNormal: config.RangeNormal,
-		rangeLong:   config.RangeLong,
-		damageType:  config.DamageType,
+		name:             config.Name,
+		attackBonus:      config.AttackBonus,
+		damageDice:       config.DamageDice,
+		rangeNormal:      config.RangeNormal,
+		rangeLong:        config.RangeLong,
+		damageType:       config.DamageType,
+		damageSpec:       damageSpec,
+		damageComponents: components,
+		damageErr:        damageErr,
 	}
 }
 
@@ -85,6 +99,10 @@ func (r *RangedAction) Score(_ *monster.Monster, perception *monster.PerceptionD
 
 // CanActivate checks if the action can be used
 func (r *RangedAction) CanActivate(_ context.Context, _ core.Entity, input monster.MonsterActionInput) error {
+	if r.damageErr != nil {
+		return r.damageErr
+	}
+
 	// Need a target
 	if input.Target == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "no target for ranged attack")
@@ -125,8 +143,14 @@ func (r *RangedAction) Activate(ctx context.Context, owner core.Entity, input mo
 	err := attackTopic.Publish(ctx, dnd5eEvents.AttackEvent{
 		AttackerID: owner.GetID(),
 		TargetID:   input.Target.GetID(),
-		WeaponRef:  r.name,
-		IsMelee:    false,
+		Definition: attack.Definition{
+			ActionID: r.GetID(), DisplayName: r.name, Category: attack.CategoryNatural,
+			Bonus: attack.FixedBonus(r.attackBonus), Targeting: attack.Ranged(r.rangeNormal, r.rangeLong),
+			Damage: cloneDamageSpec(r.damageSpec),
+		},
+		WeaponRef:        r.name,
+		IsMelee:          false,
+		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), r.damageComponents...),
 	})
 	if err != nil {
 		return rpgerr.Wrapf(err, "failed to publish attack event")
@@ -137,13 +161,16 @@ func (r *RangedAction) Activate(ctx context.Context, owner core.Entity, input mo
 
 // ToData converts the action to its serializable form
 func (r *RangedAction) ToData() monster.ActionData {
+	damageSpec := cloneDamageSpec(r.damageSpec)
 	config := RangedConfig{
-		Name:        r.name,
-		AttackBonus: r.attackBonus,
-		DamageDice:  r.damageDice,
-		RangeNormal: r.rangeNormal,
-		RangeLong:   r.rangeLong,
-		DamageType:  r.damageType,
+		Name:             r.name,
+		AttackBonus:      r.attackBonus,
+		DamageDice:       r.damageDice,
+		RangeNormal:      r.rangeNormal,
+		RangeLong:        r.rangeLong,
+		DamageType:       r.damageType,
+		DamageSpec:       &damageSpec,
+		DamageComponents: append([]dnd5eEvents.AttackDamageComponent(nil), r.damageComponents...),
 	}
 	configJSON, _ := json.Marshal(config)
 

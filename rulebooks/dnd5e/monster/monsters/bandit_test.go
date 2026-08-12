@@ -5,9 +5,15 @@
 package monsters
 
 import (
+	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -76,6 +82,35 @@ func (s *BanditTestSuite) TestNewBanditRanged() {
 	actions := bandit.Actions()
 	s.Require().Len(actions, 1)
 	s.Assert().Equal("light crossbow", actions[0].GetID())
+}
+
+func (s *BanditTestSuite) TestBanditLightCrossbowPublishesDefinition() {
+	bandit := NewBanditRanged("bandit-1")
+	target := NewBanditMelee("target")
+	bus := events.NewEventBus()
+	var received dnd5eEvents.AttackEvent
+	_, err := dnd5eEvents.AttackTopic.On(bus).Subscribe(context.Background(), func(_ context.Context, event dnd5eEvents.AttackEvent) error {
+		received = event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	for _, action := range bandit.Actions() {
+		if action.GetID() == "light crossbow" {
+			err = action.Activate(context.Background(), bandit, monster.MonsterActionInput{
+				Bus: bus, Target: target, Perception: &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 80}}},
+			})
+			break
+		}
+	}
+	s.Require().NoError(err)
+	s.Equal(attack.CategoryNatural, received.Definition.Category)
+	s.Equal(attack.FixedBonus(3), received.Definition.Bonus)
+	s.Equal(attack.Ranged(80, 320), received.Definition.Targeting)
+	s.Equal([]damage.Damage{{
+		Dice: "1d8+1", Terms: []damage.DiceTerm{{Dice: "1d8", Sign: 1}}, Type: damage.Piercing,
+		FlatBonus: 1, Properties: []damage.Property{damage.PropertyCritEligible},
+	}}, received.Definition.Damage.Pools)
 }
 
 func (s *BanditTestSuite) TestBanditTraits() {
