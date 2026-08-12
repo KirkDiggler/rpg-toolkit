@@ -300,3 +300,79 @@ bridge's sign flip) also fails the scene, confirming it is not
 decorative — and instructively fails at the same index, because the
 first room is anchored at (0,0) where add and subtract are
 indistinguishable.
+
+That probe cannot be committed as a test, and the reason is a strong
+property rather than an excuse: a discontinuous field is
+**unconstructible through the public API**, because W3 rejects it at
+both seams. The scene's negative control therefore lives in this
+record, not in the suite.
+
+### T5 — workbench, Example, module docs (commits 90b9790, 26b2a3e)
+
+`gorelease -base=v0.2.0` → **v0.3.0**, all changes compatible. The
+workbench gains an `atlas` command printing the dungeon in world space
+with each doorway's kissing pair; `Example_theDungeon` pins a
+transcript in dungeon-absolute coordinates; doc.go carries the W-laws.
+
+**The regression that hid from six review passes:** the workbench
+binary had been failing to start since T1 — its second room never got
+an origin, so both sat at (0,0) and W2 correctly rejected the field.
+Nothing in CI or the suite ran the binary, so 578 tests and six reviews
+never saw it. Closed structurally: the demo's setup is now a testable
+function with a smoke test (the package's first), verified to reproduce
+the exact startup failure when the origin is removed again.
+
+### Final gate and three closing rounds (commits 4ae879d, 3327fab, e9b24eb)
+
+A full-branch Opus gate returned APPROVE (tag-ready) with 13
+non-blocking findings, and delegated two audits — doc-claim staleness
+and a test-coverage matrix — whose results drove three closing rounds.
+Every claim in both audits survived independent verification.
+
+- **Docs drift as rulings accumulate.** The integrality helper still
+  claimed to cover occluders (moved to the universal check two rounds
+  earlier); four cross-references pointed at doc comments that did not
+  hold the cited claim, two forming a circular pair; sentinel docs
+  omitted whole defect classes the wave had added; two stated
+  validation orders disagreed with their own bodies. Also found: the
+  module's central exported type, `Encounter`, had **no doc comment at
+  all** — it was attached to an unexported struct above it, and had
+  been since #921, against the repo's own CI rule. A second
+  orphan-detection sweep (does a comment's first word match the
+  declaration below it?) was written and validated against a synthetic
+  bad example before its clean result was trusted.
+- **A fix whose own test could not detect its regression.** T3
+  trailing's field-budget fix (report the true total, not a running
+  sum) was structurally unpinnable by its fixture: five rooms of
+  1024×1024 put the first four at *exactly* the budget, so a mid-loop
+  check printed the identical number. Moving the check back inside the
+  loop left the suite green. A sixth room and an assertion on the
+  number fixed it.
+- **Two more unpinnable claims:** Atlas's documented cell-iteration
+  order survived reversing the loop nesting (the reload test compares
+  slices from the same enumerator, so it can only detect
+  nondeterminism — its comment overclaimed), and `maxRoomSpan`'s Height
+  clause could be deleted entirely with a green suite.
+- **Zero NaN or −Inf coverage anywhere**, where the ordering is subtle:
+  `math.Abs(NaN) > bound` is false, so NaN slips past room legality and
+  is caught only by origin legality, while −Inf is caught by the
+  magnitude check. Pinned separately, asserting different messages.
+- **Hardening:** `AtlasRoom` gained `Boundaries` (real map geometry the
+  read surface had omitted, forcing hosts into the very arithmetic W4
+  centralizes); occluder entity IDs became index-based after the
+  string-join scheme was shown to collide across rooms whose IDs
+  contain dashes — **a legal field wrongly rejected**; duplicate
+  occluders and duplicate ending keys now reject in the module's own
+  voice; and every load-local rejection carries its specific sentinel
+  alongside `ErrInvalidData`, so `errors.Is` no longer answers
+  differently depending on which validator caught the defect.
+- **An interaction worth remembering:** the occluder-ID fix silently
+  disarmed the accidental collision that had been rejecting duplicate
+  occluders. Before it, the duplicate-occluder finding was cosmetic (a
+  wrong error voice); after it, duplicates would have slipped through
+  entirely. The two had to land together, and only a probe run before
+  implementing the second caught it.
+
+Deferred as follow-ups rather than rushed into the tag: #933 (host
+projection ergonomics — the `Locate`→`Move` trap and `Members()`
+without positions) and #934 (two validation asymmetries).
