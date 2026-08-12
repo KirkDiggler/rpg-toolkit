@@ -1,0 +1,378 @@
+# Encounter world anchoring — plan (the HOW)
+
+**Executes:** `design.md` (approved via this PR). **Issue:** #929.
+**Module:** `rulebooks/dnd5e/encounter`, branch `feat/929-encounter-anchoring`,
+tag `rulebooks/dnd5e/encounter/v0.3.0` on merge.
+
+Family standards apply throughout, non-negotiable: mutation-proof pins
+from the first task (build the mutant, watch the targeted test fail,
+revert — compiling mutants only); one-defect fixtures with
+discriminating message fragments; asymmetric fixtures (rooms differ in
+dims AND origins AND endpoint cells, so transposition/cross-wiring
+mutants die); black-box `package encounter_test`; scene tests tell one
+continuous story with exact transcript pins. The v0.2 archived pins
+(`tombwatch_test.go`, `example_tombwatch_test.go`) stay untouched;
+the vault chase gets extended, not rewritten.
+
+## Task 1 — anchors and the W-laws at Setup
+
+`RoomInput.Origin`; gridless leaves the composition (a gridless
+declaration is a room-list defect — squares stay); W1 (one geometry
+per field), W2 (no overlap, touching legal), W3 (doorways kiss,
+per-family adjacency), integral origins for hex. All at
+`NewEncounter`/Setup validation, ordered per design. New fixtures: the anchored two-room hex field (asymmetric:
+r1 10x4 at origin (0,0), r2 3x9 at a **negative-axial** origin placing
+its endpoint adjacent to r1's — the corrected-golden lesson from v0.2
+carried forward). One-defect table rows per rejection class; sibling
+touching-is-legal fixture proving W2 rejects overlap, not contact.
+
+Mutants that must die here: origin-ignored-in-projection (W2/W3 checks
+that never add the origin pass symmetric fixtures — asymmetry kills);
+adjacency-formula (cube distance computed as 2D Manhattan); overlap
+check comparing local instead of absolute cells; W1 check comparing
+only adjacent-in-slice room pairs.
+
+## Task 2 — persistence and Load
+
+`RoomData.Origin *PositionData`, presence-required (W5); ToData always
+writes (declared zero persists explicitly); Load re-runs every W-law
+one-defect row plus nil-origin-per-room plus stored-`"gridless"`
+rejection. Rich golden grows origins on
+every room including the negative-axial hex room; exact-string pin
+updated. Round-trip: reload's Atlas deep-equals pre-reload's (pin lands
+fully in Task 3; the round-trip of origin data pins here).
+
+Mutants: omitempty-on-origin (zero origin vanishing from the blob then
+failing presence at load — the golden catches the tag, the round-trip
+catches the behavior); load skipping W3 (a hand-built hostile blob with
+non-kissing doorway must reject — hostile-blob probe per the v0.2
+standard).
+
+## Task 3 — Atlas and the bridge
+
+`Atlas()` (zero-arg read, deterministic ordering per C8, copy-out
+immune), `Absolute(*AbsoluteInput)` (nil-input, unknown-room,
+out-of-bounds rejections; legal for any in-bounds position), and
+`Locate(*LocateInput)` — the reverse bridge (absolute → room + local;
+void positions between rooms reject; round-trip pin
+`Locate(Absolute(r,p)) == (r,p)` over every cell of the asymmetric
+fixture). Copy-out immunity pins: mutate returned atlas slices,
+internal state unchanged.
+
+Mutants: doorway ordering (sorted by connection ID — swap to insertion
+order); bridge subtracting instead of adding the origin (dies on any
+asymmetric fixture); Locate answering the wrong owner for a kissing
+pair (each doorway cell locates to its own room — pin); Atlas computed
+from live member state instead of construction data (place a member,
+Atlas unchanged — pin as a test).
+
+## Task 4 — the absolute-continuity scene
+
+Extend the vault chase: project every position along the pursuit
+(moves, traversal, arrival) through `Absolute`; assert the world-space
+path is continuous — consecutive positions at most one step apart in
+the field's geometry, **including the doorway step**. Exact projected
+transcript pinned. This is the wave's payoff pin: W2+W3+bridge proven
+as one property, the exact property the web client renders by.
+
+Mutant: break W3 in the fixture (shift one origin by one cell) — the
+continuity assertion must fail at exactly the doorway step, proving the
+scene discriminates the law it guards (then revert; Setup validation
+also rejects the shifted fixture, so this mutant runs against a
+validation-bypassed hand-built encounter — the hostile-probe pattern).
+
+## Task 5 — workbench, Example, docs
+
+Workbench prints the atlas (rooms placed in world space, kissing pair
+visible) and gains an `atlas` command; a new sibling Example pins a
+projected transcript; `./scripts/verify.sh rulebooks/dnd5e/encounter`
+prints it. Module doc comment gains the W-laws. `gorelease` run and
+recorded; tag on merge.
+
+## Post-merge (not this PR)
+
+- Comment on rpg-api#793: wiring targets v0.3 for the map surface;
+  `internal/components/dungeon` deletes when wiring lands (its
+  graduation, completed).
+- Memory/handoff updates per session convention.
+
+## Execution addenda
+
+Reviewer findings and mid-build corrections, per family practice.
+
+### T1 — anchors and the W-laws (commits 9244b3c, ab9e3f6, 8ca5efa, 60e52ac)
+
+Two review rounds (sonnet APPROVE; Opus FIX_REQUIRED → APPROVE), 288 →
+309 tests, 13 mutants killed.
+
+- **Mixed-family fixtures collided with W1.** Three v0.2 tests declared
+  square+hex rooms in one encounter — the exact thing W1 now forbids.
+  Resolutions: the negative-axial connection test became all-hex; the
+  grid-shape reload test split into one encounter per family (the
+  "both shapes in the SAME encounter" property is what the law
+  outlaws, so its heir is two per-family round-trips plus the W1
+  rejection pin); `TestGoldenJSONRich` was rewritten all-hex
+  deliberately — hex is the family the game ships — after confirming
+  the square/grid-absent byte pin still lives in the Open/Closed
+  goldens.
+- **Blocker (Opus): a negative room dimension panicked `NewEncounter`**
+  through `makeslice` — a panic is not a rejection (R5). Closed by
+  rejecting non-positive dimensions in room legality.
+- **Soundness (Opus): fractional square origins defeated W2.** Two 5x5
+  rooms at (0,0) and (0.5,0.5) interpenetrate ~81% while their integer
+  cell sets stay disjoint; a distance-0 "doorway" was reachable too.
+  **Origin integrality is therefore required for ALL families**, not
+  just hex (design amended). W2's disjointness is only sound over
+  integral anchors.
+- **Three fixture-blindness gaps**, each closed with a witness verified
+  to kill its mutant: a Chebyshev-on-axial substitution passed every
+  hex fixture (none used the axial (1,1) case where the formulas
+  diverge — cube distance 2, not 1); W2 weakened to adjacent-in-slice
+  pairs survived (the only 3-room fixture was a positive control); the
+  hex **R**-span boundary was unobservable because every hex fixture
+  separated on Q alone.
+- **W2 rewritten to interval intersection.** Rooms are boxes, so two
+  overlap iff both axis intervals intersect — exact, O(1) per pair.
+  Measured 560ms/144MB → 318µs/12KB on a 1000x1000 pair (spatial's own
+  docs recommend such spans). Cell enumeration was deleted here and
+  re-derived in T3 for Atlas.
+- **Representable origins.** `Trunc(x)==x` passes for ±Inf and every
+  magnitude past 2^63, so absurd origins collapsed to int64-min bounds
+  and produced a **wrong verdict** through the public API (rooms
+  1e19 apart rejected as overlapping; +Inf accepted as an anchor).
+  Closed with an exact int round-trip guard.
+- **The strict kiss comparison is pinned, not asserted.** A comment had
+  claimed `dist != 1` was unfalsifiable; Opus constructed the
+  falsifier (square endpoints stay fractional-tolerant, so a 0.5
+  distance is reachable), so the pin exists and the rationale was
+  corrected.
+- **Accepted as provably unobservable:** W1 compared adjacent-in-slice
+  pairs only is indistinguishable from full pairwise once gridless
+  leaves and equality ranges over two values (transitivity). Full
+  pairwise kept as the correct form, with the reasoning in-code.
+
+### T2 — persistence and the unified Load seam (commits 327f5dc, d59e386)
+
+Two review rounds (both APPROVE), 309 → 327 tests.
+
+- **Setup and Load now share one validation implementation.** Load
+  converts wire shapes to typed inputs (resolving only wire-only
+  concerns: grid string, origin presence, endpoint presence) and then
+  calls the same `buildValidRoomGrids`/`validateConnectionInputs`
+  Setup calls; ~150 lines of parallel validation deleted. Proof it is
+  structural rather than conventional: disabling the shared validator
+  once kills pins on **both** seams.
+- **Gridless fully excised** from the runtime paths — the load path
+  rejects the stored string as an unrecognized shape, and the
+  `GridShapeGridless` branches in `buildRoomGrid`/`gridShapeToData`
+  are gone (the latter was a write-only wire value the module could
+  emit but not load).
+- **F1, the sibling of T1's origin overflow (Opus):** `Width`/`Height`
+  were unbounded, so `MaxInt64`-wide rooms wrapped the interval sums
+  and two rooms overlapping over ~9.2e18 cells were accepted as
+  disjoint — through both public seams. Closed in-wave (not deferred)
+  with `maxRoomSpan`/`maxAnchorCoord` = 2^30, documented as overflow
+  defense rather than a gameplay limit.
+- **Load errors spoke in Setup's voice** ("newencounter:" prefixes
+  reaching persisted-blob rejections). The verb prefix moved out of
+  the shared validators to each caller's wrap.
+- **Presence errors could name an unvalidated ID** (`room "" missing
+  origin`). A wire-shape ID pre-pass now runs before conversion, so
+  the ID defect is reported first.
+- **Golden law upheld:** `outcome.at` (omitempty) was exercised by no
+  golden — the closed fixture now pumps a tick before closing. The
+  rich golden's anchors were re-translated so both axes are nonzero
+  and distinct per room, which makes the golden itself catch an X/Y
+  transposition (previously only the round-trip test could).
+- **Verified clean by the Opus pass:** 36 adversarial raw-JSON blobs at
+  the trust boundary (no panics, no wrong verdicts); byte-identical
+  round-trips **after a real story** (joins, moves, a traverse, three
+  pumps with deciders acting) with behavior identity on reload; 2100
+  golden/marshal runs with zero flakes; partial-object presence
+  semantics consistent with the v0.1/v0.2 precedents.
+
+### T3 — Atlas and the bridges (commit 7104dd2)
+
+327 → 547 tests. Cell enumeration re-derived (not resurrected) and
+proven against spatial's own `IsValidPosition` by a 200-case property
+test across both families and dimension parities.
+
+- **Rulings settled during dispatch:** occluded cells are **owned**
+  (occlusion is walkability, not ownership — both bridges accept
+  them); fractional square positions are legal and round-trip
+  (SquareGrid is [0,width) continuous, and W2 with integral origins
+  keeps ownership unambiguous); Atlas is construction-truth and must
+  not move when members do; `Locate` is well-defined only because W2
+  gives every absolute cell at most one owner.
+- **Atlas's O(total cells) cost** is documented as a caller contract.
+  No guard this wave: the 2^30 span bound is overflow defense, and a
+  field large enough to matter could not be carried on the wire.
+- **Doorway ordering is structurally unobservable** — `connectionsInput`
+  arrives pre-sorted from both `NewEncounter` and `LoadEncounter`, so
+  removing Atlas's own sort fails nothing. The sort is kept for
+  self-contained correctness (room ordering, by contrast, IS
+  observable — `fieldInput` is not pre-sorted). The Load-side sort is
+  separately pinned by `TestLoadSortsUnsortedConnections`, which feeds
+  a hand-built unsorted blob.
+- **`Atlas()` panicked on a legally-constructed encounter** (Opus): a
+  2^30 x 2^30 room passed the `> maxRoomSpan` check and the cell
+  allocation died on a 2^60 capacity — reachable from a **394-byte
+  persisted blob**, on a function that returns an error it never used.
+  The doc comment above it asserted the opposite mitigation and was
+  wrong on both clauses. Closed with allocation-safety bounds
+  (`maxRoomCells` 2^20 per room, `maxFieldCells` 2^22 per field)
+  enforced at **room legality** rather than inside Atlas, so a
+  broken-by-construction encounter cannot persist at all. These are
+  deliberately distinct in purpose from the span/anchor bounds
+  (coordinate-overflow defense): two integers in a tiny blob expand
+  quadratically, and that amplification is the hazard. Boundary
+  verified from both sides; 200 rooms of 20x20 (a realistically large
+  dungeon) remain legal.
+- **Occluders were integrality-checked hex-only** — the same
+  square-vs-hex asymmetry T1 fixed for origins — so a fractional square
+  occluder landed in `Atlas.Occluders` while being absent from
+  `Atlas.Cells`, breaking the exact contract hosts render by (floor
+  from Cells, blockage from Occluders). Now universal;
+  `Occluders ⊆ Cells` verified structurally over 882 legal encounters
+  rather than by fixture. The reinforcing reason is documented:
+  occluder entity IDs truncate coordinates to int, so that scheme is
+  only collision-safe while occluders are integral.
+- **Where fractional positions are and aren't legal, stated as
+  principle:** occluders are MAP (cells — hence integral, hence in
+  Cells); member positions are ENTITIES (positions — which on a
+  fractional-tolerant square grid may sit between cells, so a host
+  cannot assume a projected member position is an Atlas cell). Hex
+  forbids fractional entirely, so this only concerns square hosts.
+- **Exactness is scoped honestly.** Ownership uniqueness is exact in
+  real arithmetic and in float64 for integral cells; for *fractional*
+  square positions at anchors near 2^30, a round trip can misattribute
+  within ~1 ULP of a room edge. Documented rather than chased in code,
+  with a pin locking the guarantee that IS made (integral round-trip at
+  ±(2^30−8) is exact) — a float32-rounding mutant is caught by that pin
+  alone.
+- **Ending triggers were unvalidated** (pre-existing, found by probing
+  the host's projection path): a trigger could name an unknown room or
+  an out-of-bounds cell, so a host projecting the objective marker got
+  an error on an otherwise-legal encounter, and the ending could never
+  fire. Now validated at both seams.
+
+### New family standard — over-tightening defense
+
+Discovered during T3's Opus round and worth carrying to future waves:
+
+> A one-defect rejection table proves a validator **rejects**. Only a
+> **rich positive control** proves it doesn't **over-reach**.
+
+Every wave to date hunted under-validation only. Against the new
+trigger validator, four plausible over-tightening mutants (reject
+negative-axial hex; reject a trigger on an occluded cell; require
+integrality in every family; reject a trigger in a room with no
+connection) ALL survived the committed suite — the behavior was
+correct, but nothing defended it. The realistic hazard is specific: hex
+rooms are origin-centered, so negative Q/R is the *normal* case, and a
+later "hardening" pass could break every hex encounter whose objective
+sits at negative coordinates with CI green.
+
+The remedy is must-accept rows exercising the legal edges, not just a
+minimal valid base. A seven-mutant sweep across the wave's other
+validators found exactly one further gap (occluders on boundary cells —
+every existing fixture happened to place them on interior cells), now
+pinned at both seams; the other six died on existing fixtures, which is
+the evidence that the rich-fixture discipline already pays where it was
+applied.
+
+### T4 — the absolute-continuity scene (commit f0905d2)
+
+The wave's payoff pin, built as a **sibling** of the v0.2 vault chase
+(`continuity_test.go`) so the archived transcript stays byte-identical.
+A hex pursuit is projected through `Absolute` at every position —
+placements, moves, both doorway crossings, the mid-story reload, the
+pursuit, the ending — and the world-space path is continuous across all
+14 rows, with each doorway crossing asserted at distance **exactly 1**.
+The transcript reads such that the doorway rows are indistinguishable
+from ordinary moves, which is the property the client renders by.
+
+Discrimination proven by localization, not merely by failure: with W3
+disabled and one origin shifted a single cell, the continuity check
+breaks at **exactly the doorway pair** (index 3→4, distance 2) while
+the preceding corridor steps stay continuous. A second mutant (the
+bridge's sign flip) also fails the scene, confirming it is not
+decorative — and instructively fails at the same index, because the
+first room is anchored at (0,0) where add and subtract are
+indistinguishable.
+
+That probe cannot be committed as a test, and the reason is a strong
+property rather than an excuse: a discontinuous field is
+**unconstructible through the public API**, because W3 rejects it at
+both seams. The scene's negative control therefore lives in this
+record, not in the suite.
+
+### T5 — workbench, Example, module docs (commits 90b9790, 26b2a3e)
+
+`gorelease -base=v0.2.0` → **v0.3.0**, all changes compatible. The
+workbench gains an `atlas` command printing the dungeon in world space
+with each doorway's kissing pair; `Example_theDungeon` pins a
+transcript in dungeon-absolute coordinates; doc.go carries the W-laws.
+
+**The regression that hid from six review passes:** the workbench
+binary had been failing to start since T1 — its second room never got
+an origin, so both sat at (0,0) and W2 correctly rejected the field.
+Nothing in CI or the suite ran the binary, so 578 tests and six reviews
+never saw it. Closed structurally: the demo's setup is now a testable
+function with a smoke test (the package's first), verified to reproduce
+the exact startup failure when the origin is removed again.
+
+### Final gate and three closing rounds (commits 4ae879d, 3327fab, e9b24eb)
+
+A full-branch Opus gate returned APPROVE (tag-ready) with 13
+non-blocking findings, and delegated two audits — doc-claim staleness
+and a test-coverage matrix — whose results drove three closing rounds.
+Every claim in both audits survived independent verification.
+
+- **Docs drift as rulings accumulate.** The integrality helper still
+  claimed to cover occluders (moved to the universal check two rounds
+  earlier); four cross-references pointed at doc comments that did not
+  hold the cited claim, two forming a circular pair; sentinel docs
+  omitted whole defect classes the wave had added; two stated
+  validation orders disagreed with their own bodies. Also found: the
+  module's central exported type, `Encounter`, had **no doc comment at
+  all** — it was attached to an unexported struct above it, and had
+  been since #921, against the repo's own CI rule. A second
+  orphan-detection sweep (does a comment's first word match the
+  declaration below it?) was written and validated against a synthetic
+  bad example before its clean result was trusted.
+- **A fix whose own test could not detect its regression.** T3
+  trailing's field-budget fix (report the true total, not a running
+  sum) was structurally unpinnable by its fixture: five rooms of
+  1024×1024 put the first four at *exactly* the budget, so a mid-loop
+  check printed the identical number. Moving the check back inside the
+  loop left the suite green. A sixth room and an assertion on the
+  number fixed it.
+- **Two more unpinnable claims:** Atlas's documented cell-iteration
+  order survived reversing the loop nesting (the reload test compares
+  slices from the same enumerator, so it can only detect
+  nondeterminism — its comment overclaimed), and `maxRoomSpan`'s Height
+  clause could be deleted entirely with a green suite.
+- **Zero NaN or −Inf coverage anywhere**, where the ordering is subtle:
+  `math.Abs(NaN) > bound` is false, so NaN slips past room legality and
+  is caught only by origin legality, while −Inf is caught by the
+  magnitude check. Pinned separately, asserting different messages.
+- **Hardening:** `AtlasRoom` gained `Boundaries` (real map geometry the
+  read surface had omitted, forcing hosts into the very arithmetic W4
+  centralizes); occluder entity IDs became index-based after the
+  string-join scheme was shown to collide across rooms whose IDs
+  contain dashes — **a legal field wrongly rejected**; duplicate
+  occluders and duplicate ending keys now reject in the module's own
+  voice; and every load-local rejection carries its specific sentinel
+  alongside `ErrInvalidData`, so `errors.Is` no longer answers
+  differently depending on which validator caught the defect.
+- **An interaction worth remembering:** the occluder-ID fix silently
+  disarmed the accidental collision that had been rejecting duplicate
+  occluders. Before it, the duplicate-occluder finding was cosmetic (a
+  wrong error voice); after it, duplicates would have slipped through
+  entirely. The two had to land together, and only a probe run before
+  implementing the second caught it.
+
+Deferred as follow-ups rather than rushed into the tag: #933 (host
+projection ergonomics — the `Locate`→`Move` trap and `Members()`
+without positions) and #934 (two validation asymmetries).
