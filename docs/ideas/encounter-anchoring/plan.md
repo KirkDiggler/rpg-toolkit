@@ -211,4 +211,92 @@ test across both families and dimension parities.
   arrives pre-sorted from both `NewEncounter` and `LoadEncounter`, so
   removing Atlas's own sort fails nothing. The sort is kept for
   self-contained correctness (room ordering, by contrast, IS
-  observable — `fieldInput` is not pre-sorted).
+  observable — `fieldInput` is not pre-sorted). The Load-side sort is
+  separately pinned by `TestLoadSortsUnsortedConnections`, which feeds
+  a hand-built unsorted blob.
+- **`Atlas()` panicked on a legally-constructed encounter** (Opus): a
+  2^30 x 2^30 room passed the `> maxRoomSpan` check and the cell
+  allocation died on a 2^60 capacity — reachable from a **394-byte
+  persisted blob**, on a function that returns an error it never used.
+  The doc comment above it asserted the opposite mitigation and was
+  wrong on both clauses. Closed with allocation-safety bounds
+  (`maxRoomCells` 2^20 per room, `maxFieldCells` 2^22 per field)
+  enforced at **room legality** rather than inside Atlas, so a
+  broken-by-construction encounter cannot persist at all. These are
+  deliberately distinct in purpose from the span/anchor bounds
+  (coordinate-overflow defense): two integers in a tiny blob expand
+  quadratically, and that amplification is the hazard. Boundary
+  verified from both sides; 200 rooms of 20x20 (a realistically large
+  dungeon) remain legal.
+- **Occluders were integrality-checked hex-only** — the same
+  square-vs-hex asymmetry T1 fixed for origins — so a fractional square
+  occluder landed in `Atlas.Occluders` while being absent from
+  `Atlas.Cells`, breaking the exact contract hosts render by (floor
+  from Cells, blockage from Occluders). Now universal;
+  `Occluders ⊆ Cells` verified structurally over 882 legal encounters
+  rather than by fixture. The reinforcing reason is documented:
+  occluder entity IDs truncate coordinates to int, so that scheme is
+  only collision-safe while occluders are integral.
+- **Where fractional positions are and aren't legal, stated as
+  principle:** occluders are MAP (cells — hence integral, hence in
+  Cells); member positions are ENTITIES (positions — which on a
+  fractional-tolerant square grid may sit between cells, so a host
+  cannot assume a projected member position is an Atlas cell). Hex
+  forbids fractional entirely, so this only concerns square hosts.
+- **Exactness is scoped honestly.** Ownership uniqueness is exact in
+  real arithmetic and in float64 for integral cells; for *fractional*
+  square positions at anchors near 2^30, a round trip can misattribute
+  within ~1 ULP of a room edge. Documented rather than chased in code,
+  with a pin locking the guarantee that IS made (integral round-trip at
+  ±(2^30−8) is exact) — a float32-rounding mutant is caught by that pin
+  alone.
+- **Ending triggers were unvalidated** (pre-existing, found by probing
+  the host's projection path): a trigger could name an unknown room or
+  an out-of-bounds cell, so a host projecting the objective marker got
+  an error on an otherwise-legal encounter, and the ending could never
+  fire. Now validated at both seams.
+
+### New family standard — over-tightening defense
+
+Discovered during T3's Opus round and worth carrying to future waves:
+
+> A one-defect rejection table proves a validator **rejects**. Only a
+> **rich positive control** proves it doesn't **over-reach**.
+
+Every wave to date hunted under-validation only. Against the new
+trigger validator, four plausible over-tightening mutants (reject
+negative-axial hex; reject a trigger on an occluded cell; require
+integrality in every family; reject a trigger in a room with no
+connection) ALL survived the committed suite — the behavior was
+correct, but nothing defended it. The realistic hazard is specific: hex
+rooms are origin-centered, so negative Q/R is the *normal* case, and a
+later "hardening" pass could break every hex encounter whose objective
+sits at negative coordinates with CI green.
+
+The remedy is must-accept rows exercising the legal edges, not just a
+minimal valid base. A seven-mutant sweep across the wave's other
+validators found exactly one further gap (occluders on boundary cells —
+every existing fixture happened to place them on interior cells), now
+pinned at both seams; the other six died on existing fixtures, which is
+the evidence that the rich-fixture discipline already pays where it was
+applied.
+
+### T4 — the absolute-continuity scene (commit f0905d2)
+
+The wave's payoff pin, built as a **sibling** of the v0.2 vault chase
+(`continuity_test.go`) so the archived transcript stays byte-identical.
+A hex pursuit is projected through `Absolute` at every position —
+placements, moves, both doorway crossings, the mid-story reload, the
+pursuit, the ending — and the world-space path is continuous across all
+14 rows, with each doorway crossing asserted at distance **exactly 1**.
+The transcript reads such that the doorway rows are indistinguishable
+from ordinary moves, which is the property the client renders by.
+
+Discrimination proven by localization, not merely by failure: with W3
+disabled and one origin shifted a single cell, the continuity check
+breaks at **exactly the doorway pair** (index 3→4, distance 2) while
+the preceding corridor steps stay continuous. A second mutant (the
+bridge's sign flip) also fails the scene, confirming it is not
+decorative — and instructively fails at the same index, because the
+first room is anchored at (0,0) where add and subtract are
+indistinguishable.
