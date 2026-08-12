@@ -50,6 +50,11 @@ var (
 	// and LoadEncounter each wrap their own ("newencounter:" / "load
 	// encounter:") at their own call sites (#929 T2 second review round;
 	// buildValidRoomGrids' doc comment).
+	//
+	// Also returned by Absolute (#929 T3) when the named room does not
+	// exist in this field — a runtime lookup miss reusing the room-list
+	// defect vocabulary rather than a dedicated sentinel, unlike
+	// ErrNoConnection's split from ErrBadConnection below.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement fails spatial validation.

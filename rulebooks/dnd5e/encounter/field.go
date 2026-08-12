@@ -87,8 +87,11 @@ type RoomInput struct {
 	// Setup validates every field against the W-laws: W1 (one grid family
 	// per field), W2 (rooms never overlap in absolute space), and W3
 	// (every connection's endpoints are adjacent absolute cells). Rules
-	// and queries stay room-local in this wave — Origin exists for layout
-	// coherence at Setup, not yet for movement, sight, or persistence.
+	// and verbs (Move, View, Traverse, ...) stay room-local — absolute
+	// coordinates only ever appear in query OUTPUTS: Atlas, Absolute, and
+	// Locate project through Origin (W4 — "projection is a read", #929
+	// T3), never a rule's own logic. Origin also round-trips through
+	// persistence (RoomData.Origin, #929 T2).
 	Origin spatial.Position
 }
 
