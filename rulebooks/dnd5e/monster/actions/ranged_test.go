@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type RangedActionTestSuite struct {
@@ -54,6 +55,35 @@ func (s *RangedActionTestSuite) TestNewRangedAction() {
 	s.Assert().Equal("monster-action", string(action.GetType()))
 	s.Assert().Equal(monster.CostAction, action.Cost())
 	s.Assert().Equal(monster.TypeRangedAttack, action.ActionType())
+}
+
+func (s *RangedActionTestSuite) TestLoadRangedActionRejectsMalformedDamage() {
+	for _, test := range []struct {
+		name   string
+		config RangedConfig
+	}{
+		{
+			name: "invalid legacy dice",
+			config: RangedConfig{
+				Name: "crossbow", DamageDice: "1d6++1", DamageType: damage.Piercing,
+			},
+		},
+		{
+			name: "invalid structured spec",
+			config: RangedConfig{
+				Name: "crossbow", DamageSpec: &damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6++1", Type: damage.Piercing}}},
+			},
+		},
+	} {
+		s.Run(test.name, func() {
+			configJSON, err := json.Marshal(test.config)
+			s.Require().NoError(err)
+
+			_, err = LoadAction(monster.ActionData{Ref: *refs.MonsterActions.Ranged(), Config: configJSON})
+
+			s.Require().Error(err)
+		})
+	}
 }
 
 func (s *RangedActionTestSuite) TestCanActivate_NoTarget() {

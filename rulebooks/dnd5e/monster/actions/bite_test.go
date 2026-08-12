@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type BiteActionTestSuite struct {
@@ -53,6 +54,35 @@ func (s *BiteActionTestSuite) TestNewBiteAction() {
 	s.Assert().Equal("monster-action", string(action.GetType()))
 	s.Assert().Equal(monster.CostAction, action.Cost())
 	s.Assert().Equal(monster.TypeMeleeAttack, action.ActionType())
+}
+
+func (s *BiteActionTestSuite) TestLoadBiteActionRejectsMalformedDamage() {
+	for _, test := range []struct {
+		name   string
+		config BiteConfig
+	}{
+		{
+			name: "invalid legacy dice",
+			config: BiteConfig{
+				DamageDice: "1d6++1", DamageType: damage.Piercing,
+			},
+		},
+		{
+			name: "invalid structured spec",
+			config: BiteConfig{
+				DamageSpec: &damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6++1", Type: damage.Piercing}}},
+			},
+		},
+	} {
+		s.Run(test.name, func() {
+			configJSON, err := json.Marshal(test.config)
+			s.Require().NoError(err)
+
+			_, err = LoadAction(monster.ActionData{Ref: *refs.MonsterActions.Bite(), Config: configJSON})
+
+			s.Require().Error(err)
+		})
+	}
 }
 
 func (s *BiteActionTestSuite) TestCanActivate_NoTarget() {

@@ -79,6 +79,13 @@ func loadRangedAction(data monster.ActionData) (monster.MonsterAction, error) {
 			return nil, rpgerr.Wrap(err, "failed to unmarshal ranged config")
 		}
 	}
+	if _, _, err := convertLegacyDamage(damageConversionConfig{
+		damageDice: config.DamageDice, damageType: config.DamageType,
+		damageSpec: config.DamageSpec, damageComponents: config.DamageComponents,
+		context: "ranged",
+	}); err != nil {
+		return nil, rpgerr.Wrap(err, "invalid ranged config")
+	}
 	return NewRangedAction(config), nil
 }
 
@@ -100,6 +107,13 @@ func loadBiteAction(data monster.ActionData) (monster.MonsterAction, error) {
 		if err := json.Unmarshal(data.Config, &config); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to unmarshal bite config")
 		}
+	}
+	if _, _, err := convertLegacyDamage(damageConversionConfig{
+		damageDice: config.DamageDice, damageType: config.DamageType,
+		damageSpec: config.DamageSpec, damageComponents: config.DamageComponents,
+		context: "bite",
+	}); err != nil {
+		return nil, rpgerr.Wrap(err, "invalid bite config")
 	}
 	return NewBiteAction(config), nil
 }
