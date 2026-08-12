@@ -128,20 +128,45 @@ func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
 	return pos.X == math.Trunc(pos.X) && pos.Y == math.Trunc(pos.Y)
 }
 
-// isIntegralPosition reports whether pos has integral X and Y, with no
-// grid-shape exception — the universal origin-legality check (#929 T1
-// Opus round finding): unlike isIntegralAxialPosition, a fractional
-// SQUARE origin is also a defect, not just a fractional hex one. W2's
-// disjointness promise (RoomInput.Origin's doc comment) is only sound
-// over an INTEGER cell lattice: two 5x5 square rooms anchored at (0,0)
-// and (0.5,0.5) have disjoint integer cell sets (W2 as enumerated would
-// accept them) while their continuous footprints interpenetrate roughly
-// 81% of each room's area, and a Chebyshev-0 "doorway" (a connection
-// whose two endpoints land on literally the same fractional point) would
-// still measure as adjacent. Every room's Origin must land on a whole
-// coordinate, for every family, before W2 ever runs.
+// isIntegralPosition reports whether pos has X and Y that are each a
+// REPRESENTABLE integer, with no grid-shape exception — the universal
+// origin-legality check (#929 T1 Opus round finding): unlike
+// isIntegralAxialPosition, a fractional SQUARE origin is also a defect,
+// not just a fractional hex one. W2's disjointness promise (RoomInput.Origin's
+// doc comment) is only sound over an INTEGER cell lattice: two 5x5 square
+// rooms anchored at (0,0) and (0.5,0.5) have disjoint integer cell sets
+// (W2 as enumerated would accept them) while their continuous footprints
+// interpenetrate roughly 81% of each room's area, and a Chebyshev-0
+// "doorway" (a connection whose two endpoints land on literally the same
+// fractional point) would still measure as adjacent.
+//
+// "Representable" is doing real work here, not just "integral" (#929 T1
+// SECOND Opus round finding): pos.X == math.Trunc(pos.X) alone passes for
+// +Inf/-Inf (Trunc of infinity is infinity) and for any float64 whose
+// magnitude exceeds int64's range, where roomAbsoluteBounds' int()
+// conversion is Go-spec implementation-defined and silently produces
+// garbage — e.g. two 5x5 rooms anchored at X=1e19 and X=2e19 both passed
+// the OLD check (both "integral" by Trunc), then both truncated to the
+// SAME implementation-defined int64 value, producing a false W2 overlap
+// verdict through the public API for rooms that were never near each
+// other, and +Inf was accepted as an anchor outright. Rejecting ±Inf/NaN
+// explicitly and requiring an EXACT round trip through int() and back
+// closes both holes — see isRepresentableInteger.
 func isIntegralPosition(pos spatial.Position) bool {
-	return pos.X == math.Trunc(pos.X) && pos.Y == math.Trunc(pos.Y)
+	return isRepresentableInteger(pos.X) && isRepresentableInteger(pos.Y)
+}
+
+// isRepresentableInteger reports whether v is finite, not NaN, and an
+// EXACT integer once round-tripped through int() and back — see
+// isIntegralPosition for why "integral by Trunc" alone is not enough.
+// float64(int(v)) == v also subsumes the plain fractional check: Go's
+// float-to-int conversion truncates toward zero, so a fractional v never
+// round-trips either, without a separate math.Trunc comparison.
+func isRepresentableInteger(v float64) bool {
+	if math.IsInf(v, 0) || math.IsNaN(v) {
+		return false
+	}
+	return float64(int(v)) == v
 }
 
 // buildValidRoomGrids rejects room defects before construction (R5
@@ -230,7 +255,7 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 	// origin defect on a room whose shape or size is already wrong.
 	for _, r := range rooms {
 		if !isIntegralPosition(r.Origin) {
-			return nil, fmt.Errorf("newencounter: room %q origin (%g,%g) is not an integral cell: %w", r.ID, r.Origin.X, r.Origin.Y, ErrNoField)
+			return nil, fmt.Errorf("newencounter: room %q origin (%g,%g) is not a representable integral cell: %w", r.ID, r.Origin.X, r.Origin.Y, ErrNoField)
 		}
 	}
 
@@ -428,13 +453,20 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 		// a hand-rolled formula that could silently diverge from spatial's.
 		fromAbs := c.FromPosition.Add(fromRoom.Origin)
 		toAbs := c.ToPosition.Add(toRoom.Origin)
-		// Strict != 1, not > 1: distance 0 (coincident endpoints) is
-		// unreachable once origin legality requires integral origins for
-		// every family and W2 requires disjoint room footprints (a shared
-		// or coincident absolute cell is exactly what W2 already rejects
-		// before this ever runs) — kept strict anyway as defense-in-depth,
-		// deliberately UNPINNED by a dedicated test, since no fixture can
-		// falsify it (#929 T1 Opus round).
+		// Strict != 1, not > 1: origin legality's integrality requirement
+		// (every family) only constrains ORIGINS, not endpoints — square
+		// endpoints stay fractional-tolerant by design (RoomInput.Grid's
+		// doc comment), so a fractional FromPosition/ToPosition can land
+		// LESS than 1 unit from another room's boundary even with fully
+		// integral, disjoint room origins: e.g. a 3x3 room at Origin (0,0)
+		// and a 3x3 room at Origin (3,0), FromPosition (2.5,1) (absolute
+		// (2.5,1)), ToPosition (0,1) (absolute (3,1)) — Chebyshev distance
+		// 0.5. A `> 1` comparison would wrongly ACCEPT that as "close
+		// enough"; `!= 1` correctly rejects it. This IS pinned — see
+		// TestSetupAnchoringFractionalSquareEndpointSubUnitDistance (#929
+		// T1 second Opus round: an earlier version of this comment
+		// wrongly claimed sub-1 distances were unfalsifiable and left the
+		// strict form unpinned).
 		if dist := roomGrids[c.From].Distance(fromAbs, toAbs); dist != 1 {
 			return fmt.Errorf("newencounter: connection %q endpoints %s and %s are not adjacent (distance %g): %w",
 				c.ID, fromAbs, toAbs, dist, ErrBadConnection)

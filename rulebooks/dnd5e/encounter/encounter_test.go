@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -909,7 +910,21 @@ func (s *EncounterTestSuite) TestSetupAnchoring() {
 		}, encounter.ErrNoField, "declare different grid families"},
 		{"origin legality: fractional hex origin", func(in *encounter.SetupInput) {
 			in.Field.Rooms[1].Origin = spatial.Position{X: 6.5, Y: -5}
-		}, encounter.ErrNoField, "not an integral cell"},
+		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"origin legality: infinite origin", func(in *encounter.SetupInput) {
+			// #929 T1 second Opus round: math.Trunc(+Inf) is +Inf, so the
+			// old pos.X == math.Trunc(pos.X) check accepted this outright.
+			in.Field.Rooms[1].Origin = spatial.Position{X: math.Inf(1), Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"origin legality: origin exceeds int64 precision (1e19)", func(in *encounter.SetupInput) {
+			// #929 T1 second Opus round: 1e19 is "integral" by Trunc (it has
+			// no fractional part as a float64) but exceeds int64's range —
+			// roomAbsoluteBounds' int() conversion on a value like this is
+			// Go-spec implementation-defined, not a real cell. See
+			// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap for the
+			// two-room construction that used to produce a wrong verdict.
+			in.Field.Rooms[1].Origin = spatial.Position{X: 1e19, Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
 		{"ordering: W2 wins over a co-occurring W3 defect", func(in *encounter.SetupInput) {
 			in.Field.Rooms[1].Origin = spatial.Position{X: 0, Y: 0}
 		}, encounter.ErrNoField, "overlap at absolute cell"},
@@ -1006,7 +1021,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringSquareOriginRejected() {
 	})
 	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
 	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "not an integral cell")
+	s.Require().Contains(err.Error(), "not a representable integral cell")
 }
 
 // TestSetupAnchoringW1BothDirections pins W1's message names BOTH rooms and
@@ -1100,6 +1115,72 @@ func (s *EncounterTestSuite) TestSetupAnchoringRSpanSeparation() {
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err, "rooms separated along R alone, with identical Q ranges, must still be accepted as disjoint")
+}
+
+// TestSetupAnchoringFractionalSquareEndpointSubUnitDistance pins W3's
+// strict `dist != 1` comparison (#929 T1 second Opus round: an earlier
+// comment on that check wrongly claimed sub-1 distances were unfalsifiable
+// post-origin-legality — origin legality only constrains ORIGINS, not
+// connection endpoints, and square endpoints stay fractional-tolerant by
+// design, RoomInput.Grid's doc comment). r1 is 3x3 at the zero-value
+// Origin; r2 is 3x3 at Origin (3,0), immediately east — fully disjoint (r1
+// absolute x:[0,2], r2 absolute x:[3,5]), both origins integral. Yet
+// FromPosition (2.5,1), a legal fractional cell in r1, projects to
+// absolute (2.5,1) — only 0.5 Chebyshev distance from ToPosition (0,1)'s
+// absolute (3,1). A `> 1` mutant would wrongly ACCEPT a 0.5-unit gap as
+// "close enough"; the strict `!= 1` correctly rejects it.
+func (s *EncounterTestSuite) TestSetupAnchoringFractionalSquareEndpointSubUnitDistance() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 3, Height: 3},
+				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "r1", To: "r2",
+				FromPosition: spatial.Position{X: 2.5, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: 1},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "distance 0.5")
+}
+
+// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap pins the fix for the
+// second Opus round's headline finding: before this fix, isIntegralPosition's
+// pos.X == math.Trunc(pos.X) check accepted any float64 past int64's usable
+// precision as "integral" (Trunc is a no-op there), so two rooms anchored
+// at X=1e19 and X=2e19 — nowhere near each other — both passed origin
+// legality, then BOTH got truncated by roomAbsoluteBounds' int() to the
+// SAME implementation-defined int64 value, producing a FALSE W2 overlap
+// verdict through the public API. This pins that such an origin now
+// rejects at ORIGIN LEGALITY instead — before W2 ever sees it, and
+// specifically NOT with a W2 "overlap" message.
+func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 1e19, Y: 0}},
+				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 2e19, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell",
+		"must reject at origin legality, not fall through to a W2 overlap verdict on garbage-truncated positions")
+	s.Require().NotContains(err.Error(), "overlap at absolute cell",
+		"the old bug produced a W2 overlap message here — this must NOT be that")
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {

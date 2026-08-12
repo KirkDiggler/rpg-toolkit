@@ -26,9 +26,12 @@ var (
 	ErrClosed = errors.New("encounter closed")
 
 	// ErrNoField is returned when Setup is called without rooms, or when a
-	// declared room is itself defective — empty or duplicate ID,
-	// unrecognized or no-longer-supported grid shape (checked at both Setup
-	// and Load), non-positive Width/Height, or a non-integral Origin (EVERY
+	// declared room is itself defective — empty or duplicate ID, an
+	// unrecognized grid shape value (checked at both Setup and Load), a
+	// no-longer-supported grid shape (gridless; Setup-only as of this
+	// wave — a stored "gridless" grid string still LOADS today, per
+	// RoomData's own doc comment in data.go; Load-side rejection of it is
+	// T2's job), non-positive Width/Height, or a non-integral Origin (EVERY
 	// grid family, not just hex) — or the room list as a whole is
 	// incoherent (W1: more than one grid family in one field; W2: two
 	// rooms' absolute footprints overlap) — a malformed room list is as
