@@ -47,6 +47,26 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 	}
 }
 
+// validAtlasVoidGapSetup is two square rooms close together but NOT
+// touching — a genuine 3-cell void gap between them (gap-a absolute
+// X∈[0,2], gap-b absolute X∈[6,8], same Y band) — the realistic shape of
+// "void is not floor": a corridor-width gap between two nearby rooms, not
+// a point off in empty space (#929 T3 fix round item 5).
+func validAtlasVoidGapSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "gap-a", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0}},
+				{ID: "gap-b", Width: 3, Height: 3, Origin: spatial.Position{X: 6, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "gap-a", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
 // singleRoomSetup builds a minimal one-room encounter for the enumeration
 // property test — Origin zero, so a room's Atlas Cells equal its local
 // cells exactly, letting the test compare against spatial's own
@@ -177,6 +197,12 @@ func (s *EncounterTestSuite) TestAtlasRoomCellsAndOccludersAreAbsolute() {
 	s.Require().Contains(r1.Cells, spatial.Position{X: -50, Y: 7}, "local (0,0) projected through Origin")
 	s.Require().Contains(r1.Cells, spatial.Position{X: -47, Y: 9}, "local (3,2), the far corner, projected through Origin")
 	s.Require().Equal([]spatial.Position{{X: -49, Y: 8}}, r1.Occluders, "occluder must be offset by Origin too")
+
+	// #929 T3 fix round item 3: an occluder's cell is floor AND blockage —
+	// it must appear in BOTH Cells and Occluders (ruling 1: occlusion is
+	// walkability, not ownership). This is the property hosts actually
+	// render by: floor from Cells, blockage layered from Occluders.
+	s.Require().Contains(r1.Cells, spatial.Position{X: -49, Y: 8}, "an occluded cell is still floor — it must appear in Cells too")
 }
 
 // TestAtlasDoorwaysAreAbsolute pins exact FromCell/ToCell values, each
@@ -264,6 +290,29 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 		"mutating the first snapshot's Doorways must not corrupt internal state")
 }
 
+// TestAtlasIdenticalAfterReload pins the wave's reload-behavior-identity
+// property (established at T2 for traversal — TestReloadedAnchoredEncounterAcceptsSameTraverse
+// in data_test.go) for Atlas specifically: an anchored multi-room
+// encounter's Atlas, captured before ToData/LoadEncounter and again after,
+// must be deep-equal — including Cells ordering, not just set membership
+// (#929 T3 fix round item 2).
+func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
+	enc1, err := encounter.NewEncounter(validAtlasOrderingSetup())
+	s.Require().NoError(err)
+
+	atlas1, err := enc1.Atlas()
+	s.Require().NoError(err)
+
+	data := enc1.ToData()
+	enc2, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err)
+
+	atlas2, err := enc2.Atlas()
+	s.Require().NoError(err)
+
+	s.Require().Equal(atlas1, atlas2, "Atlas must be identical after a ToData/LoadEncounter round trip, including Cells ordering")
+}
+
 // TestLocateAbsoluteRoundTripHex pins the round-trip law over EVERY
 // in-bounds cell of BOTH rooms in the canonical asymmetric hex fixture:
 // Locate(Absolute(r,p)) == (r,p).
@@ -280,6 +329,36 @@ func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripHex() {
 	}
 	for _, room := range rooms {
 		for _, local := range bruteForceLocalCells(spatial.GridShapeHex, room.width, room.height) {
+			abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: room.id, Position: local})
+			s.Require().NoError(err, "room %s cell %v", room.id, local)
+
+			loc, err := enc.Locate(&encounter.LocateInput{Position: abs.Position})
+			s.Require().NoError(err, "room %s cell %v absolute %v", room.id, local, abs.Position)
+			s.Require().Equal(room.id, loc.Room, "round trip must return to the same room")
+			s.Require().Equal(local, loc.Position, "round trip must return to the same local position")
+		}
+	}
+}
+
+// TestLocateAbsoluteRoundTripSquare mirrors TestLocateAbsoluteRoundTripHex's
+// structure for the square family: the round-trip law over EVERY in-bounds
+// INTEGER cell of BOTH rooms in the kissing pair (atlas-r1/atlas-r2) from
+// validAtlasOrderingSetup — the design's promise applies to every room, not
+// just hex (#929 T3 fix round item 1). The fractional case is pinned
+// separately by TestLocateAbsoluteRoundTripFractionalSquare.
+func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripSquare() {
+	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
+	s.Require().NoError(err)
+
+	rooms := []struct {
+		id            string
+		width, height int
+	}{
+		{"atlas-r1", 4, 3},
+		{"atlas-r2", 6, 5},
+	}
+	for _, room := range rooms {
+		for _, local := range bruteForceLocalCells(spatial.GridShapeSquare, room.width, room.height) {
 			abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: room.id, Position: local})
 			s.Require().NoError(err, "room %s cell %v", room.id, local)
 
@@ -401,6 +480,16 @@ func (s *EncounterTestSuite) TestLocateRejections() {
 		enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 		s.Require().NoError(err)
 		_, err = enc.Locate(&encounter.LocateInput{Position: spatial.Position{X: 99999, Y: 99999}})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().Contains(err.Error(), "owned by no room")
+	})
+
+	s.Run("void position in the gap between two nearby non-touching rooms", func() {
+		// The realistic shape of the law, not just a far-away point: (4,1)
+		// sits in gap-a/gap-b's 3-cell corridor gap, close to both rooms.
+		enc, err := encounter.NewEncounter(validAtlasVoidGapSetup())
+		s.Require().NoError(err)
+		_, err = enc.Locate(&encounter.LocateInput{Position: spatial.Position{X: 4, Y: 1}})
 		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 		s.Require().Contains(err.Error(), "owned by no room")
 	})

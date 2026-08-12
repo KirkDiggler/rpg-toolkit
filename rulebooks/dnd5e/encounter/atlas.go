@@ -148,6 +148,8 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Occluders: occluders,
 		}
 	}
+	// LOAD-BEARING: fieldInput is never sorted anywhere else — this sort is
+	// the only thing establishing C8 order for Rooms.
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].ID < rooms[j].ID })
 
 	doorways := make([]AtlasDoorway, len(e.connectionsInput))
@@ -160,6 +162,16 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			ToCell:     ci.ToPosition.Add(roomsByID[ci.To].Origin),
 		}
 	}
+	// Currently redundant — e.connectionsInput is already sorted by ID at
+	// both NewEncounter and LoadEncounter (encounter.go, data.go) before
+	// Atlas ever runs — but kept anyway so Atlas's own C8 determinism is
+	// self-contained rather than coupled to an invariant maintained in two
+	// OTHER files. Unlike the Rooms sort above (load-bearing: fieldInput is
+	// never pre-sorted), a future editor deleting this "redundant" sort
+	// would find no failing test today — exactly the trap this comment
+	// exists to prevent (#929 T3 fix round item 4; mutation evidence: the
+	// mutant that removes this line is unobservable through the public API
+	// on any normally-constructed encounter).
 	sort.Slice(doorways, func(i, j int) bool { return doorways[i].Connection < doorways[j].Connection })
 
 	return Atlas{Rooms: rooms, Doorways: doorways}, nil
