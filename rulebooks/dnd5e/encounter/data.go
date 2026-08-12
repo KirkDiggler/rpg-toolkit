@@ -344,6 +344,31 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
+
+// endingTriggerFromData converts one persisted ending's Kind/Room/Position/
+// Member into its runtime Trigger. Shared by two call sites in
+// LoadEncounter — the ending-trigger validation (which needs it early,
+// right after roomGrids exists, so validateEndingTriggers has something
+// to check) and the later "Restore declared endings" construction (which
+// needs it again, once construction is safe to begin, R5) — ONE
+// conversion, not two copies of the same switch (#929 T3 Opus round F5).
+// ed.Kind is already guaranteed to be "reached_position" or "external" by
+// the key/kind checks earlier in LoadEncounter, and a "reached_position"
+// ed.Position is already guaranteed non-nil there too — both preconditions
+// checked before this is ever called, so no error return is needed here.
+func endingTriggerFromData(ed EndingData) Trigger {
+	switch ed.Kind {
+	case "reached_position":
+		return TriggerReachedPosition{
+			Room:     ed.Room,
+			Position: spatial.Position{X: ed.Position.X, Y: ed.Position.Y},
+			Member:   ed.Member,
+		}
+	case "external":
+		return TriggerExternal{}
+	}
+	return nil
+}
 func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounter, error) {
 	// R5: Validate everything before constructing
 	// No rooms
@@ -446,6 +471,20 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		if !isIntegralAxialPosition(roomGrids[m.Room], spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
 			return nil, fmt.Errorf("load encounter: member %q position is not an integral axial cell: %w", m.ID, ErrInvalidData)
 		}
+	}
+
+	// A TriggerReachedPosition ending must name a real room and reachable
+	// position — the SAME shared validator Setup uses (#929 T3 Opus round
+	// F5; validateEndingTriggers' doc comment), fed the wire endings
+	// resolved to their runtime Trigger via endingTriggerFromData — the
+	// SAME conversion the "Restore declared endings" construction below
+	// reuses, so the switch on ed.Kind exists exactly once, not twice.
+	endingInputsForValidation := make([]EndingInput, len(data.Endings))
+	for i, ed := range data.Endings {
+		endingInputsForValidation[i] = EndingInput{Key: ed.Key, Trigger: endingTriggerFromData(ed)}
+	}
+	if err := validateEndingTriggers(endingInputsForValidation, roomGrids); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
 	// Outcome members must reference rooms that exist with in-bounds
@@ -619,20 +658,10 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.everMembers[em] = true
 	}
 
-	// Restore declared endings
+	// Restore declared endings — endingTriggerFromData is the SAME
+	// conversion the ending-trigger validation above already ran.
 	for _, ed := range data.Endings {
-		var trigger Trigger
-		switch ed.Kind {
-		case "reached_position":
-			trigger = TriggerReachedPosition{
-				Room:     ed.Room,
-				Position: spatial.Position{X: ed.Position.X, Y: ed.Position.Y},
-				Member:   ed.Member,
-			}
-		case "external":
-			trigger = TriggerExternal{}
-		}
-		e.endings = append(e.endings, declaredEnding{key: ed.Key, trigger: trigger})
+		e.endings = append(e.endings, declaredEnding{key: ed.Key, trigger: endingTriggerFromData(ed)})
 	}
 
 	// Restore outcome if present

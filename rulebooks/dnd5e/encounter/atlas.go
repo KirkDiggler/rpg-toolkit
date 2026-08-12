@@ -116,11 +116,34 @@ type LocateOutput struct {
 // allocated per call; mutating the result never reaches internal state.
 //
 // Cost: O(total cells across all rooms) by contract — Atlas enumerates
-// every cell of every room. A legal-but-absurd room near maxRoomSpan
-// (1<<30) would allocate enormously; that is the caller's contract, not
-// guarded here. The wire cannot practically carry such a field today
-// (RoomData round-trips through JSON), so this only matters for a caller
-// that constructs an Encounter directly and then asks for its Atlas.
+// every cell of every room, via a make() sized exactly Width*Height per
+// room (atlasCells). This is BOUNDED, not merely documented:
+// maxRoomCells/maxFieldCells (encounter.go) reject an oversized room or
+// field at room legality — the shared path both NewEncounter and
+// LoadEncounter route through — before an Encounter exists to call Atlas
+// on. Before that bound existed, this comment claimed a legal-but-absurd
+// room would merely "allocate enormously" and that the wire "cannot
+// practically carry" one — both wrong (#929 T3 Opus round F1): a
+// 2^30 x 2^30 room, legal under maxRoomSpan's per-axis check alone,
+// PANICS atlasCells' make() (a 2^60-capacity argument), and the wire
+// carries the two integers that produce it in 394 bytes — not
+// impractically, trivially. Reject-never-crash is module law
+// (LoadEncounter's doc comment); this was the trust boundary.
+//
+// Occluders are map data, not entities: every occluder cell is also a
+// Cells entry (Occluders is a SUBSET of Cells —
+// TestAtlasRoomCellsAndOccludersAreAbsolute), which is why occluders must
+// be integral in every family (encounter.go's occluder-integrality
+// check, #929 T3 Opus round F2). A MEMBER's position is different in
+// kind — an entity's position, not a map cell — and on a
+// fractional-tolerant square grid it may sit anywhere in a room's
+// continuous span, coinciding with no integer cell in Cells at all; hex
+// forbids fractional member positions entirely
+// (isIntegralAxialPosition), so this only affects square hosts (#929 T3
+// Opus round F4). The asymmetry — occluders must be integral, member
+// positions may be fractional — is deliberate: one is floor/blockage
+// data Atlas enumerates, the other is a live position Atlas never
+// touches.
 func (e *Encounter) Atlas() (Atlas, error) {
 	roomsByID := make(map[string]RoomInput, len(e.fieldInput))
 	rooms := make([]AtlasRoom, len(e.fieldInput))
@@ -210,10 +233,22 @@ func (e *Encounter) Absolute(in *AbsoluteInput) (*AbsoluteOutput, error) {
 
 // Locate is the reverse bridge: resolves a dungeon-absolute position to
 // its owning room and the equivalent room-local position. W2 (rooms
-// never overlap) plus integral origins make ownership unambiguous even
-// for a fractional square point (#929 T3 ruling 2 — the half-open
-// interval argument): at most one room's bounds check can ever pass, so
-// iteration order does not matter.
+// never overlap) plus integral origins make ownership uniqueness EXACT
+// in real (infinite-precision) arithmetic — and exact in float64 too,
+// for INTEGRAL cells specifically, since integers stay exact to 2^53,
+// far past maxAnchorCoord (1<<30). For a FRACTIONAL square position the
+// round trip is only approximate: near an extreme anchor (close to
+// maxAnchorCoord), a fraction within roughly one float64 ULP of a room
+// edge (~2.4e-7 at that magnitude) can round to the WRONG room — a
+// float64 precision limit, not a logic bug, and not chased further here
+// (#929 T3 Opus round F3 — an earlier version of this comment
+// overclaimed exactness for the fractional case too). The guarantee
+// this module DOES make and pins with a test:
+// TestLocateAbsoluteRoundTripExactAtExtremeOrigin proves an INTEGRAL
+// round trip is exact even at extreme origins (±(2^30−8)). At most one
+// room's bounds check can pass for a given input, so iteration order
+// never matters — that part holds unconditionally, independent of the
+// precision caveat above.
 //
 // Returns ErrNilInput for a nil input, and ErrBadPlacement if no room
 // owns the position — void is not floor. Occluded cells ARE owned:
@@ -270,6 +305,16 @@ func atlasCells(shape spatial.GridShape, width, height int) []spatial.Position {
 	qMin, qMax := axisBounds(shape, width)
 	rMin, rMax := axisBounds(shape, height)
 
+	// SAFE: (qMax-qMin+1)*(rMax-rMin+1) always equals width*height (both
+	// families — this function's doc comment), and width*height is
+	// bounded by maxRoomCells at room legality (encounter.go) BEFORE any
+	// RoomInput reaches here — the only path to a RoomInput is
+	// buildValidRoomGrids, which every construction seam routes through.
+	// No redundant check here (#929 T3 Opus round F1 ruling): a future
+	// editor who relaxes maxRoomCells without reading this comment
+	// reintroduces the panic this bound exists to prevent — the
+	// doorway-sort lesson, applied to an allocation instead of an
+	// ordering invariant.
 	cells := make([]spatial.Position, 0, (qMax-qMin+1)*(rMax-rMin+1))
 	for q := qMin; q <= qMax; q++ {
 		for r := rMin; r <= rMax; r++ {

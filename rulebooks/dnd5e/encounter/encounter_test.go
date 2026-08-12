@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 
@@ -348,6 +349,22 @@ func validConnSetup() *encounter.SetupInput {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
+}
+
+// TestSetupSquareOccluderFractionalRejected pins F2 (#929 T3 Opus round):
+// occluder integrality is universal now, not hex-only — a fractional
+// occluder on a SQUARE room (previously accepted outright, before this
+// fix) must reject exactly like a fractional hex one
+// (TestSetupHexIntegralAxial's sibling row), with the universal
+// isRepresentableInteger message, not the hex-specific one. One-defect:
+// validConnSetup's r1.Occluders[0] is the ONLY thing mutated.
+func (s *EncounterTestSuite) TestSetupSquareOccluderFractionalRejected() {
+	setup := validConnSetup()
+	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell")
 }
 
 // TestSetupConnectionValidation mirrors TestLoadRejections' connection
@@ -701,22 +718,27 @@ func validHexAxialSetup() *encounter.SetupInput {
 // TestLoadHexIntegralAxial in data_test.go.
 func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 	cases := []struct {
-		name    string
-		mutate  func(in *encounter.SetupInput)
-		alsoErr error
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		alsoErr  error
+		fragment string
 	}{
 		{"member position fractional", func(in *encounter.SetupInput) {
 			in.Members[0].Position = spatial.Position{X: 0.5, Y: 0}
-		}, encounter.ErrBadPlacement},
+		}, encounter.ErrBadPlacement, "not an integral axial cell"},
 		{"connection from-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
-		}, encounter.ErrBadConnection},
+		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"connection to-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].ToPosition = spatial.Position{X: -1.5, Y: -1}
-		}, encounter.ErrBadConnection},
+		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"occluder position fractional", func(in *encounter.SetupInput) {
+			// #929 T3 Opus round F2: occluder integrality is now universal
+			// (isIntegralPosition), not hex-only (isIntegralAxialPosition) —
+			// the message matches Origin's ("not a representable integral
+			// cell"), not the hex-specific connection/member wording.
 			in.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
-		}, encounter.ErrNoField},
+		}, encounter.ErrNoField, "not a representable integral cell"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -725,7 +747,7 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 			_, err := encounter.NewEncounter(setup)
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
-			s.Require().Contains(err.Error(), "not an integral axial cell",
+			s.Require().Contains(err.Error(), tc.fragment,
 				"the check that fired must be the one this case targets")
 		})
 	}
@@ -1225,6 +1247,112 @@ func (s *EncounterTestSuite) TestSetupAnchoringOversizedRoomRejectedNotFalseDisj
 		"must reject at room legality for being oversized, before overlap is ever evaluated")
 	s.Require().NotContains(err.Error(), "overlap at absolute cell",
 		"without the bound, this exact fixture used to wrongly VALIDATE via a false-disjoint W2 verdict — see the mutation evidence")
+}
+
+// TestSetupRoomCellBudgetRejectsPanicReproduction pins F1 (#929 T3 Opus
+// round, HIGH): a 2^30 x 2^30 room is individually LEGAL under
+// maxRoomSpan's per-axis check (each dimension equals, not exceeds, the
+// bound) but its cell count (2^60) panics Atlas's allocation — the exact
+// reproduction Opus found, reachable from a tiny SetupInput. Must REJECT
+// with maxRoomCells' message, never construct.
+func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproduction() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "huge", Width: 1 << 30, Height: 1 << 30}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "a 2^30 x 2^30 room must REJECT, not panic Atlas's allocation")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max room cells")
+}
+
+// TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms pins F1's field-total
+// bound: five 1024x1024 rooms are each EXACTLY at maxRoomCells (1<<20,
+// individually legal — the per-room check passes) but their SUM (5<<20)
+// exceeds maxFieldCells (4<<20) — amplification across rooms, not within
+// one, the OTHER half of F1's reproduction.
+func (s *EncounterTestSuite) TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms() {
+	rooms := make([]encounter.RoomInput, 5)
+	for i := range rooms {
+		rooms[i] = encounter.RoomInput{ID: fmt.Sprintf("room-%d", i), Width: 1024, Height: 1024}
+	}
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:   encounter.FieldInput{Rooms: rooms},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max field cells")
+}
+
+// validEndingTriggerSetup is the base fixture for TestSetupEndingTriggerValidation:
+// a single square room with a TriggerReachedPosition ending naming a real,
+// in-bounds room/position — the valid base each case breaks exactly one
+// thing about (#929 T3 Opus round F5).
+func validEndingTriggerSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 3, Y: 3}}},
+		},
+	}
+}
+
+// TestSetupEndingTriggerValidation pins F5 (#929 T3 Opus round): a
+// TriggerReachedPosition ending that names no real room, or a position
+// that can never be reached, is a declaration defect — "an encounter that
+// cannot end is a liveness hole" (ErrNoEnding's doc comment) — not a
+// silently-accepted dead ending.
+func (s *EncounterTestSuite) TestSetupEndingTriggerValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		fragment string
+	}{
+		{"unknown room", func(in *encounter.SetupInput) {
+			in.Endings[0].Trigger = encounter.TriggerReachedPosition{Room: "nowhere", Position: spatial.Position{X: 3, Y: 3}}
+		}, "unknown room"},
+		{"out of bounds position", func(in *encounter.SetupInput) {
+			in.Endings[0].Trigger = encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 100, Y: 100}}
+		}, "out of bounds"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validEndingTriggerSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoEnding, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct.
+	_, err := encounter.NewEncounter(validEndingTriggerSetup())
+	s.Require().NoError(err, "a trigger naming a real room and in-bounds position must validate")
+}
+
+// TestSetupEndingTriggerHexNonIntegralRejected is TestSetupEndingTriggerValidation's
+// hex-specific sibling: a fractional axial trigger position rejects
+// exactly like a fractional connection/member position does (#929 T3
+// Opus round F5).
+func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 0}}},
+		},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	s.Require().Contains(err.Error(), "not an integral axial cell")
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {

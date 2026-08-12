@@ -191,22 +191,50 @@ const (
 	maxAnchorCoord = 1 << 30
 )
 
+// maxRoomCells bounds a single room's total cell count (Width*Height —
+// EQUAL for both grid families: axisBounds' span always equals the
+// dimension itself, every parity, hex included — see atlasCells' doc
+// comment), and maxFieldCells bounds the SUM of every room's cell count
+// across one field. ALLOCATION-SAFETY bounds for Atlas, distinct in
+// PURPOSE from maxRoomSpan/maxAnchorCoord above (coordinate-OVERFLOW
+// defense): Atlas materializes every cell of every room by contract
+// (Atlas's doc comment), via a make() sized exactly Width*Height per
+// room. Two individually-legal integers under maxRoomSpan (up to 1<<30
+// each) multiply to up to 1<<60 — the amplification is exactly what
+// makes a SEPARATE bound necessary: a 2^30 x 2^30 room passes
+// maxRoomSpan's per-axis check cleanly but PANICS atlasCells' make()
+// (a 2^60-capacity argument), reachable from a 394-byte persisted blob —
+// two integers, no bulk data (#929 T3 Opus round F1). Enforced HERE, in
+// room legality — the shared path both NewEncounter and LoadEncounter
+// route through — not inside Atlas itself: see the comment at
+// atlasCells' allocation site (atlas.go) for why no redundant check
+// lives there.
+const (
+	maxRoomCells  = 1 << 20
+	maxFieldCells = 1 << 22
+)
+
 // buildValidRoomGrids rejects room defects before construction (R5
 // atomicity — no observable state until Setup succeeds), in this order per
 // defect class (docs/ideas/encounter-anchoring/design.md's Validation
 // section, Opus-round amendment): empty or duplicate room ID; an
-// unrecognized or no-longer-supported grid shape; non-integral hex
-// occluder positions; W1 (one grid family per field — validateGridFamilies);
-// room legality (non-positive OR oversized Width/Height, AND an
-// out-of-bounds Origin — a negative dimension used to panic NewEncounter
-// via a negative-capacity make() in the since-deleted enumeration path,
-// and an unbounded dimension or origin can overflow int64 arithmetic
-// downstream, see maxRoomSpan/maxAnchorCoord — a panic or a silent
-// overflow is not a rejection); origin legality (non-representable Origin,
-// for EVERY family now, not just hex — a fractional origin defeats W2's
-// disjointness promise for ANY grid, not only hex: see isIntegralPosition);
-// and W2 (rooms never overlap in absolute space — validateRoomsDisjoint). On
-// success, returns each
+// unrecognized or no-longer-supported grid shape; non-integral occluder
+// positions in EVERY family, not just hex (#929 T3 Opus round F2 — see
+// isIntegralPosition; the occluder loop below); W1 (one grid family per
+// field — validateGridFamilies); room legality (non-positive OR oversized
+// Width/Height, a cell count exceeding maxRoomCells or pushing the
+// field's running total past maxFieldCells, AND an out-of-bounds Origin —
+// a negative dimension used to panic NewEncounter via a negative-capacity
+// make() in the since-deleted enumeration path, an unbounded dimension or
+// origin can overflow int64 arithmetic downstream (maxRoomSpan/
+// maxAnchorCoord), and an oversized CELL COUNT — legal per-axis but
+// catastrophic multiplied — panics Atlas's own allocation instead
+// (maxRoomCells/maxFieldCells, #929 T3 Opus round F1); a panic or a
+// silent overflow is not a rejection); origin legality (non-representable
+// Origin, for EVERY family now, not just hex — a fractional origin
+// defeats W2's disjointness promise for ANY grid, not only hex: see
+// isIntegralPosition); and W2 (rooms never overlap in absolute space —
+// validateRoomsDisjoint). On success, returns each
 // room's constructed Grid keyed by room ID — reused both for downstream
 // bounds checks (connections, and transitively member placement via
 // spatial's own PlaceEntity) and later in NewEncounter's room-construction
@@ -255,11 +283,22 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		}
 		grids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
 
-		// Hex rooms require integral axial occluder positions (interim
-		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		// Occluders must be integral in EVERY family, not just hex (#929 T3
+		// Opus round F2 — the identical square-vs-hex asymmetry T1 already
+		// fixed for Origin: see isIntegralPosition's doc comment). Two
+		// reinforcing reasons: (1) Atlas.Occluders must be a subset of
+		// Atlas.Cells (Cells only enumerates INTEGER cells — atlasCells'
+		// doc comment), so a fractional occluder would appear in Occluders
+		// while absent from Cells, breaking the host contract "floor from
+		// Cells, blockage from Occluders"; (2) the occluder entity ID built
+		// below (occluder-<room>-<int(X)>-<int(Y)>) truncates to int — that
+		// ID scheme is only collision-safe while occluders are integral
+		// (two fractional occluders like (1.4,1) and (1.6,1) would both
+		// truncate to the SAME id). isIntegralPosition, not
+		// isIntegralAxialPosition — universal, not hex-only.
 		for _, occ := range r.Occluders {
-			if !isIntegralAxialPosition(grids[r.ID], occ) {
-				return nil, fmt.Errorf("room %q occluder (%g,%g) is not an integral axial cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
+			if !isIntegralPosition(occ) {
+				return nil, fmt.Errorf("room %q occluder (%g,%g) is not a representable integral cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
 			}
 		}
 	}
@@ -291,12 +330,25 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 	// Runs after W1 (a mixed-family field with a bad dimension/origin
 	// reports the family mismatch first) and before origin legality/W2
 	// (both need real, bounded dimensions and origins to reason about).
+	var totalCells int64
 	for _, r := range rooms {
 		if r.Width <= 0 || r.Height <= 0 {
 			return nil, fmt.Errorf("room %q has non-positive dimensions (%d x %d): %w", r.ID, r.Width, r.Height, ErrNoField)
 		}
 		if r.Width > maxRoomSpan || r.Height > maxRoomSpan {
 			return nil, fmt.Errorf("room %q dimensions (%d x %d) exceed max room span %d: %w", r.ID, r.Width, r.Height, maxRoomSpan, ErrNoField)
+		}
+		// Allocation safety (#929 T3 Opus round F1), separate from the span
+		// check above: Width and Height can each be legal under
+		// maxRoomSpan yet multiply to a cell count Atlas cannot safely
+		// allocate — see maxRoomCells/maxFieldCells's doc comment.
+		cellCount := int64(r.Width) * int64(r.Height)
+		if cellCount > maxRoomCells {
+			return nil, fmt.Errorf("room %q has %d cells (%d x %d), exceeding max room cells %d: %w", r.ID, cellCount, r.Width, r.Height, maxRoomCells, ErrNoField)
+		}
+		totalCells += cellCount
+		if totalCells > maxFieldCells {
+			return nil, fmt.Errorf("field has %d total cells across all rooms, exceeding max field cells %d: %w", totalCells, maxFieldCells, ErrNoField)
 		}
 		if math.Abs(r.Origin.X) > maxAnchorCoord || math.Abs(r.Origin.Y) > maxAnchorCoord {
 			return nil, fmt.Errorf("room %q origin (%g,%g) exceeds max anchor coordinate %d: %w", r.ID, r.Origin.X, r.Origin.Y, maxAnchorCoord, ErrNoField)
@@ -536,14 +588,50 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 	return nil
 }
 
+// validateEndingTriggers rejects a TriggerReachedPosition ending whose Room
+// or Position is malformed: an ending that names no real room, or a
+// position that can never be reached, can never fire — "an encounter that
+// cannot end is a liveness hole" (ErrNoEnding's doc comment) applies to a
+// single dead ending exactly as it does to zero endings (#929 T3 Opus round
+// F5). TriggerExternal endings carry no spatial data and are skipped.
+//
+// Checked identically at Setup and Load — the SAME shared-validator
+// pattern established for room-list/connection validation (buildValidRoomGrids'
+// doc comment): unknown room, out-of-bounds position, or (hex only)
+// non-integral position all reject with ErrNoEnding, no verb prefix — each
+// caller wraps its own at the call site.
+func validateEndingTriggers(endings []EndingInput, roomGrids map[string]spatial.Grid) error {
+	for _, ei := range endings {
+		trigger, ok := ei.Trigger.(TriggerReachedPosition)
+		if !ok {
+			continue
+		}
+		grid, ok := roomGrids[trigger.Room]
+		if !ok {
+			return fmt.Errorf("ending %q trigger names unknown room %q: %w", ei.Key, trigger.Room, ErrNoEnding)
+		}
+		if !grid.IsValidPosition(trigger.Position) {
+			return fmt.Errorf("ending %q trigger position is out of bounds: %w", ei.Key, ErrNoEnding)
+		}
+		if !isIntegralAxialPosition(grid, trigger.Position) {
+			return fmt.Errorf("ending %q trigger position is not an integral axial cell: %w", ei.Key, ErrNoEnding)
+		}
+	}
+	return nil
+}
+
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
 // no endings, reserved ending key, empty member ID, duplicate member IDs,
 // room defects (empty/duplicate ID, unrecognized or no-longer-supported
-// grid shape, W1 mixed grid families, non-integral hex origin, W2
-// overlapping absolute footprints), connection defects (empty/duplicate ID,
-// unknown room, self-connection, endpoint out of bounds or on an occluder,
-// W3 endpoints not adjacent once anchored), spatial placement errors.
+// grid shape, non-integral occluder position in any family, W1 mixed grid
+// families, non-positive/oversized/over-cell-budget dimensions, non-integral
+// origin, W2 overlapping absolute footprints), connection defects
+// (empty/duplicate ID, unknown room, self-connection, endpoint out of
+// bounds or on an occluder, W3 endpoints not adjacent once anchored),
+// member position integrality, ending trigger validity (unknown room or
+// unreachable position on a TriggerReachedPosition — #929 T3 Opus round
+// F5), spatial placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
@@ -609,6 +697,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if grid, ok := roomGrids[mi.Room]; ok && !isIntegralAxialPosition(grid, mi.Position) {
 			return nil, fmt.Errorf("newencounter: member %q position is not an integral axial cell: %w", mi.ID, ErrBadPlacement)
 		}
+	}
+
+	// A TriggerReachedPosition ending must name a real room and reachable
+	// position (#929 T3 Opus round F5) — see validateEndingTriggers.
+	if err := validateEndingTriggers(in.Endings, roomGrids); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Connections are stored sorted by ID (C8 determinism — order is

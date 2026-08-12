@@ -387,6 +387,37 @@ func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripFractionalSquare() {
 	s.Require().Equal(local, loc.Position)
 }
 
+// TestLocateAbsoluteRoundTripExactAtExtremeOrigin pins the guarantee this
+// module actually makes (#929 T3 Opus round F3, Locate's corrected doc
+// comment): an INTEGRAL round trip is exact even at an extreme anchor —
+// Origin at ±(2^30−8), just inside maxAnchorCoord (1<<30). Unlike the
+// fractional case (approximate near an extreme anchor, within one
+// float64 ULP of a room edge — not chased in code), an integral position
+// stays exact because integers round-trip exactly to 2^53, far past
+// this magnitude.
+func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripExactAtExtremeOrigin() {
+	const extreme = (1 << 30) - 8
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "extreme", Width: 10, Height: 10, Origin: spatial.Position{X: extreme, Y: -extreme}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	local := spatial.Position{X: 3, Y: 7}
+	abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: "extreme", Position: local})
+	s.Require().NoError(err)
+	s.Require().Equal(spatial.Position{X: extreme + 3, Y: -extreme + 7}, abs.Position)
+
+	loc, err := enc.Locate(&encounter.LocateInput{Position: abs.Position})
+	s.Require().NoError(err)
+	s.Require().Equal("extreme", loc.Room)
+	s.Require().Equal(local, loc.Position, "an integral round trip at an extreme anchor must be EXACT, not off by a ULP")
+}
+
 // TestLocateOwnershipAtKissingDoorway pins the case that makes W2's
 // uniqueness meaningful: each doorway cell — immediately adjacent to a
 // cell in the OTHER room — must locate to its OWN room, not its

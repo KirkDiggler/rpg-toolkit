@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 
@@ -1280,6 +1281,19 @@ func validEncounterDataWithConnection() encounter.EncounterData {
 	return d
 }
 
+// TestLoadSquareOccluderFractionalRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupSquareOccluderFractionalRejected (#929 T3
+// Opus round F2).
+func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
+	data := validEncounterDataWithConnection()
+	data.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell")
+}
+
 // TestLoadRejections: every unreachable state rejects with ErrInvalidData
 // AND the check that fired is the one the case targets. Connection rows
 // also assert ErrBadConnection (via alsoErr) and, where a room name is
@@ -1670,22 +1684,26 @@ func validHexAxialData() encounter.EncounterData {
 // encounter_test.go's TestSetupHexIntegralAxial.
 func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 	cases := []struct {
-		name    string
-		mutate  func(d *encounter.EncounterData)
-		alsoErr error
+		name     string
+		mutate   func(d *encounter.EncounterData)
+		alsoErr  error
+		fragment string
 	}{
 		{"member position fractional", func(d *encounter.EncounterData) {
 			d.Members[0].Position = encounter.PositionData{X: 0.5, Y: 0}
-		}, nil},
+		}, nil, "not an integral axial cell"},
 		{"connection from-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
-		}, encounter.ErrBadConnection},
+		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"connection to-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: -1.5, Y: -1}
-		}, encounter.ErrBadConnection},
+		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"occluder position fractional", func(d *encounter.EncounterData) {
+			// #929 T3 Opus round F2: occluder integrality is now universal
+			// (isIntegralPosition), not hex-only — see the Setup-seam
+			// counterpart in encounter_test.go's TestSetupHexIntegralAxial.
 			d.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
-		}, encounter.ErrNoField},
+		}, encounter.ErrNoField, "not a representable integral cell"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -1697,7 +1715,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 			if tc.alsoErr != nil {
 				s.Require().ErrorIs(err, tc.alsoErr, tc.name)
 			}
-			s.Require().Contains(err.Error(), "not an integral axial cell",
+			s.Require().Contains(err.Error(), tc.fragment,
 				"the check that fired must be the one this case targets")
 		})
 	}
@@ -1860,6 +1878,114 @@ func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint()
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Require().Contains(err.Error(), "exceed max room span")
 	s.Require().NotContains(err.Error(), "overlap at absolute cell")
+}
+
+// TestLoadRoomCellBudgetRejectsPanicReproduction is the Load-seam
+// counterpart to encounter_test.go's TestSetupRoomCellBudgetRejectsPanicReproduction
+// (#929 T3 Opus round F1): the exact 2^30 x 2^30 reproduction, but as a
+// hand-built persisted blob — LoadEncounter is the trust boundary for
+// bytes nobody validated at declaration time, so this is the more
+// important of the two reproductions to pin.
+func (s *DataTestSuite) TestLoadRoomCellBudgetRejectsPanicReproduction() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "huge", Width: 1 << 30, Height: 1 << 30, Origin: &encounter.PositionData{X: 0, Y: 0}},
+			},
+		},
+		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err, "a 2^30 x 2^30 room from a persisted blob must REJECT, not panic")
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max room cells")
+}
+
+// TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms is the Load-seam
+// counterpart to encounter_test.go's
+// TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms.
+func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
+	rooms := make([]encounter.RoomData, 5)
+	for i := range rooms {
+		rooms[i] = encounter.RoomData{
+			ID: fmt.Sprintf("room-%d", i), Width: 1024, Height: 1024,
+			Origin: &encounter.PositionData{X: 0, Y: 0},
+		}
+	}
+	data := encounter.EncounterData{
+		Field:   encounter.FieldData{Rooms: rooms},
+		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max field cells")
+}
+
+// validEndingTriggerData is the Load-seam counterpart to
+// encounter_test.go's validEndingTriggerSetup.
+func validEndingTriggerData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}}},
+		},
+		Endings: []encounter.EndingData{
+			{Key: "reach", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 3, Y: 3}},
+		},
+	}
+}
+
+// TestLoadEndingTriggerValidation is the Load-seam counterpart to
+// encounter_test.go's TestSetupEndingTriggerValidation (#929 T3 Opus
+// round F5).
+func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(d *encounter.EncounterData)
+		fragment string
+	}{
+		{"unknown room", func(d *encounter.EncounterData) {
+			d.Endings[0].Room = "nowhere"
+		}, "unknown room"},
+		{"out of bounds position", func(d *encounter.EncounterData) {
+			d.Endings[0].Position = &encounter.PositionData{X: 100, Y: 100}
+		}, "out of bounds"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validEndingTriggerData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoEnding, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	_, err := encounter.LoadEncounter(validEndingTriggerData(), nil)
+	s.Require().NoError(err, "a trigger naming a real room and in-bounds position must validate")
+}
+
+// TestLoadEndingTriggerHexNonIntegralRejected is the Load-seam counterpart
+// to encounter_test.go's TestSetupEndingTriggerHexNonIntegralRejected.
+func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}}},
+		},
+		Endings: []encounter.EndingData{
+			{Key: "reach", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 1.5, Y: 0}},
+		},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	s.Require().Contains(err.Error(), "not an integral axial cell")
 }
 
 // TestOriginRoundTripByteIdentical pins W5's round-trip law: origins
