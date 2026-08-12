@@ -270,13 +270,17 @@ func (e *Encounter) ToData() EncounterData {
 // string form, reusing spatial's own GridType* constants
 // (tools/spatial/data.go) so the wire vocabulary matches spatial's own
 // persistence. Square (the zero value) maps to "" so byte-compat
-// goldens keep omitting the field entirely.
+// goldens keep omitting the field entirely. No GridShapeGridless case
+// (#929 T2 second review round: deleted — write-only wire value at this
+// point, since no RoomInput this function is ever called with can hold
+// GridShapeGridless — buildValidRoomGrids rejects it at both Setup and
+// Load, per gridDataToShape's own doc comment, well before a room is
+// ever stored in fieldInput and later handed to ToData). The default
+// case already returns "" for it, same as any other unreachable value.
 func gridShapeToData(shape spatial.GridShape) string {
 	switch shape {
 	case spatial.GridShapeHex:
 		return spatial.GridTypeHex
-	case spatial.GridShapeGridless:
-		return spatial.GridTypeGridless
 	default:
 		return ""
 	}
@@ -309,25 +313,33 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
 // no rooms, no endings, empty/reserved ending keys (and kind/reached_position checks),
-// undeclared outcome ending, room defects (empty/duplicate ID, unrecognized-or-no-longer-
-// supported grid shape, missing origin — W5 presence), then room-list and connection
-// defects via the SAME buildValidRoomGrids/validateConnectionInputs Setup uses: W1 (one
-// grid family per field), non-positive dimensions, non-representable/non-integral origin
-// (every family), W2 (rooms never overlap), and connection defects (empty/duplicate ID,
-// missing room, self-connection, missing endpoint, endpoint out of bounds or on an
-// occluder, W3 non-kissing doorway) — then duplicate member IDs, member's room not in
-// field, member position out of bounds, outcome member room/bounds checks, everMembers
-// missing a current member.
+// undeclared outcome ending; THEN, per room list, a wire-only ID pre-pass (empty/duplicate
+// room ID — #929 T2 second review round, so a later presence error can never misname an
+// empty/ambiguous ID), grid-shape resolution (unrecognized-or-no-longer-supported string)
+// and origin presence (W5) per room; THEN room-list defects via the SAME
+// buildValidRoomGrids Setup uses: W1 (one grid family per field), room legality
+// (non-positive or oversized dimensions, out-of-bounds origin — maxRoomSpan/
+// maxAnchorCoord), origin legality (non-representable origin, every family), W2 (rooms
+// never overlap); THEN, per connection list, the SAME wire-only ID pre-pass and endpoint
+// presence, then connection defects via validateConnectionInputs: unknown or
+// self-referencing room, endpoint out of bounds or on an occluder, W3 (non-kissing
+// doorway); THEN duplicate member IDs, member's room not in field, member position out of
+// bounds, outcome member room/bounds checks, everMembers missing a current member.
 //
-// #929 T2: this is deliberately the SAME validation Setup runs, not a parallel
-// reimplementation — Setup and Load diverging on the W-laws was flagged explicitly in
-// T1 review as a drift risk. RoomData/ConnectionData convert to RoomInput/ConnectionInput
-// FIRST (resolving the grid string and checking Origin/endpoint presence — concerns that
-// only exist at the wire layer, since RoomInput.Grid is already typed and
-// RoomInput.Origin is already a value, not a pointer), then the converted slices are
-// handed to buildValidRoomGrids/validateConnectionInputs verbatim; every error they
-// return is wrapped once more with ErrInvalidData (multi-%w, this module's established
-// load-error style — the underlying error already carries ErrNoField/ErrBadConnection).
+// #929 T2: the room-list and connection validation is deliberately the SAME Setup
+// runs, not a parallel reimplementation — Setup and Load diverging on the W-laws was
+// flagged explicitly in T1 review as a drift risk. RoomData/ConnectionData convert to
+// RoomInput/ConnectionInput FIRST (the ID pre-pass, grid-string resolution, and
+// Origin/endpoint presence checks above — concerns that only exist at the wire layer,
+// since RoomInput.Grid is already typed and RoomInput.Origin is already a value, not a
+// pointer), then the converted slices are handed to
+// buildValidRoomGrids/validateConnectionInputs verbatim; every error they return is
+// wrapped once more with ErrInvalidData (multi-%w, this module's established load-error
+// style — the underlying error already carries ErrNoField/ErrBadConnection). Neither
+// shared validator's own error messages carry a verb prefix (#929 T2 second review
+// round — buildValidRoomGrids' doc comment), so this wrap is the ONLY place "load
+// encounter:" enters those messages — NewEncounter wraps the identical unprefixed
+// errors with "newencounter:" instead, at its own call sites.
 //
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
@@ -659,15 +671,38 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 // SAME room-list validation Setup uses (buildValidRoomGrids — see
 // LoadEncounter's doc comment) and for later storage. This is the ONLY
 // place LoadEncounter resolves the wire-only concerns that don't exist on
-// RoomInput itself: the Grid string (rejecting an unrecognized value,
-// including the no-longer-supported "gridless" — gridDataToShape's doc
-// comment) and Origin's W5 presence requirement (a nil pointer means the
-// field was absent from the blob, distinct from a declared zero — RoomData's
-// doc comment). Both reject with ErrNoField, matching the room-list defect
-// vocabulary buildValidRoomGrids itself uses for every OTHER room-list
-// defect, so a caller inspecting the error chain sees one consistent
-// sentinel regardless of which check fired.
+// RoomInput itself: ID presence/uniqueness (a cheap pre-pass, #929 T2
+// second review round — see below), the Grid string (rejecting an
+// unrecognized value, including the no-longer-supported "gridless" —
+// gridDataToShape's doc comment), and Origin's W5 presence requirement (a
+// nil pointer means the field was absent from the blob, distinct from a
+// declared zero — RoomData's doc comment). All reject with ErrNoField,
+// matching the room-list defect vocabulary buildValidRoomGrids itself uses
+// for every OTHER room-list defect, so a caller inspecting the error chain
+// sees one consistent sentinel regardless of which check fired.
+//
+// The ID pre-pass runs as its OWN first pass over the raw wire IDs, before
+// any other conversion: without it, an empty or duplicate room ID could
+// reach the Grid/Origin checks below and produce a message naming that
+// same empty or ambiguous ID — e.g. `room "" missing origin` — instead of
+// the actual defect (the ID itself). buildValidRoomGrids ALSO checks
+// ID empty/duplicate, but only after every room in the list has already
+// survived conversion — too late to prevent THIS symptom. The pre-pass is
+// intentionally redundant with that later check for a room list that
+// passes it: its only job is to guarantee an ID-defective room never
+// reaches a presence error that would misname it.
 func convertRoomDataToRoomInput(rooms []RoomData) ([]RoomInput, error) {
+	seenIDs := make(map[string]bool, len(rooms))
+	for _, rd := range rooms {
+		if rd.ID == "" {
+			return nil, fmt.Errorf("room has empty id: %w", ErrNoField)
+		}
+		if seenIDs[rd.ID] {
+			return nil, fmt.Errorf("duplicate room %q: %w", rd.ID, ErrNoField)
+		}
+		seenIDs[rd.ID] = true
+	}
+
 	result := make([]RoomInput, len(rooms))
 	for i, rd := range rooms {
 		shape, ok := gridDataToShape(rd.Grid)
@@ -710,12 +745,26 @@ func convertRoomDataToRoomInput(rooms []RoomData) ([]RoomInput, error) {
 // ConnectionInput, both for the SAME connection validation Setup uses
 // (validateConnectionInputs — see LoadEncounter's doc comment) and for
 // later storage. This is the ONLY place LoadEncounter resolves the
-// wire-only endpoint-presence concern that doesn't exist on ConnectionInput
-// itself: a nil FromPosition/ToPosition pointer means the field was absent
-// from the blob (not merely zero-valued) — ConnectionData's doc comment.
-// Rejects with ErrBadConnection, matching validateConnectionInputs' own
-// vocabulary for every other connection defect.
+// wire-only concerns that don't exist on ConnectionInput itself: ID
+// presence/uniqueness (a cheap pre-pass, #929 T2 second review round — same
+// reasoning as convertRoomDataToRoomInput's own pre-pass, so an endpoint-
+// presence error can never misname an empty/ambiguous connection ID) and a
+// nil FromPosition/ToPosition pointer, meaning the field was absent from
+// the blob, not merely zero-valued (ConnectionData's doc comment). Rejects
+// with ErrBadConnection, matching validateConnectionInputs' own vocabulary
+// for every other connection defect.
 func convertConnectionDataToConnectionInput(conns []ConnectionData) ([]ConnectionInput, error) {
+	seenIDs := make(map[string]bool, len(conns))
+	for _, cd := range conns {
+		if cd.ID == "" {
+			return nil, fmt.Errorf("connection has empty id: %w", ErrBadConnection)
+		}
+		if seenIDs[cd.ID] {
+			return nil, fmt.Errorf("duplicate connection %q: %w", cd.ID, ErrBadConnection)
+		}
+		seenIDs[cd.ID] = true
+	}
+
 	result := make([]ConnectionInput, len(conns))
 	for i, cd := range conns {
 		if cd.FromPosition == nil {

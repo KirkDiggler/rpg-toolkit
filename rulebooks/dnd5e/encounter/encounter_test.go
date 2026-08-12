@@ -911,20 +911,28 @@ func (s *EncounterTestSuite) TestSetupAnchoring() {
 		{"origin legality: fractional hex origin", func(in *encounter.SetupInput) {
 			in.Field.Rooms[1].Origin = spatial.Position{X: 6.5, Y: -5}
 		}, encounter.ErrNoField, "not a representable integral cell"},
-		{"origin legality: infinite origin", func(in *encounter.SetupInput) {
+		{"room legality: infinite origin", func(in *encounter.SetupInput) {
 			// #929 T1 second Opus round: math.Trunc(+Inf) is +Inf, so the
 			// old pos.X == math.Trunc(pos.X) check accepted this outright.
+			// #929 T2 second review round: now caught even earlier, by
+			// maxAnchorCoord's bound in room legality — Inf is never <= a
+			// finite bound, so this never even reaches the representability
+			// check origin legality runs afterward.
 			in.Field.Rooms[1].Origin = spatial.Position{X: math.Inf(1), Y: -5}
-		}, encounter.ErrNoField, "not a representable integral cell"},
-		{"origin legality: origin exceeds int64 precision (1e19)", func(in *encounter.SetupInput) {
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
+		{"room legality: origin exceeds max anchor coordinate (1e19)", func(in *encounter.SetupInput) {
 			// #929 T1 second Opus round: 1e19 is "integral" by Trunc (it has
 			// no fractional part as a float64) but exceeds int64's range —
 			// roomAbsoluteBounds' int() conversion on a value like this is
 			// Go-spec implementation-defined, not a real cell. See
 			// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap for the
 			// two-room construction that used to produce a wrong verdict.
+			// #929 T2 second review round: now caught by maxAnchorCoord's
+			// bound in room legality, before origin legality's
+			// representability check ever runs (1e19 is both non-representable
+			// AND out of bounds — the bound fires first).
 			in.Field.Rooms[1].Origin = spatial.Position{X: 1e19, Y: -5}
-		}, encounter.ErrNoField, "not a representable integral cell"},
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
 		{"ordering: W2 wins over a co-occurring W3 defect", func(in *encounter.SetupInput) {
 			in.Field.Rooms[1].Origin = spatial.Position{X: 0, Y: 0}
 		}, encounter.ErrNoField, "overlap at absolute cell"},
@@ -1160,8 +1168,10 @@ func (s *EncounterTestSuite) TestSetupAnchoringFractionalSquareEndpointSubUnitDi
 // legality, then BOTH got truncated by roomAbsoluteBounds' int() to the
 // SAME implementation-defined int64 value, producing a FALSE W2 overlap
 // verdict through the public API. This pins that such an origin now
-// rejects at ORIGIN LEGALITY instead — before W2 ever sees it, and
-// specifically NOT with a W2 "overlap" message.
+// rejects at ROOM LEGALITY instead (#929 T2 second review round:
+// maxAnchorCoord's bound now fires before origin legality's representability
+// check even runs — 1e19 is both non-representable AND out of bounds) —
+// before W2 ever sees it, and specifically NOT with a W2 "overlap" message.
 func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
@@ -1177,10 +1187,44 @@ func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap
 	})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "not a representable integral cell",
-		"must reject at origin legality, not fall through to a W2 overlap verdict on garbage-truncated positions")
+	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
+		"must reject at room legality, not fall through to a W2 overlap verdict on garbage-truncated positions")
 	s.Require().NotContains(err.Error(), "overlap at absolute cell",
 		"the old bug produced a W2 overlap message here — this must NOT be that")
+}
+
+// TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint pins maxRoomSpan
+// (#929 T2 second review round — see its doc comment): before this bound,
+// an unbounded Width could overflow roomAbsoluteBounds' interval-sum
+// arithmetic. r1 is 1000 wide at the zero-value Origin (absolute Q span
+// [0,999]); r2 is math.MaxInt wide, anchored at (999,0) — TRUE
+// (infinite-precision) math says these overlap by exactly one column, at
+// Q=999 (r2's own left edge sits exactly on r1's own right edge). But
+// r2's absolute qMax is 999 + math.MaxInt - 1, which OVERFLOWS int64 and
+// wraps to a large NEGATIVE number — see this test's own mutation-evidence
+// entry in the T2 second-round report for the exact wrapped value and the
+// resulting false "disjoint" verdict WITHOUT this bound. WITH it, r2's
+// Width alone is already rejected — oversized, not evaluated for overlap
+// at all.
+func (s *EncounterTestSuite) TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 1000, Height: 5},
+				{ID: "r2", Width: math.MaxInt, Height: 5, Origin: spatial.Position{X: 999, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceed max room span",
+		"must reject at room legality for being oversized, before overlap is ever evaluated")
+	s.Require().NotContains(err.Error(), "overlap at absolute cell",
+		"without the bound, this exact fixture used to wrongly VALIDATE via a false-disjoint W2 verdict — see the mutation evidence")
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {

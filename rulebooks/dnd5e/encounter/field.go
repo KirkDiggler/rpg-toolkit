@@ -35,16 +35,19 @@ type RoomInput struct {
 	Height int
 
 	// Grid selects the room's coordinate system: GridShapeSquare (the zero
-	// value — Width x Height cells, origin (0,0), Chebyshev distance),
-	// GridShapeHex, or GridShapeGridless (continuous positions within
-	// Width x Height, origin (0,0)). The zero value keeps every
-	// pre-existing room square, so v0.1 persisted blobs without this
-	// field unmarshal to square unchanged.
+	// value — Width x Height cells, origin (0,0), Chebyshev distance) or
+	// GridShapeHex — the only two families Setup and Load accept as of
+	// #929 T1/T2. GridShapeGridless still exists as a spatial.GridShape
+	// value but is rejected outright (shape legality — buildValidRoomGrids'
+	// doc comment in encounter.go): gridless left the composition in v0.3,
+	// the wire cannot carry a continuous room's absolute projection. The
+	// zero value keeps every pre-existing room square, so v0.1 persisted
+	// blobs without this field unmarshal to square unchanged.
 	//
 	// GridShapeHex rooms speak AXIAL cube coordinates (tools/spatial's
 	// AxialHexGrid), not offset: Position.X is Q, Position.Y is R, and S
 	// = -(Q+R) is derived. Bounds are ORIGIN-CENTERED spans, unlike
-	// square/gridless — Q is valid in [-Width/2, Width/2) and R in
+	// square — Q is valid in [-Width/2, Width/2) and R in
 	// [-Height/2, Height/2), so negative coordinates are legal and
 	// expected, not a defect. Distance, adjacency, and line of sight in a
 	// hex room run true cube hex math via spatial. This is a deliberate

@@ -28,18 +28,28 @@ var (
 	// ErrNoField is returned when Setup is called without rooms, or when a
 	// declared room is itself defective — empty or duplicate ID, an
 	// unrecognized-or-no-longer-supported grid shape value (gridless
-	// included — RoomData's doc comment in data.go), non-positive
-	// Width/Height, or a non-integral Origin (EVERY grid family, not just
-	// hex) — or the room list as a whole is incoherent (W1: more than one
-	// grid family in one field; W2: two rooms' absolute footprints
-	// overlap) — a malformed room list is as unusable as an empty one.
+	// included — RoomData's doc comment in data.go), non-positive OR
+	// oversized Width/Height (maxRoomSpan), an out-of-bounds Origin
+	// (maxAnchorCoord) or a non-representable one (non-integral, ±Inf,
+	// NaN — EVERY grid family, not just hex), or — Load-only, since
+	// RoomInput.Origin is a plain value and can't be absent the way
+	// RoomData.Origin's pointer can — a MISSING Origin (W5 presence: a nil
+	// pointer means the field was absent from the blob, distinct from a
+	// declared zero — RoomData's doc comment in data.go) — or the room
+	// list as a whole is incoherent (W1: more than one grid family in one
+	// field; W2: two rooms' absolute footprints overlap) — a malformed
+	// room list is as unusable as an empty one.
 	//
 	// Checked identically at Setup and Load (#929 T2): LoadEncounter routes
 	// room-list validation through the SAME buildValidRoomGrids Setup uses
 	// (LoadEncounter's doc comment in data.go), so W1, room-dimension
 	// legality, origin legality, and W2 reject a persisted blob exactly as
 	// they would a live SetupInput — Setup and Load can no longer drift on
-	// these checks by construction, not just by convention.
+	// these checks by construction, not just by convention. The shared
+	// validator's own error messages carry no verb prefix — NewEncounter
+	// and LoadEncounter each wrap their own ("newencounter:" / "load
+	// encounter:") at their own call sites (#929 T2 second review round;
+	// buildValidRoomGrids' doc comment).
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement fails spatial validation.

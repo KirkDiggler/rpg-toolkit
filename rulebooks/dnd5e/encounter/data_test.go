@@ -52,15 +52,31 @@ type DataTestSuite struct {
 // proof for negative anchors this wave's persistence work needs (a
 // declared origin round-trips as an explicit, signed value, not just a
 // non-negative one).
+//
+// #929 T2 second review round: re-translated AGAIN, by (0,+7) on top of
+// the above, to (crypt (-10,7), hall (-3,7)) — transposition hardening.
+// Both prior shifts kept Y=0 for both rooms, so an X/Y transposition bug
+// anywhere in the ToData/marshal path (an M7/M8-class mutant) had a real
+// chance of surviving undetected here: with Y=0, a transposed (-10,0)
+// would marshal as (0,-10) — a DIFFERENT byte string, so that specific
+// case was already caught — but any bug that transposed X/Y AFTER first
+// somehow losing or ignoring one axis could still slip through a
+// fixture where one axis is always zero. With BOTH X and Y now nonzero
+// and DISTINCT for both rooms (crypt: -10≠7; hall: -3≠7), no such gap
+// remains: any X/Y transposition changes the bytes unambiguously. This
+// shift is STILL a uniform translation of the whole field (adding (0,7)
+// to both rooms alike), so every W2/W3 relationship from the comment
+// above is preserved exactly — translation invariance holds regardless
+// of the shift vector's own shape.
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 0},
+				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
 					Occluders:  []spatial.Position{{X: 1, Y: 2}},
 					Boundaries: []spatial.Boundary{{From: spatial.Position{X: -2, Y: -2}, To: spatial.Position{X: -2, Y: -1}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
-				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -3, Y: 0}},
+				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -3, Y: 7}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "door1", From: "crypt", To: "hall",
@@ -86,7 +102,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// Exact-string pin: every room now carries "origin" (#929 T2), always
 	// present (no omitempty — RoomData's doc comment) — crypt's and hall's
 	// are both negative-axial, the wire-shape proof this golden exists for.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":0}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":0}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":0,"y":0}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":0,"y":0}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -809,6 +825,15 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		enc, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
+		// Advance the clock BEFORE closing (#929 T2 second review round —
+		// golden law: every omitempty field must be exercised at least
+		// once; OutcomeData.At omits at tick 0, so a golden that closes
+		// immediately can never prove `at` actually persists a non-zero
+		// value). One Pump advances the world tick to 1, adding its own
+		// "clock" beat to the log ahead of the closing move.
+		_, err = enc.Pump(&encounter.PumpInput{})
+		s.Require().NoError(err)
+
 		// Close the encounter
 		_, err = enc.Move(&encounter.MoveInput{
 			Member: "p1",
@@ -821,9 +846,11 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		s.Require().NoError(err)
 
 		// Exact-string pin of the closed shape: outcome present with the
-		// fired ending and final member placements; the story carries
-		// both beats (opening + the closing move).
-		expectedJSON := `{"outcome":{"ending":"done","members":[{"id":"p1","room":"room1","position":{"x":0,"y":0}}]},"clock":{},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"]}`
+		// fired ending (AT A NON-ZERO TICK — "at":1, the field this golden
+		// exists to exercise) and final member placements; the story
+		// carries all three beats (opening + the pump's tick + the
+		// closing move).
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","room":"room1","position":{"x":0,"y":0}}]},"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"]}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -1505,6 +1532,31 @@ func (s *DataTestSuite) TestLoadRoomValidation() {
 	}
 }
 
+// TestLoadRoomEmptyIDReportsIDDefectNotOrigin pins F3 (#929 T2 second
+// review round): a room with BOTH an empty ID AND a nil origin must report
+// the ID defect ("room has empty id"), never a presence error that names
+// the empty ID. Before this fix, convertRoomDataToRoomInput's per-room
+// conversion loop checked Origin presence directly (ID validity was only
+// ever checked LATER, by buildValidRoomGrids, after conversion had already
+// succeeded) — so this exact fixture produced `room "" missing origin`,
+// naming a room by an ID that was itself the real defect. The wire-only ID
+// pre-pass (empty/duplicate) now runs as its own first pass over ALL rooms,
+// before any other conversion, so an ID-defective room can never reach a
+// presence check at all.
+func (s *DataTestSuite) TestLoadRoomEmptyIDReportsIDDefectNotOrigin() {
+	data := validEncounterData()
+	data.Field.Rooms[0].ID = ""
+	data.Field.Rooms[0].Origin = nil
+
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "room has empty id")
+	s.Require().NotContains(err.Error(), "missing origin",
+		"the ID defect must be reported — a presence error here would misname the room")
+}
+
 // connHexRoomData returns a fresh EncounterData with one 4x3 hex room and a
 // member at pos — the Load-seam counterpart to encounter_test.go's
 // TestHexRoomBounds. Width=4, Height=3 => Q valid in [-2,2), R valid in
@@ -1705,12 +1757,17 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 		{"origin legality: fractional hex origin", func(d *encounter.EncounterData) {
 			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 6.5, Y: -5}
 		}, encounter.ErrNoField, "not a representable integral cell"},
-		{"origin legality: infinite origin", func(d *encounter.EncounterData) {
+		{"room legality: infinite origin", func(d *encounter.EncounterData) {
+			// #929 T2 second review round: caught by maxAnchorCoord's bound
+			// in room legality — Inf is never <= a finite bound — before
+			// origin legality's representability check ever runs.
 			d.Field.Rooms[1].Origin = &encounter.PositionData{X: math.Inf(1), Y: -5}
-		}, encounter.ErrNoField, "not a representable integral cell"},
-		{"origin legality: origin exceeds int64 precision (1e19)", func(d *encounter.EncounterData) {
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
+		{"room legality: origin exceeds max anchor coordinate (1e19)", func(d *encounter.EncounterData) {
+			// #929 T2 second review round: 1e19 is both non-representable
+			// AND out of bounds — the bound fires first, in room legality.
 			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 1e19, Y: -5}
-		}, encounter.ErrNoField, "not a representable integral cell"},
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
 		{"W5: nil origin — absent, not a declared zero", func(d *encounter.EncounterData) {
 			d.Field.Rooms[1].Origin = nil
 		}, encounter.ErrNoField, `room "hex-small" missing origin`},
@@ -1777,6 +1834,32 @@ func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Require().Contains(err.Error(), `room "r-a" and room "r-c" overlap at absolute cell (2, 2)`)
+}
+
+// TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint is the Load-seam
+// counterpart to encounter_test.go's
+// TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint — same geometry,
+// same maxRoomSpan bound, unified path (see LoadEncounter's doc comment).
+func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 1000, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "r2", Width: math.MaxInt, Height: 5, Origin: &encounter.PositionData{X: 999, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceed max room span")
+	s.Require().NotContains(err.Error(), "overlap at absolute cell")
 }
 
 // TestOriginRoundTripByteIdentical pins W5's round-trip law: origins
