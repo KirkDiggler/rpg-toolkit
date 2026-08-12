@@ -50,6 +50,20 @@ func TestFormatDamageComponent(t *testing.T) {
 	}
 }
 
+func TestFormatDamageComponentSignedTerms(t *testing.T) {
+	component := dnd5eEvents.DamageComponent{
+		DiceNotation: "1d6-1d4",
+		Terms: []dnd5eEvents.RolledDiceTerm{
+			{Dice: "1d6", Sign: 1, Final: []int{5}},
+			{Dice: "1d4", Sign: -1, Final: []int{2}},
+		},
+		FlatBonus:  2,
+		DamageType: damage.Acid,
+	}
+
+	require.Equal(t, "1d6 (5) - 1d4 (2) + 2 acid = 5", combat.FormatDamageComponent(component))
+}
+
 func TestFormatDamageBreakdownDisplay(t *testing.T) {
 	acid := dnd5eEvents.DamageComponent{DiceNotation: "1d6", FinalDiceRolls: []int{4}, FlatBonus: 2, DamageType: damage.Acid}
 	bludgeoning := dnd5eEvents.DamageComponent{DiceNotation: "2d6", FinalDiceRolls: []int{5, 3}, FlatBonus: 3, DamageType: damage.Bludgeoning}

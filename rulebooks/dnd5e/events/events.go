@@ -198,11 +198,20 @@ type RerollEvent struct {
 	Reason   string // Feature that caused reroll (e.g., "great_weapon_fighting")
 }
 
+// RolledDiceTerm records the rolls for one signed dice group in a damage component.
+type RolledDiceTerm struct {
+	Dice     string `json:"dice"`
+	Sign     int    `json:"sign"`
+	Original []int  `json:"original"`
+	Final    []int  `json:"final"`
+}
+
 // DamageComponent represents damage from one source
 type DamageComponent struct {
 	Source            DamageSourceType // Category: weapon, ability, condition, etc.
 	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
 	DiceNotation      string           // Declared dice notation, retained for display only
+	Terms             []RolledDiceTerm // Signed dice terms, when damage was resolved from an expression
 	OriginalDiceRolls []int            // As first rolled
 	FinalDiceRolls    []int            // After all rerolls
 	Rerolls           []RerollEvent    // History of rerolls
@@ -219,6 +228,14 @@ type DamageComponent struct {
 // Total returns the total damage for this component
 func (dc *DamageComponent) Total() int {
 	total := dc.FlatBonus
+	if len(dc.Terms) > 0 {
+		for _, term := range dc.Terms {
+			for _, roll := range term.Final {
+				total += term.Sign * roll
+			}
+		}
+		return total
+	}
 	for _, roll := range dc.FinalDiceRolls {
 		total += roll
 	}

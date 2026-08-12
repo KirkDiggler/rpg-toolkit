@@ -6,6 +6,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,6 +33,41 @@ func (r *fixedRoller) RollN(ctx context.Context, n, size int) ([]int, error) {
 }
 
 var _ dice.Roller = (*fixedRoller)(nil)
+
+func TestRollAttackDamageSignedTerms(t *testing.T) {
+	components, err := rollAttackDamage(context.Background(), damage.DamageSpec{Pools: []damage.Damage{{
+		Dice:      "1d6-1d4",
+		Terms:     []damage.DiceTerm{{Dice: "1d6", Sign: 1}, {Dice: "1d4", Sign: -1}},
+		Type:      damage.Acid,
+		FlatBonus: 2,
+	}}}, dnd5eEvents.DamageSourceWeapon, nil, false, &fixedRoller{rolls: []int{5, 2}})
+	require.NoError(t, err)
+	require.Len(t, components, 1)
+	require.Equal(t, []dnd5eEvents.RolledDiceTerm{
+		{Dice: "1d6", Sign: 1, Original: []int{5}, Final: []int{5}},
+		{Dice: "1d4", Sign: -1, Original: []int{2}, Final: []int{2}},
+	}, components[0].Terms)
+	require.Equal(t, []int{5, 2}, components[0].FinalDiceRolls)
+	require.Equal(t, 5, components[0].Total())
+}
+
+func TestRollAttackDamageCriticalDoublesEverySignedDiceTerm(t *testing.T) {
+	components, err := rollAttackDamage(context.Background(), damage.DamageSpec{Pools: []damage.Damage{{
+		Dice:       "1d6-1d4",
+		Terms:      []damage.DiceTerm{{Dice: "1d6", Sign: 1}, {Dice: "1d4", Sign: -1}},
+		Type:       damage.Acid,
+		FlatBonus:  2,
+		Properties: []damage.Property{damage.PropertyCritEligible},
+	}}}, dnd5eEvents.DamageSourceWeapon, nil, true, &fixedRoller{rolls: []int{5, 4, 2, 1}})
+	require.NoError(t, err)
+	require.Len(t, components, 1)
+	require.Equal(t, []dnd5eEvents.RolledDiceTerm{
+		{Dice: "1d6", Sign: 1, Original: []int{5, 4}, Final: []int{5, 4}},
+		{Dice: "1d4", Sign: -1, Original: []int{2, 1}, Final: []int{2, 1}},
+	}, components[0].Terms)
+	require.Equal(t, 8, components[0].Total())
+	require.Equal(t, "1d6 (5 + 4) - 1d4 (2 + 1) + 2 acid = 8", FormatDamageComponent(components[0]))
+}
 
 func TestRollDamageProfileRetainsDeclaredDiceNotation(t *testing.T) {
 	components, err := RollDamageProfile(context.Background(), []DamageProfileComponent{

@@ -27,24 +27,40 @@ func rollAttackDamage(
 
 	components := make([]dnd5eEvents.DamageComponent, 0, len(spec.Pools))
 	for _, damagePool := range spec.Pools {
-		pool, err := dice.ParseNotation(damagePool.Dice)
-		if err != nil {
-			return nil, rpgerr.Wrap(err, "invalid attack damage dice")
-		}
-
 		times := 1
 		if critical && hasDamageProperty(damagePool, damage.PropertyCritEligible) {
 			times = 2
 		}
-		rolls, err := rollDamageDice(ctx, pool, roller, times)
-		if err != nil {
-			return nil, err
+
+		terms := damagePool.Terms
+		if len(terms) == 0 {
+			expression, err := damage.ParseExpression(damagePool.Dice)
+			if err != nil {
+				return nil, rpgerr.Wrap(err, "invalid attack damage dice")
+			}
+			terms = expression.Terms
+		}
+
+		rolledTerms := make([]dnd5eEvents.RolledDiceTerm, 0, len(terms))
+		rolls := make([]int, 0)
+		for _, term := range terms {
+			pool, err := dice.ParseNotation(term.Dice)
+			if err != nil {
+				return nil, rpgerr.Wrap(err, "invalid attack damage dice")
+			}
+			termRolls, err := rollDamageDice(ctx, pool, roller, times)
+			if err != nil {
+				return nil, err
+			}
+			rolledTerms = append(rolledTerms, dnd5eEvents.RolledDiceTerm{Dice: term.Dice, Sign: term.Sign, Original: termRolls, Final: termRolls})
+			rolls = append(rolls, termRolls...)
 		}
 
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source:            source,
 			SourceRef:         sourceRef,
 			DiceNotation:      damagePool.Dice,
+			Terms:             rolledTerms,
 			OriginalDiceRolls: rolls,
 			FinalDiceRolls:    rolls,
 			FlatBonus:         damagePool.FlatBonus,
