@@ -5,12 +5,15 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -147,7 +150,7 @@ func (s *BiteActionTestSuite) TestCanActivate_TargetInReach() {
 	s.Assert().NoError(err)
 }
 
-func (s *BiteActionTestSuite) TestActivate_PublishesAttackEvent() {
+func (s *BiteActionTestSuite) TestActivate_PublishesDamageOnlyAttackDefinition() {
 	// Arrange
 	action := NewBiteAction(BiteConfig{
 		AttackBonus: 4,
@@ -180,6 +183,20 @@ func (s *BiteActionTestSuite) TestActivate_PublishesAttackEvent() {
 	})
 	s.Require().NoError(err)
 
+	conditionApplied := false
+	_, err = dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(context.Background(), func(_ context.Context, _ dnd5eEvents.ConditionAppliedEvent) error {
+		conditionApplied = true
+		return nil
+	})
+	s.Require().NoError(err)
+
+	saveRequested := false
+	_, err = dnd5eEvents.SavingThrowChain.On(s.bus).SubscribeWithChain(context.Background(), func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, current chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
+		saveRequested = true
+		return current, nil
+	})
+	s.Require().NoError(err)
+
 	input := monster.MonsterActionInput{
 		Bus:           s.bus,
 		Target:        target,
@@ -198,6 +215,22 @@ func (s *BiteActionTestSuite) TestActivate_PublishesAttackEvent() {
 	s.Assert().Equal("hero-1", receivedAttackEvent.TargetID)
 	s.Assert().Equal("bite", receivedAttackEvent.WeaponRef)
 	s.Assert().True(receivedAttackEvent.IsMelee)
+	s.Assert().Equal(attack.Definition{
+		ActionID:    "bite",
+		DisplayName: "bite",
+		Category:    attack.CategoryNatural,
+		Bonus:       attack.FixedBonus(4),
+		Targeting:   attack.MeleeReach(1),
+		Damage: damage.DamageSpec{Pools: []damage.Damage{{
+			Dice:       "2d4+2",
+			Terms:      []damage.DiceTerm{{Dice: "2d4", Sign: 1}},
+			Type:       damage.Piercing,
+			FlatBonus:  2,
+			Properties: []damage.Property{damage.PropertyCritEligible},
+		}}},
+	}, receivedAttackEvent.Definition)
+	s.Assert().False(saveRequested, "bite should not request a saving throw")
+	s.Assert().False(conditionApplied, "bite should not apply a condition")
 }
 
 func (s *BiteActionTestSuite) TestScore_AdjacentEnemy() {
@@ -272,6 +305,9 @@ func (s *BiteActionTestSuite) TestToData() {
 	// Assert
 	s.Assert().Equal("bite", data.Ref.ID)
 	s.Assert().NotNil(data.Config)
-	// Config should be valid JSON with our config
-	s.Assert().Contains(string(data.Config), "2d4+2")
+
+	var persisted BiteConfig
+	s.Require().NoError(json.Unmarshal(data.Config, &persisted))
+	s.Assert().Equal("2d4+2", persisted.DamageDice)
+	s.Assert().Equal(11, persisted.KnockdownDC)
 }
