@@ -395,6 +395,74 @@ func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
 	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal")
 }
 
+// TestSetupOccluderIDCrossRoomCollisionAccepted pins the hardening round's
+// fix (#929 item C): the occluder entity ID used to concatenate room ID
+// and truncated coordinates (occluder-<room>-<int(X)>-<int(Y)>), so room
+// "r" with occluder (-5,4) and room "r-" with occluder (5,4) both produced
+// "occluder-r--5-4" — a genuine cross-room ID collision on a field that is
+// otherwise entirely legal under W1/W2/W3. The ID is index-based now, so
+// this exact colliding pair must construct without error.
+func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
+					Occluders: []spatial.Position{{X: -5, Y: 4}}},
+				{ID: "r-", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
+					Origin: spatial.Position{X: 1000, Y: 0}, Occluders: []spatial.Position{{X: 5, Y: 4}}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide`)
+}
+
+// TestSetupDuplicateOccluderRejected pins the hardening round's item D:
+// two occluders at the SAME cell used to escape module validation
+// entirely and reject only in spatial's own voice ("entity ... already
+// indexed") as an accident of the old coordinate-derived entity ID —
+// see TestSetupOccluderIDCrossRoomCollisionAccepted's fix, which
+// switched to an index-based ID and, as a side effect, removed even
+// that accidental catch. Rejected explicitly now, in the module's own
+// room-list defect vocabulary.
+func (s *EncounterTestSuite) TestSetupDuplicateOccluderRejected() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}, {X: 3, Y: 3}}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "duplicate occluder")
+}
+
+// TestSetupDuplicateEndingKeyRejected pins hardening round item E: two
+// endings sharing a key both used to construct — a genuine liveness
+// hole, since End scans in declaration order and a reached_position
+// twin declared first permanently shadows a same-keyed external ending
+// declared after it (probed: End("dup") failed "is not External"
+// forever, the external ending having no other way to fire).
+func (s *EncounterTestSuite) TestSetupDuplicateEndingKeyRejected() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "dup", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 4}}},
+			{Key: "dup", Trigger: encounter.TriggerExternal{}},
+		},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	s.Require().Contains(err.Error(), "duplicate ending")
+}
+
 // TestSetupConnectionValidation mirrors TestLoadRejections' connection
 // defect classes at the Setup seam: each case breaks exactly one thing
 // about an otherwise-valid connection and must reject with ErrBadConnection.

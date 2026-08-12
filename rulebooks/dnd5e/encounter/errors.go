@@ -11,11 +11,17 @@ var (
 	ErrNilInput = errors.New("nil input")
 
 	// ErrNoMember is returned when an input contains an empty or
-	// duplicate member ID (Setup, Join), a member is declared a player
-	// while carrying a Decider — design law C2 — at any of the three
-	// seams that accept one (NewEncounter, LoadEncounter, Join), Join
-	// names a member ID already in the encounter, Exit is called with an
-	// empty member ID, or Story's audience never joined.
+	// duplicate member ID (Setup, Join, and Load — Load's identical
+	// checks used to carry only ErrInvalidData, #929 hardening round F),
+	// a member is declared a player while carrying a Decider — design
+	// law C2 — at any of the three seams that accept one (NewEncounter,
+	// LoadEncounter, Join), Join names a member ID already in the
+	// encounter, Exit is called with an empty member ID, Story's
+	// audience never joined, or — Load-only, since these are persisted-
+	// state coherence checks with no Setup analogue — a persisted
+	// abandoned outcome with non-empty membership (abandonment means the
+	// membership emptied) or a current member missing from EverMembers
+	// (#929 hardening round F).
 	ErrNoMember = errors.New("empty member id")
 
 	// ErrNotMember is returned when an entity is not a member of this encounter.
@@ -23,13 +29,22 @@ var (
 
 	// ErrNoEnding is returned when Setup or Load is called with zero
 	// endings, a declared ending's key is empty or the reserved
-	// "abandoned", End is called with an undeclared key or one whose
-	// Trigger is not TriggerExternal, or a TriggerReachedPosition ending
-	// names an unknown room or an unreachable position (#929 T3 Opus
-	// round F5, checked identically at Setup and Load — see
-	// validateEndingTriggers). An encounter that cannot end — whether it
-	// declares zero endings or one that can never fire — is a liveness
-	// hole.
+	// "abandoned", a declared ending's key duplicates an earlier one in
+	// the same input (#929 hardening round E — an unvalidated duplicate
+	// lets declaration order silently shadow a later ending, e.g. a
+	// reached_position twin permanently hiding an external ending), End
+	// is called with an undeclared key or one whose Trigger is not
+	// TriggerExternal, or a TriggerReachedPosition ending names an
+	// unknown room or an unreachable position (#929 T3 Opus round F5,
+	// checked identically at Setup and Load — see
+	// validateEndingTriggers), or — Load-only, since these are wire-
+	// format/persisted-state concerns with no Setup analogue —
+	// EndingData names an unrecognized Kind string, a reached_position
+	// EndingData is missing its Room or Position, or a persisted Outcome
+	// names an ending key that was never declared (these three used to
+	// carry only ErrInvalidData, #929 hardening round F). An encounter
+	// that cannot end — whether it declares zero endings or one that can
+	// never fire — is a liveness hole.
 	ErrNoEnding = errors.New("no such ending")
 
 	// ErrClosed is returned when a mutating verb (action, event, exit, etc.)
@@ -41,7 +56,11 @@ var (
 	// unrecognized-or-no-longer-supported grid shape value (gridless
 	// included — RoomData's doc comment in data.go), a non-integral
 	// occluder position in ANY family, not just hex (#929 T3 Opus round
-	// F2), non-positive OR oversized Width/Height (maxRoomSpan), a
+	// F2), a duplicate occluder position within one room (#929 hardening
+	// round D — previously escaped module validation and rejected only
+	// in spatial's own voice, an accident of the pre-index-based
+	// occluder entity ID), non-positive OR oversized Width/Height
+	// (maxRoomSpan), a
 	// per-room or field-total cell count exceeding maxRoomCells/
 	// maxFieldCells (allocation safety for Atlas — #929 T3 Opus round F1),
 	// an out-of-bounds Origin (maxAnchorCoord) or a non-representable one
@@ -82,7 +101,11 @@ var (
 	// moveMember's own bounds/integrality checks, Traverse's threshold
 	// check, Pump's snapshot lookups, Join's/Exit's own lookups) reject
 	// before ever reaching spatial, with nothing beneath ErrBadPlacement
-	// to wrap.
+	// to wrap. Also covers LoadEncounter's member and outcome-member
+	// checks — room lookup miss, out-of-bounds position, non-integral
+	// (hex) position — which mirror NewEncounter's identical member
+	// checks and used to carry only ErrInvalidData (#929 hardening
+	// round F).
 	ErrBadPlacement = errors.New("bad placement")
 
 	// ErrBadConnection is returned when a connection's ID is empty or

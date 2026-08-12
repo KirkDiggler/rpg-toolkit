@@ -136,10 +136,14 @@ func (p *continuityProjector) project(member, verb, room string, pos spatial.Pos
 // W2 + W3 + the local/absolute bridge, proven as ONE property — a
 // member's path, projected into dungeon-absolute space, is continuous
 // across a doorway exactly as it is within a room. This is the hex
-// sibling of chase_test.go's TestVaultChase (untouched, still
-// byte-identical); the story shape is deliberately the same (corridor,
-// vault, one gate, a pursuit decider, sanctuary in the far room, a
-// mid-chase reload) so the two scenes read as siblings, not vignettes.
+// sibling of chase_test.go's TestVaultChase — its TRANSCRIPT (the beats,
+// positions, and assertions the story makes) is unchanged, though T1
+// touched the file itself to give vaultRoom an explicit Origin (W2
+// requires it; #929 hardening round H corrects an earlier claim of
+// byte-identical that no longer held once that Origin was added). The
+// story shape is deliberately the same (corridor, vault, one gate, a
+// pursuit decider, sanctuary in the far room, a mid-chase reload) so the
+// two scenes read as siblings, not vignettes.
 //
 // Every recorded position — including the goblin's — is a genuine
 // single-hex-step from the one before it (the fixture is built for

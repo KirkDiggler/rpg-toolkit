@@ -1312,6 +1312,65 @@ func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
 	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
+// TestLoadOccluderIDCrossRoomCollisionAccepted is the Load-seam counterpart
+// to encounter_test.go's TestSetupOccluderIDCrossRoomCollisionAccepted
+// (#929 hardening round C).
+func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridTypeHex,
+					Origin: &encounter.PositionData{X: 0, Y: 0}, Occluders: []encounter.PositionData{{X: -5, Y: 4}}},
+				{ID: "r-", Width: 12, Height: 10, Grid: spatial.GridTypeHex,
+					Origin: &encounter.PositionData{X: 1000, Y: 0}, Occluders: []encounter.PositionData{{X: 5, Y: 4}}},
+			},
+		},
+		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide at Load either`)
+}
+
+// TestLoadDuplicateOccluderRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupDuplicateOccluderRejected (#929 hardening
+// round D).
+func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0},
+					Occluders: []encounter.PositionData{{X: 3, Y: 3}, {X: 3, Y: 3}}},
+			},
+		},
+		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "duplicate occluder")
+}
+
+// TestLoadDuplicateEndingKeyRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupDuplicateEndingKeyRejected (#929
+// hardening round E).
+func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}}},
+		},
+		Endings: []encounter.EndingData{
+			{Key: "dup", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 4, Y: 4}},
+			{Key: "dup", Kind: "external"},
+		},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	s.Require().Contains(err.Error(), "duplicate ending")
+}
+
 // TestLoadRejections: every unreachable state rejects with ErrInvalidData
 // AND the check that fired is the one the case targets. Connection rows
 // also assert ErrBadConnection (via alsoErr) and, where a room name is
@@ -1329,18 +1388,18 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings", nil},
 		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings", nil},
 		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings", nil},
-		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind", nil},
+		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind", encounter.ErrNoEnding},
 		{"reached_position without position", func(d *encounter.EncounterData) {
 			d.Endings[0] = encounter.EndingData{Key: "done", Kind: "reached_position", Room: "r1"}
-		}, "without room/position", nil},
-		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id", nil},
+		}, "without room/position", encounter.ErrNoEnding},
+		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id", encounter.ErrNoMember},
 		{"duplicate member ids", func(d *encounter.EncounterData) {
 			d.Members = append(d.Members, d.Members[0])
-		}, "duplicate member", nil},
-		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field", nil},
+		}, "duplicate member", encounter.ErrNoMember},
+		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field", encounter.ErrBadPlacement},
 		{"member out of bounds", func(d *encounter.EncounterData) {
 			d.Members[0].Position = encounter.PositionData{X: 99, Y: 99}
-		}, "out of bounds", nil},
+		}, "out of bounds", encounter.ErrBadPlacement},
 		{"connection missing room", func(d *encounter.EncounterData) {
 			// FromPosition/ToPosition present (any value) so the ONLY
 			// defect this fixture carries is the unknown "to" room — #929
@@ -1399,21 +1458,21 @@ func (s *DataTestSuite) TestLoadRejections() {
 		}, "missing to_position", encounter.ErrBadConnection},
 		{"outcome undeclared ending", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
-		}, "outcome", nil},
+		}, "outcome", encounter.ErrNoEnding},
 		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
-		}, "abandoned outcome with members", nil},
+		}, "abandoned outcome with members", encounter.ErrNoMember},
 		{"outcome member room missing", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "ghost", Room: "nowhere", Position: encounter.PositionData{X: 1, Y: 1}}}}
-		}, "outcome member", nil},
+		}, "outcome member", encounter.ErrBadPlacement},
 		{"outcome member out of bounds", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "p1", Room: "r1", Position: encounter.PositionData{X: 999, Y: 999}}}}
-		}, "out of bounds", nil},
+		}, "out of bounds", encounter.ErrBadPlacement},
 		{"ever_members missing current member", func(d *encounter.EncounterData) {
 			d.EverMembers = nil
-		}, "ever_members", nil},
+		}, "ever_members", encounter.ErrNoMember},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {

@@ -316,13 +316,15 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): no rooms, no endings,
-// empty/reserved ending keys (and kind/reached_position checks), undeclared outcome
+// empty/reserved ending keys, duplicate ending keys (#929 hardening round E, mirroring
+// NewEncounter's identical check), kind/reached_position checks, undeclared outcome
 // ending; THEN, per room list, a wire-only ID pre-pass (empty/duplicate room ID — #929 T2
 // second review round, so a later presence error can never misname an empty/ambiguous
 // ID), grid-shape resolution (unrecognized-or-no-longer-supported string) and origin
 // presence (W5) per room; THEN room-list defects via the SAME buildValidRoomGrids Setup
-// uses: shape legality, non-integral occluder position in any family (#929 T3 Opus round
-// F2), W1 (one grid family per field), room legality (non-positive/oversized/over-cell-
+// uses: shape legality, non-integral or duplicate occluder position in any family (#929
+// T3 Opus round F2; duplicate — #929 hardening round D), W1 (one grid family per field),
+// room legality (non-positive/oversized/over-cell-
 // budget dimensions, out-of-bounds origin — maxRoomSpan/maxAnchorCoord/maxRoomCells/
 // maxFieldCells), origin legality (non-representable origin, every family), W2 (rooms
 // never overlap); THEN, per connection list, the SAME wire-only ID pre-pass and endpoint
@@ -373,21 +375,28 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		return nil, fmt.Errorf("load encounter: bad endings: %w: %w", ErrInvalidData, ErrNoEnding)
 	}
 
-	// Validate ending keys and kinds
+	// Validate ending keys and kinds: empty/reserved, duplicate (#929
+	// hardening round E — the SAME liveness hole NewEncounter's
+	// identical check closes, mirrored at Load), and kind.
+	seenEndingKeys := make(map[string]bool, len(data.Endings))
 	for _, ed := range data.Endings {
 		if ed.Key == "" || ed.Key == "abandoned" {
 			return nil, fmt.Errorf("load encounter: bad endings: %w: %w", ErrInvalidData, ErrNoEnding)
 		}
+		if seenEndingKeys[ed.Key] {
+			return nil, fmt.Errorf("load encounter: duplicate ending %q: %w: %w", ed.Key, ErrInvalidData, ErrNoEnding)
+		}
+		seenEndingKeys[ed.Key] = true
 
 		if ed.Kind != "reached_position" && ed.Kind != "external" {
-			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w", ed.Kind, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}
 
 		// A reached_position ending without a position would panic at
 		// construction — LoadEncounter is the trust boundary for
 		// persisted bytes and must reject, never crash (T6 review M2).
 		if ed.Kind == "reached_position" && (ed.Position == nil || ed.Room == "") {
-			return nil, fmt.Errorf("load encounter: ending %q reached_position without room/position: %w", ed.Key, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: ending %q reached_position without room/position: %w: %w", ed.Key, ErrInvalidData, ErrNoEnding)
 		}
 	}
 
@@ -405,7 +414,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("load encounter: outcome ending %q not declared: %w", data.Outcome.Ending, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: outcome ending %q not declared: %w: %w", data.Outcome.Ending, ErrInvalidData, ErrNoEnding)
 		}
 	}
 
@@ -441,27 +450,27 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	for _, m := range data.Members {
 		// Empty member IDs are unreachable (Setup and Join both reject).
 		if m.ID == "" {
-			return nil, fmt.Errorf("load encounter: empty member id: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: empty member id: %w: %w", ErrInvalidData, ErrNoMember)
 		}
 		if seenIDs[m.ID] {
-			return nil, fmt.Errorf("load encounter: duplicate member %q: %w", m.ID, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: duplicate member %q: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
 		}
 		seenIDs[m.ID] = true
 
 		if _, ok := roomGrids[m.Room]; !ok {
-			return nil, fmt.Errorf("load encounter: member %q room %q not in field: %w", m.ID, m.Room, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: member %q room %q not in field: %w: %w", m.ID, m.Room, ErrInvalidData, ErrBadPlacement)
 		}
 
 		// Validate position in bounds — grid-deferred: the room's own
 		// constructed Grid decides validity (see roomGrids above).
 		if !roomGrids[m.Room].IsValidPosition(spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
-			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w", m.ID, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 
 		// Hex rooms require integral axial member positions (interim
 		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
 		if !isIntegralAxialPosition(roomGrids[m.Room], spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
-			return nil, fmt.Errorf("load encounter: member %q position is not an integral axial cell: %w", m.ID, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: member %q position is not an integral axial cell: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 	}
 
@@ -485,15 +494,15 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	// present is unreachable (abandonment means the membership emptied).
 	if data.Outcome != nil {
 		if data.Outcome.Ending == "abandoned" && len(data.Members) > 0 {
-			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w", ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w: %w", ErrInvalidData, ErrNoMember)
 		}
 		for _, om := range data.Outcome.Members {
 			_, ok := roomGrids[om.Room]
 			if !ok {
-				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w", om.ID, om.Room, ErrInvalidData)
+				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w: %w", om.ID, om.Room, ErrInvalidData, ErrBadPlacement)
 			}
 			if !roomGrids[om.Room].IsValidPosition(spatial.Position{X: om.Position.X, Y: om.Position.Y}) {
-				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w", om.ID, ErrInvalidData)
+				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
 		}
 	}
@@ -508,7 +517,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("load encounter: member %q missing from ever_members: %w", m.ID, ErrInvalidData)
+			return nil, fmt.Errorf("load encounter: member %q missing from ever_members: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
 		}
 	}
 
@@ -551,7 +560,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	// spatial-typed) rather than re-deriving from data.Field — the same
 	// construction shape NewEncounter's own room-construction loop uses.
 	spatialRoomMap := make(map[string]*spatial.BasicRoom)
-	for _, ri := range roomInputs {
+	for roomIdx, ri := range roomInputs {
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
@@ -563,9 +572,12 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 		spatialRoomMap[ri.ID] = room
 
-		// Add occluders as blocking entities
-		for _, pos := range ri.Occluders {
-			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%s-%d-%d", ri.ID, int(pos.X), int(pos.Y))}
+		// Add occluders as blocking entities. Index-based ID, not
+		// room-ID-plus-coordinate concatenation (#929 hardening round
+		// C — see NewEncounter's identical loop for the collision this
+		// avoids; this is the SAME fix, mirrored at the Load seam).
+		for occIdx, pos := range ri.Occluders {
+			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
 			_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
 				RoomID:   spatial.RoomID(ri.ID),
 				Entity:   occluder,

@@ -50,6 +50,37 @@ type AtlasRoom struct {
 	// dungeon-absolute space. Reported separately from Cells so a host
 	// can render them distinctly (#929 T3 ruling 1).
 	Occluders []spatial.Position
+
+	// Boundaries is the room's walls/barriers (RoomInput.Boundaries),
+	// with both endpoints projected into dungeon-absolute space (#929
+	// hardening round A). Boundaries are real map geometry — registered
+	// on the spatial room, affecting sight and movement, persisted in
+	// the blob — so a host rendering the static map gets them from Atlas
+	// like every other construction-truth fact, instead of reaching into
+	// ToData().Field.Rooms[].Boundaries and hand-projecting both
+	// endpoints through Origin itself: exactly the arithmetic this
+	// bridge exists to centralize. In declaration order (RoomInput's own
+	// order, the same construction-truth ordering Occluders already
+	// uses above) — deterministic given a fixed input (C8), though not
+	// independently sorted the way Rooms/Doorways are.
+	Boundaries []AtlasBoundary
+}
+
+// AtlasBoundary is one wall or barrier crossing, with both endpoints
+// projected into dungeon-absolute space (#929 hardening round A;
+// spatial.Boundary's doc comment for the room-local fields this mirrors).
+type AtlasBoundary struct {
+	// From is one endpoint of the crossing, in dungeon-absolute space.
+	From spatial.Position
+
+	// To is the other endpoint of the crossing, in dungeon-absolute space.
+	To spatial.Position
+
+	// BlocksMovement reports whether an entity may cross this boundary.
+	BlocksMovement bool
+
+	// BlocksLineOfSight reports whether line of sight may cross this boundary.
+	BlocksLineOfSight bool
 }
 
 // AtlasDoorway is one connection's absolute endpoint pair.
@@ -112,8 +143,10 @@ type LocateOutput struct {
 //
 // Deterministic (C8): Rooms sorted by room ID, Doorways sorted by
 // connection ID, each room's Cells in grid-iteration order (atlasCells'
-// Q-outer/R-inner nesting). Copy-out: every returned slice is freshly
-// allocated per call; mutating the result never reaches internal state.
+// Q-outer/R-inner nesting), each room's Boundaries in declaration order
+// (RoomInput's own order, same as Occluders — #929 hardening round A).
+// Copy-out: every returned slice is freshly allocated per call; mutating
+// the result never reaches internal state.
 //
 // Cost: O(total cells across all rooms) by contract — Atlas enumerates
 // every cell of every room, via a make() sized exactly Width*Height per
@@ -129,6 +162,22 @@ type LocateOutput struct {
 // carries the two integers that produce it in a few hundred bytes — not
 // impractically, trivially. Reject-never-crash is module law
 // (LoadEncounter's doc comment); this was the trust boundary.
+//
+// Bounded is not the same as cheap (#929 hardening round I): at the
+// field budget — four 1024×1024 rooms, a legal field whose persisted
+// blob is well under a kilobyte (measured: 573 bytes) — a single Atlas()
+// call allocates on the order of 128 MB (measured via runtime.MemStats'
+// TotalAlloc delta: ~134 MB, i.e. exactly maxFieldCells cells at 16
+// bytes each, doubled by atlasCells' local enumeration plus its
+// Origin-projected copy) and takes tens of milliseconds (measured:
+// ~60-65ms cold, ~45-50ms on a repeat call), REPEATABLY — every call
+// redoes the same work, nothing is memoized internally. Hosts that call
+// Atlas() per request rather than per encounter will feel this; cache
+// the returned Atlas per encounter instead. Caching is trivially safe
+// here specifically because Atlas is pure construction-truth (ruling 3
+// above) — no live state can make a cached snapshot stale; only a
+// reload (LoadEncounter, which returns a new *Encounter) requires a
+// fresh call.
 //
 // Occluders are map data, not entities: every occluder cell is also an
 // AtlasRoom.Cells entry (AtlasRoom.Occluders is a SUBSET of
@@ -161,14 +210,25 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			occluders[j] = o.Add(ri.Origin)
 		}
 
+		boundaries := make([]AtlasBoundary, len(ri.Boundaries))
+		for j, b := range ri.Boundaries {
+			boundaries[j] = AtlasBoundary{
+				From:              b.From.Add(ri.Origin),
+				To:                b.To.Add(ri.Origin),
+				BlocksMovement:    b.BlocksMovement,
+				BlocksLineOfSight: b.BlocksLineOfSight,
+			}
+		}
+
 		rooms[i] = AtlasRoom{
-			ID:        ri.ID,
-			Grid:      ri.Grid,
-			Origin:    ri.Origin,
-			Width:     ri.Width,
-			Height:    ri.Height,
-			Cells:     cells,
-			Occluders: occluders,
+			ID:         ri.ID,
+			Grid:       ri.Grid,
+			Origin:     ri.Origin,
+			Width:      ri.Width,
+			Height:     ri.Height,
+			Cells:      cells,
+			Occluders:  occluders,
+			Boundaries: boundaries,
 		}
 	}
 	// LOAD-BEARING: fieldInput is never sorted anywhere else — this sort is
@@ -215,12 +275,18 @@ func (e *Encounter) Absolute(in *AbsoluteInput) (*AbsoluteOutput, error) {
 		return nil, fmt.Errorf("absolute: %w", ErrNilInput)
 	}
 
-	ri, ok := e.roomInput(in.Room)
+	// The orchestrator's own constructed Grid, not a fresh buildRoomGrid
+	// call (#929 hardening round G) — same idiom moveMember/Join already
+	// use. A room's Grid is immutable for the Encounter's lifetime (no
+	// verb ever changes Width/Height/family after construction), so this
+	// is behavior-identical to rebuilding one from ri.Grid/Width/Height,
+	// just without reconstructing it on every call on a host's per-frame
+	// path.
+	room, ok := e.orchestrator.GetRoom(in.Room)
 	if !ok {
 		return nil, fmt.Errorf("absolute: unknown room %q: %w", in.Room, ErrNoField)
 	}
-
-	grid := buildRoomGrid(ri.Grid, ri.Width, ri.Height)
+	grid := room.GetGrid()
 	if !grid.IsValidPosition(in.Position) {
 		return nil, fmt.Errorf("absolute: position out of bounds: %w", ErrBadPlacement)
 	}
@@ -228,6 +294,10 @@ func (e *Encounter) Absolute(in *AbsoluteInput) (*AbsoluteOutput, error) {
 		return nil, fmt.Errorf("absolute: position is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
+	// Origin lives ONLY in construction-truth (RoomInput), never on the
+	// spatial room itself — orchestrator already confirmed this room
+	// exists above, so no second existence check here.
+	ri, _ := e.roomInput(in.Room)
 	return &AbsoluteOutput{Position: in.Position.Add(ri.Origin)}, nil
 }
 
@@ -256,6 +326,18 @@ func (e *Encounter) Absolute(in *AbsoluteInput) (*AbsoluteOutput, error) {
 // as it would an empty one (#929 T3 ruling 1) — occlusion is
 // walkability, not ownership, and this function never consults
 // occluders.
+//
+// WARNING — the Locate→Move trap (#929 hardening round B): composing
+// Locate then Move is a natural host pattern ("where does this absolute
+// position land, then move the member there"), but Move is SAME-ROOM
+// ONLY — it applies LocateOutput.Position inside the member's OWN
+// current room, never inside LocateOutput.Room. If the member's current
+// room differs from LocateOutput.Room, Move silently misplaces the
+// member instead of erroring (Move's own doc comment has the concrete
+// example). Callers MUST compare LocateOutput.Room against the member's
+// current room before calling Move with LocateOutput.Position; use
+// Traverse when they differ. Doc-only for v0.3 — see Move's doc comment
+// for why the real fix is a follow-up, not made here.
 func (e *Encounter) Locate(in *LocateInput) (*LocateOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("locate: %w", ErrNilInput)
@@ -263,7 +345,18 @@ func (e *Encounter) Locate(in *LocateInput) (*LocateOutput, error) {
 
 	for _, ri := range e.fieldInput {
 		local := in.Position.Subtract(ri.Origin)
-		grid := buildRoomGrid(ri.Grid, ri.Width, ri.Height)
+		// The orchestrator's own constructed Grid, not a fresh
+		// buildRoomGrid call per room per call (#929 hardening round G)
+		// — Locate was the worst offender, rebuilding a Grid for every
+		// room on every call. fieldInput and the orchestrator's room set
+		// stay in sync by construction (every room added to one is
+		// added to the other, and neither changes after construction),
+		// so a lookup miss here is unreachable, not a real defect class.
+		room, ok := e.orchestrator.GetRoom(ri.ID)
+		if !ok {
+			continue
+		}
+		grid := room.GetGrid()
 		if !grid.IsValidPosition(local) {
 			continue
 		}

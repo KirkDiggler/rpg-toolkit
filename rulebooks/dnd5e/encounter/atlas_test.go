@@ -20,14 +20,24 @@ import (
 // so a missing/removed sort is observable through the public API. Every
 // room has a distinct, nonzero-on-both-axes Origin (r1: (-50,7), r2:
 // (-46,6)) so a sign-flipped bridge (Subtract instead of Add, or vice
-// versa) produces a wrong, non-accidental-match absolute value.
+// versa) produces a wrong, non-accidental-match absolute value. atlas-r1
+// also carries one boundary (#929 hardening round A) so AtlasRoom.Boundaries
+// projection, copy-out, reload survival, and live-state independence are
+// all exercised by the same tests that already cover Cells/Occluders.
 func validAtlasOrderingSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "atlas-r3", Width: 4, Height: 3, Origin: spatial.Position{X: 9950, Y: 7}},
 				{ID: "atlas-r1", Width: 4, Height: 3, Origin: spatial.Position{X: -50, Y: 7},
-					Occluders: []spatial.Position{{X: 1, Y: 1}}},
+					Occluders: []spatial.Position{{X: 1, Y: 1}},
+					// (0,2)-(1,2): the far row from atlas-p1's Y=0 move path
+					// below (TestAtlasUnaffectedByLiveState moves it (0,0) to
+					// (3,0)) — a movement-blocking boundary on that row would
+					// reject the very move this fixture is also used to pin.
+					Boundaries: []spatial.Boundary{
+						{From: spatial.Position{X: 0, Y: 2}, To: spatial.Position{X: 1, Y: 2}, BlocksMovement: true, BlocksLineOfSight: true},
+					}},
 				{ID: "atlas-r4", Width: 6, Height: 5, Origin: spatial.Position{X: 9954, Y: 6}},
 				{ID: "atlas-r2", Width: 6, Height: 5, Origin: spatial.Position{X: -46, Y: 6}},
 			},
@@ -176,7 +186,10 @@ func (s *EncounterTestSuite) TestAtlasDeterministicOrdering() {
 // TestAtlasRoomCellsAndOccludersAreAbsolute pins exact absolute values —
 // local cell + Origin, element-wise — and would die under a sign-flipped
 // Add-vs-Subtract mutant inside Atlas itself (distinct from the same
-// mutant inside Absolute/Locate, pinned separately).
+// mutant inside Absolute/Locate, pinned separately). Also pins
+// AtlasBoundary's absolute projection (#929 hardening round A): both
+// endpoints offset by Origin, independently — a mutant that projects only
+// From, or swaps From/To, changes one or both expected values here.
 func (s *EncounterTestSuite) TestAtlasRoomCellsAndOccludersAreAbsolute() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
@@ -203,6 +216,12 @@ func (s *EncounterTestSuite) TestAtlasRoomCellsAndOccludersAreAbsolute() {
 	// walkability, not ownership). This is the property hosts actually
 	// render by: floor from Cells, blockage layered from Occluders.
 	s.Require().Contains(r1.Cells, spatial.Position{X: -49, Y: 8}, "an occluded cell is still floor — it must appear in Cells too")
+
+	// #929 hardening round A: local (0,0)-(1,0) projected through Origin
+	// (-50,7) — BOTH endpoints offset, flags carried through unchanged.
+	s.Require().Equal([]encounter.AtlasBoundary{
+		{From: spatial.Position{X: -50, Y: 9}, To: spatial.Position{X: -49, Y: 9}, BlocksMovement: true, BlocksLineOfSight: true},
+	}, r1.Boundaries, "boundary endpoints must each be offset by Origin, flags preserved")
 }
 
 // TestAtlasDoorwaysAreAbsolute pins exact FromCell/ToCell values, each
@@ -267,6 +286,11 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 		for j := range atlas1.Rooms[i].Occluders {
 			atlas1.Rooms[i].Occluders[j] = spatial.Position{X: -999, Y: -999}
 		}
+		for j := range atlas1.Rooms[i].Boundaries {
+			atlas1.Rooms[i].Boundaries[j] = encounter.AtlasBoundary{
+				From: spatial.Position{X: -999, Y: -999}, To: spatial.Position{X: -999, Y: -999},
+			}
+		}
 	}
 	for i := range atlas1.Doorways {
 		atlas1.Doorways[i].FromCell = spatial.Position{X: -999, Y: -999}
@@ -288,6 +312,9 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 		"mutating the first snapshot's Cells must not corrupt internal state")
 	s.Require().Equal(spatial.Position{X: -47, Y: 8}, atlas2.Doorways[0].FromCell,
 		"mutating the first snapshot's Doorways must not corrupt internal state")
+	s.Require().Equal([]encounter.AtlasBoundary{
+		{From: spatial.Position{X: -50, Y: 9}, To: spatial.Position{X: -49, Y: 9}, BlocksMovement: true, BlocksLineOfSight: true},
+	}, r1.Boundaries, "mutating the first snapshot's Boundaries must not corrupt internal state (#929 hardening round A)")
 }
 
 // TestAtlasIdenticalAfterReload pins the wave's reload-behavior-identity

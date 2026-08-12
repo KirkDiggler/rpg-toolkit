@@ -229,14 +229,15 @@ const (
 )
 
 // buildValidRoomGrids rejects room defects before construction (R5
-// atomicity — no observable state until Setup succeeds). The first three
+// atomicity — no observable state until Setup succeeds). The first four
 // defect classes — empty or duplicate room ID, an unrecognized or
-// no-longer-supported grid shape, and non-integral occluder positions in
-// EVERY family, not just hex (#929 T3 Opus round F2 — see
+// no-longer-supported grid shape, non-integral occluder positions in
+// EVERY family, not just hex (#929 T3 Opus round F2), and a duplicate
+// occluder position within one room (#929 hardening round D — see
 // isIntegralPosition; the occluder loop below) — are checked inside ONE
-// per-room loop, not as three separate global passes: for a GIVEN room,
+// per-room loop, not as four separate global passes: for a GIVEN room,
 // that room's own ID defect wins before its shape defect, which wins
-// before its occluder defect, but WHICH ROOM's defect is reported first
+// before its occluder defects, but WHICH ROOM's defect is reported first
 // depends on slice order, not defect-class priority — a field with an
 // unrecognized shape on room A and an empty ID on room B (A listed
 // first) reports A's shape defect, not B's empty ID, even though ID is
@@ -312,21 +313,50 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 
 		// Occluders must be integral in EVERY family, not just hex (#929 T3
 		// Opus round F2 — the identical square-vs-hex asymmetry T1 already
-		// fixed for Origin: see isIntegralPosition's doc comment). Two
-		// reinforcing reasons: (1) AtlasRoom.Occluders must be a subset of
-		// AtlasRoom.Cells (Cells only enumerates INTEGER cells — atlasCells'
-		// doc comment), so a fractional occluder would appear in Occluders
-		// while absent from Cells, breaking the host contract "floor from
-		// Cells, blockage from Occluders"; (2) the occluder entity ID built
-		// below (occluder-<room>-<int(X)>-<int(Y)>) truncates to int — that
-		// ID scheme is only collision-safe while occluders are integral
-		// (two fractional occluders like (1.4,1) and (1.6,1) would both
-		// truncate to the SAME id). isIntegralPosition, not
-		// isIntegralAxialPosition — universal, not hex-only.
+		// fixed for Origin: see isIntegralPosition's doc comment):
+		// AtlasRoom.Occluders must be a subset of AtlasRoom.Cells (Cells
+		// only enumerates INTEGER cells — atlasCells' doc comment), so a
+		// fractional occluder would appear in Occluders while absent from
+		// Cells, breaking the host contract "floor from Cells, blockage
+		// from Occluders". isIntegralPosition, not isIntegralAxialPosition
+		// — universal, not hex-only.
+		//
+		// This is the ONLY reason left, as of #929 hardening round C: an
+		// earlier version of this comment ALSO cited the occluder entity
+		// ID (built below) truncating fractional coordinates to int as a
+		// second, "reinforcing" reason — that claim was itself wrong in a
+		// way integrality could never have fixed: truncation makes
+		// coordinate-based IDs collide only WITHIN one room's own
+		// occluders, but the old ID scheme concatenated the ROOM ID too
+		// (occluder-<room>-<int(X)>-<int(Y)>), and room IDs are arbitrary,
+		// unrestricted strings — "r" with occluder (-5,4) and "r-" with
+		// occluder (5,4) both produced "occluder-r--5-4" regardless of
+		// integrality, a genuine CROSS-room collision on a legal field.
+		// The entity ID is index-based now (room's declaration index,
+		// occluder's index within it — see the occluder-placement loop
+		// below), which can never collide on ANY input, integral or not.
+		// Duplicate occluder positions are a room-list defect too (#929
+		// hardening round D), not something left to spatial's own voice:
+		// before the occluder entity ID went index-based (hardening round
+		// C), a duplicate coordinate happened to collide on the OLD
+		// coordinate-derived ID and got rejected as "entity ... already
+		// indexed" — spatial's vocabulary, not ours, and an accident of
+		// that ID scheme, not a real "no duplicate cells" rule (spatial
+		// freely allows two DIFFERENT entities to share a position). The
+		// index-based ID fixed the cross-room collision but also
+		// silently REMOVED that accidental duplicate-catch — two
+		// occluders at the same cell now place without error. Caught
+		// explicitly here instead: same room-list defect vocabulary
+		// every other room check uses.
+		seenOccluders := make(map[spatial.Position]bool, len(r.Occluders))
 		for _, occ := range r.Occluders {
 			if !isIntegralPosition(occ) {
 				return nil, fmt.Errorf("room %q occluder (%g,%g) is not a representable integral cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
 			}
+			if seenOccluders[occ] {
+				return nil, fmt.Errorf("room %q has duplicate occluder (%g,%g): %w", r.ID, occ.X, occ.Y, ErrNoField)
+			}
+			seenOccluders[occ] = true
 		}
 	}
 
@@ -655,12 +685,13 @@ func validateEndingTriggers(endings []EndingInput, roomGrids map[string]spatial.
 
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
-// no endings, empty-or-reserved ending key, empty member ID, duplicate
-// member IDs, a player member carrying a Decider (design law C2 — runs in
+// no endings, empty-or-reserved ending key, duplicate ending key (#929
+// hardening round E), empty member ID, duplicate member IDs, a player
+// member carrying a Decider (design law C2 — runs in
 // the SAME member-ID loop, before room defects; Join's own doc comment
 // lists this check too, at its own seam), room defects (empty/duplicate
-// ID, unrecognized or no-longer-supported grid shape, non-integral
-// occluder position in any family, W1 mixed grid families,
+// ID, unrecognized or no-longer-supported grid shape, non-integral or
+// duplicate occluder position in any family, W1 mixed grid families,
 // non-positive/oversized/over-cell-budget dimensions, an out-of-bounds
 // Origin (maxAnchorCoord) or a non-representable one, W2 overlapping
 // absolute footprints), connection defects (empty/duplicate ID, unknown
@@ -683,11 +714,22 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 	}
 
-	// Check ending keys
+	// Check ending keys: empty/reserved, and duplicate (#929 hardening
+	// round E — two endings sharing a key both used to load; End scans
+	// in declaration order, so a reached_position twin declared FIRST
+	// permanently shadowed a same-keyed external ending declared after
+	// it, the exact liveness hole ErrNoEnding's doc comment already
+	// names for zero endings and unreachable triggers, now closed for
+	// this class too).
+	seenEndingKeys := make(map[string]bool, len(in.Endings))
 	for _, ending := range in.Endings {
 		if ending.Key == "" || ending.Key == "abandoned" {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 		}
+		if seenEndingKeys[ending.Key] {
+			return nil, fmt.Errorf("newencounter: duplicate ending %q: %w", ending.Key, ErrNoEnding)
+		}
+		seenEndingKeys[ending.Key] = true
 	}
 
 	// Check member IDs: empty or duplicate; validate deciders
@@ -783,7 +825,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Create all rooms, reusing each room's already-constructed Grid
 	// (roomGrids, built above) so validation and placement agree exactly.
 	roomMap := make(map[string]*spatial.BasicRoom)
-	for _, ri := range in.Field.Rooms {
+	for roomIdx, ri := range in.Field.Rooms {
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
@@ -795,9 +837,20 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		roomMap[ri.ID] = room
 
-		// Add occluders as blocking entities
-		for _, pos := range ri.Occluders {
-			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%s-%d-%d", ri.ID, int(pos.X), int(pos.Y))}
+		// Add occluders as blocking entities. ID is index-based
+		// (room's own declaration index, occluder's index within that
+		// room), not room-ID-plus-coordinate string concatenation (#929
+		// hardening round C): room IDs are arbitrary, unrestricted
+		// strings, so "r" with occluder (-5,4) and "r-" with occluder
+		// (5,4) both produced "occluder-r--5-4" under the old scheme —
+		// a genuine cross-room collision on a W1/W2/W3-legal field,
+		// rejected by the orchestrator naming the wrong room. A pair of
+		// slice indices can never collide regardless of what characters
+		// appear in either ID. This ID is purely an internal spatial
+		// bookkeeping key — never surfaced to any caller — so index
+		// stability across a single construction call is all it needs.
+		for occIdx, pos := range ri.Occluders {
+			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
 			_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
 				RoomID:   spatial.RoomID(ri.ID),
 				Entity:   occluder,
@@ -1050,6 +1103,24 @@ func (e *Encounter) moveMember(member *Member, to spatial.Position) (spatial.Pos
 // Validation order (R5 atomicity): nil input → empty member → closed →
 // not a member → spatial move rejection. On success, refreshes sight for all members,
 // records beat, and evaluates ReachedPosition endings.
+//
+// WARNING — the Locate→Move trap (#929 hardening round B): Move is
+// SAME-ROOM ONLY. It interprets MoveInput.Position as local coordinates
+// within the member's OWN current room — never the room Locate resolved.
+// Composing Locate then Move (a natural host pattern: "where does this
+// absolute position land, then move the member there") silently
+// misplaces the member whenever LocateOutput.Room differs from the
+// member's current room: Move does not know or check where Locate's
+// answer came from, so it applies LocateOutput.Position as-is inside the
+// member's own room instead — e.g. an intended absolute target of (8,2)
+// in the OTHER room actually landing the member at local (2,2) in their
+// OWN room, no error. Callers MUST compare LocateOutput.Room against the
+// member's current room before feeding LocateOutput.Position to Move
+// (or Absolute's input, symmetrically); when they differ, use Traverse
+// instead — it is the cross-room verb. This is a doc-only ruling for
+// v0.3: the real fix is a verb input that carries the intended room and
+// rejects a mismatch, an API change filed as a follow-up rather than
+// made at the end of this wave.
 func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	// Validation order
 	if in == nil {
