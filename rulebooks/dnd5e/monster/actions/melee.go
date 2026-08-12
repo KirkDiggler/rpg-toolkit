@@ -66,6 +66,9 @@ func NewMeleeAction(config MeleeConfig) *MeleeAction {
 func convertMeleeDamage(config MeleeConfig) (damage.DamageSpec, []dnd5eEvents.AttackDamageComponent, error) {
 	if config.DamageSpec != nil {
 		spec := cloneDamageSpec(*config.DamageSpec)
+		if err := spec.Validate(); err != nil {
+			return damage.DamageSpec{}, nil, rpgerr.Wrap(err, "invalid melee damage spec")
+		}
 		return spec, componentsFromDamageSpec(spec), nil
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -300,6 +301,26 @@ func (s *MeleeActionTestSuite) TestLegacyMeleeInvalidDamageIsReportedByConstruct
 	s.Require().Error(err)
 }
 
+func (s *MeleeActionTestSuite) TestLoadMeleeActionRejectsMalformedStructuredDamageSpec() {
+	for _, test := range []struct {
+		name string
+		spec damage.DamageSpec
+	}{
+		{name: "empty pools", spec: damage.DamageSpec{}},
+		{name: "unknown type", spec: damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6", Type: damage.Type("unknown")}}}},
+		{name: "invalid dice", spec: damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6++1", Type: damage.Acid}}}},
+	} {
+		s.Run(test.name, func() {
+			configJSON, err := json.Marshal(MeleeConfig{Name: "pseudopod", Reach: 1, DamageSpec: &test.spec})
+			s.Require().NoError(err)
+
+			_, err = LoadAction(monster.ActionData{Ref: *refs.MonsterActions.Melee(), Config: configJSON})
+
+			s.Require().Error(err)
+		})
+	}
+}
+
 func (s *MeleeActionTestSuite) TestMeleeActionPrefersDamageSpec() {
 	action := NewMeleeAction(MeleeConfig{
 		Name: "Pseudopod", AttackBonus: 3, Reach: 1,
@@ -326,7 +347,7 @@ func (s *MeleeActionTestSuite) TestMeleeActionConvertsLegacySinglePool() {
 func (s *MeleeActionTestSuite) TestMeleeActionPublishesIsolatedDamageSpec() {
 	spec := &damage.DamageSpec{Pools: []damage.Damage{{
 		Dice: "2d6", Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible},
-		Save: &damage.SaveSpec{DC: 12},
+		Save: &damage.SaveSpec{Ability: abilities.DEX, DC: 12, Effect: damage.SaveEffectHalf},
 	}}}
 	action := NewMeleeAction(MeleeConfig{Name: "Pseudopod", AttackBonus: 3, Reach: 1, DamageSpec: spec})
 
