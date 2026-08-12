@@ -1852,11 +1852,31 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 		{"origin legality: fractional hex origin", func(d *encounter.EncounterData) {
 			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 6.5, Y: -5}
 		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"origin legality: NaN origin", func(d *encounter.EncounterData) {
+			// #929 hardening round, test-gap closure item 4: NaN had ZERO
+			// coverage anywhere in the suite before this. Unlike Inf below,
+			// NaN does NOT get caught by room legality's magnitude check —
+			// math.Abs(NaN) is NaN, and every comparison against NaN
+			// (including >) is false, so a NaN origin silently slips PAST
+			// `math.Abs(r.Origin.X) > maxAnchorCoord` uncaught, and is only
+			// rejected later, by origin legality's isRepresentableInteger
+			// (which explicitly tests IsNaN). The fragment asserts THAT
+			// message specifically, proving the ordering, not just that
+			// SOME check eventually rejects it.
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: math.NaN(), Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
 		{"room legality: infinite origin", func(d *encounter.EncounterData) {
 			// #929 T2 second review round: caught by maxAnchorCoord's bound
 			// in room legality — Inf is never <= a finite bound — before
 			// origin legality's representability check ever runs.
 			d.Field.Rooms[1].Origin = &encounter.PositionData{X: math.Inf(1), Y: -5}
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
+		{"room legality: negative infinite origin", func(d *encounter.EncounterData) {
+			// #929 hardening round, test-gap closure item 4: the row above
+			// only ever tried +Inf; -Inf takes the SAME path (math.Abs(-Inf)
+			// is +Inf, and +Inf > any finite bound is true) but had never
+			// actually been exercised.
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: math.Inf(-1), Y: -5}
 		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
 		{"room legality: origin exceeds max anchor coordinate (1e19)", func(d *encounter.EncounterData) {
 			// #929 T2 second review round: 1e19 is both non-representable
@@ -1883,6 +1903,19 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 			// — this must fail on adjacency, not on the earlier bounds check.
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 1, Y: 4}
 		}, encounter.ErrBadConnection, "not adjacent"},
+		{"W3: hex axial (1,1) delta is NOT adjacent (cube distance 2)", func(d *encounter.EncounterData) {
+			// Load-seam mirror of encounter_test.go's TestSetupAnchoring
+			// row of the same name (#929 hardening round, test-gap closure
+			// item 6): both existing Load W3 rows above sit at cube/
+			// Chebyshev distance 3 either way ("endpoints do not kiss") —
+			// neither discriminates a Chebyshev-on-axial mutant (which
+			// would wrongly accept max(|ΔQ|,|ΔR|)=1 as adjacent) from the
+			// correct cube-distance formula. hex-small's Origin shifts
+			// from (6,-5) to (6,-3): the gate's endpoints, once anchored,
+			// differ by axial (ΔQ=1,ΔR=1) — cube distance (1+1+2)/2=2, NOT
+			// 1 — while still disjoint from hex-big (W2 passes).
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 6, Y: -3}
+		}, encounter.ErrBadConnection, "distance 2"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -1929,6 +1962,106 @@ func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Require().Contains(err.Error(), `room "r-a" and room "r-c" overlap at absolute cell (2, 2)`)
+}
+
+// TestLoadAnchoringSquareOriginRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupAnchoringSquareOriginRejected (#929
+// hardening round, test-gap closure item 6): TestLoadAnchoring's
+// "origin legality: fractional hex origin" row exercises this same
+// check, but only ever against a HEX room — Load-seam coverage of
+// origin legality was hex-shaped, leaving the square-family case to
+// shared-code reasoning alone. Same geometry as the Setup sibling: a
+// single 5x5 SQUARE room at Origin (0.5,1.5).
+func (s *DataTestSuite) TestLoadAnchoringSquareOriginRejected() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0.5, Y: 1.5}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell")
+}
+
+// TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap is the
+// Load-seam counterpart to encounter_test.go's
+// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap (#929 hardening
+// round, test-gap closure item 6): TestLoadAnchoring's "room legality:
+// origin exceeds max anchor coordinate (1e19)" row mutates ONLY
+// hex-small's Origin within the shared hex base fixture — Load-seam
+// coverage of the maxAnchorCoord bound, like origin legality above, was
+// hex-shaped. Same geometry as the Setup sibling: two 5x5 SQUARE rooms
+// at Origins 1e19 and 2e19 — nowhere near each other in real space, but
+// which would truncate to the SAME implementation-defined int64 value
+// without this bound, producing a false W2 overlap verdict.
+func (s *DataTestSuite) TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 1e19, Y: 0}},
+				{ID: "r2", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 2e19, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
+		"must reject at room legality, not fall through to a W2 overlap verdict on garbage-truncated positions")
+	s.Require().NotContains(err.Error(), "overlap at absolute cell",
+		"the old bug produced a W2 overlap message here — this must NOT be that")
+}
+
+// TestLoadAnchoringFractionalSquareEndpointSubUnitDistance is the
+// Load-seam counterpart to encounter_test.go's
+// TestSetupAnchoringFractionalSquareEndpointSubUnitDistance (#929
+// hardening round, test-gap closure item 6): W3's strict `dist != 1`
+// comparison — as opposed to a `> 1` mutant that would wrongly accept a
+// sub-1 gap as "close enough" — had no Load-seam coverage at all. Same
+// geometry as the Setup sibling: r1 is 3x3 at the zero-value Origin; r2
+// is 3x3 at Origin (3,0), immediately east — fully disjoint (r1 absolute
+// x:[0,2], r2 absolute x:[3,5]). FromPosition (2.5,1), a legal
+// fractional cell in r1, projects to absolute (2.5,1) — only 0.5
+// Chebyshev distance from ToPosition (0,1)'s absolute (3,1).
+func (s *DataTestSuite) TestLoadAnchoringFractionalSquareEndpointSubUnitDistance() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "r2", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 3, Y: 0}},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "r1", To: "r2",
+				FromPosition: &encounter.PositionData{X: 2.5, Y: 1},
+				ToPosition:   &encounter.PositionData{X: 0, Y: 1},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "distance 0.5")
 }
 
 // TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint is the Load-seam
@@ -1979,11 +2112,35 @@ func (s *DataTestSuite) TestLoadRoomCellBudgetRejectsPanicReproduction() {
 	s.Require().Contains(err.Error(), "exceeding max room cells")
 }
 
+// TestLoadOversizedRoomHeightRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupOversizedRoomHeightRejected — same
+// reasoning, same fixture (#929 hardening round, test-gap closure item
+// 3): maxRoomSpan's Height clause was unpinned at both seams.
+func (s *DataTestSuite) TestLoadOversizedRoomHeightRejected() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "tall", Width: 5, Height: (1 << 30) + 1, Origin: &encounter.PositionData{X: 0, Y: 0}},
+			},
+		},
+		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceed max room span",
+		"a Height-only oversize must reject at room-span legality, not fall through to a different check with a different message")
+}
+
 // TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms is the Load-seam
 // counterpart to encounter_test.go's
-// TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms.
+// TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms — SIX rooms, not
+// five, and the exact true-total number asserted, for the same reason
+// (that test's doc comment): #929 hardening round, test-gap closure
+// item 1.
 func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
-	rooms := make([]encounter.RoomData, 5)
+	rooms := make([]encounter.RoomData, 6)
 	for i := range rooms {
 		rooms[i] = encounter.RoomData{
 			ID: fmt.Sprintf("room-%d", i), Width: 1024, Height: 1024,
@@ -1998,6 +2155,8 @@ func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
 	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "field has 6291456 total cells across all rooms",
+		"must name the TRUE total over all six rooms, not a running total that stopped short at a mid-loop room")
 	s.Require().Contains(err.Error(), "exceeding max field cells")
 }
 
@@ -2142,6 +2301,38 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	s.Require().NoError(err, "the reloaded encounter accepts the SAME traverse")
 	s.Equal(out1.Traversed.ToRoom, out2.Traversed.ToRoom)
 	s.Equal(out1.Traversed.To, out2.Traversed.To)
+}
+
+// TestLoadAnchoringSquareEndpointNotAdjacentDistance2 is the Load-seam
+// counterpart to encounter_test.go's
+// TestSetupAnchoringSquareEndpointNotAdjacentDistance2 — same geometry
+// (#929 hardening round, test-gap closure item 5): square-family W3
+// non-adjacency at a genuine distance (2), not the sub-unit case, had no
+// coverage at either seam.
+func (s *DataTestSuite) TestLoadAnchoringSquareEndpointNotAdjacentDistance2() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r1", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "r2", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 4, Y: 0}},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "r1", To: "r2",
+				FromPosition: &encounter.PositionData{X: 2, Y: 1},
+				ToPosition:   &encounter.PositionData{X: 0, Y: 1},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "not adjacent")
 }
 
 // TestLoadRejectsHostileNonKissingBlob pins W3 against a HAND-EDITED wire

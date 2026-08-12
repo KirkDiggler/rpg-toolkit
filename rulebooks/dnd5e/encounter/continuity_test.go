@@ -32,9 +32,16 @@ func continuityGrid(family spatial.GridShape) spatial.Grid {
 
 // continuityViolation returns the index i such that positions[i] and
 // positions[i+1] are MORE than maxDist apart, or -1 if every consecutive
-// pair is within maxDist — the localization primitive the discriminating
-// probe (#929 T4) needs: not just "did continuity break" but "exactly
-// where."
+// pair is within maxDist. Written to localize a hostile probe run
+// manually during T4 (a field built with W3 deliberately disabled, to
+// confirm this function actually detects a break) and then deleted, not
+// committed — a discontinuous field is unconstructible through the
+// public API precisely BECAUSE W3 rejects it (#929 hardening round,
+// test-gap closure item 7 — this is a strong property of the module,
+// not merely an untested corner). The index return stays regardless: it
+// makes a REAL assertion failure in this file diagnosable — which step
+// broke, not just that one did — independent of that probe's own
+// history.
 func continuityViolation(family spatial.GridShape, positions []spatial.Position, maxDist float64) int {
 	grid := continuityGrid(family)
 	for i := 0; i < len(positions)-1; i++ {
@@ -45,10 +52,12 @@ func continuityViolation(family spatial.GridShape, positions []spatial.Position,
 	return -1
 }
 
-// vaultChaseHexGate is the connection shared by every hex vault-chase
-// fixture in this file (the main scene and the hostile probe) — kept as
-// its own value so the probe can shift ONLY the vault's Origin without
-// re-deriving the gate.
+// vaultChaseHexGate is the connection shared by the two places this file
+// builds the hex vault-chase decider — vaultChaseHexSetup's initial
+// construction (below) and TestVaultChaseAbsoluteContinuity's mid-chase
+// reload, which re-attaches a decider carrying the identical topology —
+// kept as its own value so both share the exact same gate without
+// re-deriving it.
 func vaultChaseHexGate() encounter.ConnectionInput {
 	return encounter.ConnectionInput{
 		ID: "gate", From: "corridor", To: "vault",
@@ -61,25 +70,30 @@ func vaultChaseHexGate() encounter.ConnectionInput {
 // TestVaultChase fixture (#929 T4 — "the vault-chase fixture/story, or a
 // sibling of it, in the game's family"): the SAME shape — a corridor and
 // a vault joined by one gate, a pursuit decider, a sanctuary ending in
-// the far room — re-derived for hex. vaultOrigin is a parameter so the
-// discriminating probe (below) can build a hostile, shifted-origin
-// variant without duplicating this fixture.
+// the far room — re-derived for hex. The vault's Origin used to be a
+// parameter so a hostile, shifted-origin variant could be built for a
+// discriminating probe without duplicating this fixture — that probe
+// was run manually during T4 and deleted, never committed (#929
+// hardening round, test-gap closure item 7: the parameter had exactly
+// one call site, always passing the same value below, so it was dead),
+// leaving the vault's Origin fixed at the one geometry this scene ever
+// actually uses.
 //
 // Geometry: corridor is 10x10 hex at Origin (0,0) — Q,R both in [-5,4].
-// The valid vault Origin is (10,3): vault's Q-range ([5,14]) is fully
+// The vault's Origin is (10,3): vault's Q-range ([5,14]) is fully
 // disjoint from corridor's ([-5,4]) regardless of R (W2), and the gate's
 // endpoints — corridor (4,1) [Q-max edge] and vault local (-5,-2)
 // [Q-min edge] — land on absolute (4,1) and (5,1): cube distance 1, a
 // genuine axial neighbor via the standard (+1,0) offset, not a formula
 // quirk (W3).
-func vaultChaseHexSetup(vaultOrigin spatial.Position) *encounter.SetupInput {
+func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
 	pursuit := &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice}
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
-				{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: vaultOrigin},
+				{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: 3}},
 			},
 			Connections: []encounter.ConnectionInput{gate},
 		},
@@ -153,7 +167,7 @@ func (p *continuityProjector) project(member, verb, room string, pos spatial.Pos
 // step — the kiss made visible, indistinguishable by inspection from an
 // ordinary move.
 func TestVaultChaseAbsoluteContinuity(t *testing.T) {
-	enc, err := encounter.NewEncounter(vaultChaseHexSetup(spatial.Position{X: 10, Y: 3}))
+	enc, err := encounter.NewEncounter(vaultChaseHexSetup())
 	require.NoError(t, err, "the hex vault assembles")
 
 	proj := newContinuityProjector(t, enc)

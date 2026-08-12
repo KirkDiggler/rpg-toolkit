@@ -1122,6 +1122,40 @@ func (s *EncounterTestSuite) TestSetupAnchoringSquareDiagonalKiss() {
 	s.Require().NoError(err, "a diagonal (Chebyshev distance 1) kiss must be accepted, not just a 4-directional one")
 }
 
+// TestSetupAnchoringSquareEndpointNotAdjacentDistance2 pins W3's
+// square-family rejection at a genuine, non-sub-unit distance (#929
+// hardening round, test-gap closure item 5): the only existing
+// square-family W3 non-adjacency coverage before this was the sub-unit
+// 0.5 case (TestSetupAnchoringFractionalSquareEndpointSubUnitDistance);
+// the two "not adjacent"/"distance 2" rows in TestSetupAnchoring's table
+// are hex-only. r1 is 3x3 at the zero-value Origin (absolute x:[0,2]);
+// r2 is 3x3 at Origin (4,0) (absolute x:[4,6]) — a genuine one-column
+// void gap at x=3, so W2 passes (footprints disjoint, not overlapping).
+// FromPosition (2,1) in r1 projects to absolute (2,1); ToPosition (0,1)
+// in r2 projects to absolute (4,1) — Chebyshev distance 2, not 1.
+func (s *EncounterTestSuite) TestSetupAnchoringSquareEndpointNotAdjacentDistance2() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 3, Height: 3},
+				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 4, Y: 0}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "r1", To: "r2",
+				FromPosition: spatial.Position{X: 2, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: 1},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "not adjacent")
+}
+
 // TestSetupAnchoringSquareOriginRejected pins that origin legality
 // (isIntegralPosition) applies to EVERY grid family, square included, not
 // just hex. #929 T1 Opus round finding: this test used to assert the
@@ -1148,6 +1182,52 @@ func (s *EncounterTestSuite) TestSetupAnchoringSquareOriginRejected() {
 	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Require().Contains(err.Error(), "not a representable integral cell")
+}
+
+// TestSetupAnchoringNaNOriginRejected pins a genuinely subtle ordering
+// (#929 hardening round, test-gap closure item 4 — NaN and -Inf had ZERO
+// coverage anywhere in the suite before this): room legality's magnitude
+// check is `math.Abs(r.Origin.X) > maxAnchorCoord`, and for X = NaN,
+// math.Abs(NaN) is NaN, and EVERY comparison against NaN (including >)
+// is false in IEEE 754 — so a NaN origin silently SLIPS PAST room
+// legality's magnitude check, uncaught, and is rejected only later, by
+// the SEPARATE origin-legality loop (isIntegralPosition ->
+// isRepresentableInteger, which explicitly tests IsNaN). Verified by
+// probe before writing this assertion. The fragment below asserts the
+// origin-legality message SPECIFICALLY (not just ErrNoField) so a future
+// reorder that changes which check catches NaN fails loudly here,
+// instead of this test silently continuing to pass against a different
+// message.
+func (s *EncounterTestSuite) TestSetupAnchoringNaNOriginRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.NaN(), Y: 0}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell",
+		"a NaN origin must be caught by origin legality, since room legality's Abs(NaN) > bound comparison is always false")
+}
+
+// TestSetupAnchoringNegativeInfinityOriginRejected is NaN's sibling case
+// (#929 hardening round, test-gap closure item 4), with the OPPOSITE
+// ordering: math.Abs(-Inf) is +Inf, and +Inf > maxAnchorCoord (any
+// finite bound) IS true — so -Inf does NOT slip past room legality's
+// magnitude check the way NaN does; it is caught there, first, with
+// room legality's OWN message.
+func (s *EncounterTestSuite) TestSetupAnchoringNegativeInfinityOriginRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.Inf(-1), Y: 0}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
+		"-Inf must be caught by room legality's magnitude check, unlike NaN — Abs(-Inf) > bound is true")
 }
 
 // TestSetupAnchoringW1BothDirections pins W1's message names BOTH rooms and
@@ -1366,13 +1446,76 @@ func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproduction() {
 	s.Require().Contains(err.Error(), "exceeding max room cells")
 }
 
+// TestSetupRoomCellBudgetRejectsPanicReproductionHex is the hex-family
+// sibling of TestSetupRoomCellBudgetRejectsPanicReproduction (#929
+// hardening round, test-gap closure item 3): maxRoomCells' doc comment
+// claims the bound is family-agnostic ("EQUAL for both grid families...
+// hex included"), but every existing budget fixture — this one's square
+// sibling, and TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms —
+// only ever declares a square room (Grid left unset, defaulting to
+// GridShapeSquare). This pins the SAME 2^30 x 2^30 reproduction against
+// an EXPLICIT hex room.
+func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproductionHex() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "a 2^30 x 2^30 HEX room must REJECT too — the bound is family-agnostic")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max room cells")
+}
+
+// TestSetupOversizedRoomHeightRejected pins maxRoomSpan's Height clause
+// independently of Width (#929 hardening round, test-gap closure item
+// 3): TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint only grows
+// Width (r2 is math.MaxInt WIDE, Height a legal 5), and
+// TestSetupRoomCellBudgetRejectsPanicReproduction grows Width and Height
+// EQUALLY (1<<30 each) — neither can discriminate the
+// `|| r.Height > maxRoomSpan` half of the check from the Width half;
+// deleting either clause alone leaves the whole suite green. This
+// fixture grows ONLY Height (Width stays a legal 5) just past the bound
+// (1<<30 + 1). With the clause present, this rejects at room-span
+// legality with "exceed max room span". Without it (the mutant), the
+// oversized Height is NOT unobserved — it still rejects, just later and
+// with a DIFFERENT message: cellCount = 5*((1<<30)+1) comfortably
+// exceeds maxRoomCells, so a deleted Height-span clause falls through to
+// the cell-budget check instead. The message assertion below is what
+// actually catches the mutant — a bare Error()/ErrorIs(ErrNoField)
+// check alone would not.
+func (s *EncounterTestSuite) TestSetupOversizedRoomHeightRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "tall", Width: 5, Height: (1 << 30) + 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceed max room span",
+		"a Height-only oversize must reject at room-span legality, not fall through to a different check with a different message")
+}
+
 // TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms pins F1's field-total
-// bound: five 1024x1024 rooms are each EXACTLY at maxRoomCells (1<<20,
-// individually legal — the per-room check passes) but their SUM (5<<20)
+// bound: SIX 1024x1024 rooms are each EXACTLY at maxRoomCells (1<<20,
+// individually legal — the per-room check passes) but their SUM (6<<20)
 // exceeds maxFieldCells (4<<20) — amplification across rooms, not within
-// one, the OTHER half of F1's reproduction.
+// one, the OTHER half of F1's reproduction. SIX rooms, not five (#929
+// hardening round, test-gap closure item 1): with only five, rooms 1-4
+// sum to EXACTLY maxFieldCells (4<<20) — not yet exceeding it — so the
+// budget is first exceeded at the fifth and LAST room, and the N3 fix
+// (accumulate the TRUE total over every room before checking once, so a
+// future room in the list is never silently dropped from the count) is
+// unpinnable: a reverted mid-loop check that returns as soon as the
+// RUNNING total exceeds the budget would trip at that same last room and
+// report the identical number, since there is no room AFTER it to be
+// dropped from the count. A sixth room makes the two diverge: a mid-loop
+// check trips at room 5 (running total 5<<20 = 5242880, room 6 never
+// even summed), while the true-total fix processes all six and reports
+// 6<<20 = 6291456 — the exact number asserted below.
 func (s *EncounterTestSuite) TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms() {
-	rooms := make([]encounter.RoomInput, 5)
+	rooms := make([]encounter.RoomInput, 6)
 	for i := range rooms {
 		rooms[i] = encounter.RoomInput{ID: fmt.Sprintf("room-%d", i), Width: 1024, Height: 1024}
 	}
@@ -1382,6 +1525,8 @@ func (s *EncounterTestSuite) TestSetupFieldCellBudgetRejectsIndividuallyLegalRoo
 	})
 	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
 	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "field has 6291456 total cells across all rooms",
+		"must name the TRUE total over all six rooms, not a running total that stopped short at a mid-loop room")
 	s.Require().Contains(err.Error(), "exceeding max field cells")
 }
 

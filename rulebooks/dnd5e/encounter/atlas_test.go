@@ -321,8 +321,19 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 // property (established at T2 for traversal — TestReloadedAnchoredEncounterAcceptsSameTraverse
 // in data_test.go) for Atlas specifically: an anchored multi-room
 // encounter's Atlas, captured before ToData/LoadEncounter and again after,
-// must be deep-equal — including Cells ordering, not just set membership
-// (#929 T3 fix round item 2).
+// must be deep-equal (#929 T3 fix round item 2).
+//
+// This proves Cells ordering is DETERMINISTIC across a reload — not that
+// the order is any PARTICULAR order (#929 hardening round, test-gap
+// closure item 2 — corrects this comment's earlier "including Cells
+// ordering" claim, which overclaimed what a same-enumerator comparison
+// can show): both atlas1 and atlas2 are produced by calling the exact
+// SAME atlasCells enumerator, so a mutant that reordered atlasCells
+// itself (e.g. swapping its Q-outer/R-inner nesting to R-outer/Q-inner)
+// would reorder BOTH calls identically and still pass here. The exact,
+// intended order is pinned separately, against a hand-computed fixture
+// independent of atlasCells' own implementation, by
+// TestAtlasCellsExactOrder.
 func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 	enc1, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
@@ -337,7 +348,32 @@ func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 	atlas2, err := enc2.Atlas()
 	s.Require().NoError(err)
 
-	s.Require().Equal(atlas1, atlas2, "Atlas must be identical after a ToData/LoadEncounter round trip, including Cells ordering")
+	s.Require().Equal(atlas1, atlas2, "Atlas must be identical after a ToData/LoadEncounter round trip — deterministic, though this alone cannot prove the order is the INTENDED one (see TestAtlasCellsExactOrder)")
+}
+
+// TestAtlasCellsExactOrder pins atlasCells' Q-outer/R-inner nesting order
+// exactly, against a fixture independent of atlasCells' own
+// implementation (#929 hardening round, test-gap closure item 2):
+// TestAtlasCellsMatchIsValidPosition only proves SET membership (both
+// sides are compared as maps), and TestAtlasIdenticalAfterReload only
+// proves the SAME enumerator is deterministic across two calls — neither
+// can catch a reordering that both calls agree on, such as swapping
+// atlasCells' outer/inner loop nesting. A small, hand-computed 2x3
+// square room (Origin zero, so absolute == local) makes the full
+// expected order easy to verify by inspection: Q outer over X∈[0,1], R
+// inner over Y∈[0,2].
+func (s *EncounterTestSuite) TestAtlasCellsExactOrder() {
+	enc, err := encounter.NewEncounter(singleRoomSetup(spatial.GridShapeSquare, 2, 3))
+	s.Require().NoError(err)
+
+	atlas, err := enc.Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(atlas.Rooms, 1)
+
+	s.Require().Equal([]spatial.Position{
+		{X: 0, Y: 0}, {X: 0, Y: 1}, {X: 0, Y: 2},
+		{X: 1, Y: 0}, {X: 1, Y: 1}, {X: 1, Y: 2},
+	}, atlas.Rooms[0].Cells, "atlasCells must iterate Q (X) outer, R (Y) inner, in exactly this order")
 }
 
 // TestLocateAbsoluteRoundTripHex pins the round-trip law over EVERY
