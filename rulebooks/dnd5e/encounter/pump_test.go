@@ -968,7 +968,11 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 
 // twoRoomDoor is the standard fixture connection for the Pump/traverse
 // tests below: room-a to room-b, DELIBERATELY asymmetric endpoints (T1
-// review lesson) so a from/to mix-up would be observable.
+// review lesson) so a from/to mix-up would be observable. room-b's Origin
+// (see the room-a/room-b RoomInput literals below) sits it immediately to
+// room-a's east — (9,5) and (0,5)+(10,0)=(10,5) are Chebyshev-adjacent
+// (distance 1), satisfying W3, while the rooms' absolute footprints
+// (x:[0,9] vs x:[10,19]) stay disjoint, satisfying W2 (#929 T1).
 var twoRoomDoor = encounter.ConnectionInput{
 	ID: "door1", From: "room-a", To: "room-b",
 	FromPosition: spatial.Position{X: 9, Y: 5},
@@ -988,7 +992,7 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -1028,7 +1032,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseSuccess() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},
@@ -1073,7 +1077,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},
@@ -1127,7 +1131,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},
@@ -1178,7 +1182,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},
@@ -1221,7 +1225,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},
@@ -1321,7 +1325,7 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},

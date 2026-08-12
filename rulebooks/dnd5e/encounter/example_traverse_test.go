@@ -31,7 +31,11 @@ func Example_theTraverse() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 8, Height: 8},
-				{ID: "vault", Width: 8, Height: 8},
+				// Anchored immediately east of the hall (#929 T1): the
+				// gate's endpoints (7,4) and (0,4)+(8,0)=(8,4) are
+				// Chebyshev-adjacent (W3), and the rooms' absolute
+				// footprints (x:[0,7] vs x:[8,15]) stay disjoint (W2).
+				{ID: "vault", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{gate},
 		},

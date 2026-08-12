@@ -10,15 +10,41 @@ var (
 	// Indicates a caller defect.
 	ErrNilInput = errors.New("nil input")
 
-	// ErrNoMember is returned when an input contains an empty member ID.
+	// ErrNoMember is returned when an input contains an empty or
+	// duplicate member ID (Setup, Join, and Load — Load's identical
+	// checks used to carry only ErrInvalidData, #929 hardening round F),
+	// a member is declared a player while carrying a Decider — design
+	// law C2 — at any of the three seams that accept one (NewEncounter,
+	// LoadEncounter, Join), Join names a member ID already in the
+	// encounter, Exit is called with an empty member ID, Story's
+	// audience never joined, or — Load-only, since these are persisted-
+	// state coherence checks with no Setup analogue — a persisted
+	// abandoned outcome with non-empty membership (abandonment means the
+	// membership emptied) or a current member missing from EverMembers
+	// (#929 hardening round F).
 	ErrNoMember = errors.New("empty member id")
 
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("not a member")
 
-	// ErrNoEnding is returned when Setup is called with zero endings, or End
-	// is called with an undeclared key. An encounter that cannot end is a
-	// liveness hole.
+	// ErrNoEnding is returned when Setup or Load is called with zero
+	// endings, a declared ending's key is empty or the reserved
+	// "abandoned", a declared ending's key duplicates an earlier one in
+	// the same input (#929 hardening round E — an unvalidated duplicate
+	// lets declaration order silently shadow a later ending, e.g. a
+	// reached_position twin permanently hiding an external ending), End
+	// is called with an undeclared key or one whose Trigger is not
+	// TriggerExternal, or a TriggerReachedPosition ending names an
+	// unknown room or an unreachable position (#929 T3 Opus round F5,
+	// checked identically at Setup and Load — see
+	// validateEndingTriggers), or — Load-only, since these are wire-
+	// format/persisted-state concerns with no Setup analogue —
+	// EndingData names an unrecognized Kind string, a reached_position
+	// EndingData is missing its Room or Position, or a persisted Outcome
+	// names an ending key that was never declared (these three used to
+	// carry only ErrInvalidData, #929 hardening round F). An encounter
+	// that cannot end — whether it declares zero endings or one that can
+	// never fire — is a liveness hole.
 	ErrNoEnding = errors.New("no such ending")
 
 	// ErrClosed is returned when a mutating verb (action, event, exit, etc.)
@@ -26,19 +52,74 @@ var (
 	ErrClosed = errors.New("encounter closed")
 
 	// ErrNoField is returned when Setup is called without rooms, or when a
-	// declared room is itself defective (empty or duplicate ID, unrecognized
-	// grid shape) — a malformed room list is as unusable as an empty one.
-	// Returned at both Setup and Load.
+	// declared room is itself defective — empty or duplicate ID, an
+	// unrecognized-or-no-longer-supported grid shape value (gridless
+	// included — RoomData's doc comment in data.go), a non-integral
+	// occluder position in ANY family, not just hex (#929 T3 Opus round
+	// F2), a duplicate occluder position within one room (#929 hardening
+	// round D — previously escaped module validation and rejected only
+	// in spatial's own voice, an accident of the pre-index-based
+	// occluder entity ID), non-positive OR oversized Width/Height
+	// (maxRoomSpan), a
+	// per-room or field-total cell count exceeding maxRoomCells/
+	// maxFieldCells (allocation safety for Atlas — #929 T3 Opus round F1),
+	// an out-of-bounds Origin (maxAnchorCoord) or a non-representable one
+	// (non-integral, ±Inf, NaN — EVERY grid family, not just hex), or —
+	// Load-only, since RoomInput.Origin is a plain value and can't be
+	// absent the way RoomData.Origin's pointer can — a MISSING Origin (W5
+	// presence: a nil pointer means the field was absent from the blob,
+	// distinct from a declared zero — RoomData's doc comment in data.go)
+	// — or the room list as a whole is incoherent (W1: more than one grid
+	// family in one field; W2: two rooms' absolute footprints overlap) —
+	// a malformed room list is as unusable as an empty one.
+	//
+	// Checked identically at Setup and Load (#929 T2): LoadEncounter routes
+	// room-list validation through the SAME buildValidRoomGrids Setup uses
+	// (LoadEncounter's doc comment in data.go), so W1, room-dimension
+	// legality, origin legality, and W2 reject a persisted blob exactly as
+	// they would a live SetupInput — Setup and Load can no longer drift on
+	// these checks by construction, not just by convention. The shared
+	// validator's own error messages carry no verb prefix — NewEncounter
+	// and LoadEncounter each wrap their own ("newencounter:" / "load
+	// encounter:") at their own call sites (#929 T2 second review round;
+	// buildValidRoomGrids' doc comment).
+	//
+	// Also returned by Absolute (#929 T3) when the named room does not
+	// exist in this field — a runtime lookup miss reusing the room-list
+	// defect vocabulary rather than a dedicated sentinel, unlike
+	// ErrNoConnection's split from ErrBadConnection below.
 	ErrNoField = errors.New("no field")
 
-	// ErrBadPlacement is returned when a placement fails spatial validation.
-	// Wraps the underlying spatial error.
+	// ErrBadPlacement is returned when a placement or position is bad in
+	// a way runtime spatial state can catch (not declaration-time
+	// validation — that's ErrNoField/ErrBadConnection): a room or entity
+	// lookup miss, a position out of bounds or (hex) non-integral, a
+	// member not standing at a connection's threshold, or an actual
+	// underlying spatial-package call (AddRoom, PlaceEntity,
+	// TransitionEntity, RemoveEntity) failing. Only the LAST class wraps
+	// an underlying spatial error — most call sites (Absolute, Locate,
+	// moveMember's own bounds/integrality checks, Traverse's threshold
+	// check, Pump's snapshot lookups, Join's/Exit's own lookups) reject
+	// before ever reaching spatial, with nothing beneath ErrBadPlacement
+	// to wrap. Also covers LoadEncounter's member and outcome-member
+	// checks — room lookup miss, out-of-bounds position, non-integral
+	// (hex) position — which mirror NewEncounter's identical member
+	// checks and used to carry only ErrInvalidData (#929 hardening
+	// round F).
 	ErrBadPlacement = errors.New("bad placement")
 
 	// ErrBadConnection is returned when a connection's ID is empty or
-	// duplicated, its From/To names an unknown room or itself, or an
-	// endpoint lies outside its room's bounds or on an occluder position.
-	// Returned at both Setup and Load — a declaration-time defect.
+	// duplicated, its From/To names an unknown room or itself, an
+	// endpoint lies outside its room's bounds, is non-integral (hex
+	// rooms only), or sits on an occluder position — or (W3) its two
+	// endpoints, once anchored to their rooms' Origin, are not adjacent
+	// absolute cells — or, Load-only, since ConnectionInput's endpoints
+	// are plain values and can't be absent the way ConnectionData's
+	// pointers can, a MISSING FromPosition or ToPosition (the connection
+	// analogue of ErrNoField's missing-Origin case). Checked identically
+	// at Setup and Load (#929 T2 — see ErrNoField's doc comment):
+	// LoadEncounter routes connection validation through the SAME
+	// validateConnectionInputs Setup uses.
 	ErrBadConnection = errors.New("bad connection")
 
 	// ErrNoConnection is returned by Traverse when the given connection ID

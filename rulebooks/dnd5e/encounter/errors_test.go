@@ -20,6 +20,8 @@ func TestSentinelsAreDistinct(t *testing.T) {
 		encounter.ErrClosed,
 		encounter.ErrNoField,
 		encounter.ErrBadPlacement,
+		encounter.ErrBadConnection,
+		encounter.ErrNoConnection,
 		encounter.ErrInvalidData,
 	}
 

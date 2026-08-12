@@ -6,6 +6,8 @@ package encounter_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -313,23 +315,33 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 // validConnSetup returns a fresh SetupInput with two DELIBERATELY
 // mismatched rooms — r1 is 10x4 (occluder at (2,2)), r2 is 3x9 (occluder
 // at (1,3)) — and one fully valid connection between them, with
-// FromPosition{7,1} valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2.
+// FromPosition{9,1} valid ONLY in r1 and ToPosition{0,7} valid ONLY in r2.
 // Same-sized rooms and equal From/To positions would make a check that
 // validates an endpoint against the WRONG room (or a Load-side From/To
 // transposition) invisible: this is the base for
 // TestSetupConnectionValidation's one-defect rows, mirroring the same
 // defect classes rejected at Load (TestLoadRejections).
+//
+// #929 T1: the endpoints sit on each room's OWN boundary (r1's rightmost
+// column, r2's leftmost column) — a connection can only ever kiss (W3)
+// through a room's boundary cell, never an interior one (every neighbor of
+// an interior cell is still inside that room's own footprint). r2's Origin
+// (10,-6) puts its leftmost column at absolute x=10, immediately east of
+// r1's rightmost column (absolute x=9, since r1's Origin is the zero
+// value) — Chebyshev-adjacent (W3) — while r1's absolute footprint
+// (x:[0,9], y:[0,3]) and r2's (x:[10,12], y:[-6,2]) share no x value at
+// all, so they stay disjoint (W2) regardless of their y overlap.
 func validConnSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 10, Height: 4, Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "r2", Width: 3, Height: 9, Occluders: []spatial.Position{{X: 1, Y: 3}}},
+				{ID: "r2", Width: 3, Height: 9, Origin: spatial.Position{X: 10, Y: -6}, Occluders: []spatial.Position{{X: 1, Y: 3}}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
-					FromPosition: spatial.Position{X: 7, Y: 1},
-					ToPosition:   spatial.Position{X: 1, Y: 7}},
+					FromPosition: spatial.Position{X: 9, Y: 1},
+					ToPosition:   spatial.Position{X: 0, Y: 7}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -337,6 +349,118 @@ func validConnSetup() *encounter.SetupInput {
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
+}
+
+// TestSetupSquareOccluderFractionalRejected pins F2 (#929 T3 Opus round):
+// occluder integrality is universal now, not hex-only — a fractional
+// occluder on a SQUARE room (previously accepted outright, before this
+// fix) must reject exactly like a fractional hex one
+// (TestSetupHexIntegralAxial's sibling row), with the universal
+// isRepresentableInteger message, not the hex-specific one. One-defect:
+// validConnSetup's r1.Occluders[0] is the ONLY thing mutated.
+func (s *EncounterTestSuite) TestSetupSquareOccluderFractionalRejected() {
+	setup := validConnSetup()
+	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell")
+}
+
+// TestSetupOccluderOnBoundaryCellAccepted pins N2's over-tightening sweep
+// (#929 T3 trailing round): every occluder in every EXISTING fixture sits
+// on an interior cell, so a mutant that rejected a boundary-cell occluder
+// (plausible: "occluders should be interior only") survived the suite
+// with zero failures until this row was added. Occluders block line of
+// sight (field.go's doc comment), not placement — a boundary cell,
+// including a corner, is exactly as legal an occluder position as an
+// interior one.
+func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{
+					{X: 0, Y: 2}, // left edge
+					{X: 4, Y: 2}, // right edge
+					{X: 2, Y: 0}, // top edge
+					{X: 2, Y: 4}, // bottom edge
+					{X: 0, Y: 0}, // corner
+					{X: 4, Y: 4}, // corner
+				}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal")
+}
+
+// TestSetupOccluderIDCrossRoomCollisionAccepted pins the hardening round's
+// fix (#929 item C): the occluder entity ID used to concatenate room ID
+// and truncated coordinates (occluder-<room>-<int(X)>-<int(Y)>), so room
+// "r" with occluder (-5,4) and room "r-" with occluder (5,4) both produced
+// "occluder-r--5-4" — a genuine cross-room ID collision on a field that is
+// otherwise entirely legal under W1/W2/W3. The ID is index-based now, so
+// this exact colliding pair must construct without error.
+func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
+					Occluders: []spatial.Position{{X: -5, Y: 4}}},
+				{ID: "r-", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
+					Origin: spatial.Position{X: 1000, Y: 0}, Occluders: []spatial.Position{{X: 5, Y: 4}}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide`)
+}
+
+// TestSetupDuplicateOccluderRejected pins the hardening round's item D:
+// two occluders at the SAME cell used to escape module validation
+// entirely and reject only in spatial's own voice ("entity ... already
+// indexed") as an accident of the old coordinate-derived entity ID —
+// see TestSetupOccluderIDCrossRoomCollisionAccepted's fix, which
+// switched to an index-based ID and, as a side effect, removed even
+// that accidental catch. Rejected explicitly now, in the module's own
+// room-list defect vocabulary.
+func (s *EncounterTestSuite) TestSetupDuplicateOccluderRejected() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}, {X: 3, Y: 3}}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "duplicate occluder")
+}
+
+// TestSetupDuplicateEndingKeyRejected pins hardening round item E: two
+// endings sharing a key both used to construct — a genuine liveness
+// hole, since End scans in declaration order and a reached_position
+// twin declared first permanently shadows a same-keyed external ending
+// declared after it (probed: End("dup") failed "is not External"
+// forever, the external ending having no other way to fire).
+func (s *EncounterTestSuite) TestSetupDuplicateEndingKeyRejected() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "dup", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 4}}},
+			{Key: "dup", Trigger: encounter.TriggerExternal{}},
+		},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	s.Require().Contains(err.Error(), "duplicate ending")
 }
 
 // TestSetupConnectionValidation mirrors TestLoadRejections' connection
@@ -391,17 +515,17 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 	}
 
 	// The valid base itself must construct — the one-defect discipline only
-	// means something if zero defects pass. Since FromPosition{7,1} is valid
-	// ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive control
+	// means something if zero defects pass. Since FromPosition{9,1} is valid
+	// ONLY in r1 and ToPosition{0,7} valid ONLY in r2, this positive control
 	// also pins that each endpoint is checked against ITS OWN room: a check
 	// wired to the wrong room would reject this valid connection.
 	enc, err := encounter.NewEncounter(validConnSetup())
 	s.Require().NoError(err, "the valid base fixture must construct")
 	data := enc.ToData()
 	s.Require().Len(data.Field.Connections, 1)
-	s.Equal(&encounter.PositionData{X: 7, Y: 1}, data.Field.Connections[0].FromPosition,
+	s.Equal(&encounter.PositionData{X: 9, Y: 1}, data.Field.Connections[0].FromPosition,
 		"from-position must survive unswapped")
-	s.Equal(&encounter.PositionData{X: 1, Y: 7}, data.Field.Connections[0].ToPosition,
+	s.Equal(&encounter.PositionData{X: 0, Y: 7}, data.Field.Connections[0].ToPosition,
 		"to-position must survive unswapped")
 }
 
@@ -409,13 +533,18 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 // coordinates 0..3 x 0..2) and an r2 large enough to always hold the
 // connection's fixed ToPosition — used to pin the square grid's strictly-
 // less-than bounds semantics against FromPosition in r1, independent of any
-// cross-room concern (that's validConnSetup's job).
+// cross-room concern (that's validConnSetup's job). r2's Origin (4,3)
+// anchors it diagonally past r1's bottom-right corner (#929 T1): the
+// positive control's FromPosition (3,2) — r1's own bottom-right corner —
+// and ToPosition (0,0)+(4,3)=(4,3) are Chebyshev-adjacent (a diagonal kiss,
+// distance 1), while the rooms' absolute footprints (x:[0,3] vs x:[4,7])
+// share no x value and so stay disjoint (W2) regardless of y.
 func connBoundsSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 4, Height: 3},
-				{ID: "r2", Width: 4, Height: 3},
+				{ID: "r2", Width: 4, Height: 3, Origin: spatial.Position{X: 4, Y: 3}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
@@ -496,6 +625,12 @@ func validRoomSetup() *encounter.SetupInput {
 // (#922 T1.5, deferred from the Opus T1 review): empty room ID, duplicate
 // room ID, and an unrecognized grid shape all reject with ErrNoField — a
 // malformed room list is as unusable as an empty one.
+//
+// #929 T1 Opus round: also pins room legality (non-positive Width/Height),
+// both zero AND negative for each dimension — the blocker this closes:
+// Width:-1 previously reached a negative-capacity make() in W2's
+// enumeration path (since replaced by interval math) and PANICKED
+// NewEncounter instead of rejecting it (R5: a panic is not a rejection).
 func (s *EncounterTestSuite) TestSetupRoomValidation() {
 	cases := []struct {
 		name     string
@@ -511,6 +646,18 @@ func (s *EncounterTestSuite) TestSetupRoomValidation() {
 		{"room has unknown grid shape", func(in *encounter.SetupInput) {
 			in.Field.Rooms[0].Grid = spatial.GridShape(99)
 		}, "unknown grid shape"},
+		{"room has zero width", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Width = 0
+		}, "non-positive dimensions"},
+		{"room has zero height", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Height = 0
+		}, "non-positive dimensions"},
+		{"room has negative width", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Width = -1
+		}, "non-positive dimensions"},
+		{"room has negative height", func(in *encounter.SetupInput) {
+			in.Field.Rooms[0].Height = -1
+		}, "non-positive dimensions"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -592,21 +739,30 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 // a positive one, via the same grid-deferred bounds check members use.
 // Load-seam counterpart: TestHexConnectionEndpointNegativeAxialLoad in
 // data_test.go.
+//
+// #929 T1 follow-up: both rooms are hex (W1 forbids mixing families in one
+// field — see TestSetupAnchoring's W1 row) rather than the original
+// square+hex pairing. hex-a is 10x10 (Q,R valid [-5,5)); hex-b is 6x6 (Q,R
+// valid [-3,3)), anchored at (8,7) so its NEGATIVE-axial corner (-3,-3) —
+// the coordinate that gives this test its name — sits immediately east of
+// hex-a's own (4,4) corner: absolute (5,4) is a cube-distance-1 neighbor of
+// (4,4) (W3), and hex-b's absolute Q span ([5,10]) shares no Q value with
+// hex-a's ([-5,4]), so the rooms stay disjoint (W2) regardless of R.
 func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "square-room", Width: 10, Height: 10},
-				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
+				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
+				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 7}},
 			},
 			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "square-room", To: "hex-room",
-				FromPosition: spatial.Position{X: 9, Y: 9},
-				ToPosition:   spatial.Position{X: -2, Y: -2},
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: spatial.Position{X: 4, Y: 4},
+				ToPosition:   spatial.Position{X: -3, Y: -3},
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -619,18 +775,28 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 // TestSetupHexIntegralAxial's one-defect rows: interim tools/spatial#926
 // enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
 // any of these positions in a hex room.
+//
+// #929 T1: both rooms are Width=8,Height=8, so each has valid axial Q,R in
+// [-4,4) (i.e. -4..3). gate.FromPosition sits at hex-a's own Q=3 boundary
+// (an interior cell like the original (1,1) can never kiss anything — every
+// neighbor of an interior cell is still inside that room's own footprint).
+// hex-b's Origin (8,1) anchors it immediately past that boundary: absolute
+// FromPosition (3,0) and absolute ToPosition local(-4,-1)+(8,1)=(4,0) are
+// cube-distance 1 (W3), while hex-b's absolute Q span ([4,11]) shares no Q
+// value with hex-a's ([-4,3]), so the two rooms stay disjoint (W2)
+// regardless of R.
 func validHexAxialSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
 					Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 1}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: spatial.Position{X: 1, Y: 1},
-				ToPosition:   spatial.Position{X: -1, Y: -1},
+				FromPosition: spatial.Position{X: 3, Y: 0},
+				ToPosition:   spatial.Position{X: -4, Y: -1},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -648,22 +814,27 @@ func validHexAxialSetup() *encounter.SetupInput {
 // TestLoadHexIntegralAxial in data_test.go.
 func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 	cases := []struct {
-		name    string
-		mutate  func(in *encounter.SetupInput)
-		alsoErr error
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		alsoErr  error
+		fragment string
 	}{
 		{"member position fractional", func(in *encounter.SetupInput) {
 			in.Members[0].Position = spatial.Position{X: 0.5, Y: 0}
-		}, encounter.ErrBadPlacement},
+		}, encounter.ErrBadPlacement, "not an integral axial cell"},
 		{"connection from-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
-		}, encounter.ErrBadConnection},
+		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"connection to-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].ToPosition = spatial.Position{X: -1.5, Y: -1}
-		}, encounter.ErrBadConnection},
+		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"occluder position fractional", func(in *encounter.SetupInput) {
+			// #929 T3 Opus round F2: occluder integrality is now universal
+			// (isIntegralPosition), not hex-only (isIntegralAxialPosition) —
+			// the message matches Origin's ("not a representable integral
+			// cell"), not the hex-specific connection/member wording.
 			in.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
-		}, encounter.ErrNoField},
+		}, encounter.ErrNoField, "not a representable integral cell"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -672,13 +843,13 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 			_, err := encounter.NewEncounter(setup)
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
-			s.Require().Contains(err.Error(), "not an integral axial cell",
+			s.Require().Contains(err.Error(), tc.fragment,
 				"the check that fired must be the one this case targets")
 		})
 	}
 
 	// Positive control: the valid base — integral throughout, including
-	// a NEGATIVE axial position (gate.ToPosition at (-1,-1)) — constructs.
+	// a NEGATIVE axial position (gate.ToPosition at (-4,-1)) — constructs.
 	_, err := encounter.NewEncounter(validHexAxialSetup())
 	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
 }
@@ -741,17 +912,17 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	})
 }
 
-// TestGridlessRoomInclusiveBounds pins gridless's own divergence from the
-// rectangle math this task deletes: GridlessRoom.IsValidPosition
-// (tools/spatial/gridless.go:33-36) uses an INCLUSIVE upper bound
-// (x <= Width), unlike SquareGrid's exclusive (x < Width). A position
-// exactly AT Width — rejected for square — is a sharp, independent proof
-// that bounds checks ask the room's OWN constructed grid rather than a
-// hardcoded rectangle: a "grid shape ignored, always builds square" mutant
-// would reject this position; the correct code accepts it. (AxialHexGrid
-// diverges from square too, but via origin-centered bounds and legal
-// negative coordinates, not an inclusive upper bound — see
-// TestHexRoomBounds.)
+// TestGridlessRoomInclusiveBounds pinned gridless's own divergence from the
+// rectangle math a prior task deleted (GridlessRoom.IsValidPosition's
+// inclusive upper bound, x <= Width, vs SquareGrid's exclusive x < Width).
+// #929 T1 (shape legality, W1) retires that coverage: gridless leaves the
+// composition entirely as of v0.3 — the wire cannot carry a continuous
+// room's absolute projection — so a declared GridShapeGridless room is now
+// a room-list defect at Setup, full stop, regardless of any position within
+// it. This test is repurposed to pin THAT rejection instead of gridless's
+// old bounds semantics (AxialHexGrid's own divergence from square — origin-
+// centered bounds, legal negative coordinates — is still covered by
+// TestHexRoomBounds).
 func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 	gridlessSetup := func(pos spatial.Position) *encounter.SetupInput {
 		return &encounter.SetupInput{
@@ -767,16 +938,750 @@ func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 		}
 	}
 
-	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+	s.Run("gridless room rejected regardless of member position", func() {
 		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: 4, Y: 0}))
-		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+		s.Require().Error(err, "gridless leaves the composition as of v0.3 — no position can rescue it")
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Require().Contains(err.Error(), "gridless grid shape, no longer supported",
+			"the check that fired must be shape legality, not a downstream placement check")
 	})
 
-	s.Run("position negative is still rejected", func() {
+	s.Run("still rejected for a position that would also be out of bounds", func() {
 		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: -1, Y: 0}))
 		s.Require().Error(err)
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().ErrorIs(err, encounter.ErrNoField,
+			"shape legality fires before any placement check ever sees this position")
 	})
+}
+
+// ============================================================
+// #929 T1 — anchoring: RoomInput.Origin, W1 (one geometry per field), W2
+// (rooms never overlap), W3 (doorways kiss). Shape legality's own
+// rejection (GridShapeGridless) is pinned above by
+// TestGridlessRoomInclusiveBounds — repurposed for exactly this law.
+// ============================================================
+
+// validAnchoredHexSetup returns THE core fixture for the W-law tests below:
+// two hex rooms, asymmetric in every dimension (T1 review lesson —
+// symmetric fixtures hide cross-wiring mutants: a prior wave's full sweep
+// missed four of them this way). hex-big is 10x4 (Q valid [-5,4), R valid
+// [-2,2)) at the zero-value Origin; hex-small is 3x9 (Q valid [-1,2), R
+// valid [-4,5)) anchored at (6,-5) — a NEGATIVE-axial origin, on purpose.
+//
+// The connection's endpoints are each their own room's OWN boundary cell —
+// an interior cell can never kiss anything, since every neighbor of an
+// interior cell is still inside that room's own footprint — and are
+// computed, not guessed, from the span arithmetic above: FromPosition
+// (4,0) is hex-big's max-Q boundary; ToPosition (-1,4) is hex-small's
+// min-Q/max-R corner. Anchored, their absolute cells are (4,0) and (5,-1):
+// ΔQ=1, ΔR=-1, ΔS=0, cube distance (1+1+0)/2 = 1 — adjacent, and
+// deliberately OFF-AXIS (both ΔQ and ΔR nonzero) so a Manhattan-distance
+// mutant (|ΔQ|+|ΔR|=2) would wrongly reject this valid base — see
+// TestAnchoringMutationEvidence.
+//
+// hex-big's absolute Q span is [-5,4]; hex-small's is local[-1,1]+6=[5,7]:
+// the two share NO Q value at all, so W2 holds regardless of R — the
+// rooms are disjoint, touching only through the one declared doorway.
+func validAnchoredHexSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "hex-big", To: "hex-small",
+				FromPosition: spatial.Position{X: 4, Y: 0},
+				ToPosition:   spatial.Position{X: -1, Y: 4},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupAnchoring pins the one-defect rows for W1 (mixed grid families),
+// origin legality (non-integral origin), and W3 (endpoints that don't
+// kiss) — each breaking exactly ONE thing about validAnchoredHexSetup's
+// otherwise-valid base, rejecting with the sentinel and message fragment
+// its own law uses.
+//
+// The "W2" row below is honestly an ORDERING pin, not a one-defect row
+// (#929 T1 Opus round correction): zeroing hex-small's Origin makes it
+// collide with hex-big at (0,0) (a genuine W2 defect) but ALSO detaches
+// the gate's endpoints from their designed kiss (a W3 defect too, at the
+// mutated Origin) — W2 wins only because it runs before W3 in
+// buildValidRoomGrids' order. TestSetupAnchoringOverlapNonAdjacentPair is
+// the true one-defect W2 row: three rooms, only a non-adjacent-in-slice
+// pair overlaps, no connection involved at all.
+func (s *EncounterTestSuite) TestSetupAnchoring() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		alsoErr  error
+		fragment string
+	}{
+		{"W1: mixed grid families", func(in *encounter.SetupInput) {
+			in.Field.Rooms[1].Grid = spatial.GridShapeSquare
+		}, encounter.ErrNoField, "declare different grid families"},
+		{"origin legality: fractional hex origin", func(in *encounter.SetupInput) {
+			in.Field.Rooms[1].Origin = spatial.Position{X: 6.5, Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"room legality: infinite origin", func(in *encounter.SetupInput) {
+			// #929 T1 second Opus round: math.Trunc(+Inf) is +Inf, so the
+			// old pos.X == math.Trunc(pos.X) check accepted this outright.
+			// #929 T2 second review round: now caught even earlier, by
+			// maxAnchorCoord's bound in room legality — Inf is never <= a
+			// finite bound, so this never even reaches the representability
+			// check origin legality runs afterward.
+			in.Field.Rooms[1].Origin = spatial.Position{X: math.Inf(1), Y: -5}
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
+		{"room legality: origin exceeds max anchor coordinate (1e19)", func(in *encounter.SetupInput) {
+			// #929 T1 second Opus round: 1e19 is "integral" by Trunc (it has
+			// no fractional part as a float64) but exceeds int64's range —
+			// roomAbsoluteBounds' int() conversion on a value like this is
+			// Go-spec implementation-defined, not a real cell. See
+			// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap for the
+			// two-room construction that used to produce a wrong verdict.
+			// #929 T2 second review round: now caught by maxAnchorCoord's
+			// bound in room legality, before origin legality's
+			// representability check ever runs (1e19 is both non-representable
+			// AND out of bounds — the bound fires first).
+			in.Field.Rooms[1].Origin = spatial.Position{X: 1e19, Y: -5}
+		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
+		{"ordering: W2 wins over a co-occurring W3 defect", func(in *encounter.SetupInput) {
+			in.Field.Rooms[1].Origin = spatial.Position{X: 0, Y: 0}
+		}, encounter.ErrNoField, "overlap at absolute cell"},
+		{"W3: endpoints do not kiss", func(in *encounter.SetupInput) {
+			// (1,4) is still a legal LOCAL cell in hex-small (max Q, max R)
+			// — this must fail on adjacency, not on the earlier bounds check.
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 4}
+		}, encounter.ErrBadConnection, "not adjacent"},
+		{"W3: hex axial (1,1) delta is NOT adjacent (cube distance 2)", func(in *encounter.SetupInput) {
+			// hex-small's Origin shifts by (0,+2) from the valid base's
+			// (6,-5) to (6,-3): the gate's endpoints, once anchored, now
+			// differ by axial (ΔQ=1,ΔR=1) — cube distance (1+1+2)/2=2, NOT
+			// 1. A "Chebyshev-on-axial" mutant (max(|ΔQ|,|ΔR|)=1) would
+			// wrongly ACCEPT this as adjacent — see the mutation evidence
+			// table in the #929 T1 fix-round report. Still disjoint from
+			// hex-big (W2 passes): hex-small's absolute Q span becomes
+			// local[-1,1]+6=[5,7], still sharing no Q value with hex-big's
+			// [-5,4], so this is a genuine W3-only defect.
+			in.Field.Rooms[1].Origin = spatial.Position{X: 6, Y: -3}
+		}, encounter.ErrBadConnection, "distance 2"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validAnchoredHexSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct — the one-defect discipline only
+	// means something if zero defects pass. This ALSO doubles as the
+	// "touching but not overlapping" sibling proof (W2 rejects overlap,
+	// not contact): hex-big and hex-small touch at exactly the gate's two
+	// cells and nowhere else, yet still validate.
+	_, err := encounter.NewEncounter(validAnchoredHexSetup())
+	s.Require().NoError(err, "the valid base fixture — asymmetric, negative-anchored, off-axis kissing — must construct")
+}
+
+// TestSetupAnchoringSquareDiagonalKiss pins W3's Chebyshev adjacency for
+// the square family, specifically a DIAGONAL kiss (Chebyshev distance 1
+// includes diagonals, unlike a 4-directional adjacency check): sq-a and
+// sq-b sit corner-to-corner, touching at exactly one point and sharing no
+// cell (also the square-family sibling proof that W2 rejects overlap, not
+// contact — TestSetupAnchoring's hex base already proves it once, this
+// proves it independently for square's own distance formula).
+func (s *EncounterTestSuite) TestSetupAnchoringSquareDiagonalKiss() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "sq-a", Width: 5, Height: 5},
+				{ID: "sq-b", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 5}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "corner-gate", From: "sq-a", To: "sq-b",
+				FromPosition: spatial.Position{X: 4, Y: 4},
+				ToPosition:   spatial.Position{X: 0, Y: 0},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "sq-a", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, "a diagonal (Chebyshev distance 1) kiss must be accepted, not just a 4-directional one")
+}
+
+// TestSetupAnchoringSquareEndpointNotAdjacentDistance2 pins W3's
+// square-family rejection at a genuine, non-sub-unit distance (#929
+// hardening round, test-gap closure item 5): the only existing
+// square-family W3 non-adjacency coverage before this was the sub-unit
+// 0.5 case (TestSetupAnchoringFractionalSquareEndpointSubUnitDistance);
+// the two "not adjacent"/"distance 2" rows in TestSetupAnchoring's table
+// are hex-only. r1 is 3x3 at the zero-value Origin (absolute x:[0,2]);
+// r2 is 3x3 at Origin (4,0) (absolute x:[4,6]) — a genuine one-column
+// void gap at x=3, so W2 passes (footprints disjoint, not overlapping).
+// FromPosition (2,1) in r1 projects to absolute (2,1); ToPosition (0,1)
+// in r2 projects to absolute (4,1) — Chebyshev distance 2, not 1.
+func (s *EncounterTestSuite) TestSetupAnchoringSquareEndpointNotAdjacentDistance2() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 3, Height: 3},
+				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 4, Y: 0}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "r1", To: "r2",
+				FromPosition: spatial.Position{X: 2, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: 1},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "not adjacent")
+}
+
+// TestSetupAnchoringSquareOriginRejected pins that origin legality
+// (isIntegralPosition) applies to EVERY grid family, square included, not
+// just hex. #929 T1 Opus round finding: this test used to assert the
+// OPPOSITE — that a fractional square origin was fine — and in doing so
+// blessed a real hole in W2's disjointness promise. Two 5x5 square rooms
+// anchored at (0,0) and (0.5,0.5) have disjoint INTEGER cell sets (an
+// enumeration-based W2 check, since replaced, would have accepted them)
+// while their continuous footprints interpenetrate roughly 81% of each
+// room's area, and a Chebyshev-0 "doorway" (two endpoints landing on the
+// same fractional point) would still measure as adjacent. This is now the
+// rejection pin that closes that hole.
+func (s *EncounterTestSuite) TestSetupAnchoringSquareOriginRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0.5, Y: 1.5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell")
+}
+
+// TestSetupAnchoringNaNOriginRejected pins a genuinely subtle ordering
+// (#929 hardening round, test-gap closure item 4 — NaN and -Inf had ZERO
+// coverage anywhere in the suite before this): room legality's magnitude
+// check is `math.Abs(r.Origin.X) > maxAnchorCoord`, and for X = NaN,
+// math.Abs(NaN) is NaN, and EVERY comparison against NaN (including >)
+// is false in IEEE 754 — so a NaN origin silently SLIPS PAST room
+// legality's magnitude check, uncaught, and is rejected only later, by
+// the SEPARATE origin-legality loop (isIntegralPosition ->
+// isRepresentableInteger, which explicitly tests IsNaN). Verified by
+// probe before writing this assertion. The fragment below asserts the
+// origin-legality message SPECIFICALLY (not just ErrNoField) so a future
+// reorder that changes which check catches NaN fails loudly here,
+// instead of this test silently continuing to pass against a different
+// message.
+func (s *EncounterTestSuite) TestSetupAnchoringNaNOriginRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.NaN(), Y: 0}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "not a representable integral cell",
+		"a NaN origin must be caught by origin legality, since room legality's Abs(NaN) > bound comparison is always false")
+}
+
+// TestSetupAnchoringNegativeInfinityOriginRejected is NaN's sibling case
+// (#929 hardening round, test-gap closure item 4), with the OPPOSITE
+// ordering: math.Abs(-Inf) is +Inf, and +Inf > maxAnchorCoord (any
+// finite bound) IS true — so -Inf does NOT slip past room legality's
+// magnitude check the way NaN does; it is caught there, first, with
+// room legality's OWN message.
+func (s *EncounterTestSuite) TestSetupAnchoringNegativeInfinityOriginRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.Inf(-1), Y: 0}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
+		"-Inf must be caught by room legality's magnitude check, unlike NaN — Abs(-Inf) > bound is true")
+}
+
+// TestSetupAnchoringW1BothDirections pins W1's message names BOTH rooms and
+// BOTH families regardless of which room is square and which is hex —
+// mutating a two-hex-room field's SECOND room mirrors
+// TestSetupAnchoring's row, which mutates via the same slice index; this
+// covers the field declared the other way around (hex declared first,
+// square second) to guard against a comparison that only checks one
+// direction.
+func (s *EncounterTestSuite) TestSetupAnchoringW1BothDirections() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "square-first", Width: 5, Height: 5},
+				{ID: "hex-second", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-first", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), `room "square-first" (square)`)
+	s.Require().Contains(err.Error(), `room "hex-second" (hex)`)
+}
+
+// TestSetupAnchoringOverlapNonAdjacentPair is fixture 3b (#929 T1 Opus
+// round mutation evidence): three square rooms — r-a at the zero-value
+// Origin, r-b anchored far away at (20,20), r-c anchored at (2,2) — where
+// ONLY the (r-a, r-c) pair overlaps. r-a and r-b don't (adjacent pair
+// 0,1); r-b and r-c don't (adjacent pair 1,2); only r-a and r-c do
+// (non-adjacent pair 0,2). This is the TRUE one-defect W2 row — no
+// connection involved at all, unlike TestSetupAnchoring's "ordering" row
+// — and it kills a mutant that reduces W2's pairwise loop to adjacent-in-
+// slice-only comparison (j := i+1; j < i+2). Unlike W1's equivalent
+// mutant (provably unobservable over a two-value domain — see
+// validateGridFamilies' doc comment), overlap is NOT a transitive
+// relation over three arbitrarily-positioned rooms, so this fixture
+// genuinely distinguishes full pairwise from adjacent-only comparison.
+// Witness cell (2,2) is the component-wise max of r-a's and r-c's
+// interval mins.
+func (s *EncounterTestSuite) TestSetupAnchoringOverlapNonAdjacentPair() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r-a", Width: 5, Height: 5},
+				{ID: "r-b", Width: 5, Height: 5, Origin: spatial.Position{X: 20, Y: 20}},
+				{ID: "r-c", Width: 5, Height: 5, Origin: spatial.Position{X: 2, Y: 2}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r-a", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), `room "r-a" and room "r-c" overlap at absolute cell (2, 2)`)
+}
+
+// TestSetupAnchoringRSpanSeparation is fixture 3c (#929 T1 Opus round
+// mutation evidence): two 4x4 hex rooms with IDENTICAL Q ranges — hex-r-b
+// is anchored at (0,4), directly south of hex-r-a, not east — disjoint
+// along R alone despite the shared Q span. This must ACCEPT (proving W2's
+// interval check doesn't need Q separation specifically) and kills an
+// R-span boundary-arithmetic drift mutant in axisBounds: dropping the hex
+// max formula's "-1" widens hex-r-a's R span from [-2,1] to [-2,2], which
+// falsely overlaps these rooms at R=2 (hex-r-b's R span is [2,5]) — see
+// the mutation evidence table. Its doorway also kisses: FromPosition
+// (0,1) is hex-r-a's own max-R boundary; ToPosition (0,-2) is hex-r-b's
+// own min-R boundary; anchored, absolute (0,1) and (0,2) are cube-distance
+// 1.
+func (s *EncounterTestSuite) TestSetupAnchoringRSpanSeparation() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hex-r-a", Width: 4, Height: 4, Grid: spatial.GridShapeHex},
+				{ID: "hex-r-b", Width: 4, Height: 4, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 0, Y: 4}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "hex-r-a", To: "hex-r-b",
+				FromPosition: spatial.Position{X: 0, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: -2},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-r-a", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err, "rooms separated along R alone, with identical Q ranges, must still be accepted as disjoint")
+}
+
+// TestSetupAnchoringFractionalSquareEndpointSubUnitDistance pins W3's
+// strict `dist != 1` comparison (#929 T1 second Opus round: an earlier
+// comment on that check wrongly claimed sub-1 distances were unfalsifiable
+// post-origin-legality — origin legality only constrains ORIGINS, not
+// connection endpoints, and square endpoints stay fractional-tolerant by
+// design, RoomInput.Grid's doc comment). r1 is 3x3 at the zero-value
+// Origin; r2 is 3x3 at Origin (3,0), immediately east — fully disjoint (r1
+// absolute x:[0,2], r2 absolute x:[3,5]), both origins integral. Yet
+// FromPosition (2.5,1), a legal fractional cell in r1, projects to
+// absolute (2.5,1) — only 0.5 Chebyshev distance from ToPosition (0,1)'s
+// absolute (3,1). A `> 1` mutant would wrongly ACCEPT a 0.5-unit gap as
+// "close enough"; the strict `!= 1` correctly rejects it.
+func (s *EncounterTestSuite) TestSetupAnchoringFractionalSquareEndpointSubUnitDistance() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 3, Height: 3},
+				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "r1", To: "r2",
+				FromPosition: spatial.Position{X: 2.5, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: 1},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "distance 0.5")
+}
+
+// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap pins the fix for the
+// second Opus round's headline finding: before this fix, isIntegralPosition's
+// pos.X == math.Trunc(pos.X) check accepted any float64 past int64's usable
+// precision as "integral" (Trunc is a no-op there), so two rooms anchored
+// at X=1e19 and X=2e19 — nowhere near each other — both passed origin
+// legality, then BOTH got truncated by roomAbsoluteBounds' int() to the
+// SAME implementation-defined int64 value, producing a FALSE W2 overlap
+// verdict through the public API. This pins that such an origin now
+// rejects at ROOM LEGALITY instead (#929 T2 second review round:
+// maxAnchorCoord's bound now fires before origin legality's representability
+// check even runs — 1e19 is both non-representable AND out of bounds) —
+// before W2 ever sees it, and specifically NOT with a W2 "overlap" message.
+func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 1e19, Y: 0}},
+				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 2e19, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
+		"must reject at room legality, not fall through to a W2 overlap verdict on garbage-truncated positions")
+	s.Require().NotContains(err.Error(), "overlap at absolute cell",
+		"the old bug produced a W2 overlap message here — this must NOT be that")
+}
+
+// TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint pins maxRoomSpan
+// (#929 T2 second review round — see its doc comment): before this bound,
+// an unbounded Width could overflow roomAbsoluteBounds' interval-sum
+// arithmetic. r1 is 1000 wide at the zero-value Origin (absolute Q span
+// [0,999]); r2 is math.MaxInt wide, anchored at (999,0) — TRUE
+// (infinite-precision) math says these overlap by exactly one column, at
+// Q=999 (r2's own left edge sits exactly on r1's own right edge). r2's
+// absolute qMax is axisBounds(math.MaxInt).max + 999 = (math.MaxInt-1) +
+// 999, which OVERFLOWS int64 and wraps to -9223372036854774811 (verified
+// by running the exact interval-sum arithmetic standalone, not hand
+// computed): with r2's qMin at 999 and its qMax wrapped to that large
+// NEGATIVE number, validateRoomsDisjoint's overlap check
+// (bs[i].qMin <= bs[j].qMax && bs[j].qMin <= bs[i].qMax) sees
+// 0 <= -9223372036854774811 as false and wrongly reports the rooms
+// disjoint — WITHOUT this bound. WITH it, r2's Width alone is already
+// rejected — oversized, not evaluated for overlap at all.
+func (s *EncounterTestSuite) TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 1000, Height: 5},
+				{ID: "r2", Width: math.MaxInt, Height: 5, Origin: spatial.Position{X: 999, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceed max room span",
+		"must reject at room legality for being oversized, before overlap is ever evaluated")
+	s.Require().NotContains(err.Error(), "overlap at absolute cell",
+		"without the bound, this exact fixture used to wrongly VALIDATE via a false-disjoint W2 verdict — see the mutation evidence")
+}
+
+// TestSetupRoomCellBudgetRejectsPanicReproduction pins F1 (#929 T3 Opus
+// round, HIGH): a 2^30 x 2^30 room is individually LEGAL under
+// maxRoomSpan's per-axis check (each dimension equals, not exceeds, the
+// bound) but its cell count (2^60) panics Atlas's allocation — the exact
+// reproduction Opus found, reachable from a tiny SetupInput. Must REJECT
+// with maxRoomCells' message, never construct.
+func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproduction() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "huge", Width: 1 << 30, Height: 1 << 30}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "a 2^30 x 2^30 room must REJECT, not panic Atlas's allocation")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max room cells")
+}
+
+// TestSetupRoomCellBudgetRejectsPanicReproductionHex is the hex-family
+// sibling of TestSetupRoomCellBudgetRejectsPanicReproduction (#929
+// hardening round, test-gap closure item 3): maxRoomCells' doc comment
+// claims the bound is family-agnostic ("EQUAL for both grid families...
+// hex included"), but every existing budget fixture — this one's square
+// sibling, and TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms —
+// only ever declares a square room (Grid left unset, defaulting to
+// GridShapeSquare). This pins the SAME 2^30 x 2^30 reproduction against
+// an EXPLICIT hex room.
+func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproductionHex() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "a 2^30 x 2^30 HEX room must REJECT too — the bound is family-agnostic")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceeding max room cells")
+}
+
+// TestSetupOversizedRoomHeightRejected pins maxRoomSpan's Height clause
+// independently of Width (#929 hardening round, test-gap closure item
+// 3): TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint only grows
+// Width (r2 is math.MaxInt WIDE, Height a legal 5), and
+// TestSetupRoomCellBudgetRejectsPanicReproduction grows Width and Height
+// EQUALLY (1<<30 each) — neither can discriminate the
+// `|| r.Height > maxRoomSpan` half of the check from the Width half;
+// deleting either clause alone leaves the whole suite green. This
+// fixture grows ONLY Height (Width stays a legal 5) just past the bound
+// (1<<30 + 1). With the clause present, this rejects at room-span
+// legality with "exceed max room span". Without it (the mutant), the
+// oversized Height is NOT unobserved — it still rejects, just later and
+// with a DIFFERENT message: cellCount = 5*((1<<30)+1) comfortably
+// exceeds maxRoomCells, so a deleted Height-span clause falls through to
+// the cell-budget check instead. The message assertion below is what
+// actually catches the mutant — a bare Error()/ErrorIs(ErrNoField)
+// check alone would not.
+func (s *EncounterTestSuite) TestSetupOversizedRoomHeightRejected() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "tall", Width: 5, Height: (1 << 30) + 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "exceed max room span",
+		"a Height-only oversize must reject at room-span legality, not fall through to a different check with a different message")
+}
+
+// TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms pins F1's field-total
+// bound: SIX 1024x1024 rooms are each EXACTLY at maxRoomCells (1<<20,
+// individually legal — the per-room check passes) but their SUM (6<<20)
+// exceeds maxFieldCells (4<<20) — amplification across rooms, not within
+// one, the OTHER half of F1's reproduction. SIX rooms, not five (#929
+// hardening round, test-gap closure item 1): with only five, rooms 1-4
+// sum to EXACTLY maxFieldCells (4<<20) — not yet exceeding it — so the
+// budget is first exceeded at the fifth and LAST room, and the N3 fix
+// (accumulate the TRUE total over every room before checking once, so a
+// future room in the list is never silently dropped from the count) is
+// unpinnable: a reverted mid-loop check that returns as soon as the
+// RUNNING total exceeds the budget would trip at that same last room and
+// report the identical number, since there is no room AFTER it to be
+// dropped from the count. A sixth room makes the two diverge: a mid-loop
+// check trips at room 5 (running total 5<<20 = 5242880, room 6 never
+// even summed), while the true-total fix processes all six and reports
+// 6<<20 = 6291456 — the exact number asserted below.
+func (s *EncounterTestSuite) TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms() {
+	rooms := make([]encounter.RoomInput, 6)
+	for i := range rooms {
+		rooms[i] = encounter.RoomInput{ID: fmt.Sprintf("room-%d", i), Width: 1024, Height: 1024}
+	}
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:   encounter.FieldInput{Rooms: rooms},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), "field has 6291456 total cells across all rooms",
+		"must name the TRUE total over all six rooms, not a running total that stopped short at a mid-loop room")
+	s.Require().Contains(err.Error(), "exceeding max field cells")
+}
+
+// validEndingTriggerSetup is the base fixture for TestSetupEndingTriggerValidation:
+// a single square room with a TriggerReachedPosition ending naming a real,
+// in-bounds room/position — the valid base each case breaks exactly one
+// thing about (#929 T3 Opus round F5).
+func validEndingTriggerSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 3, Y: 3}}},
+		},
+	}
+}
+
+// TestSetupEndingTriggerValidation pins F5 (#929 T3 Opus round): a
+// TriggerReachedPosition ending that names no real room, or a position
+// that can never be reached, is a declaration defect — "an encounter that
+// cannot end is a liveness hole" (ErrNoEnding's doc comment) — not a
+// silently-accepted dead ending.
+func (s *EncounterTestSuite) TestSetupEndingTriggerValidation() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		fragment string
+	}{
+		{"unknown room", func(in *encounter.SetupInput) {
+			in.Endings[0].Trigger = encounter.TriggerReachedPosition{Room: "nowhere", Position: spatial.Position{X: 3, Y: 3}}
+		}, "unknown room"},
+		{"out of bounds position", func(in *encounter.SetupInput) {
+			in.Endings[0].Trigger = encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 100, Y: 100}}
+		}, "out of bounds"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validEndingTriggerSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrNoEnding, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct.
+	_, err := encounter.NewEncounter(validEndingTriggerSetup())
+	s.Require().NoError(err, "a trigger naming a real room and in-bounds position must validate")
+}
+
+// TestSetupEndingTriggerHexNonIntegralRejected is TestSetupEndingTriggerValidation's
+// hex-specific sibling: a fractional axial trigger position rejects
+// exactly like a fractional connection/member position does (#929 T3
+// Opus round F5).
+func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 0}}},
+		},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoEnding)
+	s.Require().Contains(err.Error(), "not an integral axial cell")
+}
+
+// validTriggerAcceptanceFieldSetup is the rich SQUARE-family fixture for
+// TestSetupEndingTriggerMustAccept (#929 T3 trailing round N2): a kissing
+// pair (hall/vault, connected, hall carries an occluder) plus an isolated
+// room (annex, no connection at all) — exercising every must-accept shape
+// a TriggerReachedPosition can legally target. A rejection-only test
+// suite proves a validator rejects; this fixture is what proves it does
+// NOT over-reach.
+func validTriggerAcceptanceFieldSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "vault", Width: 4, Height: 4, Origin: spatial.Position{X: 5, Y: 0}},
+				{ID: "annex", Width: 3, Height: 3, Origin: spatial.Position{X: 1000, Y: 1000}},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "gate", From: "hall", To: "vault",
+					FromPosition: spatial.Position{X: 4, Y: 2},
+					ToPosition:   spatial.Position{X: 0, Y: 2}},
+			},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 0, Y: 0}}},
+		},
+	}
+}
+
+// TestSetupEndingTriggerMustAccept pins N2 (#929 T3 trailing round): a
+// one-defect rejection table only proves a validator rejects what it
+// should; only a rich positive control proves it does not ALSO reject
+// what it shouldn't. Each row targets a specific over-tightening
+// hypothesis Opus's mutants tested and found undefended: occluded cells,
+// doorway endpoints on EITHER side, fractional square positions, a room
+// with zero connections, local (0,0), and a room's far corner. Each row
+// also survives a ToData/LoadEncounter round trip — the SAME shape must
+// validate identically at both seams.
+func (s *EncounterTestSuite) TestSetupEndingTriggerMustAccept() {
+	cases := []struct {
+		name    string
+		trigger encounter.TriggerReachedPosition
+	}{
+		{"occluded cell", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 2, Y: 2}}},
+		{"doorway endpoint, from-room side", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 2}}},
+		{"doorway endpoint, to-room side", encounter.TriggerReachedPosition{Room: "vault", Position: spatial.Position{X: 0, Y: 2}}},
+		{"fractional square position", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 1.5}}},
+		{"room with no connection", encounter.TriggerReachedPosition{Room: "annex", Position: spatial.Position{X: 1, Y: 1}}},
+		{"local (0,0)", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 0, Y: 0}}},
+		{"far corner", encounter.TriggerReachedPosition{Room: "vault", Position: spatial.Position{X: 3, Y: 3}}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validTriggerAcceptanceFieldSetup()
+			setup.Endings[0].Trigger = tc.trigger
+			enc, err := encounter.NewEncounter(setup)
+			s.Require().NoError(err, tc.name)
+
+			data := enc.ToData()
+			_, err = encounter.LoadEncounter(data, nil)
+			s.Require().NoError(err, "%s must survive a ToData/LoadEncounter round trip", tc.name)
+		})
+	}
+}
+
+// TestSetupEndingTriggerHexNegativeAxialMustAccept is
+// TestSetupEndingTriggerMustAccept's hex-specific sibling (W1 forbids
+// mixing families in one fixture): hex rooms are ORIGIN-CENTERED, so a
+// negative Q/R trigger position is the NORMAL case for roughly half of
+// any room, not an edge case — the realistic hazard N2 names explicitly.
+func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: -2, Y: -2}}},
+		},
+	}
+	enc, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, "a negative-axial hex trigger position is the NORMAL case, not an edge case")
+
+	data := enc.ToData()
+	_, err = encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err, "must survive a ToData/LoadEncounter round trip")
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {
@@ -1521,7 +2426,11 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				// Anchored immediately east of room-a (#929 T1): door1's
+				// endpoints (9,5) and (0,5)+(10,0)=(10,5) are
+				// Chebyshev-adjacent (W3); the rooms' absolute footprints
+				// (x:[0,9] vs x:[10,19]) stay disjoint (W2).
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "room-a", To: "room-b",
@@ -1588,8 +2497,13 @@ func (s *EncounterTestSuite) TestTraverseValidation() {
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room-a", Width: 10, Height: 10},
-					{ID: "room-b", Width: 10, Height: 10},
-					{ID: "room-c", Width: 10, Height: 10},
+					// Anchored east of room-a so door1's endpoints kiss (#929
+					// T1) — see newTwoRoomEncounterWithConnection's comment.
+					{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+					// room-c touches neither: anchored south of room-a,
+					// disjoint from both (W2) and irrelevant to door1 (W3
+					// only constrains door1's own two rooms).
+					{ID: "room-c", Width: 10, Height: 10, Origin: spatial.Position{X: 0, Y: 10}},
 				},
 				Connections: []encounter.ConnectionInput{
 					{ID: "door1", From: "room-a", To: "room-b",
@@ -1763,7 +2677,7 @@ func (s *EncounterTestSuite) TestTraverseEndingFiresOnArrival() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "room-a", To: "room-b",
@@ -1804,7 +2718,7 @@ func (s *EncounterTestSuite) TestTraverseMonsterOnUnfilteredEndingDoesNotClose()
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "room-a", To: "room-b",

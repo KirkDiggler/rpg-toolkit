@@ -25,14 +25,15 @@ type SightPayload struct {
 	Y    float64 `json:"y"`
 }
 
-// Encounter is the aggregate encounter composition: members, field, clock,
-// intel, and record. Construct via NewEncounter; zero value unusable.
 // declaredEnding pairs an ending key with its trigger, in Setup order.
 type declaredEnding struct {
 	key     string
 	trigger Trigger
 }
 
+// Encounter is the aggregate encounter composition: members, field, clock,
+// intel, and record. Construct via NewEncounter or LoadEncounter; the zero
+// value is unusable.
 type Encounter struct {
 	orchestrator *spatial.BasicRoomOrchestrator
 	clock        *clock.Tick
@@ -75,10 +76,24 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 }
 
 // buildRoomGrid constructs the spatial Grid for a room's declared shape.
-// Called only after validation has confirmed Grid is one of the three known
-// GridShape values; the switch's default (square) is therefore unreachable
-// in practice and exists only so an unvalidated caller degrades gracefully
-// rather than panicking.
+// Only GridShapeSquare and GridShapeHex ever reach here now (#929 T2):
+// LoadEncounter converts its wire-only grid string to a GridShape via
+// gridDataToShape BEFORE this is ever called (gridDataToShape's doc
+// comment — a stored "gridless" or otherwise unrecognized string is
+// rejected there, at the string layer), and Setup's buildValidRoomGrids
+// rejects gridless and any unrecognized value before calling this too.
+// The switch's default case covers TWO things, only one of which is
+// unreachable: it IS the normal, constantly-exercised path for every
+// square room (GridShapeSquare is the zero value, so it falls to
+// default rather than needing its own case) — that part is reachable on
+// every square-family construction. Only the OTHER thing default
+// covers — an unrecognized shape value degrading to square instead of
+// panicking — is unreachable from either validated path, and exists
+// only so a caller that somehow bypasses both validators degrades
+// gracefully rather than panicking. GridShapeGridless itself has no
+// case here at all as of T2: gridless left the composition in T1 (shape
+// legality) and now has no reachable caller anywhere in this module,
+// Setup or Load.
 //
 // Hex rooms build spatial.AxialHexGrid, NOT spatial.HexGrid: the wire (and
 // Platform's pathing) speaks cube coordinates natively, and axial (Q, R,
@@ -93,8 +108,6 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 	switch shape {
 	case spatial.GridShapeHex:
 		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: float64(width), SpanHeight: float64(height)})
-	case spatial.GridShapeGridless:
-		return spatial.NewGridlessRoom(spatial.GridlessConfig{Width: float64(width), Height: float64(height)})
 	default:
 		return spatial.NewSquareGrid(spatial.SquareGridConfig{Width: float64(width), Height: float64(height)})
 	}
@@ -109,12 +122,19 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 // position like (0.5, 0.5) would otherwise persist as a distinct
 // position that behaves exactly like (0,0) — an invisible collision with
 // an unrelated, legitimately-placed cell. Applies ONLY to hex rooms:
-// square stays fractional-tolerant as today, and gridless is continuous
-// by design — call this next to every grid-deferred IsValidPosition
-// check (or, where no such check exists at a seam, next to where the
-// position first enters) so every externally supplied hex-room position
-// is covered: member/Move/Join positions, connection endpoints, and
-// occluders.
+// square stays fractional-tolerant by design (RoomInput.Grid's doc
+// comment) — call this next to every grid-deferred IsValidPosition check
+// (or, where no such check exists at a seam, next to where the position
+// first enters) so every externally supplied hex-room position is
+// covered: member positions at Setup and Load (NewEncounter,
+// LoadEncounter), Move's target (moveMember), Join's position,
+// connection endpoints (validateConnectionInputs, shared by both
+// construction seams), a TriggerReachedPosition ending's target
+// (validateEndingTriggers, #929 T3 Opus round F5), and the two
+// local/absolute bridges' own positions (Absolute, Locate, #929 T3).
+// Occluder positions do NOT go through this — they use the universal
+// isIntegralPosition instead, every family, not just hex (#929 T3 Opus
+// round F2; isIntegralPosition's own doc comment).
 func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
 	if grid.GetShape() != spatial.GridShapeHex {
 		return true
@@ -122,53 +142,431 @@ func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
 	return pos.X == math.Trunc(pos.X) && pos.Y == math.Trunc(pos.Y)
 }
 
+// isIntegralPosition reports whether pos has X and Y that are each a
+// REPRESENTABLE integer, with no grid-shape exception — the universal
+// origin-legality check (#929 T1 Opus round finding): unlike
+// isIntegralAxialPosition, a fractional SQUARE origin is also a defect,
+// not just a fractional hex one. W2's disjointness promise (RoomInput.Origin's
+// doc comment) is only sound over an INTEGER cell lattice: two 5x5 square
+// rooms anchored at (0,0) and (0.5,0.5) have disjoint integer cell sets
+// (W2 as enumerated would accept them) while their continuous footprints
+// interpenetrate roughly 81% of each room's area, and a Chebyshev-0
+// "doorway" (a connection whose two endpoints land on literally the same
+// fractional point) would still measure as adjacent.
+//
+// "Representable" is doing real work here, not just "integral" (#929 T1
+// SECOND Opus round finding): pos.X == math.Trunc(pos.X) alone passes for
+// +Inf/-Inf (Trunc of infinity is infinity) and for any float64 whose
+// magnitude exceeds int64's range, where roomAbsoluteBounds' int()
+// conversion is Go-spec implementation-defined and silently produces
+// garbage — e.g. two 5x5 rooms anchored at X=1e19 and X=2e19 both passed
+// the OLD check (both "integral" by Trunc), then both truncated to the
+// SAME implementation-defined int64 value, producing a false W2 overlap
+// verdict through the public API for rooms that were never near each
+// other, and +Inf was accepted as an anchor outright. Rejecting ±Inf/NaN
+// explicitly and requiring an EXACT round trip through int() and back
+// closes both holes — see isRepresentableInteger.
+func isIntegralPosition(pos spatial.Position) bool {
+	return isRepresentableInteger(pos.X) && isRepresentableInteger(pos.Y)
+}
+
+// isRepresentableInteger reports whether v is finite, not NaN, and an
+// EXACT integer once round-tripped through int() and back — see
+// isIntegralPosition for why "integral by Trunc" alone is not enough.
+// float64(int(v)) == v also subsumes the plain fractional check: Go's
+// float-to-int conversion truncates toward zero, so a fractional v never
+// round-trips either, without a separate math.Trunc comparison.
+func isRepresentableInteger(v float64) bool {
+	if math.IsInf(v, 0) || math.IsNaN(v) {
+		return false
+	}
+	return float64(int(v)) == v
+}
+
+// maxRoomSpan bounds RoomInput.Width/Height, and maxAnchorCoord bounds
+// |Origin.X| and |Origin.Y| — pure integer-overflow defense (#929 T2
+// second review round), not a gameplay limit: no real dungeon room is
+// ever within six orders of magnitude of 1<<30 (~1.07 billion). Without
+// this bound, roomAbsoluteBounds' interval-sum arithmetic
+// (axisBounds' local max + Origin) can silently wrap int64: two
+// same-shaped rooms with huge Width and an Origin offset chosen so their
+// TRUE (infinite-precision) footprints genuinely overlap can wrap to a
+// witness sum that reads as disjoint, producing a FALSE "no overlap" W2
+// verdict through the public API (see the mutation-evidence fixture in
+// encounter_test.go — TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint's
+// comment walks through the exact wraparound). Both constants are set to the SAME
+// value deliberately: with every Width/Height/Origin bounded by
+// maxRoomSpan/maxAnchorCoord, the largest possible interval sum
+// (maxAnchorCoord + maxRoomSpan) is ~2<<30, leaving over 30 bits of
+// headroom before int64 overflow even in the most adversarial legal
+// input.
+const (
+	maxRoomSpan    = 1 << 30
+	maxAnchorCoord = 1 << 30
+)
+
+// maxRoomCells bounds a single room's total cell count (Width*Height —
+// EQUAL for both grid families: axisBounds' span always equals the
+// dimension itself, every parity, hex included — see axisBounds' doc
+// comment), and maxFieldCells bounds the SUM of every room's cell count
+// across one field. ALLOCATION-SAFETY bounds for Atlas, distinct in
+// PURPOSE from maxRoomSpan/maxAnchorCoord above (coordinate-OVERFLOW
+// defense): Atlas materializes every cell of every room by contract
+// (Atlas's doc comment), via a make() sized exactly Width*Height per
+// room. Two individually-legal integers under maxRoomSpan (up to 1<<30
+// each) multiply to up to 1<<60 — the amplification is exactly what
+// makes a SEPARATE bound necessary: a 2^30 x 2^30 room passes
+// maxRoomSpan's per-axis check cleanly but PANICS atlasCells' make()
+// (a 2^60-capacity argument), reachable from a persisted blob a few
+// hundred bytes long — two integers, no bulk data (#929 T3 Opus round
+// F1). Enforced HERE, in room legality — the shared path both
+// NewEncounter and LoadEncounter route through — not inside Atlas
+// itself: see the comment at atlasCells' allocation site (atlas.go) for
+// why no redundant check lives there.
+const (
+	maxRoomCells  = 1 << 20
+	maxFieldCells = 1 << 22
+)
+
 // buildValidRoomGrids rejects room defects before construction (R5
-// atomicity — no observable state until Setup succeeds): empty or
-// duplicate room ID, and an unrecognized grid shape. On success, returns
-// each room's constructed Grid keyed by room ID — reused both for
-// downstream bounds checks (connections, and transitively member
-// placement via spatial's own PlaceEntity) and later in NewEncounter's
-// room-construction loop, so a room's shape is built exactly once and
-// every consumer asks the SAME grid. A hardcoded rectangle bounds check
-// would silently diverge from GridlessRoom's inclusive upper bound
-// (tools/spatial/gridless.go: IsValidPosition uses x <= Width, not
-// x < Width like Square/Hex). Reuses ErrNoField — a malformed room list
-// is as unusable as an empty one.
+// atomicity — no observable state until Setup succeeds). The first four
+// defect classes — empty or duplicate room ID, an unrecognized or
+// no-longer-supported grid shape, non-integral occluder positions in
+// EVERY family, not just hex (#929 T3 Opus round F2), and a duplicate
+// occluder position within one room (#929 hardening round D — see
+// isIntegralPosition; the occluder loop below) — are checked inside ONE
+// per-room loop, not as four separate global passes: for a GIVEN room,
+// that room's own ID defect wins before its shape defect, which wins
+// before its occluder defects, but WHICH ROOM's defect is reported first
+// depends on slice order, not defect-class priority — a field with an
+// unrecognized shape on room A and an empty ID on room B (A listed
+// first) reports A's shape defect, not B's empty ID, even though ID is
+// listed first in this prose. Every defect class AFTER those three (W1
+// onward) genuinely IS a separate pass over every room, run in the order
+// named here (docs/ideas/encounter-anchoring/design.md's Validation
+// section, Opus-round amendment): W1 (one grid family per field —
+// validateGridFamilies); room legality (non-positive OR oversized
+// Width/Height, a per-room cell count exceeding maxRoomCells, AND an
+// out-of-bounds Origin — checked per room in one pass; ONLY AFTER every
+// room clears that pass does a separate, final check compare the summed
+// cell count against maxFieldCells, so its error names the TRUE total
+// over every room, not a partial sum from wherever the loop happened to
+// stop — #929 T3 trailing round N3). A negative dimension used to panic
+// NewEncounter via a negative-capacity make() in the since-deleted
+// enumeration path; an unbounded dimension or origin can overflow int64
+// arithmetic downstream (maxRoomSpan/maxAnchorCoord); and an oversized
+// CELL COUNT — legal per-axis but catastrophic multiplied — panics
+// Atlas's own allocation instead (maxRoomCells/maxFieldCells, #929 T3
+// Opus round F1). In every one of those three cases, a panic or a silent
+// overflow is not a rejection. Then origin legality (non-representable
+// Origin, for EVERY family now, not just hex — a fractional origin
+// defeats W2's disjointness promise for ANY grid, not only hex: see
+// isIntegralPosition); and W2 (rooms never overlap in absolute space —
+// validateRoomsDisjoint). On success, returns each
+// room's constructed Grid keyed by room ID — reused both for downstream
+// bounds checks (connections, and transitively member placement via
+// spatial's own PlaceEntity) and later in NewEncounter's room-construction
+// loop, so a room's shape is built exactly once and every consumer asks the
+// SAME grid. Reuses ErrNoField — a malformed room list is as unusable as an
+// empty one.
+//
+// Error messages here carry NO verb prefix (#929 T2 second review round —
+// this and validateGridFamilies/validateRoomsDisjoint/validateConnectionInputs
+// are shared between NewEncounter and LoadEncounter, and a message baked
+// with "newencounter:" leaked into Load's own errors, e.g. "load encounter:
+// invalid encounter data: newencounter: room ... has empty id"). Each
+// caller wraps its OWN verb at the call site instead — NewEncounter wraps
+// "newencounter: %w", LoadEncounter wraps "load encounter: %w: %w" with
+// ErrInvalidData — so the SAME validator produces a message honest about
+// which seam actually rejected it.
 func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 	seenIDs := make(map[string]bool, len(rooms))
 	grids := make(map[string]spatial.Grid, len(rooms))
 	for _, r := range rooms {
 		if r.ID == "" {
-			return nil, fmt.Errorf("newencounter: room has empty id: %w", ErrNoField)
+			return nil, fmt.Errorf("room has empty id: %w", ErrNoField)
 		}
 		if seenIDs[r.ID] {
-			return nil, fmt.Errorf("newencounter: duplicate room %q: %w", r.ID, ErrNoField)
+			return nil, fmt.Errorf("duplicate room %q: %w", r.ID, ErrNoField)
 		}
 		seenIDs[r.ID] = true
 
+		// Shape legality: gridless leaves the composition as of v0.3 — the
+		// wire cannot carry a continuous room's absolute projection — so it
+		// is rejected explicitly, distinct from a genuinely unrecognized
+		// value. Square and hex are the only surviving families; W1 below
+		// compares them. This branch is reachable only from a direct Go-level
+		// caller of NewEncounter that still constructs a GridShapeGridless
+		// RoomInput (#929 T2: LoadEncounter no longer reaches this case at
+		// all — a stored "gridless" grid string is rejected earlier, at the
+		// string layer, by gridDataToShape before a RoomInput ever exists —
+		// see this switch's Load-seam counterpart in that function's doc
+		// comment).
 		switch r.Grid {
-		case spatial.GridShapeSquare, spatial.GridShapeHex, spatial.GridShapeGridless:
+		case spatial.GridShapeSquare, spatial.GridShapeHex:
+		case spatial.GridShapeGridless:
+			return nil, fmt.Errorf("room %q declares gridless grid shape, no longer supported: %w", r.ID, ErrNoField)
 		default:
-			return nil, fmt.Errorf("newencounter: room %q has unknown grid shape %d: %w", r.ID, r.Grid, ErrNoField)
+			return nil, fmt.Errorf("room %q has unknown grid shape %d: %w", r.ID, r.Grid, ErrNoField)
 		}
 		grids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
 
-		// Hex rooms require integral axial occluder positions (interim
-		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
+		// Occluders must be integral in EVERY family, not just hex (#929 T3
+		// Opus round F2 — the identical square-vs-hex asymmetry T1 already
+		// fixed for Origin: see isIntegralPosition's doc comment):
+		// AtlasRoom.Occluders must be a subset of AtlasRoom.Cells (Cells
+		// only enumerates INTEGER cells — atlasCells' doc comment), so a
+		// fractional occluder would appear in Occluders while absent from
+		// Cells, breaking the host contract "floor from Cells, blockage
+		// from Occluders". isIntegralPosition, not isIntegralAxialPosition
+		// — universal, not hex-only.
+		//
+		// This is the ONLY reason left, as of #929 hardening round C: an
+		// earlier version of this comment ALSO cited the occluder entity
+		// ID (built below) truncating fractional coordinates to int as a
+		// second, "reinforcing" reason — that claim was itself wrong in a
+		// way integrality could never have fixed: truncation makes
+		// coordinate-based IDs collide only WITHIN one room's own
+		// occluders, but the old ID scheme concatenated the ROOM ID too
+		// (occluder-<room>-<int(X)>-<int(Y)>), and room IDs are arbitrary,
+		// unrestricted strings — "r" with occluder (-5,4) and "r-" with
+		// occluder (5,4) both produced "occluder-r--5-4" regardless of
+		// integrality, a genuine CROSS-room collision on a legal field.
+		// The entity ID is index-based now (room's declaration index,
+		// occluder's index within it — see the occluder-placement loop
+		// below), which can never collide on ANY input, integral or not.
+		// Duplicate occluder positions are a room-list defect too (#929
+		// hardening round D), not something left to spatial's own voice:
+		// before the occluder entity ID went index-based (hardening round
+		// C), a duplicate coordinate happened to collide on the OLD
+		// coordinate-derived ID and got rejected as "entity ... already
+		// indexed" — spatial's vocabulary, not ours, and an accident of
+		// that ID scheme, not a real "no duplicate cells" rule (spatial
+		// freely allows two DIFFERENT entities to share a position). The
+		// index-based ID fixed the cross-room collision but also
+		// silently REMOVED that accidental duplicate-catch — two
+		// occluders at the same cell now place without error. Caught
+		// explicitly here instead: same room-list defect vocabulary
+		// every other room check uses.
+		seenOccluders := make(map[spatial.Position]bool, len(r.Occluders))
 		for _, occ := range r.Occluders {
-			if !isIntegralAxialPosition(grids[r.ID], occ) {
-				return nil, fmt.Errorf("newencounter: room %q occluder (%g,%g) is not an integral axial cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
+			if !isIntegralPosition(occ) {
+				return nil, fmt.Errorf("room %q occluder (%g,%g) is not a representable integral cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
+			}
+			if seenOccluders[occ] {
+				return nil, fmt.Errorf("room %q has duplicate occluder (%g,%g): %w", r.ID, occ.X, occ.Y, ErrNoField)
+			}
+			seenOccluders[occ] = true
+		}
+	}
+
+	// W1 — one geometry per field: every room in this field must share the
+	// same grid family. Runs only after every room has individually passed
+	// shape legality above, so only square/hex remain here.
+	if err := validateGridFamilies(rooms); err != nil {
+		return nil, err
+	}
+
+	// Room legality: non-positive OR oversized Width/Height is a defect,
+	// not a silent no-op (#929 T1 Opus round: Width:-1 previously reached
+	// buildRoomGrid and, downstream, a negative-capacity make() in the
+	// enumeration W2 used before that same round replaced it with interval
+	// math — a panic, not a rejection). The upper bound (maxRoomSpan, #929
+	// T2 second review round) is separate, newer defense: an UNBOUNDED
+	// dimension doesn't panic, but can silently overflow int64 in
+	// roomAbsoluteBounds' interval-sum arithmetic, producing a false "no
+	// overlap" W2 verdict instead of a crash — see maxRoomSpan's doc
+	// comment and TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint's
+	// mutation evidence. |Origin.X|/|Origin.Y| <= maxAnchorCoord is the
+	// SAME overflow defense applied to the other operand of that same
+	// interval-sum arithmetic, co-located here rather than in origin
+	// legality below (#929 T2 second review round: this tightens
+	// isRepresentableInteger's effective envelope — an origin like 1e19,
+	// or ±Inf, is caught HERE, by the bound, before origin legality's
+	// representability check ever runs; Inf is never <= a finite bound).
+	// Runs after W1 (a mixed-family field with a bad dimension/origin
+	// reports the family mismatch first) and before origin legality/W2
+	// (both need real, bounded dimensions and origins to reason about).
+	var totalCells int64
+	for _, r := range rooms {
+		if r.Width <= 0 || r.Height <= 0 {
+			return nil, fmt.Errorf("room %q has non-positive dimensions (%d x %d): %w", r.ID, r.Width, r.Height, ErrNoField)
+		}
+		if r.Width > maxRoomSpan || r.Height > maxRoomSpan {
+			return nil, fmt.Errorf("room %q dimensions (%d x %d) exceed max room span %d: %w", r.ID, r.Width, r.Height, maxRoomSpan, ErrNoField)
+		}
+		// Allocation safety (#929 T3 Opus round F1), separate from the span
+		// check above: Width and Height can each be legal under
+		// maxRoomSpan yet multiply to a cell count Atlas cannot safely
+		// allocate — see maxRoomCells/maxFieldCells's doc comment.
+		cellCount := int64(r.Width) * int64(r.Height)
+		if cellCount > maxRoomCells {
+			return nil, fmt.Errorf("room %q has %d cells (%d x %d), exceeding max room cells %d: %w", r.ID, cellCount, r.Width, r.Height, maxRoomCells, ErrNoField)
+		}
+		// Accumulated, not checked yet — checked once below, against the
+		// TRUE final sum over every room (#929 T3 trailing round N3): a
+		// mid-loop check here would report a partial running total on
+		// whichever room happened to tip it over, undercounting the real
+		// field total whenever rooms remained after it in the list.
+		totalCells += cellCount
+		if math.Abs(r.Origin.X) > maxAnchorCoord || math.Abs(r.Origin.Y) > maxAnchorCoord {
+			return nil, fmt.Errorf("room %q origin (%g,%g) exceeds max anchor coordinate %d: %w", r.ID, r.Origin.X, r.Origin.Y, maxAnchorCoord, ErrNoField)
+		}
+	}
+	if totalCells > maxFieldCells {
+		return nil, fmt.Errorf("field has %d total cells across all rooms, exceeding max field cells %d: %w", totalCells, maxFieldCells, ErrNoField)
+	}
+
+	// Origin legality: every room's Origin must be a representable integer
+	// (isRepresentableInteger — rejects fractional, NaN, and any magnitude
+	// past int64's usable precision; ±Inf and magnitudes past
+	// maxAnchorCoord are already caught above, in room legality). Applies
+	// for EVERY grid family (#929 T1 Opus round: originally hex-only,
+	// extended here — see isIntegralPosition for why a fractional SQUARE
+	// origin is equally a defect). Runs after W1 and room legality so a
+	// mixed-family or malformed-dimension/origin field reports THAT defect
+	// first, not a representability defect on a room whose shape, size,
+	// or anchor bound is already wrong.
+	for _, r := range rooms {
+		if !isIntegralPosition(r.Origin) {
+			return nil, fmt.Errorf("room %q origin (%g,%g) is not a representable integral cell: %w", r.ID, r.Origin.X, r.Origin.Y, ErrNoField)
+		}
+	}
+
+	// W2 — rooms never overlap: distinct rooms' absolute cell sets (local
+	// cell + Origin) must be disjoint. Zero-value origins are legal on
+	// their own; a multi-room field that leaves every Origin defaulted
+	// collides every room at (0,0) and is rejected HERE — there is no
+	// separate "origin required" check (RoomInput.Origin's doc comment).
+	if err := validateRoomsDisjoint(rooms); err != nil {
+		return nil, err
+	}
+
+	return grids, nil
+}
+
+// gridShapeName renders a GridShape for W1's mixed-family defect message.
+// Called only on values that have already passed shape legality above, so
+// square and hex are the only cases exercised in practice; the default
+// exists so an unvalidated caller still gets a readable message instead of
+// a bare integer.
+func gridShapeName(shape spatial.GridShape) string {
+	switch shape {
+	case spatial.GridShapeSquare:
+		return "square"
+	case spatial.GridShapeHex:
+		return "hex"
+	default:
+		return fmt.Sprintf("shape(%d)", shape)
+	}
+}
+
+// validateGridFamilies rejects a field whose rooms declare more than one
+// grid family (W1 — one geometry per field). Local→absolute is element-wise
+// addition (RoomInput.Origin's doc comment): a hex room's axial Q/R and a
+// square room's Cartesian X/Y cannot be added together and mean anything, so
+// a mixed field has no coherent absolute space at all — this must reject
+// before W2/W3 ever try to build one. Compares ALL pairs semantically, not
+// just adjacent-in-slice: a three-room field ordered square, hex, square
+// must still be caught even though both adjacent pairs (0,1) and (1,2)
+// already mismatch on their own — see #929 T1 mutation notes for why an
+// adjacent-only comparison cannot be distinguished from this by any fixture
+// once only two families survive shape legality (equality over a two-value
+// domain is transitive), and why full pairwise comparison is still the
+// correct, future-proof implementation.
+func validateGridFamilies(rooms []RoomInput) error {
+	for i := 0; i < len(rooms); i++ {
+		for j := i + 1; j < len(rooms); j++ {
+			if rooms[i].Grid != rooms[j].Grid {
+				return fmt.Errorf("room %q (%s) and room %q (%s) declare different grid families: %w",
+					rooms[i].ID, gridShapeName(rooms[i].Grid), rooms[j].ID, gridShapeName(rooms[j].Grid), ErrNoField)
 			}
 		}
 	}
-	return grids, nil
+	return nil
+}
+
+// axisBounds returns a room's LOCAL integer [min,max] cell bounds along one
+// axis, for a dimension `dim` (Width for Q/X, Height for R/Y) — W2's
+// building block (see roomAbsoluteBounds), replacing an earlier
+// enumeration-based approach (#929 T1 Opus round: enumerating a 1000x1000
+// room's ~1M cells to check overlap measured 1.35s/205MB per NewEncounter
+// call, and a negative dimension's negative-capacity make() there is what
+// used to panic — see buildValidRoomGrids' room-legality check). Square's
+// bound is the one-sided [0,dim) rectangle SquareGrid.IsValidPosition
+// itself checks, i.e. integer max = dim-1. Hex's bound is AxialHexGrid's
+// origin-centered half-open span (tools/spatial/hex_grid.go,
+// AxialHexGridConfig's doc comment) reduced to its integer min/max: half =
+// dim/2; min = ceil(-half); max = ceil(half)-1. Both formulas are the SAME
+// half-width/half-height arithmetic AxialHexGrid.IsValidPosition itself
+// uses, not guessed, and both hold for dim odd or even (verified against
+// roomLocalCells' enumeration, since deleted, before this replaced it —
+// e.g. dim=3: half=1.5, min=-1, max=1, three integers; dim=4: half=2.0,
+// min=-2, max=1, four integers).
+func axisBounds(shape spatial.GridShape, dim int) (min, max int) {
+	if shape == spatial.GridShapeHex {
+		half := float64(dim) / 2
+		return int(math.Ceil(-half)), int(math.Ceil(half)) - 1
+	}
+	return 0, dim - 1
+}
+
+// roomAbsoluteBounds returns a room's absolute-space bounding box: its
+// local integer cell bounds (axisBounds), offset by Origin, per axis.
+// Requires Origin to already be integral (buildValidRoomGrids' origin
+// legality runs before W2) — the int() truncation here is exact, not
+// lossy, for every Origin this is ever called with.
+func roomAbsoluteBounds(r RoomInput) (qMin, qMax, rMin, rMax int) {
+	localQMin, localQMax := axisBounds(r.Grid, r.Width)
+	localRMin, localRMax := axisBounds(r.Grid, r.Height)
+	oq, or := int(r.Origin.X), int(r.Origin.Y)
+	return localQMin + oq, localQMax + oq, localRMin + or, localRMax + or
+}
+
+// validateRoomsDisjoint rejects a field whose rooms' absolute footprints
+// share a cell (W2 — rooms never overlap): absolute = local cell + Origin,
+// element-wise (RoomInput.Origin's doc comment). Touching — adjacent cells,
+// no shared cell — is legal; this rejects ONLY a shared cell. Both grid
+// families are solid rectangles in their OWN coordinate system (a hex
+// room's Q,R span is a rhombus embedded in 2D axial space, but each axis
+// is independently an interval, exactly like square's X,Y), so two rooms'
+// footprints overlap iff BOTH axes' intervals intersect — no enumeration:
+// O(1) per room pair, not O(cells). The witness cell, when rejecting, is
+// the component-wise max of the two rooms' interval mins — the
+// lexicographically-first cell both footprints necessarily contain,
+// deterministic regardless of iteration order.
+func validateRoomsDisjoint(rooms []RoomInput) error {
+	type bounds struct{ qMin, qMax, rMin, rMax int }
+	bs := make([]bounds, len(rooms))
+	for i, r := range rooms {
+		bs[i].qMin, bs[i].qMax, bs[i].rMin, bs[i].rMax = roomAbsoluteBounds(r)
+	}
+	for i := 0; i < len(rooms); i++ {
+		for j := i + 1; j < len(rooms); j++ {
+			qOverlap := bs[i].qMin <= bs[j].qMax && bs[j].qMin <= bs[i].qMax
+			rOverlap := bs[i].rMin <= bs[j].rMax && bs[j].rMin <= bs[i].rMax
+			if qOverlap && rOverlap {
+				witness := spatial.Position{
+					X: float64(max(bs[i].qMin, bs[j].qMin)),
+					Y: float64(max(bs[i].rMin, bs[j].rMin)),
+				}
+				return fmt.Errorf("room %q and room %q overlap at absolute cell %s: %w",
+					rooms[i].ID, rooms[j].ID, witness, ErrNoField)
+			}
+		}
+	}
+	return nil
 }
 
 // validateConnectionInputs rejects connection defects before construction
 // (R5 atomicity — no observable state until Setup succeeds): empty or
-// duplicate ID, an unknown or self-referencing room, and an endpoint outside
+// duplicate ID, an unknown or self-referencing room, an endpoint outside
 // its room's bounds (per that room's own constructed Grid, from roomGrids —
-// see buildValidRoomGrids) or on an occluder position.
+// see buildValidRoomGrids) or non-integral (hex rooms only — see
+// isIntegralAxialPosition) or on an occluder position, and (W3) endpoints
+// that do not kiss — are not adjacent absolute cells once each is anchored
+// to its own room's Origin. Error messages carry NO verb prefix — shared
+// with LoadEncounter, same reasoning as buildValidRoomGrids' doc comment.
 func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Grid, connections []ConnectionInput) error {
 	roomsByID := make(map[string]RoomInput, len(rooms))
 	for _, r := range rooms {
@@ -178,47 +576,108 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 	seenIDs := make(map[string]bool, len(connections))
 	for _, c := range connections {
 		if c.ID == "" {
-			return fmt.Errorf("newencounter: connection has empty id: %w", ErrBadConnection)
+			return fmt.Errorf("connection has empty id: %w", ErrBadConnection)
 		}
 		if seenIDs[c.ID] {
-			return fmt.Errorf("newencounter: duplicate connection %q: %w", c.ID, ErrBadConnection)
+			return fmt.Errorf("duplicate connection %q: %w", c.ID, ErrBadConnection)
 		}
 		seenIDs[c.ID] = true
 
 		fromRoom, ok := roomsByID[c.From]
 		if !ok {
-			return fmt.Errorf("newencounter: connection %q references unknown room %q: %w", c.ID, c.From, ErrBadConnection)
+			return fmt.Errorf("connection %q references unknown room %q: %w", c.ID, c.From, ErrBadConnection)
 		}
 		toRoom, ok := roomsByID[c.To]
 		if !ok {
-			return fmt.Errorf("newencounter: connection %q references unknown room %q: %w", c.ID, c.To, ErrBadConnection)
+			return fmt.Errorf("connection %q references unknown room %q: %w", c.ID, c.To, ErrBadConnection)
 		}
 		if c.From == c.To {
-			return fmt.Errorf("newencounter: connection %q connects room %q to itself: %w", c.ID, c.From, ErrBadConnection)
+			return fmt.Errorf("connection %q connects room %q to itself: %w", c.ID, c.From, ErrBadConnection)
 		}
 
 		if !roomGrids[c.From].IsValidPosition(c.FromPosition) {
-			return fmt.Errorf("newencounter: connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
+			return fmt.Errorf("connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
 		if !isIntegralAxialPosition(roomGrids[c.From], c.FromPosition) {
-			return fmt.Errorf("newencounter: connection %q from-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
+			return fmt.Errorf("connection %q from-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
 		}
 		if !roomGrids[c.To].IsValidPosition(c.ToPosition) {
-			return fmt.Errorf("newencounter: connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
+			return fmt.Errorf("connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
 		if !isIntegralAxialPosition(roomGrids[c.To], c.ToPosition) {
-			return fmt.Errorf("newencounter: connection %q to-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
+			return fmt.Errorf("connection %q to-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
 		}
 
 		for _, occ := range fromRoom.Occluders {
 			if occ.X == c.FromPosition.X && occ.Y == c.FromPosition.Y {
-				return fmt.Errorf("newencounter: connection %q from-position on occluder: %w", c.ID, ErrBadConnection)
+				return fmt.Errorf("connection %q from-position on occluder: %w", c.ID, ErrBadConnection)
 			}
 		}
 		for _, occ := range toRoom.Occluders {
 			if occ.X == c.ToPosition.X && occ.Y == c.ToPosition.Y {
-				return fmt.Errorf("newencounter: connection %q to-position on occluder: %w", c.ID, ErrBadConnection)
+				return fmt.Errorf("connection %q to-position on occluder: %w", c.ID, ErrBadConnection)
 			}
+		}
+
+		// W3 — doorways kiss: once each endpoint is anchored to its own
+		// room's Origin, the two absolute cells must be adjacent — cube
+		// distance 1 for hex, Chebyshev distance 1 for square. W1
+		// guarantees both rooms in a valid field share one grid family, so
+		// either room's own Grid.Distance already implements the correct
+		// formula (AxialHexGrid: cube distance; SquareGrid: Chebyshev) —
+		// using the from-room's is an arbitrary but consistent choice, not
+		// a hand-rolled formula that could silently diverge from spatial's.
+		fromAbs := c.FromPosition.Add(fromRoom.Origin)
+		toAbs := c.ToPosition.Add(toRoom.Origin)
+		// Strict != 1, not > 1: origin legality's integrality requirement
+		// (every family) only constrains ORIGINS, not endpoints — square
+		// endpoints stay fractional-tolerant by design (RoomInput.Grid's
+		// doc comment), so a fractional FromPosition/ToPosition can land
+		// LESS than 1 unit from another room's boundary even with fully
+		// integral, disjoint room origins: e.g. a 3x3 room at Origin (0,0)
+		// and a 3x3 room at Origin (3,0), FromPosition (2.5,1) (absolute
+		// (2.5,1)), ToPosition (0,1) (absolute (3,1)) — Chebyshev distance
+		// 0.5. A `> 1` comparison would wrongly ACCEPT that as "close
+		// enough"; `!= 1` correctly rejects it. This IS pinned — see
+		// TestSetupAnchoringFractionalSquareEndpointSubUnitDistance (#929
+		// T1 second Opus round: an earlier version of this comment
+		// wrongly claimed sub-1 distances were unfalsifiable and left the
+		// strict form unpinned).
+		if dist := roomGrids[c.From].Distance(fromAbs, toAbs); dist != 1 {
+			return fmt.Errorf("connection %q endpoints %s and %s are not adjacent (distance %g): %w",
+				c.ID, fromAbs, toAbs, dist, ErrBadConnection)
+		}
+	}
+	return nil
+}
+
+// validateEndingTriggers rejects a TriggerReachedPosition ending whose Room
+// or Position is malformed: an ending that names no real room, or a
+// position that can never be reached, can never fire — "an encounter that
+// cannot end is a liveness hole" (ErrNoEnding's doc comment) applies to a
+// single dead ending exactly as it does to zero endings (#929 T3 Opus round
+// F5). TriggerExternal endings carry no spatial data and are skipped.
+//
+// Checked identically at Setup and Load — the SAME shared-validator
+// pattern established for room-list/connection validation (buildValidRoomGrids'
+// doc comment): unknown room, out-of-bounds position, or (hex only)
+// non-integral position all reject with ErrNoEnding, no verb prefix — each
+// caller wraps its own at the call site.
+func validateEndingTriggers(endings []EndingInput, roomGrids map[string]spatial.Grid) error {
+	for _, ei := range endings {
+		trigger, ok := ei.Trigger.(TriggerReachedPosition)
+		if !ok {
+			continue
+		}
+		grid, ok := roomGrids[trigger.Room]
+		if !ok {
+			return fmt.Errorf("ending %q trigger names unknown room %q: %w", ei.Key, trigger.Room, ErrNoEnding)
+		}
+		if !grid.IsValidPosition(trigger.Position) {
+			return fmt.Errorf("ending %q trigger position is out of bounds: %w", ei.Key, ErrNoEnding)
+		}
+		if !isIntegralAxialPosition(grid, trigger.Position) {
+			return fmt.Errorf("ending %q trigger position is not an integral axial cell: %w", ei.Key, ErrNoEnding)
 		}
 	}
 	return nil
@@ -226,10 +685,21 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
-// no endings, reserved ending key, empty member ID, duplicate member IDs,
-// room defects (empty/duplicate ID, unrecognized grid shape), connection
-// defects (empty/duplicate ID, unknown room, self-connection, endpoint out
-// of bounds or on an occluder), spatial placement errors.
+// no endings, empty-or-reserved ending key, duplicate ending key (#929
+// hardening round E), empty member ID, duplicate member IDs, a player
+// member carrying a Decider (design law C2 — runs in
+// the SAME member-ID loop, before room defects; Join's own doc comment
+// lists this check too, at its own seam), room defects (empty/duplicate
+// ID, unrecognized or no-longer-supported grid shape, non-integral or
+// duplicate occluder position in any family, W1 mixed grid families,
+// non-positive/oversized/over-cell-budget dimensions, an out-of-bounds
+// Origin (maxAnchorCoord) or a non-representable one, W2 overlapping
+// absolute footprints), connection defects (empty/duplicate ID, unknown
+// room, self-connection, endpoint out of bounds, non-integral (hex), or
+// on an occluder, W3 endpoints not adjacent once anchored), member
+// position integrality, ending trigger validity (unknown room or
+// unreachable position on a TriggerReachedPosition — #929 T3 Opus round
+// F5), spatial placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
@@ -244,11 +714,22 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 	}
 
-	// Check ending keys
+	// Check ending keys: empty/reserved, and duplicate (#929 hardening
+	// round E — two endings sharing a key both used to load; End scans
+	// in declaration order, so a reached_position twin declared FIRST
+	// permanently shadowed a same-keyed external ending declared after
+	// it, the exact liveness hole ErrNoEnding's doc comment already
+	// names for zero endings and unreachable triggers, now closed for
+	// this class too).
+	seenEndingKeys := make(map[string]bool, len(in.Endings))
 	for _, ending := range in.Endings {
 		if ending.Key == "" || ending.Key == "abandoned" {
 			return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 		}
+		if seenEndingKeys[ending.Key] {
+			return nil, fmt.Errorf("newencounter: duplicate ending %q: %w", ending.Key, ErrNoEnding)
+		}
+		seenEndingKeys[ending.Key] = true
 	}
 
 	// Check member IDs: empty or duplicate; validate deciders
@@ -274,14 +755,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// room's shape is built exactly once.
 	roomGrids, err := buildValidRoomGrids(in.Field.Rooms)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Check connections: unique non-empty IDs, endpoints resolve to distinct
 	// declared rooms, endpoints in bounds (per the room's own grid) and off
 	// any occluder.
 	if err = validateConnectionInputs(in.Field.Rooms, roomGrids, in.Field.Connections); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Hex rooms require integral axial member positions (interim
@@ -295,6 +776,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if grid, ok := roomGrids[mi.Room]; ok && !isIntegralAxialPosition(grid, mi.Position) {
 			return nil, fmt.Errorf("newencounter: member %q position is not an integral axial cell: %w", mi.ID, ErrBadPlacement)
 		}
+	}
+
+	// A TriggerReachedPosition ending must name a real room and reachable
+	// position (#929 T3 Opus round F5) — see validateEndingTriggers.
+	if err := validateEndingTriggers(in.Endings, roomGrids); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Connections are stored sorted by ID (C8 determinism — order is
@@ -338,7 +825,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Create all rooms, reusing each room's already-constructed Grid
 	// (roomGrids, built above) so validation and placement agree exactly.
 	roomMap := make(map[string]*spatial.BasicRoom)
-	for _, ri := range in.Field.Rooms {
+	for roomIdx, ri := range in.Field.Rooms {
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
@@ -350,9 +837,20 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		roomMap[ri.ID] = room
 
-		// Add occluders as blocking entities
-		for _, pos := range ri.Occluders {
-			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%s-%d-%d", ri.ID, int(pos.X), int(pos.Y))}
+		// Add occluders as blocking entities. ID is index-based
+		// (room's own declaration index, occluder's index within that
+		// room), not room-ID-plus-coordinate string concatenation (#929
+		// hardening round C): room IDs are arbitrary, unrestricted
+		// strings, so "r" with occluder (-5,4) and "r-" with occluder
+		// (5,4) both produced "occluder-r--5-4" under the old scheme —
+		// a genuine cross-room collision on a W1/W2/W3-legal field,
+		// rejected by the orchestrator naming the wrong room. A pair of
+		// slice indices can never collide regardless of what characters
+		// appear in either ID. This ID is purely an internal spatial
+		// bookkeeping key — never surfaced to any caller — so index
+		// stability across a single construction call is all it needs.
+		for occIdx, pos := range ri.Occluders {
+			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
 			_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
 				RoomID:   spatial.RoomID(ri.ID),
 				Entity:   occluder,
@@ -464,8 +962,6 @@ func (e *Encounter) View(in *ViewInput) ([]intel.Holding, error) {
 	return holdings, nil
 }
 
-// Members returns the current member roster in stable order.
-
 // buildMemberOutcomes snapshots every current member's placement in
 // sorted-ID order — deterministic output for outcomes and persistence
 // (map iteration here was a latent nondeterminism, T6 review M1).
@@ -491,6 +987,7 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 	return outcomes
 }
 
+// Members returns the current member roster in stable order.
 func (e *Encounter) Members() ([]Member, error) {
 	// Sort by ID for stability
 	ids := make([]MemberID, 0, len(e.members))
@@ -606,6 +1103,24 @@ func (e *Encounter) moveMember(member *Member, to spatial.Position) (spatial.Pos
 // Validation order (R5 atomicity): nil input → empty member → closed →
 // not a member → spatial move rejection. On success, refreshes sight for all members,
 // records beat, and evaluates ReachedPosition endings.
+//
+// WARNING — the Locate→Move trap (#929 hardening round B): Move is
+// SAME-ROOM ONLY. It interprets MoveInput.Position as local coordinates
+// within the member's OWN current room — never the room Locate resolved.
+// Composing Locate then Move (a natural host pattern: "where does this
+// absolute position land, then move the member there") silently
+// misplaces the member whenever LocateOutput.Room differs from the
+// member's current room: Move does not know or check where Locate's
+// answer came from, so it applies LocateOutput.Position as-is inside the
+// member's own room instead — e.g. an intended absolute target of (8,2)
+// in the OTHER room actually landing the member at local (2,2) in their
+// OWN room, no error. Callers MUST compare LocateOutput.Room against the
+// member's current room before feeding LocateOutput.Position to Move
+// (or Absolute's input, symmetrically); when they differ, use Traverse
+// instead — it is the cross-room verb. This is a doc-only ruling for
+// v0.3: the real fix is a verb input that carries the intended room and
+// rejects a mismatch, an API change filed as a follow-up rather than
+// made at the end of this wave.
 func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	// Validation order
 	if in == nil {

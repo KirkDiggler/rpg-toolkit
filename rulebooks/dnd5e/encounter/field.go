@@ -35,16 +35,19 @@ type RoomInput struct {
 	Height int
 
 	// Grid selects the room's coordinate system: GridShapeSquare (the zero
-	// value — Width x Height cells, origin (0,0), Chebyshev distance),
-	// GridShapeHex, or GridShapeGridless (continuous positions within
-	// Width x Height, origin (0,0)). The zero value keeps every
-	// pre-existing room square, so v0.1 persisted blobs without this
-	// field unmarshal to square unchanged.
+	// value — Width x Height cells, origin (0,0), Chebyshev distance) or
+	// GridShapeHex — the only two families Setup and Load accept as of
+	// #929 T1/T2. GridShapeGridless still exists as a spatial.GridShape
+	// value but is rejected outright (shape legality — buildValidRoomGrids'
+	// doc comment in encounter.go): gridless left the composition in v0.3,
+	// the wire cannot carry a continuous room's absolute projection. The
+	// zero value keeps every pre-existing room square, so v0.1 persisted
+	// blobs without this field unmarshal to square unchanged.
 	//
 	// GridShapeHex rooms speak AXIAL cube coordinates (tools/spatial's
 	// AxialHexGrid), not offset: Position.X is Q, Position.Y is R, and S
 	// = -(Q+R) is derived. Bounds are ORIGIN-CENTERED spans, unlike
-	// square/gridless — Q is valid in [-Width/2, Width/2) and R in
+	// square — Q is valid in [-Width/2, Width/2) and R in
 	// [-Height/2, Height/2), so negative coordinates are legal and
 	// expected, not a defect. Distance, adjacency, and line of sight in a
 	// hex room run true cube hex math via spatial. This is a deliberate
@@ -61,6 +64,38 @@ type RoomInput struct {
 
 	// Boundaries define walls or barriers between adjacent cells.
 	Boundaries []spatial.Boundary
+
+	// Origin is this room's dungeon-absolute anchor: local (0,0) maps to
+	// Origin in the field's shared absolute space. Local→absolute is
+	// element-wise addition (local cell + Origin) — for hex rooms this is
+	// ordinary axial cube arithmetic (axial+axial is valid cube math), not
+	// a special case. The zero value anchors a room at the absolute
+	// origin, which is legal on its own; in a multi-room field, leaving
+	// every Origin at its zero value collides every room at (0,0) and is
+	// rejected by W2 (see NewEncounter) — there is no separate
+	// "origin required" check.
+	//
+	// Origin must be an INTEGRAL cell (X and Y both whole numbers) for
+	// EVERY grid family, square included — not just hex. W2's "rooms never
+	// overlap" promise is only sound over an integer cell lattice: two 5x5
+	// SQUARE rooms anchored at (0,0) and (0.5,0.5) have disjoint integer
+	// cell sets (a naive per-cell W2 check would accept them) while their
+	// continuous footprints interpenetrate roughly 81% of each room's
+	// area — a fractional origin defeats the very disjointness this field
+	// exists to guarantee, not just a hex-specific edge case.
+	//
+	// Both construction seams — Setup and Load — validate every field
+	// against the W-laws identically (#929 T2: LoadEncounter routes
+	// through the SAME shared validators Setup uses, not a parallel
+	// reimplementation): W1 (one grid family per field), W2 (rooms never
+	// overlap in absolute space), and W3 (every connection's endpoints
+	// are adjacent absolute cells). Rules and verbs (Move, View,
+	// Traverse, ...) stay room-local — absolute coordinates only ever
+	// appear in query OUTPUTS: Atlas, Absolute, and Locate project
+	// through Origin (W4 — "projection is a read", #929 T3), never a
+	// rule's own logic. Origin also round-trips through persistence
+	// (RoomData.Origin, #929 T2).
+	Origin spatial.Position
 }
 
 // ConnectionInput describes a connection between two rooms: a bidirectional
