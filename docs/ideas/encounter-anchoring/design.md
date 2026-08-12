@@ -207,6 +207,24 @@ on to render traversal as ordinary movement.
   a projected transcript; `./scripts/verify.sh rulebooks/dnd5e/encounter`
   prints it.
 
+## Boundary with the authoring lane (triaged 2026-08-11, dungeon-builder feedback)
+
+The dungeon-builder session enumerated nine facts the Dungeon YAML
+pipeline carries and asked where each lives. None is missing from this
+wave — each has exactly one home:
+
+| Authoring fact | Home | How |
+|---|---|---|
+| odd-q `[col,row]` → axial conversion | **Authoring compiler** (rpg-api content lane) | The #928 durable clause: ONE documented ingress conversion, validated by the composition's load laws. Never composition scope. |
+| `canvas.floor_source: regions` | **Authoring compiler + future composition wave** | Region-union authoring compiles to room cell sets. Blocked on the freeform-mask enumerator below; deliberately NOT this wave (Kirk: no dungeon-builder coupling while 0.4 is unverified). |
+| Freeform floor masks and holes | **Holes: composition, TODAY** (occluder carving — a donut map is a W×H room with the middle occluded). **Full masks: future additive wave** — the W-laws, Atlas, and bridges are all defined on cell sets, so a mask room kind changes only enumeration, no law. |
+| Semantic regions | **Authoring compiler — compiled away** | Regions resolve to concrete facts the composition already accepts: cell lists for endings, positions for placements. The composition never needs region identity at runtime. |
+| Entrance / start | **Authoring compiler → host** | Authored entrance compiles to the positions the host passes at `Join`. The composition's Join surface is unchanged. |
+| Authored placements | **Already covered** | Compile to `SetupInput` members/positions — the existing setup surface. |
+| Explicit or generated envelope walls | **Authoring lane → wire, composition-invisible** (Kirk-resolved above) | Explicit segments pass through; "generated envelope" is a compiler feature that *generates* those segments. Either way the composition never sees them. |
+| Immutable per-encounter snapshot of authoring facts | **rpg-api, dual record** | An encounter persists as TWO immutable records side by side: the composition blob (rules truth — rooms, origins, occluders, connections, members) and the api's compiled dungeon content record (presentation truth — walls, region names, entrance, provenance). The api stores both at StartEncounter; neither duplicates the other. |
+| `reference-tomb.yaml` as acceptance fixture | **Authoring compiler's acceptance test**, when that wave runs | Wave-1 wiring uses the minimal direct spec per Kirk's #793 ruling; whether the old YAML dialect gets a compiler is the v0.4-revival decision. |
+
 ## Out of scope (unchanged from the issue)
 
 Room rotation; door state/locks/Interact; multi-level dungeons (the
