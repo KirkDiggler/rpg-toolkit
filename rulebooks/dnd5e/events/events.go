@@ -202,6 +202,7 @@ type RerollEvent struct {
 type DamageComponent struct {
 	Source            DamageSourceType // Category: weapon, ability, condition, etc.
 	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
+	DiceNotation      string           // Declared dice notation, retained for display only
 	OriginalDiceRolls []int            // As first rolled
 	FinalDiceRolls    []int            // After all rerolls
 	Rerolls           []RerollEvent    // History of rerolls

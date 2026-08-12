@@ -44,6 +44,7 @@ func rollAttackDamage(
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source:            source,
 			SourceRef:         sourceRef,
+			DiceNotation:      damagePool.Dice,
 			OriginalDiceRolls: rolls,
 			FinalDiceRolls:    rolls,
 			FlatBonus:         damagePool.FlatBonus,
@@ -100,7 +101,7 @@ func RollDamageProfile(ctx context.Context, profile []DamageProfileComponent, ab
 		if part.AppliesAbilityModifier {
 			flat = abilityModifier
 		}
-		out = append(out, dnd5eEvents.DamageComponent{Source: dnd5eEvents.DamageSourceWeapon, OriginalDiceRolls: rolls, FinalDiceRolls: rolls, FlatBonus: flat, DamageType: part.DamageType, IsCritical: critical})
+		out = append(out, dnd5eEvents.DamageComponent{Source: dnd5eEvents.DamageSourceWeapon, DiceNotation: part.Dice, OriginalDiceRolls: rolls, FinalDiceRolls: rolls, FlatBonus: flat, DamageType: part.DamageType, IsCritical: critical})
 	}
 	return out, nil
 }
