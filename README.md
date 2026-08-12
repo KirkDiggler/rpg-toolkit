@@ -1,349 +1,129 @@
 # RPG Toolkit
 
-A modular Go toolkit for building RPG game mechanics that showcases architectural excellence through its revolutionary event system design.
+RPG Toolkit is a collection of independently versioned Go modules for building
+RPG rules engines and game hosts. It contains reusable foundations and tools, a
+D&D 5e rulebook, and a currently D&D-5e-coupled encounter SDK. The toolkit owns
+game rules; a host owns storage, transport, and request orchestration.
 
-## The Architectural Achievement: Typed Topics Pattern
+## Start here
 
-**We solved the fundamental tension between compile-time type safety and runtime flexibility in event-driven systems.**
+Choose the shortest route for the work you are doing:
 
-### The Problem We Faced
+- **Add D&D 5e content:** read the [D&D 5e rulebook guide](rulebooks/dnd5e/README.md),
+  then follow [Add a D&D 5e monster](docs/how-to/add-a-dnd5e-monster.md).
+  A simple, supported monster is the recommended first contribution.
+- **Use a module from Go:** see [Install and use](#install-and-use), then read the
+  README or package documentation nearest that module.
+- **Change a mechanic:** read [How to add a mechanic](docs/how-to/add-a-mechanic.md)
+  and the relevant code and tests.
+- **Understand the architecture:** start with the
+  [architecture overview](docs/architecture/overview.md), then read only the
+  linked [ADRs](docs/adr/README.md) and [journey notes](docs/journey/README.md)
+  relevant to the change.
+- **Contribute to the repository:** see [Documentation and contributor
+  navigation](docs/README.md) and [How to run tests](docs/how-to/run-tests.md).
 
-In RPG mechanics, event ordering matters. Rage damage must apply after base multipliers but before resistance. Critical hits multiply before armor reduces. Traditional event systems forced us to choose:
-- **Type Safety**: Rigid, compile-time checked, but inflexible
-- **Runtime Flexibility**: Dynamic, extensible, but error-prone
+Current behavior is defined by code and tests. ADRs record decisions; journey
+notes record rationale and history. Plans and ideas may describe APIs that have
+not shipped.
 
-Our original system was a 2000+ line nightmare of runtime type assertions, magic strings, and three overlapping patterns that nobody wanted to touch.
+## Architecture and module map
 
-### The Solution: `.On(bus)` Pattern
+The repository has no root `go.mod`. It currently contains 22 Go module roots,
+each with its own dependency/version boundary and module-prefixed Git tags.
+Each module has its own test command, although some packages/modules currently
+contain no test files.
+Dependency direction is generally **Core → Mechanics / Play primitives → Tools
+→ Rulebooks**; higher layers may import lower ones, not the reverse.
 
-We discovered an elegant pattern that provides both type safety AND flexibility:
+| Layer | Current modules | Responsibility |
+|---|---|---|
+| Core | `core`, `dice`, `events`, `game`, `items`, `rpgerr` | IDs and refs, actions, dice, event chains, shared game context, base item contracts, errors |
+| Mechanics | `mechanics/conditions`, `effects`, `features`, `proficiency`, `resources`, `spells` | Rule-agnostic mechanic building blocks |
+| Play primitives | `play/clock`, `intel`, `interrupt`, `record` | Small reusable time, knowledge, interruption, and record contracts; these currently depend only on Core |
+| Tools | `tools/environments`, `selectables`, `spatial`, `spawn` | Environment graphs, weighted selection, positioning, and placement |
+| Rulebooks | `rulebooks/dnd5e` | D&D 5e content and rules, including characters, combat, monsters, conditions, and refs |
+| Current composition | `encounter` | Encounter aggregate and host-facing composition; it imports `rulebooks/dnd5e` today and is not rulebook-agnostic |
 
-```go
-// Before: Magic strings and runtime type assertions everywhere
-bus.Subscribe(combat.TopicAttack, func(e any) error {
-    attack, ok := e.(*AttackEvent)  // Runtime type assertion
-    if !ok {
-        return errors.New("wrong event type")
-    }
-    // ... handle attack
-})
+The top-level `behavior/` and `spawn/` directories contain package-design stubs,
+not additional Go modules or usable implementations. Use the module map in the
+[architecture overview](docs/architecture/overview.md) for current seams and
+clearly labelled migration plans.
 
-// After: Type-safe, IDE-friendly, beautiful
-// combat.AttackTopic defined as: var AttackTopic = events.DefineTypedTopic[AttackEvent](TopicAttack)
-attacks := combat.AttackTopic.On(bus)
-attacks.Subscribe(ctx, func(ctx context.Context, e AttackEvent) error {
-    // e is already typed correctly, no assertions needed
-    return nil
-})
-```
+## Install and use
 
-### The Magic: Staged Chain Processing
-
-For complex mechanics like rage damage, we needed ordered processing. Our ChainedTopic pattern elegantly solves this:
-
-```go
-// AttackChain defined as: var AttackChain = events.DefineChainedTopic[AttackEvent](TopicAttackChain)
-attackChain := combat.AttackChain.On(bus)
-
-// Features add modifiers at specific stages
-attackChain.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, chain Chain) (Chain, error) {
-    if character.HasFeature(features.Rage) && character.IsRaging() {
-        // Rage bonus applies at Conditions stage, after Features but before Equipment
-        chain.Add(StageConditions, features.RageModifier, func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
-            e.Damage += rageBonus
-            return e, nil
-        })
-    }
-    return chain, nil
-})
-
-// Execute chain - all modifiers apply in correct order
-result, _ := chain.Execute(ctx, attack)
-```
-
-### The Impact
-
-- **75% Code Reduction**: From 2000+ lines to ~500 lines
-- **100% Type Safety**: No runtime type assertions
-- **Zero Magic Strings**: Everything is compile-time checked
-- **93.5% Test Coverage**: Proven reliability
-- **IDE Autocomplete**: Full IntelliSense support
-
-The key insight: **"Features are dynamic, topics are static!"** This resolves the impedance mismatch between compile-time safety and runtime feature loading.
-
-[Read the full architectural journey →](docs/adr/0024-typed-topics-pattern.md)
-
-📚 **[View Complete Architecture Showcase →](docs/ARCHITECTURE_SHOWCASE.md)** - Deep dive into all our architectural achievements
-
-## Why RPG Toolkit Matters
-
-This isn't just another RPG library. It's a demonstration of solving hard architectural problems elegantly:
-
-1. **Event-Driven Without the Pain**: Our typed topics pattern makes events as easy as method calls
-2. **Data-Driven Runtime**: Load features from JSON, apply them with type safety
-3. **Clean Architecture**: Each layer has clear boundaries and responsibilities
-4. **Production Proven**: Extracted from a live Discord bot serving real games
-
-## Architecture Overview
-
-### Three-Layer Design
-
-```
-┌─────────────────────────────────────────────────┐
-│                  Game Server                    │
-│         (Orchestration, Storage, API)           │
-│              Knows: It's D&D 5e                 │
-│         Doesn't Know: What a "fighter" is       │
-└─────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────┐
-│                   Rulebooks                     │
-│            (Game Rules & Mechanics)             │
-│         Knows: What a "fighter" is              │
-│      Provides: Feature/Condition interfaces     │
-└─────────────────────────────────────────────────┘
-                         ↓
-┌─────────────────────────────────────────────────┐
-│                  RPG Toolkit                    │
-│            (Foundation & Building Blocks)       │
-│    Events, Actions, Effects, Dice, Spatial      │
-│         Makes implementing rules fun            │
-└─────────────────────────────────────────────────┘
-```
-
-### Core Modules
-
-```
-rpg-toolkit/
-├── events/         # The typed topics pattern lives here
-├── actions/        # Action[T] for anything activatable
-├── effects/        # Event-driven reactions
-├── dice/           # Lazy evaluation (rolls when needed)
-├── spatial/        # Grid systems and positioning
-├── spawn/          # Entity spawning engine
-└── rulebooks/
-    └── dnd5e/      # D&D 5e implementation
-```
-
-## Getting Started
+Install the module you need, not the repository root. For example:
 
 ```bash
-# Install the toolkit
-go get github.com/KirkDiggler/rpg-toolkit
+go get github.com/KirkDiggler/rpg-toolkit/core@latest
+go get github.com/KirkDiggler/rpg-toolkit/events@latest
+go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@latest
 ```
 
-```go
-import "github.com/KirkDiggler/rpg-toolkit/events"
+Then import the exact package:
 
-// Define topic constants - explicit and reusable
-const (
-    TopicDamage events.Topic = "combat.damage"
-    TopicHeal   events.Topic = "combat.heal"
+```go
+import (
+    "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+    "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// Define your event types
-type DamageEvent struct {
-    TargetID string
-    Amount   int
-    Type     string
+constructor, ok := monsters.ByRef(refs.Monsters.Bandit().String())
+if !ok {
+    // handle an unsupported content ref
 }
-
-// Create typed topics using constants
-var (
-    DamageTopic = events.DefineTypedTopic[DamageEvent](TopicDamage)
-    HealTopic   = events.DefineTypedTopic[HealEvent](TopicHeal)
-)
-
-// Connect and use with full type safety
-func main() {
-    bus := events.NewEventBus()
-    damage := DamageTopic.On(bus)
-
-    damage.Subscribe(ctx, func(ctx context.Context, e DamageEvent) error {
-        fmt.Printf("Target %s takes %d %s damage\n", e.TargetID, e.Amount, e.Type)
-        return nil
-    })
-}
+bandit := constructor("bandit-1")
+data := bandit.ToData() // serializable rulebook-owned data; your host stores it
 ```
 
-## The Relationship Pattern: Breakable Connections
+`@latest` asks Go for the latest published version of that module. Releases are
+tagged by module path in this repository (for example,
+`rulebooks/dnd5e/v0.72.0`), while Go source imports remain the module paths shown
+above. Do not add a local `replace` directive to committed code.
 
-Another architectural achievement: **Relationships that can be severed from either end.**
+For development, clone the repository and run commands from the module being
+changed:
 
-The challenge: Bless affects 3 targets through the caster's concentration. If the caster takes damage and fails a save, all blessed targets lose the effect. But each effect needs to track its source for proper cleanup.
-
-```go
-// Create the relationship - caster maintains concentration on multiple targets
-relationshipMgr.CreateRelationship(
-    RelationshipConcentration,
-    cleric,
-    []Condition{blessFighter, blessRogue, blessWizard},
-    nil,
-)
-
-// When cleric takes damage and fails save...
-relationshipMgr.BreakAllRelationships(cleric)
-// All three bless effects are automatically removed!
-
-// Or if cleric casts a different concentration spell...
-relationshipMgr.CreateRelationship(RelationshipConcentration, cleric, []Condition{holdPerson}, nil)
-// Previous concentration automatically breaks - all bless effects removed
+```bash
+git clone https://github.com/KirkDiggler/rpg-toolkit.git
+cd rpg-toolkit/rulebooks/dnd5e
+go test -race ./...
+golangci-lint run ./...
 ```
 
-This pattern elegantly handles:
-- **Concentration**: One caster, multiple targets, broken by damage or new spell
-- **Auras**: Effects that exist only while source is in range
-- **Channeled**: Requires continuous action from source
-- **Linked**: Conditions that must be removed together
+See [How to run tests](docs/how-to/run-tests.md) for repository-wide commands.
 
-## Real-World Example: Implementing Rage
+## Rulebook contribution model
 
-Here's how the barbarian rage feature uses our architecture:
+A rulebook contribution is not “enter a stat block and assume every sentence
+works.” It composes content from capabilities the rulebook already implements.
+When a creature clause needs new rules behavior, stop and scope that mechanic
+separately rather than silently dropping the clause or describing proposed
+behavior as shipped.
 
-```go
-// The feature subscribes to attack chains
-func (r *RageFeature) Apply(bus events.EventBus) error {
-    attacks := combat.AttackChain.On(bus)
+The monster guide makes that contract concrete:
 
-    // Add rage damage at the right stage
-    attacks.SubscribeWithChain(ctx, func(ctx context.Context, e AttackEvent, chain Chain) (Chain, error) {
-        if e.AttackerID == r.characterID && r.isActive {
-            chain.Add(StageConditions, "rage_damage", func(ctx context.Context, e AttackEvent) (AttackEvent, error) {
-                e.Damage += r.damageBonus
-                return e, nil
-            })
-        }
-        return chain, nil
-    })
+1. establish an allowed source and attribution;
+2. compare every clause with supported action, trait, targeting, and persistence
+   behavior;
+3. add the ref, factory, registry entry, and tests;
+4. prove construction and the applicable `ToData` / load / `ToData` round trip.
 
-    // Also handle damage resistance
-    damage := combat.DamageChain.On(bus)
-    damage.SubscribeWithChain(ctx, func(ctx context.Context, e DamageEvent, chain Chain) (Chain, error) {
-        if e.TargetID == r.characterID && r.isActive && isPhysical(e.Type) {
-            // Resistance applies at final stage, after all other modifiers
-            chain.Add(StageFinal, "rage_resistance", func(ctx context.Context, e DamageEvent) (DamageEvent, error) {
-                e.Amount = e.Amount / 2
-                return e, nil
-            })
-        }
-        return chain, nil
-    })
-}
-```
-
-## Key Patterns
-
-### Spells as Actions[T]
-Spells are just Actions with typed inputs - no special framework needed:
-
-```go
-// Bless is an Action with target selection
-type BlessAction struct{}
-
-func (b *BlessAction) Activate(ctx context.Context, caster Entity, input BlessInput) error {
-    // Consume spell slot
-    // Create bless effects for each target
-    // Establish concentration relationship
-    relationshipMgr.CreateRelationship(
-        RelationshipConcentration,
-        caster,
-        []Condition{bless1, bless2, bless3},
-        nil,
-    )
-}
-
-// The relationship manager handles all the complexity:
-// - Breaking concentration when damaged
-// - Removing all effects when concentration breaks
-// - Preventing multiple concentration spells
-```
-
-### Action[T] Pattern
-Anything activatable (spells, abilities, items) uses our generic Action pattern:
-
-```go
-type Action[T any] interface {
-    Activate(ctx context.Context, source, target Entity, data T) error
-    Validate(ctx context.Context, source Entity) error
-}
-```
-
-### Lazy Dice Pattern
-Dice don't roll until needed, enabling proper sequencing:
-
-```go
-blessedAttack := dice.D20(1).Plus(dice.D4(1))  // Not rolled yet
-// ... modifiers can still be added ...
-result := blessedAttack.GetValue()  // NOW it rolls
-```
-
-### Effect Pattern
-React to events without coupling:
-
-```go
-type Effect interface {
-    OnEvent(ctx context.Context, event Event) error
-    GetTriggerEvents() []string
-}
-```
-
-## Performance Metrics
-
-- **Event Processing**: < 1μs per event dispatch
-- **Chain Execution**: < 10μs for 10-stage chains
-- **Memory**: 60% less allocation than traditional observer pattern
-- **Concurrency**: Lock-free event dispatch using channels
-
-## Development Status
-
-🚀 **Production Patterns, Actively Evolving**
-
-The typed topics pattern is complete and battle-tested. We're now building out the full toolkit around these proven foundations.
-
-### Complete
-- ✅ Typed Topics event system with `.On(bus)` pattern
-- ✅ Staged chain processing for ordered modifiers
-- ✅ Dice system with lazy evaluation
-- ✅ Spatial system with multi-room orchestration
-- ✅ Spawn engine with constraint system
-- ✅ Core action and effect patterns
-
-### In Progress
-- 🔧 D&D 5e rulebook implementation
-- 🔧 Equipment and inventory systems
-- 🔧 Enhanced conditions and features
+**Continue:** [Add a D&D 5e monster →](docs/how-to/add-a-dnd5e-monster.md)
 
 ## Documentation
 
-### 🏆 Portfolio & Architecture
-- **[Architecture Showcase](docs/ARCHITECTURE_SHOWCASE.md)** - Complete portfolio of architectural achievements
-- [ADR-0024: Typed Topics Pattern](docs/adr/0024-typed-topics-pattern.md) - The breakthrough event system design
-
-### 📖 The Journey
-Want to see how we got here? Check out our design evolution:
-- [Journey: The Typed Topics Discovery](docs/journey/024-typed-topics-discovery.md)
-- [Full Journey Documentation](docs/journey/) - All design decisions and evolution
-- [Architecture Decision Records](docs/adr/) - Formal architectural decisions
-
-## Contributing
-
-This is currently a personal portfolio project, but I welcome discussions about the architecture and patterns. Feel free to open issues for architectural discussions or pattern suggestions.
+- [Documentation index](docs/README.md)
+- [Current status](docs/status.md) and [quality scorecard](docs/quality.md)
+- [Architecture overview](docs/architecture/overview.md) and
+  [data model](docs/architecture/data-model.md)
+- [Architecture Decision Records](docs/adr/README.md)
+- [Journey notes](docs/journey/README.md)
+- [Historical plans](docs/plans/) and [design ideas](docs/ideas/) — context only;
+  verify status banners and current code before following them
 
 ## License
 
-GNU General Public License v3.0 - see [LICENSE](LICENSE)
-
-### Why GPL?
-- **Open Innovation**: Architectural patterns should be shared
-- **Improvements Stay Open**: Enhancements benefit everyone
-- **Commercial Licensing Available**: Contact for proprietary use
-
-## Acknowledgments
-
-- Patterns extracted from [dnd-bot-discord](https://github.com/KirkDiggler/dnd-bot-discord)
-- Inspired by the challenge of making complex RPG mechanics maintainable
-- Special thanks to the Go community for excellent tooling
-
----
-
-*"The best architectures make hard problems look easy. Our typed topics pattern turns event-driven spaghetti into readable, type-safe beauty."*
+Code is licensed under GNU GPL v3.0; see [LICENSE](LICENSE). Third-party or
+adapted game content may also require source-specific attribution. The monster
+contribution guide defines the minimum provenance gate for new content.

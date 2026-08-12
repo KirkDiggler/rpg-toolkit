@@ -1,5 +1,11 @@
 # Monster Additions Design
 
+> **Historical implementation plan — not current contribution instructions.**
+> Parts of this roster and package shape shipped, but several described clauses
+> (including Pack Tactics effects, bite knockdown, and complete Undead Fortitude)
+> are not implemented behavior today. Preserve the plan as history; use the
+> [current monster guide](../how-to/add-a-dnd5e-monster.md) for new work.
+
 **Date:** 2025-12-15
 **Status:** Approved
 **Related Issue:** [#425 - Monster Additions: Skeleton and Boss stat blocks](https://github.com/KirkDiggler/rpg-toolkit/issues/425)

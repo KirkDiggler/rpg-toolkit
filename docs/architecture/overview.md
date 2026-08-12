@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit architecture overview
 description: Module dependency map + rules-vs-room seam (two diagrams), persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
-updated: 2026-07-04
+updated: 2026-08-10
 confidence: high — diagrams verified against go.mod files 2026-07-04; encounter boundary per ADR-0034
 ---
 
@@ -122,6 +122,8 @@ Conditions and features use a JSON variant of the same pattern:
 
 The difference: `LoadFromData` is used when the data schema is homogeneous (one struct type per entity); `LoadJSON` is used when the loader routes by ref (multiple condition/feature types serialized to the same opaque blob field).
 
+Monster reload currently composes both forms and is explicitly multi-step: `monster.LoadFromData` restores the base entity, `monster/actions.LoadMonsterActions` restores polymorphic actions, and `monstertraits.LoadMonsterConditions` routes and applies trait JSON. The encounter hydration cascade owns all three. See the [current monster README](../../rulebooks/dnd5e/monster/README.md).
+
 ## The boundary rule
 
 ```
@@ -188,6 +190,10 @@ infrastructure at the general layer.
 | events | `events/` | Core | EventBus, BusEffect, TypedTopic, ChainedTopic |
 | game | `game/` | Core | game.Context pattern for passing game state through event chains |
 | items | `items/` | Core | Item/EquippableItem/WeaponItem interfaces — base only, no implementation |
+| play/clock | `play/clock/` | Play primitive | Explicit clock state and advance contracts |
+| play/intel | `play/intel/` | Play primitive | Viewer knowledge/intelligence facts and merge contracts |
+| play/interrupt | `play/interrupt/` | Play primitive | Owned interruption windows and answer custody contracts |
+| play/record | `play/record/` | Play primitive | Append-only play record contracts |
 | mechanics/effects | `mechanics/effects/` | Mechanics | Shared effect infrastructure (tracker, behaviors) |
 | mechanics/conditions | `mechanics/conditions/` | Mechanics | Condition manager, simple/enhanced condition types |
 | mechanics/resources | `mechanics/resources/` | Mechanics | Resource pools (spell slots, ki, rage uses) |
@@ -198,7 +204,7 @@ infrastructure at the general layer.
 | tools/environments | `tools/environments/` | Tools | Environment persistence, graph generation, multi-room dungeon graph |
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |
 | tools/spawn | `tools/spawn/` | Tools | 4-phase entity spawn engine |
-| rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Full D&D 5e rules: character, combat, initiative, spells, monsters, dungeon — **plus the encounter loop** (post-split) |
+| rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Currently supported D&D 5e rules and content: character, combat, initiative, spells, monsters, dungeon — **plus the encounter loop** (post-split) |
 | encounter loop | `rulebooks/dnd5e/encounter/` *(migration pending; today `encounter/`)* | Rulebooks (D&D 5e) | The dnd5e game loop: turn loop, hydration cascade, resolver seam, verb dispatch, prompts. A **package inside** the dnd5e module in the end-state — merges in per ADR-0034 (kills the pseudo-version dance). |
 | broker | `broker/` *(new; migration pending)* | Primitive | Pub/sub fan-out + game-event timestamp authority + the `Transport` seam. Extracted from the encounter (ADR-0034). |
 | eventspine | `eventspine/` *(new; migration pending)* | Primitive | Sealed event-interface mechanism + audience routing. Extracted from the encounter; concrete dnd5e events stay with the loop (ADR-0034). |
@@ -207,10 +213,8 @@ infrastructure at the general layer.
 ## Code violations against these rules (2026-05-02)
 
 ### Rule: No local `replace` directives on main
-**Violated by four modules committed to main:**
-- `items/go.mod` — `replace github.com/KirkDiggler/rpg-toolkit/core => ../core`
+**Violated by two modules committed to main (verified 2026-08-10):**
 - `mechanics/conditions/go.mod` — 4 replace directives (`core`, `dice`, `events`, `effects`)
-- `mechanics/proficiency/go.mod` — `replace github.com/KirkDiggler/rpg-toolkit/mechanics/effects => ../effects`
 - `mechanics/spells/go.mod` — 6 replace directives (`core`, `dice`, `events`, `conditions`, `effects`, `resources`)
 
 Tracked in issue #613. These work locally but break CI because published module resolution fails when directives are present.

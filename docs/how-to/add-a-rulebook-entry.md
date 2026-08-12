@@ -1,12 +1,12 @@
 ---
 name: how to add a rulebook entry
-description: Adding static D&D 5e data — background grants, race grants, spell data, monster stats
-updated: 2026-05-02
+description: Entry points for D&D 5e grants, spells, and monster content
+updated: 2026-08-10
 ---
 
 # How to add a rulebook entry
 
-Static data (background proficiencies, race languages, spell damage tables, monster stat blocks) lives in `rulebooks/dnd5e/` data-only packages. These packages have constants and data functions, no game logic.
+D&D 5e content lives in owning packages under `rulebooks/dnd5e/`. Some entries are simple data mappings; others, especially monsters and spells, compose runtime rule behavior and persistence loaders. Verify the owning package and its tests instead of assuming an entry is data-only.
 
 ## Adding a background grant
 
@@ -50,27 +50,11 @@ Without this test, a wrong skill assignment in the switch goes undetected until 
 
 Edit `rulebooks/dnd5e/races/grants.go` — same pattern as backgrounds. Add a test in `races/grants_test.go`.
 
-## Adding a monster stat block
+## Adding a monster
 
-Monster data lives in `rulebooks/dnd5e/monster/`. Each monster type is a function that returns a `*monster.Data`:
+Use the dedicated [Add a D&D 5e monster](add-a-dnd5e-monster.md) contract. The current path is a runtime factory in `rulebooks/dnd5e/monster/monsters/`, plus a canonical ref, registry entry, focused tests, and the applicable multi-step load/round-trip proof. Factories return `*monster.Monster`, not `*monster.Data`.
 
-```go
-// monster/goblin.go
-func NewGoblin() *Data {
-    return &Data{
-        Name:       "Goblin",
-        CR:         0.25,
-        HitPoints:  7,
-        ArmorClass: 15,
-        Speed:      30,
-        // ... abilities, attacks, traits
-    }
-}
-```
-
-Add the monster to the monster registry (wherever `GetMonster(type)` is implemented).
-
-Write a test that asserts the stat block values match the Monster Manual entry. This is the source of truth — once merged, rpg-api will use these values in all encounters.
+The guide also enforces provenance: do not copy closed Monster Manual content. A clause that the current action/trait/resolution paths cannot express requires separately scoped mechanic work; do not silently omit it.
 
 ## Adding a spell
 
