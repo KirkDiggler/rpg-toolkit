@@ -71,8 +71,15 @@ func goblinPatrol() *patrol {
 	}}
 }
 
-func newCrypt() (*encounter.Encounter, error) {
-	return encounter.NewEncounter(&encounter.SetupInput{
+// dungeonSetup builds the tomb-watch crypt's SetupInput — split out from
+// newCrypt (#929 T5 trailing) so main_test.go can construct it directly:
+// the demo fixture is now smoke-tested by `go test`, not just by a human
+// running the binary. This is exactly what closes the gap the workbench's
+// own startup regression exposed (see this file's package doc comment) —
+// a future W-law addition that invalidates this fixture now fails CI
+// instead of surfacing only when someone launches the workbench by hand.
+func dungeonSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{
@@ -114,7 +121,11 @@ func newCrypt() (*encounter.Encounter, error) {
 				Room: cryptID, Position: spatial.Position{X: 11, Y: 11}}},
 			{Key: "withdrew", Trigger: encounter.TriggerExternal{}},
 		},
-	})
+	}
+}
+
+func newCrypt() (*encounter.Encounter, error) {
+	return encounter.NewEncounter(dungeonSetup())
 }
 
 // roomByID finds a room's data by ID — nil if the field has no such
