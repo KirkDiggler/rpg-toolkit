@@ -4,8 +4,10 @@
 package encounter_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -39,19 +41,26 @@ type DataTestSuite struct {
 // endpoints are each room's own boundary cell (an interior cell can never
 // kiss anything) — FromPosition (3,0) is crypt's max-Q edge, ToPosition
 // (-3,0) is hall's min-Q edge, still NEGATIVE-axial on purpose (the
-// ordinary case for an origin-centered hex room). hall's Origin (7,0)
-// anchors it immediately east of crypt: absolute (4,0) and (3,0) are
-// cube-distance 1 (W3), and hall's absolute Q span ([4,9]) shares no Q
-// value with crypt's ([-4,3]), so the rooms stay disjoint (W2).
+// ordinary case for an origin-centered hex room).
+//
+// #929 T2: both Origins shifted by (-10,0) from the T1 follow-up's
+// (crypt (0,0), hall (7,0)) to (crypt (-10,0), hall (-3,0)) — a uniform
+// translation of the whole field preserves every W2/W3 relationship
+// (absolute (4,0)/(-6,0) are still cube-distance 1; the rooms' absolute
+// Q spans [-14,-7] and [-6,-1] still share no Q value) while making BOTH
+// origins negative-axial, so the rich golden's bytes are the wire-shape
+// proof for negative anchors this wave's persistence work needs (a
+// declared origin round-trips as an explicit, signed value, not just a
+// non-negative one).
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
+				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 0},
 					Occluders:  []spatial.Position{{X: 1, Y: 2}},
 					Boundaries: []spatial.Boundary{{From: spatial.Position{X: -2, Y: -2}, To: spatial.Position{X: -2, Y: -1}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
-				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 7, Y: 0}},
+				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -3, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "door1", From: "crypt", To: "hall",
@@ -74,10 +83,10 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	// Note: hall's Origin (7,0) is NOT reflected below — RoomData does not
-	// persist Origin yet (Task 2's scope; this task validates it at Setup
-	// only). T2 will regenerate this golden again once RoomData gains it.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":"hex"}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":0,"y":0}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	// Exact-string pin: every room now carries "origin" (#929 T2), always
+	// present (no omitempty — RoomData's doc comment) — crypt's and hall's
+	// are both negative-axial, the wire-shape proof this golden exists for.
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":0}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":0}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":0,"y":0}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -172,18 +181,24 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 // is never exercised on genuinely unsorted input elsewhere in this suite.
 // This hand-authors an EncounterData directly, bypassing NewEncounter/ToData
 // entirely, with connections declared out of ID order.
+// #929 T2: r2's Origin (5,0) anchors it immediately east of r1 (5x5 each),
+// matching TestConnectionsSurviveReload's geometry exactly — all three
+// doors sit on r1's east edge (x=4) and r2's west edge (local x=0), one
+// per row, so every one independently satisfies W3 under this SAME shared
+// origin (this test only cares about sort order, not which door owns
+// which row).
 func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Rooms: []encounter.RoomData{
-				{ID: "r1", Width: 5, Height: 5},
-				{ID: "r2", Width: 5, Height: 5},
+				{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "r2", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 5, Y: 0}},
 			},
 			// Hand-authored out of ID order — NOT produced by ToData.
 			Connections: []encounter.ConnectionData{
-				{ID: "z-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 0, Y: 0}, ToPosition: &encounter.PositionData{X: 1, Y: 1}},
-				{ID: "a-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 2, Y: 0}, ToPosition: &encounter.PositionData{X: 3, Y: 1}},
-				{ID: "m-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 0}, ToPosition: &encounter.PositionData{X: 0, Y: 4}},
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 1}, ToPosition: &encounter.PositionData{X: 0, Y: 1}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 2}, ToPosition: &encounter.PositionData{X: 0, Y: 2}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 3}, ToPosition: &encounter.PositionData{X: 0, Y: 3}},
 			},
 		},
 		Members: []encounter.MemberData{
@@ -754,7 +769,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		// renamed tag fails this where a decoded comparison would not.
 		// (log carries the opening beat: a fresh encounter is born with
 		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"]}`
+		expectedJSON := `{"clock":{},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"]}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -808,7 +823,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// Exact-string pin of the closed shape: outcome present with the
 		// fired ending and final member placements; the story carries
 		// both beats (opening + the closing move).
-		expectedJSON := `{"outcome":{"ending":"done","members":[{"id":"p1","room":"room1","position":{"x":0,"y":0}}]},"clock":{},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"]}`
+		expectedJSON := `{"outcome":{"ending":"done","members":[{"id":"p1","room":"room1","position":{"x":0,"y":0}}]},"clock":{},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"]}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -860,6 +875,12 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 		if len(data1.Endings) > 0 {
 			data1.Endings[0].Key = "mutated"
 		}
+		// #929 T2: Origin is a pointer (RoomData's doc comment — presence
+		// itself is meaningful, so it can't be a value type) — mutating
+		// THROUGH it must not reach a later call's own fresh pointer.
+		s.Require().NotEmpty(data1.Field.Rooms)
+		s.Require().NotNil(data1.Field.Rooms[0].Origin)
+		data1.Field.Rooms[0].Origin.X = 999
 
 		// Get data again
 		data2 := enc.ToData()
@@ -868,6 +889,9 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 		s.NotEqual("mutated", data2.Members[0].ID)
 		s.NotEqual("mutated", data2.EverMembers[0])
 		s.NotEqual("mutated", data2.Endings[0].Key)
+		s.Require().NotNil(data2.Field.Rooms[0].Origin)
+		s.NotEqual(999.0, data2.Field.Rooms[0].Origin.X,
+			"ToData must return a FRESH Origin pointer each call, not alias the same PositionData across calls")
 	})
 }
 
@@ -1183,7 +1207,9 @@ func (d *testDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 
 func validEncounterData() encounter.EncounterData {
 	return encounter.EncounterData{
-		Field: encounter.FieldData{Rooms: []encounter.RoomData{{ID: "r1", Width: 5, Height: 5}}},
+		Field: encounter.FieldData{Rooms: []encounter.RoomData{
+			{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
+		}},
 		Members: []encounter.MemberData{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
 		},
@@ -1196,25 +1222,33 @@ func validEncounterData() encounter.EncounterData {
 // DELIBERATELY mismatched room (r1 resized to 10x4, r2 added at 3x9) and one
 // fully valid connection between them — the base for the connection defect
 // rows below (one-defect discipline: each row breaks exactly one thing about
-// this otherwise-valid connection). FromPosition{7,1} is valid ONLY in r1
-// and ToPosition{1,7} valid ONLY in r2: same-sized rooms and equal From/To
+// this otherwise-valid connection). FromPosition{9,1} is valid ONLY in r1
+// and ToPosition{0,7} valid ONLY in r2: same-sized rooms and equal From/To
 // positions would make a check that validates an endpoint against the WRONG
 // room (or a From/To transposition in convertConnectionDataToConnectionInput)
 // invisible. r1 carries an occluder at (2,2) and r2 an occluder at (1,3), so
 // both the from- and to-side "endpoint on occluder" rows have something to hit.
+//
+// #929 T2: mirrors encounter_test.go's validConnSetup exactly (its own
+// comment explains the geometry in full) — FromPosition sits on r1's own
+// right-edge boundary (an interior cell can never kiss anything), r2's
+// Origin (10,-6) anchors it so absolute FromPosition (9,1) and absolute
+// ToPosition (10,7... local(0,7)+Origin(10,-6)=(10,1)) are Chebyshev-
+// adjacent (W3), while r1's absolute footprint (x:[0,9],y:[0,3]) and r2's
+// (x:[10,12],y:[-6,2]) share no x value at all, so they stay disjoint (W2).
 func validEncounterDataWithConnection() encounter.EncounterData {
 	d := validEncounterData()
 	d.Field.Rooms[0].Width = 10
 	d.Field.Rooms[0].Height = 4
 	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
 	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{
-		ID: "r2", Width: 3, Height: 9,
+		ID: "r2", Width: 3, Height: 9, Origin: &encounter.PositionData{X: 10, Y: -6},
 		Occluders: []encounter.PositionData{{X: 1, Y: 3}},
 	})
 	d.Field.Connections = []encounter.ConnectionData{
 		{ID: "c1", From: "r1", To: "r2",
-			FromPosition: &encounter.PositionData{X: 7, Y: 1},
-			ToPosition:   &encounter.PositionData{X: 1, Y: 7}},
+			FromPosition: &encounter.PositionData{X: 9, Y: 1},
+			ToPosition:   &encounter.PositionData{X: 0, Y: 7}},
 	}
 	return d
 }
@@ -1249,8 +1283,14 @@ func (s *DataTestSuite) TestLoadRejections() {
 			d.Members[0].Position = encounter.PositionData{X: 99, Y: 99}
 		}, "out of bounds", nil},
 		{"connection missing room", func(d *encounter.EncounterData) {
-			d.Field.Connections = []encounter.ConnectionData{{ID: "c1", From: "r1", To: "nowhere"}}
-		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+			// FromPosition/ToPosition present (any value) so the ONLY
+			// defect this fixture carries is the unknown "to" room — #929
+			// T2: endpoint presence is now checked during conversion,
+			// before room-existence, so a nil endpoint here would mask
+			// this row's own target defect behind "missing from_position".
+			d.Field.Connections = []encounter.ConnectionData{{ID: "c1", From: "r1", To: "nowhere",
+				FromPosition: &encounter.PositionData{X: 1, Y: 1}, ToPosition: &encounter.PositionData{X: 1, Y: 1}}}
+		}, `unknown room "nowhere"`, encounter.ErrBadConnection},
 		{"connection empty id", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].ID = ""
@@ -1262,11 +1302,11 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"connection unknown from room", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].From = "nowhere"
-		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+		}, `unknown room "nowhere"`, encounter.ErrBadConnection},
 		{"connection unknown to room", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].To = "nowhere"
-		}, `missing room "nowhere"`, encounter.ErrBadConnection},
+		}, `unknown room "nowhere"`, encounter.ErrBadConnection},
 		{"connection self-connection", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].To = "r1"
@@ -1336,8 +1376,8 @@ func (s *DataTestSuite) TestLoadRejections() {
 	_, err := encounter.LoadEncounter(validEncounterData(), nil)
 	s.Require().NoError(err, "the valid base fixture must load")
 
-	// The valid CONNECTION base must also load. Since FromPosition{7,1} is
-	// valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive
+	// The valid CONNECTION base must also load. Since FromPosition{9,1} is
+	// valid ONLY in r1 and ToPosition{0,7} valid ONLY in r2, this positive
 	// control pins that each endpoint is checked against ITS OWN room (a
 	// check wired to the wrong room would reject this valid connection),
 	// and that endpoints survive Load unswapped (a From/To transposition
@@ -1348,9 +1388,9 @@ func (s *DataTestSuite) TestLoadRejections() {
 	s.Require().NoError(err, "the valid connection base fixture must load")
 	connData := connEnc.ToData()
 	s.Require().Len(connData.Field.Connections, 1)
-	s.Equal(&encounter.PositionData{X: 7, Y: 1}, connData.Field.Connections[0].FromPosition,
+	s.Equal(&encounter.PositionData{X: 9, Y: 1}, connData.Field.Connections[0].FromPosition,
 		"from-position must survive Load unswapped")
-	s.Equal(&encounter.PositionData{X: 1, Y: 7}, connData.Field.Connections[0].ToPosition,
+	s.Equal(&encounter.PositionData{X: 0, Y: 7}, connData.Field.Connections[0].ToPosition,
 		"to-position must survive Load unswapped")
 }
 
@@ -1358,12 +1398,18 @@ func (s *DataTestSuite) TestLoadRejections() {
 // coordinates 0..3 x 0..2) and one connection — the Load-seam counterpart to
 // encounter_test.go's connBoundsSetup, pinning the square grid's strictly-
 // less-than bounds semantics at Load independent of any cross-room concern.
+//
+// #929 T2: r2's Origin (4,3) mirrors connBoundsSetup exactly — its own
+// comment explains the diagonal-kiss/disjointness geometry (positive
+// control FromPosition (3,2), r1's own bottom-right corner, kisses
+// ToPosition (0,0)+Origin(4,3)=(4,3) at Chebyshev distance 1; the rooms'
+// absolute footprints x:[0,3] vs x:[4,7] share no x value).
 func connBoundsData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
 			Rooms: []encounter.RoomData{
-				{ID: "r1", Width: 4, Height: 3},
-				{ID: "r2", Width: 4, Height: 3},
+				{ID: "r1", Width: 4, Height: 3, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "r2", Width: 4, Height: 3, Origin: &encounter.PositionData{X: 4, Y: 3}},
 			},
 			Connections: []encounter.ConnectionData{
 				{ID: "c1", From: "r1", To: "r2",
@@ -1467,7 +1513,7 @@ func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
 			Rooms: []encounter.RoomData{
-				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeHex},
+				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
 		},
 		Members: []encounter.MemberData{
@@ -1513,21 +1559,26 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 
 // TestHexConnectionEndpointNegativeAxialLoad is the Load-seam counterpart
 // to encounter_test.go's TestHexConnectionEndpointNegativeAxial.
+// #929 T2: mirrors encounter_test.go's TestHexConnectionEndpointNegativeAxial
+// exactly (its own comment explains the geometry) — both rooms are hex now,
+// not square+hex (W1 forbids mixing families in one field — see
+// TestSetupAnchoring's W1 row on the Setup side). hex-b's negative-axial
+// corner (-3,-3) is still what gives this test its name.
 func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Rooms: []encounter.RoomData{
-				{ID: "square-room", Width: 10, Height: 10},
-				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridTypeHex},
+				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 7}},
 			},
 			Connections: []encounter.ConnectionData{{
-				ID: "gate", From: "square-room", To: "hex-room",
-				FromPosition: &encounter.PositionData{X: 9, Y: 9},
-				ToPosition:   &encounter.PositionData{X: -2, Y: -2},
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: &encounter.PositionData{X: 4, Y: 4},
+				ToPosition:   &encounter.PositionData{X: -3, Y: -3},
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: encounter.PositionData{X: 1, Y: 1}},
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -1538,20 +1589,21 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 
 // validHexAxialData returns a fresh EncounterData with two hex rooms
 // joined by one connection, a member, and an occluder — the Load-seam
-// counterpart to encounter_test.go's validHexAxialSetup. Every position
-// is integral axial, including a negative one (gate.ToPosition).
+// counterpart to encounter_test.go's validHexAxialSetup, mirrored exactly
+// (its own comment explains the geometry). Every position is integral
+// axial, including a negative one (gate.ToPosition).
 func validHexAxialData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
 			Rooms: []encounter.RoomData{
-				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex,
+				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0},
 					Occluders: []encounter.PositionData{{X: 2, Y: 2}}},
-				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 1}},
 			},
 			Connections: []encounter.ConnectionData{{
 				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: &encounter.PositionData{X: 1, Y: 1},
-				ToPosition:   &encounter.PositionData{X: -1, Y: -1},
+				FromPosition: &encounter.PositionData{X: 3, Y: 0},
+				ToPosition:   &encounter.PositionData{X: -4, Y: -1},
 			}},
 		},
 		Members: []encounter.MemberData{
@@ -1602,6 +1654,240 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
 }
 
+// ============================================================
+// #929 T2 — Load-side W-laws: the SAME laws encounter_test.go's
+// TestSetupAnchoring pins at Setup, now pinned at Load too (unified via
+// buildValidRoomGrids/validateConnectionInputs — LoadEncounter's doc
+// comment in data.go).
+// ============================================================
+
+// validAnchoredHexData mirrors encounter_test.go's validAnchoredHexSetup
+// exactly (its own comment explains the geometry in full: hex-big 10x4 at
+// the zero-value Origin, hex-small 3x9 at the NEGATIVE-axial Origin
+// (6,-5), an off-axis kissing doorway, disjoint absolute Q spans).
+func validAnchoredHexData() encounter.EncounterData {
+	return encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 6, Y: -5}},
+			},
+			Connections: []encounter.ConnectionData{{
+				ID: "gate", From: "hex-big", To: "hex-small",
+				FromPosition: &encounter.PositionData{X: 4, Y: 0},
+				ToPosition:   &encounter.PositionData{X: -1, Y: 4},
+			}},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: encounter.PositionData{X: 0, Y: 0}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+}
+
+// TestLoadAnchoring pins the Load-seam one-defect rows for W1 (mixed grid
+// families), origin legality (non-integral, infinite, and non-representable
+// — isRepresentableInteger, encounter.go), W5 (nil origin presence, naming
+// the room), room legality (non-positive dimensions, both axes), and W3
+// (endpoints that don't kiss) — each breaking exactly ONE thing about
+// validAnchoredHexData's otherwise-valid base.
+func (s *DataTestSuite) TestLoadAnchoring() {
+	cases := []struct {
+		name     string
+		mutate   func(d *encounter.EncounterData)
+		alsoErr  error
+		fragment string
+	}{
+		{"W1: mixed grid families", func(d *encounter.EncounterData) {
+			d.Field.Rooms[1].Grid = ""
+		}, encounter.ErrNoField, "declare different grid families"},
+		{"origin legality: fractional hex origin", func(d *encounter.EncounterData) {
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 6.5, Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"origin legality: infinite origin", func(d *encounter.EncounterData) {
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: math.Inf(1), Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"origin legality: origin exceeds int64 precision (1e19)", func(d *encounter.EncounterData) {
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 1e19, Y: -5}
+		}, encounter.ErrNoField, "not a representable integral cell"},
+		{"W5: nil origin — absent, not a declared zero", func(d *encounter.EncounterData) {
+			d.Field.Rooms[1].Origin = nil
+		}, encounter.ErrNoField, `room "hex-small" missing origin`},
+		{"room legality: zero width", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Width = 0
+		}, encounter.ErrNoField, "non-positive dimensions"},
+		{"room legality: zero height", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Height = 0
+		}, encounter.ErrNoField, "non-positive dimensions"},
+		{"room legality: negative width", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Width = -1
+		}, encounter.ErrNoField, "non-positive dimensions"},
+		{"room legality: negative height", func(d *encounter.EncounterData) {
+			d.Field.Rooms[0].Height = -1
+		}, encounter.ErrNoField, "non-positive dimensions"},
+		{"W3: endpoints do not kiss", func(d *encounter.EncounterData) {
+			// (1,4) is still a legal LOCAL cell in hex-small (max Q, max R)
+			// — this must fail on adjacency, not on the earlier bounds check.
+			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 1, Y: 4}
+		}, encounter.ErrBadConnection, "not adjacent"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			data := validAnchoredHexData()
+			tc.mutate(&data)
+			_, err := encounter.LoadEncounter(data, nil)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
+			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must load — the one-defect discipline only
+	// means something if zero defects pass.
+	_, err := encounter.LoadEncounter(validAnchoredHexData(), nil)
+	s.Require().NoError(err, "the valid anchored base fixture must load")
+}
+
+// TestLoadAnchoringOverlapNonAdjacentPair is the Load-seam counterpart to
+// encounter_test.go's TestSetupAnchoringOverlapNonAdjacentPair — the TRUE
+// one-defect W2 row (no connection involved at all): three square rooms,
+// only the non-adjacent-in-slice (r-a, r-c) pair overlaps, witness (2,2).
+// See that test's comment for why this specifically kills a W2
+// adjacent-pairs-only mutant where W1's equivalent does not.
+func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "r-a", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
+				{ID: "r-b", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 20, Y: 20}},
+				{ID: "r-c", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 2, Y: 2}},
+			},
+		},
+		Members: []encounter.MemberData{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r-a", Position: encounter.PositionData{X: 1, Y: 1}},
+		},
+		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+		EverMembers: []encounter.MemberID{"p1"},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), `room "r-a" and room "r-c" overlap at absolute cell (2, 2)`)
+}
+
+// TestOriginRoundTripByteIdentical pins W5's round-trip law: origins
+// survive ToData -> LoadEncounter -> ToData byte-identically, including a
+// NEGATIVE-axial one (hex-small's Origin, validAnchoredHexData) — not just
+// structurally equal but literally the same bytes, since a byte-level pin
+// catches a tag or field-order regression a decoded-struct comparison
+// would not.
+func (s *DataTestSuite) TestOriginRoundTripByteIdentical() {
+	enc1, err := encounter.LoadEncounter(validAnchoredHexData(), nil)
+	s.Require().NoError(err)
+	data1 := enc1.ToData()
+	bs1, err := json.Marshal(data1.Field)
+	s.Require().NoError(err)
+
+	enc2, err := encounter.LoadEncounter(data1, nil)
+	s.Require().NoError(err)
+	data2 := enc2.ToData()
+	bs2, err := json.Marshal(data2.Field)
+	s.Require().NoError(err)
+
+	s.Equal(string(bs1), string(bs2), "origins (including hex-small's negative-axial one) must survive a second round trip byte-identically")
+	s.Contains(string(bs1), `"origin":{"x":6,"y":-5}`, "the negative-axial origin must be present, not truncated or dropped")
+}
+
+// TestReloadedAnchoredEncounterAcceptsSameTraverse pins behavior-identity
+// after reload for an anchored multi-room encounter (#929 T2 round-trip
+// requirement): a member traverses a kissing doorway on the ORIGINAL
+// encounter; a FRESH member placed at the same threshold on the RELOADED
+// encounter traverses the same connection and lands in the same room at
+// the same local position — the reload changed nothing observable about
+// how the field behaves, even though the field now carries persisted
+// Origins it didn't in v0.2.
+func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "hex-big", To: "hex-small",
+				FromPosition: spatial.Position{X: 4, Y: 0},
+				ToPosition:   spatial.Position{X: -1, Y: 4},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: spatial.Position{X: 4, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	enc1, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	out1, err := enc1.Traverse(&encounter.TraverseInput{Member: "p1", Connection: "gate"})
+	s.Require().NoError(err, "the original encounter accepts the traverse")
+	s.Equal("hex-small", out1.Traversed.ToRoom)
+	s.Equal(spatial.Position{X: -1, Y: 4}, out1.Traversed.To)
+
+	// Reload from BEFORE the traverse (so a fresh member can repeat it) —
+	// the round-trip law under test is "the FIELD behaves identically",
+	// not "the same member can traverse twice".
+	dataPreTraverse := enc1.ToData()
+	// p1 already moved on enc1; roll dataPreTraverse's member back to the
+	// threshold so the reloaded encounter's own member reenacts the same
+	// traverse enc1 just proved.
+	for i, m := range dataPreTraverse.Members {
+		if m.ID == "p1" {
+			dataPreTraverse.Members[i].Room = "hex-big"
+			dataPreTraverse.Members[i].Position = encounter.PositionData{X: 4, Y: 0}
+		}
+	}
+	enc2, err := encounter.LoadEncounter(dataPreTraverse, nil)
+	s.Require().NoError(err)
+
+	out2, err := enc2.Traverse(&encounter.TraverseInput{Member: "p1", Connection: "gate"})
+	s.Require().NoError(err, "the reloaded encounter accepts the SAME traverse")
+	s.Equal(out1.Traversed.ToRoom, out2.Traversed.ToRoom)
+	s.Equal(out1.Traversed.To, out2.Traversed.To)
+}
+
+// TestLoadRejectsHostileNonKissingBlob pins W3 against a HAND-EDITED wire
+// blob, not a Go-struct mutation (the hostile-blob standard, #929 T2
+// mutation evidence): marshal a genuinely valid encounter, edit the JSON
+// BYTES directly to move one connection endpoint off its kissing cell, and
+// confirm LoadEncounter still rejects it — proving the check runs against
+// whatever bytes actually arrive over the wire, not just against values a
+// well-behaved Go caller would ever construct.
+func (s *DataTestSuite) TestLoadRejectsHostileNonKissingBlob() {
+	valid := validAnchoredHexData()
+	bs, err := json.Marshal(valid)
+	s.Require().NoError(err)
+
+	// gate.ToPosition is {"x":-1,"y":4} in the valid blob (hex-small's own
+	// max-Q/max-R corner, kissing hex-big's (4,0)). Move it to hex-small's
+	// OTHER corner (1,4) — still a legal LOCAL cell, but cube distance 2
+	// from the absolute anchor, same defect TestLoadAnchoring's "W3" row
+	// pins via a struct mutation — this pins it via raw bytes instead.
+	hostile := bytes.Replace(bs, []byte(`"to_position":{"x":-1,"y":4}`), []byte(`"to_position":{"x":1,"y":4}`), 1)
+	s.Require().NotEqual(bs, hostile, "the byte replacement must actually have matched something")
+
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(hostile, &data))
+
+	_, err = encounter.LoadEncounter(data, nil)
+	s.Require().Error(err, "a hand-edited blob with a non-kissing doorway must reject")
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Require().Contains(err.Error(), "not adjacent")
+}
+
 // connGridlessRoomData returns a fresh EncounterData with one 4x3 gridless
 // room and a member at pos — the Load-seam counterpart to
 // encounter_test.go's TestGridlessRoomInclusiveBounds.
@@ -1609,7 +1895,7 @@ func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
 			Rooms: []encounter.RoomData{
-				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeGridless},
+				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeGridless, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
 		},
 		Members: []encounter.MemberData{
@@ -1620,21 +1906,28 @@ func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
 	}
 }
 
-// TestGridlessRoomInclusiveBoundsLoad is the Load-seam counterpart to
-// encounter_test.go's TestGridlessRoomInclusiveBounds — see that test's
-// comment for why this is the sharpest available proof that bounds checks
-// ask the room's own constructed grid rather than a hardcoded rectangle.
+// TestGridlessRoomInclusiveBoundsLoad was the Load-seam counterpart to
+// encounter_test.go's TestGridlessRoomInclusiveBounds, pinning gridless's
+// old inclusive-bounds semantics. #929 T2 (mirroring the Setup-side
+// rewrite): a stored "gridless" grid string no longer loads at all —
+// gridDataToShape's doc comment — so this now pins THAT rejection instead,
+// regardless of the member position within it.
 func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
-	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+	s.Run("gridless grid string rejected regardless of member position", func() {
 		_, err := encounter.LoadEncounter(connGridlessRoomData(encounter.PositionData{X: 4, Y: 0}), nil)
-		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+		s.Require().Error(err, `a stored "gridless" grid string no longer loads`)
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Require().Contains(err.Error(), "unknown grid shape",
+			"the check that fired must be shape resolution, not a downstream placement check")
 	})
 
-	s.Run("position negative is still rejected", func() {
+	s.Run("still rejected for a position that would also be out of bounds", func() {
 		_, err := encounter.LoadEncounter(connGridlessRoomData(encounter.PositionData{X: -1, Y: 0}), nil)
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
-		s.Require().Contains(err.Error(), "out of bounds")
+		s.Require().ErrorIs(err, encounter.ErrNoField,
+			"shape resolution fires before any placement check ever sees this position")
 	})
 }
 

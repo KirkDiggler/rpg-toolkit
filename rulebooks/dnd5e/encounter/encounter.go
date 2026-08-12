@@ -75,16 +75,18 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 }
 
 // buildRoomGrid constructs the spatial Grid for a room's declared shape.
-// From Setup (buildValidRoomGrids), only GridShapeSquare and GridShapeHex
-// ever reach here — shape legality rejects gridless and any unrecognized
-// value before this is called, so the GridShapeGridless case and the
-// switch's default (square, for an unrecognized value) are both
-// unreachable from that path. Neither is dead code overall, though:
-// LoadEncounter (data.go) still calls this directly and still routes a
-// stored "gridless" grid string through the GridShapeGridless case — T2
-// removes that branch once Load-side rejection of gridless lands alongside
-// Origin persistence. Until then this stays a three-shape switch, one
-// path reachable only from Load.
+// Only GridShapeSquare and GridShapeHex ever reach here now (#929 T2):
+// LoadEncounter converts its wire-only grid string to a GridShape via
+// gridDataToShape BEFORE this is ever called (gridDataToShape's doc
+// comment — a stored "gridless" or otherwise unrecognized string is
+// rejected there, at the string layer), and Setup's buildValidRoomGrids
+// rejects gridless and any unrecognized value before calling this too —
+// so the switch's default (square, for an unrecognized value) is
+// unreachable from EITHER path and exists only so a caller that somehow
+// bypasses both validators degrades to square rather than panicking.
+// GridShapeGridless itself has no case here at all as of T2: gridless
+// left the composition in T1 (shape legality) and now has no reachable
+// caller anywhere in this module, Setup or Load.
 //
 // Hex rooms build spatial.AxialHexGrid, NOT spatial.HexGrid: the wire (and
 // Platform's pathing) speaks cube coordinates natively, and axial (Q, R,
@@ -99,8 +101,6 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 	switch shape {
 	case spatial.GridShapeHex:
 		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: float64(width), SpanHeight: float64(height)})
-	case spatial.GridShapeGridless:
-		return spatial.NewGridlessRoom(spatial.GridlessConfig{Width: float64(width), Height: float64(height)})
 	default:
 		return spatial.NewSquareGrid(spatial.SquareGridConfig{Width: float64(width), Height: float64(height)})
 	}
@@ -203,11 +203,13 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		// wire cannot carry a continuous room's absolute projection — so it
 		// is rejected explicitly, distinct from a genuinely unrecognized
 		// value. Square and hex are the only surviving families; W1 below
-		// compares them. This branch is unreachable from Setup as of this
-		// wave (every room here has already survived it), but LoadEncounter
-		// (data.go) still routes a stored "gridless" grid string through
-		// buildRoomGrid's own gridless case — Load-side rejection of it is
-		// T2's job, alongside persisting Origin.
+		// compares them. This branch is reachable only from a direct Go-level
+		// caller of NewEncounter that still constructs a GridShapeGridless
+		// RoomInput (#929 T2: LoadEncounter no longer reaches this case at
+		// all — a stored "gridless" grid string is rejected earlier, at the
+		// string layer, by gridDataToShape before a RoomInput ever exists —
+		// see this switch's Load-seam counterpart in that function's doc
+		// comment).
 		switch r.Grid {
 		case spatial.GridShapeSquare, spatial.GridShapeHex:
 		case spatial.GridShapeGridless:

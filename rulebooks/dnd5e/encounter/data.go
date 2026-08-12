@@ -51,19 +51,22 @@ type FieldData struct {
 	Connections []ConnectionData `json:"connections,omitempty"`
 }
 
-// RoomData persists construction inputs. As of #929 T1 this does NOT
-// mirror RoomInput exactly: RoomInput gained an Origin field for Setup-time
-// W-law validation (RoomInput.Origin's doc comment in field.go), but Origin
-// is not yet persisted here — an encounter's absolute anchoring does not
-// survive a ToData/LoadEncounter round trip in this wave. Origin
-// persistence (and Load-side enforcement of the W-laws generally) lands
-// in T2, alongside a grid-string rejection for stored "gridless" values.
-// Grid is persisted as spatial's own GridType string ("hex" or
-// "gridless" — tools/spatial's GridTypeHex/GridTypeGridless), not the
-// GridShape iota: the iota is an in-process enumeration order, not a
-// wire contract, and would silently reinterpret old blobs if spatial
-// ever reordered it. Grid omits when empty (the square zero value) so
-// pre-v0.2 blobs and square-only encounters keep byte-identical output.
+// RoomData mirrors RoomInput exactly to persist construction inputs — true
+// again as of #929 T2 (a T1-era comment here briefly said otherwise, while
+// Origin was Setup-only). Origin is REQUIRED at load (W5): a nil pointer
+// means the field was absent from the blob (distinct from a declared
+// zero) and is rejected with ErrInvalidData naming the room — a missing
+// anchor must never silently default to (0,0), a legal position that
+// would invent placement, mirroring ConnectionData's FromPosition/ToPosition
+// precedent. ToData ALWAYS writes Origin, even the zero value (no
+// omitempty) — a declared (0,0) persists as an explicit "origin":{"x":0,"y":0},
+// never as absence, so presence itself is meaningful at load.
+// Grid is persisted as spatial's own GridType string ("hex" — tools/spatial's
+// GridTypeHex; "gridless" is a v0.2-era value no longer accepted at load,
+// #929 T2), not the GridShape iota: the iota is an in-process enumeration
+// order, not a wire contract, and would silently reinterpret old blobs if
+// spatial ever reordered it. Grid omits when empty (the square zero value)
+// so pre-v0.2 blobs and square-only encounters keep byte-identical output.
 type RoomData struct {
 	ID         string         `json:"id"`
 	Width      int            `json:"width"`
@@ -71,6 +74,7 @@ type RoomData struct {
 	Grid       string         `json:"grid,omitempty"`
 	Occluders  []PositionData `json:"occluders,omitempty"`
 	Boundaries []BoundaryData `json:"boundaries,omitempty"`
+	Origin     *PositionData  `json:"origin"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -200,6 +204,11 @@ func (e *Encounter) ToData() EncounterData {
 			Grid:       gridShapeToData(ri.Grid),
 			Occluders:  make([]PositionData, len(ri.Occluders)),
 			Boundaries: make([]BoundaryData, len(ri.Boundaries)),
+			// Always a fresh pointer, always written — even the zero value
+			// (no omitempty, RoomData's own doc comment) — so a declared
+			// origin (0,0) round-trips as explicit presence, not absence,
+			// and two ToData calls never alias the same PositionData.
+			Origin: &PositionData{X: ri.Origin.X, Y: ri.Origin.Y},
 		}
 
 		for j, occ := range ri.Occluders {
@@ -279,14 +288,19 @@ func gridShapeToData(shape spatial.GridShape) string {
 // it defensively for hand-authored fixtures. An unrecognized string
 // returns ok=false so the caller can reject with a fragment naming
 // the bad value, rather than silently defaulting to square.
+//
+// "gridless" is deliberately NOT recognized (#929 T2): it was a v0.2
+// value, dropped from the shape-legality-valid set in T1 (RoomInput.Grid's
+// doc comment) — Setup has rejected it since T1, and a stored "gridless"
+// string now falls through to the same ok=false rejection any other
+// unrecognized string gets, closing the load-side hole T1 left open
+// (a stored "gridless" blob loaded successfully until this change).
 func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 	switch s {
 	case "", spatial.GridTypeSquare:
 		return spatial.GridShapeSquare, true
 	case spatial.GridTypeHex:
 		return spatial.GridShapeHex, true
-	case spatial.GridTypeGridless:
-		return spatial.GridShapeGridless, true
 	default:
 		return spatial.GridShapeSquare, false
 	}
@@ -295,11 +309,26 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): nil-equivalent empty Data,
 // no rooms, no endings, empty/reserved ending keys (and kind/reached_position checks),
-// undeclared outcome ending, room defects (empty/duplicate ID, unrecognized grid shape),
-// connection defects (empty/duplicate ID, missing room, self-connection, endpoint out of
-// bounds or on an occluder), duplicate member IDs, member's room not in field, member
-// position out of bounds, outcome member room/bounds checks, everMembers missing a
-// current member.
+// undeclared outcome ending, room defects (empty/duplicate ID, unrecognized-or-no-longer-
+// supported grid shape, missing origin — W5 presence), then room-list and connection
+// defects via the SAME buildValidRoomGrids/validateConnectionInputs Setup uses: W1 (one
+// grid family per field), non-positive dimensions, non-representable/non-integral origin
+// (every family), W2 (rooms never overlap), and connection defects (empty/duplicate ID,
+// missing room, self-connection, missing endpoint, endpoint out of bounds or on an
+// occluder, W3 non-kissing doorway) — then duplicate member IDs, member's room not in
+// field, member position out of bounds, outcome member room/bounds checks, everMembers
+// missing a current member.
+//
+// #929 T2: this is deliberately the SAME validation Setup runs, not a parallel
+// reimplementation — Setup and Load diverging on the W-laws was flagged explicitly in
+// T1 review as a drift risk. RoomData/ConnectionData convert to RoomInput/ConnectionInput
+// FIRST (resolving the grid string and checking Origin/endpoint presence — concerns that
+// only exist at the wire layer, since RoomInput.Grid is already typed and
+// RoomInput.Origin is already a value, not a pointer), then the converted slices are
+// handed to buildValidRoomGrids/validateConnectionInputs verbatim; every error they
+// return is wrapped once more with ErrInvalidData (multi-%w, this module's established
+// load-error style — the underlying error already carries ErrNoField/ErrBadConnection).
+//
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
@@ -351,107 +380,31 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 	}
 
-	// Validate rooms: unique non-empty IDs, recognized grid shape (deferred
-	// from Opus T1 review — empty/duplicate room IDs previously went
-	// unvalidated, and connections resolved via last-wins map insertion).
-	// Reuses ErrNoField: a malformed room list is as unusable as an empty
-	// one. roomGrids holds each room's constructed Grid so downstream bounds
-	// checks (connections, members, outcome members) ask the SAME grid the
-	// room will actually be built with — a hardcoded rectangle check would
-	// silently diverge from GridlessRoom's inclusive upper bound
-	// (tools/spatial/gridless.go: IsValidPosition uses x <= Width, not
-	// x < Width like Square/Hex).
-	roomMap := make(map[string]bool)
-	roomsByID := make(map[string]RoomData)
-	roomGrids := make(map[string]spatial.Grid, len(data.Field.Rooms))
-	for _, r := range data.Field.Rooms {
-		if r.ID == "" {
-			return nil, fmt.Errorf("load encounter: room has empty id: %w: %w", ErrInvalidData, ErrNoField)
-		}
-		if roomMap[r.ID] {
-			return nil, fmt.Errorf("load encounter: duplicate room %q: %w: %w", r.ID, ErrInvalidData, ErrNoField)
-		}
-		shape, ok := gridDataToShape(r.Grid)
-		if !ok {
-			return nil, fmt.Errorf("load encounter: room %q has unknown grid shape %q: %w: %w", r.ID, r.Grid, ErrInvalidData, ErrNoField)
-		}
-		roomMap[r.ID] = true
-		roomsByID[r.ID] = r
-		roomGrids[r.ID] = buildRoomGrid(shape, r.Width, r.Height)
-
-		// Hex rooms require integral axial occluder positions (interim
-		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
-		for _, occ := range r.Occluders {
-			pos := spatial.Position{X: occ.X, Y: occ.Y}
-			if !isIntegralAxialPosition(roomGrids[r.ID], pos) {
-				return nil, fmt.Errorf("load encounter: room %q occluder (%g,%g) is not an integral axial cell: %w: %w", r.ID, occ.X, occ.Y, ErrInvalidData, ErrNoField)
-			}
-		}
+	// Convert the wire representation to RoomInput/ConnectionInput — the
+	// ONLY load-specific pre-validation left (grid-string resolution, W5
+	// origin presence, connection endpoint presence: concerns that exist
+	// only because the wire form uses strings and pointers where the
+	// construction form uses typed values) — then hand off to the SAME
+	// room-list and connection validation Setup uses (see this function's
+	// doc comment). Every remaining room-list/connection defect class
+	// (shape legality, W1, room legality, origin legality, W2, W3, and the
+	// existing bounds/occluder/self-connection checks) is enforced by
+	// buildValidRoomGrids/validateConnectionInputs, not duplicated here.
+	roomInputs, err := convertRoomDataToRoomInput(data.Field.Rooms)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	roomGrids, err := buildValidRoomGrids(roomInputs)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// Validate connections: unique non-empty IDs, endpoints resolve to
-	// distinct declared rooms, and endpoints lie within their room's
-	// bounds (per the room's own grid) and off any occluder.
-	// ErrBadConnection rides alongside ErrInvalidData so connection defects
-	// are discriminable from other load rejections.
-	seenConnectionIDs := make(map[string]bool, len(data.Field.Connections))
-	for _, c := range data.Field.Connections {
-		if c.ID == "" {
-			return nil, fmt.Errorf("load encounter: connection has empty id: %w: %w", ErrInvalidData, ErrBadConnection)
-		}
-		if seenConnectionIDs[c.ID] {
-			return nil, fmt.Errorf("load encounter: duplicate connection %q: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-		seenConnectionIDs[c.ID] = true
-
-		fromRoom, ok := roomsByID[c.From]
-		if !ok {
-			return nil, fmt.Errorf("load encounter: connection %q references missing room %q: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
-		}
-		toRoom, ok := roomsByID[c.To]
-		if !ok {
-			return nil, fmt.Errorf("load encounter: connection %q references missing room %q: %w: %w", c.ID, c.To, ErrInvalidData, ErrBadConnection)
-		}
-		if c.From == c.To {
-			return nil, fmt.Errorf("load encounter: connection %q connects room %q to itself: %w: %w", c.ID, c.From, ErrInvalidData, ErrBadConnection)
-		}
-
-		// Both endpoints are required — ToData always populates them, so
-		// a nil pointer here means the field was absent from the blob
-		// (not merely zero-valued). Without this check a missing endpoint
-		// would unmarshal to a nil *PositionData and panic below; worse,
-		// if the field type were still a value struct, it would silently
-		// default to (0,0), a legal cell that invents topology.
-		if c.FromPosition == nil {
-			return nil, fmt.Errorf("load encounter: connection %q missing from_position: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-		if c.ToPosition == nil {
-			return nil, fmt.Errorf("load encounter: connection %q missing to_position: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-
-		if !roomGrids[c.From].IsValidPosition(spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
-			return nil, fmt.Errorf("load encounter: connection %q from-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-		if !isIntegralAxialPosition(roomGrids[c.From], spatial.Position{X: c.FromPosition.X, Y: c.FromPosition.Y}) {
-			return nil, fmt.Errorf("load encounter: connection %q from-position is not an integral axial cell: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-		if !roomGrids[c.To].IsValidPosition(spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
-			return nil, fmt.Errorf("load encounter: connection %q to-position out of bounds: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-		if !isIntegralAxialPosition(roomGrids[c.To], spatial.Position{X: c.ToPosition.X, Y: c.ToPosition.Y}) {
-			return nil, fmt.Errorf("load encounter: connection %q to-position is not an integral axial cell: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-		}
-
-		for _, occ := range fromRoom.Occluders {
-			if occ.X == c.FromPosition.X && occ.Y == c.FromPosition.Y {
-				return nil, fmt.Errorf("load encounter: connection %q from-position on occluder: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-			}
-		}
-		for _, occ := range toRoom.Occluders {
-			if occ.X == c.ToPosition.X && occ.Y == c.ToPosition.Y {
-				return nil, fmt.Errorf("load encounter: connection %q to-position on occluder: %w: %w", c.ID, ErrInvalidData, ErrBadConnection)
-			}
-		}
+	connectionInputs, err := convertConnectionDataToConnectionInput(data.Field.Connections)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err = validateConnectionInputs(roomInputs, roomGrids, connectionInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
 	// Validate members: no duplicates, rooms exist, positions in bounds
@@ -466,7 +419,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		}
 		seenIDs[m.ID] = true
 
-		if !roomMap[m.Room] {
+		if _, ok := roomGrids[m.Room]; !ok {
 			return nil, fmt.Errorf("load encounter: member %q room %q not in field: %w", m.ID, m.Room, ErrInvalidData)
 		}
 
@@ -492,7 +445,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w", ErrInvalidData)
 		}
 		for _, om := range data.Outcome.Members {
-			_, ok := roomsByID[om.Room]
+			_, ok := roomGrids[om.Room]
 			if !ok {
 				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w", om.ID, om.Room, ErrInvalidData)
 			}
@@ -551,8 +504,11 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 
 	// Create all rooms, reusing each room's already-constructed Grid
 	// (roomGrids, built above) so validation and placement agree exactly.
+	// Iterates roomInputs/connectionInputs (already validated, already
+	// spatial-typed) rather than re-deriving from data.Field — the same
+	// construction shape NewEncounter's own room-construction loop uses.
 	spatialRoomMap := make(map[string]*spatial.BasicRoom)
-	for _, ri := range data.Field.Rooms {
+	for _, ri := range roomInputs {
 		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 			ID:   ri.ID,
 			Type: "room",
@@ -570,7 +526,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
 				RoomID:   spatial.RoomID(ri.ID),
 				Entity:   occluder,
-				Position: spatial.Position{X: pos.X, Y: pos.Y},
+				Position: pos,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("load encounter occluder placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
@@ -579,16 +535,10 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 
 		// Add boundaries
 		for _, b := range ri.Boundaries {
-			boundary := spatial.Boundary{
-				From:              spatial.Position{X: b.From.X, Y: b.From.Y},
-				To:                spatial.Position{X: b.To.X, Y: b.To.Y},
-				BlocksMovement:    b.BlocksMovement,
-				BlocksLineOfSight: b.BlocksLineOfSight,
-			}
 			boundaryRoom := spatialRoomMap[ri.ID]
 			if boundaryRoom != nil {
 				if br, ok := interface{}(boundaryRoom).(spatial.BoundaryAwareRoom); ok {
-					err = br.RegisterBoundary(boundary)
+					err = br.RegisterBoundary(b)
 					if err != nil {
 						return nil, fmt.Errorf("load encounter boundary: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 					}
@@ -598,7 +548,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	}
 
 	// Add connections
-	for _, ci := range data.Field.Connections {
+	for _, ci := range connectionInputs {
 		door := spatial.CreateDoorConnection(ci.ID, ci.From, ci.To, 1.0)
 		err = e.orchestrator.AddConnection(door)
 		if err != nil {
@@ -690,22 +640,44 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		e.outcome = outcome
 	}
 
-	// Store field and connections inputs for future ToData calls. Connections
-	// are kept sorted by ID (C8 determinism — order is observable in ToData).
-	e.fieldInput = convertRoomDataToRoomInput(data.Field.Rooms)
-	e.connectionsInput = convertConnectionDataToConnectionInput(data.Field.Connections)
+	// Store field and connections inputs for future ToData calls — the
+	// SAME roomInputs/connectionInputs already built (and validated)
+	// above, not re-converted: both were freshly allocated from data by
+	// convertRoomDataToRoomInput/convertConnectionDataToConnectionInput,
+	// never aliasing the caller's data (T6 review M4's alias-immunity
+	// requirement, pinned at this seam by TestAliasImmunityLoadEncounter).
+	// Connections are kept sorted by ID (C8 determinism — order is
+	// observable in ToData).
+	e.fieldInput = roomInputs
+	e.connectionsInput = connectionInputs
 	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
 
 	return e, nil
 }
 
-// convertRoomDataToRoomInput converts RoomData back to RoomInput for storage.
-func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
+// convertRoomDataToRoomInput converts RoomData to RoomInput, both for the
+// SAME room-list validation Setup uses (buildValidRoomGrids — see
+// LoadEncounter's doc comment) and for later storage. This is the ONLY
+// place LoadEncounter resolves the wire-only concerns that don't exist on
+// RoomInput itself: the Grid string (rejecting an unrecognized value,
+// including the no-longer-supported "gridless" — gridDataToShape's doc
+// comment) and Origin's W5 presence requirement (a nil pointer means the
+// field was absent from the blob, distinct from a declared zero — RoomData's
+// doc comment). Both reject with ErrNoField, matching the room-list defect
+// vocabulary buildValidRoomGrids itself uses for every OTHER room-list
+// defect, so a caller inspecting the error chain sees one consistent
+// sentinel regardless of which check fired.
+func convertRoomDataToRoomInput(rooms []RoomData) ([]RoomInput, error) {
 	result := make([]RoomInput, len(rooms))
 	for i, rd := range rooms {
-		// gridDataToShape's ok is ignored: LoadEncounter has already
-		// validated every room's Grid string before this conversion runs.
-		shape, _ := gridDataToShape(rd.Grid)
+		shape, ok := gridDataToShape(rd.Grid)
+		if !ok {
+			return nil, fmt.Errorf("room %q has unknown grid shape %q: %w", rd.ID, rd.Grid, ErrNoField)
+		}
+		if rd.Origin == nil {
+			return nil, fmt.Errorf("room %q missing origin: %w", rd.ID, ErrNoField)
+		}
+
 		ri := RoomInput{
 			ID:         rd.ID,
 			Width:      rd.Width,
@@ -713,6 +685,7 @@ func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 			Grid:       shape,
 			Occluders:  make([]spatial.Position, len(rd.Occluders)),
 			Boundaries: make([]spatial.Boundary, len(rd.Boundaries)),
+			Origin:     spatial.Position{X: rd.Origin.X, Y: rd.Origin.Y},
 		}
 
 		for j, pd := range rd.Occluders {
@@ -730,13 +703,27 @@ func convertRoomDataToRoomInput(rooms []RoomData) []RoomInput {
 
 		result[i] = ri
 	}
-	return result
+	return result, nil
 }
 
-// convertConnectionDataToConnectionInput converts ConnectionData back to ConnectionInput for storage.
-func convertConnectionDataToConnectionInput(conns []ConnectionData) []ConnectionInput {
+// convertConnectionDataToConnectionInput converts ConnectionData to
+// ConnectionInput, both for the SAME connection validation Setup uses
+// (validateConnectionInputs — see LoadEncounter's doc comment) and for
+// later storage. This is the ONLY place LoadEncounter resolves the
+// wire-only endpoint-presence concern that doesn't exist on ConnectionInput
+// itself: a nil FromPosition/ToPosition pointer means the field was absent
+// from the blob (not merely zero-valued) — ConnectionData's doc comment.
+// Rejects with ErrBadConnection, matching validateConnectionInputs' own
+// vocabulary for every other connection defect.
+func convertConnectionDataToConnectionInput(conns []ConnectionData) ([]ConnectionInput, error) {
 	result := make([]ConnectionInput, len(conns))
 	for i, cd := range conns {
+		if cd.FromPosition == nil {
+			return nil, fmt.Errorf("connection %q missing from_position: %w", cd.ID, ErrBadConnection)
+		}
+		if cd.ToPosition == nil {
+			return nil, fmt.Errorf("connection %q missing to_position: %w", cd.ID, ErrBadConnection)
+		}
 		result[i] = ConnectionInput{
 			ID:           cd.ID,
 			From:         cd.From,
@@ -745,5 +732,5 @@ func convertConnectionDataToConnectionInput(conns []ConnectionData) []Connection
 			ToPosition:   spatial.Position{X: cd.ToPosition.X, Y: cd.ToPosition.Y},
 		}
 	}
-	return result
+	return result, nil
 }
