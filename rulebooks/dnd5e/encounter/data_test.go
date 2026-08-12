@@ -25,35 +25,46 @@ type DataTestSuite struct {
 // External ending, intel-free monsters in a second room, and non-zero
 // clock/At fields. Eleven tag renames survived the small goldens
 // because omitempty hid these fields (T6 review).
+//
+// #929 T1 follow-up: rewritten all-hex (both crypt and hall) — hex is the
+// game's shipped family, so the rich golden should exercise it, not
+// square+hex mixed (W1 forbids that field shape outright now — see
+// TestSetupAnchoring's W1 row). The square case's own exact-byte pin lives
+// in TestGoldenJSONOpen/TestGoldenJSONClosed ("grid" key absent for the
+// zero value) — unaffected by this rewrite. Every position below is
+// re-derived for crypt's (Width=8,Height=8 => Q,R valid [-4,4)) and hall's
+// (Width=6,Height=6 => Q,R valid [-3,3)) origin-centered spans: crypt's
+// occluder, boundary (still an axial-neighbor pair, ΔR=1), member p1, and
+// the "guarded" ending's position are distinct in-bounds cells; door1's
+// endpoints are each room's own boundary cell (an interior cell can never
+// kiss anything) — FromPosition (3,0) is crypt's max-Q edge, ToPosition
+// (-3,0) is hall's min-Q edge, still NEGATIVE-axial on purpose (the
+// ordinary case for an origin-centered hex room). hall's Origin (7,0)
+// anchors it immediately east of crypt: absolute (4,0) and (3,0) are
+// cube-distance 1 (W3), and hall's absolute Q span ([4,9]) shares no Q
+// value with crypt's ([-4,3]), so the rooms stay disjoint (W2).
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "crypt", Width: 8, Height: 8,
-					Occluders:  []spatial.Position{{X: 4, Y: 4}},
-					Boundaries: []spatial.Boundary{{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 2, Y: 3}, BlocksMovement: true, BlocksLineOfSight: true}},
+				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
+					Occluders:  []spatial.Position{{X: 1, Y: 2}},
+					Boundaries: []spatial.Boundary{{From: spatial.Position{X: -2, Y: -2}, To: spatial.Position{X: -2, Y: -1}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
-				// hall is axial hex (Width=6,Height=6 => Q,R valid in
-				// [-3,3)): door1's arrival endpoint sits at a NEGATIVE
-				// axial coordinate on purpose — the ordinary case for an
-				// origin-centered hex room, and a fixture proving
-				// endpoints validate there at both seams (Setup here,
-				// Load in TestConnectionEndpointBoundsBoundariesLoad's
-				// hex sibling).
-				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
+				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 7, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "door1", From: "crypt", To: "hall",
-				FromPosition: spatial.Position{X: 0, Y: 6},
-				ToPosition:   spatial.Position{X: -1, Y: -1},
+				FromPosition: spatial.Position{X: 3, Y: 0},
+				ToPosition:   spatial.Position{X: -3, Y: 0},
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 0, Y: 0}},
 			{ID: "g1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 0, Y: 0}, Decider: &testDecider{intent: encounter.IntentHold{}}},
 		},
 		Endings: []encounter.EndingInput{
-			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 7, Y: 7}, Member: core.EntityID("p1")}},
+			{Key: "guarded", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 3, Y: 3}, Member: core.EntityID("p1")}},
 			{Key: "leave", Trigger: encounter.TriggerExternal{}},
 		},
 	})
@@ -63,7 +74,10 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"occluders":[{"x":4,"y":4}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":"hex"}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":0,"y":6},"to_position":{"x":-1,"y":-1}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":1,"y":1}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":7,"y":7},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
+	// Note: hall's Origin (7,0) is NOT reflected below — RoomData does not
+	// persist Origin yet (Task 2's scope; this task validates it at Setup
+	// only). T2 will regenerate this golden again once RoomData gains it.
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}]},{"id":"hall","width":6,"height":6,"grid":"hex"}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":0,"y":0}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"]}`
 	s.Equal(expected, string(bs))
 }
 
@@ -192,35 +206,70 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 // TestRoomGridShapeSurvivesReload pins connection persistence's newest
 // field (#922 T1.5): a room's declared Grid shape round-trips through
 // ToData -> LoadEncounter -> ToData intact, for both the square zero value
-// and a non-zero shape (hex), in the same encounter.
+// and a non-zero shape (hex).
+//
+// #929 T1 follow-up: originally both shapes lived in ONE encounter (two
+// rooms, one square, one hex). W1 ("one geometry per field" — see
+// TestSetupAnchoring's W1 row) now makes that field itself a defect, not
+// just an inconvenience — a mixed-family field has no coherent absolute
+// space to validate at all, so this is correctly impossible, not a
+// regression to work around. Split into two single-room encounters, one
+// per family; each still proves its own shape survives a full
+// ToData -> LoadEncounter -> ToData round trip.
 func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
-	setup := &encounter.SetupInput{
-		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{
-				{ID: "square-room", Width: 5, Height: 5},
-				{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
+	s.Run("square", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "square-room", Width: 5, Height: 5},
+				},
 			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
 
-	enc1, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err)
+		enc1, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
 
-	data1 := enc1.ToData()
-	s.Require().Len(data1.Field.Rooms, 2)
-	s.Equal("", data1.Field.Rooms[0].Grid, "square is the zero value — omitted, not the literal \"square\"")
-	s.Equal(spatial.GridTypeHex, data1.Field.Rooms[1].Grid)
+		data1 := enc1.ToData()
+		s.Require().Len(data1.Field.Rooms, 1)
+		s.Equal("", data1.Field.Rooms[0].Grid, "square is the zero value — omitted, not the literal \"square\"")
 
-	enc2, err := encounter.LoadEncounter(data1, nil)
-	s.Require().NoError(err)
+		enc2, err := encounter.LoadEncounter(data1, nil)
+		s.Require().NoError(err)
 
-	data2 := enc2.ToData()
-	s.Equal("", data2.Field.Rooms[0].Grid, "grid shape must survive a second round-trip")
-	s.Equal(spatial.GridTypeHex, data2.Field.Rooms[1].Grid, "grid shape must survive a second round-trip")
+		data2 := enc2.ToData()
+		s.Equal("", data2.Field.Rooms[0].Grid, "grid shape must survive a second round-trip")
+	})
+
+	s.Run("hex", func() {
+		setup := &encounter.SetupInput{
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 1, Y: 1}},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
+
+		enc1, err := encounter.NewEncounter(setup)
+		s.Require().NoError(err)
+
+		data1 := enc1.ToData()
+		s.Require().Len(data1.Field.Rooms, 1)
+		s.Equal(spatial.GridTypeHex, data1.Field.Rooms[0].Grid)
+
+		enc2, err := encounter.LoadEncounter(data1, nil)
+		s.Require().NoError(err)
+
+		data2 := enc2.ToData()
+		s.Equal(spatial.GridTypeHex, data2.Field.Rooms[0].Grid, "grid shape must survive a second round-trip")
+	})
 }
 
 // TestSetupInputNotAliased pins T6 review M4: a caller that edits its

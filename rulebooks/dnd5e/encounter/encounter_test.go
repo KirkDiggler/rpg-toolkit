@@ -607,21 +607,30 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 // a positive one, via the same grid-deferred bounds check members use.
 // Load-seam counterpart: TestHexConnectionEndpointNegativeAxialLoad in
 // data_test.go.
+//
+// #929 T1 follow-up: both rooms are hex (W1 forbids mixing families in one
+// field — see TestSetupAnchoring's W1 row) rather than the original
+// square+hex pairing. hex-a is 10x10 (Q,R valid [-5,5)); hex-b is 6x6 (Q,R
+// valid [-3,3)), anchored at (8,7) so its NEGATIVE-axial corner (-3,-3) —
+// the coordinate that gives this test its name — sits immediately east of
+// hex-a's own (4,4) corner: absolute (5,4) is a cube-distance-1 neighbor of
+// (4,4) (W3), and hex-b's absolute Q span ([5,10]) shares no Q value with
+// hex-a's ([-5,4]), so the rooms stay disjoint (W2) regardless of R.
 func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "square-room", Width: 10, Height: 10},
-				{ID: "hex-room", Width: 6, Height: 6, Grid: spatial.GridShapeHex},
+				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
+				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 7}},
 			},
 			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "square-room", To: "hex-room",
-				FromPosition: spatial.Position{X: 9, Y: 9},
-				ToPosition:   spatial.Position{X: -2, Y: -2},
+				ID: "gate", From: "hex-a", To: "hex-b",
+				FromPosition: spatial.Position{X: 4, Y: 4},
+				ToPosition:   spatial.Position{X: -3, Y: -3},
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-room", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
