@@ -5,6 +5,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Dispatch from main to check its selected commit without push-event fields.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,7 +25,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        # Keep every job on the commit selected by the triggering event.
+        ref: ${{ github.sha }}
         fetch-depth: 0
+
+    - name: Verify manual target
+      if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+      run: |
+        echo "Manual CI recovery must be dispatched from main; refusing ${GITHUB_REF}."
+        exit 1
     
     - name: Detect changed modules
       id: detect
@@ -35,6 +45,14 @@ jobs:
           exit 0
         fi
         
+        # Manual recovery validates the selected main commit in full. Its
+        # parent diff may contain only workflow files, not the missed module.
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "should_run_all=true" >> $GITHUB_OUTPUT
+          echo "Running all checks for manual recovery"
+          exit 0
+        fi
+
         # Check if PR has "full-check" label
         if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-check') }}" == "true" ]]; then
           echo "should_run_all=true" >> $GITHUB_OUTPUT
@@ -95,6 +113,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
     
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -153,6 +173,8 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
     
     - name: Set up Go
       uses: actions/setup-go@v5
