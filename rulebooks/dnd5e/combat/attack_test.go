@@ -144,6 +144,53 @@ func TestResolveAttackNaturalAttackAddsNoAbilityComponent(t *testing.T) {
 	}
 }
 
+func TestResolveAttackMixedDamageDisplay(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("attacker").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("defender").Return(defender, nil).AnyTimes()
+	defender.EXPECT().AC().Return(15).AnyTimes()
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(12, nil)
+	roller.EXPECT().RollN(ctx, 1, 6).Return([]int{4}, nil)
+	roller.EXPECT().RollN(ctx, 2, 6).Return([]int{5, 3}, nil)
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "attacker",
+		TargetID:   "defender",
+		Attack: &attack.Definition{
+			ActionID:    "mixed-damage",
+			DisplayName: "Mixed Damage",
+			Category:    attack.CategoryNatural,
+			Bonus:       attack.FixedBonus(3),
+			Targeting:   attack.MeleeReach(1),
+			Damage: damage.DamageSpec{Pools: []damage.Damage{
+				{Dice: "1d6", Type: damage.Acid, FlatBonus: 2},
+				{Dice: "2d6", Type: damage.Bludgeoning, FlatBonus: 3},
+			}},
+		},
+		EventBus: eventBus,
+		Roller:   roller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Breakdown == nil {
+		t.Fatal("expected damage breakdown for a successful attack")
+	}
+
+	const want = "1d6 (4) + 2 acid = 6; 2d6 (5 + 3) + 3 bludgeoning = 11. Total: 17 damage."
+	if got := result.Breakdown.Display(); got != want {
+		t.Fatalf("unexpected damage display: got %q, want %q", got, want)
+	}
+}
+
 func TestResolveAttackCriticalDoublesOnlyEligibleDice(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	lookup := mock_combat.NewMockCombatantLookup(ctrl)
