@@ -138,8 +138,14 @@ Reject when, in this order per defect class:
   (the shape left the composition this wave).
 - **W1**: any two rooms declare different grid families — room-list
   defect naming both rooms and both families.
-- **Origin legality**: hex fields, non-integral origin (the v0.2
-  integral-axial rule extended; same interim status vs spatial#926).
+- **Room legality**: non-positive Width/Height (execution amendment,
+  Opus round: a negative dimension previously panicked NewEncounter —
+  a panic is not a rejection).
+- **Origin legality**: non-integral origin, **all families** (execution
+  amendment, Opus round: fractional square origins let two rooms
+  interpenetrate ~81% while their integer cell sets stay disjoint —
+  W2's disjointness is only sound over integral anchors; hex keeps the
+  same interim status vs spatial#926).
 - **W2**: any absolute cell owned by two rooms — defect names both
   rooms and one witness cell. Touching is legal; overlap is not.
 - **W3**: a connection whose endpoints project to non-adjacent absolute
