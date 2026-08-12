@@ -70,12 +70,22 @@ type RoomInput struct {
 	// origin, which is legal on its own; in a multi-room field, leaving
 	// every Origin at its zero value collides every room at (0,0) and is
 	// rejected by W2 (see NewEncounter) — there is no separate
-	// "origin required" check. Setup validates every field against the
-	// W-laws: W1 (one grid family per field), W2 (rooms never overlap in
-	// absolute space), and W3 (every connection's endpoints are adjacent
-	// absolute cells). Rules and queries stay room-local in this wave —
-	// Origin exists for layout coherence at Setup, not yet for movement,
-	// sight, or persistence.
+	// "origin required" check.
+	//
+	// Origin must be an INTEGRAL cell (X and Y both whole numbers) for
+	// EVERY grid family, square included — not just hex. W2's "rooms never
+	// overlap" promise is only sound over an integer cell lattice: two 5x5
+	// SQUARE rooms anchored at (0,0) and (0.5,0.5) have disjoint integer
+	// cell sets (a naive per-cell W2 check would accept them) while their
+	// continuous footprints interpenetrate roughly 81% of each room's
+	// area — a fractional origin defeats the very disjointness this field
+	// exists to guarantee, not just a hex-specific edge case.
+	//
+	// Setup validates every field against the W-laws: W1 (one grid family
+	// per field), W2 (rooms never overlap in absolute space), and W3
+	// (every connection's endpoints are adjacent absolute cells). Rules
+	// and queries stay room-local in this wave — Origin exists for layout
+	// coherence at Setup, not yet for movement, sight, or persistence.
 	Origin spatial.Position
 }
 

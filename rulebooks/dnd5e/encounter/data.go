@@ -51,7 +51,13 @@ type FieldData struct {
 	Connections []ConnectionData `json:"connections,omitempty"`
 }
 
-// RoomData mirrors RoomInput exactly to persist construction inputs.
+// RoomData persists construction inputs. As of #929 T1 this does NOT
+// mirror RoomInput exactly: RoomInput gained an Origin field for Setup-time
+// W-law validation (RoomInput.Origin's doc comment in field.go), but Origin
+// is not yet persisted here — an encounter's absolute anchoring does not
+// survive a ToData/LoadEncounter round trip in this wave. Origin
+// persistence (and Load-side enforcement of the W-laws generally) lands
+// in T2, alongside a grid-string rejection for stored "gridless" values.
 // Grid is persisted as spatial's own GridType string ("hex" or
 // "gridless" — tools/spatial's GridTypeHex/GridTypeGridless), not the
 // GridShape iota: the iota is an in-process enumeration order, not a
