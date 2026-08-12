@@ -202,8 +202,15 @@ func (ma *MartialArtsCondition) onDamageChain(
 			for i := range e.Components {
 				component := &e.Components[i]
 				if component.Source == dnd5eEvents.DamageSourceWeapon {
-					component.OriginalDiceRolls = newRolls
-					component.FinalDiceRolls = newRolls
+					component.OriginalDiceRolls = append([]int(nil), newRolls...)
+					component.FinalDiceRolls = append([]int(nil), newRolls...)
+					component.DiceNotation = martialArtsDice
+					component.Terms = []dnd5eEvents.RolledDiceTerm{{
+						Dice:     martialArtsDice,
+						Sign:     1,
+						Original: append([]int(nil), newRolls...),
+						Final:    append([]int(nil), newRolls...),
+					}}
 					break
 				}
 			}

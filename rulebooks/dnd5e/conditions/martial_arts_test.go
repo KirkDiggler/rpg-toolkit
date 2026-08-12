@@ -209,6 +209,53 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 	}
 }
 
+// TestUnarmedStrikeReplacesSignedDamageTerm proves Martial Arts keeps the
+// signed damage representation authoritative when it replaces unarmed dice.
+func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesSignedDamageTerm() {
+	condition := NewMartialArtsCondition(MartialArtsInput{
+		CharacterID: s.characterID,
+		MonkLevel:   5,
+		Roller:      s.mockRoller,
+	})
+	s.Require().NoError(condition.Apply(s.ctx, s.bus))
+	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
+
+	event := &dnd5eEvents.DamageChainEvent{
+		AttackerID: s.characterID,
+		TargetID:   "target-1",
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:       dnd5eEvents.DamageSourceWeapon,
+				DiceNotation: "1d4",
+				Terms: []dnd5eEvents.RolledDiceTerm{{
+					Dice:     "1d4",
+					Sign:     1,
+					Original: []int{1},
+					Final:    []int{1},
+				}},
+				OriginalDiceRolls: []int{1},
+				FinalDiceRolls:    []int{1},
+				DamageType:        "bludgeoning",
+			},
+		},
+		WeaponRef: refs.Weapons.UnarmedStrike(),
+	}
+
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	modifierChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, modifierChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	weaponComponent := finalEvent.Components[0]
+	s.Equal(5, weaponComponent.Total())
+	s.Equal("1d6 (5) bludgeoning = 5", combat.FormatDamageComponent(weaponComponent))
+}
+
 // TestUnarmedStrikeCriticalDamage tests that crits double the martial arts dice
 func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 	condition := NewMartialArtsCondition(MartialArtsInput{

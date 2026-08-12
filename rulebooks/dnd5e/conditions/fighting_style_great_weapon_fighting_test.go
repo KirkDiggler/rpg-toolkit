@@ -76,15 +76,23 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(4, nil).Times(1) // Reroll the 2
 
 	// Create damage chain event with 1s and 2s
+	initialRolls := []int{1, 2, 6}
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:   "fighter-1",
 		TargetID:     "goblin-1",
 		WeaponDamage: "2d6", // Die size for rerolls
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{1, 2, 6}, // 1 and 2 need rerolling, 6 stays
-				FinalDiceRolls:    []int{1, 2, 6},
+				Source:       dnd5eEvents.DamageSourceWeapon,
+				DiceNotation: "2d6",
+				Terms: []dnd5eEvents.RolledDiceTerm{{
+					Dice:     "2d6",
+					Sign:     1,
+					Original: initialRolls,
+					Final:    initialRolls,
+				}},
+				OriginalDiceRolls: initialRolls, // 1 and 2 need rerolling, 6 stays
+				FinalDiceRolls:    initialRolls,
 				FlatBonus:         4,
 				DamageType:        damage.Slashing,
 			},
@@ -103,7 +111,10 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 
 	// Check that 1 and 2 were rerolled to 5 and 4
 	s.Equal([]int{5, 4, 6}, finalEvent.Components[0].FinalDiceRolls)
+	s.Equal([]int{1, 2, 6}, finalEvent.Components[0].Terms[0].Original)
 	s.Len(finalEvent.Components[0].Rerolls, 2)
+	s.Equal(19, finalEvent.Components[0].Total())
+	s.Equal("2d6 (5 + 4 + 6) + 4 slashing = 19", combat.FormatDamageComponent(finalEvent.Components[0]))
 }
 
 func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValues() {

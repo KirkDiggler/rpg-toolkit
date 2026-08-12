@@ -181,6 +181,12 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 			}
 
 			component.FinalDiceRolls = newRolls
+			rollIndex := 0
+			for termIndex := range component.Terms {
+				term := &component.Terms[termIndex]
+				term.Final = append([]int(nil), newRolls[rollIndex:rollIndex+len(term.Final)]...)
+				rollIndex += len(term.Final)
+			}
 		}
 
 		return e, nil
