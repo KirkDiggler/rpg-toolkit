@@ -317,14 +317,18 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 // room ID — #929 T2 second review round, so a later presence error can never misname an
 // empty/ambiguous ID), grid-shape resolution (unrecognized-or-no-longer-supported string)
 // and origin presence (W5) per room; THEN room-list defects via the SAME
-// buildValidRoomGrids Setup uses: W1 (one grid family per field), room legality
-// (non-positive or oversized dimensions, out-of-bounds origin — maxRoomSpan/
-// maxAnchorCoord), origin legality (non-representable origin, every family), W2 (rooms
-// never overlap); THEN, per connection list, the SAME wire-only ID pre-pass and endpoint
-// presence, then connection defects via validateConnectionInputs: unknown or
-// self-referencing room, endpoint out of bounds or on an occluder, W3 (non-kissing
-// doorway); THEN duplicate member IDs, member's room not in field, member position out of
-// bounds, outcome member room/bounds checks, everMembers missing a current member.
+// buildValidRoomGrids Setup uses: shape legality, non-integral occluder position in any
+// family (#929 T3 Opus round F2), W1 (one grid family per field), room legality
+// (non-positive/oversized/over-cell-budget dimensions, out-of-bounds origin —
+// maxRoomSpan/maxAnchorCoord/maxRoomCells/maxFieldCells), origin legality
+// (non-representable origin, every family), W2 (rooms never overlap); THEN, per
+// connection list, the SAME wire-only ID pre-pass and endpoint presence, then connection
+// defects via validateConnectionInputs: unknown or self-referencing room, endpoint out of
+// bounds or on an occluder, W3 (non-kissing doorway); THEN duplicate member IDs, member's
+// room not in field, member position out of bounds or non-integral (hex), ending trigger
+// validity (unknown room or unreachable position on a TriggerReachedPosition — #929 T3
+// Opus round F5, the SAME validateEndingTriggers Setup uses), outcome member room/bounds
+// checks, everMembers missing a current member.
 //
 // #929 T2: the room-list and connection validation is deliberately the SAME Setup
 // runs, not a parallel reimplementation — Setup and Load diverging on the W-laws was

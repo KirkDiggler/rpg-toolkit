@@ -6,13 +6,16 @@
 // server, no rpg-api, no Discord activity involved. It sets up the
 // tomb-watch crypt (two players, a patrolling goblin, a pillar), a
 // passage in its unclaimed corner leading to a second room — the
-// ossuary — and hands you the verbs. Every action renders the WORLD
-// TRUTH beside each asked-for player's BELIEFS, scoped to whichever
-// room that player currently stands in — capitals are current
-// sightings, lowercase are ghosts at last-seen — which is the intel
-// model made visible: move behind the pillar and watch yourself become
-// a memory, or step through the passage and watch the crypt itself
-// fade to nothing (T3 — sight never crosses a connection).
+// ossuary, anchored immediately east of the crypt (#929, W2/W3) — and
+// hands you the verbs. Every action renders the WORLD TRUTH beside each
+// asked-for player's BELIEFS, scoped to whichever room that player
+// currently stands in — capitals are current sightings, lowercase are
+// ghosts at last-seen — which is the intel model made visible: move
+// behind the pillar and watch yourself become a memory, or step through
+// the passage and watch the crypt itself fade to nothing (T3 — sight
+// never crosses a connection). The atlas command makes the OTHER half
+// visible: the two rooms placed in one continuous absolute space, the
+// passage's kissing pair made concrete (#929 T5).
 //
 // Run from the module directory:
 //
@@ -20,7 +23,7 @@
 //
 // Commands: move <name> <x> <y> | traverse <name> <connection> | pump |
 // view <name> | story <name> | join <name> <x> <y> | exit <name> |
-// end withdrew | save <file> | load <file> | status | help | quit
+// end withdrew | save <file> | load <file> | atlas | status | help | quit
 package main
 
 import (
@@ -77,7 +80,18 @@ func newCrypt() (*encounter.Encounter, error) {
 					Occluders: []spatial.Position{{X: 6, Y: 6}, {X: 5, Y: 6}},
 				},
 				{
+					// Anchored immediately east of the crypt (#929): the
+					// passage's endpoints, crypt (11,0) and ossuary local
+					// (0,0)+Origin(12,0)=(12,0), are Chebyshev-adjacent
+					// (W3), and the rooms' absolute footprints — crypt
+					// x:[0,11], ossuary x:[12,19] — stay disjoint (W2).
+					// Before this Origin existed, both rooms defaulted to
+					// (0,0) and W2 rejected the field outright — the
+					// workbench crashed on startup (`setup: newencounter:
+					// room "crypt" and room "ossuary" overlap at absolute
+					// cell (0, 0): no field`) until this fix.
 					ID: ossuaryID, Width: ossuaryW, Height: ossuaryH,
+					Origin:    spatial.Position{X: 12, Y: 0},
 					Occluders: []spatial.Position{{X: 4, Y: 3}},
 				},
 			},
@@ -245,6 +259,54 @@ func printStatus(enc *encounter.Encounter) {
 	}
 }
 
+// atlasDistanceGrid returns a throwaway grid of the given family, valid
+// ONLY as a Distance calculator over ABSOLUTE positions — Distance
+// depends solely on the two positions passed to it, never on the grid's
+// own bounds (SquareGrid.Distance and AxialHexGrid.Distance's own
+// implementations), so any instance of the right family computes the
+// correct distance between two dungeon-absolute doorway cells (#929 T5).
+func atlasDistanceGrid(family spatial.GridShape) spatial.Grid {
+	if family == spatial.GridShapeHex {
+		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 100000, SpanHeight: 100000})
+	}
+	return spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 100000, Height: 100000})
+}
+
+// printAtlas renders the dungeon in world space (#929 T5): every room
+// placed at its absolute footprint, and every doorway's kissing pair —
+// the two absolute cells a connection joins, and the distance between
+// them (always 1 for anything the composition actually constructed; W3
+// guarantees it) — made visible. This is the one property the web
+// client renders by: the room boundary is invisible in world space.
+func printAtlas(enc *encounter.Encounter) {
+	atlas, err := enc.Atlas()
+	if err != nil {
+		fmt.Println("  atlas:", err)
+		return
+	}
+	fmt.Println("  ATLAS — the dungeon in absolute space")
+	for _, r := range atlas.Rooms {
+		qMin, qMax, rMin, rMax := r.Cells[0].X, r.Cells[0].X, r.Cells[0].Y, r.Cells[0].Y
+		for _, c := range r.Cells {
+			qMin, qMax = min(qMin, c.X), max(qMax, c.X)
+			rMin, rMax = min(rMin, c.Y), max(rMax, c.Y)
+		}
+		fmt.Printf("    room %-10s origin (%g,%g)  %dx%d  absolute x:[%g,%g] y:[%g,%g]\n",
+			r.ID, r.Origin.X, r.Origin.Y, r.Width, r.Height, qMin, qMax, rMin, rMax)
+	}
+	for _, d := range atlas.Doorways {
+		var family spatial.GridShape
+		for _, r := range atlas.Rooms {
+			if r.ID == d.From {
+				family = r.Grid
+			}
+		}
+		dist := atlasDistanceGrid(family).Distance(d.FromCell, d.ToCell)
+		fmt.Printf("    doorway %-10s %s(%g,%g) absolute -- %s(%g,%g) absolute  distance %g — they kiss\n",
+			d.Connection, d.From, d.FromCell.X, d.FromCell.Y, d.To, d.ToCell.X, d.ToCell.Y, dist)
+	}
+}
+
 const legend = `  @ you   A/B/C capitals: seen NOW   a/b/g lowercase: ghost at last-seen
   # pillar/sarcophagus   > the stairs down (reach them and the encounter closes)
   connection "passage": crypt (11,0) <-> ossuary (0,0) — stand on the
@@ -259,6 +321,8 @@ const commands = `  move <name> <x> <y>   walk (the world holds still — you pu
   exit <name>           a player heads back to town (carry-forward prints)
   end withdrew          the party calls the delve off (External ending)
   save <file> / load <file>   the ONE aggregate blob, round-tripped
+  atlas                 the dungeon in absolute space — rooms placed by
+                        origin, every doorway's kissing pair made visible
   status | help | quit`
 
 func main() {
@@ -291,6 +355,8 @@ func main() {
 			fmt.Println(commands)
 		case "status":
 			printStatus(enc)
+		case "atlas":
+			printAtlas(enc)
 		case "view":
 			if len(args) == 2 {
 				showView(enc, core.EntityID(args[1]))

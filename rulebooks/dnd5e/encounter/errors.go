@@ -16,9 +16,13 @@ var (
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("not a member")
 
-	// ErrNoEnding is returned when Setup is called with zero endings, or End
-	// is called with an undeclared key. An encounter that cannot end is a
-	// liveness hole.
+	// ErrNoEnding is returned when Setup is called with zero endings, End
+	// is called with an undeclared key, or a TriggerReachedPosition
+	// ending names an unknown room or an unreachable position (#929 T3
+	// Opus round F5, checked identically at Setup and Load — see
+	// validateEndingTriggers). An encounter that cannot end — whether it
+	// declares zero endings or one that can never fire — is a liveness
+	// hole.
 	ErrNoEnding = errors.New("no such ending")
 
 	// ErrClosed is returned when a mutating verb (action, event, exit, etc.)
@@ -28,17 +32,20 @@ var (
 	// ErrNoField is returned when Setup is called without rooms, or when a
 	// declared room is itself defective — empty or duplicate ID, an
 	// unrecognized-or-no-longer-supported grid shape value (gridless
-	// included — RoomData's doc comment in data.go), non-positive OR
-	// oversized Width/Height (maxRoomSpan), an out-of-bounds Origin
-	// (maxAnchorCoord) or a non-representable one (non-integral, ±Inf,
-	// NaN — EVERY grid family, not just hex), or — Load-only, since
-	// RoomInput.Origin is a plain value and can't be absent the way
-	// RoomData.Origin's pointer can — a MISSING Origin (W5 presence: a nil
-	// pointer means the field was absent from the blob, distinct from a
-	// declared zero — RoomData's doc comment in data.go) — or the room
-	// list as a whole is incoherent (W1: more than one grid family in one
-	// field; W2: two rooms' absolute footprints overlap) — a malformed
-	// room list is as unusable as an empty one.
+	// included — RoomData's doc comment in data.go), a non-integral
+	// occluder position in ANY family, not just hex (#929 T3 Opus round
+	// F2), non-positive OR oversized Width/Height (maxRoomSpan), a
+	// per-room or field-total cell count exceeding maxRoomCells/
+	// maxFieldCells (allocation safety for Atlas — #929 T3 Opus round F1),
+	// an out-of-bounds Origin (maxAnchorCoord) or a non-representable one
+	// (non-integral, ±Inf, NaN — EVERY grid family, not just hex), or —
+	// Load-only, since RoomInput.Origin is a plain value and can't be
+	// absent the way RoomData.Origin's pointer can — a MISSING Origin (W5
+	// presence: a nil pointer means the field was absent from the blob,
+	// distinct from a declared zero — RoomData's doc comment in data.go)
+	// — or the room list as a whole is incoherent (W1: more than one grid
+	// family in one field; W2: two rooms' absolute footprints overlap) —
+	// a malformed room list is as unusable as an empty one.
 	//
 	// Checked identically at Setup and Load (#929 T2): LoadEncounter routes
 	// room-list validation through the SAME buildValidRoomGrids Setup uses

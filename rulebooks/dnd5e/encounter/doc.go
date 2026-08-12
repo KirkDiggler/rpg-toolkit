@@ -13,4 +13,23 @@
 // Design contract: docs/ideas/encounter/design.md (composition laws C1–C8).
 // This is not a play/ leaf: the module composes published pieces and exposes
 // one aggregate persistence pair at the host seam.
+//
+// v0.3 anchors every room in one dungeon-absolute space (docs/ideas/
+// encounter-anchoring/design.md), governed by five more laws:
+//
+//   - W1 (one geometry per field) — every room in a field shares the same
+//     grid family; a mixed field has no coherent absolute space.
+//   - W2 (rooms never overlap) — distinct rooms' absolute footprints are
+//     disjoint; touching is legal, sharing a cell is not.
+//   - W3 (doorways kiss) — a connection's two endpoints, once anchored to
+//     their rooms' origins, are adjacent absolute cells.
+//   - W4 (projection is a read) — rules and verbs stay room-local; absolute
+//     coordinates appear only in query outputs (Atlas, Absolute, Locate),
+//     never in a rule's own logic.
+//   - W5 (anchors are construction data) — Origin is validated identically
+//     at Setup and Load, never derived or inferred.
+//
+// Room and field size are allocation-bounded (a legal-but-absurd room or
+// field could otherwise demand an allocation Atlas cannot safely make);
+// see maxRoomCells/maxFieldCells for the exact figures and why.
 package encounter
