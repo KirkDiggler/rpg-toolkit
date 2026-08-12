@@ -124,8 +124,11 @@ func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
 
 // buildValidRoomGrids rejects room defects before construction (R5
 // atomicity — no observable state until Setup succeeds): empty or
-// duplicate room ID, and an unrecognized grid shape. On success, returns
-// each room's constructed Grid keyed by room ID — reused both for
+// duplicate room ID, an unrecognized or no-longer-supported grid shape,
+// non-integral hex occluder/origin positions, and the field-wide W-laws W1
+// (one grid family per field) and W2 (rooms never overlap in absolute
+// space) — see validateGridFamilies and validateRoomsDisjoint. On success,
+// returns each room's constructed Grid keyed by room ID — reused both for
 // downstream bounds checks (connections, and transitively member
 // placement via spatial's own PlaceEntity) and later in NewEncounter's
 // room-construction loop, so a room's shape is built exactly once and
@@ -146,8 +149,15 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		}
 		seenIDs[r.ID] = true
 
+		// Shape legality: gridless leaves the composition as of v0.3 — the
+		// wire cannot carry a continuous room's absolute projection — so it
+		// is rejected explicitly, distinct from a genuinely unrecognized
+		// value. Square and hex are the only surviving families; W1 below
+		// compares them.
 		switch r.Grid {
-		case spatial.GridShapeSquare, spatial.GridShapeHex, spatial.GridShapeGridless:
+		case spatial.GridShapeSquare, spatial.GridShapeHex:
+		case spatial.GridShapeGridless:
+			return nil, fmt.Errorf("newencounter: room %q declares gridless grid shape, no longer supported: %w", r.ID, ErrNoField)
 		default:
 			return nil, fmt.Errorf("newencounter: room %q has unknown grid shape %d: %w", r.ID, r.Grid, ErrNoField)
 		}
@@ -161,14 +171,150 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 			}
 		}
 	}
+
+	// W1 — one geometry per field: every room in this field must share the
+	// same grid family. Runs only after every room has individually passed
+	// shape legality above, so only square/hex remain here.
+	if err := validateGridFamilies(rooms); err != nil {
+		return nil, err
+	}
+
+	// Origin legality: hex rooms require integral axial origins — same
+	// interim tools/spatial#926 enforcement as occluders above, extended to
+	// Origin (RoomInput.Origin's doc comment). Runs after W1 so a
+	// mixed-family field reports the family mismatch, not an origin defect
+	// on a room whose shape is already wrong.
+	for _, r := range rooms {
+		if !isIntegralAxialPosition(grids[r.ID], r.Origin) {
+			return nil, fmt.Errorf("newencounter: room %q origin (%g,%g) is not an integral axial cell: %w", r.ID, r.Origin.X, r.Origin.Y, ErrNoField)
+		}
+	}
+
+	// W2 — rooms never overlap: distinct rooms' absolute cell sets (local
+	// cell + Origin) must be disjoint. Zero-value origins are legal on
+	// their own; a multi-room field that leaves every Origin defaulted
+	// collides every room at (0,0) and is rejected HERE — there is no
+	// separate "origin required" check (RoomInput.Origin's doc comment).
+	if err := validateRoomsDisjoint(rooms); err != nil {
+		return nil, err
+	}
+
 	return grids, nil
+}
+
+// gridShapeName renders a GridShape for W1's mixed-family defect message.
+// Called only on values that have already passed shape legality above, so
+// square and hex are the only cases exercised in practice; the default
+// exists so an unvalidated caller still gets a readable message instead of
+// a bare integer.
+func gridShapeName(shape spatial.GridShape) string {
+	switch shape {
+	case spatial.GridShapeSquare:
+		return "square"
+	case spatial.GridShapeHex:
+		return "hex"
+	default:
+		return fmt.Sprintf("shape(%d)", shape)
+	}
+}
+
+// validateGridFamilies rejects a field whose rooms declare more than one
+// grid family (W1 — one geometry per field). Local→absolute is element-wise
+// addition (RoomInput.Origin's doc comment): a hex room's axial Q/R and a
+// square room's Cartesian X/Y cannot be added together and mean anything, so
+// a mixed field has no coherent absolute space at all — this must reject
+// before W2/W3 ever try to build one. Compares ALL pairs semantically, not
+// just adjacent-in-slice: a three-room field ordered square, hex, square
+// must still be caught even though both adjacent pairs (0,1) and (1,2)
+// already mismatch on their own — see #929 T1 mutation notes for why an
+// adjacent-only comparison cannot be distinguished from this by any fixture
+// once only two families survive shape legality (equality over a two-value
+// domain is transitive), and why full pairwise comparison is still the
+// correct, future-proof implementation.
+func validateGridFamilies(rooms []RoomInput) error {
+	for i := 0; i < len(rooms); i++ {
+		for j := i + 1; j < len(rooms); j++ {
+			if rooms[i].Grid != rooms[j].Grid {
+				return fmt.Errorf("newencounter: room %q (%s) and room %q (%s) declare different grid families: %w",
+					rooms[i].ID, gridShapeName(rooms[i].Grid), rooms[j].ID, gridShapeName(rooms[j].Grid), ErrNoField)
+			}
+		}
+	}
+	return nil
+}
+
+// roomLocalCells enumerates a room's local, integral cell coordinates — W2's
+// building block for each room's absolute footprint (see
+// validateRoomsDisjoint). Square cells fill the [0,Width) x [0,Height)
+// rectangle SquareGrid.IsValidPosition itself checks. Hex cells fill
+// AxialHexGrid's origin-centered span (tools/spatial/hex_grid.go,
+// AxialHexGridConfig's doc comment): Q integral in [-Width/2, Width/2), R
+// integral in [-Height/2, Height/2) — the SAME half-width/half-height
+// arithmetic AxialHexGrid.IsValidPosition itself uses, not guessed. Callers
+// have already rejected gridless (shape legality) and mixed families (W1),
+// so shape here is always square or hex.
+func roomLocalCells(shape spatial.GridShape, width, height int) []spatial.Position {
+	cells := make([]spatial.Position, 0, width*height)
+	if shape == spatial.GridShapeHex {
+		halfW := float64(width) / 2
+		halfH := float64(height) / 2
+		qMin := int(math.Ceil(-halfW))
+		rMin := int(math.Ceil(-halfH))
+		for q := qMin; float64(q) < halfW; q++ {
+			for r := rMin; float64(r) < halfH; r++ {
+				cells = append(cells, spatial.Position{X: float64(q), Y: float64(r)})
+			}
+		}
+		return cells
+	}
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			cells = append(cells, spatial.Position{X: float64(x), Y: float64(y)})
+		}
+	}
+	return cells
+}
+
+// validateRoomsDisjoint rejects a field whose rooms' absolute footprints
+// share a cell (W2 — rooms never overlap): absolute = local cell + Origin,
+// element-wise (RoomInput.Origin's doc comment). Touching — adjacent cells,
+// no shared cell — is legal; this rejects ONLY a shared cell. For each pair,
+// iterates room j's local cells in their generation order (deterministic —
+// see roomLocalCells) against room i's prebuilt absolute set, so the
+// reported witness is the first shared cell in that fixed order, not
+// map-iteration order.
+func validateRoomsDisjoint(rooms []RoomInput) error {
+	localCells := make([][]spatial.Position, len(rooms))
+	absSets := make([]map[spatial.Position]bool, len(rooms))
+	for i, r := range rooms {
+		localCells[i] = roomLocalCells(r.Grid, r.Width, r.Height)
+		set := make(map[spatial.Position]bool, len(localCells[i]))
+		for _, cell := range localCells[i] {
+			set[cell.Add(r.Origin)] = true
+		}
+		absSets[i] = set
+	}
+	for i := 0; i < len(rooms); i++ {
+		for j := i + 1; j < len(rooms); j++ {
+			for _, cell := range localCells[j] {
+				abs := cell.Add(rooms[j].Origin)
+				if absSets[i][abs] {
+					return fmt.Errorf("newencounter: room %q and room %q overlap at absolute cell %s: %w",
+						rooms[i].ID, rooms[j].ID, abs, ErrNoField)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // validateConnectionInputs rejects connection defects before construction
 // (R5 atomicity — no observable state until Setup succeeds): empty or
-// duplicate ID, an unknown or self-referencing room, and an endpoint outside
+// duplicate ID, an unknown or self-referencing room, an endpoint outside
 // its room's bounds (per that room's own constructed Grid, from roomGrids —
-// see buildValidRoomGrids) or on an occluder position.
+// see buildValidRoomGrids) or on an occluder position, and (W3) endpoints
+// that do not kiss — are not adjacent absolute cells once each is anchored
+// to its own room's Origin.
 func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Grid, connections []ConnectionInput) error {
 	roomsByID := make(map[string]RoomInput, len(rooms))
 	for _, r := range rooms {
@@ -220,6 +366,21 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 				return fmt.Errorf("newencounter: connection %q to-position on occluder: %w", c.ID, ErrBadConnection)
 			}
 		}
+
+		// W3 — doorways kiss: once each endpoint is anchored to its own
+		// room's Origin, the two absolute cells must be adjacent — cube
+		// distance 1 for hex, Chebyshev distance 1 for square. W1
+		// guarantees both rooms in a valid field share one grid family, so
+		// either room's own Grid.Distance already implements the correct
+		// formula (AxialHexGrid: cube distance; SquareGrid: Chebyshev) —
+		// using the from-room's is an arbitrary but consistent choice, not
+		// a hand-rolled formula that could silently diverge from spatial's.
+		fromAbs := c.FromPosition.Add(fromRoom.Origin)
+		toAbs := c.ToPosition.Add(toRoom.Origin)
+		if dist := roomGrids[c.From].Distance(fromAbs, toAbs); dist != 1 {
+			return fmt.Errorf("newencounter: connection %q endpoints %s and %s are not adjacent (distance %g): %w",
+				c.ID, fromAbs, toAbs, dist, ErrBadConnection)
+		}
 	}
 	return nil
 }
@@ -227,9 +388,11 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 // NewEncounter constructs and initializes an encounter from SetupInput.
 // Validation order (first failure wins, R5 atomicity): nil input, no rooms,
 // no endings, reserved ending key, empty member ID, duplicate member IDs,
-// room defects (empty/duplicate ID, unrecognized grid shape), connection
-// defects (empty/duplicate ID, unknown room, self-connection, endpoint out
-// of bounds or on an occluder), spatial placement errors.
+// room defects (empty/duplicate ID, unrecognized or no-longer-supported
+// grid shape, W1 mixed grid families, non-integral hex origin, W2
+// overlapping absolute footprints), connection defects (empty/duplicate ID,
+// unknown room, self-connection, endpoint out of bounds or on an occluder,
+// W3 endpoints not adjacent once anchored), spatial placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {

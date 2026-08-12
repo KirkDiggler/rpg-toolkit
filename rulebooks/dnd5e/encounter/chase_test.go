@@ -52,7 +52,11 @@ func TestVaultChase(t *testing.T) {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: corridorRoom, Width: 10, Height: 10},
-				{ID: vaultRoom, Width: 10, Height: 10},
+				// Anchored immediately east of the corridor (#929 T1): the
+				// gate's endpoints (9,5) and (0,5)+(10,0)=(10,5) are
+				// Chebyshev-adjacent (W3), and the rooms' absolute
+				// footprints (x:[0,9] vs x:[10,19]) stay disjoint (W2).
+				{ID: vaultRoom, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{gate},
 		},

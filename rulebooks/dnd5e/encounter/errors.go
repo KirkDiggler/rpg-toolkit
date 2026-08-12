@@ -27,8 +27,11 @@ var (
 
 	// ErrNoField is returned when Setup is called without rooms, or when a
 	// declared room is itself defective (empty or duplicate ID, unrecognized
-	// grid shape) — a malformed room list is as unusable as an empty one.
-	// Returned at both Setup and Load.
+	// or no-longer-supported grid shape, non-integral hex origin) or the
+	// room list as a whole is incoherent (W1: more than one grid family in
+	// one field; W2: two rooms' absolute footprints overlap) — a malformed
+	// room list is as unusable as an empty one. Returned at both Setup and
+	// Load.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement fails spatial validation.
@@ -36,9 +39,11 @@ var (
 	ErrBadPlacement = errors.New("bad placement")
 
 	// ErrBadConnection is returned when a connection's ID is empty or
-	// duplicated, its From/To names an unknown room or itself, or an
-	// endpoint lies outside its room's bounds or on an occluder position.
-	// Returned at both Setup and Load — a declaration-time defect.
+	// duplicated, its From/To names an unknown room or itself, an endpoint
+	// lies outside its room's bounds or on an occluder position, or (W3)
+	// its two endpoints, once anchored to their rooms' Origin, are not
+	// adjacent absolute cells. Returned at both Setup and Load — a
+	// declaration-time defect.
 	ErrBadConnection = errors.New("bad connection")
 
 	// ErrNoConnection is returned by Traverse when the given connection ID

@@ -61,6 +61,22 @@ type RoomInput struct {
 
 	// Boundaries define walls or barriers between adjacent cells.
 	Boundaries []spatial.Boundary
+
+	// Origin is this room's dungeon-absolute anchor: local (0,0) maps to
+	// Origin in the field's shared absolute space. Local→absolute is
+	// element-wise addition (local cell + Origin) — for hex rooms this is
+	// ordinary axial cube arithmetic (axial+axial is valid cube math), not
+	// a special case. The zero value anchors a room at the absolute
+	// origin, which is legal on its own; in a multi-room field, leaving
+	// every Origin at its zero value collides every room at (0,0) and is
+	// rejected by W2 (see NewEncounter) — there is no separate
+	// "origin required" check. Setup validates every field against the
+	// W-laws: W1 (one grid family per field), W2 (rooms never overlap in
+	// absolute space), and W3 (every connection's endpoints are adjacent
+	// absolute cells). Rules and queries stay room-local in this wave —
+	// Origin exists for layout coherence at Setup, not yet for movement,
+	// sight, or persistence.
+	Origin spatial.Position
 }
 
 // ConnectionInput describes a connection between two rooms: a bidirectional

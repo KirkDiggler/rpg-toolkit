@@ -313,23 +313,33 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 // validConnSetup returns a fresh SetupInput with two DELIBERATELY
 // mismatched rooms — r1 is 10x4 (occluder at (2,2)), r2 is 3x9 (occluder
 // at (1,3)) — and one fully valid connection between them, with
-// FromPosition{7,1} valid ONLY in r1 and ToPosition{1,7} valid ONLY in r2.
+// FromPosition{9,1} valid ONLY in r1 and ToPosition{0,7} valid ONLY in r2.
 // Same-sized rooms and equal From/To positions would make a check that
 // validates an endpoint against the WRONG room (or a Load-side From/To
 // transposition) invisible: this is the base for
 // TestSetupConnectionValidation's one-defect rows, mirroring the same
 // defect classes rejected at Load (TestLoadRejections).
+//
+// #929 T1: the endpoints sit on each room's OWN boundary (r1's rightmost
+// column, r2's leftmost column) — a connection can only ever kiss (W3)
+// through a room's boundary cell, never an interior one (every neighbor of
+// an interior cell is still inside that room's own footprint). r2's Origin
+// (10,-6) puts its leftmost column at absolute x=10, immediately east of
+// r1's rightmost column (absolute x=9, since r1's Origin is the zero
+// value) — Chebyshev-adjacent (W3) — while r1's absolute footprint
+// (x:[0,9], y:[0,3]) and r2's (x:[10,12], y:[-6,2]) share no x value at
+// all, so they stay disjoint (W2) regardless of their y overlap.
 func validConnSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 10, Height: 4, Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "r2", Width: 3, Height: 9, Occluders: []spatial.Position{{X: 1, Y: 3}}},
+				{ID: "r2", Width: 3, Height: 9, Origin: spatial.Position{X: 10, Y: -6}, Occluders: []spatial.Position{{X: 1, Y: 3}}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
-					FromPosition: spatial.Position{X: 7, Y: 1},
-					ToPosition:   spatial.Position{X: 1, Y: 7}},
+					FromPosition: spatial.Position{X: 9, Y: 1},
+					ToPosition:   spatial.Position{X: 0, Y: 7}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -391,17 +401,17 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 	}
 
 	// The valid base itself must construct — the one-defect discipline only
-	// means something if zero defects pass. Since FromPosition{7,1} is valid
-	// ONLY in r1 and ToPosition{1,7} valid ONLY in r2, this positive control
+	// means something if zero defects pass. Since FromPosition{9,1} is valid
+	// ONLY in r1 and ToPosition{0,7} valid ONLY in r2, this positive control
 	// also pins that each endpoint is checked against ITS OWN room: a check
 	// wired to the wrong room would reject this valid connection.
 	enc, err := encounter.NewEncounter(validConnSetup())
 	s.Require().NoError(err, "the valid base fixture must construct")
 	data := enc.ToData()
 	s.Require().Len(data.Field.Connections, 1)
-	s.Equal(&encounter.PositionData{X: 7, Y: 1}, data.Field.Connections[0].FromPosition,
+	s.Equal(&encounter.PositionData{X: 9, Y: 1}, data.Field.Connections[0].FromPosition,
 		"from-position must survive unswapped")
-	s.Equal(&encounter.PositionData{X: 1, Y: 7}, data.Field.Connections[0].ToPosition,
+	s.Equal(&encounter.PositionData{X: 0, Y: 7}, data.Field.Connections[0].ToPosition,
 		"to-position must survive unswapped")
 }
 
@@ -409,13 +419,18 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 // coordinates 0..3 x 0..2) and an r2 large enough to always hold the
 // connection's fixed ToPosition — used to pin the square grid's strictly-
 // less-than bounds semantics against FromPosition in r1, independent of any
-// cross-room concern (that's validConnSetup's job).
+// cross-room concern (that's validConnSetup's job). r2's Origin (4,3)
+// anchors it diagonally past r1's bottom-right corner (#929 T1): the
+// positive control's FromPosition (3,2) — r1's own bottom-right corner —
+// and ToPosition (0,0)+(4,3)=(4,3) are Chebyshev-adjacent (a diagonal kiss,
+// distance 1), while the rooms' absolute footprints (x:[0,3] vs x:[4,7])
+// share no x value and so stay disjoint (W2) regardless of y.
 func connBoundsSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 4, Height: 3},
-				{ID: "r2", Width: 4, Height: 3},
+				{ID: "r2", Width: 4, Height: 3, Origin: spatial.Position{X: 4, Y: 3}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
@@ -619,18 +634,28 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 // TestSetupHexIntegralAxial's one-defect rows: interim tools/spatial#926
 // enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
 // any of these positions in a hex room.
+//
+// #929 T1: both rooms are Width=8,Height=8, so each has valid axial Q,R in
+// [-4,4) (i.e. -4..3). gate.FromPosition sits at hex-a's own Q=3 boundary
+// (an interior cell like the original (1,1) can never kiss anything — every
+// neighbor of an interior cell is still inside that room's own footprint).
+// hex-b's Origin (8,1) anchors it immediately past that boundary: absolute
+// FromPosition (3,0) and absolute ToPosition local(-4,-1)+(8,1)=(4,0) are
+// cube-distance 1 (W3), while hex-b's absolute Q span ([4,11]) shares no Q
+// value with hex-a's ([-4,3]), so the two rooms stay disjoint (W2)
+// regardless of R.
 func validHexAxialSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
 					Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 1}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: spatial.Position{X: 1, Y: 1},
-				ToPosition:   spatial.Position{X: -1, Y: -1},
+				FromPosition: spatial.Position{X: 3, Y: 0},
+				ToPosition:   spatial.Position{X: -4, Y: -1},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -678,7 +703,7 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 	}
 
 	// Positive control: the valid base — integral throughout, including
-	// a NEGATIVE axial position (gate.ToPosition at (-1,-1)) — constructs.
+	// a NEGATIVE axial position (gate.ToPosition at (-4,-1)) — constructs.
 	_, err := encounter.NewEncounter(validHexAxialSetup())
 	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
 }
@@ -741,17 +766,17 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	})
 }
 
-// TestGridlessRoomInclusiveBounds pins gridless's own divergence from the
-// rectangle math this task deletes: GridlessRoom.IsValidPosition
-// (tools/spatial/gridless.go:33-36) uses an INCLUSIVE upper bound
-// (x <= Width), unlike SquareGrid's exclusive (x < Width). A position
-// exactly AT Width — rejected for square — is a sharp, independent proof
-// that bounds checks ask the room's OWN constructed grid rather than a
-// hardcoded rectangle: a "grid shape ignored, always builds square" mutant
-// would reject this position; the correct code accepts it. (AxialHexGrid
-// diverges from square too, but via origin-centered bounds and legal
-// negative coordinates, not an inclusive upper bound — see
-// TestHexRoomBounds.)
+// TestGridlessRoomInclusiveBounds pinned gridless's own divergence from the
+// rectangle math a prior task deleted (GridlessRoom.IsValidPosition's
+// inclusive upper bound, x <= Width, vs SquareGrid's exclusive x < Width).
+// #929 T1 (shape legality, W1) retires that coverage: gridless leaves the
+// composition entirely as of v0.3 — the wire cannot carry a continuous
+// room's absolute projection — so a declared GridShapeGridless room is now
+// a room-list defect at Setup, full stop, regardless of any position within
+// it. This test is repurposed to pin THAT rejection instead of gridless's
+// old bounds semantics (AxialHexGrid's own divergence from square — origin-
+// centered bounds, legal negative coordinates — is still covered by
+// TestHexRoomBounds).
 func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 	gridlessSetup := func(pos spatial.Position) *encounter.SetupInput {
 		return &encounter.SetupInput{
@@ -767,16 +792,191 @@ func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 		}
 	}
 
-	s.Run("position exactly at Width is accepted (inclusive upper bound)", func() {
+	s.Run("gridless room rejected regardless of member position", func() {
 		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: 4, Y: 0}))
-		s.Require().NoError(err, "gridless rooms accept x == Width; a rectangle-math fallback would reject this")
+		s.Require().Error(err, "gridless leaves the composition as of v0.3 — no position can rescue it")
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Require().Contains(err.Error(), "gridless grid shape, no longer supported",
+			"the check that fired must be shape legality, not a downstream placement check")
 	})
 
-	s.Run("position negative is still rejected", func() {
+	s.Run("still rejected for a position that would also be out of bounds", func() {
 		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: -1, Y: 0}))
 		s.Require().Error(err)
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().ErrorIs(err, encounter.ErrNoField,
+			"shape legality fires before any placement check ever sees this position")
 	})
+}
+
+// ============================================================
+// #929 T1 — anchoring: RoomInput.Origin, W1 (one geometry per field), W2
+// (rooms never overlap), W3 (doorways kiss). Shape legality's own
+// rejection (GridShapeGridless) is pinned above by
+// TestGridlessRoomInclusiveBounds — repurposed for exactly this law.
+// ============================================================
+
+// validAnchoredHexSetup returns THE core fixture for the W-law tests below:
+// two hex rooms, asymmetric in every dimension (T1 review lesson —
+// symmetric fixtures hide cross-wiring mutants: a prior wave's full sweep
+// missed four of them this way). hex-big is 10x4 (Q valid [-5,4), R valid
+// [-2,2)) at the zero-value Origin; hex-small is 3x9 (Q valid [-1,2), R
+// valid [-4,5)) anchored at (6,-5) — a NEGATIVE-axial origin, on purpose.
+//
+// The connection's endpoints are each their own room's OWN boundary cell —
+// an interior cell can never kiss anything, since every neighbor of an
+// interior cell is still inside that room's own footprint — and are
+// computed, not guessed, from the span arithmetic above: FromPosition
+// (4,0) is hex-big's max-Q boundary; ToPosition (-1,4) is hex-small's
+// min-Q/max-R corner. Anchored, their absolute cells are (4,0) and (5,-1):
+// ΔQ=1, ΔR=-1, ΔS=0, cube distance (1+1+0)/2 = 1 — adjacent, and
+// deliberately OFF-AXIS (both ΔQ and ΔR nonzero) so a Manhattan-distance
+// mutant (|ΔQ|+|ΔR|=2) would wrongly reject this valid base — see
+// TestAnchoringMutationEvidence.
+//
+// hex-big's absolute Q span is [-5,4]; hex-small's is local[-1,1]+6=[5,7]:
+// the two share NO Q value at all, so W2 holds regardless of R — the
+// rooms are disjoint, touching only through the one declared doorway.
+func validAnchoredHexSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "hex-big", To: "hex-small",
+				FromPosition: spatial.Position{X: 4, Y: 0},
+				ToPosition:   spatial.Position{X: -1, Y: 4},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+}
+
+// TestSetupAnchoring pins the one-defect rows for W1 (mixed grid families),
+// origin legality (non-integral hex origin), W2 (overlapping footprints),
+// and W3 (endpoints that don't kiss) — each breaking exactly ONE thing
+// about validAnchoredHexSetup's otherwise-valid base, rejecting with the
+// sentinel and message fragment its own law uses.
+func (s *EncounterTestSuite) TestSetupAnchoring() {
+	cases := []struct {
+		name     string
+		mutate   func(in *encounter.SetupInput)
+		alsoErr  error
+		fragment string
+	}{
+		{"W1: mixed grid families", func(in *encounter.SetupInput) {
+			in.Field.Rooms[1].Grid = spatial.GridShapeSquare
+		}, encounter.ErrNoField, "declare different grid families"},
+		{"origin legality: fractional hex origin", func(in *encounter.SetupInput) {
+			in.Field.Rooms[1].Origin = spatial.Position{X: 6.5, Y: -5}
+		}, encounter.ErrNoField, "not an integral axial cell"},
+		{"W2: overlapping footprints", func(in *encounter.SetupInput) {
+			in.Field.Rooms[1].Origin = spatial.Position{X: 0, Y: 0}
+		}, encounter.ErrNoField, "overlap at absolute cell"},
+		{"W3: endpoints do not kiss", func(in *encounter.SetupInput) {
+			// (1,4) is still a legal LOCAL cell in hex-small (max Q, max R)
+			// — this must fail on adjacency, not on the earlier bounds check.
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 4}
+		}, encounter.ErrBadConnection, "not adjacent"},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validAnchoredHexSetup()
+			tc.mutate(setup)
+			_, err := encounter.NewEncounter(setup)
+			s.Require().Error(err, tc.name)
+			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
+			s.Require().Contains(err.Error(), tc.fragment,
+				"the check that fired must be the one this case targets")
+		})
+	}
+
+	// The valid base itself must construct — the one-defect discipline only
+	// means something if zero defects pass. This ALSO doubles as the
+	// "touching but not overlapping" sibling proof (W2 rejects overlap,
+	// not contact): hex-big and hex-small touch at exactly the gate's two
+	// cells and nowhere else, yet still validate.
+	_, err := encounter.NewEncounter(validAnchoredHexSetup())
+	s.Require().NoError(err, "the valid base fixture — asymmetric, negative-anchored, off-axis kissing — must construct")
+}
+
+// TestSetupAnchoringSquareDiagonalKiss pins W3's Chebyshev adjacency for
+// the square family, specifically a DIAGONAL kiss (Chebyshev distance 1
+// includes diagonals, unlike a 4-directional adjacency check): sq-a and
+// sq-b sit corner-to-corner, touching at exactly one point and sharing no
+// cell (also the square-family sibling proof that W2 rejects overlap, not
+// contact — TestSetupAnchoring's hex base already proves it once, this
+// proves it independently for square's own distance formula).
+func (s *EncounterTestSuite) TestSetupAnchoringSquareDiagonalKiss() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "sq-a", Width: 5, Height: 5},
+				{ID: "sq-b", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 5}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "corner-gate", From: "sq-a", To: "sq-b",
+				FromPosition: spatial.Position{X: 4, Y: 4},
+				ToPosition:   spatial.Position{X: 0, Y: 0},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "sq-a", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, "a diagonal (Chebyshev distance 1) kiss must be accepted, not just a 4-directional one")
+}
+
+// TestSetupAnchoringSquareOriginUnconstrained pins that origin legality
+// (isIntegralAxialPosition) is a hex-only rule: a square room's Origin may
+// be fractional — square has always been fractional-tolerant (RoomInput.Grid's
+// doc comment) and Origin is no exception, unlike a hex room's (see
+// TestSetupAnchoring's "origin legality" row).
+func (s *EncounterTestSuite) TestSetupAnchoringSquareOriginUnconstrained() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0.5, Y: 1.5}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err, "a fractional Origin on a square room is not a defect")
+}
+
+// TestSetupAnchoringW1BothDirections pins W1's message names BOTH rooms and
+// BOTH families regardless of which room is square and which is hex —
+// mutating a two-hex-room field's SECOND room mirrors
+// TestSetupAnchoring's row, which mutates via the same slice index; this
+// covers the field declared the other way around (hex declared first,
+// square second) to guard against a comparison that only checks one
+// direction.
+func (s *EncounterTestSuite) TestSetupAnchoringW1BothDirections() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "square-first", Width: 5, Height: 5},
+				{ID: "hex-second", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-first", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, encounter.ErrNoField)
+	s.Require().Contains(err.Error(), `room "square-first" (square)`)
+	s.Require().Contains(err.Error(), `room "hex-second" (hex)`)
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {
@@ -1521,7 +1721,11 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				// Anchored immediately east of room-a (#929 T1): door1's
+				// endpoints (9,5) and (0,5)+(10,0)=(10,5) are
+				// Chebyshev-adjacent (W3); the rooms' absolute footprints
+				// (x:[0,9] vs x:[10,19]) stay disjoint (W2).
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "room-a", To: "room-b",
@@ -1588,8 +1792,13 @@ func (s *EncounterTestSuite) TestTraverseValidation() {
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room-a", Width: 10, Height: 10},
-					{ID: "room-b", Width: 10, Height: 10},
-					{ID: "room-c", Width: 10, Height: 10},
+					// Anchored east of room-a so door1's endpoints kiss (#929
+					// T1) — see newTwoRoomEncounterWithConnection's comment.
+					{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+					// room-c touches neither: anchored south of room-a,
+					// disjoint from both (W2) and irrelevant to door1 (W3
+					// only constrains door1's own two rooms).
+					{ID: "room-c", Width: 10, Height: 10, Origin: spatial.Position{X: 0, Y: 10}},
 				},
 				Connections: []encounter.ConnectionInput{
 					{ID: "door1", From: "room-a", To: "room-b",
@@ -1763,7 +1972,7 @@ func (s *EncounterTestSuite) TestTraverseEndingFiresOnArrival() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "room-a", To: "room-b",
@@ -1804,7 +2013,7 @@ func (s *EncounterTestSuite) TestTraverseMonsterOnUnfilteredEndingDoesNotClose()
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
-				{ID: "room-b", Width: 10, Height: 10},
+				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "room-a", To: "room-b",

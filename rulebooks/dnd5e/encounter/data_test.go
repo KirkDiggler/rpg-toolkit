@@ -103,18 +103,27 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 // the round-trip — most notably in convertConnectionDataToConnectionInput,
 // which only ever sees pre-sorted, already-round-tripped ToData output in
 // other tests — would change the observed values, not just their order.
+//
+// #929 T1: r2's Origin (5,0) anchors it immediately east of r1 (5x5 each,
+// so r1's absolute footprint is x:[0,4],y:[0,4] and r2's is x:[5,9],y:[0,4]
+// — disjoint, W2). All three doors sit on r1's east edge (x=4) and r2's
+// west edge (local x=0, absolute x=5), one per row, so every one
+// independently satisfies W3 (Chebyshev distance 1, dx=1/dy=0) under this
+// SAME shared origin — the original fixture's three endpoint pairs had
+// three different relative offsets and could not all kiss under any single
+// origin simultaneously.
 func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	setup := &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5},
-				{ID: "r2", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 0}},
 			},
 			// Declared out of ID order — persistence must not echo this order.
 			Connections: []encounter.ConnectionInput{
-				{ID: "z-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 0, Y: 3}, ToPosition: spatial.Position{X: 2, Y: 1}},
-				{ID: "a-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 4}, ToPosition: spatial.Position{X: 3, Y: 2}},
-				{ID: "m-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 2, Y: 0}, ToPosition: spatial.Position{X: 4, Y: 3}},
+				{ID: "z-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 4, Y: 1}, ToPosition: spatial.Position{X: 0, Y: 1}},
+				{ID: "a-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 4, Y: 2}, ToPosition: spatial.Position{X: 0, Y: 2}},
+				{ID: "m-door", From: "r1", To: "r2", FromPosition: spatial.Position{X: 4, Y: 3}, ToPosition: spatial.Position{X: 0, Y: 3}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -128,9 +137,9 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 
 	data1 := enc1.ToData()
 	expected := []encounter.ConnectionData{
-		{ID: "a-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 1, Y: 4}, ToPosition: &encounter.PositionData{X: 3, Y: 2}},
-		{ID: "m-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 2, Y: 0}, ToPosition: &encounter.PositionData{X: 4, Y: 3}},
-		{ID: "z-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 0, Y: 3}, ToPosition: &encounter.PositionData{X: 2, Y: 1}},
+		{ID: "a-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 2}, ToPosition: &encounter.PositionData{X: 0, Y: 2}},
+		{ID: "m-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 3}, ToPosition: &encounter.PositionData{X: 0, Y: 3}},
+		{ID: "z-door", From: "r1", To: "r2", FromPosition: &encounter.PositionData{X: 4, Y: 1}, ToPosition: &encounter.PositionData{X: 0, Y: 1}},
 	}
 	s.Equal(expected, data1.Field.Connections, "connections persist sorted by ID with endpoints intact")
 
@@ -219,15 +228,24 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 // source (the encounter deep-copies the field description). Also covers
 // connections: mutating the caller's ConnectionInput slice (and its
 // endpoint positions) after NewEncounter must not affect the encounter.
+//
+// #929 T1: door1's FromPosition moved to r1's top-right corner (4,0) — an
+// interior cell like the original (1,0)'s neighbor set never fully escapes
+// r1's own footprint diagonally, but a corner's does. r2's Origin (5,-1)
+// anchors it diagonally past that corner: absolute FromPosition (4,0) and
+// absolute ToPosition local(0,0)+(5,-1)=(5,-1) are Chebyshev-adjacent
+// (distance 1, a diagonal kiss), while r1's absolute footprint
+// (x:[0,4],y:[0,4]) and r2's (x:[5,9],y:[-1,3]) share no x value at all,
+// so they stay disjoint (W2) regardless of y.
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
-				{ID: "r2", Width: 5, Height: 5},
+				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: -1}},
 			},
 			Connections: []encounter.ConnectionInput{
-				{ID: "door1", From: "r1", To: "r2", FromPosition: spatial.Position{X: 1, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
+				{ID: "door1", From: "r1", To: "r2", FromPosition: spatial.Position{X: 4, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -255,7 +273,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	s.Require().Len(data.Field.Connections, 1)
 	s.Equal("door1", data.Field.Connections[0].ID, "the snapshot must not see the caller's vandalism")
 	s.Equal("r1", data.Field.Connections[0].From)
-	s.Equal(&encounter.PositionData{X: 1, Y: 0}, data.Field.Connections[0].FromPosition)
+	s.Equal(&encounter.PositionData{X: 4, Y: 0}, data.Field.Connections[0].FromPosition)
 	s.Equal(&encounter.PositionData{X: 0, Y: 0}, data.Field.Connections[0].ToPosition)
 
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
