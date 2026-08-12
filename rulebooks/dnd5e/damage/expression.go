@@ -94,8 +94,14 @@ func (e Expression) Validate() error {
 
 func parseDice(input string, position int) (string, int, bool) {
 	start := position
+	if position >= len(input) || input[position] == '0' {
+		return "", position, false
+	}
 	count, next, ok := parseWholeNumber(input, position)
 	if !ok || count <= 0 || next >= len(input) || input[next] != 'd' {
+		return "", position, false
+	}
+	if next+1 >= len(input) || input[next+1] == '0' {
 		return "", position, false
 	}
 	sides, next, ok := parseWholeNumber(input, next+1)

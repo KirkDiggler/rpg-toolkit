@@ -63,7 +63,7 @@ func TestParseExpression(t *testing.T) {
 }
 
 func TestParseExpressionRejectsInvalidNotation(t *testing.T) {
-	for _, input := range []string{"0d6", "1d0", "1d6*2", "(1d6)", "1d6/2", "1d6++2", "2"} {
+	for _, input := range []string{"0d6", "1d0", "01d6", "1d06", "01d06", "1d6*2", "(1d6)", "1d6/2", "1d6++2", "2"} {
 		t.Run(input, func(t *testing.T) {
 			_, err := damage.ParseExpression(input)
 			require.Error(t, err)
