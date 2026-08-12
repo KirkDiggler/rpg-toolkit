@@ -204,6 +204,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 				if component.Source == dnd5eEvents.DamageSourceWeapon {
 					component.OriginalDiceRolls = append([]int(nil), newRolls...)
 					component.FinalDiceRolls = append([]int(nil), newRolls...)
+					component.Rerolls = nil
 					component.DiceNotation = martialArtsDice
 					component.Terms = []dnd5eEvents.RolledDiceTerm{{
 						Dice:     martialArtsDice,

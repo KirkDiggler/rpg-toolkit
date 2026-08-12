@@ -152,10 +152,9 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 				roller = dice.NewRoller()
 			}
 
-			// Parse die size from weapon damage notation
-			dieSize, err := parseGWFWeaponDieSize(e.WeaponDamage)
+			dieSizes, err := gwfDieSizes(*component, e.WeaponDamage)
 			if err != nil {
-				return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", e.WeaponDamage)
+				return e, rpgerr.Wrap(err, "failed to determine weapon damage die sizes")
 			}
 
 			// Reroll 1s and 2s
@@ -164,7 +163,7 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 
 			for idx, roll := range component.OriginalDiceRolls {
 				if roll == 1 || roll == 2 {
-					newRoll, rollErr := roller.Roll(modCtx, dieSize)
+					newRoll, rollErr := roller.Roll(modCtx, dieSizes[idx])
 					if rollErr != nil {
 						return e, rpgerr.Wrap(rollErr, "failed to reroll die")
 					}
@@ -197,6 +196,37 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	}
 
 	return c, nil
+}
+
+func gwfDieSizes(component dnd5eEvents.DamageComponent, weaponDamage string) ([]int, error) {
+	if len(component.Terms) == 0 {
+		dieSize, err := parseGWFWeaponDieSize(weaponDamage)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", weaponDamage)
+		}
+		return makeDieSizes(len(component.OriginalDiceRolls), dieSize), nil
+	}
+
+	dieSizes := make([]int, 0, len(component.OriginalDiceRolls))
+	for _, term := range component.Terms {
+		dieSize, err := parseGWFWeaponDieSize(term.Dice)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to parse signed damage term: %s", term.Dice)
+		}
+		dieSizes = append(dieSizes, makeDieSizes(len(term.Original), dieSize)...)
+	}
+	if len(dieSizes) != len(component.OriginalDiceRolls) {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "signed damage terms do not match weapon damage rolls")
+	}
+	return dieSizes, nil
+}
+
+func makeDieSizes(count, dieSize int) []int {
+	dieSizes := make([]int, count)
+	for i := range dieSizes {
+		dieSizes[i] = dieSize
+	}
+	return dieSizes
 }
 
 // parseGWFWeaponDieSize extracts the die size from weapon damage notation

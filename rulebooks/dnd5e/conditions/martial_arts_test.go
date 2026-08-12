@@ -237,7 +237,13 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesSignedDamageTerm() {
 				}},
 				OriginalDiceRolls: []int{1},
 				FinalDiceRolls:    []int{1},
-				DamageType:        "bludgeoning",
+				Rerolls: []dnd5eEvents.RerollEvent{{
+					DieIndex: 0,
+					Before:   1,
+					After:    3,
+					Reason:   "previous_modifier",
+				}},
+				DamageType: "bludgeoning",
 			},
 		},
 		WeaponRef: refs.Weapons.UnarmedStrike(),
@@ -253,6 +259,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesSignedDamageTerm() {
 
 	weaponComponent := finalEvent.Components[0]
 	s.Equal(5, weaponComponent.Total())
+	s.Empty(weaponComponent.Rerolls)
 	s.Equal("1d6 (5) bludgeoning = 5", combat.FormatDamageComponent(weaponComponent))
 }
 
