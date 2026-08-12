@@ -236,6 +236,207 @@ func TestResolveAttackCriticalDoublesOnlyEligibleDice(t *testing.T) {
 	}
 }
 
+func TestResolveAttackMonsterDiceRegression(t *testing.T) {
+	tests := []struct {
+		name       string
+		definition *attack.Definition
+		attackRoll int
+		diceRolls  func(*mock_dice.MockRoller, context.Context)
+		wantTotal  int
+		wantFlat   int
+		wantMelee  bool
+	}{
+		{
+			name:       "BrownBearBite",
+			attackRoll: 10,
+			definition: &attack.Definition{
+				ActionID: "brown-bear-bite", DisplayName: "Brown Bear Bite", Category: attack.CategoryNatural,
+				Bonus: attack.FixedBonus(6), Targeting: attack.MeleeReach(1),
+				Damage: damage.DamageSpec{Pools: []damage.Damage{{
+					Dice: "1d8+4", Terms: []damage.DiceTerm{{Dice: "1d8", Sign: 1}}, FlatBonus: 4,
+					Type: damage.Piercing, Properties: []damage.Property{damage.PropertyCritEligible},
+				}}},
+			},
+			diceRolls: func(roller *mock_dice.MockRoller, ctx context.Context) {
+				roller.EXPECT().RollN(ctx, 1, 8).Return([]int{5}, nil)
+			},
+			wantTotal: 9,
+			wantFlat:  4,
+			wantMelee: true,
+		},
+		{
+			name:       "BanditCrossbow",
+			attackRoll: 12,
+			definition: &attack.Definition{
+				ActionID: "bandit-light-crossbow", DisplayName: "Light Crossbow", Category: attack.CategoryNatural,
+				Bonus: attack.FixedBonus(3), Targeting: attack.Ranged(16, 64),
+				Damage: damage.DamageSpec{Pools: []damage.Damage{{
+					Dice: "1d8+1", Terms: []damage.DiceTerm{{Dice: "1d8", Sign: 1}}, FlatBonus: 1,
+					Type: damage.Piercing, Properties: []damage.Property{damage.PropertyCritEligible},
+				}}},
+			},
+			diceRolls: func(roller *mock_dice.MockRoller, ctx context.Context) {
+				roller.EXPECT().RollN(ctx, 1, 8).Return([]int{6}, nil)
+			},
+			wantTotal: 7,
+			wantFlat:  1,
+			wantMelee: false,
+		},
+		{
+			name:       "WolfBite",
+			attackRoll: 11,
+			definition: &attack.Definition{
+				ActionID: "wolf-bite", DisplayName: "Wolf Bite", Category: attack.CategoryNatural,
+				Bonus: attack.FixedBonus(4), Targeting: attack.MeleeReach(1),
+				Damage: damage.DamageSpec{Pools: []damage.Damage{{
+					Dice: "2d4+2", Terms: []damage.DiceTerm{{Dice: "2d4", Sign: 1}}, FlatBonus: 2,
+					Type: damage.Piercing, Properties: []damage.Property{damage.PropertyCritEligible},
+				}}},
+			},
+			diceRolls: func(roller *mock_dice.MockRoller, ctx context.Context) {
+				roller.EXPECT().RollN(ctx, 2, 4).Return([]int{3, 4}, nil)
+			},
+			wantTotal: 9,
+			wantFlat:  2,
+			wantMelee: true,
+		},
+		{
+			name:       "Signed",
+			attackRoll: 10,
+			definition: &attack.Definition{
+				ActionID: "signed-damage", DisplayName: "Signed Damage", Category: attack.CategoryNatural,
+				Bonus: attack.FixedBonus(5), Targeting: attack.MeleeReach(1),
+				Damage: damage.DamageSpec{Pools: []damage.Damage{{
+					Dice: "1d6-1d4+2", Terms: []damage.DiceTerm{{Dice: "1d6", Sign: 1}, {Dice: "1d4", Sign: -1}}, FlatBonus: 2,
+					Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible},
+				}}},
+			},
+			diceRolls: func(roller *mock_dice.MockRoller, ctx context.Context) {
+				roller.EXPECT().RollN(ctx, 1, 6).Return([]int{5}, nil)
+				roller.EXPECT().RollN(ctx, 1, 4).Return([]int{2}, nil)
+			},
+			wantTotal: 5,
+			wantFlat:  2,
+			wantMelee: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			lookup := mock_combat.NewMockCombatantLookup(ctrl)
+			attacker := mock_combat.NewMockCombatant(ctrl)
+			defender := mock_combat.NewMockCombatant(ctrl)
+			eventBus := events.NewEventBus()
+			ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+			lookup.EXPECT().Get("attacker").Return(attacker, nil).AnyTimes()
+			lookup.EXPECT().Get("defender").Return(defender, nil).AnyTimes()
+			defender.EXPECT().AC().Return(15).AnyTimes()
+
+			var isMelee bool
+			attacks := dnd5eEvents.AttackChain.On(eventBus)
+			_, err := attacks.SubscribeWithChain(ctx, func(
+				_ context.Context,
+				e dnd5eEvents.AttackChainEvent,
+				c chain.Chain[dnd5eEvents.AttackChainEvent],
+			) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+				isMelee = e.IsMelee
+				return c, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			roller := mock_dice.NewMockRoller(ctrl)
+			roller.EXPECT().Roll(ctx, 20).Return(tt.attackRoll, nil)
+			tt.diceRolls(roller, ctx)
+
+			result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+				AttackerID: "attacker",
+				TargetID:   "defender",
+				Attack:     tt.definition,
+				EventBus:   eventBus,
+				Roller:     roller,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !result.Hit {
+				t.Fatal("expected deterministic attack to hit")
+			}
+			if result.TotalDamage != tt.wantTotal {
+				t.Fatalf("total damage = %d, want %d", result.TotalDamage, tt.wantTotal)
+			}
+			if result.Breakdown == nil || len(result.Breakdown.Components) != 1 {
+				t.Fatalf("expected one damage component, got %#v", result.Breakdown)
+			}
+			component := result.Breakdown.Components[0]
+			if component.FlatBonus != tt.wantFlat {
+				t.Fatalf("component flat bonus = %d, want %d", component.FlatBonus, tt.wantFlat)
+			}
+			if component.Source != dnd5eEvents.DamageSourceNaturalAttack {
+				t.Fatalf("damage source = %q, want natural attack", component.Source)
+			}
+			if isMelee != tt.wantMelee {
+				t.Fatalf("attack metadata IsMelee = %t, want %t", isMelee, tt.wantMelee)
+			}
+		})
+	}
+}
+
+func TestResolveAttackSignedMonsterDiceCriticalDoublesDiceTermsOnly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lookup := mock_combat.NewMockCombatantLookup(ctrl)
+	attacker := mock_combat.NewMockCombatant(ctrl)
+	defender := mock_combat.NewMockCombatant(ctrl)
+	eventBus := events.NewEventBus()
+	ctx := combat.WithCombatantLookup(context.Background(), lookup)
+
+	lookup.EXPECT().Get("attacker").Return(attacker, nil).AnyTimes()
+	lookup.EXPECT().Get("defender").Return(defender, nil).AnyTimes()
+	defender.EXPECT().AC().Return(30).AnyTimes()
+
+	roller := mock_dice.NewMockRoller(ctrl)
+	roller.EXPECT().Roll(ctx, 20).Return(20, nil)
+	roller.EXPECT().RollN(ctx, 1, 6).Return([]int{5}, nil).Times(2)
+	roller.EXPECT().RollN(ctx, 1, 4).Return([]int{2}, nil).Times(2)
+
+	result, err := combat.ResolveAttack(ctx, &combat.AttackInput{
+		AttackerID: "attacker",
+		TargetID:   "defender",
+		Attack: &attack.Definition{
+			ActionID: "signed-critical", Category: attack.CategoryNatural,
+			Bonus: attack.FixedBonus(0), Targeting: attack.MeleeReach(1),
+			Damage: damage.DamageSpec{Pools: []damage.Damage{{
+				Dice: "1d6-1d4+2", Terms: []damage.DiceTerm{{Dice: "1d6", Sign: 1}, {Dice: "1d4", Sign: -1}}, FlatBonus: 2,
+				Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible},
+			}}},
+		},
+		EventBus: eventBus,
+		Roller:   roller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Critical {
+		t.Fatal("expected natural 20 to be critical")
+	}
+	if result.TotalDamage != 8 {
+		t.Fatalf("critical total damage = %d, want 8", result.TotalDamage)
+	}
+	component := result.Breakdown.Components[0]
+	if component.FlatBonus != 2 {
+		t.Fatalf("critical changed flat bonus: %#v", component)
+	}
+	if got := component.Terms[0].Final; len(got) != 2 || got[0] != 5 || got[1] != 5 {
+		t.Fatalf("positive dice term did not double: %v", got)
+	}
+	if got := component.Terms[1].Final; len(got) != 2 || got[0] != 2 || got[1] != 2 {
+		t.Fatalf("negative dice term did not double: %v", got)
+	}
+}
+
 func TestResolveAttackAcidResistanceLeavesBludgeoningUntouched(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	lookup := mock_combat.NewMockCombatantLookup(ctrl)
