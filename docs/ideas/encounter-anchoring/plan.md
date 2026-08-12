@@ -98,5 +98,117 @@ recorded; tag on merge.
 
 ## Execution addenda
 
-(Reviewer findings and mid-build corrections land here, per family
-practice.)
+Reviewer findings and mid-build corrections, per family practice.
+
+### T1 — anchors and the W-laws (commits 9244b3c, ab9e3f6, 8ca5efa, 60e52ac)
+
+Two review rounds (sonnet APPROVE; Opus FIX_REQUIRED → APPROVE), 288 →
+309 tests, 13 mutants killed.
+
+- **Mixed-family fixtures collided with W1.** Three v0.2 tests declared
+  square+hex rooms in one encounter — the exact thing W1 now forbids.
+  Resolutions: the negative-axial connection test became all-hex; the
+  grid-shape reload test split into one encounter per family (the
+  "both shapes in the SAME encounter" property is what the law
+  outlaws, so its heir is two per-family round-trips plus the W1
+  rejection pin); `TestGoldenJSONRich` was rewritten all-hex
+  deliberately — hex is the family the game ships — after confirming
+  the square/grid-absent byte pin still lives in the Open/Closed
+  goldens.
+- **Blocker (Opus): a negative room dimension panicked `NewEncounter`**
+  through `makeslice` — a panic is not a rejection (R5). Closed by
+  rejecting non-positive dimensions in room legality.
+- **Soundness (Opus): fractional square origins defeated W2.** Two 5x5
+  rooms at (0,0) and (0.5,0.5) interpenetrate ~81% while their integer
+  cell sets stay disjoint; a distance-0 "doorway" was reachable too.
+  **Origin integrality is therefore required for ALL families**, not
+  just hex (design amended). W2's disjointness is only sound over
+  integral anchors.
+- **Three fixture-blindness gaps**, each closed with a witness verified
+  to kill its mutant: a Chebyshev-on-axial substitution passed every
+  hex fixture (none used the axial (1,1) case where the formulas
+  diverge — cube distance 2, not 1); W2 weakened to adjacent-in-slice
+  pairs survived (the only 3-room fixture was a positive control); the
+  hex **R**-span boundary was unobservable because every hex fixture
+  separated on Q alone.
+- **W2 rewritten to interval intersection.** Rooms are boxes, so two
+  overlap iff both axis intervals intersect — exact, O(1) per pair.
+  Measured 560ms/144MB → 318µs/12KB on a 1000x1000 pair (spatial's own
+  docs recommend such spans). Cell enumeration was deleted here and
+  re-derived in T3 for Atlas.
+- **Representable origins.** `Trunc(x)==x` passes for ±Inf and every
+  magnitude past 2^63, so absurd origins collapsed to int64-min bounds
+  and produced a **wrong verdict** through the public API (rooms
+  1e19 apart rejected as overlapping; +Inf accepted as an anchor).
+  Closed with an exact int round-trip guard.
+- **The strict kiss comparison is pinned, not asserted.** A comment had
+  claimed `dist != 1` was unfalsifiable; Opus constructed the
+  falsifier (square endpoints stay fractional-tolerant, so a 0.5
+  distance is reachable), so the pin exists and the rationale was
+  corrected.
+- **Accepted as provably unobservable:** W1 compared adjacent-in-slice
+  pairs only is indistinguishable from full pairwise once gridless
+  leaves and equality ranges over two values (transitivity). Full
+  pairwise kept as the correct form, with the reasoning in-code.
+
+### T2 — persistence and the unified Load seam (commits 327f5dc, d59e386)
+
+Two review rounds (both APPROVE), 309 → 327 tests.
+
+- **Setup and Load now share one validation implementation.** Load
+  converts wire shapes to typed inputs (resolving only wire-only
+  concerns: grid string, origin presence, endpoint presence) and then
+  calls the same `buildValidRoomGrids`/`validateConnectionInputs`
+  Setup calls; ~150 lines of parallel validation deleted. Proof it is
+  structural rather than conventional: disabling the shared validator
+  once kills pins on **both** seams.
+- **Gridless fully excised** from the runtime paths — the load path
+  rejects the stored string as an unrecognized shape, and the
+  `GridShapeGridless` branches in `buildRoomGrid`/`gridShapeToData`
+  are gone (the latter was a write-only wire value the module could
+  emit but not load).
+- **F1, the sibling of T1's origin overflow (Opus):** `Width`/`Height`
+  were unbounded, so `MaxInt64`-wide rooms wrapped the interval sums
+  and two rooms overlapping over ~9.2e18 cells were accepted as
+  disjoint — through both public seams. Closed in-wave (not deferred)
+  with `maxRoomSpan`/`maxAnchorCoord` = 2^30, documented as overflow
+  defense rather than a gameplay limit.
+- **Load errors spoke in Setup's voice** ("newencounter:" prefixes
+  reaching persisted-blob rejections). The verb prefix moved out of
+  the shared validators to each caller's wrap.
+- **Presence errors could name an unvalidated ID** (`room "" missing
+  origin`). A wire-shape ID pre-pass now runs before conversion, so
+  the ID defect is reported first.
+- **Golden law upheld:** `outcome.at` (omitempty) was exercised by no
+  golden — the closed fixture now pumps a tick before closing. The
+  rich golden's anchors were re-translated so both axes are nonzero
+  and distinct per room, which makes the golden itself catch an X/Y
+  transposition (previously only the round-trip test could).
+- **Verified clean by the Opus pass:** 36 adversarial raw-JSON blobs at
+  the trust boundary (no panics, no wrong verdicts); byte-identical
+  round-trips **after a real story** (joins, moves, a traverse, three
+  pumps with deciders acting) with behavior identity on reload; 2100
+  golden/marshal runs with zero flakes; partial-object presence
+  semantics consistent with the v0.1/v0.2 precedents.
+
+### T3 — Atlas and the bridges (commit 7104dd2)
+
+327 → 547 tests. Cell enumeration re-derived (not resurrected) and
+proven against spatial's own `IsValidPosition` by a 200-case property
+test across both families and dimension parities.
+
+- **Rulings settled during dispatch:** occluded cells are **owned**
+  (occlusion is walkability, not ownership — both bridges accept
+  them); fractional square positions are legal and round-trip
+  (SquareGrid is [0,width) continuous, and W2 with integral origins
+  keeps ownership unambiguous); Atlas is construction-truth and must
+  not move when members do; `Locate` is well-defined only because W2
+  gives every absolute cell at most one owner.
+- **Atlas's O(total cells) cost** is documented as a caller contract.
+  No guard this wave: the 2^30 span bound is overflow defense, and a
+  field large enough to matter could not be carried on the wire.
+- **Doorway ordering is structurally unobservable** — `connectionsInput`
+  arrives pre-sorted from both `NewEncounter` and `LoadEncounter`, so
+  removing Atlas's own sort fails nothing. The sort is kept for
+  self-contained correctness (room ordering, by contrast, IS
+  observable — `fieldInput` is not pre-sorted).
