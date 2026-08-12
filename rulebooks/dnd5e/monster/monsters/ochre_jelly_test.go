@@ -14,8 +14,10 @@ func TestOchreJellyPseudopod(t *testing.T) {
 	require.Equal(t, attack.CategoryNatural, def.Category)
 	require.Equal(t, 1, def.Targeting.Reach)
 	require.Equal(t, 4, def.Bonus.Fixed)
-	require.Equal(t, -2, def.Damage.Pools[0].FlatBonus)
-	require.Equal(t, damage.Acid, def.Damage.Pools[1].Type)
+	require.Equal(t, []damage.Damage{
+		{Dice: "2d6", Type: damage.Bludgeoning, FlatBonus: -2, Properties: []damage.Property{damage.PropertyCritEligible}},
+		{Dice: "1d6", Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible}},
+	}, def.Damage.Pools)
 }
 
 func TestOozesShareActionIDWithoutSharingRules(t *testing.T) {

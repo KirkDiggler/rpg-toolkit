@@ -5,6 +5,7 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -16,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type MeleeActionTestSuite struct {
@@ -228,6 +230,74 @@ func (s *MeleeActionTestSuite) TestActivatePublishesEveryDamageComponent() {
 		{Dice: "1d6-1", DamageType: damage.Bludgeoning},
 		{Dice: "2d6", DamageType: damage.Acid},
 	}, received.DamageComponents)
+}
+
+func (s *MeleeActionTestSuite) TestLegacyPseudopodComponentsConvertToTypedPools() {
+	action := NewMeleeAction(MeleeConfig{
+		Name: "pseudopod", AttackBonus: 3, DamageDice: "1d4", DamageType: damage.Piercing, Reach: 1,
+		DamageComponents: []dnd5eEvents.AttackDamageComponent{
+			{Dice: "1d6-1", DamageType: damage.Bludgeoning},
+			{Dice: "2d6", DamageType: damage.Acid},
+		},
+	})
+
+	event := s.activateAndReceiveEvent(action)
+
+	s.Require().Equal([]damage.Damage{
+		{Dice: "1d6-1", Terms: []damage.DiceTerm{{Dice: "1d6", Sign: 1}}, Type: damage.Bludgeoning, FlatBonus: -1, Properties: []damage.Property{damage.PropertyCritEligible}},
+		{Dice: "2d6", Terms: []damage.DiceTerm{{Dice: "2d6", Sign: 1}}, Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible}},
+	}, event.Definition.Damage.Pools)
+}
+
+func (s *MeleeActionTestSuite) TestLegacyMeleeRoundTripPreservesTextAndStructuredDamage() {
+	action := NewMeleeAction(MeleeConfig{
+		Name: "pseudopod", AttackBonus: 3, Reach: 1,
+		DamageComponents: []dnd5eEvents.AttackDamageComponent{
+			{Dice: "1d6-1", DamageType: damage.Bludgeoning},
+			{Dice: "2d6", DamageType: damage.Acid},
+		},
+	})
+
+	data := action.ToData()
+	var persisted MeleeConfig
+	s.Require().NoError(json.Unmarshal(data.Config, &persisted))
+	s.Equal([]dnd5eEvents.AttackDamageComponent{
+		{Dice: "1d6-1", DamageType: damage.Bludgeoning},
+		{Dice: "2d6", DamageType: damage.Acid},
+	}, persisted.DamageComponents)
+	s.Equal([]damage.Damage{
+		{Dice: "1d6-1", Terms: []damage.DiceTerm{{Dice: "1d6", Sign: 1}}, Type: damage.Bludgeoning, FlatBonus: -1, Properties: []damage.Property{damage.PropertyCritEligible}},
+		{Dice: "2d6", Terms: []damage.DiceTerm{{Dice: "2d6", Sign: 1}}, Type: damage.Acid, Properties: []damage.Property{damage.PropertyCritEligible}},
+	}, persisted.DamageSpec.Pools)
+
+	loaded, err := LoadAction(data)
+	s.Require().NoError(err)
+	loadedMelee, ok := loaded.(*MeleeAction)
+	s.Require().True(ok)
+	s.Equal([]dnd5eEvents.AttackDamageComponent{
+		{Dice: "1d6-1", DamageType: damage.Bludgeoning},
+		{Dice: "2d6", DamageType: damage.Acid},
+	}, loadedMelee.damageComponents)
+	s.Equal(persisted.DamageSpec, &loadedMelee.damageSpec)
+}
+
+func (s *MeleeActionTestSuite) TestLegacyMeleeInvalidDamageIsReportedByConstructorAndRejectedByLoader() {
+	config := MeleeConfig{Name: "club", AttackBonus: 2, DamageDice: "1d6++1", DamageType: damage.Bludgeoning, Reach: 1}
+	action := NewMeleeAction(config)
+	target := &mockEntity{id: "target"}
+	err := action.CanActivate(context.Background(), &mockEntity{id: "monster"}, monster.MonsterActionInput{
+		Target: target, Perception: &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 1}}},
+	})
+	s.Require().Error(err)
+	err = action.Activate(context.Background(), &mockEntity{id: "monster"}, monster.MonsterActionInput{
+		Target: target, Perception: &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 1}}},
+	})
+	s.Require().Error(err)
+
+	configJSON, marshalErr := json.Marshal(config)
+	s.Require().NoError(marshalErr)
+	_, err = LoadAction(monster.ActionData{Ref: *refs.MonsterActions.Melee(), Config: configJSON})
+	s.Require().Error(err)
 }
 
 func (s *MeleeActionTestSuite) TestMeleeActionPrefersDamageSpec() {

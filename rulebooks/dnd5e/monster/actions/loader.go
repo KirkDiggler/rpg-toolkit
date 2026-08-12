@@ -65,6 +65,9 @@ func loadMeleeAction(data monster.ActionData) (monster.MonsterAction, error) {
 			return nil, rpgerr.Wrap(err, "failed to unmarshal melee config")
 		}
 	}
+	if _, _, err := convertMeleeDamage(config); err != nil {
+		return nil, rpgerr.Wrap(err, "invalid melee config")
+	}
 	return NewMeleeAction(config), nil
 }
 

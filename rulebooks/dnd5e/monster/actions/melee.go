@@ -39,6 +39,7 @@ type MeleeAction struct {
 	damageType       damage.Type
 	damageSpec       damage.DamageSpec
 	damageComponents []dnd5eEvents.AttackDamageComponent
+	damageErr        error
 }
 
 // Ensure MeleeAction implements MonsterAction
@@ -46,17 +47,7 @@ var _ monster.MonsterAction = (*MeleeAction)(nil)
 
 // NewMeleeAction creates a melee action with the given config
 func NewMeleeAction(config MeleeConfig) *MeleeAction {
-	damageSpec := damage.DamageSpec{Pools: []damage.Damage{{Dice: config.DamageDice, Type: config.DamageType}}}
-	if config.DamageSpec != nil {
-		damageSpec = cloneDamageSpec(*config.DamageSpec)
-	}
-	components := append([]dnd5eEvents.AttackDamageComponent(nil), config.DamageComponents...)
-	if config.DamageSpec != nil || len(components) == 0 {
-		components = make([]dnd5eEvents.AttackDamageComponent, len(damageSpec.Pools))
-		for i, pool := range damageSpec.Pools {
-			components[i] = dnd5eEvents.AttackDamageComponent{Dice: pool.Dice, DamageType: pool.Type}
-		}
-	}
+	damageSpec, components, damageErr := convertMeleeDamage(config)
 	return &MeleeAction{
 		name:             config.Name,
 		attackBonus:      config.AttackBonus,
@@ -65,13 +56,57 @@ func NewMeleeAction(config MeleeConfig) *MeleeAction {
 		damageType:       config.DamageType,
 		damageSpec:       damageSpec,
 		damageComponents: components,
+		damageErr:        damageErr,
 	}
+}
+
+// convertMeleeDamage translates legacy melee damage into structured pools.
+// A provided DamageSpec is authoritative; otherwise components take precedence
+// over the legacy single dice and type fields.
+func convertMeleeDamage(config MeleeConfig) (damage.DamageSpec, []dnd5eEvents.AttackDamageComponent, error) {
+	if config.DamageSpec != nil {
+		spec := cloneDamageSpec(*config.DamageSpec)
+		return spec, componentsFromDamageSpec(spec), nil
+	}
+
+	components := append([]dnd5eEvents.AttackDamageComponent(nil), config.DamageComponents...)
+	if len(components) == 0 {
+		components = []dnd5eEvents.AttackDamageComponent{{Dice: config.DamageDice, DamageType: config.DamageType}}
+	}
+
+	spec := damage.DamageSpec{Pools: make([]damage.Damage, len(components))}
+	for i, component := range components {
+		expression, err := damage.ParseExpression(component.Dice)
+		if err != nil {
+			return damage.DamageSpec{}, nil, rpgerr.Wrap(err, "invalid legacy melee damage")
+		}
+		spec.Pools[i] = damage.Damage{
+			Dice:       component.Dice,
+			Terms:      append([]damage.DiceTerm(nil), expression.Terms...),
+			Type:       component.DamageType,
+			FlatBonus:  expression.FlatBonus,
+			Properties: []damage.Property{damage.PropertyCritEligible},
+		}
+	}
+	if err := spec.Validate(); err != nil {
+		return damage.DamageSpec{}, nil, rpgerr.Wrap(err, "invalid legacy melee damage")
+	}
+	return spec, components, nil
+}
+
+func componentsFromDamageSpec(spec damage.DamageSpec) []dnd5eEvents.AttackDamageComponent {
+	components := make([]dnd5eEvents.AttackDamageComponent, len(spec.Pools))
+	for i, pool := range spec.Pools {
+		components[i] = dnd5eEvents.AttackDamageComponent{Dice: pool.Dice, DamageType: pool.Type}
+	}
+	return components
 }
 
 func cloneDamageSpec(spec damage.DamageSpec) damage.DamageSpec {
 	cloned := damage.DamageSpec{Pools: make([]damage.Damage, len(spec.Pools))}
 	for i, pool := range spec.Pools {
 		cloned.Pools[i] = pool
+		cloned.Pools[i].Terms = append([]damage.DiceTerm(nil), pool.Terms...)
 		cloned.Pools[i].Properties = append([]damage.Property(nil), pool.Properties...)
 		if pool.Save != nil {
 			save := *pool.Save
@@ -116,6 +151,10 @@ func (m *MeleeAction) Score(_ *monster.Monster, perception *monster.PerceptionDa
 
 // CanActivate checks if the action can be used
 func (m *MeleeAction) CanActivate(_ context.Context, _ core.Entity, input monster.MonsterActionInput) error {
+	if m.damageErr != nil {
+		return m.damageErr
+	}
+
 	// Need a target
 	if input.Target == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "no target for melee attack")

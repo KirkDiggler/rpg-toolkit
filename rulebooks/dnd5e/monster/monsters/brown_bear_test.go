@@ -4,10 +4,16 @@
 package monsters
 
 import (
+	"context"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/attack"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -82,4 +88,30 @@ func (s *BrownBearTestSuite) TestBrownBearTraits() {
 	// Bears can climb
 	speed := bear.Speed()
 	s.Assert().Equal(30, speed.Climb, "bears can climb")
+}
+
+func (s *BrownBearTestSuite) TestBrownBearBiteConvertsLegacyDamage() {
+	bear := NewBrownBear("bear-1")
+	bus := events.NewEventBus()
+	var received dnd5eEvents.AttackEvent
+	_, err := dnd5eEvents.AttackTopic.On(bus).Subscribe(context.Background(), func(_ context.Context, event dnd5eEvents.AttackEvent) error {
+		received = event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	for _, action := range bear.Actions() {
+		if action.GetID() != "bite" {
+			continue
+		}
+		target := NewBrownBear("target")
+		err = action.Activate(context.Background(), bear, monster.MonsterActionInput{
+			Bus: bus, Target: target, Perception: &monster.PerceptionData{Enemies: []monster.PerceivedEntity{{Entity: target, Distance: 1}}},
+		})
+		s.Require().NoError(err)
+		break
+	}
+
+	s.Equal(attack.CategoryNatural, received.Definition.Category)
+	s.Equal([]damage.Damage{{Dice: "1d8+4", Terms: []damage.DiceTerm{{Dice: "1d8", Sign: 1}}, Type: damage.Piercing, FlatBonus: 4, Properties: []damage.Property{damage.PropertyCritEligible}}}, received.Definition.Damage.Pools)
 }
