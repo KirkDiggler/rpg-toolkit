@@ -6,7 +6,7 @@ Let D&D 5e damage pools represent linear dice math accurately, while converting 
 
 ## Scope
 
-This work covers the shared D&D damage-expression model and the already-connected monster melee action path. It does not wire RangedAction or BiteAction into the shared combat resolver; those actions will reuse this model in a later, deliberate integration.
+This work covers the shared D&D damage-expression model and connects monster MeleeAction, RangedAction, and BiteAction to the shared combat resolver. Every one of those actions uses the same conversion and resolution path.
 
 ## Supported Expression Grammar
 
@@ -87,9 +87,9 @@ Positive multi-dice expressions similarly show each term:
 1d6 (4) + 1d4 (3) + 2 acid = 9
 ```
 
-## Legacy Melee Conversion
+## Legacy Monster Attack Conversion
 
-`MeleeConfig` currently has legacy fields:
+`MeleeConfig`, `RangedConfig`, and `BiteConfig` currently have legacy fields:
 
 ```text
 DamageDice
@@ -97,15 +97,27 @@ DamageType
 DamageComponents
 ```
 
-The conversion boundary is `NewMeleeAction` and its serialized loader path.
+The conversion boundary is each action constructor and its serialized loader path. A shared conversion helper lives in the D&D damage area, not inside an individual action type.
 
 Precedence and behavior:
 
 1. A valid new structured damage specification is authoritative.
-2. Otherwise, each legacy `DamageComponents` entry becomes one structured pool, preserving its damage type and parsing its dice expression.
+2. Otherwise, each legacy `DamageComponents` entry (available on melee actions) becomes one structured pool, preserving its damage type and parsing its dice expression.
 3. Otherwise, legacy `DamageDice` and `DamageType` become one structured pool.
-4. Every converted legacy melee pool is marked crit-eligible, preserving ordinary weapon-attack critical behavior.
+4. Every converted legacy attack pool is marked crit-eligible, preserving ordinary weapon-attack critical behavior.
 5. If a legacy expression is invalid under the supported grammar, construction/loading returns a clear validation error before combat rolls.
+
+### Action-Specific Targeting
+
+- MeleeAction emits a natural melee definition with its configured reach.
+- RangedAction emits a natural ranged definition with its configured normal and long ranges.
+- BiteAction emits a natural melee definition with one-hex (5-foot) reach.
+
+Each definition carries the fixed monster attack bonus and converted structured damage. No action uses a weapon object merely to make its attack work.
+
+### Bite Knockdown Boundary
+
+`BiteConfig.KnockdownDC` remains persisted future data. This integration does not make saving throws, Prone application, or knockdown behavior. A Bite attack rolls and deals damage through the shared resolver exactly like the other attack types, and no additional post-hit effect is attempted.
 
 Examples:
 
@@ -132,14 +144,14 @@ Pool 2: + 2d6 acid; FlatBonus 0
 
 When old data is loaded, preserve its original legacy `DamageDice` and `DamageComponents` text for compatibility and human readability. Also construct and persist the new structured damage specification.
 
-On subsequent loads, the structured specification is authoritative. The legacy fields remain compatibility data and must stay synchronized with the structured model when serializing a newly created melee action.
+On subsequent loads, the structured specification is authoritative. The legacy fields remain compatibility data and must stay synchronized with the structured model when serializing newly created Melee, Ranged, and Bite actions.
 
 No existing monster source file must be rewritten merely to make combat work.
 
 ## Non-Goals
 
 - Do not add parentheses, multiplication, division, functions, variables, or arbitrary expression evaluation.
-- Do not wire RangedAction or BiteAction into the shared resolver in this change.
+- Do not implement Bite knockdown saves, Prone application, or any saving-throw behavior.
 - Do not create a Pseudopod-only, Brown-Bear-only, or monster-only damage resolver.
 - Do not alter damage affinity rules in this change; the signed terms calculate a single typed pool before affinity application.
 
@@ -149,6 +161,8 @@ Tests will be written first and include:
 
 - parse/validation for added and subtracted dice terms, flat bonuses, whitespace, and rejected non-linear syntax;
 - Brown Bear `1d8+4` conversion and resolved damage;
+- Bandit light-crossbow `1d8+1` conversion, ranged targeting, and resolved damage;
+- Wolf Bite `2d4+2` conversion, one-hex melee targeting, and resolved damage, while proving no knockdown/save behavior is created;
 - a legacy mixed-component action preserving both pools and their damage types;
 - `1d6-1d4+2` with deterministic signed rolls and exact player display;
 - critical hits doubling positive and negative dice terms but not the flat bonus;
