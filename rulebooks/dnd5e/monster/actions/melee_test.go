@@ -309,6 +309,7 @@ func (s *MeleeActionTestSuite) TestLoadMeleeActionRejectsMalformedStructuredDama
 		{name: "empty pools", spec: damage.DamageSpec{}},
 		{name: "unknown type", spec: damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6", Type: damage.Type("unknown")}}}},
 		{name: "invalid dice", spec: damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6++1", Type: damage.Acid}}}},
+		{name: "leading negative term", spec: damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6", Terms: []damage.DiceTerm{{Dice: "1d6", Sign: -1}}, Type: damage.Acid}}}},
 	} {
 		s.Run(test.name, func() {
 			configJSON, err := json.Marshal(MeleeConfig{Name: "pseudopod", Reach: 1, DamageSpec: &test.spec})

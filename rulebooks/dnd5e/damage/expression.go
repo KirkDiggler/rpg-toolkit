@@ -81,7 +81,10 @@ func (e Expression) Validate() error {
 	if len(e.Terms) == 0 {
 		return invalidExpression()
 	}
-	for _, term := range e.Terms {
+	for i, term := range e.Terms {
+		if i == 0 && term.Sign != 1 {
+			return invalidExpression()
+		}
 		if term.Sign != 1 && term.Sign != -1 {
 			return invalidExpression()
 		}

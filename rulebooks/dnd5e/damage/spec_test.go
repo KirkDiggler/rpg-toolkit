@@ -52,6 +52,7 @@ func TestDamageSpecValidateRejectsInvalidTerms(t *testing.T) {
 	for _, terms := range [][]damage.DiceTerm{
 		{{Dice: "1d6+1d4", Sign: 1}},
 		{{Dice: "1d6", Sign: 0}},
+		{{Dice: "1d6", Sign: -1}},
 	} {
 		spec := damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6", Terms: terms, Type: damage.Fire}}}
 		require.Error(t, spec.Validate())
