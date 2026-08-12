@@ -31,6 +31,13 @@ func TestDamageSpecValidateRejectsUnsupportedPoolMetadata(t *testing.T) {
 	}
 }
 
+func TestDamageSpecValidateRejectsDiceModifiers(t *testing.T) {
+	for _, notation := range []string{"1d6+2", "1d6-1"} {
+		spec := damage.DamageSpec{Pools: []damage.Damage{{Dice: notation, Type: damage.Bludgeoning}}}
+		require.Error(t, spec.Validate(), notation)
+	}
+}
+
 func TestDamageSpecKeepsSaveMetadata(t *testing.T) {
 	spec := damage.DamageSpec{Pools: []damage.Damage{{
 		Dice: "8d6", Type: damage.Fire,
