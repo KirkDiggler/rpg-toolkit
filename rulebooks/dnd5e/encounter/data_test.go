@@ -1294,6 +1294,24 @@ func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
 	s.Require().Contains(err.Error(), "not a representable integral cell")
 }
 
+// TestLoadOccluderOnBoundaryCellAccepted is the Load-seam counterpart to
+// encounter_test.go's TestSetupOccluderOnBoundaryCellAccepted (#929 T3
+// trailing round N2).
+func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
+	data := encounter.EncounterData{
+		Field: encounter.FieldData{
+			Rooms: []encounter.RoomData{
+				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}, Occluders: []encounter.PositionData{
+					{X: 0, Y: 2}, {X: 4, Y: 2}, {X: 2, Y: 0}, {X: 2, Y: 4}, {X: 0, Y: 0}, {X: 4, Y: 4},
+				}},
+			},
+		},
+		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+	}
+	_, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal at Load too")
+}
+
 // TestLoadRejections: every unreachable state rejects with ErrInvalidData
 // AND the check that fired is the one the case targets. Connection rows
 // also assert ErrBadConnection (via alsoErr) and, where a room name is

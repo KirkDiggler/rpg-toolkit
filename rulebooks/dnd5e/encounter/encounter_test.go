@@ -367,6 +367,34 @@ func (s *EncounterTestSuite) TestSetupSquareOccluderFractionalRejected() {
 	s.Require().Contains(err.Error(), "not a representable integral cell")
 }
 
+// TestSetupOccluderOnBoundaryCellAccepted pins N2's over-tightening sweep
+// (#929 T3 trailing round): every occluder in every EXISTING fixture sits
+// on an interior cell, so a mutant that rejected a boundary-cell occluder
+// (plausible: "occluders should be interior only") survived the suite
+// with zero failures until this row was added. Occluders block line of
+// sight (field.go's doc comment), not placement — a boundary cell,
+// including a corner, is exactly as legal an occluder position as an
+// interior one.
+func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{
+					{X: 0, Y: 2}, // left edge
+					{X: 4, Y: 2}, // right edge
+					{X: 2, Y: 0}, // top edge
+					{X: 2, Y: 4}, // bottom edge
+					{X: 0, Y: 0}, // corner
+					{X: 4, Y: 4}, // corner
+				}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	}
+	_, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal")
+}
+
 // TestSetupConnectionValidation mirrors TestLoadRejections' connection
 // defect classes at the Setup seam: each case breaks exactly one thing
 // about an otherwise-valid connection and must reject with ErrBadConnection.
@@ -1353,6 +1381,91 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
 	s.Require().Contains(err.Error(), "not an integral axial cell")
+}
+
+// validTriggerAcceptanceFieldSetup is the rich SQUARE-family fixture for
+// TestSetupEndingTriggerMustAccept (#929 T3 trailing round N2): a kissing
+// pair (hall/vault, connected, hall carries an occluder) plus an isolated
+// room (annex, no connection at all) — exercising every must-accept shape
+// a TriggerReachedPosition can legally target. A rejection-only test
+// suite proves a validator rejects; this fixture is what proves it does
+// NOT over-reach.
+func validTriggerAcceptanceFieldSetup() *encounter.SetupInput {
+	return &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "vault", Width: 4, Height: 4, Origin: spatial.Position{X: 5, Y: 0}},
+				{ID: "annex", Width: 3, Height: 3, Origin: spatial.Position{X: 1000, Y: 1000}},
+			},
+			Connections: []encounter.ConnectionInput{
+				{ID: "gate", From: "hall", To: "vault",
+					FromPosition: spatial.Position{X: 4, Y: 2},
+					ToPosition:   spatial.Position{X: 0, Y: 2}},
+			},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 0, Y: 0}}},
+		},
+	}
+}
+
+// TestSetupEndingTriggerMustAccept pins N2 (#929 T3 trailing round): a
+// one-defect rejection table only proves a validator rejects what it
+// should; only a rich positive control proves it does not ALSO reject
+// what it shouldn't. Each row targets a specific over-tightening
+// hypothesis Opus's mutants tested and found undefended: occluded cells,
+// doorway endpoints on EITHER side, fractional square positions, a room
+// with zero connections, local (0,0), and a room's far corner. Each row
+// also survives a ToData/LoadEncounter round trip — the SAME shape must
+// validate identically at both seams.
+func (s *EncounterTestSuite) TestSetupEndingTriggerMustAccept() {
+	cases := []struct {
+		name    string
+		trigger encounter.TriggerReachedPosition
+	}{
+		{"occluded cell", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 2, Y: 2}}},
+		{"doorway endpoint, from-room side", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 2}}},
+		{"doorway endpoint, to-room side", encounter.TriggerReachedPosition{Room: "vault", Position: spatial.Position{X: 0, Y: 2}}},
+		{"fractional square position", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 1.5}}},
+		{"room with no connection", encounter.TriggerReachedPosition{Room: "annex", Position: spatial.Position{X: 1, Y: 1}}},
+		{"local (0,0)", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 0, Y: 0}}},
+		{"far corner", encounter.TriggerReachedPosition{Room: "vault", Position: spatial.Position{X: 3, Y: 3}}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			setup := validTriggerAcceptanceFieldSetup()
+			setup.Endings[0].Trigger = tc.trigger
+			enc, err := encounter.NewEncounter(setup)
+			s.Require().NoError(err, tc.name)
+
+			data := enc.ToData()
+			_, err = encounter.LoadEncounter(data, nil)
+			s.Require().NoError(err, "%s must survive a ToData/LoadEncounter round trip", tc.name)
+		})
+	}
+}
+
+// TestSetupEndingTriggerHexNegativeAxialMustAccept is
+// TestSetupEndingTriggerMustAccept's hex-specific sibling (W1 forbids
+// mixing families in one fixture): hex rooms are ORIGIN-CENTERED, so a
+// negative Q/R trigger position is the NORMAL case for roughly half of
+// any room, not an edge case — the realistic hazard N2 names explicitly.
+func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() {
+	setup := &encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: -2, Y: -2}}},
+		},
+	}
+	enc, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err, "a negative-axial hex trigger position is the NORMAL case, not an edge case")
+
+	data := enc.ToData()
+	_, err = encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err, "must survive a ToData/LoadEncounter round trip")
 }
 
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {

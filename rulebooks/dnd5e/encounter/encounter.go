@@ -222,14 +222,18 @@ const (
 // positions in EVERY family, not just hex (#929 T3 Opus round F2 — see
 // isIntegralPosition; the occluder loop below); W1 (one grid family per
 // field — validateGridFamilies); room legality (non-positive OR oversized
-// Width/Height, a cell count exceeding maxRoomCells or pushing the
-// field's running total past maxFieldCells, AND an out-of-bounds Origin —
-// a negative dimension used to panic NewEncounter via a negative-capacity
-// make() in the since-deleted enumeration path, an unbounded dimension or
-// origin can overflow int64 arithmetic downstream (maxRoomSpan/
-// maxAnchorCoord), and an oversized CELL COUNT — legal per-axis but
-// catastrophic multiplied — panics Atlas's own allocation instead
-// (maxRoomCells/maxFieldCells, #929 T3 Opus round F1); a panic or a
+// Width/Height, a per-room cell count exceeding maxRoomCells, AND an
+// out-of-bounds Origin — checked per room in one pass; ONLY AFTER every
+// room clears that pass does a separate, final check compare the summed
+// cell count against maxFieldCells, so its error names the TRUE total
+// over every room, not a partial sum from wherever the loop happened to
+// stop — #929 T3 trailing round N3); a negative dimension used to panic
+// NewEncounter via a negative-capacity make() in the since-deleted
+// enumeration path, an unbounded dimension or origin can overflow int64
+// arithmetic downstream (maxRoomSpan/maxAnchorCoord), and an oversized
+// CELL COUNT — legal per-axis but catastrophic multiplied — panics
+// Atlas's own allocation instead (maxRoomCells/maxFieldCells, #929 T3
+// Opus round F1); a panic or a
 // silent overflow is not a rejection); origin legality (non-representable
 // Origin, for EVERY family now, not just hex — a fractional origin
 // defeats W2's disjointness promise for ANY grid, not only hex: see
@@ -346,13 +350,18 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		if cellCount > maxRoomCells {
 			return nil, fmt.Errorf("room %q has %d cells (%d x %d), exceeding max room cells %d: %w", r.ID, cellCount, r.Width, r.Height, maxRoomCells, ErrNoField)
 		}
+		// Accumulated, not checked yet — checked once below, against the
+		// TRUE final sum over every room (#929 T3 trailing round N3): a
+		// mid-loop check here would report a partial running total on
+		// whichever room happened to tip it over, undercounting the real
+		// field total whenever rooms remained after it in the list.
 		totalCells += cellCount
-		if totalCells > maxFieldCells {
-			return nil, fmt.Errorf("field has %d total cells across all rooms, exceeding max field cells %d: %w", totalCells, maxFieldCells, ErrNoField)
-		}
 		if math.Abs(r.Origin.X) > maxAnchorCoord || math.Abs(r.Origin.Y) > maxAnchorCoord {
 			return nil, fmt.Errorf("room %q origin (%g,%g) exceeds max anchor coordinate %d: %w", r.ID, r.Origin.X, r.Origin.Y, maxAnchorCoord, ErrNoField)
 		}
+	}
+	if totalCells > maxFieldCells {
+		return nil, fmt.Errorf("field has %d total cells across all rooms, exceeding max field cells %d: %w", totalCells, maxFieldCells, ErrNoField)
 	}
 
 	// Origin legality: every room's Origin must be a representable integer
@@ -872,8 +881,6 @@ func (e *Encounter) View(in *ViewInput) ([]intel.Holding, error) {
 	return holdings, nil
 }
 
-// Members returns the current member roster in stable order.
-
 // buildMemberOutcomes snapshots every current member's placement in
 // sorted-ID order — deterministic output for outcomes and persistence
 // (map iteration here was a latent nondeterminism, T6 review M1).
@@ -899,6 +906,7 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 	return outcomes
 }
 
+// Members returns the current member roster in stable order.
 func (e *Encounter) Members() ([]Member, error) {
 	// Sort by ID for stability
 	ids := make([]MemberID, 0, len(e.members))

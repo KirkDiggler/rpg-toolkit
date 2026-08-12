@@ -344,31 +344,6 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
-
-// endingTriggerFromData converts one persisted ending's Kind/Room/Position/
-// Member into its runtime Trigger. Shared by two call sites in
-// LoadEncounter — the ending-trigger validation (which needs it early,
-// right after roomGrids exists, so validateEndingTriggers has something
-// to check) and the later "Restore declared endings" construction (which
-// needs it again, once construction is safe to begin, R5) — ONE
-// conversion, not two copies of the same switch (#929 T3 Opus round F5).
-// ed.Kind is already guaranteed to be "reached_position" or "external" by
-// the key/kind checks earlier in LoadEncounter, and a "reached_position"
-// ed.Position is already guaranteed non-nil there too — both preconditions
-// checked before this is ever called, so no error return is needed here.
-func endingTriggerFromData(ed EndingData) Trigger {
-	switch ed.Kind {
-	case "reached_position":
-		return TriggerReachedPosition{
-			Room:     ed.Room,
-			Position: spatial.Position{X: ed.Position.X, Y: ed.Position.Y},
-			Member:   ed.Member,
-		}
-	case "external":
-		return TriggerExternal{}
-	}
-	return nil
-}
 func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounter, error) {
 	// R5: Validate everything before constructing
 	// No rooms
@@ -694,6 +669,31 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
 
 	return e, nil
+}
+
+// endingTriggerFromData converts one persisted ending's Kind/Room/Position/
+// Member into its runtime Trigger. Shared by two call sites in
+// LoadEncounter above — the ending-trigger validation (which needs it
+// early, right after roomGrids exists, so validateEndingTriggers has
+// something to check) and the "Restore declared endings" construction
+// (which needs it again, once construction is safe to begin, R5) — ONE
+// conversion, not two copies of the same switch (#929 T3 Opus round F5).
+// ed.Kind is already guaranteed to be "reached_position" or "external" by
+// the key/kind checks earlier in LoadEncounter, and a "reached_position"
+// ed.Position is already guaranteed non-nil there too — both preconditions
+// checked before this is ever called, so no error return is needed here.
+func endingTriggerFromData(ed EndingData) Trigger {
+	switch ed.Kind {
+	case "reached_position":
+		return TriggerReachedPosition{
+			Room:     ed.Room,
+			Position: spatial.Position{X: ed.Position.X, Y: ed.Position.Y},
+			Member:   ed.Member,
+		}
+	case "external":
+		return TriggerExternal{}
+	}
+	return nil
 }
 
 // convertRoomDataToRoomInput converts RoomData to RoomInput, both for the
