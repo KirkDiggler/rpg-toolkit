@@ -1,18 +1,14 @@
 package damage
 
 import (
-	"regexp"
-
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 )
 
-var pureDiceNotation = regexp.MustCompile(`^[1-9][0-9]*d[1-9][0-9]*(\+[1-9][0-9]*d[1-9][0-9]*)*$`)
-
 // Damage describes one independently rolled damage pool.
 type Damage struct {
 	Dice       string     `json:"dice"`
+	Terms      []DiceTerm `json:"terms,omitempty"`
 	Type       Type       `json:"type"`
 	FlatBonus  int        `json:"flat_bonus,omitempty"`
 	Properties []Property `json:"properties,omitempty"`
@@ -54,11 +50,23 @@ func (s *DamageSpec) Validate() error {
 	}
 
 	for _, pool := range s.Pools {
-		if _, err := dice.ParseNotation(pool.Dice); err != nil {
-			return rpgerr.Wrap(err, "invalid damage dice")
-		}
-		if !pureDiceNotation.MatchString(pool.Dice) {
-			return rpgerr.New(rpgerr.CodeInvalidArgument, "damage dice cannot include a static modifier; use flat_bonus")
+		if len(pool.Terms) > 0 {
+			if err := (Expression{Terms: pool.Terms}).Validate(); err != nil {
+				return rpgerr.Wrap(err, "invalid damage terms")
+			}
+		} else {
+			expression, err := ParseExpression(pool.Dice)
+			if err != nil {
+				return rpgerr.Wrap(err, "invalid damage dice")
+			}
+			if expression.FlatBonus != 0 {
+				return rpgerr.New(rpgerr.CodeInvalidArgument, "damage dice cannot include a static modifier; use flat_bonus")
+			}
+			for _, term := range expression.Terms {
+				if term.Sign != 1 {
+					return rpgerr.New(rpgerr.CodeInvalidArgument, "damage dice must be positive dice groups")
+				}
+			}
 		}
 		if pool.Type == None {
 			return rpgerr.New(rpgerr.CodeInvalidArgument, "damage type cannot be none")

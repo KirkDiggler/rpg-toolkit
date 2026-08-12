@@ -38,6 +38,26 @@ func TestDamageSpecValidateRejectsDiceModifiers(t *testing.T) {
 	}
 }
 
+func TestDamageSpecValidateUsesTermsWhenPresent(t *testing.T) {
+	spec := damage.DamageSpec{Pools: []damage.Damage{{
+		Dice:  "not legacy dice",
+		Terms: []damage.DiceTerm{{Dice: "1d6", Sign: 1}, {Dice: "1d4", Sign: -1}},
+		Type:  damage.Fire,
+	}}}
+
+	require.NoError(t, spec.Validate())
+}
+
+func TestDamageSpecValidateRejectsInvalidTerms(t *testing.T) {
+	for _, terms := range [][]damage.DiceTerm{
+		{{Dice: "1d6+1d4", Sign: 1}},
+		{{Dice: "1d6", Sign: 0}},
+	} {
+		spec := damage.DamageSpec{Pools: []damage.Damage{{Dice: "1d6", Terms: terms, Type: damage.Fire}}}
+		require.Error(t, spec.Validate())
+	}
+}
+
 func TestDamageSpecKeepsSaveMetadata(t *testing.T) {
 	spec := damage.DamageSpec{Pools: []damage.Damage{{
 		Dice: "8d6", Type: damage.Fire,
