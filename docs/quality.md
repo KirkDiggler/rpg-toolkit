@@ -346,7 +346,7 @@ type grows one). Pins are mutation-proven throughout, including the
 uncomfortable ones: over-tightening kills only the positive controls, and
 "compute the snapshot but never save it" kills six tests because persistence is
 checked through separate reads rather than returned values. One direct
-dependency. `verify.sh` clean at 90 tests, `-race` clean, `gorelease` gated.
+dependency. `verify.sh` clean at 120 tests, `-race` clean, `gorelease` gated.
 
 **Why not higher, judged from where we stood when we built it.** Four things,
 none of which were available to fix at the time:
