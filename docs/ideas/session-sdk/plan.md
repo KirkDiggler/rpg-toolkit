@@ -136,7 +136,8 @@ including a mid-story process restart. Its negative control: with the checkpoint
 disabled, Alice walks past the ogre without stopping.
 
 *Discipline:* enumeration order at a checkpoint is a function of persisted data,
-never of subscription order (C8) — pinned by a test that reloads and re-resolves
+never of subscription order (C8, the encounter's determinism law) — pinned by a
+test that reloads and re-resolves
 and gets the identical window order.
 
 ---

@@ -180,7 +180,9 @@ control flow. Suspension is.
 The checkpoint is enumerated rather than published for one reason: a suspension
 must resume identically after a process restart. If two effects fire on the
 same step, subscription order is whatever the loader happened to re-establish;
-enumeration order is a function of persisted data. C8 dies under the first and
+enumeration order is a function of persisted data. C8 — the encounter
+composition's determinism law, that identical inputs yield identical outputs and
+byte-identical blobs — dies under the first and
 holds under the second.
 
 **Things live where they are from** — this is preserved, and it is what killed

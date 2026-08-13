@@ -83,7 +83,7 @@ born from perception.**
 out, err := mgr.Move(ctx, &session.MoveInput{
     Encounter: "enc-123",
     Member:    "alice",
-    Path: []spatial.Position{{3,3}, {4,3}, {5,3}, {6,3}},
+    Path: []spatial.Position{{X: 3, Y: 3}, {X: 4, Y: 3}, {X: 5, Y: 3}, {X: 6, Y: 3}},
 })
 ```
 
@@ -120,6 +120,7 @@ p, err := mgr2.Pending(ctx, &session.PendingInput{Encounter: "enc-123"})
 out, err := mgr2.Answer(ctx, &session.AnswerInput{
     Encounter: "enc-123",
     Window:    p[0].Window,
+    Audience:  "alice",   // must match the window's audience
     Option:    "stop",
 })
 ```
@@ -134,7 +135,12 @@ process restart because it was never anything but data.
 
 **Rejections that must hold:** answering a closed window; answering with an
 option that wasn't offered; someone other than Alice answering Alice's window;
-any other verb on this encounter while the window is open.
+any *world-changing* verb on this encounter while the window is open.
+
+Read verbs stay available while frozen — `View`, `Story`, `Status`, `Atlas`,
+`Pending`. A client cannot render "waiting on Alice" without asking what the
+world looks like, and a freeze that blinded the other three players would be
+worse than no freeze. Change is frozen; observation is not.
 
 That last rejection is how "process pending first" is *enforced* rather than
 advised — and the error carries the open window and its audience, so the caller
@@ -185,7 +191,7 @@ changing.
 
 ```go
 out, err := mgr.Answer(ctx, &session.AnswerInput{
-    Encounter: "enc-123", Window: w, Option: "attack",
+    Encounter: "enc-123", Window: w, Audience: "bob", Option: "attack",
 })
 // the attack resolves, then the ogre's remaining movement continues or halts
 ```

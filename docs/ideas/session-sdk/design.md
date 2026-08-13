@@ -92,12 +92,29 @@ relational database. It is a constraint on *us*, not a claim about the server.
 and emphatically not one repository that saves everything.
 
 ```go
-type CharacterRepository interface { /* character.Data          — player characters */ }
-type EncounterRepository interface { /* encounter.EncounterData — the world         */ }
-type SessionRepository   interface { /* SessionData             — session state     */ }
+type EncounterRepository interface { /* encounter.EncounterData — the world     */ }
+type SessionRepository   interface { /* SessionData             — session state */ }
+type CharacterRepository interface { /* character.Data — arrives with entities   */ }
 ```
 
+**`CharacterRepository` is deferred to the entities wave, not defined up front**
+— a correction the implementation forced. `character` is a package *inside* the
+large `rulebooks/dnd5e` module, so declaring the port early would take a
+permanent dependency on combat, conditions, and spells to satisfy a port that
+nothing calls until entities exist; the free-roam verbs need only member IDs.
+The same asymmetric-reversibility rule that governs `NPCRepository` applies:
+adding a `Config` field later is compatible, removing one a host has already
+implemented is not. Ports are introduced when something calls them.
+
 Each is get-by-id and put-by-id over exactly one shape.
+
+The save signatures are deliberately not uniform: `SaveSession` takes only the
+data because `SessionData` carries its own `ID`, while `SaveEncounter` takes the
+key separately because `EncounterData` does not. The alternative — inventing an
+ID field on `EncounterData` purely for symmetry, or dropping the one
+`SessionData` already has — would put the identity of a record in two places or
+none. Passing the key exactly when the payload lacks it keeps a single source of
+truth for each.
 
 **An NPC is a shape.** It has its own data, and `Member.Kind` is already the
 discriminator that says which shape an ID resolves to — the composition
@@ -311,7 +328,12 @@ type AnswerInput struct {
 stopped*. That asymmetry is what lets checkpoint kinds be added forever without
 the customer noticing (S5).
 
-**While a window is open, every other verb on that encounter rejects.** The
+**While a window is open, every verb that would change the world rejects.**
+Read verbs — `View`, `Story`, `Status`, `Atlas`, `Pending` — remain available,
+and must: a client cannot render "waiting on Alice" without asking what the
+world looks like, and a freeze that blinded every other player would be a worse
+experience than no freeze at all. What is frozen is *change*, not observation.
+The
 world is frozen — Kirk's ruling — and that is enforced, not merely intended.
 
 ### Rejections that must hold
@@ -483,7 +505,9 @@ None of this is customer-visible; all of it can change under a compatible tag.
   it.
 - **Checkpoints** are the only place a suspension is born. Enumerated in an
   order that is a function of persisted data, never of subscription order,
-  because a resumed resolution must resume identically (C8).
+  because a resumed resolution must resume identically — C8, the encounter
+  composition's determinism law: identical inputs yield identical outputs and
+  byte-identical blobs.
 - **Resolution is a re-enterable phase machine from the first line of combat
   code** — explicit phase index, no Go stack held across a wait, in-between
   state serializable — even in waves where nothing suspends. `ReactionTrigger`
