@@ -19,9 +19,26 @@ gate from the first tag.
 | **0** ✅ | Encounter log retention | `encounter/v0.4.0` | — |
 | **1** ✅ | Shell, free-roam verbs, event stream | `session/v0.1.0` | — |
 | **2** ✅ | The interrupt spine, proven by the perception pause | `session/v0.2.0` | 1 |
-| **3** | Entities on the bus — characters, NPCs, conditions | `session/v0.3.0` | 1 |
-| **4** | Combat | `session/v0.4.0` | 2, 3 |
-| **5** | Reactions — opportunity attack (closes #916) | `session/v0.5.0` | 4 |
+| **3** | Entities on the bus — characters, NPCs, conditions | from `session/v0.3.0` | 1 |
+| **4** | Combat | — | 2, 3 |
+| **5** | Reactions — opportunity attack (closes #916) | — | 4 |
+
+**The tag column stops predicting after wave 3, which is a correction rather than
+an omission.** It assumed one merge per wave. The repo **auto-tags on merge to
+main**, deriving the bump from conventional-commit prefixes, so a wave landing in
+two steps consumes two versions — wave 3's first step (characters load) took
+`session/v0.3.0` by itself.
+
+Nothing real depended on the numbering. Semver here tracks API change, not
+project milestones, and the claim that matters — *after the migration wave, no
+subsequent wave changes an rpg-api source file* — is about **which** wave migrates
+(4, combat), not what number it carries. Writing a version beside a wave was
+quietly promising that a wave is one PR. That is not a promise worth making, and
+the auto-tagger was never going to keep it.
+
+Practical consequence while planning a wave: a `feat:` commit takes the minor
+bump the moment it lands on main, so the version a wave "ships at" is decided by
+its first merge, not its last.
 
 Waves 0 and 1 are independent and can run in parallel — different modules, and
 the house rule is one in-flight PR per module.
