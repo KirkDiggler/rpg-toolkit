@@ -106,10 +106,28 @@ type EventStream interface {
 // working exactly as they do today. Nothing needs to exist for this to remain
 // possible, which is why nothing does.
 //
-// OPTIMISTIC — cheaper if decided early. A version on the blob, with SaveSession
-// rejecting a stale write, needs the field to have been there all along;
-// retrofitting means a data migration and a change to what SaveSession is
-// permitted to do. Deliberately not added yet: a version nobody increments is
-// worse than no version, because it reads as a guarantee it does not provide,
-// and a migration on a pre-1.0 module whose consumer has not adopted it is
-// about as cheap as migrations get.
+// OPTIMISTIC — also free to add later, given a checksum-derived version.
+//
+// The scheme the game's own storage layer already uses: the store checksums the
+// stored JSON body, a write is accepted only if the caller's version matches
+// what is stored, and an ABSENT version is accepted unconditionally so the first
+// write of any record succeeds. On mismatch the caller re-reads, re-applies, and
+// writes again.
+//
+// That is retrofittable with no migration. Existing records carry no version, so
+// their first write under the scheme succeeds and stamps one; a repository that
+// does not implement CAS ignores the field and behaves exactly as it does today.
+// The cost is a Version field on the data (a compatible addition, on our types
+// and on EncounterData alike, since we own that module) plus a conflict error
+// that only CAS-implementing repositories ever return.
+//
+// Deriving the version from the body rather than maintaining a counter is what
+// makes this safe: a version nobody increments would read as a guarantee it does
+// not provide, and a checksum cannot be forgotten because nobody maintains it.
+//
+// Worth noting what load-act-save buys here, because it is not incidental:
+// recovering from a conflict is just calling the verb again. There is no partial
+// mutation to unwind and no cached world to invalidate. Had this package held an
+// encounter between calls, a retry would have to work out what to discard and
+// what to keep — the same property that makes concurrent writers safe from stale
+// overwrites makes the retry loop trivially correct.
