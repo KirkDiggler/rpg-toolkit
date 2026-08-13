@@ -133,6 +133,39 @@ var (
 	// and be permanently unusable.
 	ErrInvalidWorld = errors.New("invalid encounter data")
 
+	// ErrFrozen is returned by every verb that would change the world while an
+	// interrupt window is open. Read verbs are unaffected.
+	//
+	// Errors wrapping this are *FrozenError, which names the window and who
+	// owes it. Match the sentinel with errors.Is to detect the condition; use
+	// errors.As to recover the window and tell the caller what to do about it.
+	ErrFrozen = errors.New("world frozen")
+
+	// ErrNoWindow is returned when a verb names a window that is not open —
+	// unknown, never opened, or already answered. One answer per window.
+	ErrNoWindow = errors.New("no such open window")
+
+	// ErrNotAudience is returned when a member answers a window they do not
+	// owe. Answering for someone else is a rejection, not a courtesy.
+	ErrNotAudience = errors.New("not this window's audience")
+
+	// ErrNotOffered is returned when an answer names a choice the window did
+	// not offer.
+	ErrNotOffered = errors.New("choice not offered")
+
+	// ErrNoWindowID is returned when a verb is given an empty or unparseable
+	// window identifier.
+	ErrNoWindowID = errors.New("bad window id")
+
+	// ErrInvalidSession is returned when stored session state is not a state
+	// this module could have written — a hand-edited or corrupted blob.
+	//
+	// It is deliberately distinct from ErrInvalidWorld. A caller who sees this
+	// knows the encounter is fine and only the session record is suspect, which
+	// is the difference between "the tomb is unreadable" and "an open window
+	// refers to a resolution that cannot be real".
+	ErrInvalidSession = errors.New("invalid session data")
+
 	// ErrSaveFailed is returned when one or more aggregates could not be
 	// persisted. The accompanying SaveReport names which landed and which did
 	// not (S6) — a partial write is never reported as success, and never as an

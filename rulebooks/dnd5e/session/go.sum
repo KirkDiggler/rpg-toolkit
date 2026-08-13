@@ -8,6 +8,8 @@ github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0Dk
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0/go.mod h1:LRzXoz7Is2z6s4KWtVG6B68uunxJgE5qWdk14EtHlbk=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0 h1:89nU27faMf80JrIJlQeVeYacQIexkgBFzHomvXWyE/I=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
+github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0 h1:L9ozHqfxKo8Ca/z4EF/juHaDT62b343d43CRwW6kTlY=
+github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0/go.mod h1:IRzIF0Rp4mzlan3SxrRR41drGYsL3DY4p8oM7qRSBag=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0 h1:CefHnp1Cuk9BrIxWcrrAE+q+6k8n0krpcnka+lLyflk=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0/go.mod h1:URY6tA/joFr1iUmw7QHVFN5lzV9Aa214ygGmCGXk5dE=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.4.0 h1:27AxCK1/Ypt16fjhALdu1br27j7syvVm3y8s/uylF58=

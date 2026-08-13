@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.9.0

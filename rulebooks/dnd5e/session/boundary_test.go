@@ -65,6 +65,18 @@ var allowed = map[string]string{
 	// not already expose it to. A *domain* type in a verb input would be a different
 	// matter, and is what this list exists to keep out.
 	"encounter.EncounterData": "persistence shape the host already holds (S3)",
+
+	// The same S3 exception, for the same reason: SessionData is a persistence
+	// shape, and the ledger of open windows is part of what a session *is*.
+	// The host stores these bytes opaquely and never constructs one — it has no
+	// reason to name interrupt.LedgerData in its own code, and every reason to
+	// round-trip it untouched.
+	//
+	// Note what this does NOT admit: interrupt.Window, interrupt.Ledger, or
+	// interrupt.Option appearing in a verb signature. Suspension reaches the
+	// host through SDK-owned Pending and Option types precisely so the custody
+	// module underneath can be replaced. Only the stored shape crosses.
+	"interrupt.LedgerData": "persistence shape the host stores opaquely (S3)",
 }
 
 // TestNoInnerTypeCrossesTheBoundary parses this package's non-test sources and
