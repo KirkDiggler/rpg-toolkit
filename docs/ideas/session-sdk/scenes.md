@@ -22,7 +22,7 @@ mgr, err := session.NewManager(&session.Config{
     Characters: charRepo,   // character.Data
     Encounters: encRepo,    // encounter.EncounterData
     // no NPC repo yet — monsters are session-scoped; see design.md
-    Sessions:   sessRepo,   // open windows, frozen resolution
+    Sessions:   sessRepo,   // windows, frozen resolution, session NPCs
     Events:     stream,     // optional: multiplayer fan-out
 })
 ```

@@ -230,6 +230,7 @@ alongside it. It is small and self-contained enough to ship on its own.
 ```go
 mgr, err := session.NewManager(&session.Config{
     Characters: charRepo,
+    Encounters: encRepo,
     Sessions:   sessRepo,
     Events:     stream,   // optional capability
 })
