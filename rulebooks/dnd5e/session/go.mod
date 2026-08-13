@@ -3,7 +3,9 @@ module github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session
 go 1.24
 
 require (
+	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.9.0
@@ -11,7 +13,6 @@ require (
 )
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.11.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2 // indirect
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 // indirect

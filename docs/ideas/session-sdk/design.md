@@ -1,7 +1,8 @@
 # Session SDK — design
 
-**Status:** ratified through wave 1. Waves 0 and 1 shipped
-(`encounter/v0.4.0`, `session/v0.1.0`); waves 2–5 remain the plan of record.
+**Status:** ratified through wave 2. Waves 0, 1 and 2 shipped
+(`encounter/v0.4.0`, `session/v0.1.0`, `session/v0.2.0`); waves 3–5 remain the
+plan of record.
 Where implementation corrected the design, this document carries the correction
 *and the reason* rather than a quiet rewrite — those reasons are the most
 reusable thing here.
@@ -380,10 +381,20 @@ type SessionData struct {
 }
 ```
 
-**Shipped so far: `ID` and `Encounter` only.** `Windows` and `Frozen` arrive
-with the interrupt spine (wave 2), `NPCs` with entities (wave 3) — each added
-the wave that first writes to it, since a persisted field nothing populates is a
-shape we would be committed to before learning whether it is right.
+**Shipped: `ID`, `Encounter`, and `Windows`.** `NPCs` arrives with entities
+(wave 3), added the wave that first writes to it — a persisted field nothing
+populates is a shape we would be committed to before learning whether it is
+right.
+
+**`Frozen` was not needed, and that is worth recording.** This design gave the
+session a `Frozen []byte` beside the ledger. Wave 2 found the field redundant:
+`interrupt.Window` already carries an opaque payload, one checkpoint opens one
+window, and the suspended state belongs to that window rather than to the
+session. Shared state across several windows of one resolution is plausible when
+reactions land — and at that point `Frozen` is an additive field. Adding it now
+would have committed a persisted shape before anything could tell us whether it
+was the right one, which is the same rule that deferred `CharacterRepository`,
+pointing the same way.
 
 Small, and written only when session state actually changes. The encounter
 never learns what an interrupt window is; the session module validates session

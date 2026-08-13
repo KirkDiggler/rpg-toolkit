@@ -28,21 +28,18 @@
 //
 // # What this version does and does not do
 //
-// The laws below describe the whole design, and two of them are commitments
-// rather than descriptions today. Stated as such deliberately: a reader
-// deciding whether to depend on this needs to know which is which, and a
-// package doc that quietly narrates the destination is worse than one that
-// names the waypoint.
+// Every law below is in force and exercised. S5 and S7 were commitments in
+// v0.1.0 — nothing could suspend yet — and are descriptions as of v0.2.0: a
+// walk stops mid-path, freezes as data, survives a process restart, and
+// resumes. The loop did not change shape when they became real, which is why
+// they were stated at the first tag rather than invented at the second.
 //
-// In force now: S1, S2, S3, S4, S6, S8, S12, S13, and the event-stream laws.
-//
-// Not yet exercised: S5 (Pending as suspension vocabulary) and S7 (a frozen
-// resolution is data) — nothing suspends in this version. The only pause a
-// verb can report is an ending, and it is reported by returning fewer steps
-// than were asked for. When resolutions become genuinely suspendable, the
-// caller learns through the same channel: a verb that returns having stopped,
-// plus a field naming who owes an answer. The loop does not change shape,
-// which is why those laws are stated now rather than invented later.
+// What is genuinely absent is scope, not law. Only one thing can suspend a
+// resolution today: a member seeing something for the first time. Characters,
+// NPCs and their conditions arrive with the entities wave; combat and
+// reactions after that. Each is a new checkpoint kind, and a new checkpoint
+// kind is additive by construction — Prompt names what the player is looking
+// at and never why the resolution stopped, so no client learns a reason code.
 //
 // # Laws
 //
@@ -62,14 +59,16 @@
 // S4 — every verb is load, act, save, return.
 //
 // S5 — Pending is the only suspension vocabulary. Every pause, whatever caused
-// it, surfaces in one shape and resolves through one Answer. (Committed, not
-// yet exercised: see above.)
+// it, surfaces in one shape and resolves through one Answer. While a window is
+// open every verb that would change the world is refused; read verbs are not,
+// because what is frozen is change, not observation.
 //
 // S6 — failure names its pieces. A partial save is an error with a populated
 // report, never a silent shrug.
 //
-// S7 — a frozen resolution is data. It survives a process restart because it
-// was never anything else. (Committed, not yet exercised: see above.)
+// S7 — a frozen resolution is data. The walk is a re-enterable phase machine
+// holding nothing across a suspension, so a window survives the process that
+// opened it: the answer may arrive days later, on another machine.
 //
 // S8 — construction is total. The manager refuses to exist without what it
 // needs; there is no lazy discovery at call time.

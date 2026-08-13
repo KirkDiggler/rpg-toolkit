@@ -54,6 +54,11 @@ type MoveOutput struct {
 	// walk stopped.
 	Outcome *Outcome `json:"outcome,omitempty"`
 
+	// Pending is present if the walk stopped at a checkpoint and is waiting on
+	// a decision. The world is frozen until it is answered, and the remaining
+	// steps resume from exactly where these left off.
+	Pending *Pending `json:"pending,omitempty"`
+
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -136,7 +141,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", ErrEmptyPath)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -145,36 +150,13 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	steps := make([]Step, 0, len(in.Path))
-	merged := map[string]Discovery{}
-	var outcome *Outcome
-
-	for _, cell := range in.Path {
-		moved, moveErr := scope.enc.Move(&encounter.MoveInput{
-			Member: encounter.MemberID(in.Member),
-			To:     cell,
-		})
-		if moveErr != nil {
-			// Nothing is saved on a mid-walk rejection. The member has really
-			// moved in memory for the steps already taken, but that encounter
-			// is discarded unsaved, so the persisted world is untouched — the
-			// whole walk fails, rather than leaving the party at an arbitrary
-			// cell nobody chose.
-			return nil, fmt.Errorf("move: step %d of %d: %w",
-				len(steps)+1, len(in.Path), translate(moveErr))
-		}
-
-		steps = append(steps, Step{Position: moved.Moved.To, Seq: moved.Seq})
-		mergeDiscoveries(merged, projectDiscoveries(moved.IntelDeltas))
-
-		if moved.Outcome != nil {
-			// The encounter ended underfoot. Every remaining step is abandoned:
-			// a closed encounter refuses movement anyway, and attempting them
-			// would turn a clean stop into a rejection the caller has to
-			// interpret.
-			outcome = projectOutcome(moved.Outcome)
-			break
-		}
+	res, err := m.runWalk(scope, &frozenResolution{
+		Kind:   kindWalk,
+		Member: in.Member,
+		Path:   in.Path,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("move: %w", err)
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -183,9 +165,10 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}
 
 	return &MoveOutput{
-		Steps:      steps,
-		Discovered: nilIfEmpty(merged),
-		Outcome:    outcome,
+		Steps:      res.steps,
+		Discovered: nilIfEmpty(res.discovered),
+		Outcome:    res.outcome,
+		Pending:    res.pending,
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -211,7 +194,7 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		return nil, fmt.Errorf("traverse: %w", ErrNoConnection)
 	}
 
-	scope, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForChange(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("traverse: %w", err)
 	}

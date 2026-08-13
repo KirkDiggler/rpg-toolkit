@@ -330,9 +330,10 @@ reconsider as the count grows.
 
 ### rulebooks/dnd5e/session — A-
 
-The game server's single integration surface (#938 / PR #942, v0.1.0). Ten
-verbs over two ports; the host implements get-by-id and put-by-id and thereafter
-holds no domain object.
+The game server's single integration surface (#938, #943; v0.2.0). Twelve verbs
+over two repositories and an event stream; the host implements get-by-id and
+put-by-id and thereafter holds no domain object. As of v0.2.0 a resolution can
+stop mid-way, persist as data, survive a process restart, and resume.
 
 **What earns the grade.** The boundary is enforced rather than asserted:
 `boundary_test.go` parses the package's own source and fails on any toolkit type
@@ -344,8 +345,15 @@ hand-written converter actually has (silently dropping a field when an inner
 type grows one). Pins are mutation-proven throughout, including the
 uncomfortable ones: over-tightening kills only the positive controls, and
 "compute the snapshot but never save it" kills six tests because persistence is
-checked through separate reads rather than returned values. One direct
-dependency. `verify.sh` clean at 90 tests, `-race` clean, `gorelease` gated.
+checked through separate reads rather than returned values. `verify.sh` clean at
+120 tests, `-race` clean, `gorelease` gated.
+
+Its dependencies are the composition it wraps (`encounter`), the three `play`
+modules it projects from, `spatial` for coordinates, and — as of v0.2.0 —
+`core`, for the entity-ID type the interrupt ledger's inputs are written in.
+That last one is a direct dependency taken on internally and held off the
+boundary: `core.EntityID` appears in no exported signature, which the boundary
+test enforces.
 
 **Why not higher, judged from where we stood when we built it.** Four things,
 none of which were available to fix at the time:
@@ -366,10 +374,30 @@ none of which were available to fix at the time:
    module reads something it does not own, and it fails *silently* — a changed
    payload shape degrades every event to `EventUnknown` with nothing red.
    *Improve by:* #941, after which the kind reads declared metadata.
-4. **The partial-save path is thin.** `SaveReport` supports naming what landed
-   and what did not, but only `StartSession` writes more than one aggregate
-   today, so the machinery is barely exercised. *Improve by:* entities, which
-   bring the second writer — deliberately not by manufacturing a fake one.
+4. **The checkpoint policy is a rule, and it lives here.** "Stop the walk when
+   the walker sees something for the first time" is a judgement about the game,
+   and this module's charter says it owns no rules. It is here because there is
+   no module that owns *when a resolution should pause* — perception owns what
+   is seen, not what that should interrupt. The machinery is right (checkpoints
+   are enumerated, the vocabulary is uniform); the policy is squatting.
+   *Improve by:* naming the owner when the second checkpoint kind arrives — if
+   traps, reactions and perception each want a different rule, the shape of the
+   thing that decides will be visible, and it can move. Inventing that owner now
+   would be guessing at an interface from one example.
+
+**What v0.2.0 fixed.** The partial-save path was called out as thin at v0.1.0 —
+`SaveReport` could name what landed and what did not, but only `StartSession`
+wrote more than one aggregate. A suspending walk now writes two, in an order
+chosen for its failure mode, and both the two-aggregate report and the
+write-proportionality rule (a walk that suspends nothing does not rewrite the
+session) are pinned and mutation-proven. S6 is exercised rather than promised.
+
+**Why still A- and not higher.** The grade held rather than rose: one
+reservation closed and one opened. Every pin in the new surface is
+mutation-proven — fifteen mutants, all killed — and one of them found a test
+that did not pin what it claimed, which was rewritten rather than explained
+away. But the module is still unproven against a real consumer, and it has
+taken on a rule it does not have a home for.
 
 **Not counted against it.** #940 (beats addressed to every member) makes the
 event fan-out over-broad in game terms, but the module is correct with respect

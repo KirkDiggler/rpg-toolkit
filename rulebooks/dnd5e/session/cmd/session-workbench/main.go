@@ -175,6 +175,42 @@ func drive(out *bytes.Buffer) error {
 		crossed.FromRoom, crossed.From.X, crossed.From.Y,
 		crossed.ToRoom, crossed.To.X, crossed.To.Y)
 
+	fmt.Fprintln(out, "\n== something moves in the dark ==")
+	vaultPath := []spatial.Position{{X: 1, Y: 1}, {X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}}
+	probe, err := mgr.Move(ctx, &session.MoveInput{
+		Session: "crypt-run", Member: "alice", Path: vaultPath,
+	})
+	if err != nil {
+		return err
+	}
+	for _, step := range probe.Steps {
+		fmt.Fprintf(out, "   alice enters (%v,%v)\n", step.Position.X, step.Position.Y)
+	}
+	if probe.Pending == nil {
+		return fmt.Errorf("expected the vault to interrupt the walk, got %d/%d steps",
+			len(probe.Steps), len(vaultPath))
+	}
+	fmt.Fprintf(out, "   the world freezes after %d/%d: %s sees %v\n",
+		len(probe.Steps), len(vaultPath), probe.Pending.Audience, probe.Pending.Prompt.Sighted)
+
+	// Everything that would change the world is refused now, and says why.
+	if _, err := mgr.End(ctx, &session.EndInput{
+		Session: "crypt-run", Ending: "withdraw",
+	}); err != nil {
+		fmt.Fprintf(out, "   end refused while frozen: %v\n", err)
+	}
+
+	resumed, err := mgr.Answer(ctx, &session.AnswerInput{
+		Session: "crypt-run", Window: probe.Pending.Window,
+		Member: "alice", Option: string(session.OptionContinue),
+	})
+	if err != nil {
+		return err
+	}
+	for _, step := range resumed.Steps {
+		fmt.Fprintf(out, "   alice presses on to (%v,%v)\n", step.Position.X, step.Position.Y)
+	}
+
 	fmt.Fprintln(out, "\n== bob's story ==")
 	story, err := mgr.Story(ctx, &session.StoryInput{Session: "crypt-run", Member: "bob"})
 	if err != nil {
@@ -212,7 +248,12 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "antechamber", Width: 6, Height: 6},
-				{ID: "vault", Width: 6, Height: 6, Origin: spatial.Position{X: 6, Y: 0}},
+				// The vault is split by rubble with one sightline through it at
+				// y=3, so what waits at (4,3) is invisible until someone lines
+				// up with the gap.
+				{ID: "vault", Width: 6, Height: 6, Origin: spatial.Position{X: 6, Y: 0}, Occluders: []spatial.Position{
+					{X: 2, Y: 0}, {X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 4}, {X: 2, Y: 5},
+				}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "antechamber", To: "vault",
@@ -222,6 +263,7 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 		},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "antechamber", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "wight", Kind: encounter.KindMonster, Room: "vault", Position: spatial.Position{X: 4, Y: 3}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
