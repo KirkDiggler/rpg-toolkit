@@ -336,7 +336,78 @@ machine **from its first line**, even though nothing suspends until wave 5 —
 `ReactionTriggerEvent` happened because attack resolution was a straight-line
 function, and this is the one lesson that must not be relearned.
 
-This is the wave rpg-api migrates on.
+**rpg-api does NOT migrate here.** That was the original plan and Kirk retired it
+on 2026-08-13: integration comes after the session package runs free roam *and*
+combat, and there is no adapter to the old encounter — a wrapper would dictate
+what the session contract looks like. See `sessions/active.md` in rpg-project.
+
+### The charter — what to deflect, what to ponder
+
+**Goal: combat the encounter *composes*, not combat the encounter *implements*.**
+
+**1 — Every combat action is a load-act-save.** No fight object alive between
+requests, exactly as there is no session process (S4).
+*Deflect:* anything holding combat state across calls, or needing a subscriber
+still listening next request.
+*Ponder:* what must be in the persisted shape for the **next** action to be
+decidable without replaying this one.
+
+**2 — The encounter owns the wiring; combat owns the rules.** The model is
+`play/clock`: a leaf that returns milestones as values and **never publishes**,
+with the composition as courier. Today `combat` is the inverse —
+`NewTurnManager` *requires* an `EventBus` and publishes `TurnStartEvent`/
+`TurnEndEvent` itself.
+*Deflect:* new code making combat responsible for who hears about it.
+*Ponder:* how much of combat's bus use is genuinely **rules** (conditions
+intercepting a chain — real and load-bearing) versus **notification** (the
+encounter's job). This clause is not free: 3,362 lines are built around that
+bus and ADR-0027's reaction windows are bus-shaped. It is the ponder, not a
+foregone conclusion.
+
+**3 — Resolution is a re-enterable phase machine from line one.** This is the
+*same* design as clause 2, not an extra constraint: a resolution returning its
+phases as values has no stack to preserve, which is why a frozen resolution can
+be "a value, never a goroutine and never a stack" (S7) and outlive its process.
+*Deflect:* "we'll make it re-enterable when reactions land in W5" — precisely
+how `ReactionTriggerEvent` happened.
+*Ponder:* where the phase boundaries actually fall.
+
+**4 — Ownership is already assigned. Do not relitigate.** `play/clock` owns
+clocks and transfers, holds no rules and no randomness (R7). The composition
+owns trigger detection. The rulebook owns the rolls. The session owns none of it.
+*Deflect:* any rule landing in `play/*` or in `session` — including the one
+currently sitting in `runWalk`.
+*Ponder:* only the trigger's shape. That part is genuinely ours and genuinely open.
+
+**5 — Composable means usable apart.** The test is not "is it layered" but
+"could someone use `combat` without `encounter`, or `encounter` without
+`session`?"
+*Deflect:* convenience methods fusing two concerns because one caller wanted one
+call.
+*Ponder:* the smallest honest input to a combat action.
+
+**6 — Shape for N, build for 1.** Bubbles persist as a **list** while policy
+allows one; "whose turn is it" is **clock-scoped** while there is one clock.
+*Deflect:* a top-level `ActiveActor()` on the encounter or the session.
+*Ponder:* nothing. This one is discipline.
+
+### Scope (Kirk, 2026-08-13)
+
+**In:** the world `Tick` plus **one** `Turn` bubble, with `Transfer` in and
+`Dissolve` out. Turn clocks stay linear within an encounter — it keeps the party
+together, and the v1 feature that buys is real: *a player off picking a lock or
+searching for treasure joins the fight at a rolled slot mid-round, instead of
+waiting it out.* That is `Transfer`, and `play/clock` already does it.
+
+**Concurrency:** pessimistic, via Redis — a lock with a buffer and timeout covers
+the simple cases. It arrives as an optional capability the manager type-asserts
+for (`SessionLocker`), **never** as a method added to `SessionRepository`, which
+would stop every host compiling. The optimistic/checksum door stays documented
+and open in `session/repositories.go` but is not being built.
+
+**Out, but shaped for:** multiple bubbles, for branching/non-linear dungeons.
+
+**Out:** rpg-api integration; reactions and opportunity attacks (wave 5).
 
 ---
 
