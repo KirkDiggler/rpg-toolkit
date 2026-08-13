@@ -430,6 +430,91 @@ func (s *SuspendTestSuite) TestTheStoryIsOneContinuousSequence() {
 		"the resumed step is the newest beat, in the same sequence as the earlier ones")
 }
 
+// positionJSON renders a position the way the frozen payload stores it, without
+// a test having to know its field tags.
+func positionJSON(t fataler, p spatial.Position) any {
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshalling position: %v", err)
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("unmarshalling position: %v", err)
+	}
+	return v
+}
+
+// tamperFrozenPath rewrites the stored path inside the open window's frozen
+// payload, standing in for a blob that does not match the world it refers to.
+func (s *SuspendTestSuite) tamperFrozenPath(mutate func(path []any)) {
+	stored := s.sessions.byID["sess"]
+	s.Require().Len(stored.Windows.Windows, 1, "precondition: one open window")
+
+	var payload map[string]any
+	s.Require().NoError(json.Unmarshal(stored.Windows.Windows[0].Payload, &payload))
+	path, ok := payload["path"].([]any)
+	s.Require().True(ok, "the frozen payload carries the path")
+
+	mutate(path)
+	payload["path"] = path
+
+	raw, err := json.Marshal(payload)
+	s.Require().NoError(err)
+	stored.Windows.Windows[0].Payload = raw
+}
+
+func (s *SuspendTestSuite) answerContinue(window string) (*session.AnswerOutput, error) {
+	return s.mgr.Answer(context.Background(), &session.AnswerInput{
+		Session: "sess", Window: window,
+		Member: "alice", Option: string(session.OptionContinue),
+	})
+}
+
+// TestResumeRejectsAPathThatNoLongerLinesUp pins the re-validation in resume.
+//
+// A window and a world are two stored records, and nothing guarantees a stored
+// window describes the world that actually loaded — a hand-edited blob is
+// enough. Resuming on trust would walk a member from where she stands to
+// somewhere across the room in one step, because the phase index says there is
+// a cell left and the cell says (7,7).
+func (s *SuspendTestSuite) TestResumeRejectsAPathThatNoLongerLinesUp() {
+	s.startAmbush()
+	out := s.walkIntoTheAmbush()
+	s.Require().NotNil(out.Pending)
+
+	// The one unwalked cell is moved across the room.
+	s.tamperFrozenPath(func(path []any) {
+		path[2] = positionJSON(s.T(), spatial.Position{X: 7, Y: 7})
+	})
+
+	_, err := s.answerContinue(out.Pending.Window)
+	s.Require().Error(err, "a resume that does not line up is refused, not walked")
+	s.ErrorIs(err, session.ErrBrokenPath)
+}
+
+// TestResumeChecksOnlyWhatIsLeftToWalk is the other half, and the reason the
+// check is over a suffix rather than the whole path.
+//
+// The cells already walked are behind her. Re-validating them against where she
+// now stands would reject legitimate resumes for describing a journey that has
+// already happened — the walk is driven by the phase index, and the phase index
+// is the only part of the path that is still ahead.
+func (s *SuspendTestSuite) TestResumeChecksOnlyWhatIsLeftToWalk() {
+	s.startAmbush()
+	out := s.walkIntoTheAmbush()
+	s.Require().NotNil(out.Pending)
+
+	// The already-walked first cell becomes nonsense. It must not matter.
+	s.tamperFrozenPath(func(path []any) {
+		path[0] = positionJSON(s.T(), spatial.Position{X: 7, Y: 7})
+	})
+
+	resumed, err := s.answerContinue(out.Pending.Window)
+	s.Require().NoError(err, "the walked prefix is history, not a precondition")
+	s.Require().Len(resumed.Steps, 1)
+	s.Equal(spatial.Position{X: 2, Y: 4}, resumed.Steps[0].Position)
+}
+
 // TestOnlyTheAudienceMayAnswer pins that a window is owed by someone specific.
 func (s *SuspendTestSuite) TestOnlyTheAudienceMayAnswer() {
 	s.startAmbush()
