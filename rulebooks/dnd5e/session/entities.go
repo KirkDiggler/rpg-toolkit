@@ -90,24 +90,28 @@ func (m *Manager) loadCharacter(
 
 // projectCharacter reports the state of a loaded character.
 //
-// Everything here is DERIVED by the loaded character rather than copied out of
-// its stored data. That is deliberate: it is what makes this projection proof
-// that a character actually reconstituted, rather than proof that a repository
-// returned some bytes. Speed and armour class in particular are computed from
-// race, equipment and whatever conditions attached on the way in.
+// Read through the character's own accessors, never through ToData(). ToData is
+// a SERIALISATION, not a getter: it clones several maps, marshals every feature
+// and condition to JSON, and stamps UpdatedAt with the current time. Calling it
+// to read three integers would put that cost on every join, and would make a
+// read path non-deterministic for no reason.
+//
+// Speed is the field that carries the weight here. It is not stored on the
+// character at all — it is derived from race when asked — so it is the one value
+// that cannot be produced by echoing bytes, and the one the tests lean on to
+// prove reconstitution actually happened. The rest are reported as loaded.
 func projectCharacter(ch *character.Character) *CharacterState {
 	if ch == nil {
 		return nil
 	}
-	data := ch.ToData()
 	return &CharacterState{
 		ID:               ch.GetID(),
 		Name:             ch.GetName(),
 		Level:            ch.GetLevel(),
 		Speed:            ch.GetSpeed(),
-		HitPoints:        data.HitPoints,
-		MaxHitPoints:     data.MaxHitPoints,
-		ArmorClass:       data.ArmorClass,
+		HitPoints:        ch.GetHitPoints(),
+		MaxHitPoints:     ch.GetMaxHitPoints(),
+		ArmorClass:       ch.AC(),
 		ProficiencyBonus: ch.ProficiencyBonus(),
 	}
 }

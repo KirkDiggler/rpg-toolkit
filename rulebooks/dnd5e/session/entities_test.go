@@ -246,3 +246,65 @@ func (n *nilDataCharacters) GetCharacter(_ context.Context, _ string) (*characte
 func (n *nilDataCharacters) SaveCharacter(_ context.Context, _ *character.Data) error { return nil }
 
 func TestEntitiesSuite(t *testing.T) { suite.Run(t, new(EntitiesTestSuite)) }
+
+// benchManager builds a fresh, started session for one benchmark iteration.
+type benchFataler struct{ b *testing.B }
+
+func (f benchFataler) Fatalf(format string, args ...any) { f.b.Fatalf(format, args...) }
+
+func benchManager(b *testing.B) *session.Manager {
+	b.Helper()
+	mgr, err := session.NewManager(&session.Config{
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Characters: testCharacters(), Events: session.DiscardEvents{},
+	})
+	if err != nil {
+		b.Fatalf("manager: %v", err)
+	}
+	if _, err := mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: hexWorld(benchFataler{b}),
+	}); err != nil {
+		b.Fatalf("start: %v", err)
+	}
+	return mgr
+}
+
+// BenchmarkJoinPlayer and BenchmarkJoinMonster differ by exactly one thing: the
+// player join loads a character and the monster join does not. The DELTA is the
+// per-verb cost of reconstituting a sheet and attaching its features and
+// conditions to the call's bus.
+//
+// That cost is the wave's stated risk — "stateless-per-call proves too slow once
+// entities load on every verb" — and the reason to measure it rather than design
+// a cache around a number nobody has seen.
+func BenchmarkJoinPlayer(b *testing.B) {
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		mgr := benchManager(b)
+		b.StartTimer()
+
+		if _, err := mgr.Join(ctx, &session.JoinInput{
+			Session: "sess", Member: "bob", Kind: session.KindPlayer,
+			Room: "vault", Position: spatial.Position{X: 0, Y: 0},
+		}); err != nil {
+			b.Fatalf("join: %v", err)
+		}
+	}
+}
+
+func BenchmarkJoinMonster(b *testing.B) {
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		mgr := benchManager(b)
+		b.StartTimer()
+
+		if _, err := mgr.Join(ctx, &session.JoinInput{
+			Session: "sess", Member: "ogre-7", Kind: session.KindMonster,
+			Room: "vault", Position: spatial.Position{X: 0, Y: 0},
+		}); err != nil {
+			b.Fatalf("join: %v", err)
+		}
+	}
+}

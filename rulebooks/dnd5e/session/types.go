@@ -319,10 +319,13 @@ type Member struct {
 //
 // This package's own twin, not character.Data: the stored shape is what the
 // host persists, while this is what one call observed after reconstitution.
-// They differ in exactly the way that matters — every field here is DERIVED by
-// the loaded character, so armour class already accounts for equipment and
-// speed already accounts for whatever conditions attached on the way in. A host
-// reading its own stored blob would get the un-derived numbers.
+// Read through the character's accessors rather than by serialising it, so this
+// stays a cheap read.
+//
+// Most of these fields are reported as loaded. SPEED is the exception and the
+// interesting one: it is not stored on a character at all, but derived from
+// race when asked, which is why it is the value the tests use to prove a sheet
+// genuinely reconstituted rather than that a repository returned some bytes.
 //
 // Deliberately small. It carries what a client needs to render a member and
 // what proves the load happened; the sheet in full is the host's own copy to
@@ -338,8 +341,12 @@ type CharacterState struct {
 	// Level is the character's level.
 	Level int `json:"level"`
 
-	// Speed is the character's current movement speed in feet, after race,
-	// equipment and any active conditions.
+	// Speed is the character's BASE walking speed in feet, from race.
+	//
+	// Base, not effective: condition-driven modifiers (Unarmored Movement and
+	// the like) are applied during resolution through the movement chain, not
+	// folded in here. A client rendering this is showing the sheet's speed, not
+	// what the next step will cost.
 	Speed int `json:"speed"`
 
 	// HitPoints is the character's current hit points.
