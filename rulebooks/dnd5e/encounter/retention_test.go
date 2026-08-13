@@ -91,6 +91,49 @@ func (s *RetentionTestSuite) TestTrimsToExactlyTheWindow() {
 		"retention window must be enforced exactly, not approximately")
 }
 
+// TestLogAtExactlyTheWindowIsUntouched pins the boundary below which nothing is
+// dropped: a log holding exactly the window is full, not over, and every
+// sequence it ever issued must still be servable.
+//
+// This is the must-accept row for the trim guard itself. An off-by-one that
+// began trimming one beat early would still satisfy every "did it shrink"
+// assertion in this suite while quietly losing the oldest beat of every log
+// that merely reached its limit.
+func (s *RetentionTestSuite) TestLogAtExactlyTheWindowIsUntouched() {
+	const window = 8
+	enc := s.walkingEncounter(window)
+
+	// Setup contributes one scene-opened beat, so seven moves bring the log to
+	// exactly the window.
+	s.generateBeats(enc, window-1)
+
+	s.Equal(window, s.storyLen(enc), "a full log is not an over-full one")
+
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
+	s.Require().NoError(err, "the very first beat must still be servable at the boundary")
+	s.Len(entries, window, "and nothing may have been dropped")
+	s.Equal(uint64(1), entries[0].Seq)
+}
+
+// TestAfterSeqIsInclusive pins the semantics the field's name gets wrong.
+//
+// AfterSeq is passed straight through as record.SliceFor's FromSeq, which is an
+// inclusive lower bound: asking for 3 yields the entry AT 3. The name says
+// otherwise, and a well-meaning future change that "fixed" the behaviour to
+// match the name would silently drop one entry from every resume — so the
+// behaviour is pinned here and the name is documented as the misnomer it is
+// (Copilot, PR #939).
+func (s *RetentionTestSuite) TestAfterSeqIsInclusive() {
+	enc := s.walkingEncounter(encounter.RetentionUnbounded)
+	s.generateBeats(enc, 5)
+
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 3})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(entries)
+	s.Equal(uint64(3), entries[0].Seq,
+		"AfterSeq is an inclusive lower bound despite its name: to resume after N, pass N+1")
+}
+
 // TestSeqSurvivesTrimming is the reconnect contract. Trimming drops entries; it
 // must never renumber the survivors, or every client's stored resume point
 // silently becomes wrong.

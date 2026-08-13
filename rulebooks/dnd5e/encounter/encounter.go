@@ -343,14 +343,39 @@ func (e *Encounter) enforceRetention() error {
 
 	// Seq is 1-based and gapless, so after N appends nextSeq == N+1 and the log
 	// holds [1, N]. Retaining `retention` entries means dropping everything
-	// below nextSeq-retention. The subtraction is deliberately guarded: nextSeq
-	// <= window means the log has not yet outgrown the window, and computing the
-	// floor anyway would wrap on uint64.
+	// below nextSeq-retention. The subtraction is guarded because nextSeq <=
+	// window means the log has not yet reached the window at all, and computing
+	// the floor anyway would wrap on uint64.
 	window := uint64(e.retention)
 	if nextSeq <= window {
 		return nil
 	}
 	floor := nextSeq - window
+
+	// Skip when the computed floor is at or below what the log already starts
+	// at — there is nothing there to drop.
+	//
+	// Without this the log would be trimmed the moment it reached exactly the
+	// window: floor would come out as the oldest retained Seq, TrimBefore would
+	// do nothing, and logFloor would still be advanced to a value describing a
+	// trim that never happened. Harmless today, because a floor equal to the
+	// oldest entry rejects nothing that the log can still serve — which is
+	// exactly why no test in this package can distinguish the two versions. It
+	// is fixed anyway: the comment above claims the early return keeps logFloor
+	// from being written on every append, and code that contradicts its own
+	// documentation is a trap for whoever next reasons about the floor
+	// (Copilot, PR #939).
+	//
+	// oldest is the lowest Seq the log currently holds: logFloor once anything
+	// has been trimmed, and 1 before that, since the log's first assigned Seq
+	// is 1 rather than 0.
+	oldest := e.logFloor
+	if oldest < 1 {
+		oldest = 1
+	}
+	if floor <= oldest {
+		return nil
+	}
 
 	if _, err := e.story.TrimBefore(&record.TrimBeforeInput{Seq: floor}); err != nil {
 		return fmt.Errorf("retention trim: %w", err)
@@ -1163,9 +1188,17 @@ func (e *Encounter) Status() (*Status, error) {
 	return &Status{Open: true}, nil
 }
 
-// Story returns the story entries for a member after the given sequence number.
+// Story returns a member's story entries from the given sequence number
+// onward, INCLUSIVE of it — AfterSeq is passed through as record.SliceFor's
+// FromSeq, and its name is a misnomer kept for compatibility (see
+// StoryInput.AfterSeq). To resume after entry N, pass N+1.
+//
 // Allows both current members and members who have exited (everMembers).
-// Returns ErrNilInput if the input is nil, ErrNoMember if the member never joined.
+// Returns ErrNilInput if the input is nil, ErrNoMember if the member never
+// joined, and ErrTrimmed if a non-zero AfterSeq names a sequence that has
+// already aged out of the retention window — the caller must resync rather
+// than resume, since a short answer would be indistinguishable from a complete
+// one. AfterSeq == 0 is exempt and always answerable.
 // Copy-out follows record's own conventions (returned entries are already copies
 // per record's implementation).
 func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
