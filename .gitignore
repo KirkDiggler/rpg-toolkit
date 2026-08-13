@@ -40,3 +40,9 @@ bin/
 
 # Linked git worktrees (project-local, per rpg-api/rpg-dnd5e-web convention)
 .worktrees/
+# Agent tooling scratch. These directories hold subagent transcripts, prompts and
+# metadata — working state, not source. They appear wherever an agent is run, not
+# only at the repo root, so this is deliberately unanchored: a nested one inside
+# a module was swept into a PR by `git add -A <dir>` and had to be removed.
+.pi-subagents/
+.pi/agents/

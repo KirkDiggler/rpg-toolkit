@@ -137,7 +137,7 @@ func (s *ConditionsTestSuite) TestAVerbLeavesTheCharacterStoreUntouched() {
 	s.Run("join", func() {
 		before := s.storedBytes("bob")
 		_, err := s.mgr.Join(ctx, &session.JoinInput{
-			Session: "sess", Member: "bob", Kind: session.KindPlayer,
+			Session: "sess", Member: "bob",
 			Room: "hall", Position: spatial.Position{X: 0, Y: 0},
 		})
 		s.Require().NoError(err)
@@ -267,7 +267,7 @@ func (s *ConditionsTestSuite) TestACharacterTheSDKCannotFullyLoadIsStillNotDamag
 	before := s.storedBytes("dave")
 
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "dave", Kind: session.KindPlayer,
+		Session: "sess", Member: "dave",
 		Room: "hall", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().NoError(err, "the unreadable condition does not fail the join — that is the trap")

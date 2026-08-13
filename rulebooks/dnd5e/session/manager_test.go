@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -15,6 +16,25 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
+
+// copyOf returns an independent copy, the way a real repository does.
+//
+// This matters more than it looks. A fake that hands back the pointer it stores
+// makes every in-memory mutation instantly "persisted", so a verb that forgets
+// to save still passes — the store and the working copy are the same object.
+// Found by a mutant that deleted a save and survived; every fake in this file
+// had the flaw, and had had it since wave 1.
+func copyOf[T any](in *T) (*T, error) {
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return nil, err
+	}
+	var out T
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
 
 // fakeSessions is an in-memory SessionRepository. Key-value only, matching S12:
 // if a test double needed more than get-and-put to satisfy it, the interface
@@ -32,7 +52,7 @@ func (f *fakeSessions) GetSession(_ context.Context, id string) (*session.Sessio
 	if !ok {
 		return nil, session.ErrNotFound
 	}
-	return data, nil
+	return copyOf(data)
 }
 
 func (f *fakeSessions) SaveSession(_ context.Context, data *session.SessionData) error {
@@ -54,7 +74,7 @@ func (f *fakeEncounters) GetEncounter(_ context.Context, id string) (*encounter.
 	if !ok {
 		return nil, session.ErrNotFound
 	}
-	return data, nil
+	return copyOf(data)
 }
 
 func (f *fakeEncounters) SaveEncounter(_ context.Context, id string, data *encounter.EncounterData) error {
@@ -85,7 +105,22 @@ func (f *fakeCharacters) GetCharacter(_ context.Context, id string) (*character.
 	if !ok {
 		return nil, session.ErrNotFound
 	}
-	return data, nil
+	return cloneCharacter(data), nil
+}
+
+// cloneCharacter copies without going through JSON.
+//
+// Characters get their own clone because one fixture deliberately holds a
+// MALFORMED json.RawMessage to exercise the upstream drop path, and malformed
+// raw JSON cannot be marshalled. That fixture is reachable in process but not
+// from a real JSON store, so modelling it costs a struct copy rather than a
+// round trip.
+func cloneCharacter(in *character.Data) *character.Data {
+	out := *in
+	out.Conditions = append([]json.RawMessage(nil), in.Conditions...)
+	out.Features = append([]json.RawMessage(nil), in.Features...)
+	out.Inventory = append([]character.InventoryItemData(nil), in.Inventory...)
+	return &out
 }
 
 func (f *fakeCharacters) SaveCharacter(_ context.Context, data *character.Data) error {

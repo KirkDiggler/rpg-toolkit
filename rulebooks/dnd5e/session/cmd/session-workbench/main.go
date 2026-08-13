@@ -25,6 +25,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -173,7 +174,7 @@ func drive(out *bytes.Buffer) error {
 	}
 
 	joined, err := mgr.Join(ctx, &session.JoinInput{
-		Session: "crypt-run", Member: "bob", Kind: session.KindPlayer,
+		Session: "crypt-run", Member: "bob",
 		Room: "antechamber", Position: spatial.Position{X: 1, Y: 2},
 	})
 	if err != nil {
@@ -187,6 +188,23 @@ func drive(out *bytes.Buffer) error {
 	if c := joined.Character; c != nil {
 		fmt.Fprintf(out, "   %s, level %d — %d/%d hp, ac %d, speed %d\n",
 			c.Name, c.Level, c.HitPoints, c.MaxHitPoints, c.ArmorClass, c.Speed)
+	}
+
+	// Bob was LOADED — the host owns his sheet and named him by ID. The
+	// skeleton is INSTANTIATED from a ref, because it exists in code and
+	// nobody stored it. Two verbs, because the two are genuinely different;
+	// the caller never has to say which kind of thing it is.
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "crypt-run", ID: "skel-1",
+		Ref:  refs.Monsters.Skeleton().String(),
+		Room: "antechamber", Position: spatial.Position{X: 4, Y: 2},
+	})
+	if err != nil {
+		return err
+	}
+	if n := spawned.NPC; n != nil {
+		fmt.Fprintf(out, "   %s spawns as %s — %d/%d hp, ac %d, speed %d\n",
+			n.Name, n.ID, n.HitPoints, n.MaxHitPoints, n.ArmorClass, n.Speed)
 	}
 
 	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "crypt-run"})

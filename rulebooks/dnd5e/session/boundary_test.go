@@ -119,6 +119,30 @@ var persistenceShapes = map[string]string{
 	// host through SDK-owned Pending and Option types precisely so the custody
 	// module underneath can be replaced. Only the stored shape crosses.
 	"interrupt.LedgerData": "persistence shape the host stores opaquely (S3)",
+
+	// A spawned NPC's sheet, inside SessionData.
+	//
+	// This lands in the persistence category rather than beside character.Data,
+	// and the two are worth contrasting because they look alike and are not.
+	// The host CONSTRUCTS a character.Data — it owns character storage, and a
+	// change to that shape is a change to code it writes, so we announce it.
+	// The host never constructs a monster.Data: Spawn builds it from a ref and
+	// hands it back already made, and the host's only job is to round-trip the
+	// session blob it sits in.
+	//
+	// So the promise here is replaceability. If monster.Data is reshaped, or
+	// the monster package is replaced outright, a host that stored the bytes
+	// notices nothing. That is worth having, because monster is the least
+	// settled of the packages this module names.
+	//
+	// The test to apply, from the header above: would the host have to build
+	// one field by field? For a character, yes. For a monster, no — it names a
+	// ref instead, which is the whole point of the split between Join and
+	// Spawn.
+	//
+	// What is NOT admitted: monster.Monster, the runtime object. Spawn returns
+	// an SDK-owned MonsterState, and the loaded monster never crosses.
+	"monster.Data": "persistence shape: an NPC sheet the host stores but never builds",
 }
 
 // allowed is the union the detector checks against.

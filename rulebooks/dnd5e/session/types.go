@@ -362,6 +362,47 @@ type CharacterState struct {
 	ProficiencyBonus int `json:"proficiency_bonus"`
 }
 
+// MonsterState is what a spawned NPC reports about itself.
+//
+// A sibling of CharacterState rather than a merger with it. The overlap is
+// large — a monster reports name, hit points, armour class, speed and
+// proficiency bonus through its own accessors, just as a character does — and
+// merging them was considered and rejected: the two genuinely differ (a
+// character has a Level, a monster has a challenge rating), and one type with
+// fields that are meaningful for only half its values reintroduces exactly the
+// guessing that giving Join and Spawn separate verbs removed.
+//
+// Ref is here and has no counterpart on CharacterState, which is the same
+// asymmetry stated at the seam: a monster is content built from a named recipe,
+// and a character is an instance the host owns. Reporting it lets a client
+// render a skeleton as a skeleton without inferring anything from the name.
+type MonsterState struct {
+	// ID is the member's identifier in this encounter, not the catalog entry's.
+	ID string `json:"id"`
+
+	// Ref is the catalog entry this was built from — "dnd5e:monsters:skeleton".
+	Ref string `json:"ref"`
+
+	// Name is the monster's name.
+	Name string `json:"name"`
+
+	// HitPoints is the monster's current hit points.
+	HitPoints int `json:"hit_points"`
+
+	// MaxHitPoints is the monster's hit point maximum.
+	MaxHitPoints int `json:"max_hit_points"`
+
+	// ArmorClass is the monster's armour class.
+	ArmorClass int `json:"armor_class"`
+
+	// Speed is the monster's walking speed in feet.
+	Speed int `json:"speed"`
+
+	// ProficiencyBonus is the monster's proficiency bonus, derived from its
+	// challenge rating.
+	ProficiencyBonus int `json:"proficiency_bonus"`
+}
+
 // Discovery is what changed in one observer's perception.
 //
 // Three disjoint lists rather than a single "here is everything you now

@@ -18,11 +18,14 @@ type JoinInput struct {
 	// Session is the session to join.
 	Session string
 
-	// Member is the joining member's identifier.
+	// Member is the joining player's character ID, which is also the ID they
+	// are known by inside the encounter.
+	//
+	// There is no ref here, and its absence is the point. A ref names the
+	// package that can load some data; no toolkit package can load a player
+	// character, because the host owns it and only the host's repository can
+	// produce it. A "dnd5e:characters:..." ref would claim otherwise.
 	Member string
-
-	// Kind categorises the member.
-	Kind MemberKind
 
 	// Room is the room to place them in.
 	Room string
@@ -36,8 +39,10 @@ type JoinOutput struct {
 	// Member is the joined member's placement.
 	Member Member
 
-	// Character is the joined character's state, derived after loading. Nil
-	// for kinds that have no character sheet.
+	// Character is the joined character's state, derived after loading.
+	//
+	// Always populated: Join is players only, and a player with no loadable
+	// character does not join at all.
 	Character *CharacterState
 
 	// Discovered is what changed in each observer's perception, keyed by
@@ -48,6 +53,56 @@ type JoinOutput struct {
 	Seq uint64
 
 	// Outcome is present if an ending fired on the join.
+	Outcome *Outcome
+
+	// Saved names what was persisted.
+	Saved SaveReport
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport
+}
+
+// SpawnInput instantiates content that lives in code as a new member.
+type SpawnInput struct {
+	// Session is the session to spawn into.
+	Session string
+
+	// ID is the ID the new member is known by inside the encounter.
+	//
+	// Separate from Ref because a template carries no identity: one catalog
+	// entry makes five skeletons, and the encounter has to tell them apart.
+	ID string
+
+	// Ref names what to build — "dnd5e:monsters:skeleton".
+	//
+	// It routes on (Module, Type), which is what a ref is for: it says which
+	// package can produce this data. A ref this build has no loader for is
+	// rejected rather than guessed at.
+	Ref string
+
+	// Room is the room to place it in.
+	Room string
+
+	// Position is where within that room.
+	Position spatial.Position
+}
+
+// SpawnOutput reports the spawn and what it revealed.
+type SpawnOutput struct {
+	// Member is the new member's placement.
+	Member Member
+
+	// NPC is the instantiated sheet's state.
+	NPC *MonsterState
+
+	// Discovered is what changed in each observer's perception, keyed by
+	// observer. Absent observers saw nothing new.
+	Discovered map[string]Discovery
+
+	// Seq is the story sequence of the recorded arrival.
+	Seq uint64
+
+	// Outcome is present if an ending fired on the spawn.
 	Outcome *Outcome
 
 	// Saved names what was persisted.
@@ -110,16 +165,23 @@ type EndOutput struct {
 	Delivery DeliveryReport
 }
 
-// Join places a member into the session's encounter and reports what came into
+// Join brings a PLAYER into the session's encounter and reports what came into
 // view as a result.
 //
-// A monster may be joined, but its decider is not supplied here: deciders are
-// never persisted and are re-registered at load, so behaviour arrives with the
-// wave that brings entities. A monster joined today is placed and perceived
-// correctly; it simply does not act on its own.
+// Players only. Content that lives in code — monsters — enters through Spawn,
+// and the split is by where the data comes from rather than by what the thing
+// is: a character is loaded from the host's repository, a monster is built from
+// a ref. That distinction survives contact with the future, where "player or
+// monster" does not — a durable NPC would be a monster you load.
+//
+// The character is loaded BEFORE the placement, which is the point of loading
+// at join at all: a session that accepted a player with no character would look
+// healthy until the first verb that needed a sheet, and would then fail
+// somewhere with no visible connection to the join that caused it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrClosed if the encounter has already ended, or
+// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrClosed if the encounter
+// has already ended, ErrFrozen if an interrupt window is open, or
 // ErrSaveFailed with a populated report.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
@@ -134,33 +196,14 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	// Kind selects the repository. A player's sheet lives in the host's
-	// character store; anything else does not have one yet, and asking for one
-	// would fail every monster join.
-	//
-	// Loading HERE, before the placement, is the point of doing it at join at
-	// all: a session that accepted a player with no character would look
-	// healthy until the first verb that needed a sheet, and would then fail
-	// somewhere with no visible connection to the join that caused it.
-	var loaded *CharacterState
-	if in.Kind == KindPlayer {
-		ch, cErr := m.loadCharacter(ctx, newCallBus(), in.Member)
-		if cErr != nil {
-			return nil, fmt.Errorf("join: %w", cErr)
-		}
-		loaded = projectCharacter(ch)
+	ch, err := m.loadCharacter(ctx, newCallBus(), in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	joined, err := scope.enc.Join(&encounter.JoinInput{
-		Member: encounter.MemberInput{
-			ID:       encounter.MemberID(in.Member),
-			Kind:     encounter.MemberKind(in.Kind),
-			Room:     in.Room,
-			Position: in.Position,
-		},
-	})
+	placed, err := place(scope, in.Member, KindPlayer, in.Room, in.Position)
 	if err != nil {
-		return nil, fmt.Errorf("join: %w", translate(err))
+		return nil, fmt.Errorf("join: %w", err)
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -169,14 +212,122 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	}
 
 	return &JoinOutput{
-		Member:     projectMember(joined.Member),
-		Character:  loaded,
-		Discovered: projectDiscoveries(joined.IntelDeltas),
-		Seq:        joined.Seq,
-		Outcome:    projectOutcome(joined.Outcome),
+		Member:     projectMember(placed.Member),
+		Character:  projectCharacter(ch),
+		Discovered: projectDiscoveries(placed.IntelDeltas),
+		Seq:        placed.Seq,
+		Outcome:    projectOutcome(placed.Outcome),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
+}
+
+// Spawn instantiates content that lives in code and places it as a new member.
+//
+// The ref names what to build — "dnd5e:monsters:skeleton" — and the ID names
+// the member it becomes. They are separate because a template cannot carry
+// identity: one catalog entry makes five skeletons, and each needs its own name
+// in the encounter.
+//
+// The resulting sheet is stored in the session rather than behind a repository,
+// because a spawned monster is session-scoped: it has no existence outside this
+// fight and nothing durable to look up.
+//
+// A decider is not supplied here. Deciders are never persisted and are
+// re-registered at load, so behaviour arrives with the wave that brings it. A
+// monster spawned today is placed, perceived, and remembered correctly; it
+// simply does not act on its own.
+//
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef, ErrBadRef,
+// ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter, ErrClosed,
+// ErrFrozen if an interrupt window is open, or ErrSaveFailed with a populated
+// report.
+func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("spawn: %w", ErrNilInput)
+	}
+	if in.ID == "" {
+		return nil, fmt.Errorf("spawn: %w", ErrNoMemberID)
+	}
+
+	scope, err := m.openForChange(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("spawn: %w", err)
+	}
+
+	// Built before the placement — a preference, NOT a correctness argument,
+	// and worth stating plainly because the correctness version is tempting
+	// and wrong.
+	//
+	// Swapping these two survives as a mutant. Under load-act-save (S4) the
+	// in-memory encounter is discarded whenever a verb returns before commit,
+	// so a bad ref cannot leave a member placed no matter which order these
+	// run in. The rejection table's "a rejected spawn stores nothing" passes
+	// either way, and it is honest about why.
+	//
+	// This is the second time the same shape has appeared here — the join's
+	// load-versus-placement ordering had it too — which is the general lesson
+	// rather than a coincidence: in a load-act-save verb, ordering BEFORE the
+	// commit is never load-bearing. What is load-bearing is that the error
+	// stops the verb, and that is pinned separately.
+	//
+	// The order is still chosen: there is no reason to touch the world when
+	// the call is already doomed.
+	sheet, err := instantiate(in.ID, in.Ref)
+	if err != nil {
+		return nil, fmt.Errorf("spawn: %w", err)
+	}
+
+	placed, err := place(scope, in.ID, KindMonster, in.Room, in.Position)
+	if err != nil {
+		return nil, fmt.Errorf("spawn: %w", err)
+	}
+
+	scope.data.NPCs = append(scope.data.NPCs, *sheet)
+	scope.touched = true
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("spawn: %w", err)
+	}
+
+	return &SpawnOutput{
+		Member:     projectMember(placed.Member),
+		NPC:        projectMonster(sheet),
+		Discovered: projectDiscoveries(placed.IntelDeltas),
+		Seq:        placed.Seq,
+		Outcome:    projectOutcome(placed.Outcome),
+		Saved:      report,
+		Delivery:   delivery,
+	}, nil
+}
+
+// place puts a member into the encounter.
+//
+// ONE placement path, shared by both entry verbs. Join and Spawn differ in
+// where a sheet comes from and in nothing else — the same validation, the same
+// adjacency rules, the same perception refresh, the same story beat. Two copies
+// of this would be free to drift, and the drift would be invisible until a rule
+// added to one silently failed to apply to the other.
+//
+// The composition already settled this argument in the anchoring wave, where
+// Setup and Load were made to share one validator so that a single mutation
+// kills the pins on both. Same reasoning, one layer up.
+func place(
+	scope *writeScope, id string, kind MemberKind, room string, at spatial.Position,
+) (*encounter.JoinOutput, error) {
+	placed, err := scope.enc.Join(&encounter.JoinInput{
+		Member: encounter.MemberInput{
+			ID:       encounter.MemberID(id),
+			Kind:     encounter.MemberKind(kind),
+			Room:     room,
+			Position: at,
+		},
+	})
+	if err != nil {
+		return nil, translate(err)
+	}
+	return placed, nil
 }
 
 // Exit removes a member from the session's encounter, returning what they knew

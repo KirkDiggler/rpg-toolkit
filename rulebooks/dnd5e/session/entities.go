@@ -8,8 +8,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Loading an entity, and the cleanup that must not happen.
@@ -86,6 +90,98 @@ func (m *Manager) loadCharacter(
 		return nil, fmt.Errorf("character %q: %w: %w", id, ErrBadCharacter, err)
 	}
 	return ch, nil
+}
+
+// instantiate builds catalog content into a new member's sheet.
+//
+// This is the other half of how an entity enters a session, and the split is
+// between where the data comes from rather than between players and monsters.
+// A character is LOADED: it already exists, the host owns it, and only the
+// host's repository can produce it — which is exactly why a character has no
+// ref. A monster is INSTANTIATED: it exists in code, and a ref names the code
+// that builds it.
+//
+// That distinction is the one that survives. "Player or monster" does not: a
+// durable NPC would be a monster you load, and homebrew content can be either.
+//
+// The ref routes on (Module, Type), which is what a ref is for — it says which
+// package can produce this data. Today one route exists. A build that wants
+// homebrew:monsters registers a loader for it; until then, saying "no loader"
+// is honest, where guessing would not be.
+//
+// The ID is separate from the ref because a template cannot carry identity:
+// one skeleton entry makes five skeletons, and each needs its own name in the
+// encounter.
+func instantiate(id string, ref string) (*monster.Data, error) {
+	if ref == "" {
+		return nil, ErrNoRef
+	}
+	parsed, err := core.ParseString(ref)
+	if err != nil {
+		// The parse error is carried, not swallowed. core.ParseString reports
+		// WHICH segment was wrong and why, and a caller staring at a bad ref
+		// wants that far more than the string it already passed in. The
+		// sentinel stays first so errors.Is keeps working.
+		return nil, fmt.Errorf("%q: %w: %w", ref, ErrBadRef, err)
+	}
+	if parsed.Module != refs.Module || parsed.Type != refs.TypeMonsters {
+		return nil, fmt.Errorf("%q: %w", ref, ErrNoLoader)
+	}
+
+	// Looked up through the parsed ref rather than the caller's bytes.
+	//
+	// Honest about what that buys today: NOTHING. core.ParseString does not
+	// normalise — it splits on the separator and validates each segment's
+	// characters — so any string that parses at all round-trips identically,
+	// and swapping this for `ref` is a mutant that SURVIVES. It is recorded
+	// here rather than dressed up, because an earlier version of this comment
+	// claimed formatting differences were being absorbed and no test could
+	// have caught that being false.
+	//
+	// It stays written this way so the lookup follows automatically if
+	// normalisation is ever added upstream, which is a cheap hedge rather
+	// than a guarantee.
+	build, ok := monsters.ByRef(parsed.String())
+	if !ok {
+		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
+	}
+
+	built := build(id)
+	if built == nil {
+		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
+	}
+	return built.ToData(), nil
+}
+
+// projectMonster reports the state of an instantiated NPC.
+//
+// Read from the data rather than from a live monster, because Spawn already
+// holds the data — it is what gets stored. That is the opposite of
+// projectCharacter's rule, and for the opposite reason: there, serialising to
+// read was the expensive path; here the serialisation has already happened and
+// re-hydrating a monster to ask it questions would be the wasteful one.
+//
+// Only the walking speed is reported. Fly, swim, climb and burrow exist on the
+// stored sheet, and a client that needs them is asking a movement question this
+// projection does not answer — pretending otherwise by summing or maxing them
+// would invent a number the rules do not have.
+func projectMonster(data *monster.Data) *MonsterState {
+	if data == nil {
+		return nil
+	}
+	state := &MonsterState{
+		ID:               data.ID,
+		Name:             data.Name,
+		HitPoints:        data.HitPoints,
+		MaxHitPoints:     data.MaxHitPoints,
+		ArmorClass:       data.ArmorClass,
+		Speed:            data.Speed.Walk,
+		ProficiencyBonus: data.ProficiencyBonus,
+	}
+	if data.Ref != nil {
+		state.Ref = data.Ref.String()
+	}
+	return state
 }
 
 // projectCharacter reports the state of a loaded character.

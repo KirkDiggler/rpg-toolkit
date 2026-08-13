@@ -78,6 +78,35 @@ var (
 	// stored bytes are refused rather than carried into a resolution.
 	ErrBadCharacter = errors.New("character data could not be loaded")
 
+	// ErrNoRef is returned when Spawn is given an empty ref.
+	//
+	// Spawn instantiates content that lives in code, and the ref is how that
+	// content is named. There is no default worth guessing at.
+	ErrNoRef = errors.New("empty ref")
+
+	// ErrBadRef is returned when a ref is not a well-formed module:type:id.
+	ErrBadRef = errors.New("malformed ref")
+
+	// ErrNoLoader is returned when a ref is well-formed but names a module or
+	// type this build cannot load — "homebrew:monsters:mind-flayer" in a build
+	// with no homebrew content registered.
+	//
+	// Distinct from ErrUnknownContent because the remedies are different: this
+	// one says the caller needs a build that knows that content, while the
+	// other says the content itself is missing from a catalog we do own. A
+	// single error would send whoever debugs it to the wrong place half the
+	// time.
+	ErrNoLoader = errors.New("no loader for that ref")
+
+	// ErrUnknownContent is returned when a ref routes to a catalog we own but
+	// names nothing in it.
+	//
+	// This is a live case rather than a theoretical one: several canonical
+	// monster refs have no constructor yet, so they parse, route correctly,
+	// and still cannot be built. Saying so plainly beats reporting them as
+	// malformed.
+	ErrUnknownContent = errors.New("no such content")
+
 	// ErrNoMemberID is returned when a verb is given an empty member ID.
 	ErrNoMemberID = errors.New("empty member id")
 
