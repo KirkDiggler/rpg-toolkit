@@ -21,7 +21,7 @@ gate from the first tag.
 | **2** ✅ | The interrupt spine, proven by the perception pause | `session/v0.2.0` | 1 |
 | **3** | Entities on the bus — characters, NPCs, conditions | from `session/v0.3.0` | 1 |
 | **4** | Combat | — | 2, 3 |
-| **5** | Reactions — opportunity attack (closes #916) | — | 4 |
+| **5** | Reactions — opportunity attack | — | 4 |
 
 **The tag column stops predicting after wave 3, which is a correction rather than
 an omission.** It assumed one merge per wave. The repo **auto-tags on merge to
@@ -199,6 +199,34 @@ repository until a durable NPC exists. Asymmetric reversibility again: adding a
 serializes, and its unsubscribe half is meaningless when the bus dies with the
 response.
 
+> **Amended during wave 3: the SAVE half moves to wave 4.** Written above as one
+> loop, because a load that never writes back looked like an unfinished thought.
+> Building it showed the opposite — the write is the dangerous half, and nothing
+> in this wave needs it.
+>
+> Two facts, both measured rather than reasoned. First, **nothing in wave 3
+> mutates a character**: there is no damage, no condition-applying verb, and the
+> composition publishes nothing to the bus, so an attached condition has nothing
+> to react to. A save would persist a character identical to the one loaded.
+>
+> Second, that save is not free. `character.LoadFromData` drops conditions it
+> cannot parse and `Character.ToData` drops conditions it cannot serialise —
+> both silently, both returning no error (toolkit#948, whose load-half framing
+> was itself too narrow). Measured across three corruption modes — unknown ref,
+> malformed JSON, a real ref with a wrong-typed body — every one loads with
+> `err == nil` and one condition fewer. While the SDK only reads, a blob it
+> cannot fully parse stays whole in the host's store. **A `SaveCharacter` in the
+> write path turns that into permanent loss on an ordinary walk**, and
+> `ToData` stamps `UpdatedAt` with `time.Now()` besides, so the write is not
+> even inert on a character nothing touched.
+>
+> So wave 3 pins the negative — every write verb, including the one that
+> suspends and the `Answer` that resumes it, leaves the character store
+> byte-identical — and wave 4 adds the write when damage finally makes it mean
+> something. **#948 is a prerequisite for that wave**, not a follow-up to it:
+> the wave that starts writing characters is the wave that makes the silent drop
+> permanent.
+
 **T3.5 — the benchmark.** Load + attach at party scale (4–6 characters with a
 realistic feature and condition load), measured per verb. This plan already
 names *"stateless-per-call proves too slow once entities load on every verb"* as
@@ -212,14 +240,40 @@ raging when she is loaded, without the caller ever mentioning rage (scene 4).
 
 **Pins:** a condition active before a verb is still active and still behaving
 after save and reload — *mutation: `Cleanup` before `ToData`, which must fail,
-because the failure it models is silent*; a condition active at the moment of
-suspension survives a process restart and an `Answer` from a different process;
-the boundary test still rejects `*character.Character` while admitting
-`character.Data` as a contract type with a recorded reason; one shared bus per
-call, proven by a condition on member A observing an event about member B
-(*mutation: per-entity buses*); and enumeration order at a checkpoint stays a
-function of persisted data rather than subscription order (C8) — the pin that
-matters most now that a bus exists to make the other thing tempting.
+because the failure it models is silent*
+> **Amended: this pin moves to wave 4 with the save it describes.** It cannot be
+> written honestly here. "Still behaving" needs an observable consequence, and
+> this wave has none — nothing publishes to the bus and no read verb reports a
+> character's active conditions, so any assertion would pass whether the
+> condition attached or not. The `Cleanup` mutant has the same problem: with no
+> save, nilling the conditions changes nothing anyone can see, so the mutant
+> survives for a reason that says nothing about the code. Wave 3 pins the
+> reachable half instead — *the store is byte-identical after every write verb*,
+> which kills both a `SaveCharacter` in `Join` and the walk-loads-and-writes-back
+> shape T3.4 originally prescribed.
+
+**What wave 3 actually pins**, after the amendment above:
+
+- a condition active at the moment of suspension survives a process restart and
+  an `Answer` from a different process — asserted on the rage's *durable* fields
+  (`TurnsActive`, `WasHitThisTurn`, `DidAttackThisTurn`), because mere presence
+  is what a rage reconstructed from scratch would also satisfy ✅;
+- every write verb leaves the character store byte-identical, including the one
+  that suspends and the `Answer` that resumes it ✅;
+- a character carrying a condition this build cannot parse joins successfully
+  and is **still stored intact** — the case where not-writing is load-bearing
+  rather than tidy ✅;
+- the boundary test still rejects `*character.Character` while admitting
+  `character.Data` as a contract type with a recorded reason ✅ (step 1).
+
+**Moved to wave 4, for the same reason as the save:** *one shared bus per call,
+proven by a condition on member A observing an event about member B* (*mutation:
+per-entity buses*). Nothing publishes to the bus in this wave, so a per-entity
+bus is indistinguishable from a shared one — the mutant survives by default and
+the pin proves nothing. It becomes writable the moment something publishes.
+
+Already pinned in wave 2 and unchanged here: enumeration order at a checkpoint
+is a function of persisted data rather than subscription order (C8).
 
 ---
 
@@ -241,7 +295,7 @@ This is the wave rpg-api migrates on.
 
 ## Wave 5 — reactions
 
-Opportunity attack on the wave-2 spine, closing #916. Reaction economy, and the
+Opportunity attack on the wave-2 spine. Reaction economy, and the
 cross-doorway threat question — which is blocked on the perception wave that
 retires T3, and may push that wave ahead of this one.
 
