@@ -19,8 +19,10 @@ manager refuses to exist without them.
 
 ```go
 mgr, err := session.NewManager(&session.Config{
-    Characters: charRepo,   // GetCharacter / SaveCharacter — outlive sessions
-    Sessions:   sessRepo,   // GetSession   / SaveSession   — the play state
+    Characters: charRepo,   // character.Data
+    Encounters: encRepo,    // encounter.EncounterData
+    Monsters:   monRepo,    // monster instances
+    Sessions:   sessRepo,   // open windows, frozen resolution
     Events:     stream,     // optional: multiplayer fan-out
 })
 ```
@@ -36,9 +38,12 @@ mgr, err := session.NewManager(&session.Config{
 - **No content port.** The authored tomb is handed in at `StartSession`, since
   the server already knows where its content lives and that lookup happens once
   per session rather than once per verb.
-- The split is `Characters` (durable player property, outliving any session)
-  versus `Sessions` (encounter state, open windows, the frozen path, monster
-  instances — all meaningless once the run ends).
+- **One repository per data type**, never one that saves everything. Clock and
+  intel ride inside the encounter because they are *parts of* it; an encounter
+  is something a session *points at*, so it gets its own repo. This keeps each
+  type's storage strategy the server's business — an encounter held in memory
+  on a live server and checkpointed periodically is invisible from here — and
+  keeps writes proportional to what actually changed.
 
 ---
 

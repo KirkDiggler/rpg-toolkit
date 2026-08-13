@@ -88,25 +88,43 @@ cannot answer with a key. This is what keeps Redis (the game's actual store)
 viable forever and makes it structurally impossible to back into requiring a
 relational database. It is a constraint on *us*, not a claim about the server.
 
-The split follows a real line in the domain: **characters outlive sessions;
-everything else in an encounter does not.**
+**S13 — One repository per data type.** Not one repository per aggregate-graph,
+and emphatically not one repository that saves everything.
 
 ```go
-type CharacterRepository interface {
-    GetCharacter(ctx context.Context, id string) (*character.Data, error)
-    SaveCharacter(ctx context.Context, data *character.Data) error
-}
-
-type SessionRepository interface {
-    GetSession(ctx context.Context, id string) (*SessionData, error)
-    SaveSession(ctx context.Context, data *SessionData) error
-}
+type CharacterRepository interface { /* character.Data           */ }
+type EncounterRepository interface { /* encounter.EncounterData  */ }
+type MonsterRepository   interface { /* monster instance data    */ }
+type SessionRepository   interface { /* SessionData — only       */ }
 ```
 
-Alice's sheet is durable player property — it exists between runs and it is
-hers. The encounter state, the open windows, the frozen path, and the monster
-instances are all session-scoped: an ogre's remaining hit points mean nothing
-once the run ends.
+Each is get-by-id and put-by-id over exactly one shape.
+
+The line is *composition versus reference*. Clock, intel, and record are **parts
+of** an encounter — no independent lifetime, no meaning apart from it — so they
+ride inside `EncounterData` and always have. An encounter is not a part of a
+session in that sense; it is something a session *points at*. Wrapping it would
+have confused the two relationships.
+
+Two things follow, and both were lost by an earlier draft that made
+`SessionData` a wrapper:
+
+- **Storage strategy becomes per-type and stays the server's business.** An
+  encounter that lives in memory on a live server and checkpoints periodically
+  is invisible to the SDK — which is exactly what a port boundary is for, and a
+  good fit, since a path walk should not round-trip Redis per step. A wrapper
+  would have welded the encounter's storage to the session's permanently. S1 is
+  unaffected: the *manager* holds no state; what sits behind a port is not the
+  manager's concern.
+- **Writes stay proportional to what changed.** Opening an interrupt window
+  writes a small session blob rather than rewriting every room, connection, and
+  member of the tomb. Within a single verb it is one load and one save
+  regardless of path length (S4); across verbs, this is what keeps that honest.
+
+The earlier wrapper design existed to make a save atomic — which optimised for
+a decision explicitly deferred (see *Observable failure*), and paid for it in
+composability. Repo-per-type accepts multi-blob writes and reports their
+failures instead.
 
 There is deliberately **no content port.** Authored content — the tomb, a
 monster template — is handed in as a parameter at the moment it is needed,
@@ -132,10 +150,13 @@ carry a compatibility discipline. Domain types stay hidden.
 `NotFound` must be distinguishable. Ports return a sentinel the manager can
 test, so "no such session" is a clean rejection rather than a mystery.
 
-**OPEN:** monster instances are assumed session-scoped, living inside
-`SessionData`, with templates handed in at spawn. If monsters must persist
-across sessions, that is a third repository and is much cheaper to decide now
-than to discover.
+**OPEN — the growing log.** `record.LogData` lives *inside* `EncounterData` and
+grows forever, so every encounter save today rewrites the whole story from its
+first beat. It is the one piece whose access pattern is genuinely different —
+append-only, never mutated — and it is also the thing we decided *is* the event
+stream. Shipped in v0.3 and not proposed for rework here; noted because the
+argument for an append-shaped port of its own is the same argument S13 makes,
+and its payoff grows with session length.
 
 ---
 
@@ -237,29 +258,31 @@ a window is open; any verb at all on a closed encounter.
 
 ## Persistence
 
-**RULED — `SessionData` wraps; the encounter stays pure.**
-
-The manager's durable state — open interrupt windows and the frozen resolution
-— composes the encounter's blob rather than invading it. This is the same
-fractal one turn further out: `EncounterData` is already a wrapper carrying
-`clock.TickData`, `intel.Data`, and `record.LogData` alongside its own fields.
+**RULED — `SessionData` holds only session state, and references the encounter
+rather than containing it.**
 
 ```go
 type SessionData struct {
-    Encounter encounter.EncounterData `json:"encounter"`
-    Windows   interrupt.LedgerData    `json:"windows"`
-    Frozen    []byte                  `json:"frozen,omitempty"`
-    // monster instances — see the port OPEN above
+    ID        string               `json:"id"`
+    Encounter string               `json:"encounter"` // by ID
+    Windows   interrupt.LedgerData `json:"windows"`
+    Frozen    []byte               `json:"frozen,omitempty"`
 }
 ```
 
-One blob, one save, atomic. The encounter never learns what a window is. The
-session module validates session state; the encounter validates encounter
-state; each keeps its own laws, and neither can be broken by the other's
-mistakes. The alternatives both cost something real: growing `EncounterData`
-with a field it cannot interpret would spend the aggregate purity we hardened
-last wave, and a second blob would hand us two things to keep consistent —
-which is exactly the partial-save problem we are deliberately not solving yet.
+Small, and written only when session state actually changes. The encounter
+never learns what an interrupt window is; the session module validates session
+state and the encounter validates its own. Each keeps its laws and neither can
+be broken by the other's mistakes — which was the goal all along; the wrapper
+was simply the wrong way to reach it.
+
+**Rejected: growing `EncounterData` with a window field.** It would spend the
+aggregate purity hardened in the anchoring wave on state the encounter cannot
+interpret or validate.
+
+**Rejected: `SessionData` wrapping `EncounterData`.** It bought save atomicity —
+a decision explicitly deferred — at the cost of per-type storage strategy and
+write proportionality (S13).
 
 This also clarifies something the scenes were vague about: **an authored
 encounter and a live session are different things.** The tomb is content — a
