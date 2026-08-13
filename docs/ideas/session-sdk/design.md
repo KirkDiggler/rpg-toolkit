@@ -150,13 +150,38 @@ carry a compatibility discipline. Domain types stay hidden.
 `NotFound` must be distinguishable. Ports return a sentinel the manager can
 test, so "no such session" is a clean rejection rather than a mystery.
 
-**OPEN — the growing log.** `record.LogData` lives *inside* `EncounterData` and
-grows forever, so every encounter save today rewrites the whole story from its
-first beat. It is the one piece whose access pattern is genuinely different —
-append-only, never mutated — and it is also the thing we decided *is* the event
-stream. Shipped in v0.3 and not proposed for rework here; noted because the
-argument for an append-shaped port of its own is the same argument S13 makes,
-and its payoff grows with session length.
+### The log wants bounding, not a port
+
+`record.LogData` lives inside `EncounterData` and **is never trimmed** — there
+are zero calls to `TrimBefore` anywhere in the composition. So the log grows for
+the life of an encounter and every save rewrites the whole story from its first
+beat.
+
+The fix is a retention policy, not a new persistence shape. The machinery is
+already there and already safe: `TrimBefore` exists, `Seq` is explicitly never
+renumbered by it, and queries take a `FromSeq` lower bound — so sequence numbers
+stay stable across a trim, which is exactly what a reconnecting client needs.
+The write surface is already append-only: `Append` plus `TrimBefore`, entries
+never mutated.
+
+**Retention size is a multiplayer-reconnect decision, not a storage decision.**
+Under S10 a client that misses events re-queries `Story` from its last sequence;
+if it has been disconnected longer than the retention window, that delta is gone
+and it must full-resync instead. That is a fine fallback — but it means the
+question is "how long can a phone be in a tunnel and still rejoin cheaply,"
+*not* "how much history do we want to keep." Size it from the first and the
+storage cost falls out; size it from the second and the reconnect behaviour is
+discovered by accident.
+
+Two consequences:
+
+- Retention belongs to the encounter as construction config, applied on append,
+  so it stays self-contained rather than something the manager must remember.
+- `Story` must answer a request for a trimmed sequence with an explicit
+  "that range is gone, resync" signal, never a short answer that looks complete.
+
+**OPEN:** the retention window itself, and whether this lands as an encounter
+change ahead of the SDK or alongside it.
 
 ---
 
