@@ -105,17 +105,27 @@ func (m *Manager) projectEvents(
 
 // kindOf maps a beat onto the wire enum.
 //
-// Read from the payload's own "beat" discriminator rather than the tag,
-// because the composition's tags are coarser than its beats: "membership"
-// covers both a join and an exit, and "movement" covers both a step and a
-// doorway crossing. A host switching on kind wants those apart — arriving and
-// leaving are opposite events at a table — so the finer discriminator is the
-// honest source.
+// TEMPORARY SHAPE, pending toolkit#941. This is the one place the package
+// interprets a payload rather than passing it through, and that is a coupling
+// worth being uncomfortable about: if the composition changes its payload
+// shape, kind detection fails SILENTLY — every event degrades to EventUnknown,
+// nothing errors, no test fails, and the symptom is a table where nothing
+// narrates correctly.
+//
+// It is here because the composition's tags are currently coarser than its
+// beats: "membership" covers both a join and an exit, "movement" covers both a
+// step and a doorway crossing. Four tags stand in front of seven beats and two
+// of those groupings pair opposites, so the tag cannot answer "what happened"
+// — and a client cannot narrate an arrival and a departure the same way.
+//
+// When #941 enriches the tags, this reads declared metadata instead of parsed
+// content and the coupling disappears.
 //
 // An unrecognised beat becomes EventUnknown rather than being dropped. A client
 // that receives something it cannot interpret still learns its sequence
 // advanced, which keeps gap-detection working; dropping it would manufacture a
-// hole and send every client into a resync it did not need.
+// hole and send every client into a resync it did not need. It also means a
+// newer composition can add beats without older clients losing their place.
 func kindOf(payload []byte) EventKind {
 	var beat struct {
 		Beat string `json:"beat"`
