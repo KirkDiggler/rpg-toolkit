@@ -198,8 +198,16 @@ func (s *SpawnTestSuite) TestBothEntryVerbsEnforceTheSamePlacementRules() {
 		Room: nowhere, Position: spatial.Position{X: 0, Y: 0},
 	})
 
+	// The SENTINEL, not merely "an error". A Spawn with its own placement
+	// code would still reject a bad room -- the composition rejects it -- but
+	// would skip translate() and hand back the composition's raw error. That
+	// is exactly the drift this pin exists to catch, and asserting only that
+	// an error occurred let the mutant through.
 	s.Require().Error(joinErr, "join must reject a room that does not exist")
 	s.Require().Error(spawnErr, "and spawn must reject it identically")
+	s.ErrorIs(joinErr, session.ErrBadPosition)
+	s.ErrorIs(spawnErr, session.ErrBadPosition,
+		"both doors must translate the composition's rejection the same way")
 	s.Empty(s.storedNPCs(), "the rejected spawn stored nothing")
 }
 

@@ -253,9 +253,24 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 
-	// Built before the placement, for the same reason Join loads before it: a
-	// session holding a member with no sheet is a problem discovered later, in
-	// a place that does not name the call that caused it.
+	// Built before the placement — a preference, NOT a correctness argument,
+	// and worth stating plainly because the correctness version is tempting
+	// and wrong.
+	//
+	// Swapping these two survives as a mutant. Under load-act-save (S4) the
+	// in-memory encounter is discarded whenever a verb returns before commit,
+	// so a bad ref cannot leave a member placed no matter which order these
+	// run in. The rejection table's "a rejected spawn stores nothing" passes
+	// either way, and it is honest about why.
+	//
+	// This is the second time the same shape has appeared here — the join's
+	// load-versus-placement ordering had it too — which is the general lesson
+	// rather than a coincidence: in a load-act-save verb, ordering BEFORE the
+	// commit is never load-bearing. What is load-bearing is that the error
+	// stops the verb, and that is pinned separately.
+	//
+	// The order is still chosen: there is no reason to touch the world when
+	// the call is already doomed.
 	sheet, err := instantiate(in.ID, in.Ref)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)

@@ -124,9 +124,19 @@ func instantiate(id string, ref string) (*monster.Data, error) {
 		return nil, fmt.Errorf("%q: %w", ref, ErrNoLoader)
 	}
 
-	// Look up by the PARSED ref's canonical string rather than the caller's
-	// bytes, so formatting differences cannot turn a known monster into an
-	// unknown one.
+	// Looked up through the parsed ref rather than the caller's bytes.
+	//
+	// Honest about what that buys today: NOTHING. core.ParseString does not
+	// normalise — it splits on the separator and validates each segment's
+	// characters — so any string that parses at all round-trips identically,
+	// and swapping this for `ref` is a mutant that SURVIVES. It is recorded
+	// here rather than dressed up, because an earlier version of this comment
+	// claimed formatting differences were being absorbed and no test could
+	// have caught that being false.
+	//
+	// It stays written this way so the lookup follows automatically if
+	// normalisation is ever added upstream, which is a cheap hedge rather
+	// than a guarantee.
 	build, ok := monsters.ByRef(parsed.String())
 	if !ok {
 		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
