@@ -193,6 +193,53 @@ only on the repository the host implements, never in a verb input, and
 repository until a durable NPC exists. Asymmetric reversibility again: adding a
 `Config` field later is compatible; removing one a host implemented is not.
 
+> **Amended during wave 3: the type is `monster.Data`, and entry is a SECOND
+> VERB rather than a branch inside `Join`.**
+>
+> There is no `npc` package. What exists is `rulebooks/dnd5e/monster`, in the
+> same root module as `character`, so naming it costs no new dependency.
+>
+> The larger change is the seam. This plan assumed one entry verb that works
+> out what is arriving; it now splits by **where the data comes from**:
+>
+> ```go
+> Join(Member)      // players — the host's CharacterRepository resolves an ID
+> Spawn(ID, Ref)    // content that lives in code — monsters.ByRef builds it
+> ```
+>
+> **A player has no ref, and that is the design rather than an omission.** A
+> ref names the package that can load some data. No toolkit package can load a
+> player character — the host owns it, and only the host's repository can
+> produce one — so `dnd5e:characters:alice` would claim something false. A
+> monster's ref is honest by the same test: `NewSkeleton` really does live in
+> the dnd5e monsters package.
+>
+> Kirk's framing, which is what settled it: *content like monsters who exist in
+> code*. The distinction also survives, where player-vs-monster does not — a
+> durable NPC is a monster you **load**, and homebrew content can be either.
+> `homebrew:monsters:mind-flayer` routes by `(Module, Type)` to a loader the
+> host has registered, which is a compatible addition to make later; today an
+> unknown module is a clean `ErrNoLoader` rather than a guess.
+>
+> `ID` and `Ref` are separate on `Spawn` because a template carries no
+> identity: one catalog entry makes five skeletons. On `Join` the ID is the
+> whole address, so there is nothing else to pass — an earlier draft carried
+> both and they were the same string, which is what showed the ref did not
+> belong there.
+>
+> Consequences: `MemberKind` leaves `JoinInput` entirely (the verb implies it,
+> and it stays on the `Member` output and in the encounter's persistence, where
+> ending triggers depend on it); both verbs share ONE placement path, pinned by
+> asserting the same sentinel through both doors; and the stored NPC is the
+> **instance**, never the ref it was built from, because re-running a
+> constructor on load would silently heal a wounded skeleton.
+>
+> `monster.Data` joins the boundary allow-list as a **persistence shape**, not
+> a contract type beside `character.Data`. The test from the allow-list's own
+> header decides it: would the host have to build one field by field? For a
+> character yes — so a change is announced. For a monster no — it names a ref
+> and we build it — so the promise is replaceability.
+
 **T3.4 — attach and detach, across a suspension.** The load → attach → act →
 `ToData()` → save loop, and that same loop re-entered by `Answer`. **Do not call
 `character.Cleanup`** — see design.md; it nils the conditions that `ToData`

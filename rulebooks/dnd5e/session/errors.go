@@ -107,10 +107,6 @@ var (
 	// malformed.
 	ErrUnknownContent = errors.New("no such content")
 
-	// ErrMemberExists is returned when a verb would place a member the
-	// encounter already holds.
-	ErrMemberExists = errors.New("member already present")
-
 	// ErrNoMemberID is returned when a verb is given an empty member ID.
 	ErrNoMemberID = errors.New("empty member id")
 

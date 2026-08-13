@@ -260,3 +260,46 @@ type monsterRow struct {
 	ID        string
 	HitPoints int
 }
+
+// TestADuplicateArrivalIsRejectedButMisreported pins current behaviour, INCLUDING
+// the part of it that is wrong.
+//
+// Both verbs correctly refuse to place a member the encounter already holds. But
+// the error says "no such member", which is the opposite of what happened: the
+// member exists, and that is the problem. A host reading this goes looking for a
+// missing roster entry.
+//
+// The cause is upstream and not fixable from here. encounter.ErrNoMember covers
+// an empty ID, an absent member, AND a duplicate one, so translate() cannot tell
+// the cases apart from the sentinel — the information is gone before this package
+// sees it. Distinguishing it here would mean a second membership check racing the
+// composition's own, which is the validator-drift this wave otherwise avoids.
+//
+// An ErrMemberExists sentinel was written and then REMOVED rather than shipped
+// unpopulated: an exported error nothing returns is a promise to hosts that
+// nothing keeps. It comes back when the composition can say which case it hit.
+//
+// Pinned rather than left as a comment so the day upstream separates them, this
+// test fails and says exactly what to change.
+func (s *SpawnTestSuite) TestADuplicateArrivalIsRejectedButMisreported() {
+	skeleton := refs.Monsters.Skeleton().String()
+
+	_, err := s.spawn("skel-1", skeleton, spatial.Position{X: 0, Y: 0})
+	s.Require().NoError(err)
+
+	_, err = s.spawn("skel-1", skeleton, spatial.Position{X: 1, Y: 0})
+	s.Require().Error(err, "a duplicate member must be refused")
+	s.ErrorIs(err, session.ErrNoMember,
+		"today a duplicate reports as ABSENT — wrong, and upstream's to fix")
+	s.Len(s.storedNPCs(), 1, "and the refused duplicate stored no second sheet")
+
+	_, joinErr := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "bob", Room: "vault", Position: spatial.Position{X: 2, Y: 0},
+	})
+	s.Require().NoError(joinErr)
+	_, joinErr = s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "bob", Room: "vault", Position: spatial.Position{X: 3, Y: 0},
+	})
+	s.Require().Error(joinErr, "and the same holds through the other door")
+	s.ErrorIs(joinErr, session.ErrNoMember)
+}
