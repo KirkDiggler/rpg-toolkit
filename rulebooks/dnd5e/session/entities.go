@@ -118,7 +118,11 @@ func instantiate(id string, ref string) (*monster.Data, error) {
 	}
 	parsed, err := core.ParseString(ref)
 	if err != nil {
-		return nil, fmt.Errorf("%q: %w", ref, ErrBadRef)
+		// The parse error is carried, not swallowed. core.ParseString reports
+		// WHICH segment was wrong and why, and a caller staring at a bad ref
+		// wants that far more than the string it already passed in. The
+		// sentinel stays first so errors.Is keeps working.
+		return nil, fmt.Errorf("%q: %w: %w", ref, ErrBadRef, err)
 	}
 	if parsed.Module != refs.Module || parsed.Type != refs.TypeMonsters {
 		return nil, fmt.Errorf("%q: %w", ref, ErrNoLoader)

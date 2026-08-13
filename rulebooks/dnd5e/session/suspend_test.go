@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -271,10 +273,27 @@ func (s *SuspendTestSuite) TestStopAbandonsTheRemainderWithoutUndoing() {
 //
 // The table is the point: a future verb that forgets the freeze is only caught
 // if the rule is stated once for all of them.
-func (s *SuspendTestSuite) TestEveryChangeVerbIsRefusedWhileFrozen() {
-	ctx := context.Background()
+// verbsAllowedWhileFrozen are the exported Manager methods that must KEEP
+// working while a window is open, each for a stated reason.
+//
+// Paired with changeVerbAttempts below, this is what makes the freeze coverage
+// fail CLOSED. Between them the two sets must account for every exported method
+// on Manager, so a verb added later is not merely uncovered — it fails
+// TestEveryVerbIsClassifiedForTheFreeze until somebody decides which side it is
+// on. That decision is the point; forgetting it is what this prevents.
+var verbsAllowedWhileFrozen = map[string]string{
+	"StartSession": "creates a session; there is no window to be blocked by yet",
+	"Answer":       "the way OUT of a freeze — refusing it would deadlock the world",
+	"Pending":      "read: reports which windows are open",
+	"Atlas":        "read: the static map",
+	"Status":       "read: whether the encounter is running",
+	"View":         "read: what one observer perceives",
+	"Story":        "read: the recorded beats",
+}
 
-	attempts := map[string]func(*session.Manager) error{
+// changeVerbAttempts is one call per verb that must be REFUSED while frozen.
+func changeVerbAttempts(ctx context.Context) map[string]func(*session.Manager) error {
+	return map[string]func(*session.Manager) error{
 		"Move": func(m *session.Manager) error {
 			_, err := m.Move(ctx, &session.MoveInput{
 				Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 4}},
@@ -302,9 +321,48 @@ func (s *SuspendTestSuite) TestEveryChangeVerbIsRefusedWhileFrozen() {
 			_, err := m.End(ctx, &session.EndInput{Session: "sess", Ending: "stairs"})
 			return err
 		},
+		"Spawn": func(m *session.Manager) error {
+			_, err := m.Spawn(ctx, &session.SpawnInput{
+				Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+				Room: "hall", Position: spatial.Position{X: 6, Y: 6},
+			})
+			return err
+		},
+	}
+}
+
+// TestEveryVerbIsClassifiedForTheFreeze is the fail-closed guard.
+//
+// The refusal table below used to be a hand-written list of five verbs behind a
+// name promising "every change verb". Spawn arrived and was not in it — the
+// behaviour was pinned elsewhere, but the ENUMERATION had quietly stopped being
+// true, which is the same fail-open shape rpg-project#218 records for the
+// toolkit's hand-maintained module lists.
+//
+// Derived from the type instead. Every exported method on Manager must appear
+// in exactly one of the two sets, so the next verb fails here until it is
+// classified rather than being silently exempt from the freeze.
+func (s *SuspendTestSuite) TestEveryVerbIsClassifiedForTheFreeze() {
+	refused := changeVerbAttempts(context.Background())
+	mgr := reflect.TypeOf(&session.Manager{})
+
+	var unclassified []string
+	for i := 0; i < mgr.NumMethod(); i++ {
+		name := mgr.Method(i).Name
+		_, isRefused := refused[name]
+		_, isAllowed := verbsAllowedWhileFrozen[name]
+		if isRefused == isAllowed {
+			unclassified = append(unclassified, name)
+		}
 	}
 
-	for name, attempt := range attempts {
+	s.Empty(unclassified,
+		"every exported verb must be classified as refused-while-frozen or "+
+			"allowed-while-frozen, in exactly one set: %v", unclassified)
+}
+
+func (s *SuspendTestSuite) TestEveryChangeVerbIsRefusedWhileFrozen() {
+	for name, attempt := range changeVerbAttempts(context.Background()) {
 		s.Run(name, func() {
 			s.startAmbush()
 			out := s.walkIntoTheAmbush()

@@ -180,8 +180,9 @@ type EndOutput struct {
 // somewhere with no visible connection to the join that caused it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrClosed
-// if the encounter has already ended, or ErrSaveFailed with a populated report.
+// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrClosed if the encounter
+// has already ended, ErrFrozen if an interrupt window is open, or
+// ErrSaveFailed with a populated report.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
@@ -238,8 +239,9 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 // simply does not act on its own.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef, ErrBadRef,
-// ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter,
-// ErrClosed, or ErrSaveFailed with a populated report.
+// ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter, ErrClosed,
+// ErrFrozen if an interrupt window is open, or ErrSaveFailed with a populated
+// report.
 func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("spawn: %w", ErrNilInput)
