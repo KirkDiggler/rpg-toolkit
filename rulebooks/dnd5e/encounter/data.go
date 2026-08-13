@@ -27,6 +27,12 @@ type EncounterData struct {
 	Members     []MemberData   `json:"members"`
 	Endings     []EndingData   `json:"endings"`
 	EverMembers []MemberID     `json:"ever_members"`
+	// Retention is the story-beat window this encounter was built with (see
+	// SetupInput.Retention). Persisted so a reloaded encounter keeps the policy
+	// it was constructed with rather than silently adopting the package default.
+	// Absent in blobs written before #937, which load as zero and therefore take
+	// DefaultRetention.
+	Retention int `json:"retention,omitempty"`
 }
 
 // OutcomeData is the persistent representation of an Outcome.
@@ -263,6 +269,7 @@ func (e *Encounter) ToData() EncounterData {
 		Members:     membersData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
+		Retention:   e.retention,
 	}
 }
 
@@ -545,6 +552,8 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		everMembers: make(map[MemberID]bool),
 		deciders:    make(map[MemberID]Decider),
 		endings:     nil,
+		retention:   normalizeRetention(data.Retention),
+		logFloor:    logFloorOf(data.Log),
 	}
 
 	// Rebuild field via setup path (no bus, no surveil)

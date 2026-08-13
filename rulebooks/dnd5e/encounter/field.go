@@ -196,6 +196,24 @@ type SetupInput struct {
 
 	// Endings are the declared ways the encounter can close.
 	Endings []EndingInput
+
+	// Retention is how many story beats the encounter keeps. Older beats are
+	// trimmed after each append, so an encounter's blob does not grow without
+	// bound and a save does not rewrite the whole history.
+	//
+	// Zero selects DefaultRetention. RetentionUnbounded disables trimming —
+	// appropriate for verified-transcript scenes, which are asserting on the
+	// story itself rather than on the retention policy.
+	//
+	// The default is deliberately small, and that is a test strategy rather
+	// than a storage economy: a generous window means the full-resync path
+	// almost never runs and stays unexercised until a real player's
+	// connection drops. A small one makes resync the common path, so the
+	// expensive branch is the well-trodden one (#937).
+	//
+	// Retention persists with the encounter, so a reloaded encounter keeps
+	// the policy it was built with.
+	Retention int
 }
 
 // ViewInput is used to query a member's current percepts.
