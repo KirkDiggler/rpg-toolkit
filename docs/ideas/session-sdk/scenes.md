@@ -21,7 +21,7 @@ manager refuses to exist without them.
 mgr, err := session.NewManager(&session.Config{
     Characters: charRepo,   // character.Data
     Encounters: encRepo,    // encounter.EncounterData
-    NPCs:       npcRepo,    // npc.Data — monster is one type
+    // no NPC repo yet — monsters are session-scoped; see design.md
     Sessions:   sessRepo,   // open windows, frozen resolution
     Events:     stream,     // optional: multiplayer fan-out
 })

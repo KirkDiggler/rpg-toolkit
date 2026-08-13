@@ -92,34 +92,43 @@ relational database. It is a constraint on *us*, not a claim about the server.
 and emphatically not one repository that saves everything.
 
 ```go
-type CharacterRepository interface { /* character.Data          — player characters   */ }
-type NPCRepository       interface { /* npc.Data                — monster is one type */ }
-type EncounterRepository interface { /* encounter.EncounterData — the world           */ }
-type SessionRepository   interface { /* SessionData             — windows + frozen    */ }
+type CharacterRepository interface { /* character.Data          — player characters */ }
+type EncounterRepository interface { /* encounter.EncounterData — the world         */ }
+type SessionRepository   interface { /* SessionData             — session state     */ }
 ```
 
 Each is get-by-id and put-by-id over exactly one shape.
 
-**RULED — an NPC is an entity, not encounter furniture.** An earlier draft had
-monster instances living inside the session blob, which made a monster a
-different *kind of thing* from a character for no reason the domain supports.
-An NPC has its own shape and its own durable data, exactly like a character —
-so a wounded ogre that flees stays wounded, and a recurring villain who
-remembers the last fight is free rather than a special case.
+**An NPC is a shape.** It has its own data, and `Member.Kind` is already the
+discriminator that says which shape an ID resolves to — the composition
+anticipated this. Monster is one NPC type; shopkeepers, quest givers, and the
+priest a curse is watching for are others.
 
-The composition already anticipates this: `Member` is `{ID, Kind, Room}`, and
-`Kind` is precisely the discriminator the manager uses to decide which
-repository an ID resolves against. Monster is one NPC type; shopkeepers, quest
-givers, and the priest a curse is watching for are others, and they outlive any
-single session regardless.
+**RULED — NPCs live in `SessionData` for now; `NPCRepository` arrives later.**
 
-**OPEN — the lifecycle of ephemeral NPCs.** A dungeon run spawns a dozen ogres,
-each now a durable record, and something must clean up. Leaning: the server's
-business, since a Redis TTL is the natural answer and this is a storage concern
-rather than a rules one. But the SDK may need to *signal* that an NPC is spent
-(died; session ended) rather than leaving the server to infer it — and "port
-method" versus "server policy" are different enough answers to want deciding
-before the first tag.
+The encounter is the life and death of most monsters, and their state after a
+session means nothing. So they are session-scoped: they sit in `SessionData`
+alongside the windows and the frozen resolution, they vanish when the session
+ends, and **there is no cleanup because there is nothing to clean up.**
+
+Not in `EncounterData` — that carries the same purity cost as an interrupt
+window would, an aggregate holding entity state it cannot interpret or
+validate. `SessionData` is ours, so the eventual migration is confined to this
+module.
+
+The reason to start here rather than with the repo is **asymmetric
+reversibility**. Adding a port to `Config` later is a compatible change: a new
+optional field, implemented when it is needed. *Removing* one is not — the
+server has already written that implementation. So the cheap direction is to
+ship without `NPCRepository` and add it the day a durable NPC exists (a
+shopkeeper, a quest giver, a recurring villain who remembers being wounded).
+Shipping the port in the migration wave and then deciding NPCs were
+session-scoped would leave us carrying a port nobody uses.
+
+**Rejected: delete-on-death.** It loses the corpse. Players loot bodies, and
+"the ogre is dead but still lying there" is a state a session should be able to
+hold. Vanishing at session close gives that for free; vanishing at death forces
+a corpse concept to be invented to get it back.
 
 The line is *composition versus reference*. Clock, intel, and record are **parts
 of** an encounter — no independent lifetime, no meaning apart from it — so they
@@ -323,6 +332,7 @@ type SessionData struct {
     Encounter string               `json:"encounter"` // by ID
     Windows   interrupt.LedgerData `json:"windows"`
     Frozen    []byte               `json:"frozen,omitempty"`
+    NPCs      []npc.Data           `json:"npcs,omitempty"` // session-scoped; see Ports
 }
 ```
 
