@@ -180,8 +180,18 @@ Two consequences:
 - `Story` must answer a request for a trimmed sequence with an explicit
   "that range is gone, resync" signal, never a short answer that looks complete.
 
-**OPEN:** the retention window itself, and whether this lands as an encounter
-change ahead of the SDK or alongside it.
+**RULED — retention is configurable, and the default starts extremely small.**
+
+Small is not a storage economy here; it is a test strategy. A generous window
+means the resync path almost never runs, so it stays unexercised until the one
+player whose train enters a tunnel finds the bug in it. A tiny window makes
+**full resync the common path** — it fires in every dev session, every scene
+test, every manual playthrough — so the expensive branch is the well-trodden
+one and the cheap delta becomes the optimisation rather than the assumption.
+Raise it later from evidence; never start high and hope.
+
+**OPEN:** whether this lands as an encounter change ahead of the SDK or
+alongside it. It is small and self-contained enough to ship on its own.
 
 ---
 
