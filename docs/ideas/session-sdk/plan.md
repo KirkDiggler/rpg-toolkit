@@ -18,7 +18,7 @@ gate from the first tag.
 |---|---|---|---|
 | **0** ✅ | Encounter log retention | `encounter/v0.4.0` | — |
 | **1** ✅ | Shell, free-roam verbs, event stream | `session/v0.1.0` | — |
-| **2** | The interrupt spine, proven by the perception pause | `session/v0.2.0` | 1 |
+| **2** ✅ | The interrupt spine, proven by the perception pause | `session/v0.2.0` | 1 |
 | **3** | Entities on the bus — characters, NPCs, conditions | `session/v0.3.0` | 1 |
 | **4** | Combat | `session/v0.4.0` | 2, 3 |
 | **5** | Reactions — opportunity attack (closes #916) | `session/v0.5.0` | 4 |
@@ -129,7 +129,8 @@ rejection carries the window and its audience so the caller learns what to do
 from the error.
 
 **T2.3 — pose, persist, resume.** `interrupt.Ledger` in `SessionData`; frozen
-resolution as opaque bytes in `Frozen`.
+resolution as opaque bytes. *Shipped without the session-level `Frozen` field:
+the payload rides in the window that suspended it — see design.md.*
 
 **T2.4 — the scene, as one continuous story with a pinned transcript**,
 including a mid-story process restart. Its negative control: with the checkpoint

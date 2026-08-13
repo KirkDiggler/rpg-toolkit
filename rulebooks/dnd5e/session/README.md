@@ -2,8 +2,8 @@
 
 **Charter: the game server's single point of contact with the toolkit.**
 
-A host implements two repositories and, from then on, holds no domain object at
-all — it names things and calls verbs.
+A host implements two repositories and an event stream and, from then on, holds
+no domain object at all — it names things and calls verbs.
 
 ## What it is
 
@@ -17,7 +17,7 @@ and the fix is to push it down, never to special-case it up.
 
 ## What it is not
 
-- **Storage.** The host owns that, behind ports.
+- **Storage.** The host owns that, behind repositories.
 - **Authoring.** Worlds and monster definitions come from content pipelines.
 - **Transport.** gRPC, protos, and streams belong to the game server.
 - **Presentation.** It returns facts rich enough to narrate; it never narrates.
@@ -44,6 +44,8 @@ declaration, and `gorelease` gates every release.
 | `read.go` | `Atlas`, `Status`, `View`, `Story`, and the shared load path |
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |
+| `suspend.go` | The suspension vocabulary and the walk's phase machine |
+| `answer.go` | `Answer`, `Pending`, and the freeze |
 | `start.go` | `StartSession` |
 | `events.go` | Per-recipient fan-out |
 | `cmd/session-workbench` | Drives a whole session; run it |
