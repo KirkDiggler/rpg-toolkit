@@ -1,7 +1,33 @@
 # D&D 5e monsters: current guide
 
-This directory is the nearest orientation point for current monster work. It is
-inside the single `rulebooks/dnd5e` Go module.
+This directory is the nearest orientation point for monster **content** — stat
+blocks, actions, traits, refs. It is inside the single `rulebooks/dnd5e` Go
+module.
+
+> ### Working on monster *behavior*? Start somewhere else.
+>
+> Behavior has a new seam, and it is not `TakeTurn`. Read
+> **[`rulebooks/dnd5e/encounter/README.md`](../encounter/README.md)** →
+> *Writing a decider*.
+>
+> The short version: behavior is a `Decider` — one method, `Decide(Snapshot)
+> (Intent, error)`. A `Snapshot` gives you **your own room, your own position,
+> your own held intel and nothing else**, so a decider structurally cannot read
+> the world or another member's truth (the anti-wall-hack contract, C2). You
+> return an *intent* — move, traverse, or hold — and the composition decides
+> whether it happens. That makes a decider a pure function you can unit-test
+> with a plain struct and no encounter at all.
+>
+> **Honest limit:** there is no attack intent yet. Movement, pursuit, patrol and
+> traversal are expressible today; attacking and targeting are wave-4 work.
+>
+> Everything below about **`NPCAct`, `TakeTurn`, and the wired `CombatResolver`
+> describes the OLD encounter module** — the stack that runs the shipped game.
+> It is accurate about that stack and useful if you are working in it. It is not
+> what new work builds on, and the two do not share a world model.
+
+The **content** model below is current either way: a new monster still needs a
+factory, a canonical ref, actions and traits, whichever stack drives it.
 
 ## Current packages
 
