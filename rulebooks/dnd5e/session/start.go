@@ -84,9 +84,19 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	// here, so only a real failure is propagated: a store that is down must not
 	// be mistaken for a free ID and answered by clobbering whatever is actually
 	// there once it recovers.
-	switch _, err := m.sessions.GetSession(ctx, in.Session); {
-	case err == nil:
+	// Three outcomes, and the third is the one worth spelling out. A repository
+	// reporting success with no data has broken its contract, and neither
+	// available guess is safe: reading it as "exists" gives a misleading error
+	// for a session that may not be there, and reading it as "free" risks
+	// overwriting one that is. So it is refused as what it actually is.
+	existing, err := m.sessions.GetSession(ctx, in.Session)
+	switch {
+	case err == nil && existing != nil:
 		return nil, fmt.Errorf("startsession: %q: %w", in.Session, ErrSessionExists)
+	case err == nil:
+		return nil, fmt.Errorf(
+			"startsession: %q: GetSession reported success with no data: %w",
+			in.Session, ErrBadRepository)
 	case errors.Is(err, ErrNotFound):
 		// Expected: the ID is free.
 	default:

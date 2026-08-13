@@ -19,11 +19,30 @@
 //	    Events:     stream, // optional
 //	})
 //
-//	out, err := mgr.Move(ctx, &session.MoveInput{...})
-//	// out.Pending != nil  =>  someone owes an answer
+//	out, err := mgr.Move(ctx, &session.MoveInput{Session: s, Member: m, Path: p})
+//	// len(out.Steps) < len(p)  =>  something stopped the walk
+//	// out.Outcome != nil       =>  and that something was an ending
 //
 // Every verb is load, act, save, return. There is no setup call, no teardown,
 // and no ordering for the caller to get wrong.
+//
+// # What this version does and does not do
+//
+// The laws below describe the whole design, and two of them are commitments
+// rather than descriptions today. Stated as such deliberately: a reader
+// deciding whether to depend on this needs to know which is which, and a
+// package doc that quietly narrates the destination is worse than one that
+// names the waypoint.
+//
+// In force now: S1, S2, S3, S4, S6, S8, S12, S13, and the event-stream laws.
+//
+// Not yet exercised: S5 (Pending as suspension vocabulary) and S7 (a frozen
+// resolution is data) — nothing suspends in this version. The only pause a
+// verb can report is an ending, and it is reported by returning fewer steps
+// than were asked for. When resolutions become genuinely suspendable, the
+// caller learns through the same channel: a verb that returns having stopped,
+// plus a field naming who owes an answer. The loop does not change shape,
+// which is why those laws are stated now rather than invented later.
 //
 // # Laws
 //
@@ -43,13 +62,14 @@
 // S4 — every verb is load, act, save, return.
 //
 // S5 — Pending is the only suspension vocabulary. Every pause, whatever caused
-// it, surfaces in one shape and resolves through one Answer.
+// it, surfaces in one shape and resolves through one Answer. (Committed, not
+// yet exercised: see above.)
 //
 // S6 — failure names its pieces. A partial save is an error with a populated
 // report, never a silent shrug.
 //
 // S7 — a frozen resolution is data. It survives a process restart because it
-// was never anything else.
+// was never anything else. (Committed, not yet exercised: see above.)
 //
 // S8 — construction is total. The manager refuses to exist without what it
 // needs; there is no lazy discovery at call time.

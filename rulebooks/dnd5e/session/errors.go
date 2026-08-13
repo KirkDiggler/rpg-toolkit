@@ -31,6 +31,16 @@ var (
 	// error string.
 	ErrNotFound = errors.New("not found")
 
+	// ErrBadRepository is returned when a repository violates its contract —
+	// most concretely, reporting success while returning no data.
+	//
+	// Named separately rather than folded into a "not found" because the two
+	// send whoever debugs it to different places: one is a caller asking for
+	// something absent, the other is an implementation bug in the host's own
+	// storage layer. Guessing which one it is, in either direction, is worse
+	// than saying plainly that the contract was broken.
+	ErrBadRepository = errors.New("repository violated its contract")
+
 	// ErrNoSession is returned when a verb names a session that does not
 	// exist. This is the manager's own rejection, translated from a
 	// repository's ErrNotFound so hosts match on one vocabulary rather than

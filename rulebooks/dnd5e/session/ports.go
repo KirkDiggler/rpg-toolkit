@@ -28,11 +28,18 @@ import (
 // surface in the toolkit and already carry their own compatibility discipline,
 // whereas domain types are free to change under a compatible tag.
 
-// SessionRepository persists session state: the encounter a session points at,
-// its open interrupt windows, and any frozen resolution.
+// SessionRepository persists session state.
+//
+// In this version that is a small record: an ID and the encounter the session
+// points at. It grows as later waves add state that belongs to the session
+// rather than the world — open interrupt windows, a frozen resolution,
+// session-scoped NPCs — but a host implementing this today is storing two
+// strings, and should not be led to expect otherwise.
 //
 // Required. Implementations must return an error satisfying errors.Is(err,
-// ErrNotFound) when the ID is absent.
+// ErrNotFound) when the ID is absent, and must never report success with no
+// data: that is a contract violation and is rejected as ErrBadRepository
+// rather than guessed at in either direction.
 type SessionRepository interface {
 	// GetSession returns the session with the given ID, or an ErrNotFound
 	// error if it does not exist.

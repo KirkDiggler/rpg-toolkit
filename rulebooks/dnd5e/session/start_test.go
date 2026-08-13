@@ -201,6 +201,41 @@ func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 	s.Empty(s.encounters.byID, "and nothing may be written on an inconclusive check")
 }
 
+// TestBrokenRepositoryIsNotReadAsAnExistingSession pins the third outcome of
+// the existence check, which is neither "found" nor "absent".
+//
+// A repository reporting success with no data has broken its contract, and
+// both available guesses are wrong in a way that costs something. Reading it as
+// "exists" produces a misleading error about a session that may not be there.
+// Reading it as "free" is worse: it would overwrite whatever the repository
+// actually holds. So it is refused as the contract violation it is, which also
+// points whoever debugs it at the host's storage layer rather than at the
+// caller (Copilot, PR #942).
+func (s *StartSessionTestSuite) TestBrokenRepositoryIsNotReadAsAnExistingSession() {
+	sessions := &nilDataSessions{fakeSessions: newFakeSessions()}
+	encounters := newFakeEncounters()
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters})
+	s.Require().NoError(err)
+
+	out, err := mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess-1", Encounter: "enc-1", World: s.world,
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadRepository)
+	s.NotErrorIs(err, session.ErrSessionExists,
+		"a broken repository is not an existing session")
+	s.Nil(out)
+	s.Empty(encounters.byID, "and nothing may be written on an inconclusive check")
+}
+
+// nilDataSessions reports success while returning no data — the contract
+// violation, not an absence.
+type nilDataSessions struct{ *fakeSessions }
+
+func (f *nilDataSessions) GetSession(_ context.Context, _ string) (*session.SessionData, error) {
+	return nil, nil
+}
+
 // TestSuccessWritesWorldThenSession pins the happy path and the report.
 func (s *StartSessionTestSuite) TestSuccessWritesWorldThenSession() {
 	out, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{

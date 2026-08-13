@@ -179,10 +179,12 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 		return nil, err
 	}
 	if data == nil {
-		// A repository reporting success with no data is broken, not empty.
-		// Treated as a miss rather than dereferenced, because a nil here would
-		// otherwise panic several frames later with nothing pointing back here.
-		return nil, fmt.Errorf("%q: repository returned no data: %w", sessionID, ErrNoSession)
+		// A repository reporting success with no data has broken its contract.
+		// Reported as that rather than as a miss, and certainly not
+		// dereferenced: a nil here would panic several frames later with
+		// nothing pointing back to its origin.
+		return nil, fmt.Errorf(
+			"%q: GetSession reported success with no data: %w", sessionID, ErrBadRepository)
 	}
 	return data, nil
 }
@@ -211,7 +213,8 @@ func (m *Manager) loadWorldWithBaseline(
 		return nil, 0, err
 	}
 	if world == nil {
-		return nil, 0, fmt.Errorf("%q: repository returned no data: %w", encID, ErrNoEncounter)
+		return nil, 0, fmt.Errorf(
+			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
 	enc, err := encounter.LoadEncounter(*world, nil)
