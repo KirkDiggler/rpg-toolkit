@@ -328,6 +328,57 @@ reconsider as the count grows.
 
 ---
 
+### rulebooks/dnd5e/session — A-
+
+The game server's single integration surface (#938 / PR #942, v0.1.0). Ten
+verbs over two ports; the host implements get-by-id and put-by-id and thereafter
+holds no domain object.
+
+**What earns the grade.** The boundary is enforced rather than asserted:
+`boundary_test.go` parses the package's own source and fails on any toolkit type
+reachable from an exported declaration, was verified against a real leak rather
+than a synthetic one, and carries a meta-pin so it cannot quietly stop biting.
+The converter layer is isolated and structurally guarded — every exported field
+on an inner type must be carried or justified, which closes the failure a
+hand-written converter actually has (silently dropping a field when an inner
+type grows one). Pins are mutation-proven throughout, including the
+uncomfortable ones: over-tightening kills only the positive controls, and
+"compute the snapshot but never save it" kills six tests because persistence is
+checked through separate reads rather than returned values. One direct
+dependency. `verify.sh` clean at 90 tests, `-race` clean, `gorelease` gated.
+
+**Why not higher, judged from where we stood when we built it.** Four things,
+none of which were available to fix at the time:
+
+1. **No real consumer.** The surface was designed from acceptance scenes written
+   before opening the old code — deliberately, so it would be shaped by the game
+   rather than by the existing implementation. But that means it is unproven:
+   rpg-api has not migrated, and the first genuine integration is the only thing
+   that can tell us whether the verb set is right. *Improve by:* migrating one
+   real rpg-api call path and treating whatever it forces as evidence.
+2. **Statelessness is unmeasured.** Every verb loads the world; the design says
+   an in-memory checkpointing repository is the host's answer if that hurts. It
+   has never been benchmarked, so the cost is asserted rather than known.
+   *Improve by:* a benchmark over a field near the allocation budget, which
+   turns the claim into a number.
+3. **One interpreted payload.** `kindOf` unmarshals the composition's beat body
+   because story tags are coarser than beats (#941). It is the only place this
+   module reads something it does not own, and it fails *silently* — a changed
+   payload shape degrades every event to `EventUnknown` with nothing red.
+   *Improve by:* #941, after which the kind reads declared metadata.
+4. **The partial-save path is thin.** `SaveReport` supports naming what landed
+   and what did not, but only `StartSession` writes more than one aggregate
+   today, so the machinery is barely exercised. *Improve by:* entities, which
+   bring the second writer — deliberately not by manufacturing a fake one.
+
+**Not counted against it.** #940 (beats addressed to every member) makes the
+event fan-out over-broad in game terms, but the module is correct with respect
+to the composition's contract, and fixing it here would mean a second
+implementation of visibility outside the module that owns perception. Same for
+#933. These are the layering working, not debt in this module.
+
+---
+
 ## Items
 
 ### items — C
