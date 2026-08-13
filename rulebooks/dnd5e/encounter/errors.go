@@ -130,4 +130,19 @@ var (
 
 	// ErrInvalidData is returned when LoadEncounter rejects the input data.
 	ErrInvalidData = errors.New("invalid encounter data")
+
+	// ErrTrimmed is returned by Story when the requested resume point has
+	// already been trimmed out of the retention window — the caller asked to
+	// continue from a sequence the log no longer holds.
+	//
+	// This is a REJECTION, never a short answer. A caller resuming from a
+	// known sequence is asserting "I already have everything below this";
+	// silently returning only what survives would look identical to a
+	// complete answer and would leave a permanent hole in that caller's
+	// view of the story. Rejecting tells it to resync from scratch.
+	//
+	// AfterSeq == 0 never produces this error: zero means "I have nothing,
+	// send what you have," which is always answerable. The distinction is
+	// between a first load and a reconnect (#937).
+	ErrTrimmed = errors.New("story range trimmed")
 )

@@ -196,6 +196,24 @@ type SetupInput struct {
 
 	// Endings are the declared ways the encounter can close.
 	Endings []EndingInput
+
+	// Retention is how many story beats the encounter keeps. Older beats are
+	// trimmed after each append, so an encounter's blob does not grow without
+	// bound and a save does not rewrite the whole history.
+	//
+	// Zero selects DefaultRetention. RetentionUnbounded disables trimming —
+	// appropriate for verified-transcript scenes, which are asserting on the
+	// story itself rather than on the retention policy.
+	//
+	// The default is deliberately small, and that is a test strategy rather
+	// than a storage economy: a generous window means the full-resync path
+	// almost never runs and stays unexercised until a real player's
+	// connection drops. A small one makes resync the common path, so the
+	// expensive branch is the well-trodden one (#937).
+	//
+	// Retention persists with the encounter, so a reloaded encounter keeps
+	// the policy it was built with.
+	Retention int
 }
 
 // ViewInput is used to query a member's current percepts.
@@ -204,12 +222,25 @@ type ViewInput struct {
 	Member MemberID
 }
 
-// StoryInput is used to query a member's story entries after a given sequence number.
+// StoryInput is used to query a member's story entries from a given sequence
+// number onward.
 type StoryInput struct {
 	// Audience is the member requesting their story.
 	Audience MemberID
 
-	// AfterSeq is the sequence number after which to return entries.
+	// AfterSeq is the INCLUSIVE lower bound: the returned entries begin AT this
+	// sequence, not after it. Zero means "from the beginning of what is
+	// retained" and is always answerable.
+	//
+	// The name predates the behaviour and is now misleading — it is passed
+	// straight through as record.SliceFor's FromSeq, which is inclusive. A
+	// caller who read the old wording and passed its last-seen sequence to
+	// resume would receive that entry a second time, and under retention could
+	// also draw an unexpected ErrTrimmed at the boundary. Documented rather
+	// than renamed because the rename is a breaking change to a shipped field;
+	// it belongs in the next deliberate break (Copilot, PR #939).
+	//
+	// To resume after entry N, pass N+1.
 	AfterSeq uint64
 }
 

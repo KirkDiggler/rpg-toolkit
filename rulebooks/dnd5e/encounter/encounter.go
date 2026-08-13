@@ -53,6 +53,18 @@ type Encounter struct {
 	// one action's own scan. See Pump's ending-evaluation loop.
 	endings []declaredEnding
 	outcome *Outcome
+	// retention is the story-beat window (see DefaultRetention). It persists
+	// with the encounter so a reload keeps the policy it was built with.
+	retention int
+	// logFloor is the lowest Seq the story log still holds — everything below it
+	// has been trimmed. Zero means nothing has been trimmed yet.
+	//
+	// Runtime state, deliberately NOT persisted: it is derived from the log
+	// itself at load (logFloorOf), so it cannot drift out of agreement with the
+	// entries it describes. A persisted copy could disagree with them after a
+	// hand-edited blob and would then reject Story queries the log could
+	// actually answer.
+	logFloor uint64
 	// fieldInput and connectionsInput are stored at Setup time for persistence.
 	// LoadEncounter uses them to rebuild the field deterministically without
 	// re-running surveil or requiring an event bus.
@@ -227,6 +239,150 @@ const (
 	maxRoomCells  = 1 << 20
 	maxFieldCells = 1 << 22
 )
+
+// DefaultRetention is the number of story beats an encounter keeps when
+// SetupInput.Retention is zero.
+//
+// Deliberately small. Under the event-stream contract the log is the truth and
+// a live stream is only an optimisation over it: a client that misses beats
+// notices a gap in Seq and re-queries Story from its last known sequence, and
+// if it has been gone longer than the window it must resync from scratch
+// instead. A generous window would make that resync path almost-never-taken and
+// therefore almost-never-tested until a real player's connection dropped. A
+// small one makes resync the ordinary case, so the expensive branch is the
+// well-trodden one and the cheap delta is the optimisation rather than the
+// assumption (#937).
+//
+// The window is a multiplayer-reconnect decision, not a storage one: it answers
+// "how long can a client be gone and still rejoin cheaply," and the storage cost
+// falls out of that rather than driving it.
+const DefaultRetention = 32
+
+// RetentionUnbounded disables trimming entirely. Appropriate for
+// verified-transcript scenes, which assert on the story itself rather than on
+// the retention policy, and for any caller that genuinely needs the whole
+// history in the blob.
+const RetentionUnbounded = -1
+
+// normalizeRetention maps a caller-supplied retention setting onto the value the
+// encounter actually uses: zero (the unset zero value) selects DefaultRetention,
+// and any negative value means unbounded. Negatives are folded to
+// RetentionUnbounded rather than rejected because every negative expresses the
+// same intent and there is no defect to report.
+func normalizeRetention(r int) int {
+	switch {
+	case r == 0:
+		return DefaultRetention
+	case r < 0:
+		return RetentionUnbounded
+	default:
+		return r
+	}
+}
+
+// logFloorOf derives the lowest Seq a persisted log still holds.
+//
+// Derived rather than persisted so it cannot disagree with the entries it
+// describes: a stored floor could be edited into conflict with the log body, and
+// would then reject Story queries the log is perfectly able to answer.
+//
+// Three cases. A log with entries floors at its smallest Seq — scanned rather
+// than read from index zero, because a hand-edited blob is not obliged to be in
+// order and the trust boundary is here. An empty log that has already assigned
+// sequences was trimmed to nothing and floors at NextSeq: every Seq below it is
+// genuinely gone. A never-appended log floors at zero, which exempts nothing,
+// because nothing has been lost.
+func logFloorOf(data record.LogData) uint64 {
+	if len(data.Entries) == 0 {
+		if data.NextSeq > 1 {
+			return data.NextSeq
+		}
+		return 0
+	}
+	floor := data.Entries[0].Seq
+	for _, entry := range data.Entries[1:] {
+		if entry.Seq < floor {
+			floor = entry.Seq
+		}
+	}
+	return floor
+}
+
+// appendBeat appends one story beat and then enforces the retention window.
+//
+// Every beat in the composition goes through here rather than calling
+// story.Append directly — eight call sites today. That is the point: a retention
+// policy applied at seven of eight append sites is not a policy, and a single
+// seam is the only version of this that cannot rot as verbs are added.
+func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
+	out, err := e.story.Append(in)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.enforceRetention(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// enforceRetention trims the story log down to the retention window and advances
+// logFloor to match.
+//
+// No-op when unbounded, and no-op while the log is still shorter than the window
+// — TrimBefore treats a bound at or below the oldest retained Seq as a no-op
+// anyway, but returning early keeps logFloor from being written on every append.
+func (e *Encounter) enforceRetention() error {
+	if e.retention == RetentionUnbounded {
+		return nil
+	}
+
+	nextSeq, err := e.story.NextSeq()
+	if err != nil {
+		return fmt.Errorf("retention next seq: %w", err)
+	}
+
+	// Seq is 1-based and gapless, so after N appends nextSeq == N+1 and the log
+	// holds [1, N]. Retaining `retention` entries means dropping everything
+	// below nextSeq-retention. The subtraction is guarded because nextSeq <=
+	// window means the log has not yet reached the window at all, and computing
+	// the floor anyway would wrap on uint64.
+	window := uint64(e.retention)
+	if nextSeq <= window {
+		return nil
+	}
+	floor := nextSeq - window
+
+	// Skip when the computed floor is at or below what the log already starts
+	// at — there is nothing there to drop.
+	//
+	// Without this the log would be trimmed the moment it reached exactly the
+	// window: floor would come out as the oldest retained Seq, TrimBefore would
+	// do nothing, and logFloor would still be advanced to a value describing a
+	// trim that never happened. Harmless today, because a floor equal to the
+	// oldest entry rejects nothing that the log can still serve — which is
+	// exactly why no test in this package can distinguish the two versions. It
+	// is fixed anyway: the comment above claims the early return keeps logFloor
+	// from being written on every append, and code that contradicts its own
+	// documentation is a trap for whoever next reasons about the floor
+	// (Copilot, PR #939).
+	//
+	// oldest is the lowest Seq the log currently holds: logFloor once anything
+	// has been trimmed, and 1 before that, since the log's first assigned Seq
+	// is 1 rather than 0.
+	oldest := e.logFloor
+	if oldest < 1 {
+		oldest = 1
+	}
+	if floor <= oldest {
+		return nil
+	}
+
+	if _, err := e.story.TrimBefore(&record.TrimBeforeInput{Seq: floor}); err != nil {
+		return fmt.Errorf("retention trim: %w", err)
+	}
+	e.logFloor = floor
+	return nil
+}
 
 // buildValidRoomGrids rejects room defects before construction (R5
 // atomicity — no observable state until Setup succeeds). The first four
@@ -795,6 +951,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
 		endings:          nil,
+		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
 		connectionsInput: connectionsInput,
 	}
@@ -930,7 +1087,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// Opening record beat: all members hear "scene-opened"
 	beatPayload, _ := json.Marshal(map[string]string{"beat": "scene-opened"})
-	_, err = e.story.Append(&record.AppendInput{
+	_, err = e.appendBeat(&record.AppendInput{
 		At:       0,
 		Audience: memberIDs,
 		Tags:     map[string]string{"tag": "scene"},
@@ -1031,9 +1188,17 @@ func (e *Encounter) Status() (*Status, error) {
 	return &Status{Open: true}, nil
 }
 
-// Story returns the story entries for a member after the given sequence number.
+// Story returns a member's story entries from the given sequence number
+// onward, INCLUSIVE of it — AfterSeq is passed through as record.SliceFor's
+// FromSeq, and its name is a misnomer kept for compatibility (see
+// StoryInput.AfterSeq). To resume after entry N, pass N+1.
+//
 // Allows both current members and members who have exited (everMembers).
-// Returns ErrNilInput if the input is nil, ErrNoMember if the member never joined.
+// Returns ErrNilInput if the input is nil, ErrNoMember if the member never
+// joined, and ErrTrimmed if a non-zero AfterSeq names a sequence that has
+// already aged out of the retention window — the caller must resync rather
+// than resume, since a short answer would be indistinguishable from a complete
+// one. AfterSeq == 0 is exempt and always answerable.
 // Copy-out follows record's own conventions (returned entries are already copies
 // per record's implementation).
 func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
@@ -1043,6 +1208,22 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 
 	if _, ok := e.everMembers[in.Audience]; !ok {
 		return nil, fmt.Errorf("story: %w", ErrNoMember)
+	}
+
+	// A resume point below the retained floor cannot be honoured, and must be
+	// REJECTED rather than partially answered. A caller passing a sequence is
+	// asserting "I already hold everything below this"; returning only the
+	// surviving tail would be indistinguishable from a complete answer and would
+	// leave a silent, permanent hole in that caller's story. Rejecting tells it
+	// to resync (#937).
+	//
+	// AfterSeq == 0 is exempt: zero means "I hold nothing, send what you have,"
+	// which is always answerable. That is the difference between a first load
+	// and a reconnect, and it is why trimming does not break the most common
+	// call in the system.
+	if in.AfterSeq > 0 && in.AfterSeq < e.logFloor {
+		return nil, fmt.Errorf("story: seq %d below retained floor %d: %w",
+			in.AfterSeq, e.logFloor, ErrTrimmed)
 	}
 
 	entries, err := e.story.SliceFor(&record.SliceForInput{
@@ -1169,7 +1350,7 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
-	appendOut, err := e.story.Append(&record.AppendInput{
+	appendOut, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
 		Audience: memberIDs,
 		Tags:     map[string]string{"tag": "movement"},
@@ -1429,7 +1610,7 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
-	appendOut, err := e.story.Append(&record.AppendInput{
+	appendOut, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
 		Audience: memberIDs,
 		Tags:     map[string]string{"tag": "movement"},
@@ -1694,7 +1875,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	}
 	tickBeatBytes, _ := json.Marshal(tickBeatPayload)
 
-	tickAppendOut, err := e.story.Append(&record.AppendInput{
+	tickAppendOut, err := e.appendBeat(&record.AppendInput{
 		At:       newTickReading,
 		Audience: memberIDs,
 		Tags:     map[string]string{"tag": "clock"},
@@ -1727,7 +1908,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 		beatBytes, _ := json.Marshal(beatPayload)
 
-		actionAppendOut, err := e.story.Append(&record.AppendInput{
+		actionAppendOut, err := e.appendBeat(&record.AppendInput{
 			At:       newTickReading,
 			Audience: memberIDs,
 			Tags:     map[string]string{"tag": "movement"},
@@ -2039,7 +2220,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
-	appendOut, err := e.story.Append(&record.AppendInput{
+	appendOut, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
 		Audience: memberIDs,
 		Tags:     map[string]string{"tag": "membership"},
@@ -2191,7 +2372,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
-	appendOut, err := e.story.Append(&record.AppendInput{
+	appendOut, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
 		Audience: allMemberIDs,
 		Tags:     map[string]string{"tag": "membership"},
@@ -2298,7 +2479,7 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
-	_, err := e.story.Append(&record.AppendInput{
+	_, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
 		Audience: allMemberIDs,
 		Tags:     map[string]string{"tag": "scene"},
