@@ -19,6 +19,41 @@ and never imports rpg-api or rpg-api-protos.
 - `docs/how-to/` — task guides: run-tests, add-a-mechanic, add-a-rulebook-entry, fix-go-mod-replace-directives, verified-transcripts (show a module working as designed: `./scripts/verify.sh <module>`)
 - `docs/archive/` — genuine archive: pre-Dec-2025 design docs, diagrams, guides that no longer reflect current architecture. Read for historical context only.
 
+## How live play is layered
+
+Three kinds of package. The difference between them is a real contract, not a
+naming convention — and knowing which kind you are in answers most "where does
+this go?" questions on its own.
+
+- **`play/*` — composable leaves.** One concern each, deliberately ignorant of
+  everything else. Each depends only on `core`, takes no `context.Context`,
+  **returns its results as values and never publishes**, and is bound by a
+  numbered contract (R1–R10) in `docs/ideas/play/<name>/design.md`. They never
+  interpret what they hold: the ledger does not read the payload, the intel
+  store cannot tell a lie from the truth, the clock holds no rules and no
+  randomness. See `play/README.md`.
+
+- **A composition.** The **courier** between leaves, and the first layer allowed
+  to have an opinion about the game. Rules and trigger detection belong here.
+  Each carries its own numbered laws.
+
+- **A host seam.** The one interface a game server implements: verbs take IDs,
+  repositories are key-value, no runtime object crosses the boundary. It owns
+  **no** rules.
+
+Which packages currently play which part is the rulebook's own business — see
+that rulebook's `CLAUDE.md` (for D&D 5e, `rulebooks/dnd5e/CLAUDE.md`).
+
+The direction that matters: **each layer absorbs wiring so the layer beneath it
+does not have to.** The seam spares the host the composition's complexity; the
+composition spares the leaves the bus, the persistence, and each other. A
+rule that appears in `play/` or in a seam is a layering bug, not a shortcut.
+
+**Read the package's godoc before designing anything in this area** — every one
+of these states its own contract in `doc.go`, names the laws that bind it, and
+points at its design doc. That is the discoverable surface; this section only
+tells you the shape so you know to go looking.
+
 ## RPG Toolkit Development Guidelines
 
 ## Slash Commands for Common Workflows
