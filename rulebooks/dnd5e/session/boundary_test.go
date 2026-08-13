@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -255,4 +256,19 @@ func fieldIsExported(field *ast.Field) bool {
 func TestBoundarySuite(t *testing.T) {
 	require.NotEmpty(t, forbiddenPrefix)
 	suite.Run(t, new(BoundaryTestSuite))
+}
+
+// structFields reports the exported field names of a struct value, so a test
+// can assert on a type's shape rather than only on the values it happens to
+// carry.
+func structFields(v any) []string {
+	t := reflect.TypeOf(v)
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	names := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		names = append(names, t.Field(i).Name)
+	}
+	return names
 }

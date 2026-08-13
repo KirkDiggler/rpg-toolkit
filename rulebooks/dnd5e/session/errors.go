@@ -44,6 +44,26 @@ var (
 	// request.
 	ErrNoEncounter = errors.New("no such encounter")
 
+	// ErrNoMemberID is returned when a verb is given an empty member ID.
+	ErrNoMemberID = errors.New("empty member id")
+
+	// ErrNoMember is returned when a verb names a member the encounter does
+	// not hold.
+	ErrNoMember = errors.New("no such member")
+
+	// ErrStoryTrimmed is returned by Story when the requested resume point has
+	// aged out of the retention window. The caller must resync from zero
+	// rather than resume: a short answer would be indistinguishable from a
+	// complete one and would leave a permanent hole in its view of the story.
+	//
+	// This package's own sentinel rather than the composition's, and the
+	// distinction matters more than it looks. The boundary test reads exported
+	// signatures, and a sentinel is not a type in a signature — so if hosts
+	// matched on the inner package's error value, replacing that package would
+	// break their error handling exactly as surely as leaking a struct would,
+	// through a channel no test is watching.
+	ErrStoryTrimmed = errors.New("story range trimmed")
+
 	// ErrNoSessionID is returned when a verb is given an empty session ID.
 	ErrNoSessionID = errors.New("empty session id")
 
