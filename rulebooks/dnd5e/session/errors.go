@@ -73,6 +73,27 @@ var (
 	// caller naming something that was never on the menu.
 	ErrNoEnding = errors.New("no such ending")
 
+	// ErrEmptyPath is returned by Move when no cells were given. A walk to
+	// nowhere is a caller mistake rather than a no-op: silently succeeding
+	// would hide a route computation that produced nothing.
+	ErrEmptyPath = errors.New("empty path")
+
+	// ErrBrokenPath is returned by Move when consecutive cells are not
+	// adjacent, or the first cell is not adjacent to where the member stands.
+	//
+	// Rejected whole rather than walked up to the gap: a caller who
+	// mis-computed a route wants none of it, not an arbitrary prefix that
+	// leaves the party somewhere nobody chose.
+	ErrBrokenPath = errors.New("path is not a walk")
+
+	// ErrNoConnection is returned when a verb names a connection the encounter
+	// does not have.
+	ErrNoConnection = errors.New("no such connection")
+
+	// ErrBadPosition is returned when a target cell is out of bounds, or is
+	// not a legal cell of its grid family.
+	ErrBadPosition = errors.New("bad position")
+
 	// ErrNoSessionID is returned when a verb is given an empty session ID.
 	ErrNoSessionID = errors.New("empty session id")
 

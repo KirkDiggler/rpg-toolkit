@@ -229,6 +229,10 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrClosed)
 	case errors.Is(err, encounter.ErrNoEnding):
 		return fmt.Errorf("%w", ErrNoEnding)
+	case errors.Is(err, encounter.ErrNoConnection), errors.Is(err, encounter.ErrBadConnection):
+		return fmt.Errorf("%w", ErrNoConnection)
+	case errors.Is(err, encounter.ErrBadPlacement):
+		return fmt.Errorf("%w", ErrBadPosition)
 	default:
 		return err
 	}
