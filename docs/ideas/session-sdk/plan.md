@@ -145,13 +145,64 @@ and gets the identical window order.
 
 ## Wave 3 — entities on the bus
 
-Characters and NPCs load through their repositories, conditions attach for the
-duration of a call and detach after (S1), and durable condition state lives in
-the entity's own blob. `Member.Kind` selects the repository. NPCs live in
+Characters and NPCs load through their repositories, features and conditions
+attach for the duration of a call, and durable condition state lives in the
+entity's own blob. `Member.Kind` selects the repository. NPCs live in
 `SessionData` and vanish with the session.
 
 The bus carries **observation only** — journey 052's rule, enforced by the fact
 that nothing in this wave can suspend.
+
+**This is the wave the bus enters the composition at all.** Neither `encounter`
+nor `session` uses `events.EventBus` today; both carry `events` as an indirect
+dependency only. Everything so far has been bus-free, which is much of why
+journey 052's rule has held so easily — there was nothing to put control flow
+on. That changes here, which is why the determinism pin below is a wave-3
+concern and not a wave-4 one.
+
+**T3.1 — the bus, per call.** One bus per verb, shared by every entity loaded in
+that call, discarded with the response. There is no session process: a verb
+loads, attaches, acts, saves, and everything dies with the response. Shared
+rather than per-entity, because a condition on one member must be able to
+observe what happens to another — the prerequisite for reactions in wave 5.
+
+**T3.2 — `CharacterRepository`, and `Member.Kind` routing.** Declared with
+`character.Data`. Players resolve through the repository; NPCs through
+`SessionData`. The seam takes **IDs, not characters** — `character.Data` appears
+only on the repository the host implements, never in a verb input, and
+`*character.Character` never crosses at all.
+
+**T3.3 — NPCs in `SessionData`.** `NPCs []npc.Data`, session-scoped, no
+repository until a durable NPC exists. Asymmetric reversibility again: adding a
+`Config` field later is compatible; removing one a host implemented is not.
+
+**T3.4 — attach and detach, across a suspension.** The load → attach → act →
+`ToData()` → save loop, and that same loop re-entered by `Answer`. **Do not call
+`character.Cleanup`** — see design.md; it nils the conditions that `ToData`
+serializes, and its unsubscribe half is meaningless when the bus dies with the
+response.
+
+**T3.5 — the benchmark.** Load + attach at party scale (4–6 characters with a
+realistic feature and condition load), measured per verb. This plan already
+names *"stateless-per-call proves too slow once entities load on every verb"* as
+something that would make it wrong; wave 3 is where that stops being
+hypothetical. Measure before anyone designs a cache around a cost nobody has
+seen — the fallback (a checkpointing repository on the host side) was already
+the design's answer and changes no SDK signature.
+
+**T3.6 — the scene**, continuing the story with a pinned transcript: Alice
+raging when she is loaded, without the caller ever mentioning rage (scene 4).
+
+**Pins:** a condition active before a verb is still active and still behaving
+after save and reload — *mutation: `Cleanup` before `ToData`, which must fail,
+because the failure it models is silent*; a condition active at the moment of
+suspension survives a process restart and an `Answer` from a different process;
+the boundary test still rejects `*character.Character` while admitting
+`character.Data` as a contract type with a recorded reason; one shared bus per
+call, proven by a condition on member A observing an event about member B
+(*mutation: per-entity buses*); and enumeration order at a checkpoint stays a
+function of persisted data rather than subscription order (C8) — the pin that
+matters most now that a bus exists to make the other thing tempting.
 
 ---
 
@@ -189,6 +240,12 @@ retires T3, and may push that wave ahead of this one.
 - Scenes as one continuous story with exact pinned transcripts.
 - `gorelease` green on every wave; a wave that reports *incompatible* does not
   ship without a deliberate, recorded decision.
+- **Every required `Config` field lands at or before wave 4.** `gorelease` calls
+  a new struct field compatible, and for a *required* one that verdict is wrong:
+  it compiles everywhere and fails every existing host at its first
+  `NewManager`, because construction is total (S8). Free until the migration
+  wave, a silent runtime break wearing a green check after it. The gate cannot
+  see this, so the discipline has to.
 - No draft PRs; no `--no-verify`; no force-push; no `nolint`.
 
 ## What would make this plan wrong

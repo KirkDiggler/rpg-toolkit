@@ -113,6 +113,19 @@ type SessionRepository   interface { /* SessionData             — session stat
 type CharacterRepository interface { /* character.Data — arrives with entities   */ }
 ```
 
+**Wave 3 declared `CharacterRepository`, and the deferral paid for itself.**
+Waiting meant the interface arrived with a caller to shape it, and the caller
+settled a question that would have been guessed a wave earlier: the seam takes
+**IDs, not characters**. Verbs name members by ID, `Member.Kind` routes to the
+right repository, and `character.Data` appears in exactly one place — the
+repository the host implements. It never appears in a verb input. Had the
+repository been declared up front, nothing would have forced that distinction
+and `Data` would plausibly have leaked into verb signatures where it does not
+belong.
+
+The paragraph below is the original reasoning, kept because the rule it states
+is the reusable part:
+
 **`CharacterRepository` is deferred to the entities wave, not defined up front**
 — a correction the implementation forced. `character` is a package *inside* the
 large `rulebooks/dnd5e` module, so declaring it early would take a permanent
@@ -272,6 +285,28 @@ mgr, err := session.NewManager(&session.Config{
 with an error naming it (S8), checked in a fixed order so the first complaint is
 deterministic. `CharacterRepository` is absent because nothing calls it yet, not
 because it is optional.
+
+**Wave 3 adds `Characters`.** The deferral paid off as intended — the interface
+arrived with a caller to shape it instead of a guess to maintain, which is also
+why `NPCRepository` is still absent.
+
+But the addition exposes a blind spot in the compatibility gate, and it is worth
+recording plainly:
+
+> **`gorelease` will call a new `Config` field compatible, and for a *required*
+> field that verdict is wrong.** Adding one compiles everywhere and breaks every
+> existing host at runtime, on the first `NewManager` call, because construction
+> is total (S8) and the host does not set the field it has never heard of.
+
+This is free right now — rpg-api has not adopted the SDK, so no host is on
+`v0.2.0` and there is nothing to break. It stops being free at wave 4, the
+migration wave, which is where the version-bump promise starts. So:
+
+**Every required `Config` field must land at or before wave 4.** After that, a
+new one is a silent runtime break wearing a green CI check. This is the same
+species of gap as the boundary test's sentinel errors — a mechanical gate that
+is sound for the thing it inspects and blind to a thing next to it — and it gets
+the same treatment: name it, and put the discipline where the gate cannot reach.
 
 This settles the capability-config question `scenes.md` left open, and settles it
 by deleting it: there are no optional components, so `Config` never became
@@ -557,6 +592,45 @@ falsifiable claim: *after the migration wave, no subsequent wave changes any
 rpg-api source file.* If one does, S2 was violated somewhere and the violation
 is findable.
 
+### Two promises, not one
+
+Wave 3 forced a distinction the allow-list had been blurring. Its entries looked
+like one list of exceptions, but they were always two kinds of thing:
+
+| | Example | Does the host construct it? |
+|---|---|---|
+| **Contract type** | `spatial.Position` | Yes |
+| **Persistence shape** | `encounter.EncounterData`, `interrupt.LedgerData` | No — round-trips it untouched |
+
+These carry different promises. A persistence shape promises **replaceability**:
+we can swap what is underneath and the host never notices, which is why only
+`interrupt.LedgerData` crosses and `interrupt.Window` never does. A contract type
+promises the opposite — it is **shared vocabulary**, a domain noun both sides
+name, and a change to it is a breaking change we announce rather than hide.
+
+`character.Data` is a contract type, beside `spatial.Position`. A character is a
+thing, not an implementation detail we would want to refactor without telling
+the host. Reading it as a grudging exception to the replaceability promise gets
+the intent exactly backwards: for this category, surfacing a change is the
+correct behavior.
+
+Two facts make it a comfortable one. Its type surface bottoms out in strings and
+ints — `skills.Skill` and `classes.Class` are literal aliases to `string`, the
+`races`/`abilities`/`proficiencies` types are defined string types, and features
+and conditions are already `[]json.RawMessage`. And rpg-api has imported
+`rulebooks/dnd5e/character` in 47 files since well before this SDK existed, so
+naming it here joins coupling that already exists rather than creating any.
+
+The version-bump claim above is unaffected, because it was only ever about
+replaceability. **The allow-list should name both categories rather than reading
+as a flat list**, so a future exception is weighed against the right promise.
+
+The direction this points: `character` eventually becoming its own module
+alongside `encounter`, with its own version line. That also dissolves the one
+real cost of naming it here — today it inherits the release cadence of the
+`rulebooks/dnd5e` root module, which has 179 tags. Not a wave-3 blocker; wave 3
+consumes `character.Data` from the root module as it stands.
+
 ---
 
 ## Inside the boundary
@@ -578,6 +652,46 @@ None of this is customer-visible; all of it can change under a compatible tag.
   code** — explicit phase index, no Go stack held across a wait, in-between
   state serializable — even in waves where nothing suspends. `ReactionTrigger`
   happened because attack resolution was a straight-line function.
+
+### Loading an entity, and the cleanup that must not happen
+
+There is no session process. A verb loads what it needs, attaches it to a bus
+created for that call, acts, writes back, and returns; the whole object graph is
+garbage the moment the response is written. `Answer` is not a resumption of
+anything living — it is the same load-and-attach performed again from persisted
+data.
+
+```go
+ch, err := character.LoadFromData(ctx, data, bus)  // features + conditions subscribe
+...act...
+out := ch.ToData()                                 // durable state back to the blob
+```
+
+**`character.Cleanup` must not be called in this loop.** Its first statement is
+`c.conditions = nil`, and `ToData()` serializes `c.conditions` — so cleaning up
+before the save persists a character with **zero conditions**, with no error and
+no failed call. Rage, unconscious, a death save in progress: gone. Its other
+half, unsubscribing, buys nothing here because the bus dies with the response.
+`Cleanup` is built for a long-lived character in a long-lived process, which is
+the architecture we do not have.
+
+Skipping it is safe rather than merely tolerable: conditions intercept on the
+bus rather than mutating character fields, so there is no modification left
+un-reversed. `RagingCondition.Remove` is a pure unsubscribe. rpg-api has been
+doing exactly this — load with an inline `NewEventBus()`, `ToData()`, no
+cleanup.
+
+**This is why durable condition state must round-trip through the blob**, and it
+is forced rather than chosen. Wave 2 established that no Go stack survives a
+wait; a loaded character with live subscriptions is exactly that kind of state.
+So a suspension drops every entity, and `Answer` rebuilds them from data.
+Anything a condition holds that does not survive `ToData()` is lost across a
+suspension — silently, and only in the one path hardest to notice.
+
+The cost of all this is real and structural: every verb pays load and attach for
+every entity, and `LoadFromData` wires each feature and condition individually.
+That is the price of the condition decoupling, and it is the risk this plan
+already named. Wave 3 measures it rather than reasoning about it.
 
 ---
 
