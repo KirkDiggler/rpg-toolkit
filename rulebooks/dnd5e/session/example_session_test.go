@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -122,14 +123,17 @@ func Example_theSession() {
 	//     bob at (1,3)
 }
 
-// Example_thePending shows the shape a suspension will take from the host's
-// side, using the only pause that exists today — an ending.
+// Example_thePending is the host's whole suspension loop, and it is short on
+// purpose.
 //
-// The point is the CALLER'S code, not the mechanism. A verb comes back having
-// done less than it was asked, says so in its own return value, and the host
-// reacts. When resolutions become genuinely suspendable, the caller learns
-// about it through the same channel: a verb that returns having stopped, plus a
-// field saying who owes an answer. Nothing about this loop changes shape.
+// A verb returns having done less than it was asked and says who owes an
+// answer. The host renders that, collects a choice, and hands it back. It never
+// learns what kind of checkpoint fired — it branches on the option kinds it was
+// offered, which is what lets new checkpoint kinds arrive without any client
+// changing.
+//
+// The earlier version of this example simulated the shape with an ending,
+// because nothing could genuinely suspend yet. This is the real thing.
 func Example_thePending() {
 	ctx := context.Background()
 	mgr, err := session.NewManager(&session.Config{
@@ -140,31 +144,61 @@ func Example_thePending() {
 		panic(err)
 	}
 	if _, err := mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "run", Encounter: "tomb", World: authoredTomb(),
+		Session: "run", Encounter: "tomb", World: ambushWorld(panicFataler{}),
 	}); err != nil {
 		panic(err)
 	}
 
-	path := []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1}, {X: 5, Y: 1}}
-	out, err := mgr.Move(ctx, &session.MoveInput{
-		Session: "run", Member: "alice", Path: path,
-	})
+	path := []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}}
+	out, err := mgr.Move(ctx, &session.MoveInput{Session: "run", Member: "alice", Path: path})
 	if err != nil {
 		panic(err)
 	}
 
-	switch {
-	case out.Outcome != nil:
-		fmt.Printf("stopped after %d/%d: the encounter ended (%s)\n",
-			len(out.Steps), len(path), out.Outcome.Ending)
-	case len(out.Steps) < len(path):
-		fmt.Printf("stopped after %d/%d: something interrupted\n", len(out.Steps), len(path))
-	default:
+	if out.Pending == nil {
 		fmt.Printf("walked all %d cells\n", len(out.Steps))
+		return
 	}
 
+	offered := make([]string, 0, len(out.Pending.Options))
+	for _, opt := range out.Pending.Options {
+		offered = append(offered, string(opt.Kind))
+	}
+	fmt.Printf("stopped after %d/%d: %s sees %v and must choose %v\n",
+		len(out.Steps), len(path), out.Pending.Audience, out.Pending.Prompt.Sighted, offered)
+
+	// Everything that would change the world is refused until she answers, and
+	// the refusal says who to go ask.
+	_, err = mgr.Move(ctx, &session.MoveInput{
+		Session: "run", Member: "alice", Path: []spatial.Position{{X: 2, Y: 4}},
+	})
+	var frozen *session.FrozenError
+	if errors.As(err, &frozen) {
+		fmt.Printf("meanwhile the world is frozen, waiting on %s\n", frozen.Audience)
+	}
+
+	// The answer may arrive from anywhere, at any time — it is just another call.
+	resumed, err := mgr.Answer(ctx, &session.AnswerInput{
+		Session: "run", Window: out.Pending.Window,
+		Member: "alice", Option: string(session.OptionContinue),
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("she presses on, %d cell(s) further\n", len(resumed.Steps))
+
 	// Output:
-	// stopped after 3/4: the encounter ended (stairs)
+	// stopped after 2/3: alice sees [ogre] and must choose [continue stop]
+	// meanwhile the world is frozen, waiting on alice
+	// she presses on, 1 cell(s) further
+}
+
+// panicFataler adapts the test fixtures for use from an Example, which has no
+// *testing.T to fail through.
+type panicFataler struct{}
+
+func (panicFataler) Fatalf(format string, args ...any) {
+	panic(fmt.Sprintf(format, args...))
 }
 
 // authoredTomb is content, not a live encounter: the blob a host would have

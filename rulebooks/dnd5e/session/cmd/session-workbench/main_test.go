@@ -30,8 +30,15 @@ func TestWorkbenchRuns(t *testing.T) {
 		"gate: antechamber (5,1) kisses vault (6,1)", // W3 holds in absolute space
 		"alice enters (5,1)",                         // the walk reached the doorway
 		"antechamber (5,1) → vault (0,1)",            // and crossed it
+
+		// The interrupt spine, end to end. Each of these is a different claim,
+		// and any one of them regressing would leave the others still true:
+		"the world freezes after 3/4: alice sees [wight]",                    // perception suspends a walk mid-path
+		"end refused while frozen: end: world frozen: window 1 awaits alice", // and the refusal names who to go ask
+		"alice presses on to (1,4)",                                          // answering resumes from where it stopped
+
 		`ended by "withdraw"`,
-		"alice in vault at (0,1)", // the crossing persisted through to the ending
+		"alice in vault at (1,4)", // the resumed walk persisted through to the ending
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("workbench output missing %q\nfull output:\n%s", want, got)
