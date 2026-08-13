@@ -124,6 +124,10 @@ process restart because it was never anything but data.
 option that wasn't offered; someone other than Alice answering Alice's window;
 any other verb on this encounter while the window is open.
 
+That last rejection is how "process pending first" is *enforced* rather than
+advised — and the error carries the open window and its audience, so the caller
+learns what to do from the rejection instead of having to ask a second time.
+
 ---
 
 ## Scene 4 — Alice swings, and rage does its thing
@@ -199,7 +203,38 @@ encounter is closed.
 
 ---
 
-## Scene 7 — Making a character (later, but shaped now)
+## Scene 7 — Everyone else finds out
+
+Four players share the tomb. Alice's move is *her* call, but it is *everyone's*
+event — and what each of them may know about it differs.
+
+```go
+// The server supplied a stream implementation at construction.
+out, err := mgr.Move(ctx, &session.MoveInput{...})
+```
+
+While that call runs, the stream receives:
+
+- **Alice** — she moved, and she now sees the ogre, and she owes an answer with
+  these options.
+- **Bob and Carol**, in the same room — Alice moved, and she has stopped, and we
+  are waiting on her. **Not** her options.
+- **Dave**, two rooms away and unable to see the hall — nothing at all, or at
+  most that the world is paused.
+
+Same beat, three payloads. This is why the fan-out cannot live above us: the
+difference between those three is intel, and intel is a rule.
+
+If the publish fails, the verb still succeeds. Every beat carries a gapless
+`Seq`, so a client that missed one notices the hole and re-queries `Story` from
+its last known sequence. The log is the truth; the stream is a fast path.
+
+**And nothing is ever announced that was not saved.** Publish happens after the
+write lands, so "the client saw it but the database didn't" cannot occur.
+
+---
+
+## Scene 8 — Making a character (later, but shaped now)
 
 Character creation moves behind this SDK eventually. It is out of scope for the
 first waves, but the surface should not make it awkward:
@@ -226,6 +261,10 @@ with an encounter ID attached, we named the thing wrong.
 5. **`Path`, not a destination.** The caller says where to walk; what actually
    happened comes back as steps. A one-cell path is a legal degenerate case,
    which is how the game moves today.
+6. **The return value is for the caller; the stream is for the table.** A verb
+   tells the actor's request what happened; the event stream tells everyone
+   else, each of them only what they may know. Multiplayer is not something
+   the server assembles from return values.
 
 ---
 

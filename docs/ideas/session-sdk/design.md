@@ -234,6 +234,77 @@ life.
 
 ---
 
+## The event stream
+
+**RULED — the toolkit owns the events; the game server owns the transport.**
+It supplies a stream implementation the way it supplies repositories, and we
+drive it. The multiplayer game communicates through those events.
+
+### It already exists
+
+`record.Entry` is an event envelope and has been since `play/record` v0.1.0:
+
+```go
+type Entry struct {
+    Seq         uint64          // monotonic, gapless, never renumbered
+    At          uint64          // provenance timestamp
+    Correlation string          // groups cause and effects across entries
+    Audience    []core.EntityID // the roster of viewers
+    Tags        map[string]string
+    Payload     []byte
+}
+```
+
+Ordering, gap detection, a causality token, delivery scoping, filterable
+metadata, content. The composition appends one for every state change. There is
+no stream to build — only a delivery port to attach to the log we already write.
+
+### Why it cannot live above us
+
+**Audience is a game rule, not transport.** Who may see an event is a function
+of intel — who perceived what, through which channel, and when. If the game
+server fans events out, it reimplements visibility, and the first bug leaks
+hidden information: the unspotted ogre, the trap Bob failed his check on, the
+fact that someone is being offered a reaction. Those are rules defects wearing
+delivery clothing, surfacing in the layer least equipped to catch them.
+
+### Laws
+
+**S9 — Publish only after the save lands.** Never announce a fact that failed
+to persist. "Announced but didn't happen" becomes structurally impossible.
+
+**S10 — The log is the truth; the stream is an optimization over it.** Because
+`Seq` is gapless, a client that misses an event sees a hole and re-queries
+`Story` from its last known sequence. Publish failure is therefore **not**
+fatal to a verb: it is reported in the output and the client heals itself. For
+a Discord activity on a phone, this is the difference between a robust game and
+a support burden.
+
+**S11 — Events are projected per audience, not merely filtered.** Two viewers of
+the same beat may receive different payloads. The pending-window event is the
+motivating case: the actor's client needs the options; everyone else needs
+"waiting on Alice" *without* them, because options leak — offering an
+opportunity attack reveals that a threatener exists and roughly where.
+
+### Port
+
+```go
+type EventStream interface {
+    Publish(ctx context.Context, events []Event) error
+}
+```
+
+Optional capability: a single-player setup, a test, or a headless simulation
+constructs without one and simply produces no stream. This is the first case
+that makes `Config` capability-shaped rather than all-required, which settles
+the port-granularity open question in `scenes.md`.
+
+**OPEN:** whether `Event` is `record.Entry` re-exported (S2 says no inner
+types, but this is arguably a persistence-adjacent shape like the `Data` types)
+or an SDK-owned envelope translated on the way out. Leaning SDK-owned, because
+the per-audience projection in S11 means the thing on the wire is not the thing
+in the log.
+
 ## Compatibility
 
 `gorelease` gates every release from the first tag, so "rpg-api only bumps a
