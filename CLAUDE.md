@@ -32,29 +32,37 @@ These commands guide you through best practices and ensure nothing is missed.
 
 ## Module Development Workflow
 
-**IMPORTANT: NO go.work FILES OR LOCAL REPLACE DIRECTIVES**
+**IMPORTANT: LOCAL OVERRIDES ARE FINE — THEY MUST NEVER REACH CI**
 
-This project uses a clean module development approach:
+Local `replace` directives and `go.work` files are a normal part of developing
+across modules here. Working outside-in (build the consumer against a local
+sibling, discover the contract, then merge inside-out) depends on them.
 
-1. **Each module is developed independently**
-   - Work on one module at a time
-   - Use published dependencies only
-   - No replace directives pointing to local paths
-   - No go.work files
+The rule this section used to state — "no replace directives, no go.work" — was
+written because those overrides were being *committed* and breaking CI. That is
+the actual failure, and that is what stays banned.
+
+1. **Override locally, publish before you merge**
+   - Use `replace` or `go.work` freely while developing across modules
+   - **Never commit them.** A `replace` pointing at a local path fails CI, and
+     it fails it for everyone, not just you
+   - Before merging: publish the dependency, then point at the published
+     version and remove the override
 
 2. **Dependency Management**
-   - Modules reference published versions (e.g., `v0.1.0`)
-   - When you need updates from another module:
-     - Push the changes to that module first
-     - Then `go get -u` in the dependent module
-   - During development, Go creates pseudo-versions automatically (e.g., `v0.0.0-20230907052031-37f5183ecf93`)
+   - Committed `go.mod` files reference published versions (e.g., `v0.1.0`)
+   - To take an update from another module: tag and push that module first,
+     then `go get` it in the dependent module
+   - Go creates pseudo-versions automatically for un-tagged commits
+     (e.g., `v0.0.0-20230907052031-37f5183ecf93`)
 
-3. **Why This Approach**
-   - Keeps development honest - you work with real APIs
-   - Focuses work on one module at a time
-   - Avoids local development issues and CI failures
-   - Clear dependency tracking
-   - No confusion about which version is being used
+3. **Why This Shape**
+   - Local overrides make cross-module work possible without a release per edit
+   - Requiring published versions *at merge* keeps the committed graph honest:
+     what CI builds is what a consumer would get
+   - Editing a sibling module on disk does **not** change what your module
+     compiles against unless you have an override in place — the most common
+     source of "I fixed it but nothing changed"
 
 ## Testing Strategy
 
