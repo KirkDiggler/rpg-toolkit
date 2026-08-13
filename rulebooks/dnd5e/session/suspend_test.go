@@ -40,6 +40,14 @@ func (s *SuspendTestSuite) SetupSubTest() {
 }
 
 func managerOver(t fataler, sessions *fakeSessions, encounters *fakeEncounters) *session.Manager {
+	return managerOverRepos(t, sessions, encounters)
+}
+
+// managerOverRepos builds a manager over any repositories, so a test can swap
+// in one that fails on demand without rebuilding the world it already set up.
+func managerOverRepos(
+	t fataler, sessions session.SessionRepository, encounters session.EncounterRepository,
+) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: sessions, Encounters: encounters, Events: session.DiscardEvents{},
 	})
@@ -626,6 +634,57 @@ func (s *SuspendTestSuite) TestASuspendingWalkWritesBothAggregates() {
 	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written,
 		"the world first, then what is owed — the order persist chose deliberately")
 	s.Empty(out.Saved.Failed)
+}
+
+// TestAPartialSaveTellsTheCallerWhichHalfLanded is S6 reaching a caller, which
+// is not the same as S6 being computed.
+//
+// A verb returns no output when it returns an error, so a report that only
+// exists inside persist is a report nobody can act on. This is the first
+// genuinely reachable partial save in the module: the encounter is durable and
+// the window that was owed is not, and the caller has to be able to tell that
+// from "nothing was written" — one is a retry, the other is a repair.
+func (s *SuspendTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
+	s.startAmbush()
+
+	// Arm the session store to fail only now, after the world is in place.
+	sessions := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
+	mgr := managerOverRepos(s.T(), sessions, s.encounters)
+
+	_, err := mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+	})
+	s.Require().Error(err, "the walk suspended, so the session had to be written")
+	s.Require().ErrorIs(err, session.ErrSaveFailed, "the condition is matchable")
+	s.ErrorIs(err, errBroken, "and so is the store's own failure")
+
+	var saved *session.SaveError
+	s.Require().ErrorAs(err, &saved, "the report must survive the error, not die in persist")
+	s.Equal([]string{"encounter:world"}, saved.Report.Written,
+		"the world landed — the steps she took are real")
+	s.Equal([]string{"session:sess"}, saved.Report.Failed,
+		"the window she owes did not — this is a repair, not a retry")
+}
+
+// TestATotalSaveFailureNamesOnlyWhatWasAttempted is the contrast that gives the
+// test above its meaning: a report naming one failure and nothing written is a
+// different situation from one naming a success and a failure.
+func (s *SuspendTestSuite) TestATotalSaveFailureNamesOnlyWhatWasAttempted() {
+	s.startAmbush()
+
+	encounters := &failingEncounters{fakeEncounters: s.encounters, saveErr: errBroken}
+	mgr := managerOverRepos(s.T(), s.sessions, encounters)
+
+	_, err := mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 2}},
+	})
+	s.Require().Error(err)
+
+	var saved *session.SaveError
+	s.Require().ErrorAs(err, &saved)
+	s.Empty(saved.Report.Written, "nothing landed")
+	s.Equal([]string{"encounter:world"}, saved.Report.Failed)
 }
 
 // TestHostileSessionBlobIsRejectedNotCrashed pins reject-never-crash on the new

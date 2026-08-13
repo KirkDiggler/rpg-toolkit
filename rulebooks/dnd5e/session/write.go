@@ -342,8 +342,11 @@ type writeScope struct {
 func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *encounter.EncounterData, error) {
 	data := scope.enc.ToData()
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
-		return SaveReport{Failed: []string{"encounter:" + scope.encounter}}, nil,
-			fmt.Errorf("saving world: %w: %w", ErrSaveFailed, err)
+		report := SaveReport{Failed: []string{"encounter:" + scope.encounter}}
+		return report, nil, &SaveError{
+			Report: report,
+			Err:    fmt.Errorf("saving world: %w", err),
+		}
 	}
 	report := SaveReport{Written: []string{"encounter:" + scope.encounter}}
 
@@ -358,7 +361,10 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 		// to tell a total failure from a half one, which is the difference
 		// between "retry the verb" and "the world moved but the window is gone".
 		report.Failed = append(report.Failed, "session:"+scope.session)
-		return report, nil, fmt.Errorf("saving session: %w: %w", ErrSaveFailed, err)
+		return report, nil, &SaveError{
+			Report: report,
+			Err:    fmt.Errorf("saving session: %w", err),
+		}
 	}
 	report.Written = append(report.Written, "session:"+scope.session)
 	return report, &data, nil
