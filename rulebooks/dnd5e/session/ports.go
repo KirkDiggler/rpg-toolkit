@@ -77,3 +77,39 @@ type EventStream interface {
 	// Publish delivers a batch of already-projected events.
 	Publish(ctx context.Context, events []Event) error
 }
+
+// Concurrency: two doors deliberately left open.
+//
+// Every verb loads, acts and saves (S4), so nothing is cached between calls and
+// a stale in-memory world can never overwrite a fresh one. What that does NOT
+// prevent is two genuinely simultaneous requests against one session: both load
+// the same world, both apply their change, both save, and the later write wins
+// while the earlier action vanishes. No failure is required for this — only two
+// players acting at the same moment.
+//
+// It is unaddressed on purpose. The game is turn-based, a host can serialise
+// per session trivially, and committing to a concurrency model before real
+// contention exists would be guessing. But the doors are worth keeping open,
+// and they do not cost the same:
+//
+// PESSIMISTIC — free to add later. Locking must NOT arrive as a method on
+// SessionRepository: adding one to an existing interface stops every host
+// compiling. It arrives as a separate optional capability the manager
+// type-asserts for, the way spatial.BoundaryAwareRoom already works in this
+// codebase:
+//
+//	type SessionLocker interface {
+//	    LockSession(ctx context.Context, id string) (release func(), err error)
+//	}
+//
+// Hosts that implement it get serialised sessions; hosts that do not keep
+// working exactly as they do today. Nothing needs to exist for this to remain
+// possible, which is why nothing does.
+//
+// OPTIMISTIC — cheaper if decided early. A version on the blob, with SaveSession
+// rejecting a stale write, needs the field to have been there all along;
+// retrofitting means a data migration and a change to what SaveSession is
+// permitted to do. Deliberately not added yet: a version nobody increments is
+// worse than no version, because it reads as a guarantee it does not provide,
+// and a migration on a pre-1.0 module whose consumer has not adopted it is
+// about as cheap as migrations get.
