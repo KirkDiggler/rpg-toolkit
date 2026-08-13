@@ -1,8 +1,14 @@
 # Session SDK — design
 
-**Status:** proposed, not ratified. Derived from `scenes.md`, which was written
-before opening the old code. Where this document and the scenes disagree, the
-scenes win — they are the contract; this is the shape that serves them.
+**Status:** ratified through wave 1. Waves 0 and 1 shipped
+(`encounter/v0.4.0`, `session/v0.1.0`); waves 2–5 remain the plan of record.
+Where implementation corrected the design, this document carries the correction
+*and the reason* rather than a quiet rewrite — those reasons are the most
+reusable thing here.
+
+Derived from `scenes.md`, which was written before opening the old code. Where
+this document and the scenes disagree, the scenes win — they are the contract;
+this is the shape that serves them.
 
 **Module:** `rulebooks/dnd5e/session`, its own Go module with its own `go.mod`,
 its own semver, and its own `gorelease` gate from the first tag.
@@ -21,7 +27,7 @@ here rather than in the module that owns that rule, this document has been
 violated.
 
 ```
-        rpg-api  ──implements──▶  ports (Get/Save)
+        rpg-api  ──implements──▶  repositories (Get/Save)
            │
            └──calls──▶  session.Manager
                              │
@@ -36,7 +42,7 @@ violated.
 
 ## What it is not
 
-- **Storage.** The server owns that, behind ports.
+- **Storage.** The server owns that, behind repositories.
 - **Authoring.** Encounters, maps, and monster definitions come from content
   pipelines, not from here.
 - **Transport.** gRPC, protos, and streams are rpg-api's.
@@ -56,7 +62,7 @@ SDK-owned types and stable value types (`spatial.Position`) only. Never
 `encounter.MoveOutput`, never a combat result. The instant one leaks, replacing
 that module becomes a breaking change and the version-bump promise is void.
 
-**S3 — Repositories trade in data.** Ports accept and return persistence
+**S3 — Repositories trade in data.** They accept and return persistence
 shapes. Hydration happens inside, where the laws are. The server stays dumb
 storage.
 
@@ -80,9 +86,18 @@ it needs. No lazy discovery at call time, no nil-panic three verbs later.
 
 ---
 
-## Ports
+## Repositories
 
-**S12 — Ports are key-value.** Every operation is get-by-id or put-by-id. No
+**They are called repositories, not ports and not adapters** — a naming
+correction Kirk made before the first tag, and worth recording because it is the
+kind of thing that gets re-litigated. "Port" reads as a TCP port or as porting
+software, and carries hexagonal-architecture baggage nobody here signed up for.
+"Adapter" is worse: an adapter sits *between* two parties that cannot speak
+directly, and there is no such gap here — the game server implements our
+interface and calls us. What these things do is fetch and store records by
+identity. That is a repository, so that is the word.
+
+**S12 — Repositories are key-value.** Every operation is get-by-id or put-by-id. No
 queries, no scans, no joins, no sorts. The SDK never asks storage a question it
 cannot answer with a key. This is what keeps Redis (the game's actual store)
 viable forever and makes it structurally impossible to back into requiring a
@@ -99,12 +114,12 @@ type CharacterRepository interface { /* character.Data — arrives with entities
 
 **`CharacterRepository` is deferred to the entities wave, not defined up front**
 — a correction the implementation forced. `character` is a package *inside* the
-large `rulebooks/dnd5e` module, so declaring the port early would take a
-permanent dependency on combat, conditions, and spells to satisfy a port that
+large `rulebooks/dnd5e` module, so declaring it early would take a permanent
+dependency on combat, conditions, and spells to satisfy a repository that
 nothing calls until entities exist; the free-roam verbs need only member IDs.
 The same asymmetric-reversibility rule that governs `NPCRepository` applies:
 adding a `Config` field later is compatible, removing one a host has already
-implemented is not. Ports are introduced when something calls them.
+implemented is not. Repositories are introduced when something calls them.
 
 Each is get-by-id and put-by-id over exactly one shape.
 
@@ -134,13 +149,13 @@ validate. `SessionData` is ours, so the eventual migration is confined to this
 module.
 
 The reason to start here rather than with the repo is **asymmetric
-reversibility**. Adding a port to `Config` later is a compatible change: a new
-optional field, implemented when it is needed. *Removing* one is not — the
-server has already written that implementation. So the cheap direction is to
-ship without `NPCRepository` and add it the day a durable NPC exists (a
-shopkeeper, a quest giver, a recurring villain who remembers being wounded).
-Shipping the port in the migration wave and then deciding NPCs were
-session-scoped would leave us carrying a port nobody uses.
+reversibility**. Adding a repository to `Config` later is a compatible change: a
+new field, implemented when it is needed. *Removing* one is not — the server has
+already written that implementation. So the cheap direction is to ship without
+`NPCRepository` and add it the day a durable NPC exists (a shopkeeper, a quest
+giver, a recurring villain who remembers being wounded). Shipping it in the
+migration wave and then deciding NPCs were session-scoped would leave us
+carrying a repository nobody uses.
 
 **Rejected: delete-on-death.** It loses the corpse. Players loot bodies, and
 "the ogre is dead but still lying there" is a state a session should be able to
@@ -158,11 +173,11 @@ Two things follow, and both were lost by an earlier draft that made
 
 - **Storage strategy becomes per-type and stays the server's business.** An
   encounter that lives in memory on a live server and checkpoints periodically
-  is invisible to the SDK — which is exactly what a port boundary is for, and a
-  good fit, since a path walk should not round-trip Redis per step. A wrapper
-  would have welded the encounter's storage to the session's permanently. S1 is
-  unaffected: the *manager* holds no state; what sits behind a port is not the
-  manager's concern.
+  is invisible to the SDK — which is exactly what the repository boundary is
+  for, and a good fit, since a path walk should not round-trip Redis per step. A
+  wrapper would have welded the encounter's storage to the session's
+  permanently. S1 is unaffected: the *manager* holds no state; what sits behind a
+  repository is not the manager's concern.
 - **Writes stay proportional to what changed.** Opening an interrupt window
   writes a small session blob rather than rewriting every room, connection, and
   member of the tomb. Within a single verb it is one load and one save
@@ -173,7 +188,7 @@ a decision explicitly deferred (see *Observable failure*), and paid for it in
 composability. Repo-per-type accepts multi-blob writes and reports their
 failures instead.
 
-There is deliberately **no content port.** Authored content — the tomb, a
+There is deliberately **no content repository.** Authored content — the tomb, a
 monster template — is handed in as a parameter at the moment it is needed,
 because the server already knows where its own content lives and that lookup
 happens once per session rather than once per verb:
@@ -186,18 +201,18 @@ mgr.StartSession(ctx, &StartSessionInput{
 ```
 
 If content-fetching becomes real (item catalogs when shopping lands), it can
-arrive later as an optional capability without breaking anything.
+arrive later as an added `Config` field without breaking anything.
 
-Note the deliberate exception to S2: **port signatures reference the inner
+Note the deliberate exception to S2: **repository signatures reference the inner
 modules' `Data` types**, because the server persists exactly those bytes. This
 is the one place inner types are legal, and it is why they are `Data` types —
 persistence shapes are the slowest-changing surface we own, and they already
 carry a compatibility discipline. Domain types stay hidden.
 
-`NotFound` must be distinguishable. Ports return a sentinel the manager can
-test, so "no such session" is a clean rejection rather than a mystery.
+`NotFound` must be distinguishable. Repositories return a sentinel the manager
+can test, so "no such session" is a clean rejection rather than a mystery.
 
-### The log wants bounding, not a port
+### The log wants bounding, not a repository
 
 `record.LogData` lives inside `EncounterData` and **is never trimmed** — there
 are zero calls to `TrimBefore` anywhere in the composition. So the log grows for
@@ -246,16 +261,22 @@ alongside it. It is small and self-contained enough to ship on its own.
 
 ```go
 mgr, err := session.NewManager(&session.Config{
-    Characters: charRepo,
-    Encounters: encRepo,
-    Sessions:   sessRepo,
-    Events:     stream,   // optional capability
+    Sessions:   sessRepo,  // SessionData
+    Encounters: encRepo,   // encounter.EncounterData
+    Events:     stream,    // required — see "The event stream"
 })
 ```
 
-Missing a required port fails construction with an error naming it (S8). Which
-ports are required is a function of which capabilities the config declares —
-the open question in `scenes.md` about capability configs lands here.
+**Everything in `Config` is required.** Missing any component fails construction
+with an error naming it (S8), checked in a fixed order so the first complaint is
+deterministic. `CharacterRepository` is absent because nothing calls it yet, not
+because it is optional.
+
+This settles the capability-config question `scenes.md` left open, and settles it
+by deleting it: there are no optional components, so `Config` never became
+capability-shaped. A host that genuinely wants no fan-out passes the
+`DiscardEvents` stream we ship — an explicit choice at a call site rather than an
+absence the manager has to tolerate everywhere downstream.
 
 ---
 
@@ -355,9 +376,14 @@ type SessionData struct {
     Encounter string               `json:"encounter"` // by ID
     Windows   interrupt.LedgerData `json:"windows"`
     Frozen    []byte               `json:"frozen,omitempty"`
-    NPCs      []npc.Data           `json:"npcs,omitempty"` // session-scoped; see Ports
+    NPCs      []npc.Data           `json:"npcs,omitempty"` // session-scoped; see Repositories
 }
 ```
+
+**Shipped so far: `ID` and `Encounter` only.** `Windows` and `Frozen` arrive
+with the interrupt spine (wave 2), `NPCs` with entities (wave 3) — each added
+the wave that first writes to it, since a persisted field nothing populates is a
+shape we would be committed to before learning whether it is right.
 
 Small, and written only when session state actually changes. The encounter
 never learns what an interrupt window is; the session module validates session
@@ -418,7 +444,8 @@ type Entry struct {
 
 Ordering, gap detection, a causality token, delivery scoping, filterable
 metadata, content. The composition appends one for every state change. There is
-no stream to build — only a delivery port to attach to the log we already write.
+no stream to build — only a delivery interface to attach to the log we already
+write.
 
 ### Why it cannot live above us
 
@@ -460,7 +487,7 @@ respect to the game. That is deliberately left as the composition's problem —
 and it is the layering working, since scoping audiences there fixes the stream
 here for free.
 
-### Port
+### The interface
 
 ```go
 type EventStream interface {
@@ -468,10 +495,25 @@ type EventStream interface {
 }
 ```
 
-Optional capability: a single-player setup, a test, or a headless simulation
-constructs without one and simply produces no stream. This is the first case
-that makes `Config` capability-shaped rather than all-required, which settles
-the port-granularity open question in `scenes.md`.
+**RULED — the stream is required, not optional.** An earlier draft of this
+document had it as an opt-in multiplayer capability. That was wrong twice over,
+and Kirk caught it before the first tag.
+
+Wrong on the game: a verb's return value carries what *that caller* needs to
+know, and it structurally cannot carry what happened to everyone else. Single-
+player and multiplayer alike render from the stream — it is the live channel, not
+a fan-out feature bolted onto one. A single-player client with no stream sees its
+own moves and nothing the world does back.
+
+Wrong on the timing, which is the more general lesson: **this package is being
+introduced here.** No host has implemented `Config` yet, so requiring the stream
+today costs exactly nothing. Requiring it in v0.3.0 would break every host that
+took us up on the option. Loosening a rule later is compatible; tightening it is
+not — so a rule we are even slightly inclined toward belongs in the first tag,
+where the reversible direction is still available. This is the same asymmetry
+that deferred `CharacterRepository`, pointing the other way.
+
+A host that truly wants no fan-out passes `DiscardEvents`, which we ship.
 
 `Event` is an **SDK-owned envelope**, not `record.Entry` re-exported — settled
 by the proto mapping, and forced independently by S11. See "Shaped for the
@@ -530,8 +572,8 @@ None of this is customer-visible; all of it can change under a compatible tag.
 
 ## Open questions carried forward
 
-From `scenes.md`, unresolved and listed here so they are not lost: port
-granularity under capability configs; whether monsters are authored into an
+From `scenes.md`, unresolved and listed here so they are not lost: whether
+monsters are authored into an
 encounter or joined by the server; how itemized an attack result should be;
 reaction economy without rounds; whether monsters answer their own windows
 synchronously; and where the manager's durable state lives.

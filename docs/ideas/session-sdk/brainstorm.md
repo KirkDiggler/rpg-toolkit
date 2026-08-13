@@ -95,7 +95,7 @@ Two things then come free, with no new encounter code:
 
 ```go
 mgr, err := session.NewManager(&session.Config{
-    Characters: charRepo,   // GetCharacter / SaveCharacter
+    Characters: charRepo,   // superseded — see design.md
     Encounters: encRepo,    // superseded — see design.md
     Monsters:   monRepo,    // superseded — see design.md
 })  // refuses to construct without everything it needs
@@ -133,8 +133,8 @@ didn't.
 verb reports what it persisted and what it didn't; a partial save is an error
 that names the pieces rather than a silent shrug. The elegant answer will show
 itself once real use cases exist. (The shape it might take: a `WithTx`-style
-port the server implements however its database wants, and an in-memory test
-implementation no-ops.)
+interface the server implements however its database wants, and an in-memory
+test implementation no-ops.)
 
 ---
 

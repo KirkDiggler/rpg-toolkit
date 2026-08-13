@@ -14,28 +14,28 @@ answer isn't obvious, it is marked **OPEN** rather than guessed.
 
 ## Scene 0 — Standing the manager up
 
-The game server owns storage and nothing else. It implements the ports; the
-manager refuses to exist without them.
+The game server owns storage and delivery, and nothing else. It implements the
+repositories and the stream; the manager refuses to exist without them.
 
 ```go
 mgr, err := session.NewManager(&session.Config{
-    Characters: charRepo,   // character.Data
-    Encounters: encRepo,    // encounter.EncounterData
-    // no NPC repo yet — monsters are session-scoped; see design.md
     Sessions:   sessRepo,   // windows, frozen resolution, session NPCs
-    Events:     stream,     // optional: multiplayer fan-out
+    Encounters: encRepo,    // encounter.EncounterData
+    Events:     stream,     // required — the live channel, not a multiplayer add-on
+    // no NPC repo yet — monsters are session-scoped; see design.md
+    // no character repo yet — nothing calls it until entities land; see design.md
 })
 ```
 
-- Missing any required port → construction fails with a named error. No lazy
+- Missing any component → construction fails with a named error. No lazy
   discovery at call time, no nil-panic three verbs later.
 - Repositories trade in **data**, not domain objects. Reconstitution happens
   inside, where the laws are.
 
-- Every port operation is **get-by-id or put-by-id**. No queries, no scans, no
-  joins. The game's store is Redis and the access patterns are key-value; the
-  SDK must never require more than that.
-- **No content port.** The authored tomb is handed in at `StartSession`, since
+- Every repository operation is **get-by-id or put-by-id**. No queries, no
+  scans, no joins. The game's store is Redis and the access patterns are
+  key-value; the SDK must never require more than that.
+- **No content repository.** The authored tomb is handed in at `StartSession`, since
   the server already knows where its content lives and that lookup happens once
   per session rather than once per verb.
 - **One repository per data type**, never one that saves everything. Clock and

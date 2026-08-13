@@ -16,8 +16,8 @@ gate from the first tag.
 
 | Wave | Ships | Tag | Needs |
 |---|---|---|---|
-| **0** | Encounter log retention | `encounter/v0.4.0` | — |
-| **1** | Shell, free-roam verbs, event stream | `session/v0.1.0` | — |
+| **0** ✅ | Encounter log retention | `encounter/v0.4.0` | — |
+| **1** ✅ | Shell, free-roam verbs, event stream | `session/v0.1.0` | — |
 | **2** | The interrupt spine, proven by the perception pause | `session/v0.2.0` | 1 |
 | **3** | Entities on the bus — characters, NPCs, conditions | `session/v0.3.0` | 1 |
 | **4** | Combat | `session/v0.4.0` | 2, 3 |
@@ -61,16 +61,16 @@ retention bound by one and the retention pin must fail.
 **Goal:** every public type in the SDK exists and is correct. The logic behind
 them is mostly delegation.
 
-**T1.1 — module, `Config`, `NewManager`.** Ports (`Characters`, `Encounters`,
-`Sessions`, optional `Events`), fail-fast construction naming what is missing
-(S8), a distinguishable `NotFound` sentinel, and every port get-by-id /
-put-by-id only (S12).
-*Pins:* construction refuses each required port individually, by name; a config
-with only the optional port missing succeeds.
+**T1.1 — module, `Config`, `NewManager`.** The repositories (`Sessions`,
+`Encounters`) plus the required `Events` stream, fail-fast construction naming
+what is missing (S8), a distinguishable `NotFound` sentinel, and every
+repository get-by-id / put-by-id only (S12).
+*Pins:* construction refuses each component individually, by name, in a fixed
+order; the full config succeeds.
 
 **T1.2 — `SessionData`, `StartSession`, load/save.** The session aggregate, its
 `ToData`/`LoadSession` discipline, the authored encounter handed in as a
-parameter rather than fetched (no content port).
+parameter rather than fetched (no content repository).
 *Pins:* round-trip is byte-identical; a hostile hand-edited blob is rejected,
 not crashed (reject-never-crash); an unknown encounter reference is a clean
 rejection.
@@ -196,7 +196,7 @@ retires T3, and may push that wave ahead of this one.
   behind the whole strategy; if it cannot be made precise, the version-bump
   promise degrades to a convention and wave 1 needs rethinking.
 - **Stateless-per-call proves too slow** once entities load on every verb. The
-  design's answer is that this is the server's problem behind a port (an
+  design's answer is that this is the server's problem behind a repository (an
   in-memory checkpointing encounter repository), but that answer is untested.
 - **The perception pause turns out to need entity state** — if "should Alice
   stop?" depends on anything on her sheet, wave 2 gains a dependency on wave 3
