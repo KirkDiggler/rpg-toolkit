@@ -243,6 +243,21 @@ While that call runs, the stream receives:
 Same beat, three payloads. This is why the fan-out cannot live above us: the
 difference between those three is intel, and intel is a rule.
 
+> **Not true yet — [toolkit#940](https://github.com/KirkDiggler/rpg-toolkit/issues/940).**
+> Implementing this scene revealed that the composition addresses *every* beat
+> to *every* member, unconditionally. `record` has per-viewer filtering and
+> `intel` models perception, but the composition never connects them, so Dave
+> currently hears exactly what Bob and Carol hear.
+>
+> It was harmless while the story was a *query* a host could filter. Making it a
+> *push* channel promotes `Audience` from advisory to load-bearing, and turns an
+> untidy default into a fog-of-war leak.
+>
+> The fix belongs in the composition, not here — filtering in the SDK would put
+> a second implementation of visibility outside the module that owns perception,
+> and the first disagreement between them is a leak. The layering holds: when
+> audiences are scoped, this fan-out inherits the fix with no changes at all.
+
 If the publish fails, the verb still succeeds. Every beat carries a gapless
 `Seq`, so a client that missed one notices the hole and re-queries `Story` from
 its last known sequence. The log is the truth; the stream is a fast path.

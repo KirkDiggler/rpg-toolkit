@@ -447,6 +447,19 @@ motivating case: the actor's client needs the options; everyone else needs
 "waiting on Alice" *without* them, because options leak — offering an
 opportunity attack reveals that a threatener exists and roughly where.
 
+The audience question is answered by *asking the composition*, never by
+re-deriving visibility here. That is the load-bearing half: a second
+implementation of who-may-know, living outside the module that owns perception,
+would eventually disagree with the first, and a disagreement about visibility is
+a leak.
+
+**Implementation note:** the composition currently addresses every beat to every
+member ([toolkit#940](https://github.com/KirkDiggler/rpg-toolkit/issues/940)),
+so today's fan-out is correct with respect to its contract and too generous with
+respect to the game. That is deliberately left as the composition's problem —
+and it is the layering working, since scoping audiences there fixes the stream
+here for free.
+
 ### Port
 
 ```go
