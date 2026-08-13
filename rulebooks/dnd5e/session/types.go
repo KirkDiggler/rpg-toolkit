@@ -3,12 +3,7 @@
 
 package session
 
-import (
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-)
+import "github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 // The types below are this package's own twins of what the composition
 // returns, and the functions translating into them are the price of S2.
@@ -190,134 +185,90 @@ type StoryEntry struct {
 	Payload []byte `json:"payload,omitempty"`
 }
 
-// projectGrid maps a room's grid family onto the wire enum.
+// EventKind names what an event reports.
 //
-// An unrecognised shape yields the empty string rather than a guess. It is
-// unreachable — the composition rejects unknown grid families at both Setup
-// and Load — but inventing a plausible value for something we do not
-// understand would turn an impossible state into a wrong answer, which is
-// strictly worse than an obviously absent one.
-func projectGrid(shape spatial.GridShape) GridKind {
-	switch shape {
-	case spatial.GridShapeSquare:
-		return GridSquare
-	case spatial.GridShapeHex:
-		return GridHex
-	default:
-		return ""
-	}
-}
+// A string enum rather than free-form prose, because this is the field clients
+// branch on: it must be machine-readable and stable, and it maps directly onto
+// a proto enum. Adding a kind is compatible; changing what an existing one
+// means is not.
+type EventKind string
 
-func projectAtlas(in encounter.Atlas) Atlas {
-	out := Atlas{
-		Rooms:    make([]AtlasRoom, 0, len(in.Rooms)),
-		Doorways: make([]AtlasDoorway, 0, len(in.Doorways)),
-	}
+const (
+	// EventMoved reports that a member moved to a new position.
+	EventMoved EventKind = "moved"
 
-	for _, room := range in.Rooms {
-		projected := AtlasRoom{
-			ID:         room.ID,
-			Grid:       projectGrid(room.Grid),
-			Origin:     room.Origin,
-			Width:      room.Width,
-			Height:     room.Height,
-			Cells:      append([]spatial.Position(nil), room.Cells...),
-			Occluders:  append([]spatial.Position(nil), room.Occluders...),
-			Boundaries: make([]AtlasBoundary, 0, len(room.Boundaries)),
-		}
-		for _, b := range room.Boundaries {
-			projected.Boundaries = append(projected.Boundaries, AtlasBoundary{
-				From:              b.From,
-				To:                b.To,
-				BlocksMovement:    b.BlocksMovement,
-				BlocksLineOfSight: b.BlocksLineOfSight,
-			})
-		}
-		out.Rooms = append(out.Rooms, projected)
-	}
+	// EventDiscovered reports that a member perceived something new.
+	EventDiscovered EventKind = "discovered"
 
-	for _, d := range in.Doorways {
-		out.Doorways = append(out.Doorways, AtlasDoorway{
-			Connection: d.Connection,
-			From:       d.From,
-			FromCell:   d.FromCell,
-			To:         d.To,
-			ToCell:     d.ToCell,
-		})
-	}
+	// EventJoined reports that a member entered the encounter.
+	EventJoined EventKind = "joined"
 
-	return out
-}
+	// EventExited reports that a member left the encounter.
+	EventExited EventKind = "exited"
 
-func projectStatus(in *encounter.Status) *Status {
-	if in == nil {
-		return nil
-	}
-	out := &Status{Open: in.Open}
-	if in.Outcome == nil {
-		return out
-	}
+	// EventEnded reports that the encounter closed.
+	EventEnded EventKind = "ended"
 
-	outcome := &Outcome{
-		Ending:  in.Outcome.Ending,
-		At:      in.Outcome.At,
-		Members: make([]MemberOutcome, 0, len(in.Outcome.Members)),
-	}
-	for _, m := range in.Outcome.Members {
-		outcome.Members = append(outcome.Members, MemberOutcome{
-			ID:       string(m.ID),
-			Room:     m.Room,
-			Position: m.Position,
-		})
-	}
-	out.Outcome = outcome
-	return out
-}
+	// EventPending reports that the world is frozen awaiting an answer.
+	EventPending EventKind = "pending"
+)
 
-func projectSightings(in []intel.Holding) []Sighting {
-	out := make([]Sighting, 0, len(in))
-	for _, h := range in {
-		via := make([]string, 0, len(h.CurrentVia))
-		for _, c := range h.CurrentVia {
-			via = append(via, string(c))
-		}
-		out = append(out, Sighting{
-			Subject:    string(h.Subject),
-			Payload:    append([]byte(nil), h.Payload...),
-			Channel:    string(h.Channel),
-			At:         h.At,
-			CurrentVia: via,
-			Status:     string(h.Status),
-		})
-	}
-	return out
-}
-
-// projectStory drops each entry's audience roster deliberately.
+// Event is one thing that happened, addressed to one recipient.
 //
-// A story is queried by one viewer, and the roster names every OTHER viewer a
-// beat was addressed to. Handing that back would tell Alice which members
-// exist and were present for something — including members she has never
-// perceived, and members in rooms she has never entered. The audience is a
-// delivery rule, not story content, and it is the composition's business
-// rather than the host's.
-func projectStory(in []record.Entry) []StoryEntry {
-	out := make([]StoryEntry, 0, len(in))
-	for _, e := range in {
-		var tags map[string]string
-		if len(e.Tags) > 0 {
-			tags = make(map[string]string, len(e.Tags))
-			for k, v := range e.Tags {
-				tags[k] = v
-			}
-		}
-		out = append(out, StoryEntry{
-			Seq:         e.Seq,
-			At:          e.At,
-			Correlation: e.Correlation,
-			Tags:        tags,
-			Payload:     append([]byte(nil), e.Payload...),
-		})
-	}
-	return out
+// Deliberately flat and non-polymorphic: it maps onto a proto message, so no
+// interface-valued fields, no type switches on the wire, and no payload shape
+// that varies by kind in a way a generated client cannot express.
+//
+// An Event is per-recipient, not per-occurrence. The same underlying beat
+// becomes several Events, one for each viewer who may know about it, and their
+// payloads may differ — a player being offered a choice receives the choices,
+// while everyone else receives only that the world is waiting. Projection is a
+// rule, decided where perception lives; filtering a single shared payload would
+// mean the difference between viewers was a delivery detail, and the first
+// mistake would leak something unperceived.
+type Event struct {
+	// Session is the session this event belongs to.
+	Session string `json:"session"`
+
+	// Seq is the story sequence this event was derived from: monotonic,
+	// gapless, and never renumbered. A recipient that notices a gap in Seq has
+	// missed an event and can re-query the story from its last known value.
+	Seq uint64 `json:"seq"`
+
+	// At is the clock reading when the underlying beat was recorded.
+	At uint64 `json:"at,omitempty"`
+
+	// Correlation groups cause and effect across events. Empty is legal.
+	Correlation string `json:"correlation,omitempty"`
+
+	// Recipient is the member this projection is addressed to.
+	Recipient string `json:"recipient"`
+
+	// Kind names what happened.
+	Kind EventKind `json:"kind"`
+
+	// Payload is the kind-specific body, encoded by this package.
+	Payload []byte `json:"payload,omitempty"`
+}
+
+// SaveReport names which aggregates were persisted by a verb and which were
+// not.
+//
+// Every verb returns one, and a partial write returns an error carrying a
+// populated report rather than a bare failure (S6). The distinction is
+// load-bearing for the host: "nothing was written" is safe to retry, while
+// "the encounter advanced but the character did not" is a repair, and an
+// unqualified error cannot tell them apart.
+type SaveReport struct {
+	// Written names the aggregates that were persisted successfully.
+	Written []string `json:"written,omitempty"`
+
+	// Failed names the aggregates that could not be persisted.
+	Failed []string `json:"failed,omitempty"`
+}
+
+// Partial reports whether this save landed some aggregates but not all — the
+// state that needs repair rather than retry.
+func (r SaveReport) Partial() bool {
+	return len(r.Written) > 0 && len(r.Failed) > 0
 }
