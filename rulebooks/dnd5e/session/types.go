@@ -315,6 +315,53 @@ type Member struct {
 	Room string `json:"room"`
 }
 
+// CharacterState is what a loaded character reports about itself.
+//
+// This package's own twin, not character.Data: the stored shape is what the
+// host persists, while this is what one call observed after reconstitution.
+// Read through the character's accessors rather than by serialising it, so this
+// stays a cheap read.
+//
+// Most of these fields are reported as loaded. SPEED is the exception and the
+// interesting one: it is not stored on a character at all, but derived from
+// race when asked, which is why it is the value the tests use to prove a sheet
+// genuinely reconstituted rather than that a repository returned some bytes.
+//
+// Deliberately small. It carries what a client needs to render a member and
+// what proves the load happened; the sheet in full is the host's own copy to
+// read, and re-exporting it here would make character.Data's every field a wire
+// commitment of this package.
+type CharacterState struct {
+	// ID is the character's identifier.
+	ID string `json:"id"`
+
+	// Name is the character's name.
+	Name string `json:"name"`
+
+	// Level is the character's level.
+	Level int `json:"level"`
+
+	// Speed is the character's BASE walking speed in feet, from race.
+	//
+	// Base, not effective: condition-driven modifiers (Unarmored Movement and
+	// the like) are applied during resolution through the movement chain, not
+	// folded in here. A client rendering this is showing the sheet's speed, not
+	// what the next step will cost.
+	Speed int `json:"speed"`
+
+	// HitPoints is the character's current hit points.
+	HitPoints int `json:"hit_points"`
+
+	// MaxHitPoints is the character's hit point maximum.
+	MaxHitPoints int `json:"max_hit_points"`
+
+	// ArmorClass is the character's current armour class.
+	ArmorClass int `json:"armor_class"`
+
+	// ProficiencyBonus is the character's proficiency bonus.
+	ProficiencyBonus int `json:"proficiency_bonus"`
+}
+
 // Discovery is what changed in one observer's perception.
 //
 // Three disjoint lists rather than a single "here is everything you now

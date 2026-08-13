@@ -21,7 +21,10 @@ import (
 	"os"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -89,6 +92,48 @@ func (m *memEncounters) SaveEncounter(_ context.Context, id string, data *encoun
 	return nil
 }
 
+// memCharacters is a CharacterRepository over a map.
+//
+// The host owns character storage; this package only ever asks for one by ID
+// and hands back data. Nothing here holds a loaded character, because nothing
+// can: a character lives for one verb.
+type memCharacters struct {
+	byID map[string]*character.Data
+}
+
+func (m *memCharacters) GetCharacter(_ context.Context, id string) (*character.Data, error) {
+	data, ok := m.byID[id]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (m *memCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
+	m.byID[data.ID] = data
+	return nil
+}
+
+// bobTheDwarf is the stored sheet the workbench loads.
+//
+// Note what is NOT here: speed. It is derived from race when the character is
+// reconstituted, which is why the transcript printing 25 is evidence the load
+// really happened rather than evidence a map lookup returned something.
+func bobTheDwarf() *character.Data {
+	return &character.Data{
+		ID:               "bob",
+		PlayerID:         "player-bob",
+		Name:             "Bob",
+		Level:            3,
+		ProficiencyBonus: 2,
+		RaceID:           races.Dwarf,
+		ClassID:          classes.Fighter,
+		HitPoints:        24,
+		MaxHitPoints:     28,
+		ArmorClass:       16,
+	}
+}
+
 // printStream shows the fan-out as it happens, one line per addressed event —
 // which is what a host would be shipping to each connected client.
 type printStream struct{ out *bytes.Buffer }
@@ -108,6 +153,7 @@ func drive(out *bytes.Buffer) error {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   &memSessions{byID: map[string]*session.SessionData{}},
 		Encounters: &memEncounters{byID: map[string]*encounter.EncounterData{}},
+		Characters: &memCharacters{byID: map[string]*character.Data{"bob": bobTheDwarf()}},
 		Events:     &printStream{out: out},
 	})
 	if err != nil {
@@ -134,6 +180,14 @@ func drive(out *bytes.Buffer) error {
 		return err
 	}
 	fmt.Fprintf(out, "   bob joins the %s\n", joined.Member.Room)
+
+	// The sheet came back derived, not echoed. Speed is not a field of the
+	// stored data at all — a dwarf's 25 comes from reconstituting the
+	// character and asking it, which is the whole point of loading here.
+	if c := joined.Character; c != nil {
+		fmt.Fprintf(out, "   %s, level %d — %d/%d hp, ac %d, speed %d\n",
+			c.Name, c.Level, c.HitPoints, c.MaxHitPoints, c.ArmorClass, c.Speed)
+	}
 
 	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "crypt-run"})
 	if err != nil {

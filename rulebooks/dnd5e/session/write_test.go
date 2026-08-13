@@ -19,14 +19,16 @@ type WriteTestSuite struct {
 
 	sessions   *fakeSessions
 	encounters *fakeEncounters
+	characters *fakeCharacters
 	mgr        *session.Manager
 }
 
 func (s *WriteTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
+	s.characters = testCharacters()
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: s.sessions, Encounters: s.encounters,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -192,7 +194,7 @@ func (s *WriteTestSuite) TestWriteVerbsRejectMissingIdentifiers() {
 func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -227,7 +229,7 @@ func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 	ctx := context.Background()
 
 	other, err := session.NewManager(&session.Config{
-		Sessions: s.sessions, Encounters: s.encounters,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

@@ -34,8 +34,8 @@ func Example_theSession() {
 	// The host's entire integration: two stores.
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   newFakeSessions(),
-		Encounters: newFakeEncounters(),
-		Events:     session.DiscardEvents{},
+		Encounters: newFakeEncounters(), Characters: testCharacters(),
+		Events: session.DiscardEvents{},
 	})
 	if err != nil {
 		panic(err)
@@ -137,7 +137,7 @@ func Example_theSession() {
 func Example_thePending() {
 	ctx := context.Background()
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	if err != nil {

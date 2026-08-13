@@ -23,12 +23,14 @@ type SuspendTestSuite struct {
 
 	sessions   *fakeSessions
 	encounters *fakeEncounters
+	characters *fakeCharacters
 	mgr        *session.Manager
 }
 
 func (s *SuspendTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
+	s.characters = testCharacters()
 	s.mgr = managerOver(s.T(), s.sessions, s.encounters)
 }
 
@@ -49,7 +51,7 @@ func managerOverRepos(
 	t fataler, sessions session.SessionRepository, encounters session.EncounterRepository,
 ) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: sessions, Encounters: encounters, Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	if err != nil {
 		t.Fatalf("building manager: %v", err)

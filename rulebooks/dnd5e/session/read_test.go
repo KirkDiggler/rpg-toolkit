@@ -22,14 +22,16 @@ type ReadTestSuite struct {
 
 	sessions   *fakeSessions
 	encounters *fakeEncounters
+	characters *fakeCharacters
 	mgr        *session.Manager
 }
 
 func (s *ReadTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
+	s.characters = testCharacters()
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: s.sessions, Encounters: s.encounters,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -180,7 +182,7 @@ func (s *ReadTestSuite) TestGridProjectionCoversBothFamilies() {
 
 	square := newFakeSessions()
 	squareEnc := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Sessions: square, Encounters: squareEnc,
+	mgr, err := session.NewManager(&session.Config{Sessions: square, Encounters: squareEnc, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

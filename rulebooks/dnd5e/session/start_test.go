@@ -61,6 +61,7 @@ type StartSessionTestSuite struct {
 
 	sessions   *fakeSessions
 	encounters *fakeEncounters
+	characters *fakeCharacters
 	mgr        *session.Manager
 	world      *encounter.EncounterData
 }
@@ -68,11 +69,12 @@ type StartSessionTestSuite struct {
 func (s *StartSessionTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
+	s.characters = testCharacters()
 
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   s.sessions,
-		Encounters: s.encounters,
-		Events:     session.DiscardEvents{},
+		Encounters: s.encounters, Characters: s.characters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -188,7 +190,7 @@ func (s *StartSessionTestSuite) TestExistingSessionIsNotOverwritten() {
 func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 	sessions := &failingSessions{fakeSessions: newFakeSessions(), getErr: errBroken}
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: sessions, Encounters: s.encounters,
+		Sessions: sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -216,7 +218,7 @@ func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 func (s *StartSessionTestSuite) TestBrokenRepositoryIsNotReadAsAnExistingSession() {
 	sessions := &nilDataSessions{fakeSessions: newFakeSessions()}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -268,7 +270,7 @@ func (s *StartSessionTestSuite) TestSuccessWritesWorldThenSession() {
 func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters(), saveErr: errBroken}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -289,7 +291,7 @@ func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 func (s *StartSessionTestSuite) TestSessionSaveFailureLeavesOnlyAnOrphan() {
 	sessions := &failingSessions{fakeSessions: newFakeSessions(), saveErr: errBroken}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
