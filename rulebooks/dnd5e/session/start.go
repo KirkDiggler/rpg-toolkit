@@ -119,23 +119,3 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 
 	return &StartSessionOutput{Session: in.Session, Saved: report}, nil
 }
-
-// loadSession fetches session state, translating the repository's ErrNotFound
-// into the manager's own vocabulary so hosts match on one set of sentinels
-// rather than two.
-func (m *Manager) loadSession(ctx context.Context, id string) (*SessionData, error) {
-	data, err := m.sessions.GetSession(ctx, id)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("%q: %w", id, ErrNoSession)
-		}
-		return nil, err
-	}
-	if data == nil {
-		// A repository reporting success with no data is broken, not empty.
-		// Treated as a miss rather than dereferenced, because a nil here would
-		// otherwise panic several frames later with no trace of its origin.
-		return nil, fmt.Errorf("%q: repository returned no data: %w", id, ErrNoSession)
-	}
-	return data, nil
-}
