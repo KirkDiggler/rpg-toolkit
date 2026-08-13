@@ -96,8 +96,8 @@ Two things then come free, with no new encounter code:
 ```go
 mgr, err := session.NewManager(&session.Config{
     Characters: charRepo,   // GetCharacter / SaveCharacter
-    Encounters: encRepo,    // GetEncounter / SaveEncounter
-    Monsters:   monRepo,
+    Encounters: encRepo,    // superseded — see design.md
+    Monsters:   monRepo,    // superseded — see design.md
 })  // refuses to construct without everything it needs
 
 out, err := mgr.Move(ctx, &session.MoveInput{
