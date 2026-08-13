@@ -92,13 +92,34 @@ relational database. It is a constraint on *us*, not a claim about the server.
 and emphatically not one repository that saves everything.
 
 ```go
-type CharacterRepository interface { /* character.Data           */ }
-type EncounterRepository interface { /* encounter.EncounterData  */ }
-type MonsterRepository   interface { /* monster instance data    */ }
-type SessionRepository   interface { /* SessionData — only       */ }
+type CharacterRepository interface { /* character.Data          — player characters   */ }
+type NPCRepository       interface { /* npc.Data                — monster is one type */ }
+type EncounterRepository interface { /* encounter.EncounterData — the world           */ }
+type SessionRepository   interface { /* SessionData             — windows + frozen    */ }
 ```
 
 Each is get-by-id and put-by-id over exactly one shape.
+
+**RULED — an NPC is an entity, not encounter furniture.** An earlier draft had
+monster instances living inside the session blob, which made a monster a
+different *kind of thing* from a character for no reason the domain supports.
+An NPC has its own shape and its own durable data, exactly like a character —
+so a wounded ogre that flees stays wounded, and a recurring villain who
+remembers the last fight is free rather than a special case.
+
+The composition already anticipates this: `Member` is `{ID, Kind, Room}`, and
+`Kind` is precisely the discriminator the manager uses to decide which
+repository an ID resolves against. Monster is one NPC type; shopkeepers, quest
+givers, and the priest a curse is watching for are others, and they outlive any
+single session regardless.
+
+**OPEN — the lifecycle of ephemeral NPCs.** A dungeon run spawns a dozen ogres,
+each now a durable record, and something must clean up. Leaning: the server's
+business, since a Redis TTL is the natural answer and this is a storage concern
+rather than a rules one. But the SDK may need to *signal* that an NPC is spent
+(died; session ended) rather than leaving the server to infer it — and "port
+method" versus "server policy" are different enough answers to want deciding
+before the first tag.
 
 The line is *composition versus reference*. Clock, intel, and record are **parts
 of** an encounter — no independent lifetime, no meaning apart from it — so they

@@ -21,7 +21,7 @@ manager refuses to exist without them.
 mgr, err := session.NewManager(&session.Config{
     Characters: charRepo,   // character.Data
     Encounters: encRepo,    // encounter.EncounterData
-    Monsters:   monRepo,    // monster instances
+    NPCs:       npcRepo,    // npc.Data — monster is one type
     Sessions:   sessRepo,   // open windows, frozen resolution
     Events:     stream,     // optional: multiplayer fan-out
 })
@@ -66,9 +66,11 @@ out, err := mgr.Join(ctx, &session.JoinInput{
   that is an error naming both — not a silent partial.
 - rpg-api never held Alice. It named her.
 
-Repeat for the rest of the party and for what's already lurking. **OPEN:**
-whether monsters are joined by the server or come with the authored encounter.
-The tomb probably knows its own ogre; a wandering one probably doesn't.
+Repeat for the rest of the party and for what's already lurking — an NPC joins
+the same way a character does, since `Member.Kind` is what tells the manager
+which repository the ID resolves against. **OPEN:** whether an encounter's
+resident NPCs are joined by the server or come with the authored content. The
+tomb probably knows its own ogre; a wandering one probably doesn't.
 
 ---
 
