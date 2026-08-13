@@ -19,9 +19,9 @@ manager refuses to exist without them.
 
 ```go
 mgr, err := session.NewManager(&session.Config{
-    Characters: charRepo,   // GetCharacter(ctx, id) (*character.Data, error) / SaveCharacter
-    Monsters:   monRepo,
-    Encounters: encRepo,
+    Characters: charRepo,   // GetCharacter / SaveCharacter — outlive sessions
+    Sessions:   sessRepo,   // GetSession   / SaveSession   — the play state
+    Events:     stream,     // optional: multiplayer fan-out
 })
 ```
 
@@ -30,10 +30,15 @@ mgr, err := session.NewManager(&session.Config{
 - Repositories trade in **data**, not domain objects. Reconstitution happens
   inside, where the laws are.
 
-**OPEN:** whether ports are one interface per aggregate (above) or a single
-`Repository` with many methods. Leaning per-aggregate — a server that has no
-monsters yet can still construct a character-creation-only manager, and the
-config can name which capabilities are present.
+- Every port operation is **get-by-id or put-by-id**. No queries, no scans, no
+  joins. The game's store is Redis and the access patterns are key-value; the
+  SDK must never require more than that.
+- **No content port.** The authored tomb is handed in at `StartSession`, since
+  the server already knows where its content lives and that lookup happens once
+  per session rather than once per verb.
+- The split is `Characters` (durable player property, outliving any session)
+  versus `Sessions` (encounter state, open windows, the frozen path, monster
+  instances — all meaningless once the run ends).
 
 ---
 

@@ -82,8 +82,14 @@ it needs. No lazy discovery at call time, no nil-panic three verbs later.
 
 ## Ports
 
-One interface per aggregate, so a server that has no monsters yet can still
-construct a character-creation-only manager.
+**S12 — Ports are key-value.** Every operation is get-by-id or put-by-id. No
+queries, no scans, no joins, no sorts. The SDK never asks storage a question it
+cannot answer with a key. This is what keeps Redis (the game's actual store)
+viable forever and makes it structurally impossible to back into requiring a
+relational database. It is a constraint on *us*, not a claim about the server.
+
+The split follows a real line in the domain: **characters outlive sessions;
+everything else in an encounter does not.**
 
 ```go
 type CharacterRepository interface {
@@ -91,13 +97,31 @@ type CharacterRepository interface {
     SaveCharacter(ctx context.Context, data *character.Data) error
 }
 
-type EncounterRepository interface {
-    GetEncounter(ctx context.Context, id string) (*encounter.EncounterData, error)
-    SaveEncounter(ctx context.Context, id string, data *encounter.EncounterData) error
+type SessionRepository interface {
+    GetSession(ctx context.Context, id string) (*SessionData, error)
+    SaveSession(ctx context.Context, data *SessionData) error
 }
-
-type MonsterRepository interface { /* symmetric */ }
 ```
+
+Alice's sheet is durable player property — it exists between runs and it is
+hers. The encounter state, the open windows, the frozen path, and the monster
+instances are all session-scoped: an ogre's remaining hit points mean nothing
+once the run ends.
+
+There is deliberately **no content port.** Authored content — the tomb, a
+monster template — is handed in as a parameter at the moment it is needed,
+because the server already knows where its own content lives and that lookup
+happens once per session rather than once per verb:
+
+```go
+mgr.StartSession(ctx, &StartSessionInput{
+    Session:   "sess-123",
+    Encounter: authoredTomb,
+})
+```
+
+If content-fetching becomes real (item catalogs when shopping lands), it can
+arrive later as an optional capability without breaking anything.
 
 Note the deliberate exception to S2: **port signatures reference the inner
 modules' `Data` types**, because the server persists exactly those bytes. This
@@ -106,7 +130,12 @@ persistence shapes are the slowest-changing surface we own, and they already
 carry a compatibility discipline. Domain types stay hidden.
 
 `NotFound` must be distinguishable. Ports return a sentinel the manager can
-test, so "no such encounter" is a clean rejection rather than a mystery.
+test, so "no such session" is a clean rejection rather than a mystery.
+
+**OPEN:** monster instances are assumed session-scoped, living inside
+`SessionData`, with templates handed in at spawn. If monsters must persist
+across sessions, that is a third repository and is much cheaper to decide now
+than to discover.
 
 ---
 
@@ -115,8 +144,8 @@ test, so "no such encounter" is a clean rejection rather than a mystery.
 ```go
 mgr, err := session.NewManager(&session.Config{
     Characters: charRepo,
-    Monsters:   monRepo,
-    Encounters: encRepo,
+    Sessions:   sessRepo,
+    Events:     stream,   // optional capability
 })
 ```
 
@@ -208,15 +237,35 @@ a window is open; any verb at all on a closed encounter.
 
 ## Persistence
 
-The manager's own durable state — the interrupt ledger and the frozen
-resolution bytes — needs a home. It rides in the **encounter's** blob rather
-than a third one, because its lifetime is exactly the encounter's and because
-a save that spans two blobs is a save that can half-fail.
+**RULED — `SessionData` wraps; the encounter stays pure.**
 
-**OPEN:** this means the encounter's `EncounterData` grows a field for state it
-does not interpret. That is a real cost against the aggregate purity we spent a
-wave hardening, and the alternative — a `SessionData` blob of our own — trades
-it for a second thing to keep consistent. Decide before the first tag.
+The manager's durable state — open interrupt windows and the frozen resolution
+— composes the encounter's blob rather than invading it. This is the same
+fractal one turn further out: `EncounterData` is already a wrapper carrying
+`clock.TickData`, `intel.Data`, and `record.LogData` alongside its own fields.
+
+```go
+type SessionData struct {
+    Encounter encounter.EncounterData `json:"encounter"`
+    Windows   interrupt.LedgerData    `json:"windows"`
+    Frozen    []byte                  `json:"frozen,omitempty"`
+    // monster instances — see the port OPEN above
+}
+```
+
+One blob, one save, atomic. The encounter never learns what a window is. The
+session module validates session state; the encounter validates encounter
+state; each keeps its own laws, and neither can be broken by the other's
+mistakes. The alternatives both cost something real: growing `EncounterData`
+with a field it cannot interpret would spend the aggregate purity we hardened
+last wave, and a second blob would hand us two things to keep consistent —
+which is exactly the partial-save problem we are deliberately not solving yet.
+
+This also clarifies something the scenes were vague about: **an authored
+encounter and a live session are different things.** The tomb is content — a
+bare `EncounterData`. Starting a session wraps a copy of it in a fresh
+`SessionData`. Content is read once and never written; session state is read
+and written every verb.
 
 ### Observable failure
 
@@ -299,11 +348,25 @@ constructs without one and simply produces no stream. This is the first case
 that makes `Config` capability-shaped rather than all-required, which settles
 the port-granularity open question in `scenes.md`.
 
-**OPEN:** whether `Event` is `record.Entry` re-exported (S2 says no inner
-types, but this is arguably a persistence-adjacent shape like the `Data` types)
-or an SDK-owned envelope translated on the way out. Leaning SDK-owned, because
-the per-audience projection in S11 means the thing on the wire is not the thing
-in the log.
+`Event` is an **SDK-owned envelope**, not `record.Entry` re-exported — settled
+by the proto mapping, and forced independently by S11. See "Shaped for the
+wire" below.
+
+## Shaped for the wire
+
+The rulebook has a corresponding proto that the game server implements, so SDK
+output types are **proto-shaped by construction**: flat structs, explicit
+enumerated kinds, nothing polymorphic, no interface-valued fields, no `any`.
+
+Two consequences worth stating because they are easy to get wrong once and
+never fix:
+
+- **`Event` is an SDK-owned envelope**, not `record.Entry` re-exported. S2 wanted
+  that anyway, and S11 forces it regardless: with per-audience projection, the
+  thing on the wire is genuinely not the thing in the log.
+- **`Option` carries a stable machine-readable kind**, not a free-form string
+  the client pattern-matches. It is the field clients branch on, so it is the
+  field that must never be prose.
 
 ## Compatibility
 
