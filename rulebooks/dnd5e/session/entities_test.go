@@ -113,12 +113,21 @@ func (s *EntitiesTestSuite) TestJoiningAPlayerWithNoCharacterIsRejected() {
 	s.NotErrorIs(err, session.ErrNoMember, "absent sheet is not an absent roster entry")
 }
 
-// TestARejectedJoinPlacesNobody pins the ORDER, which is the part that could
-// regress silently.
+// TestARejectedJoinPlacesNobody pins that a failed load ABORTS the join.
 //
-// Loading before the placement means a failed load leaves no half-joined
-// member behind. Loading after would still return the same error while having
-// already put someone in the room — and nothing about the error would say so.
+// Worth being precise about what makes this true, because the obvious answer is
+// wrong. It is NOT the ordering: mutating the load to run after the placement
+// leaves this test passing, because load-act-save (S4) already discards the
+// in-memory encounter when a verb returns before commit. Nothing was going to
+// persist either way.
+//
+// What it does guard is the error actually stopping the verb. Swallow the load
+// failure and carry on, and the join commits a member whose sheet does not
+// exist — which is precisely the state loading at join time is meant to
+// prevent.
+//
+// The ordering is still chosen deliberately, just not for correctness: there is
+// no reason to touch the world when the call is already doomed.
 func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "nobody", Kind: session.KindPlayer,
@@ -153,12 +162,19 @@ func (s *EntitiesTestSuite) TestAMonsterJoinsWithoutACharacter() {
 	s.Equal(before, s.characters.loads, "the character repository must not be consulted at all")
 }
 
-// TestTheCharacterIsLoadedPerCallRatherThanCached pins S1 at the entity level.
+// TestEveryPlayerJoinConsultsTheRepository pins that the load is per member
+// rather than done once for the session.
 //
-// There is no session process: nothing is held between verbs, so every call
-// that needs a character asks the repository again. A cache would be invisible
-// in a single-call test and wrong the moment two processes served one session.
-func (s *EntitiesTestSuite) TestTheCharacterIsLoadedPerCallRatherThanCached() {
+// Deliberately NOT claiming to pin "no caching between calls", which is what an
+// earlier version of this test said. It cannot: only one verb loads a character
+// today, and it joins a DIFFERENT member each time, so a per-ID cache would
+// change nothing observable here. Mutation confirmed that — the caching mutant
+// survived.
+//
+// The real per-call pin becomes writable when a second verb loads a character
+// and the same member can be loaded twice. Until then this guards the weaker
+// but still useful property, and says so rather than overclaiming.
+func (s *EntitiesTestSuite) TestEveryPlayerJoinConsultsTheRepository() {
 	_, err := s.joinBob()
 	s.Require().NoError(err)
 	first := s.characters.loads
