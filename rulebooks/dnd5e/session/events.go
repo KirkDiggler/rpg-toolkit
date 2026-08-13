@@ -10,10 +10,14 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// EventStream delivers events to the host for multiplayer fan-out.
+// EventStream delivers events to the host, which routes them to clients.
 //
-// Optional: a single-player setup, a test, or a headless simulation constructs
-// without one and simply produces no stream.
+// Required. A verb's response describes the caller's own action; everything
+// else that happens — monsters acting, the clock advancing, another member
+// crossing a doorway — reaches a client only through here. That is as true with
+// one player as with four.
+//
+// Use DiscardEvents when there is genuinely nothing to inform.
 //
 // Events are already projected per audience when they arrive here — who may
 // see what is a rule, decided inside this package where perception lives, not
@@ -29,6 +33,21 @@ type EventStream interface {
 	// Publish delivers a batch of already-projected events.
 	Publish(ctx context.Context, events []Event) error
 }
+
+// DiscardEvents is an EventStream that delivers nothing.
+//
+// For tests, headless simulation, and analysis runs — anything with no client
+// to inform. It exists so that "no delivery" is a stated decision rather than a
+// nil nobody noticed: a host that genuinely wants a silent session says so, and
+// a host that simply forgot to wire a stream is refused at construction.
+//
+//	mgr, err := session.NewManager(&session.Config{
+//	    Sessions: repo, Encounters: enc, Events: session.DiscardEvents{},
+//	})
+type DiscardEvents struct{}
+
+// Publish discards the batch and reports success.
+func (DiscardEvents) Publish(_ context.Context, _ []Event) error { return nil }
 
 // DeliveryReport says what reached the event stream.
 //
@@ -62,10 +81,6 @@ type DeliveryReport struct {
 func (m *Manager) publish(
 	ctx context.Context, scope *writeScope, snapshot *encounter.EncounterData,
 ) DeliveryReport {
-	if m.events == nil {
-		return DeliveryReport{}
-	}
-
 	events := m.projectEvents(scope, snapshot)
 	if len(events) == 0 {
 		return DeliveryReport{}

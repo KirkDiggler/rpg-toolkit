@@ -72,6 +72,7 @@ func (s *StartSessionTestSuite) SetupTest() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   s.sessions,
 		Encounters: s.encounters,
+		Events:     session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -188,6 +189,7 @@ func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 	sessions := &failingSessions{fakeSessions: newFakeSessions(), getErr: errBroken}
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: sessions, Encounters: s.encounters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -214,7 +216,9 @@ func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 func (s *StartSessionTestSuite) TestBrokenRepositoryIsNotReadAsAnExistingSession() {
 	sessions := &nilDataSessions{fakeSessions: newFakeSessions()}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters})
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+		Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
 
 	out, err := mgr.StartSession(context.Background(), &session.StartSessionInput{
@@ -264,7 +268,9 @@ func (s *StartSessionTestSuite) TestSuccessWritesWorldThenSession() {
 func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters(), saveErr: errBroken}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters})
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+		Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
@@ -283,7 +289,9 @@ func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 func (s *StartSessionTestSuite) TestSessionSaveFailureLeavesOnlyAnOrphan() {
 	sessions := &failingSessions{fakeSessions: newFakeSessions(), saveErr: errBroken}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters})
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+		Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{

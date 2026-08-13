@@ -203,12 +203,18 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 	s.True(status.Open)
 }
 
-// TestNoStreamIsAValidConfiguration is the must-accept row for the optional
-// capability: a single-player setup, a test, or a headless simulation must
-// behave identically apart from producing no events.
-func (s *EventsTestSuite) TestNoStreamIsAValidConfiguration() {
+// TestDiscardingEventsStillReportsHonestly pins that the explicit no-op is a
+// real stream rather than a hole in the flow.
+//
+// DiscardEvents accepts the batch and succeeds, so the report says events were
+// delivered and nothing failed — which is true: they were handed to a stream
+// that chose to drop them. Reporting zero would be a lie about what the manager
+// did, and would make a genuinely silent run indistinguishable from a broken
+// one.
+func (s *EventsTestSuite) TestDiscardingEventsStillReportsHonestly() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: s.sessions, Encounters: s.encounters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -221,9 +227,9 @@ func (s *EventsTestSuite) TestNoStreamIsAValidConfiguration() {
 	out, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
 	})
-	s.Require().NoError(err, "no stream is not a broken configuration")
-	s.Zero(out.Delivery.Events)
-	s.False(out.Delivery.Failed, "absent is not failed")
+	s.Require().NoError(err)
+	s.NotZero(out.Delivery.Events, "the events were produced and handed over")
+	s.False(out.Delivery.Failed, "discarding is not failing")
 }
 
 // TestDepartingMemberHearsTheirOwnExit pins the roster choice.

@@ -16,7 +16,7 @@
 //	mgr, err := session.NewManager(&session.Config{
 //	    Sessions:   sessRepo,
 //	    Encounters: encRepo,
-//	    Events:     stream, // optional
+//	    Events:     stream,
 //	})
 //
 //	out, err := mgr.Move(ctx, &session.MoveInput{Session: s, Member: m, Path: p})

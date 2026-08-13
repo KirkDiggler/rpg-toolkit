@@ -27,6 +27,7 @@ func (s *WriteTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: s.sessions, Encounters: s.encounters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -191,7 +192,9 @@ func (s *WriteTestSuite) TestWriteVerbsRejectMissingIdentifiers() {
 func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters})
+	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters,
+		Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
 
 	ctx := context.Background()
@@ -225,6 +228,7 @@ func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 
 	other, err := session.NewManager(&session.Config{
 		Sessions: s.sessions, Encounters: s.encounters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 

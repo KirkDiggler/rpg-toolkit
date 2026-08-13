@@ -12,8 +12,8 @@ confidence: high — written alongside the implementation (#938 / PR #942); ever
 **Grade:** A-
 
 The host's one point of contact with the toolkit. A game server implements two
-repositories and thereafter holds no domain object: it names things and calls
-verbs.
+repositories and an event stream, and thereafter holds no domain object: it
+names things and calls verbs.
 
 ## Where it sits
 

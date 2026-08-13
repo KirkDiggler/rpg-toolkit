@@ -30,6 +30,7 @@ func (s *ReadTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: s.sessions, Encounters: s.encounters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -179,7 +180,9 @@ func (s *ReadTestSuite) TestGridProjectionCoversBothFamilies() {
 
 	square := newFakeSessions()
 	squareEnc := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Sessions: square, Encounters: squareEnc})
+	mgr, err := session.NewManager(&session.Config{Sessions: square, Encounters: squareEnc,
+		Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sq", Encounter: "sq-world", World: authoredWorld(s.T()),

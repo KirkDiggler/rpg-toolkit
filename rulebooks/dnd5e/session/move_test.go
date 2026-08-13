@@ -29,6 +29,7 @@ func (s *MoveTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: s.sessions, Encounters: s.encounters,
+		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr

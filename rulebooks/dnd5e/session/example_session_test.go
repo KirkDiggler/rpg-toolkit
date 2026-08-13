@@ -34,6 +34,7 @@ func Example_theSession() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
+		Events:     session.DiscardEvents{},
 	})
 	if err != nil {
 		panic(err)
@@ -133,6 +134,7 @@ func Example_thePending() {
 	ctx := context.Background()
 	mgr, err := session.NewManager(&session.Config{
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Events: session.DiscardEvents{},
 	})
 	if err != nil {
 		panic(err)

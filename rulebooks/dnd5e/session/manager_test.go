@@ -102,13 +102,17 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 		expect string
 	}{
 		{
-			name:   "sessions absent",
-			config: &session.Config{Encounters: newFakeEncounters()},
+			name: "sessions absent",
+			config: &session.Config{Encounters: newFakeEncounters(),
+				Events: session.DiscardEvents{},
+			},
 			expect: "Sessions",
 		},
 		{
-			name:   "encounters absent",
-			config: &session.Config{Sessions: newFakeSessions()},
+			name: "encounters absent",
+			config: &session.Config{Sessions: newFakeSessions(),
+				Events: session.DiscardEvents{},
+			},
 			expect: "Encounters",
 		},
 	}
@@ -136,25 +140,28 @@ func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 	}
 }
 
-// TestOptionalStreamMayBeAbsent is the must-accept row guarding against
-// over-tightening. A rejection table proves construction rejects; only a
-// positive control proves it does not over-reach and demand a capability that
-// is genuinely optional.
+// TestDiscardEventsIsAcceptedAsAStream is the must-accept row.
 //
-// Without this, a "validate everything non-nil" simplification would pass every
-// rejection test above while making the event stream mandatory — breaking every
-// single-player setup, every test double, and every headless simulation.
-func (s *ManagerTestSuite) TestOptionalStreamMayBeAbsent() {
+// The stream is required, which makes the over-tightening risk real: a check
+// that demanded a "real" stream — anything beyond non-nil — would break every
+// test, every headless simulation, and every analysis run, while passing every
+// rejection row above.
+//
+// The point of DiscardEvents is that wanting no delivery stays possible while
+// being a stated decision. A nil reads as an oversight; this reads as a choice,
+// and it greps.
+func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
+		Events:     session.DiscardEvents{},
 	})
-	s.Require().NoError(err, "the event stream is a capability, not a requirement")
+	s.Require().NoError(err, "an explicit no-op stream is a legitimate configuration")
 	s.NotNil(mgr)
 }
 
-// TestFullyWiredConstructs is the other positive control: everything present,
-// including the optional stream, must also succeed.
+// TestFullyWiredConstructs is the other positive control: a real stream,
+// which is what any actual game supplies.
 func (s *ManagerTestSuite) TestFullyWiredConstructs() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   newFakeSessions(),

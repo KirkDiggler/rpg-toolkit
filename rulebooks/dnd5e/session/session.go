@@ -24,9 +24,20 @@ type Config struct {
 	// Encounters persists the world. Required.
 	Encounters EncounterRepository
 
-	// Events delivers per-recipient events for multiplayer fan-out. Optional:
-	// without it, no events are published and every verb behaves identically
-	// in every other respect.
+	// Events is the live channel to connected clients. Required.
+	//
+	// Required because a verb's response tells the CALLER about the caller's
+	// own action, and that is a small fraction of what a client must render.
+	// Monsters acting, the clock advancing, another player crossing a doorway —
+	// none of it appears in anyone's return value. A host without a stream is
+	// reduced to polling Story, which is a recovery path rather than a design.
+	//
+	// This is not about multiplayer. A single-player game needs it for exactly
+	// the same reason: things happen that the player did not ask for.
+	//
+	// Use DiscardEvents for tests, headless simulation, or any run that
+	// genuinely wants no delivery — an explicit opt-out that reads as a
+	// decision, rather than a nil that reads as an oversight.
 	Events EventStream
 }
 
@@ -68,6 +79,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 	}{
 		{"Sessions", cfg.Sessions != nil},
 		{"Encounters", cfg.Encounters != nil},
+		{"Events", cfg.Events != nil},
 	}
 	for _, dep := range required {
 		if !dep.present {
