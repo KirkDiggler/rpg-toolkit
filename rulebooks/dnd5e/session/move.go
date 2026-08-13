@@ -56,6 +56,9 @@ type MoveOutput struct {
 
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport `json:"delivery"`
 }
 
 // TraverseInput moves a member through a connection into an adjoining room.
@@ -95,6 +98,9 @@ type TraverseOutput struct {
 
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport `json:"delivery"`
 }
 
 // Move walks a member along a path, one cell at a time.
@@ -130,12 +136,12 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", ErrEmptyPath)
 	}
 
-	enc, encID, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	if err := validatePath(enc, encounter.MemberID(in.Member), in.Path); err != nil {
+	if err := validatePath(scope.enc, encounter.MemberID(in.Member), in.Path); err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
@@ -144,7 +150,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	var outcome *Outcome
 
 	for _, cell := range in.Path {
-		moved, moveErr := enc.Move(&encounter.MoveInput{
+		moved, moveErr := scope.enc.Move(&encounter.MoveInput{
 			Member: encounter.MemberID(in.Member),
 			To:     cell,
 		})
@@ -171,7 +177,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		}
 	}
 
-	report, err := m.persist(ctx, encID, enc)
+	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -181,6 +187,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		Discovered: nilIfEmpty(merged),
 		Outcome:    outcome,
 		Saved:      report,
+		Delivery:   delivery,
 	}, nil
 }
 
@@ -204,12 +211,12 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		return nil, fmt.Errorf("traverse: %w", ErrNoConnection)
 	}
 
-	enc, encID, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("traverse: %w", err)
 	}
 
-	crossed, err := enc.Traverse(&encounter.TraverseInput{
+	crossed, err := scope.enc.Traverse(&encounter.TraverseInput{
 		Member:     encounter.MemberID(in.Member),
 		Connection: in.Connection,
 	})
@@ -217,7 +224,7 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		return nil, fmt.Errorf("traverse: %w", translate(err))
 	}
 
-	report, err := m.persist(ctx, encID, enc)
+	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("traverse: %w", err)
 	}
@@ -231,6 +238,7 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		Seq:        crossed.Seq,
 		Outcome:    projectOutcome(crossed.Outcome),
 		Saved:      report,
+		Delivery:   delivery,
 	}, nil
 }
 

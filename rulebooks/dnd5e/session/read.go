@@ -189,22 +189,36 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 
 // loadWorld fetches and reconstitutes an encounter by ID.
 func (m *Manager) loadWorld(ctx context.Context, encID string) (*encounter.Encounter, error) {
+	enc, _, err := m.loadWorldWithBaseline(ctx, encID)
+	return enc, err
+}
+
+// loadWorldWithBaseline additionally reports the log's next sequence at load
+// time — the boundary between what was already recorded and what this verb is
+// about to record.
+//
+// Read out of the blob that was loaded anyway, so it costs nothing. Anything
+// with a sequence at or above the baseline is news, which is how a verb knows
+// which beats to fan out without the composition having to report them.
+func (m *Manager) loadWorldWithBaseline(
+	ctx context.Context, encID string,
+) (*encounter.Encounter, uint64, error) {
 	world, err := m.encounters.GetEncounter(ctx, encID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
+			return nil, 0, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
 		}
-		return nil, err
+		return nil, 0, err
 	}
 	if world == nil {
-		return nil, fmt.Errorf("%q: repository returned no data: %w", encID, ErrNoEncounter)
+		return nil, 0, fmt.Errorf("%q: repository returned no data: %w", encID, ErrNoEncounter)
 	}
 
 	enc, err := encounter.LoadEncounter(*world, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%q: %w: %w", encID, ErrInvalidWorld, err)
+		return nil, 0, fmt.Errorf("%q: %w: %w", encID, ErrInvalidWorld, err)
 	}
-	return enc, nil
+	return enc, world.Log.NextSeq, nil
 }
 
 // translate maps the composition's sentinels onto this package's own.

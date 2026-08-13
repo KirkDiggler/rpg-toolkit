@@ -194,11 +194,14 @@ type StoryEntry struct {
 type EventKind string
 
 const (
-	// EventMoved reports that a member moved to a new position.
+	// EventMoved reports that a member stepped to a new cell.
 	EventMoved EventKind = "moved"
 
-	// EventDiscovered reports that a member perceived something new.
-	EventDiscovered EventKind = "discovered"
+	// EventTraversed reports that a member crossed a connection into another
+	// room. Distinct from EventMoved even though both are one step in absolute
+	// space, because a client may want to narrate a doorway differently from a
+	// corridor.
+	EventTraversed EventKind = "traversed"
 
 	// EventJoined reports that a member entered the encounter.
 	EventJoined EventKind = "joined"
@@ -209,8 +212,20 @@ const (
 	// EventEnded reports that the encounter closed.
 	EventEnded EventKind = "ended"
 
-	// EventPending reports that the world is frozen awaiting an answer.
-	EventPending EventKind = "pending"
+	// EventSceneOpened reports the encounter's opening beat.
+	EventSceneOpened EventKind = "scene_opened"
+
+	// EventTick reports that the clock advanced.
+	EventTick EventKind = "tick"
+
+	// EventUnknown is a beat this version does not recognise.
+	//
+	// Delivered rather than dropped on purpose: a client that cannot interpret
+	// an event still learns its sequence advanced, so gap-detection keeps
+	// working. Dropping it would manufacture a hole and trigger a resync that
+	// was never needed. It also means a newer composition can add beats without
+	// older clients losing their place.
+	EventUnknown EventKind = "unknown"
 )
 
 // Event is one thing that happened, addressed to one recipient.

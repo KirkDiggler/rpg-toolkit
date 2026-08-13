@@ -46,6 +46,9 @@ type JoinOutput struct {
 
 	// Saved names what was persisted.
 	Saved SaveReport
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport
 }
 
 // ExitInput removes a member from a session's encounter.
@@ -75,6 +78,9 @@ type ExitOutput struct {
 
 	// Saved names what was persisted.
 	Saved SaveReport
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport
 }
 
 // EndInput closes a session's encounter through a declared external ending.
@@ -93,6 +99,9 @@ type EndOutput struct {
 
 	// Saved names what was persisted.
 	Saved SaveReport
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport
 }
 
 // Join places a member into the session's encounter and reports what came into
@@ -114,12 +123,12 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", ErrNoMemberID)
 	}
 
-	enc, encID, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	joined, err := enc.Join(&encounter.JoinInput{
+	joined, err := scope.enc.Join(&encounter.JoinInput{
 		Member: encounter.MemberInput{
 			ID:       encounter.MemberID(in.Member),
 			Kind:     encounter.MemberKind(in.Kind),
@@ -131,7 +140,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", translate(err))
 	}
 
-	report, err := m.persist(ctx, encID, enc)
+	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -142,6 +151,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Seq:        joined.Seq,
 		Outcome:    projectOutcome(joined.Outcome),
 		Saved:      report,
+		Delivery:   delivery,
 	}, nil
 }
 
@@ -159,27 +169,28 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", ErrNoMemberID)
 	}
 
-	enc, encID, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
 
-	left, err := enc.Exit(&encounter.ExitInput{Member: encounter.MemberID(in.Member)})
+	left, err := scope.enc.Exit(&encounter.ExitInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", translate(err))
 	}
 
-	report, err := m.persist(ctx, encID, enc)
+	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	return &ExitOutput{
-		Outcome: projectMemberOutcome(left.Outcome),
-		Carry:   projectSightings(left.Carry),
-		Seq:     left.Seq,
-		Closed:  projectOutcome(left.Closed),
-		Saved:   report,
+		Outcome:  projectMemberOutcome(left.Outcome),
+		Carry:    projectSightings(left.Carry),
+		Seq:      left.Seq,
+		Closed:   projectOutcome(left.Closed),
+		Saved:    report,
+		Delivery: delivery,
 	}, nil
 }
 
@@ -193,23 +204,23 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: %w", ErrNilInput)
 	}
 
-	enc, encID, err := m.openForWrite(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
 
-	ended, err := enc.End(&encounter.EndInput{Ending: in.Ending})
+	ended, err := scope.enc.End(&encounter.EndInput{Ending: in.Ending})
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", translate(err))
 	}
 
-	report, err := m.persist(ctx, encID, enc)
+	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
 
 	outcome := projectOutcome(&ended.Outcome)
-	return &EndOutput{Outcome: *outcome, Saved: report}, nil
+	return &EndOutput{Outcome: *outcome, Saved: report, Delivery: delivery}, nil
 }
 
 // openForWrite loads a session's encounter and also returns the encounter's ID,
@@ -218,19 +229,34 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 // A read verb has no use for the ID, so it uses open instead. Splitting them
 // keeps a read from carrying a value it cannot act on, and keeps the "which ID
 // do I save under" question answered in exactly one place.
-func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*encounter.Encounter, string, error) {
+func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeScope, error) {
 	if sessionID == "" {
-		return nil, "", ErrNoSessionID
+		return nil, ErrNoSessionID
 	}
 	data, err := m.loadSessionData(ctx, sessionID)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	enc, err := m.loadWorld(ctx, data.Encounter)
+	enc, baseline, err := m.loadWorldWithBaseline(ctx, data.Encounter)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return enc, data.Encounter, nil
+	return &writeScope{
+		session:   sessionID,
+		encounter: data.Encounter,
+		enc:       enc,
+		baseline:  baseline,
+	}, nil
+}
+
+// writeScope is everything a write verb needs to act, save, and fan out: the
+// live encounter, the IDs to save and address it under, and the sequence
+// boundary separating what was already recorded from what this verb records.
+type writeScope struct {
+	session   string
+	encounter string
+	enc       *encounter.Encounter
+	baseline  uint64
 }
 
 // persist writes the mutated encounter back and reports the result.
@@ -240,11 +266,25 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*encounte
 // points at, neither of which any of them touches. So the report names one
 // aggregate, and a partial save is not reachable here — the multi-write case
 // lives in StartSession today and will return when entities do.
-func (m *Manager) persist(ctx context.Context, encID string, enc *encounter.Encounter) (SaveReport, error) {
-	data := enc.ToData()
-	if err := m.encounters.SaveEncounter(ctx, encID, &data); err != nil {
-		return SaveReport{Failed: []string{"encounter:" + encID}},
+func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *encounter.EncounterData, error) {
+	data := scope.enc.ToData()
+	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
+		return SaveReport{Failed: []string{"encounter:" + scope.encounter}}, nil,
 			fmt.Errorf("saving world: %w: %w", ErrSaveFailed, err)
 	}
-	return SaveReport{Written: []string{"encounter:" + encID}}, nil
+	return SaveReport{Written: []string{"encounter:" + scope.encounter}}, &data, nil
+}
+
+// commit saves the mutated world and then fans out what it recorded.
+//
+// The order is the law (S9): publish only after the save lands. Announcing a
+// fact that failed to persist is the one mistake with no recovery — a client
+// told the ogre died, a world in which it did not, and no sequence gap to
+// betray the difference.
+func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
+	report, snapshot, err := m.persist(ctx, scope)
+	if err != nil {
+		return report, DeliveryReport{}, err
+	}
+	return report, m.publish(ctx, scope, snapshot), nil
 }
