@@ -243,3 +243,41 @@ func (s *ConditionsTestSuite) requeueJSON(from any, into any) {
 	s.Require().NoError(err)
 	s.Require().NoError(json.Unmarshal(raw, into))
 }
+
+// TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged is where the no-clobber
+// property earns its keep.
+//
+// Alice's blob carries a condition this build cannot parse — a ref from a
+// module that is not installed, a body written by a newer version, a partial
+// write. character.LoadFromData does not reject her: it logs, drops the
+// condition, and returns a perfectly usable character with no error. The join
+// therefore SUCCEEDS, and nothing in the response hints that anything was lost.
+//
+// That is toolkit#948, and it is only latent because the SDK does not write.
+// The store still holds both conditions afterwards, so whatever could not be
+// read here is still there to be read by a build that understands it. Add a
+// SaveCharacter to this path and the unreadable condition is gone forever,
+// destroyed by a verb that merely moved somebody.
+func (s *ConditionsTestSuite) TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged() {
+	corrupt := ragingDwarf("dave")
+	corrupt.Conditions = append(corrupt.Conditions,
+		json.RawMessage(`{"ref":"homebrew:conditions:hexed","character_id":"dave","stacks":3}`))
+	s.characters.byID["dave"] = corrupt
+
+	before := s.storedBytes("dave")
+
+	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "dave", Kind: session.KindPlayer,
+		Room: "hall", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err, "the unreadable condition does not fail the join — that is the trap")
+
+	s.Equal(string(before), string(s.storedBytes("dave")),
+		"and the condition this build could not read is still in the store")
+
+	var held []json.RawMessage
+	s.Require().NoError(json.Unmarshal(s.storedBytes("dave"), &struct {
+		Conditions *[]json.RawMessage `json:"conditions"`
+	}{Conditions: &held}))
+	s.Require().Len(held, 2, "both conditions, including the one we cannot parse")
+}
