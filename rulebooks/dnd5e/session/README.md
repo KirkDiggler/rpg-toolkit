@@ -3,8 +3,7 @@
 **Charter: the game server's single point of contact with the toolkit.**
 
 A host implements a couple of repositories and, from then on, holds no domain
-object at all — it names things and calls verbs. Everything the toolkit knows
-about running a session reaches it through this package.
+object at all — it names things and calls verbs.
 
 ## What it is
 
@@ -13,8 +12,8 @@ placement, perception, story, endings. This is *the table*: it holds what is not
 the world, wires the pieces together, and presents one verb surface.
 
 It owns wiring and lifetime. It owns no rules. **The moment a rule lives here
-rather than in the module that owns that rule, this package has been
-misused** — and the fix is to push it down, not to special-case it up.
+rather than in the module that owns that rule, this package has been misused** —
+and the fix is to push it down, never to special-case it up.
 
 ## What it is not
 
@@ -26,8 +25,8 @@ misused** — and the fix is to push it down, not to special-case it up.
 ## Why it exists
 
 So the toolkit's insides can be replaced without the host changing a line. Inner
-types never cross the boundary, which means a module underneath can change shape
-— or be swapped out entirely — while the host only ever bumps a version.
+types never cross the boundary, so a module underneath can change shape — or be
+swapped out entirely — while the host only ever bumps a version.
 
 That promise is enforced rather than intended: `boundary_test.go` parses this
 package's own source and fails if any toolkit type is reachable from an exported
@@ -37,7 +36,7 @@ declaration, and `gorelease` gates every release.
 
 | File | Role |
 |---|---|
-| `session.go` | `Config`, `Manager`, and total construction |
+| `session.go` | `Config`, `Manager`, total construction |
 | `ports.go` | What the host implements, and the constraints on it |
 | `data.go` | What this package persists |
 | `types.go` | What this package returns |
@@ -62,6 +61,6 @@ go run ./cmd/session-workbench
 ## Deliberately not here
 
 This file carries the **charter**, which barely changes. What is *currently
-implemented* lives in `doc.go` next to the code, and what is *verified* lives in
-the tests. A README that tracks progress is a README that lies, and it lies
-quietly — the failure that motivated writing this one.
+implemented* lives in `doc.go` beside the code; what is *verified* lives in the
+tests; how healthy it is lives in `docs/quality.md`. A README that tracks
+progress is a README that lies, and it lies quietly.
