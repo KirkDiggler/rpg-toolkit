@@ -1,0 +1,170 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package session_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+)
+
+// fakeSessions is an in-memory SessionRepository. Key-value only, matching S12:
+// if a test double needed more than get-and-put to satisfy the port, the port
+// would be asking too much of a real store.
+type fakeSessions struct {
+	byID map[string]*session.SessionData
+}
+
+func newFakeSessions() *fakeSessions {
+	return &fakeSessions{byID: map[string]*session.SessionData{}}
+}
+
+func (f *fakeSessions) GetSession(_ context.Context, id string) (*session.SessionData, error) {
+	data, ok := f.byID[id]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (f *fakeSessions) SaveSession(_ context.Context, data *session.SessionData) error {
+	f.byID[data.ID] = data
+	return nil
+}
+
+// fakeEncounters is an in-memory EncounterRepository.
+type fakeEncounters struct {
+	byID map[string]*encounter.EncounterData
+}
+
+func newFakeEncounters() *fakeEncounters {
+	return &fakeEncounters{byID: map[string]*encounter.EncounterData{}}
+}
+
+func (f *fakeEncounters) GetEncounter(_ context.Context, id string) (*encounter.EncounterData, error) {
+	data, ok := f.byID[id]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (f *fakeEncounters) SaveEncounter(_ context.Context, id string, data *encounter.EncounterData) error {
+	f.byID[id] = data
+	return nil
+}
+
+// fakeStream records what was published.
+type fakeStream struct {
+	published []session.Event
+}
+
+func (f *fakeStream) Publish(_ context.Context, events []session.Event) error {
+	f.published = append(f.published, events...)
+	return nil
+}
+
+// ManagerTestSuite covers construction (S8): the manager refuses to exist
+// without what it needs, and says which piece is missing.
+type ManagerTestSuite struct {
+	suite.Suite
+}
+
+// TestNilConfigRejected distinguishes a nil config from a missing port. They
+// are different mistakes — one is a bad call site, the other an incomplete
+// wiring decision — and collapsing them into one error would send whoever hits
+// it looking in the wrong place.
+func (s *ManagerTestSuite) TestNilConfigRejected() {
+	mgr, err := session.NewManager(nil)
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrNilConfig)
+	s.NotErrorIs(err, session.ErrMissingPort, "a nil config is not a missing port")
+	s.Nil(mgr)
+}
+
+// TestEachRequiredPortIsCheckedByName is the heart of S8. Every required port
+// gets its own row, so a check that silently stopped validating one of them
+// fails here rather than surfacing as a nil-pointer panic mid-turn in
+// production.
+//
+// The assertion is on the port NAME appearing in the message, not merely on
+// the sentinel: a host wiring several ports needs to be told which one, and an
+// error that only says "missing required port" makes that a guessing game.
+func (s *ManagerTestSuite) TestEachRequiredPortIsCheckedByName() {
+	cases := []struct {
+		name   string
+		config *session.Config
+		expect string
+	}{
+		{
+			name:   "sessions absent",
+			config: &session.Config{Encounters: newFakeEncounters()},
+			expect: "Sessions",
+		},
+		{
+			name:   "encounters absent",
+			config: &session.Config{Sessions: newFakeSessions()},
+			expect: "Encounters",
+		},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			mgr, err := session.NewManager(tc.config)
+			s.Require().Error(err)
+			s.ErrorIs(err, session.ErrMissingPort)
+			s.Contains(err.Error(), tc.expect, "the error must name the missing port")
+			s.Nil(mgr)
+		})
+	}
+}
+
+// TestMissingPortReportIsDeterministic pins that a config missing several ports
+// always names the same one first. A host fixing its wiring should see a stable
+// sequence rather than a message that changes between runs — the difference
+// between "fix these in order" and "guess again."
+func (s *ManagerTestSuite) TestMissingPortReportIsDeterministic() {
+	for i := 0; i < 20; i++ {
+		_, err := session.NewManager(&session.Config{})
+		s.Require().Error(err)
+		s.Contains(err.Error(), "Sessions", "the first missing port must be stable across runs")
+	}
+}
+
+// TestOptionalPortMayBeAbsent is the must-accept row guarding against
+// over-tightening. A rejection table proves construction rejects; only a
+// positive control proves it does not over-reach and demand a capability that
+// is genuinely optional.
+//
+// Without this, a "validate everything non-nil" simplification would pass every
+// rejection test above while making the event stream mandatory — breaking every
+// single-player setup, every test double, and every headless simulation.
+func (s *ManagerTestSuite) TestOptionalPortMayBeAbsent() {
+	mgr, err := session.NewManager(&session.Config{
+		Sessions:   newFakeSessions(),
+		Encounters: newFakeEncounters(),
+	})
+	s.Require().NoError(err, "the event stream is a capability, not a requirement")
+	s.NotNil(mgr)
+}
+
+// TestFullyWiredConstructs is the other positive control: everything present,
+// including the optional port, must also succeed.
+func (s *ManagerTestSuite) TestFullyWiredConstructs() {
+	mgr, err := session.NewManager(&session.Config{
+		Sessions:   newFakeSessions(),
+		Encounters: newFakeEncounters(),
+		Events:     &fakeStream{},
+	})
+	s.Require().NoError(err)
+	s.NotNil(mgr)
+}
+
+func TestManagerSuite(t *testing.T) {
+	suite.Run(t, new(ManagerTestSuite))
+}
