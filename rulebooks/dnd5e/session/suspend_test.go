@@ -289,7 +289,7 @@ func (s *SuspendTestSuite) TestEveryChangeVerbIsRefusedWhileFrozen() {
 		},
 		"Join": func(m *session.Manager) error {
 			_, err := m.Join(ctx, &session.JoinInput{
-				Session: "sess", Member: "bob", Kind: session.KindPlayer,
+				Session: "sess", Member: "bob",
 				Room: "hall", Position: spatial.Position{X: 0, Y: 0},
 			})
 			return err

@@ -50,7 +50,7 @@ func Example_theSession() {
 	fmt.Println("-- the party enters --")
 
 	if _, err := mgr.Join(ctx, &session.JoinInput{
-		Session: "tomb-run", Member: "bob", Kind: session.KindPlayer,
+		Session: "tomb-run", Member: "bob",
 		Room: "hall", Position: spatial.Position{X: 1, Y: 3},
 	}); err != nil {
 		panic(err)

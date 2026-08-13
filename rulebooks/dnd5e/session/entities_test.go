@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -49,7 +50,7 @@ func (s *EntitiesTestSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *EntitiesTestSuite) joinBob() (*session.JoinOutput, error) {
 	return s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 }
@@ -90,7 +91,7 @@ func (s *EntitiesTestSuite) TestSpeedIsDerivedRatherThanDefaulted() {
 	s.Require().NoError(err)
 
 	humanOut, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "human-one", Kind: session.KindPlayer,
+		Session: "sess", Member: "human-one",
 		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
 	})
 	s.Require().NoError(err)
@@ -105,7 +106,7 @@ func (s *EntitiesTestSuite) TestSpeedIsDerivedRatherThanDefaulted() {
 // rather than at first use.
 func (s *EntitiesTestSuite) TestJoiningAPlayerWithNoCharacterIsRejected() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "nobody", Kind: session.KindPlayer,
+		Session: "sess", Member: "nobody",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().Error(err)
@@ -130,7 +131,7 @@ func (s *EntitiesTestSuite) TestJoiningAPlayerWithNoCharacterIsRejected() {
 // no reason to touch the world when the call is already doomed.
 func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "nobody", Kind: session.KindPlayer,
+		Session: "sess", Member: "nobody",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().Error(err)
@@ -145,21 +146,40 @@ func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 	s.ErrorIs(err, session.ErrNoMember, "a rejected join must not leave a member placed")
 }
 
-// TestAMonsterJoinsWithoutACharacter is the over-tightening defense.
+// TestSpawnedContentNeverConsultsTheCharacterRepository is the over-tightening
+// defense.
 //
-// The rejection above proves the check refuses. Only this proves it does not
-// over-reach: monsters have no sheet, and a load that fired for every kind
-// would break every monster join while passing every rejection row.
-func (s *EntitiesTestSuite) TestAMonsterJoinsWithoutACharacter() {
+// The rejection above proves the character check refuses. Only this proves it
+// does not over-reach: content that lives in code has no sheet to look up, and
+// a load that fired for every arriving member would break every spawn while
+// passing every rejection row.
+//
+// It also pins the seam's real claim. A monster no longer JOINS — Join is
+// players only — so the two paths cannot share a lookup by accident.
+func (s *EntitiesTestSuite) TestSpawnedContentNeverConsultsTheCharacterRepository() {
 	before := s.characters.loads
 
-	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "ogre-7", Kind: session.KindMonster,
+	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
+		Session: "sess", ID: "ogre-7", Ref: refs.Monsters.Skeleton().String(),
 		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
 	})
-	s.Require().NoError(err, "a monster has no character sheet and must not need one")
-	s.Nil(out.Character, "and reports none")
+	s.Require().NoError(err, "content that lives in code needs no stored sheet")
+	s.Require().NotNil(out.NPC)
+	s.Equal("Skeleton", out.NPC.Name, "and it was really built, not echoed")
 	s.Equal(before, s.characters.loads, "the character repository must not be consulted at all")
+}
+
+// TestAMonsterCannotJoin pins that the split is enforced, not merely offered.
+//
+// Join is players only. Handing it a monster's ID reaches the character
+// repository, finds nothing, and is rejected — which is the honest outcome:
+// there is no character by that name, and the caller wanted Spawn.
+func (s *EntitiesTestSuite) TestAMonsterCannotJoin() {
+	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "ogre-7",
+		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
+	})
+	s.ErrorIs(err, session.ErrNoCharacter)
 }
 
 // TestEveryPlayerJoinConsultsTheRepository pins that the load is per member
@@ -181,7 +201,7 @@ func (s *EntitiesTestSuite) TestEveryPlayerJoinConsultsTheRepository() {
 	s.Positive(first, "joining a player must consult the repository")
 
 	_, err = s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "carol", Kind: session.KindPlayer,
+		Session: "sess", Member: "carol",
 		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
 	})
 	s.Require().NoError(err)
@@ -200,7 +220,7 @@ func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected(
 	s.Require().NoError(err)
 
 	_, err = mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().Error(err)
@@ -226,7 +246,7 @@ func (s *EntitiesTestSuite) TestACorruptConditionIsDroppedRatherThanRejected() {
 	s.characters.byID[corrupt.ID] = corrupt
 
 	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "corrupt-one", Kind: session.KindPlayer,
+		Session: "sess", Member: "corrupt-one",
 		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
 	})
 
@@ -269,7 +289,7 @@ func benchManager(b *testing.B) *session.Manager {
 	return mgr
 }
 
-// BenchmarkJoinPlayer and BenchmarkJoinMonster differ by exactly one thing: the
+// BenchmarkJoinPlayer and BenchmarkSpawnMonster differ by exactly one thing: the
 // player join loads a character and the monster join does not. The DELTA is the
 // per-verb cost of reconstituting a sheet and attaching its features and
 // conditions to the call's bus.
@@ -285,7 +305,7 @@ func BenchmarkJoinPlayer(b *testing.B) {
 		b.StartTimer()
 
 		if _, err := mgr.Join(ctx, &session.JoinInput{
-			Session: "sess", Member: "bob", Kind: session.KindPlayer,
+			Session: "sess", Member: "bob",
 			Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 		}); err != nil {
 			b.Fatalf("join: %v", err)
@@ -293,18 +313,18 @@ func BenchmarkJoinPlayer(b *testing.B) {
 	}
 }
 
-func BenchmarkJoinMonster(b *testing.B) {
+func BenchmarkSpawnMonster(b *testing.B) {
 	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
 		mgr := benchManager(b)
 		b.StartTimer()
 
-		if _, err := mgr.Join(ctx, &session.JoinInput{
-			Session: "sess", Member: "ogre-7", Kind: session.KindMonster,
+		if _, err := mgr.Spawn(ctx, &session.SpawnInput{
+			Session: "sess", ID: "ogre-7", Ref: refs.Monsters.Skeleton().String(),
 			Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 		}); err != nil {
-			b.Fatalf("join: %v", err)
+			b.Fatalf("spawn: %v", err)
 		}
 	}
 }

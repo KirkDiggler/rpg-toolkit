@@ -51,7 +51,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 	ctx := context.Background()
 
 	out, err := s.mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().NoError(err)
@@ -73,7 +73,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 // silent, and no other assertion in this file would notice.
 func (s *WriteTestSuite) TestJoinReportsWhoNoticed() {
 	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "corridor", Position: spatial.Position{X: 1, Y: 0},
 	})
 	s.Require().NoError(err)
@@ -122,7 +122,7 @@ func (s *WriteTestSuite) TestClosedEncounterRefusesChanges() {
 	s.Require().NoError(err)
 
 	_, err = s.mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.ErrorIs(err, session.ErrClosed)
@@ -209,7 +209,7 @@ func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters.saveErr = errBroken
 
 	out, err := mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().Error(err)
@@ -235,13 +235,13 @@ func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 	s.Require().NoError(err)
 
 	_, err = s.mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Kind: session.KindPlayer,
+		Session: "sess", Member: "bob",
 		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
 	})
 	s.Require().NoError(err)
 
 	_, err = other.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "carol", Kind: session.KindPlayer,
+		Session: "sess", Member: "carol",
 		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
 	})
 	s.Require().NoError(err)
@@ -257,7 +257,7 @@ func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 // TestJoinOnUnknownSession pins the load failures reach the write verbs too.
 func (s *WriteTestSuite) TestJoinOnUnknownSession() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "nope", Member: "bob", Kind: session.KindPlayer, Room: "vault",
+		Session: "nope", Member: "bob", Room: "vault",
 	})
 	s.ErrorIs(err, session.ErrNoSession)
 }
