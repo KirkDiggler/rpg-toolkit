@@ -26,6 +26,7 @@ type EventsTestSuite struct {
 
 	sessions   *fakeSessions
 	encounters *fakeEncounters
+	characters *fakeCharacters
 	stream     *fakeStream
 	mgr        *session.Manager
 }
@@ -33,9 +34,10 @@ type EventsTestSuite struct {
 func (s *EventsTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
+	s.characters = testCharacters()
 	s.stream = &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: s.sessions, Encounters: s.encounters, Events: s.stream,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -151,7 +153,7 @@ func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: newFakeSessions(), Encounters: encounters, Events: stream,
+		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(), Events: stream,
 	})
 	s.Require().NoError(err)
 
@@ -179,7 +181,7 @@ func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 // gapless, so clients self-heal.
 func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: s.sessions, Encounters: s.encounters,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: &failingStream{err: errBroken},
 	})
 	s.Require().NoError(err)
@@ -213,7 +215,7 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 // one.
 func (s *EventsTestSuite) TestDiscardingEventsStillReportsHonestly() {
 	mgr, err := session.NewManager(&session.Config{
-		Sessions: s.sessions, Encounters: s.encounters,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

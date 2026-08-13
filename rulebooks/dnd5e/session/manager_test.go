@@ -9,7 +9,10 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
@@ -59,6 +62,72 @@ func (f *fakeEncounters) SaveEncounter(_ context.Context, id string, data *encou
 	return nil
 }
 
+// fakeCharacters is an in-memory CharacterRepository.
+type fakeCharacters struct {
+	byID map[string]*character.Data
+
+	// loads counts GetCharacter calls, so a test can assert that loading
+	// happens per call rather than being cached between them.
+	loads int
+}
+
+func newFakeCharacters(chars ...*character.Data) *fakeCharacters {
+	f := &fakeCharacters{byID: map[string]*character.Data{}}
+	for _, c := range chars {
+		f.byID[c.ID] = c
+	}
+	return f
+}
+
+func (f *fakeCharacters) GetCharacter(_ context.Context, id string) (*character.Data, error) {
+	f.loads++
+	data, ok := f.byID[id]
+	if !ok {
+		return nil, session.ErrNotFound
+	}
+	return data, nil
+}
+
+func (f *fakeCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
+	f.byID[data.ID] = data
+	return nil
+}
+
+// dwarfCharacter builds a minimal stored character.
+//
+// A DWARF on purpose. Speed is not a field of character.Data at all — it is
+// derived from race by the loaded character — and a dwarf's 25 is distinct
+// both from a human's 30 and from the 30 that GetSpeed falls back to when race
+// data is missing. So an assertion of 25 can only pass if the stored bytes were
+// genuinely reconstituted, which is the thing worth proving.
+func dwarfCharacter(id string) *character.Data {
+	return &character.Data{
+		ID:               id,
+		PlayerID:         "player-" + id,
+		Name:             "Alice",
+		Level:            3,
+		ProficiencyBonus: 2,
+		RaceID:           races.Dwarf,
+		ClassID:          classes.Fighter,
+		HitPoints:        24,
+		MaxHitPoints:     28,
+		ArmorClass:       16,
+	}
+}
+
+// testCharacters holds the cast the suites join through Join. Members placed
+// directly into a world fixture never pass through the repository, so only the
+// ones a test actually joins need to exist here.
+func testCharacters() *fakeCharacters {
+	return newFakeCharacters(
+		dwarfCharacter("alice"),
+		dwarfCharacter("bob"),
+		dwarfCharacter("carol"),
+		dwarfCharacter("dave"),
+		dwarfCharacter("erin"),
+	)
+}
+
 // fakeStream records what was published.
 type fakeStream struct {
 	published []session.Event
@@ -104,16 +173,30 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 		{
 			name: "sessions absent",
 			config: &session.Config{Encounters: newFakeEncounters(),
-				Events: session.DiscardEvents{},
+				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Sessions",
 		},
 		{
 			name: "encounters absent",
 			config: &session.Config{Sessions: newFakeSessions(),
-				Events: session.DiscardEvents{},
+				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Encounters",
+		},
+		{
+			name: "characters absent",
+			config: &session.Config{Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+				Events: session.DiscardEvents{},
+			},
+			expect: "Characters",
+		},
+		{
+			name: "events absent",
+			config: &session.Config{Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+				Characters: testCharacters(),
+			},
+			expect: "Events",
 		},
 	}
 
@@ -154,6 +237,7 @@ func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
+		Characters: testCharacters(),
 		Events:     session.DiscardEvents{},
 	})
 	s.Require().NoError(err, "an explicit no-op stream is a legitimate configuration")
@@ -166,6 +250,7 @@ func (s *ManagerTestSuite) TestFullyWiredConstructs() {
 	mgr, err := session.NewManager(&session.Config{
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
+		Characters: testCharacters(),
 		Events:     &fakeStream{},
 	})
 	s.Require().NoError(err)

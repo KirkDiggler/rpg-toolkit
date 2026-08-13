@@ -315,6 +315,46 @@ type Member struct {
 	Room string `json:"room"`
 }
 
+// CharacterState is what a loaded character reports about itself.
+//
+// This package's own twin, not character.Data: the stored shape is what the
+// host persists, while this is what one call observed after reconstitution.
+// They differ in exactly the way that matters — every field here is DERIVED by
+// the loaded character, so armour class already accounts for equipment and
+// speed already accounts for whatever conditions attached on the way in. A host
+// reading its own stored blob would get the un-derived numbers.
+//
+// Deliberately small. It carries what a client needs to render a member and
+// what proves the load happened; the sheet in full is the host's own copy to
+// read, and re-exporting it here would make character.Data's every field a wire
+// commitment of this package.
+type CharacterState struct {
+	// ID is the character's identifier.
+	ID string `json:"id"`
+
+	// Name is the character's name.
+	Name string `json:"name"`
+
+	// Level is the character's level.
+	Level int `json:"level"`
+
+	// Speed is the character's current movement speed in feet, after race,
+	// equipment and any active conditions.
+	Speed int `json:"speed"`
+
+	// HitPoints is the character's current hit points.
+	HitPoints int `json:"hit_points"`
+
+	// MaxHitPoints is the character's hit point maximum.
+	MaxHitPoints int `json:"max_hit_points"`
+
+	// ArmorClass is the character's current armour class.
+	ArmorClass int `json:"armor_class"`
+
+	// ProficiencyBonus is the character's proficiency bonus.
+	ProficiencyBonus int `json:"proficiency_bonus"`
+}
+
 // Discovery is what changed in one observer's perception.
 //
 // Three disjoint lists rather than a single "here is everything you now

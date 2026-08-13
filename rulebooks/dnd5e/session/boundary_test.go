@@ -41,19 +41,61 @@ type BoundaryTestSuite struct {
 // are not modules we intend to replace underneath the host.
 const forbiddenPrefix = "github.com/KirkDiggler/rpg-toolkit/"
 
-// allowed is the complete set of toolkit types permitted in exported
-// signatures, written out rather than derived from a pattern.
+// The types permitted in exported signatures, written out rather than derived
+// from a pattern.
 //
 // A rule like "any name ending in Data" would be less typing and would quietly
 // admit types nobody weighed. Listing them means every future exception is a
 // visible line in a diff with a reason attached, which is the only version of
 // an exception list that stays honest.
-var allowed = map[string]string{
+//
+// They are split into TWO CATEGORIES because they make two different promises,
+// and a flat list hid that. The entities wave forced the distinction: reading
+// character.Data as one more grudging exception to replaceability got the
+// intent exactly backwards.
+//
+// The split is not decoration. It tells a future author which question to ask
+// about a new entry, and the two questions have different answers.
+
+// contractTypes are shared vocabulary: the host constructs these, names them in
+// its own code, and reasons about them.
+//
+// Their promise is NOT replaceability. It is the opposite — a change to one is
+// a breaking change we ANNOUNCE. These are domain nouns both sides agree on,
+// and refactoring one without telling the host would be the bug, not the
+// safeguard.
+//
+// The question to ask before adding one: is this a thing the host legitimately
+// knows about, such that we would want it to hear about a change?
+var contractTypes = map[string]string{
 	// A coordinate is a coordinate. spatial.Position is a stable value type
 	// with no behaviour to replace, and inventing a twin for it would force
 	// hosts to convert on every call for no benefit.
-	"spatial.Position": "stable value type",
+	"spatial.Position": "stable value type; shared vocabulary for placement",
 
+	// A character is a thing, not an implementation detail we would refactor
+	// without telling the host. Its surface bottoms out in strings and ints —
+	// skills.Skill and classes.Class are literal aliases to string, and
+	// features and conditions are already []json.RawMessage — so naming it
+	// commits us to a shape that is already wire-like.
+	//
+	// It appears on CharacterRepository ONLY. Verbs take member IDs, and
+	// Member.Kind routes to the repository; character.Data is never a verb
+	// input. What crosses is the shape the host already persists, not the
+	// object we build from it.
+	"character.Data": "contract type: the sheet the host owns, stores, and constructs",
+}
+
+// persistenceShapes are bytes the host round-trips and never builds.
+//
+// Their promise IS replaceability: the module underneath can be reshaped or
+// swapped and the host never notices, because it stores these opaquely rather
+// than reading them.
+//
+// The question to ask before adding one: does the host store this without ever
+// constructing or inspecting it? If the host would have to build one field by
+// field, it is a contract type and belongs above, under a stricter promise.
+var persistenceShapes = map[string]string{
 	// The documented S3 exception: persistence shapes cross the boundary
 	// because they are exactly the bytes the host already stores. Data types
 	// are the slowest-moving surface in the toolkit and carry their own
@@ -78,6 +120,18 @@ var allowed = map[string]string{
 	// module underneath can be replaced. Only the stored shape crosses.
 	"interrupt.LedgerData": "persistence shape the host stores opaquely (S3)",
 }
+
+// allowed is the union the detector checks against.
+var allowed = func() map[string]string {
+	all := map[string]string{}
+	for k, v := range contractTypes {
+		all[k] = v
+	}
+	for k, v := range persistenceShapes {
+		all[k] = v
+	}
+	return all
+}()
 
 // TestNoInnerTypeCrossesTheBoundary parses this package's non-test sources and
 // fails on any toolkit type reachable from an exported declaration.
@@ -189,6 +243,35 @@ func (s *BoundaryTestSuite) TestAllowListIsJustified() {
 	for qualified, reason := range allowed {
 		s.NotEmpty(reason, "allowed type %s must record why it is permitted", qualified)
 	}
+}
+
+// TestTheTwoCategoriesAreDisjoint pins the split itself.
+//
+// A type listed in both would mean nobody decided which promise it makes, and
+// the whole value of the split is that the decision is forced. Merging silently
+// into `allowed` would hide that, since the union does not care.
+func (s *BoundaryTestSuite) TestTheTwoCategoriesAreDisjoint() {
+	for qualified := range contractTypes {
+		s.NotContains(persistenceShapes, qualified,
+			"%s is in both categories; it must promise one thing or the other", qualified)
+	}
+	s.Len(allowed, len(contractTypes)+len(persistenceShapes),
+		"the union must not silently collapse an entry listed twice")
+}
+
+// TestTheRuntimeCharacterIsNotAdmitted is the discriminating half of admitting
+// character.Data.
+//
+// Letting the stored shape cross is a decision about persistence. Letting the
+// loaded object cross would be a different decision entirely — it carries
+// behaviour, a live bus, and subscriptions, none of which survive a response.
+// A rejection table proves the detector refuses things; this names the one
+// refusal that admitting its neighbour makes tempting.
+func (s *BoundaryTestSuite) TestTheRuntimeCharacterIsNotAdmitted() {
+	s.NotContains(allowed, "character.Character",
+		"the loaded character must never cross the boundary")
+	s.Contains(allowed, "character.Data",
+		"while the stored shape it is built from does")
 }
 
 type typeUse struct {

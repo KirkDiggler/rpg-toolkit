@@ -59,6 +59,25 @@ var (
 	// request.
 	ErrNoEncounter = errors.New("no such encounter")
 
+	// ErrNoCharacter is returned when a player joins naming a character the
+	// character repository does not hold.
+	//
+	// Distinct from ErrNoMember, which is about the encounter's roster: this
+	// one fires before anyone is placed, and it is the whole point of loading
+	// at join time. A session that accepted a player with no character would
+	// look fine until the first verb that needed a sheet, and would fail then
+	// in a place with no obvious connection to the join that caused it.
+	ErrNoCharacter = errors.New("no such character")
+
+	// ErrBadCharacter is returned when a character's stored data exists but
+	// cannot be reconstituted into a usable character.
+	//
+	// Separate from ErrNoCharacter for the same reason ErrBadRepository is
+	// separate from ErrNotFound: absent and corrupt send whoever debugs it to
+	// different places. This is also the boundary at which hostile or stale
+	// stored bytes are refused rather than carried into a resolution.
+	ErrBadCharacter = errors.New("character data could not be loaded")
+
 	// ErrNoMemberID is returned when a verb is given an empty member ID.
 	ErrNoMemberID = errors.New("empty member id")
 

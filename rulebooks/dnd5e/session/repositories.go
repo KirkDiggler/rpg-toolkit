@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -70,6 +71,51 @@ type EncounterRepository interface {
 
 	// SaveEncounter writes the encounter, creating or replacing it wholesale.
 	SaveEncounter(ctx context.Context, id string, data *encounter.EncounterData) error
+}
+
+// CharacterRepository persists player characters.
+//
+// Required. This is the repository the deferral rule was waiting on: it is
+// declared now because something finally calls it, and arriving with a caller
+// is what settled its shape rather than a guess.
+//
+// It names character.Data, and that crosses the boundary on purpose. The
+// distinction worth holding is between two kinds of type this package lets out:
+//
+//   - A PERSISTENCE SHAPE (encounter.EncounterData, interrupt.LedgerData) is
+//     bytes the host round-trips and never builds. It promises REPLACEABILITY —
+//     we can swap what is underneath and the host never notices.
+//   - A CONTRACT TYPE (spatial.Position, character.Data) is shared vocabulary
+//     the host constructs and reasons about. It promises the opposite: a change
+//     to it is announced, not hidden.
+//
+// A character is a thing, not an implementation detail we would refactor
+// without telling the host. Reading it as a grudging exception gets the intent
+// backwards. The version-bump promise is unaffected because that promise was
+// only ever about replaceability.
+//
+// What does NOT cross is *character.Character, the runtime object. It is loaded
+// inside a verb, attached to that call's bus, acted on, converted back to data,
+// and dropped. The boundary test rejects it, and should.
+//
+// SaveCharacter takes only the data because character.Data carries its own ID,
+// the same asymmetry SaveSession has and for the same reason: passing a key
+// alongside a payload that already contains one puts identity in two places.
+//
+// Save is declared now although the first wave to use this repository only
+// reads. Adding a method to an interface the host has already implemented stops
+// it compiling, so the reversible direction is to declare both up front — the
+// same rule that governs Config fields.
+//
+// Implementations must return an error satisfying errors.Is(err, ErrNotFound)
+// when the ID is absent, and must never report success with no data.
+type CharacterRepository interface {
+	// GetCharacter returns the character with the given ID, or an ErrNotFound
+	// error if it does not exist.
+	GetCharacter(ctx context.Context, id string) (*character.Data, error)
+
+	// SaveCharacter writes the character, creating or replacing it wholesale.
+	SaveCharacter(ctx context.Context, data *character.Data) error
 }
 
 // Concurrency: two doors deliberately left open.

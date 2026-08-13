@@ -24,6 +24,21 @@ type Config struct {
 	// Encounters persists the world. Required.
 	Encounters EncounterRepository
 
+	// Characters persists player characters. Required.
+	//
+	// Added in the entities wave, when something finally called it. A new
+	// REQUIRED Config field is worth a note, because gorelease will call it a
+	// compatible change and for a required field that verdict is wrong: it
+	// compiles everywhere and fails every existing host at its first
+	// NewManager, since construction is total (S8).
+	//
+	// It is free here only because no host has adopted this package yet. Once
+	// one has, a new required field is a silent runtime break wearing a green
+	// CI check — so every required field must land at or before the migration
+	// wave, and after that the answer is a separately type-asserted capability
+	// rather than a Config field.
+	Characters CharacterRepository
+
 	// Events is the live channel to connected clients. Required.
 	//
 	// Required because a verb's response tells the CALLER about the caller's
@@ -52,6 +67,7 @@ type Config struct {
 type Manager struct {
 	sessions   SessionRepository
 	encounters EncounterRepository
+	characters CharacterRepository
 	events     EventStream
 }
 
@@ -79,6 +95,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 	}{
 		{"Sessions", cfg.Sessions != nil},
 		{"Encounters", cfg.Encounters != nil},
+		{"Characters", cfg.Characters != nil},
 		{"Events", cfg.Events != nil},
 	}
 	for _, dep := range required {
@@ -90,6 +107,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 	return &Manager{
 		sessions:   cfg.Sessions,
 		encounters: cfg.Encounters,
+		characters: cfg.Characters,
 		events:     cfg.Events,
 	}, nil
 }

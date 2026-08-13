@@ -36,6 +36,10 @@ type JoinOutput struct {
 	// Member is the joined member's placement.
 	Member Member
 
+	// Character is the joined character's state, derived after loading. Nil
+	// for kinds that have no character sheet.
+	Character *CharacterState
+
 	// Discovered is what changed in each observer's perception, keyed by
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
@@ -130,6 +134,23 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	// Kind selects the repository. A player's sheet lives in the host's
+	// character store; anything else does not have one yet, and asking for one
+	// would fail every monster join.
+	//
+	// Loading HERE, before the placement, is the point of doing it at join at
+	// all: a session that accepted a player with no character would look
+	// healthy until the first verb that needed a sheet, and would then fail
+	// somewhere with no visible connection to the join that caused it.
+	var loaded *CharacterState
+	if in.Kind == KindPlayer {
+		ch, cErr := m.loadCharacter(ctx, newCallBus(), in.Member)
+		if cErr != nil {
+			return nil, fmt.Errorf("join: %w", cErr)
+		}
+		loaded = projectCharacter(ch)
+	}
+
 	joined, err := scope.enc.Join(&encounter.JoinInput{
 		Member: encounter.MemberInput{
 			ID:       encounter.MemberID(in.Member),
@@ -149,6 +170,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 
 	return &JoinOutput{
 		Member:     projectMember(joined.Member),
+		Character:  loaded,
 		Discovered: projectDiscoveries(joined.IntelDeltas),
 		Seq:        joined.Seq,
 		Outcome:    projectOutcome(joined.Outcome),
