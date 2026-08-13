@@ -201,8 +201,19 @@ jobs:
         git diff --exit-code || (echo "Please run 'go mod tidy' on all modules" && exit 1)
 
   # Summary job for branch protection
+  # The ADR digest is the file everyone is told to read INSTEAD of the corpus,
+  # so an ADR missing from it is invisible. This directory's own README index
+  # already drifted to listing 7 of 37 with nothing failing, which is the
+  # precedent. Cheap, no Go toolchain needed.
+  docs-decisions:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Every ADR is summarised in docs/adr/DECISIONS.md
+      run: ./scripts/check-decisions.sh
+
   ci-status:
-    needs: [changes, test-changed, test-all]
+    needs: [changes, test-changed, test-all, docs-decisions]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -212,6 +223,7 @@ jobs:
         echo "Changes detection: ${{ needs.changes.result }}"
         echo "Changed modules test: ${{ needs.test-changed.result }}"
         echo "All modules test: ${{ needs.test-all.result }}"
+        echo "ADR digest: ${{ needs.docs-decisions.result }}"
         
         # Fail if any required job failed
         if [[ "${{ needs.changes.result }}" == "failure" ]]; then
@@ -228,6 +240,11 @@ jobs:
         # If we ran all modules test, check its result
         if [[ "${{ needs.test-all.result }}" == "failure" ]]; then
           echo "❌ All modules test failed"
+          exit 1
+        fi
+
+        if [[ "${{ needs.docs-decisions.result }}" == "failure" ]]; then
+          echo "❌ An ADR is missing from docs/adr/DECISIONS.md"
           exit 1
         fi
         

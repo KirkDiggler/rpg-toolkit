@@ -21,19 +21,31 @@ Each ADR follows this structure:
 
 ## Current ADRs
 
-- [ADR-0001: Modifier Value Interface Design](0001-modifier-value-interface.md) - How modifiers work in the event system
-- [ADR-0002: Hybrid Event-Driven Architecture](0002-hybrid-architecture.md) - Why we chose a hybrid approach over pure ECS or Event Sourcing
-- [ADR-0003: Conditions as Entities](0003-conditions-as-entities.md) - Why conditions implement the Entity interface
-- [ADR-0004: Generic Condition Relationships](0004-condition-relationships.md) - How conditions relate to their sources and each other
-- [ADR-0005: Effect Composition](0005-effect-composition.md) - Design for composable effects system
-- [ADR-0006: Feature Management Pattern](0006-feature-management-pattern.md) - Hybrid approach for feature management
-- [ADR-0007: Generic Restoration Triggers](0007-generic-restoration-triggers.md) - Generic trigger system for resource restoration
-- [ADR-0036: Additional Damage and Selective Critical Hits](0036-additional-damage-selective-crit.md) - Multi-damage-type attacks where only the weapon pool doubles on a crit (companion to ADR-0026)
+**See [DECISIONS.md](DECISIONS.md)** — the cliffnotes digest of every decision,
+one or two lines each, with the rule it generalises to.
+
+Read that instead of this directory. Thirty-plus ADRs is a large context load and
+much of it is history: superseded shapes, proposals never built, and narrative
+that made sense at the time. Open a full ADR when you are about to contradict one,
+or need the reasoning behind a specific trade-off.
+
+This section used to hold a hand-maintained list. It drifted to naming 7 of 37 and
+nothing failed, which is why the digest is enforced by
+`scripts/check-decisions.sh` in CI instead of maintained by memory. A list nobody
+is forced to update is a list that quietly stops being true.
 
 ## Creating a New ADR
 
 1. Copy the template from `template.md`
-2. Number it sequentially (e.g., `0002-feature-name.md`)
-3. Fill in all sections
+2. Number it sequentially — **check for collisions first**; this corpus already
+   has two `0006`s and two `0019`s, and one of those is titled "ADR-0014"
+   internally. `ls docs/adr` before choosing.
+3. Fill in all sections. **Record the options you rejected and why**, including
+   the ones that were tempting. A decision reads as obvious in hindsight; the
+   alternatives are what a future reader needs in order to reopen it honestly.
 4. Set status to "Proposed"
 5. After team review, update status to "Accepted"
+6. **Add a one-line entry to [DECISIONS.md](DECISIONS.md)** — the decision, and
+   the rule it generalises to. CI fails until you do
+   (`scripts/check-decisions.sh`), because that file is what people actually
+   read.
