@@ -59,10 +59,10 @@ var allowed = map[string]string{
 	// are the slowest-moving surface in the toolkit and carry their own
 	// compatibility discipline; domain types do not.
 	//
-	// It appears at the port and in StartSession, which hands in authored
-	// content. That is not a widening: it is the same bytes the host holds
-	// either way, so no host is exposed to anything the port did not already
-	// expose it to. A *domain* type in a verb input would be a different
+	// It appears on EncounterRepository and in StartSession, which hands in
+	// authored content. That is not a widening: it is the same bytes the host
+	// holds either way, so no host is exposed to anything the repository did
+	// not already expose it to. A *domain* type in a verb input would be a different
 	// matter, and is what this list exists to keep out.
 	"encounter.EncounterData": "persistence shape the host already holds (S3)",
 }

@@ -5,9 +5,9 @@
 // game server would.
 //
 // It exists to be run, not admired. The repositories below are the smallest
-// honest implementation of the ports — two maps — which is itself the claim
-// being demonstrated: a host that can get and put a blob by key has done its
-// entire integration.
+// honest implementation the SDK will accept — two maps — which is itself the
+// claim being demonstrated: a host that can get and put a blob by key has done
+// its entire integration.
 //
 //	go run ./cmd/session-workbench
 package main
@@ -52,7 +52,8 @@ func run(w io.Writer) error {
 }
 
 // memSessions is a SessionRepository over a map. Get-by-id and put-by-id is
-// the whole port (S12), which is why this is six lines rather than a schema.
+// the whole interface (S12), which is why this is six lines rather than a
+// schema.
 type memSessions struct {
 	byID map[string]*session.SessionData
 }

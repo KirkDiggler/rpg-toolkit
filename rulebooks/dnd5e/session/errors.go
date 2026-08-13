@@ -10,18 +10,23 @@ var (
 	ErrNilInput = errors.New("nil input")
 
 	// ErrNilConfig is returned by NewManager when the config itself is nil.
-	// Distinct from ErrMissingPort: a nil config is a caller mistake at the
-	// call site, while a missing port is an incomplete wiring decision.
+	// Distinct from ErrIncompleteConfig: a nil config is a caller mistake at the
+	// call site, while an incomplete one is an unfinished wiring decision.
 	ErrNilConfig = errors.New("nil config")
 
-	// ErrMissingPort is returned by NewManager when a required repository is
-	// absent. The wrapped message names which one.
+	// ErrIncompleteConfig is returned by NewManager when a required repository
+	// is absent. The wrapped message names which one.
+	//
+	// Named for the condition rather than the category of the missing thing: a
+	// name like "missing repository" would be accurate only for as long as
+	// every required dependency happens to be one, and renaming an exported
+	// error later is a breaking change.
 	//
 	// Construction is total (S8): the manager refuses to exist rather than
-	// discovering a nil port three verbs later, at which point the failure
-	// would surface as a panic in the middle of a player's turn instead of at
-	// process start where a deployment can catch it.
-	ErrMissingPort = errors.New("missing required port")
+	// discovering a nil dependency three verbs later, at which point the
+	// failure surfaces as a panic in the middle of a player's turn instead of
+	// at process start where a deployment can catch it.
+	ErrIncompleteConfig = errors.New("incomplete config")
 
 	// ErrNotFound is what a repository returns when the requested ID does not
 	// exist. Implementations must return an error satisfying errors.Is against

@@ -9,20 +9,27 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// The ports below are the host's entire integration surface. It implements
-// them once and thereafter calls verbs with IDs, never holding a domain object.
+// The repositories below are most of the host's integration surface: it
+// implements them once and thereafter calls verbs with IDs, never holding a
+// domain object. (The other piece is EventStream, which lives with the fan-out
+// that uses it, in events.go.)
+//
+// They point OUTWARD, which is the distinction worth keeping even after the
+// jargon goes: these are interfaces this package CALLS and the host IMPLEMENTS,
+// the reverse of the usual direction. That inversion is what lets storage be
+// swapped, mocked, or held in memory without this package knowing.
 //
 // Two rules shape every one of them.
 //
-// S12 — ports are key-value. Every operation is get-by-id or put-by-id. No
+// S12 — repositories are key-value. Every operation is get-by-id or put-by-id. No
 // queries, no scans, no joins, no ordering. This is a constraint on this
 // package, not a claim about the host's database: honouring it means a
 // key-value store stays sufficient forever, and it makes it structurally
 // impossible for a later wave to quietly require a relational one.
 //
-// S3 — ports trade in data, not domain objects. They carry persistence shapes,
-// and reconstitution happens inside this package where the laws live. This is
-// also the one deliberate exception to S2's "no inner type crosses the
+// S3 — repositories trade in data, not domain objects. They carry persistence
+// shapes, and reconstitution happens inside this package where the laws live.
+// This is also the one deliberate exception to S2's "no inner type crosses the
 // boundary": EncounterRepository names encounter.EncounterData, because those
 // are exactly the bytes the host persists. Data types are the slowest-moving
 // surface in the toolkit and already carry their own compatibility discipline,
@@ -63,26 +70,6 @@ type EncounterRepository interface {
 
 	// SaveEncounter writes the encounter, creating or replacing it wholesale.
 	SaveEncounter(ctx context.Context, id string, data *encounter.EncounterData) error
-}
-
-// EventStream delivers events to the host for multiplayer fan-out.
-//
-// Optional: a single-player setup, a test, or a headless simulation constructs
-// without one and simply produces no stream.
-//
-// Events are already projected per audience when they arrive here — who may
-// see what is a rule, decided inside this package where perception lives, not
-// a delivery concern the host is expected to re-derive. A host that filtered
-// events itself would be reimplementing visibility, and its first mistake
-// would leak something a player has not perceived.
-//
-// Publishing is best-effort by contract: a failure here is reported but does
-// not fail the verb, because the story log remains the source of truth and a
-// client that misses an event can notice the gap and re-query. Implementations
-// should therefore not block indefinitely.
-type EventStream interface {
-	// Publish delivers a batch of already-projected events.
-	Publish(ctx context.Context, events []Event) error
 }
 
 // Concurrency: two doors deliberately left open.

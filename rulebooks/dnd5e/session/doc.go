@@ -10,8 +10,8 @@
 //
 // # The loop
 //
-// The host implements repositories and then calls verbs with IDs. It never
-// holds a domain object:
+// The host implements a repository or two and then calls verbs with IDs. It
+// never holds a domain object:
 //
 //	mgr, err := session.NewManager(&session.Config{
 //	    Sessions:   sessRepo,
@@ -74,8 +74,13 @@
 // S8 — construction is total. The manager refuses to exist without what it
 // needs; there is no lazy discovery at call time.
 //
-// S12 — ports are key-value. Every operation is get-by-id or put-by-id, so the
-// host's store can stay a key-value store forever.
+// S12 — repositories are key-value. Every operation is get-by-id or put-by-id,
+// so the host's store can stay a key-value store forever.
+//
+// The repositories point OUTWARD: this package calls them, the host implements
+// them. That inversion is what lets storage be swapped, mocked, or held in
+// memory without this package knowing, and it is the only structural idea here
+// worth naming.
 //
 // S13 — one repository per data type.
 package session

@@ -27,10 +27,10 @@ type StartSessionInput struct {
 	// World is the authored content this session plays in — a tomb from a
 	// content pipeline, not a live encounter.
 	//
-	// Passed in rather than fetched through a port because the host already
-	// knows where its content lives, and this is the only moment in a session's
-	// life that reads it. A content repository would be a permanent interface
-	// for a once-per-session lookup.
+	// Passed in rather than fetched because the host already knows where its
+	// content lives, and this is the only moment in a session's life that reads
+	// it. A content repository would be a permanent interface for a
+	// once-per-session lookup.
 	//
 	// It is copied, not referenced: two parties running the same tomb get their
 	// own worlds, and neither can move the other's ogre.

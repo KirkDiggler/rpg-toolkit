@@ -18,7 +18,7 @@ verbs.
 ## Where it sits
 
 ```
-rpg-api ──implements──▶ ports (Get/Save)
+rpg-api ──implements──▶ repositories (Get/Save)
    └────────calls──────▶ session.Manager
                               │
                          encounter (the world)

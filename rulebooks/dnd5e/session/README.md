@@ -2,8 +2,8 @@
 
 **Charter: the game server's single point of contact with the toolkit.**
 
-A host implements a couple of repositories and, from then on, holds no domain
-object at all — it names things and calls verbs.
+A host implements two repositories and, from then on, holds no domain object at
+all — it names things and calls verbs.
 
 ## What it is
 
@@ -37,7 +37,7 @@ declaration, and `gorelease` gates every release.
 | File | Role |
 |---|---|
 | `session.go` | `Config`, `Manager`, total construction |
-| `ports.go` | What the host implements, and the constraints on it |
+| `repositories.go` | What the host implements for storage, and the constraints on it |
 | `data.go` | What this package persists |
 | `types.go` | What this package returns |
 | `convert.go` | The converter layer: inner shapes → ours |

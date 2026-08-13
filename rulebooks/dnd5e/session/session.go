@@ -5,18 +5,18 @@ package session
 
 import "fmt"
 
-// Config carries the ports a Manager needs. Construct a Manager with
+// Config carries what a Manager needs from the host. Construct a Manager with
 // NewManager; the zero Manager is unusable.
 //
-// Required ports are those without which no verb can run. Optional ports are
-// capabilities: absent, the corresponding behaviour simply does not happen,
-// and nothing else degrades.
+// Required fields are those without which no verb can run. Optional ones are
+// capabilities: absent, the corresponding behaviour simply does not happen and
+// nothing else degrades.
 //
-// Ports are added over time as waves need them (a character repository arrives
+// Fields are added over time as waves need them (a character repository arrives
 // with entities, for example). That direction is deliberate and safe: adding a
-// field to this struct is a compatible change a host adopts when it wants the
-// capability, whereas removing one it has already implemented is not. Ports
-// are therefore introduced when something calls them, never in anticipation.
+// field here is a compatible change a host adopts when it wants the capability,
+// whereas removing one it has already implemented is not. They are therefore
+// introduced when something calls them, never in anticipation.
 type Config struct {
 	// Sessions persists session state. Required.
 	Sessions SessionRepository
@@ -32,8 +32,8 @@ type Config struct {
 
 // Manager is the host's single point of contact with the toolkit.
 //
-// It holds ports and nothing else (S1). Every verb loads what it needs, acts,
-// saves, and drops everything, so a Manager is safe to construct once at
+// It holds the host's repositories and stream, and nothing else (S1). Every
+// verb loads what it needs, acts, saves, and drops everything, so a Manager is safe to construct once at
 // process start, share across goroutines that do not share a verb call, and
 // keep for the life of the process. Nothing about a session is cached between
 // calls, which is what allows several servers to serve the same session with
@@ -44,24 +44,24 @@ type Manager struct {
 	events     EventStream
 }
 
-// NewManager returns a Manager wired to the given ports.
+// NewManager returns a Manager wired to what the host supplied.
 //
-// Construction is total (S8): every required port is checked here, and a
-// missing one is named in the error. The alternative — discovering a nil port
-// at call time — turns a wiring mistake into a panic in the middle of a
-// player's turn, in production, instead of a startup failure a deployment can
-// catch.
+// Construction is total (S8): every required field is checked here, and a
+// missing one is named in the error. The alternative — discovering a nil
+// dependency at call time — turns a wiring mistake into a panic in the middle
+// of a player's turn, in production, instead of a startup failure a deployment
+// can catch.
 //
-// Returns ErrNilConfig for a nil config, and ErrMissingPort naming the first
-// absent required port.
+// Returns ErrNilConfig for a nil config, and ErrIncompleteConfig naming the
+// first absent required field.
 func NewManager(cfg *Config) (*Manager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("newmanager: %w", ErrNilConfig)
 	}
 
 	// Checked in a fixed order so the reported name is deterministic: a host
-	// wiring several ports at once fixes them one predictable step at a time
-	// rather than watching the message change between runs.
+	// wiring several at once fixes them one predictable step at a time rather
+	// than watching the message change between runs.
 	required := []struct {
 		name    string
 		present bool
@@ -69,9 +69,9 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Sessions", cfg.Sessions != nil},
 		{"Encounters", cfg.Encounters != nil},
 	}
-	for _, port := range required {
-		if !port.present {
-			return nil, fmt.Errorf("newmanager: %s: %w", port.name, ErrMissingPort)
+	for _, dep := range required {
+		if !dep.present {
+			return nil, fmt.Errorf("newmanager: %s: %w", dep.name, ErrIncompleteConfig)
 		}
 	}
 

@@ -10,6 +10,26 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
+// EventStream delivers events to the host for multiplayer fan-out.
+//
+// Optional: a single-player setup, a test, or a headless simulation constructs
+// without one and simply produces no stream.
+//
+// Events are already projected per audience when they arrive here — who may
+// see what is a rule, decided inside this package where perception lives, not
+// a delivery concern the host is expected to re-derive. A host that filtered
+// events itself would be reimplementing visibility, and its first mistake
+// would leak something a player has not perceived.
+//
+// Publishing is best-effort by contract: a failure here is reported but does
+// not fail the verb, because the story log remains the source of truth and a
+// client that misses an event can notice the gap and re-query. Implementations
+// should therefore not block indefinitely.
+type EventStream interface {
+	// Publish delivers a batch of already-projected events.
+	Publish(ctx context.Context, events []Event) error
+}
+
 // DeliveryReport says what reached the event stream.
 //
 // Separate from SaveReport because they answer different questions and have
