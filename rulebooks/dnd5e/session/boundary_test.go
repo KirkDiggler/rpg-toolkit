@@ -53,11 +53,17 @@ var allowed = map[string]string{
 	// hosts to convert on every call for no benefit.
 	"spatial.Position": "stable value type",
 
-	// The documented S3 exception: repository ports trade in persistence
-	// shapes, because those are exactly the bytes the host stores. Data types
+	// The documented S3 exception: persistence shapes cross the boundary
+	// because they are exactly the bytes the host already stores. Data types
 	// are the slowest-moving surface in the toolkit and carry their own
 	// compatibility discipline; domain types do not.
-	"encounter.EncounterData": "persistence shape carried by a port (S3)",
+	//
+	// It appears at the port and in StartSession, which hands in authored
+	// content. That is not a widening: it is the same bytes the host holds
+	// either way, so no host is exposed to anything the port did not already
+	// expose it to. A *domain* type in a verb input would be a different
+	// matter, and is what this list exists to keep out.
+	"encounter.EncounterData": "persistence shape the host already holds (S3)",
 }
 
 // TestNoInnerTypeCrossesTheBoundary parses this package's non-test sources and

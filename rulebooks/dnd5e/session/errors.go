@@ -44,6 +44,30 @@ var (
 	// request.
 	ErrNoEncounter = errors.New("no such encounter")
 
+	// ErrNoSessionID is returned when a verb is given an empty session ID.
+	ErrNoSessionID = errors.New("empty session id")
+
+	// ErrNoEncounterID is returned when a verb is given an empty encounter ID.
+	ErrNoEncounterID = errors.New("empty encounter id")
+
+	// ErrSessionExists is returned by StartSession when the ID is already in
+	// use.
+	//
+	// Starting over an existing session must never be silent: the ID names a
+	// game in progress, and overwriting it would destroy a party's state
+	// because someone reused a string. A host that genuinely wants to restart
+	// deletes first, deliberately.
+	ErrSessionExists = errors.New("session already exists")
+
+	// ErrInvalidWorld is returned when the authored encounter handed to
+	// StartSession cannot be loaded.
+	//
+	// Validated by loading it before anything is written, so a world that
+	// cannot be reconstituted is rejected at the door rather than persisted
+	// and discovered on the next verb — at which point the session would exist
+	// and be permanently unusable.
+	ErrInvalidWorld = errors.New("invalid encounter data")
+
 	// ErrSaveFailed is returned when one or more aggregates could not be
 	// persisted. The accompanying SaveReport names which landed and which did
 	// not (S6) — a partial write is never reported as success, and never as an
