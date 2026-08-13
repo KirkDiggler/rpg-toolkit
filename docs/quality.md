@@ -345,8 +345,15 @@ hand-written converter actually has (silently dropping a field when an inner
 type grows one). Pins are mutation-proven throughout, including the
 uncomfortable ones: over-tightening kills only the positive controls, and
 "compute the snapshot but never save it" kills six tests because persistence is
-checked through separate reads rather than returned values. One direct
-dependency. `verify.sh` clean at 120 tests, `-race` clean, `gorelease` gated.
+checked through separate reads rather than returned values. `verify.sh` clean at
+120 tests, `-race` clean, `gorelease` gated.
+
+Its dependencies are the composition it wraps (`encounter`), the three `play`
+modules it projects from, `spatial` for coordinates, and — as of v0.2.0 —
+`core`, for the entity-ID type the interrupt ledger's inputs are written in.
+That last one is a direct dependency taken on internally and held off the
+boundary: `core.EntityID` appears in no exported signature, which the boundary
+test enforces.
 
 **Why not higher, judged from where we stood when we built it.** Four things,
 none of which were available to fix at the time:
