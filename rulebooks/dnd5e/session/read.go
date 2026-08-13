@@ -160,7 +160,17 @@ func (m *Manager) open(ctx context.Context, sessionID string) (*encounter.Encoun
 	if sessionID == "" {
 		return nil, ErrNoSessionID
 	}
+	data, err := m.loadSessionData(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return m.loadWorld(ctx, data.Encounter)
+}
 
+// loadSessionData fetches session state, translating the repository's
+// ErrNotFound into this package's vocabulary so hosts match on one set of
+// sentinels rather than two.
+func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*SessionData, error) {
 	data, err := m.sessions.GetSession(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -174,21 +184,25 @@ func (m *Manager) open(ctx context.Context, sessionID string) (*encounter.Encoun
 		// otherwise panic several frames later with nothing pointing back here.
 		return nil, fmt.Errorf("%q: repository returned no data: %w", sessionID, ErrNoSession)
 	}
+	return data, nil
+}
 
-	world, err := m.encounters.GetEncounter(ctx, data.Encounter)
+// loadWorld fetches and reconstitutes an encounter by ID.
+func (m *Manager) loadWorld(ctx context.Context, encID string) (*encounter.Encounter, error) {
+	world, err := m.encounters.GetEncounter(ctx, encID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("%q: %w", data.Encounter, ErrNoEncounter)
+			return nil, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
 		}
 		return nil, err
 	}
 	if world == nil {
-		return nil, fmt.Errorf("%q: repository returned no data: %w", data.Encounter, ErrNoEncounter)
+		return nil, fmt.Errorf("%q: repository returned no data: %w", encID, ErrNoEncounter)
 	}
 
 	enc, err := encounter.LoadEncounter(*world, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%q: %w: %w", data.Encounter, ErrInvalidWorld, err)
+		return nil, fmt.Errorf("%q: %w: %w", encID, ErrInvalidWorld, err)
 	}
 	return enc, nil
 }
@@ -211,6 +225,10 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrStoryTrimmed)
 	case errors.Is(err, encounter.ErrNoMember), errors.Is(err, encounter.ErrNotMember):
 		return fmt.Errorf("%w", ErrNoMember)
+	case errors.Is(err, encounter.ErrClosed):
+		return fmt.Errorf("%w", ErrClosed)
+	case errors.Is(err, encounter.ErrNoEnding):
+		return fmt.Errorf("%w", ErrNoEnding)
 	default:
 		return err
 	}

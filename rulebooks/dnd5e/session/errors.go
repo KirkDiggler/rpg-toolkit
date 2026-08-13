@@ -64,6 +64,15 @@ var (
 	// through a channel no test is watching.
 	ErrStoryTrimmed = errors.New("story range trimmed")
 
+	// ErrClosed is returned when a verb would change an encounter that has
+	// already ended. A closed encounter is a record, not a game.
+	ErrClosed = errors.New("encounter closed")
+
+	// ErrNoEnding is returned by End when the key names no declared external
+	// ending. Endings are declared when a world is authored, so this is a
+	// caller naming something that was never on the menu.
+	ErrNoEnding = errors.New("no such ending")
+
 	// ErrNoSessionID is returned when a verb is given an empty session ID.
 	ErrNoSessionID = errors.New("empty session id")
 

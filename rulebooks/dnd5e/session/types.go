@@ -272,3 +272,60 @@ type SaveReport struct {
 func (r SaveReport) Partial() bool {
 	return len(r.Written) > 0 && len(r.Failed) > 0
 }
+
+// MemberKind categorises a member.
+//
+// A string enum rather than a mirror of the composition's, for the same reason
+// GridKind is: it maps onto a proto enum, and adding a kind must be a
+// compatible change rather than a renumbering.
+type MemberKind string
+
+const (
+	// KindPlayer is a player-controlled member.
+	KindPlayer MemberKind = "player"
+
+	// KindMonster is a member driven by the game rather than a person.
+	KindMonster MemberKind = "monster"
+)
+
+// Member is a participant's placement in the world.
+type Member struct {
+	// ID is the member's identifier.
+	ID string `json:"id"`
+
+	// Kind categorises the member.
+	Kind MemberKind `json:"kind"`
+
+	// Room is the room the member currently occupies.
+	Room string `json:"room"`
+}
+
+// Discovery is what changed in one observer's perception.
+//
+// Three disjoint lists rather than a single "here is everything you now
+// perceive": a client rendering a first sighting wants to announce it, a
+// refresh wants to update silently, and a fade wants to grey something out.
+// Collapsing them would force the client to diff against its own previous
+// state to recover the distinction the composition already knows.
+type Discovery struct {
+	// FirstContact is what came into view that the observer did not hold at
+	// all. These are the moments worth announcing.
+	FirstContact []Report `json:"first_contact,omitempty"`
+
+	// Refreshed names subjects the observer already held whose knowledge was
+	// renewed by a live channel.
+	Refreshed []string `json:"refreshed,omitempty"`
+
+	// Faded names subjects that stopped being sustained. The observer keeps a
+	// memory; it is no longer a live sighting.
+	Faded []string `json:"faded,omitempty"`
+}
+
+// Report is one newly perceived subject and what is known about it.
+type Report struct {
+	// Subject names what was perceived.
+	Subject string `json:"subject"`
+
+	// Payload is what the observer learned, encoded by the composition.
+	Payload []byte `json:"payload,omitempty"`
+}

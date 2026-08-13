@@ -155,3 +155,78 @@ func projectStory(in []record.Entry) []StoryEntry {
 	}
 	return out
 }
+
+func projectMember(in encounter.Member) Member {
+	return Member{
+		ID:   string(in.ID),
+		Kind: MemberKind(in.Kind),
+		Room: in.Room,
+	}
+}
+
+func projectMemberOutcome(in encounter.MemberOutcome) MemberOutcome {
+	return MemberOutcome{
+		ID:       string(in.ID),
+		Room:     in.Room,
+		Position: in.Position,
+	}
+}
+
+// projectOutcome converts a bare outcome. projectStatus has its own inline
+// copy of this walk because it must also handle the nil-Status case; this one
+// serves the verbs that return an outcome directly.
+func projectOutcome(in *encounter.Outcome) *Outcome {
+	if in == nil {
+		return nil
+	}
+	out := &Outcome{
+		Ending:  in.Ending,
+		At:      in.At,
+		Members: make([]MemberOutcome, 0, len(in.Members)),
+	}
+	for _, m := range in.Members {
+		out.Members = append(out.Members, projectMemberOutcome(m))
+	}
+	return out
+}
+
+// projectDiscoveries converts the per-observer perception deltas a verb
+// produced.
+//
+// Observers with a nil delta are skipped rather than given an empty entry: a
+// present key means "something changed for this observer", and manufacturing
+// empty entries for everyone who happened to be in the encounter would make
+// the map's size meaningless to a caller deciding whom to notify.
+func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput) map[string]Discovery {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]Discovery, len(in))
+	for id, delta := range in {
+		if delta == nil {
+			continue
+		}
+		out[string(id)] = projectDiscovery(delta)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func projectDiscovery(in *intel.SurveilOutput) Discovery {
+	out := Discovery{}
+	for _, r := range in.FirstContact {
+		out.FirstContact = append(out.FirstContact, Report{
+			Subject: string(r.Subject),
+			Payload: append([]byte(nil), r.Payload...),
+		})
+	}
+	for _, s := range in.Refreshed {
+		out.Refreshed = append(out.Refreshed, string(s))
+	}
+	for _, s := range in.Faded {
+		out.Faded = append(out.Faded, string(s))
+	}
+	return out
+}
