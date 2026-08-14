@@ -98,6 +98,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		condition = NewDisengagingCondition(input.CharacterID)
 	case refs.Conditions.Dodging().ID:
 		condition = NewDodgingCondition(input.CharacterID)
+	case refs.Conditions.Prone().ID:
+		condition = NewProneCondition(input.CharacterID)
 	case refs.Conditions.Hidden().ID:
 		condition = NewHiddenCondition(input.CharacterID)
 	case refs.Conditions.Helped().ID:

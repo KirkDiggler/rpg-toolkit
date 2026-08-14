@@ -139,6 +139,13 @@ func LoadJSON(data json.RawMessage) (dnd5eEvents.ConditionBehavior, error) {
 		}
 		return dodging, nil
 
+	case refs.Conditions.Prone().ID:
+		prone := &ProneCondition{}
+		if err := prone.loadJSON(data); err != nil {
+			return nil, rpgerr.Wrap(err, "failed to load prone condition")
+		}
+		return prone, nil
+
 	case refs.Conditions.Hidden().ID:
 		hidden := &HiddenCondition{}
 		if err := hidden.loadJSON(data); err != nil {
