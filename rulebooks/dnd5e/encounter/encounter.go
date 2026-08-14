@@ -47,12 +47,12 @@ type Encounter struct {
 	// reached through a member, which R6 makes a total function ("an entity
 	// belongs to at most one clock"). Inventing an ID would create a second
 	// thing to keep true.
-	bubbles  []*clock.Turn
-	intelLog *intel.Intel
-	story        *record.Log
-	members      map[MemberID]*Member
-	everMembers  map[MemberID]bool // Track all members who have ever joined (for Story access)
-	deciders     map[MemberID]Decider
+	bubbles     []*clock.Turn
+	intelLog    *intel.Intel
+	story       *record.Log
+	members     map[MemberID]*Member
+	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
+	deciders    map[MemberID]Decider
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Move, Traverse, Join) declaration order is

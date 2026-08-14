@@ -31,13 +31,13 @@ type EncounterData struct {
 	// A list rather than a single optional bubble because a list grows to N
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
-	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
-	Intel       intel.Data     `json:"intel"`
-	Log         record.LogData `json:"log"`
-	Field       FieldData      `json:"field"`
-	Members     []MemberData   `json:"members"`
-	Endings     []EndingData   `json:"endings"`
-	EverMembers []MemberID     `json:"ever_members"`
+	Bubbles     []clock.TurnData `json:"bubbles,omitempty"`
+	Intel       intel.Data       `json:"intel"`
+	Log         record.LogData   `json:"log"`
+	Field       FieldData        `json:"field"`
+	Members     []MemberData     `json:"members"`
+	Endings     []EndingData     `json:"endings"`
+	EverMembers []MemberID       `json:"ever_members"`
 	// Retention is the story-beat window this encounter was built with (see
 	// SetupInput.Retention). Persisted so a reloaded encounter keeps the policy
 	// it was constructed with rather than silently adopting the package default.
