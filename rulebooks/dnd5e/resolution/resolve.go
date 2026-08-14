@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
 
@@ -317,30 +316,27 @@ func attachCharacter(
 	return ch, nil
 }
 
-// attachMonster is the same two steps with the monster's third call in the
-// middle, which is import-cycle bookkeeping rather than a decision: the action
-// loader imports the monster package, so only a caller can run both.
+// attachMonster is the same two calls, over the composition that knows what a
+// whole monster is.
+//
+// monstertraits.LoadMonster is the pure load — sheet, actions, and the trait
+// blobs it was persisted with — and it lives in that package because it is the
+// only one that can see both loaders without an import cycle. Calling it rather
+// than assembling the pieces here is safer by construction than by test: the
+// actions round-trip pin would catch a forgotten LoadMonsterActions, but a
+// composition that cannot forget it needs no pin at all, and this caller is the
+// one it was written for.
 //
 // The trait blobs ride on the loaded monster rather than being passed alongside
-// it — monster.Load carries them, monstertraits.AttachMonster drains them — so
-// the old failure mode of this function, where forgetting a call wrote a
-// monster back without what that call would have restored, is no longer
-// reachable for conditions. And a failed attach is a no-op: the blobs go back,
-// whatever was applied comes off, and nothing half-attached survives the error
-// this returns.
-//
-// monstertraits.LoadMonster would collapse the first two calls into one. It is
-// spelled out here because #989 specified these three by name; folding it is a
-// one-line change if the composition is preferred.
+// it, so the assembly's other old failure — writing a monster back without the
+// conditions a skipped call would have restored — is unreachable too. And a
+// failed attach is a no-op: the blobs go back, whatever was applied comes off,
+// and nothing half-attached survives the error this returns.
 func attachMonster(
 	ctx context.Context, view *surface, data *monster.Data, roller dice.Roller,
 ) (*monster.Monster, error) {
-	m, err := monster.Load(ctx, data)
+	m, err := monstertraits.LoadMonster(ctx, data)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := monsterActions.LoadMonsterActions(m, data.Actions); err != nil {
 		return nil, err
 	}
 
