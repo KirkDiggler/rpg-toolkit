@@ -280,6 +280,103 @@ available as a later, deliberate signature migration. Not forced now.
 routes ref → factory → behavior and attaches each behavior through an
 instrumented surface it owns — *the bus never leaves resolution*.
 
+## The shape in pseudocode (Kirk asked to see it, 2026-08-14)
+
+The layers — note there is nothing between session and resolution; the depth
+is *below* resolution, as library calls returning values:
+
+```
+host (rpg-api)
+  │  IDs in, projections out (S2)
+  ▼
+session.Manager      custody: repositories, the lock, persistence. No bus, no rules.
+  │  data in, data out
+  ▼
+resolution           custody: THE bus — created here, dies here. The single attach site.
+  ├─→ combat         rules vocabulary: chains, stages, phases     (no bus)
+  ├─→ encounter      the world: geometry, story, clocks           (no bus)
+  └─→ effects        self-contained; each Apply(ctx, surface)
+```
+
+The session verb — gather data, lock, hand off, save what returns dirty:
+
+```go
+func (m *Manager) Strike(ctx, in *StrikeInput) (*StrikeOutput, error) {
+    unlock := m.locker.LockSession(ctx, in.Session)   // pessimistic, buffer+timeout
+    defer unlock()
+    scope := m.openForChange(ctx, in.Session)
+
+    party := getAll(m.characters, scope.data.Members) // EVERYONE — the aura ruling
+    out := resolution.Resolve(ctx, &resolution.Input{
+        World: scope.encData, Characters: party, NPCs: scope.data.NPCs,
+        Action: resolution.Strike{Actor: in.Member, Target: in.Target},
+    })
+
+    for _, ch := range out.DirtyCharacters { m.characters.SaveCharacter(ctx, ch) }
+    m.encounters.SaveEncounter(ctx, scope.encounter, out.World)
+    m.sessions.SaveSession(ctx, scope.data)           // world-then-session, as today
+    return project(out), nil                          // projections, never objects
+}
+```
+
+Resolution — Kirk's sentence in order: creates the bus, takes all the data,
+applies the bus to them, takes the action:
+
+```go
+func Resolve(ctx, in *Input) *Output {
+    bus := instrument(events.NewEventBus())     // records every Subscribe
+
+    world := encounter.LoadEncounter(in.World)
+    ctx = gamectx.With(ctx, world)              // what effect predicates may read
+
+    participants := map[ID]*loaded{}
+    for _, data := range sortByID(in.Characters, in.NPCs) {  // sorted = C8
+        p := load(ctx, data, bus)   // ref routes to loader (ADR-0037); each
+                                    // behavior.Apply(ctx, bus) names its topics
+        participants[p.ID] = p
+    }
+
+    outcome := combat.RunStrike(ctx, bus, participants, in.Action)
+    //   declare → roll → damage: each phase folds a chain,
+    //   each boundary is DATA (suspension probe pins this; W5 suspends between)
+
+    return &Output{
+        World:           world.ToData(),
+        DirtyCharacters: dirtyOf(participants),  // IsDirty already exists
+        Outcome:         outcome,                // values, not events
+        Hooks:           bus.Registrations(),    // "what attached", as data
+    }
+}
+```
+
+The effect — unchanged, which is the point (this is the repo's own
+`BlessSpell`, reshaped only cosmetically):
+
+```go
+func (b *BlessSpell) Apply(ctx, bus events.EventBus) error {   // today's signature
+    return AttackChain.On(bus).SubscribeWithChain(ctx,
+        func(ctx, e AttackEvent, c chain.Chain[AttackEvent]) (chain.Chain[AttackEvent], error) {
+            if !contains(b.Targets, e.AttackerID) { return c, nil }
+            return c, c.Add(StageConditions, "bless", plusD4(b.Bonus))
+        })
+}
+```
+
+Two sharpenings the code makes visible:
+
+1. **"session →→→ resolution" is one arrow.** No intermediate layers; combat
+   and encounter sit *below* resolution as value-returning libraries.
+2. **Not every verb enters resolution.** A pure free-roam walk loads nobody —
+   `session → encounter` directly (~187µs, measured). Resolution is entered
+   when an *interaction* occurs: a strike, a trap cell, first contact. Two
+   doors into one building.
+
+On "I was trying to remove the bus from Apply": what was removed is real even
+though the parameter remains — the effect receives an interface whose
+concrete value is resolution's recording surface. It cannot own the bus,
+cannot outlive the call, cannot escape observation. The leftover `bus`
+parameter is a registration surface wearing an old name.
+
 ## What ADR-0038 records, once picked
 
 The chosen interface; the rejects with reasons (including D's deferral and
