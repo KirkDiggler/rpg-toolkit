@@ -118,8 +118,8 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
 - **0039** — **The save gate is data**: a contestable consequence declares
   `SaveGate{Abilities, DC, OnSuccess, Recurrence}` and resolution turns it
   into a `Request`; every save folds `SavingThrowChain`. **`DCSource` is a
-  closed enum of named formulas** (`Static`, `FivePlusDamageTaken`,
-  `HalfDamageFloorTen`) — no function arm. *Rule: a new `DCSource` case must
+  closed enum of named formulas** (`DCStatic`, `DCFivePlusDamageTaken`,
+  `DCHalfDamageFloorTen`) — no function arm. *Rule: a new `DCSource` case must
   cite a RAW rule; 5e already closed this set, and we inherit their closure
   rather than inventing an open one.*
 

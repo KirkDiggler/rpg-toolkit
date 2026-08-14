@@ -87,7 +87,8 @@ Consequences of the shape:
 
 - **Content stays data.** A monster's stat block carries its gates the way it
   carries `damage.Type`; authoring a gated bite requires no Go. The wolf's
-  `KnockdownDC: 11` becomes `SaveGate{[STR], DCStatic(11), Negated, None}`.
+  `KnockdownDC: 11` becomes
+  `SaveGate{[abilities.STR], DCStatic(11), Negated, None}`.
 - **"What can I resist?" is answerable from data** — for the client UI, for
   encounter tuning, and before execution. A stat block cannot lie about
   whether a save exists (#962's founding complaint).
