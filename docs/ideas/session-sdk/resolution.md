@@ -46,10 +46,15 @@ modules. `encounter` does **not** import `rulebooks/dnd5e` — its requires are
 `game`. Today `session` is the only module depending on both:
 
 ```
-dnd5e v0.78.0 ────┐
-                  ├──→ session
-encounter v0.4.0 ─┘
+dnd5e ────┐
+          ├──→ session
+encounter ┘
 ```
+
+*(Read a module's version from its own tags, not from a consumer's `go.mod`.
+`session/go.mod` pins `encounter v0.4.0`, but the module is at **v0.6.0** —
+what a consumer pins is what it has adopted, not what exists. An earlier draft
+of this doc had that wrong.)*
 
 Resolution needs both — the world from `encounter`, the loaders, effects and
 saves from `dnd5e` — so it cannot live inside either. `session`'s charter
@@ -72,11 +77,16 @@ because the aura ruling lets any predicate read anything. The interface option
 also pushes world load and `ToData` custody back onto `session`, contradicting
 data-in/data-out.
 
-**The payoff for sequencing:** a new module consuming already-published
-`dnd5e v0.78.0` and `encounter v0.4.0` means **PR 1 changes nothing else in
-the repo** — no cross-module publish dance, no `replace` juggling, no
-`combat`. Session wiring (#966, step 4.5) is a later PR taking a
-`resolution v0.1.0` dependency, which is the repo's normal inside-out merge.
+**The payoff for sequencing:** a new module consuming the already-published
+`dnd5e` and `encounter` means **PR 1 changes nothing else in the repo** — no
+cross-module publish dance, no `replace` juggling, no `combat`. Session wiring
+(#966, step 4.5) is a later PR taking a `resolution v0.1.0` dependency, which is
+the repo's normal inside-out merge.
+
+**Take `encounter` at or after v0.7.0** — the version #976 lands
+`LoadEncounter(*LoadEncounterInput)` in (PR #980). Resolution should be born
+against the Input signature rather than adopting the two-parameter form and
+being churned by a change it did not cause.
 
 ## The first slice: a saving throw
 
@@ -234,8 +244,13 @@ Supporting pins, each mutation-checkable:
   encounter owns the wiring" and its scope says "driven through the
   composition." It becomes the strike machine and combat's divestment; PR 1
   gets its own issue.
-- **#917** (module auto-tagging not compatibility- or CI-aware) is open, and a
-  new module means a new version line walking straight into it.
+- **#917** (module auto-tagging not compatibility- or CI-aware) — the
+  compatibility half is fixed by PR #981, found the hard way: the tagger mapped
+  `!:` to a major bump and incremented major unconditionally, so #980 was one
+  merge away from tagging `encounter v1.0.0` while gorelease, in the same CI
+  run, suggested v0.7.0. On a v0.x module a breaking change is a minor bump
+  (semver §4). The CI-awareness half of #917 is still open, and a new module
+  means a new version line walking into it.
 - **CLAUDE.md's three-kinds taxonomy** (leaf / composition / host seam) has no
   slot for resolution, which sits *above* the `encounter` composition and
   calls into it. Worth a paragraph once the module exists and its shape is
