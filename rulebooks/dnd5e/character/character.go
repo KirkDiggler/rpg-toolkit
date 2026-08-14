@@ -89,12 +89,22 @@ type Character struct {
 	// Conditions (raging, poisoned, stunned, etc) - passive effects
 	conditions []dnd5eEvents.ConditionBehavior
 
+	// Conditions the load parsed but no bus has seen yet, each still paired
+	// with the ref its loader routed on. Attach drains this; a character that
+	// was never loaded from data has none.
+	pendingEffects []loadedEffect
+
+	// What this sheet does with a persisted blob it cannot read - decided by
+	// how it was loaded, and honored again when it is attached.
+	policy effectPolicy
+
 	// Death saves (tracked when at 0 HP)
 	deathSaveState *saves.DeathSaveState
 
 	// Event handling
 	bus             events.EventBus
 	subscriptionIDs []string
+	keeper          *SheetKeeper
 
 	// Action economy state (nil outside combat)
 	actionEconomy *ActionEconomyData
@@ -1082,71 +1092,49 @@ func (c *Character) ToData() *Data {
 	return data
 }
 
-// subscribeToEvents subscribes the character to gameplay events
+// subscribeToEvents subscribes the character to gameplay events on the bus it
+// is already holding.
+//
+// The subscriptions are the [SheetKeeper]'s — this is the same five handlers,
+// reached the way a character that was built rather than loaded reaches them:
+// Draft.Finalize wires the bus into the sheet and then asks it to listen.
+// Deliberately not the keeper's full Apply, which would also put the
+// character's resources on the bus; see SheetKeeper.subscribeSelf.
 func (c *Character) subscribeToEvents(ctx context.Context) error {
 	if c.bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
 	}
 
-	// Subscribe to condition applied events
-	appliedTopic := dnd5eEvents.ConditionAppliedTopic.On(c.bus)
-	subID, err := appliedTopic.Subscribe(ctx, c.onConditionApplied)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to condition applied")
-	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID)
-
-	// Subscribe to condition removed events
-	removedTopic := dnd5eEvents.ConditionRemovedTopic.On(c.bus)
-	subID, err = removedTopic.Subscribe(ctx, c.onConditionRemoved)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to condition removed events")
-	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID)
-
-	// Subscribe to healing received events
-	healingTopic := dnd5eEvents.HealingReceivedTopic.On(c.bus)
-	subID, err = healingTopic.Subscribe(ctx, c.onHealingReceived)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to healing received")
-	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID)
-
-	// Subscribe to action granted events
-	actionGrantedTopic := dnd5eEvents.ActionGrantedTopic.On(c.bus)
-	subID, err = actionGrantedTopic.Subscribe(ctx, c.onActionGranted)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to action granted")
-	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID)
-
-	// Subscribe to action removed events
-	actionRemovedTopic := dnd5eEvents.ActionRemovedTopic.On(c.bus)
-	subID, err = actionRemovedTopic.Subscribe(ctx, c.onActionRemoved)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to action removed")
-	}
-	c.subscriptionIDs = append(c.subscriptionIDs, subID)
-
-	return nil
+	return c.SheetKeeper().subscribeSelf(ctx, c.bus)
 }
 
-// onConditionApplied handles ConditionAppliedEvent
-func (c *Character) onConditionApplied(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+// onConditionApplied handles ConditionAppliedEvent.
+//
+// bus is the one the sheet was attached to, handed down from the
+// [SheetKeeper] rather than read off the character: a purely loaded sheet has
+// no bus of its own, and one that does must not answer on a different bus than
+// the one that delivered the event.
+func (c *Character) onConditionApplied(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.ConditionAppliedEvent,
+) error {
 	// Only process events for this character
 	if event.Target.GetID() != c.id {
 		return nil
 	}
 
 	// Apply the condition (subscribes to events)
-	if err := event.Condition.Apply(ctx, c.bus); err != nil {
+	if err := event.Condition.Apply(ctx, bus); err != nil {
 		// Clean up any partial subscriptions to avoid resource leaks
-		_ = event.Condition.Remove(ctx, c.bus)
+		_ = event.Condition.Remove(ctx, bus)
 		return rpgerr.Wrapf(err, "failed to apply condition")
 	}
 
 	// Store the condition
 	c.conditions = append(c.conditions, event.Condition)
+
+	// ToData serializes conditions, so a sheet that gained one and did not go
+	// dirty is a sheet whose new condition never gets written down.
+	c.dirty = true
 
 	return nil
 }
@@ -1180,6 +1168,11 @@ func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.Cond
 			filtered = append(filtered, cond)
 		}
 	}
+
+	if len(filtered) != len(c.conditions) {
+		// Same reason as onConditionApplied: what ToData writes has changed.
+		c.dirty = true
+	}
 	c.conditions = filtered
 
 	return nil
@@ -1198,11 +1191,17 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 		c.hitPoints = c.maxHitPoints
 	}
 
+	// HP is persisted, and ApplyDamage marks dirty for the same reason.
+	c.dirty = true
+
 	return nil
 }
 
-// onActionGranted handles ActionGrantedEvent
-func (c *Character) onActionGranted(ctx context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+// onActionGranted handles ActionGrantedEvent.
+//
+// bus is the sheet's attached bus, for the reason given on onConditionApplied.
+// Granted actions are not persisted, so this does not mark the sheet dirty.
+func (c *Character) onActionGranted(ctx context.Context, bus events.EventBus, event dnd5eEvents.ActionGrantedEvent) error {
 	// Only process events for this character
 	if event.CharacterID != c.id {
 		return nil
@@ -1216,7 +1215,7 @@ func (c *Character) onActionGranted(ctx context.Context, event dnd5eEvents.Actio
 
 	// Apply the action (subscribes to events like TurnEnd for cleanup).
 	// Ignore AlreadyExists errors since the granter may have already called Apply.
-	if err := action.Apply(ctx, c.bus); err != nil {
+	if err := action.Apply(ctx, bus); err != nil {
 		if rpgerr.GetCode(err) != rpgerr.CodeAlreadyExists {
 			return rpgerr.Wrapf(err, "failed to apply action")
 		}
@@ -1281,6 +1280,42 @@ func (c *Character) Cleanup(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// dropCondition takes a condition back off the sheet by identity.
+//
+// By identity rather than by ref because this runs when a condition failed to
+// apply, and the sheet may legitimately carry two conditions with the same ref
+// — only the one instance that failed should leave.
+func (c *Character) dropCondition(behavior dnd5eEvents.ConditionBehavior) {
+	for i, cond := range c.conditions {
+		if cond == behavior {
+			c.conditions = append(c.conditions[:i], c.conditions[i+1:]...)
+			return
+		}
+	}
+}
+
+// forgetSubscriptions drops the given subscription IDs from the character's
+// list, so that a Cleanup after a [SheetKeeper.Remove] does not try to revoke
+// hooks that are already gone.
+func (c *Character) forgetSubscriptions(revoked []string) {
+	if len(revoked) == 0 || len(c.subscriptionIDs) == 0 {
+		return
+	}
+
+	gone := make(map[string]struct{}, len(revoked))
+	for _, id := range revoked {
+		gone[id] = struct{}{}
+	}
+
+	kept := make([]string, 0, len(c.subscriptionIDs))
+	for _, id := range c.subscriptionIDs {
+		if _, ok := gone[id]; !ok {
+			kept = append(kept, id)
+		}
+	}
+	c.subscriptionIDs = kept
 }
 
 // calculateArmorAC creates an AC component for equipped armor

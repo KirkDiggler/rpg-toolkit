@@ -48,12 +48,20 @@ ref/key → definition or factory → runtime rule behavior → Data/JSON → ho
    currently composes D&D 5e monster decisions, combat resolution, spatial
    state, and encounter events. It is D&D-5e-coupled today.
 
-For monsters, loading is currently multi-step: `monster.LoadFromData` creates
-and subscribes the base runtime monster, `monster/actions.LoadMonsterActions`
-restores its action implementations, and
-`monstertraits.LoadMonsterConditions` loads and applies persisted traits. The
-`encounter.LoadFromData` hydration cascade performs all three. Calling only
-`monster.LoadFromData` does **not** restore a complete factory-created monster.
+Loading has two halves, and they are separately callable: `character.Load` and
+`monstertraits.LoadMonster` turn data into a sheet with no event bus involved,
+and `character.Attach` / `monstertraits.AttachMonster` put that sheet on a bus
+— its own keeper first, then each persisted effect through a bus scoped to that
+effect's ref. `Load(d).ToData()` is the data it was given.
+
+The older single-step loaders remain for their existing callers.
+`character.LoadFromData` is the two halves in one call, still forgiving about a
+blob it cannot read where `Load` refuses and names it. For monsters the older
+shape is three calls — `monster.LoadFromData`, then
+`monster/actions.LoadMonsterActions`, then
+`monstertraits.LoadMonsterConditions` — and calling only the first does **not**
+restore a complete factory-created monster; worse, `ToData` will then write it
+back without what the skipped calls would have restored.
 
 ## Current package map
 
