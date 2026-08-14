@@ -434,6 +434,57 @@ concrete value is resolution's recording surface. It cannot own the bus,
 cannot outlive the call, cannot escape observation. The leftover `bus`
 parameter is a registration surface wearing an old name.
 
+## The pattern generalizes: one driver, many machines (Kirk, 2026-08-14)
+
+> *"I like `combat.NewStrike` — would we have those in all the things we can
+> do? `character.NewActivateFeature`, `something.Move` — and we would just do
+> the gather on what we get?"*
+
+Yes — every verb ships a step machine, and resolution is **one generic
+driver** that does not know strike from trap. The step vocabulary needs to be
+slightly richer than `Gather` alone:
+
+```go
+for {
+    switch s := machine.Next(ctx, st, world).(type) {
+    case Gather:  st = s.Resume(gather(bus, s.Event))     // fold a chain
+    case Pose:    return suspend(st, s.Window)            // ask someone; persist; die
+    case Request: queue.push(s.Interaction); st = s.Cont  // a follow-up machine
+    case Done:    return finish(s.Outcome, queue)         // drain queue, then report
+    }
+}
+```
+
+The use cases, walked:
+
+| Interaction | Machine | Steps that fire |
+|---|---|---|
+| Strike | `combat.NewStrike` | Gather (attack) → Gather (damage) → Done |
+| Rage | `features.NewActivate` | Done — zero gathers, still uniform; facts ride out as values |
+| Walk | `encounter.NewWalk` | geometry steps; **Pose on first contact** — this is W2's checkpoint |
+| Trap mid-walk | `trap.NewTrigger` via **Request** from the walk | Gather (DEX save — the walker's Dodging folds in) → Done; walk resumes |
+| Concentration save | save machine via **Request** from Bless's observation | Gather (save chain — the aura folds in) → Done |
+| Reaction (W5) | **Pose** between a strike's phases | human and machine answerers indistinguishable (play/interrupt's charter) — a monster's auto-reaction is the same Pose answered by composition |
+| Aura, Bless | **not machines — effects.** They fold into whatever chains machines gather. The two vocabularies do not overlap, which is how you know the seam is real. |
+
+Three findings the walk-through surfaced:
+
+1. **The walk was the first machine, hand-rolled.** `frozenResolution{Kind:
+   kindWalk, Path, Index}` already IS persisted step-machine state — the
+   pattern predates its own vocabulary. And since the walk machine lives in
+   the composition, **#964's "move the trigger rule out of the session"
+   stops being a migration and becomes a restatement**: the walk machine
+   ships with the package that owns trigger detection.
+2. **The step vocabulary must be sealed and tiny** — `Gather | Pose |
+   Request | Done`, the way `Intent` is sealed. If packages can invent step
+   kinds, the driver grows a switch forever. Four kinds; extensions need an
+   ADR.
+3. **Open, to be settled by the first implementation rather than argument:**
+   Pose and Request overlap at the edges — is a reaction window a Pose
+   (ask mid-machine) or a Request of an interrupt-machine? Lean:
+   Pose-is-primitive, since it maps 1:1 onto the existing `interrupt.Ledger`
+   pose/answer.
+
 ## What ADR-0038 records, once picked
 
 The chosen interface; the rejects with reasons (including D's deferral and
