@@ -21,7 +21,8 @@ import (
 
 const monsterActionEntityType core.EntityType = "monster-action"
 
-// BiteConfig holds configuration for creating a bite action with knockdown
+// BiteConfig holds configuration for creating a bite action. The knockdown is
+// optional and lives in SaveGate.
 type BiteConfig struct {
 	AttackBonus int    `json:"attack_bonus"` // e.g., +4
 	DamageDice  string `json:"damage_dice"`  // e.g., "2d4+2"
@@ -38,8 +39,18 @@ type BiteConfig struct {
 	SaveGate *saves.SaveGate `json:"save_gate,omitempty"`
 }
 
-// BiteAction implements a bite attack with knockdown effect.
-// On hit, target must make a STR save or be knocked prone.
+// BiteAction is a melee bite attack that may carry a rider its target can
+// contest.
+//
+// The rider is a [saves.SaveGate] and is optional: the wolf's bite declares a
+// STR save against DC 11 or be knocked prone, while another creature's could
+// name a different ability, a different DC, or half damage instead of nothing
+// (ADR-0039). Nil means the bite just bites.
+//
+// What the gate is not is behaviour. This action declares what can be
+// contested; imposing the consequence, and running the save that gates it, is
+// resolution's job — which is what makes "can I resist this bite, and how?"
+// answerable from the stat block before anything runs.
 type BiteAction struct {
 	attackBonus int
 	damageDice  string
