@@ -31,7 +31,8 @@ This change covers:
 
 This change does not cover save-gated outcomes, multiattack orchestration,
 changes to damage-chain staging, spell migration, or the ownership and lifecycle
-of the event bus.
+of the event bus. It proves support for Lifedrinker-shaped damage but does not
+add the Lifedrinker feature, its prerequisites, or pact-weapon state.
 
 ## Damage Declaration
 
@@ -42,9 +43,10 @@ The `damage` package gains these exported declarations:
 type Property string
 
 const (
-	// AddsAbilityModifier adds the attack's resolved STR or DEX modifier to this
-	// pool. An attack declaration must contain at most one pool with this property.
-	AddsAbilityModifier Property = "adds-ability-modifier"
+	// AddsAttackAbilityModifier adds the ability modifier selected for the
+	// attack's ordinary damage roll to this pool. An attack declaration must
+	// contain at most one pool with this property.
+	AddsAttackAbilityModifier Property = "adds-attack-ability-modifier"
 
 	// DoesNotCrit prevents this pool's dice from being rolled a second time on a
 	// critical hit. Pools without this property are critical-hit eligible.
@@ -91,11 +93,13 @@ when:
 - the slice is empty;
 - a pool has empty or invalid dice notation;
 - a pool has `damage.None` or an unrecognized damage type; or
-- more than one pool has `AddsAbilityModifier`.
+- more than one pool has `AddsAttackAbilityModifier`.
 
 For compatibility, every migrated ordinary weapon and monster attack has one
-pool with `AddsAbilityModifier`. A declaration may intentionally have no such
-pool when the attack does not add an ability modifier.
+pool with `AddsAttackAbilityModifier`. A declaration may intentionally have no
+such pool when the attack does not add an ability modifier. The name is narrow
+by design: it does not represent separately typed feature damage whose amount
+happens to derive from an ability score.
 
 No compatibility fields or alternate representations remain after migration.
 Serialized monster action data adopts the new `damage` array shape directly;
@@ -111,8 +115,9 @@ declared pool uniformly:
    `DoesNotCrit`.
 3. Create one weapon damage component containing the pool's dice, intrinsic flat
    bonus, type, source reference, and whether its dice were doubled.
-4. If the pool has `AddsAbilityModifier`, create the existing ability-source
-   component using that pool's damage type.
+4. If the pool has `AddsAttackAbilityModifier`, create the existing
+   ability-source component using that pool's damage type and expose that type
+   as the damage chain's `WeaponDamageType`.
 5. Pass all components together through the existing damage chain once.
 6. Let existing per-type multipliers group and resolve the components.
 7. Apply all final typed instances to the target in one `ApplyDamage` call.
@@ -125,6 +130,17 @@ critical because their value is not doubled.
 describe the attack outcome for features that react to a critical hit. Pool
 eligibility controls only dice rolling and component-level `IsCritical`.
 
+Features may append new components at `StageFeatures`. Such components are not
+part of the weapon declaration: they can depend on the attacker, target, or
+other runtime state. A feature explicitly chooses whether its damage inherits
+`WeaponDamageType` or supplies another type.
+
+Lifedrinker is the representative flat, separately typed feature. On a hit with
+a qualifying pact weapon, its modifier appends a `DamageSourceFeature`
+component whose `FlatBonus` is `max(1, Charisma modifier)`, whose type is
+`damage.Necrotic`, and whose `IsCritical` is false. It does not modify the
+declared weapon pools and its flat damage is not doubled on a critical hit.
+
 ## Results and Events
 
 An attack with multiple damage types must not be mislabeled as dealing only its
@@ -134,11 +150,16 @@ first type.
   component breakdown. Its singular `DamageType` field is removed.
 - `DamageReceivedEvent` exposes all final typed instances instead of a singular
   `DamageType`. `Amount` remains the aggregate damage applied.
-- `DamageChainEvent.DamageType` is removed. Modifiers inspect component types,
-  as the current resistance, vulnerability, and immunity implementations already
-  do.
+- `DamageChainEvent.DamageType` is replaced by `WeaponDamageType`. This narrowly
+  names the type of the pool marked `AddsAttackAbilityModifier`; it is not a
+  claim that the entire attack has one type. Features such as Rage and Sneak
+  Attack that inherit weapon damage use this field. Features such as
+  Lifedrinker provide their own type.
+- Resistance, vulnerability, and immunity inspect every component's type rather
+  than `WeaponDamageType`.
 - Any consumer that needs a display summary derives it from instances or
-  components; no “primary type” convention is introduced.
+  components; `WeaponDamageType` must not be presented as an aggregate type for
+  the attack.
 
 This is an intentional compile-time migration within the D&D 5e module. All
 producers and consumers of these fields must be updated in the same change.
@@ -165,7 +186,8 @@ Tests follow the repository's testify suite pattern and cover:
    bludgeoning-plus-acid case.
 5. A critical hit doubling an ordinary pool while leaving a pool marked
    `DoesNotCrit` at one roll.
-6. An ability modifier applied only to the pool marked `AddsAbilityModifier`.
+6. An ability modifier applied only to the pool marked
+   `AddsAttackAbilityModifier`.
 7. An intrinsic `FlatBonus` applied once and not doubled on a critical hit.
 8. A mixed bludgeoning-and-poison hit against a target vulnerable to
    bludgeoning and immune to poison, proving independent per-type resolution.
@@ -174,6 +196,14 @@ Tests follow the repository's testify suite pattern and cover:
 10. Updated result and event assertions proving all final typed instances are
     visible downstream.
 11. Round-trip serialization tests for every migrated monster action config.
+12. A synthetic Lifedrinker-shaped feature modifier in which a critical
+    pact-longsword-shaped hit produces doubled slashing dice plus its ordinary
+    attack ability modifier and a non-doubled, minimum-one Charisma-derived
+    necrotic component. This test does not introduce a production Lifedrinker
+    feature.
+13. Separate slashing and necrotic resistance assertions for that feature case,
+    proving that declared damage and runtime feature damage remain independently
+    typed through resolution.
 
 The complete D&D 5e module test suite and linter must pass. The committed module
 must not contain a `replace` directive or `go.work` file.
