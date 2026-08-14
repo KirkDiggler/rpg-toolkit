@@ -362,15 +362,26 @@ type LoadEncounterInput struct {
 
 // Validate reports whether the input is usable. It checks only the input's own
 // shape; everything about the encounter itself is validated by LoadEncounter.
+//
+// Returns ErrNilInput — not ErrInvalidData — for a nil input, matching
+// NewEncounter and every other *XxxInput seam in this module. The distinction is
+// the sentinel's own documented one: ErrNilInput "indicates a caller defect",
+// while ErrInvalidData means the persisted blob does not describe a valid
+// encounter. A nil input supplied no blob at all, so it cannot be invalid data.
 func (in *LoadEncounterInput) Validate() error {
 	if in == nil {
-		return fmt.Errorf("load encounter: nil input: %w", ErrInvalidData)
+		return fmt.Errorf("load encounter: %w", ErrNilInput)
 	}
 
 	return nil
 }
 
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
+//
+// Returns ErrNilInput for a nil input — a caller defect, distinct from the
+// ErrInvalidData every rejection below carries, which means the persisted blob
+// does not describe a valid encounter.
+//
 // Validation order (R5 — validate all before constructing): no rooms, no endings,
 // empty/reserved ending keys, duplicate ending keys (#929 hardening round E, mirroring
 // NewEncounter's identical check), kind/reached_position checks, undeclared outcome

@@ -1296,14 +1296,26 @@ func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
 
 // TestLoadNilInputRejected pins the guard the Input signature introduced (#976).
 // A nil input is the one failure the two-parameter form could not have: it must
-// reject like any other bad load rather than panicking on a nil dereference, so
-// the shape of the answer is the pin — ErrInvalidData, the same sentinel every
-// other load rejection carries.
+// reject rather than panicking on a nil dereference.
+//
+// The pin is the *shape* of the answer, and specifically that it is ErrNilInput
+// rather than ErrInvalidData. Those are different categories — ErrNilInput
+// "indicates a caller defect" per its own doc, while ErrInvalidData means the
+// persisted blob does not describe a valid encounter — and a nil input supplied
+// no blob to be invalid. Every other *XxxInput seam here answers ErrNilInput,
+// NewEncounter included; Load answering differently would make
+// errors.Is(err, ErrNilInput) unreliable for the one caller defect it exists to
+// name. ErrInvalidData is asserted absent so the two stay distinguishable.
+//
+// (#929 hardening round F fixed this same species of conflation, where Load's
+// member checks carried only ErrInvalidData instead of ErrNoMember. See
+// ErrNoMember's doc comment.)
 func (s *DataTestSuite) TestLoadNilInputRejected() {
 	s.Require().NotPanics(func() {
 		enc, err := encounter.LoadEncounter(nil)
 		s.Require().Error(err)
-		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().ErrorIs(err, encounter.ErrNilInput)
+		s.Require().NotErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Nil(enc)
 	})
 }
