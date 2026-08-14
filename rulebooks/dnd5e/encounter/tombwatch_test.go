@@ -121,9 +121,9 @@ func TestTombWatch(t *testing.T) {
 	// goblin's patrol at load (its route position restarts; its INTEL
 	// does not — beliefs are state and traveled in the aggregate).
 	data := enc.ToData()
-	enc2, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 		goblin: &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}},
-	})
+	}})
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 

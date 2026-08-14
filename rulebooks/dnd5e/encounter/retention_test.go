@@ -240,7 +240,7 @@ func (s *RetentionTestSuite) TestRetentionSurvivesReload() {
 	data := enc.ToData()
 	s.Equal(window, data.Retention, "retention is persisted, not inferred")
 
-	reloaded, err := encounter.LoadEncounter(data, nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().NoError(err)
 
 	// The reloaded encounter must still be trimming to the SAME window: keep
@@ -260,7 +260,7 @@ func (s *RetentionTestSuite) TestFloorSurvivesReload() {
 	enc := s.walkingEncounter(window)
 	s.generateBeats(enc, 40)
 
-	reloaded, err := encounter.LoadEncounter(enc.ToData(), nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 33})
@@ -279,7 +279,7 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 	enc := s.walkingEncounter(encounter.RetentionUnbounded)
 	s.generateBeats(enc, 5)
 
-	reloaded, err := encounter.LoadEncounter(enc.ToData(), nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	for seq := uint64(1); seq <= 6; seq++ {

@@ -79,7 +79,7 @@ func Example_theTombWatch() {
 
 	fmt.Println("-- the table saves and comes back tomorrow --")
 	data := enc.ToData()
-	enc, err = encounter.LoadEncounter(data, nil)
+	enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	if err != nil {
 		fmt.Println("load:", err)
 		return

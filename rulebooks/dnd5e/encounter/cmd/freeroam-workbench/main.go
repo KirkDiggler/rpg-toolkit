@@ -492,9 +492,9 @@ func main() {
 				fmt.Println(" ", err)
 				continue
 			}
-			loaded, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{
+			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 				"goblin": goblinPatrol(),
-			})
+			}})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue

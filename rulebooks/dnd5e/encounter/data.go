@@ -341,6 +341,35 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 	}
 }
 
+// LoadEncounterInput carries everything LoadEncounter needs: what persisted, and
+// what is alive for this call.
+//
+// The two are deliberately separate fields rather than one. Data is the
+// persistence shape — the host round-trips it as bytes it never constructs, which
+// is the whole basis of this module's replaceability promise. A Decider is a live
+// behaviour object and could not ride on Data even if we wanted it to: it does not
+// serialize. Keeping them apart in an Input states that distinction where a caller
+// reads it, instead of leaving it implied by two positional parameters.
+type LoadEncounterInput struct {
+	// Data is the persisted encounter, as produced by Encounter.ToData.
+	Data EncounterData
+
+	// Deciders re-attaches behaviour to non-player members, keyed by member.
+	// Nil is legal and means no member acts on its own. A player member naming a
+	// Decider here is rejected (design law C2).
+	Deciders map[MemberID]Decider
+}
+
+// Validate reports whether the input is usable. It checks only the input's own
+// shape; everything about the encounter itself is validated by LoadEncounter.
+func (in *LoadEncounterInput) Validate() error {
+	if in == nil {
+		return fmt.Errorf("load encounter: nil input: %w", ErrInvalidData)
+	}
+
+	return nil
+}
+
 // LoadEncounter reconstructs an Encounter from persistent data and re-attached deciders.
 // Validation order (R5 — validate all before constructing): no rooms, no endings,
 // empty/reserved ending keys, duplicate ending keys (#929 hardening round E, mirroring
@@ -390,7 +419,13 @@ func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
-func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounter, error) {
+func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
+
+	data, deciders := input.Data, input.Deciders
+
 	// R5: Validate everything before constructing
 	// No rooms
 	if len(data.Field.Rooms) == 0 {
