@@ -180,6 +180,39 @@ homebrew when it comes.
 | Mechanisms needed | 2 | **1** | 2 | 1 + interpreter |
 | ADR precedent | violates 0007 | extends 0024/0026 | half-violates 0007 | — |
 
+## The Bless example — prior art that amends a ruling
+
+`events/example_journey_test.go` already contains the pattern (Kirk's
+recall, verified): `BlessSpell{targets []string, bonus int}` implements
+`Apply(bus)`, subscribes to the attack chain, and **projects onto its targets
+by ID** — one effect object, living with its owner, matching beneficiaries by
+predicate. The aura and Bless are the same shape with different predicates:
+proximity versus an ID list.
+
+This amends 053's concentration ruling in a strictly better direction:
+
+- **Breaking concentration is a single-record write.** Bless lives on the
+  caster's list; the break removes one condition from one character. There is
+  no ripple to the targets, because the targets carry nothing.
+- **The orphan problem disappears instead of self-healing.** "Granted
+  conditions are claims validated at load" was solving a problem this shape
+  does not have. (The dirty-participants ruling stands — damage to several
+  targets still writes several records.)
+- **The price is already paid** by the pass-everyone-in scope ruling: the
+  target's roll sees the owner's projection only if the owner's effects are
+  attached when the target acts.
+
+The principle for the ADR: **an effect lives with the entity whose lifecycle
+owns it.** Bless dies when the *caster's* concentration breaks → it lives on
+the caster. Prone ends when the *target* stands → it lives on the target.
+Storage location is derived from what kills the effect, never a style choice
+— and concentration linkage then costs nothing, because the effect already
+sits on the thing whose state controls it.
+
+It is also evidence for B rather than argument: the example *is* option B —
+`Apply(bus)`, `SubscribeWithChain`, predicate over event fields — already in
+the repo.
+
 ## Recommendation
 
 **B**, and the flag first, per the process note: B is attractive *because it
@@ -200,6 +233,8 @@ without breaking anyone — B → B+C is additive; C → B is not.
 ## What ADR-0038 records, once picked
 
 The chosen interface; the rejects with reasons (including D's deferral and
-its homebrew door); the three 053 rulings it inherits (pass everyone in;
-dirty-participant returns; granted conditions are claims); and the
-determinism rule (attach in sorted participant order).
+its homebrew door); the rulings it inherits — pass everyone in,
+dirty-participant returns, and **an effect lives with the entity whose
+lifecycle owns it** (which replaced 053's claims-validated-at-load ruling
+once the Bless example resurfaced); and the determinism rule (attach in
+sorted participant order).
