@@ -10,12 +10,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
@@ -455,4 +458,126 @@ func (s *StrikeTestSuite) TestRefusesAStrikeItCannotRun() {
 		_, err := s.resolve(world, s.hero(), NewStrike(&StrikeInput{Action: s.wolfBite()}))
 		s.Require().ErrorIs(err, ErrNilInput)
 	})
+}
+
+// widenCritTo subscribes an attack-chain modifier that widens the critical
+// threshold, the way a Champion-style effect would — the shape that made the
+// crit-range-is-not-a-hit-range distinction matter (Copilot review, #1002).
+func (s *StrikeTestSuite) widenCritTo(bus events.EventBus, threshold int) {
+	_, err := dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ dnd5eEvents.AttackChainEvent,
+			c chain.Chain[dnd5eEvents.AttackChainEvent],
+		) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+			err := c.Add(combat.StageConditions, "widen_crit",
+				func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+					e.CriticalThreshold = threshold
+					return e, nil
+				})
+
+			return c, err
+		})
+	s.Require().NoError(err)
+}
+
+// resolveWith is resolve on a bus the test holds, so a test can subscribe its
+// own chain modifiers before the machine folds.
+func (s *StrikeTestSuite) resolveWith(
+	bus events.EventBus, world encounter.EncounterData, hero *character.Data, machine Machine,
+) (*Output, error) {
+	return resolveOn(s.ctx, &Input{
+		World: world,
+		Participants: []Participant{
+			{Character: hero},
+			{Monster: s.wolf(wolfID)},
+			{Monster: s.wolf(secondWolfID)},
+		},
+		Machine: machine,
+	}, newSurface(bus))
+}
+
+// The crit range is not a hit range: with the threshold widened to 19, a 19
+// against armor it cannot reach is still a miss. Before the fix, any roll in
+// the crit range auto-hit.
+func (s *StrikeTestSuite) TestAWidenedCritRangeDoesNotWidenTheHitRange() {
+	bus := events.NewEventBus()
+	s.widenCritTo(bus, 19)
+
+	armored := s.hero()
+	armored.ArmorClass = 25
+
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), armored,
+		NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Action:     s.wolfBite(),
+			Roller:     &sequenceRoller{singles: []int{19}, fallback: 2},
+		}))
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().False(outcome.Hit, "19 + 4 cannot reach AC 25, widened crit range or not")
+	s.Require().False(outcome.Critical, "a roll that misses crits nothing")
+	s.Require().Zero(outcome.Damage)
+	s.Require().Nil(outcome.Contest)
+}
+
+// The companion direction: the same widened 19 against reachable armor both
+// hits and crits — the range widened which hits crit, and only that.
+func (s *StrikeTestSuite) TestAWidenedCritRangeCritsOnAHit() {
+	bus := events.NewEventBus()
+	s.widenCritTo(bus, 19)
+
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(),
+		NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Action:     s.wolfBite(),
+			Roller:     &sequenceRoller{singles: []int{19, 11}, pair: []int{3, 4, 1, 2}, fallback: 2},
+		}))
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().True(outcome.Hit, "19 + 4 beats AC 14")
+	s.Require().True(outcome.Critical, "and 19 is in the widened range")
+	s.Require().Equal(3+4+1+2+2, outcome.Damage,
+		"2d4 rolled twice — [3 4] then [1 2] — plus the +2 modifier exactly once")
+}
+
+// The notation's +2 is not a die: it lands once, on top of the dice as rolled.
+// Before the fix it was dropped entirely.
+func (s *StrikeTestSuite) TestDamageKeepsItsFlatModifierExactlyOnce() {
+	out, err := s.resolve(s.world(spatial.Position{X: 8, Y: 5}), s.hero(),
+		NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Action:     s.wolfBite(),
+			Roller:     &sequenceRoller{singles: []int{hitRoll, 11}, pair: []int{3, 4}, fallback: 2},
+		}))
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().True(outcome.Hit)
+	s.Require().Equal(3+4+2, outcome.Damage, "2d4 rolled [3 4], plus the +2 — derived, not echoed")
+}
+
+// A natural twenty doubles the DICE and nothing else: two extra d4s arrive,
+// the +2 modifier does not double, and the roll auto-hits at any armor.
+func (s *StrikeTestSuite) TestANaturalTwentyDoublesTheDiceNotTheModifier() {
+	armored := s.hero()
+	armored.ArmorClass = 25
+
+	out, err := s.resolve(s.world(spatial.Position{X: 8, Y: 5}), armored,
+		NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Action:     s.wolfBite(),
+			Roller:     &sequenceRoller{singles: []int{20, 11}, pair: []int{3, 4, 1, 2}, fallback: 2},
+		}))
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().True(outcome.Hit, "a natural 20 hits AC 25 or any other")
+	s.Require().True(outcome.Critical)
+	s.Require().Equal(3+4+1+2+2, outcome.Damage,
+		"four dice for the crit, the modifier exactly once")
 }

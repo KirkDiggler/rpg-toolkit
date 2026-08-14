@@ -212,17 +212,22 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	m.outcome.Roll = roll
 	m.outcome.Total = roll + folded.AttackBonus
 	m.outcome.TargetAC = folded.TargetAC
-	m.outcome.Critical = roll >= folded.CriticalThreshold
 	m.outcome.Folded = folded
 
+	// A natural 20 is the only automatic hit and a natural 1 the only
+	// automatic miss; everything between is arithmetic. The crit range is
+	// not a hit range: an effect that widens CriticalThreshold to 19–20
+	// widens which HITS crit, never which rolls hit — a 19 that cannot
+	// reach the AC is still a miss.
 	switch {
+	case roll == 20:
+		m.outcome.Hit = true
 	case roll == 1:
 		m.outcome.Hit = false
-	case m.outcome.Critical:
-		m.outcome.Hit = true
 	default:
 		m.outcome.Hit = m.outcome.Total >= folded.TargetAC
 	}
+	m.outcome.Critical = m.outcome.Hit && roll >= folded.CriticalThreshold
 
 	if !m.outcome.Hit {
 		// A miss ends the strike here: no damage, and no save. The rider the
@@ -247,18 +252,30 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		return nil, fmt.Errorf("roll damage: %w", result.Error())
 	}
 
-	rolled := 0
-	for _, group := range result.Rolls() {
-		for _, die := range group {
-			rolled += die
+	// Per-die, not summed: OriginalDiceRolls/FinalDiceRolls are a per-die
+	// contract — downstream rerolls address dice by index — and the
+	// notation's static modifier is not a die, so it rides FlatBonus and is
+	// never doubled.
+	rolls := flattenDice(result.Rolls())
+
+	// A critical hit doubles the weapon pool's DICE and nothing else
+	// (ADR-0036: only the weapon pool doubles, and a flat modifier is not a
+	// die). Combat's fold records IsCritical but rolls nothing, so the
+	// doubling happens here, where the dice are.
+	if m.outcome.Critical {
+		again := pool.RollContext(ctx, roller)
+		if again.Error() != nil {
+			return nil, fmt.Errorf("roll critical damage: %w", again.Error())
 		}
+		rolls = append(rolls, flattenDice(again.Rolls())...)
 	}
 
 	component := dnd5eEvents.DamageComponent{
 		Source:            dnd5eEvents.DamageSourceWeapon,
 		SourceRef:         &m.in.Action.Ref,
-		OriginalDiceRolls: []int{rolled},
-		FinalDiceRolls:    []int{rolled},
+		OriginalDiceRolls: rolls,
+		FinalDiceRolls:    append([]int(nil), rolls...),
+		FlatBonus:         result.Modifier(),
 		DamageType:        damage.Type(m.attack.damageType),
 		IsCritical:        m.outcome.Critical,
 	}
@@ -276,7 +293,11 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 }
 
 // afterDamageChain applies what the fold settled on — bus-free, straight onto
-// the sheet — and then yields the notification (ADR-0026's Apply, then Notify).
+// the sheet (ADR-0026's Apply). Notify is deliberately absent: publishing
+// DamageReceivedEvent would apply the damage a second time to a monster
+// target, whose sheet-keeper treats that topic as an instruction — the
+// one-topic-two-meanings finding #965 slice 2 owes a classification for.
+// Pinned by TestAMonsterTargetTakesItsDamageOnce.
 func (m *strikeMachine) afterDamageChain(
 	ctx context.Context, resolved *combat.ResolveDamageOutput,
 ) (Step, error) {
@@ -497,6 +518,18 @@ func foldDamage(
 			return next(ctx, resolved)
 		},
 	}
+}
+
+// flattenDice collapses a pool's grouped rolls into one per-die list, in roll
+// order. Per-die rather than summed because OriginalDiceRolls/FinalDiceRolls
+// are a per-die contract — downstream rerolls address dice by index.
+func flattenDice(groups [][]int) []int {
+	var dice []int
+	for _, group := range groups {
+		dice = append(dice, group...)
+	}
+
+	return dice
 }
 
 // requestContest builds the Request step for a contested rider, typed so the
