@@ -19,7 +19,7 @@ import (
 //
 // Note what is absent: the modifier. The saver's own bonus is read off the
 // sheet resolution loaded, because asking a caller for it would mean the caller
-// had to load the character too — and then "everything at the seam is data"
+// had to load the participant too — and then "everything at the seam is data"
 // would be true of the signature and false of the usage.
 type SaveInput struct {
 	// SaverID names the participant making the save.
@@ -80,16 +80,14 @@ func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error)
 		return nil, ErrNilInput
 	}
 
-	saver, ok := cast.Character(m.in.SaverID)
-	if !ok {
-		if _, isMonster := cast.Monster(m.in.SaverID); isMonster {
-			return nil, fmt.Errorf("%w: %q", ErrSaverNotCharacter, m.in.SaverID)
-		}
-
+	modifier := 0
+	if saver, ok := cast.Character(m.in.SaverID); ok {
+		modifier = saver.GetSavingThrowModifier(m.in.Ability)
+	} else if saver, ok := cast.Monster(m.in.SaverID); ok {
+		modifier = saver.GetSavingThrowModifier(m.in.Ability)
+	} else {
 		return nil, fmt.Errorf("%w: %q", ErrNoSaver, m.in.SaverID)
 	}
-
-	modifier := saver.GetSavingThrowModifier(m.in.Ability)
 
 	event := &dnd5eEvents.SavingThrowChainEvent{
 		SaverID: m.in.SaverID,

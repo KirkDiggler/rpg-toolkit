@@ -21,6 +21,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -47,6 +48,7 @@ const (
 	heroSaveBonus  = 5 // STR 16 (+3), proficient, proficiency bonus 2
 	heroID         = "hero"
 	skeletonID     = "skeleton"
+	wolfID         = "wolf"
 	saveDifficulty = 12
 )
 
@@ -162,6 +164,10 @@ func (s *ResolveTestSuite) skeleton() *monster.Data {
 		Actions:       []monster.ActionData{s.shortsword()},
 		Conditions:    []json.RawMessage{raw},
 	}
+}
+
+func (s *ResolveTestSuite) wolf() *monster.Data {
+	return monsters.NewWolf(wolfID).ToData()
 }
 
 // captureOutcome is what captureMachine produces. The Outcome set is sealed, so
@@ -492,16 +498,46 @@ func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
 	s.Require().ErrorIs(err, ErrNoSaver)
 }
 
-// Monsters make saves in the game; the rules package does not yet expose a
-// monster's saving-throw modifier, and inventing one in the wiring would be a
-// rule in the wrong layer. Saying so beats guessing.
-func (s *ResolveTestSuite) TestAMonsterSaverIsRefusedForAStatedReason() {
-	_, err := Resolve(s.ctx, &Input{
+func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
+	s.roller.single = 11
+
+	out, err := Resolve(s.ctx, &Input{
 		World:        s.world(),
-		Participants: []Participant{{Monster: s.skeleton()}},
-		Machine:      NewSave(&SaveInput{SaverID: skeletonID, Ability: abilities.STR, DC: saveDifficulty}),
+		Participants: []Participant{{Monster: s.wolf()}},
+		Machine: NewSave(&SaveInput{
+			SaverID: wolfID,
+			Ability: abilities.STR,
+			DC:      saveDifficulty,
+			Roller:  s.roller,
+		}),
 	})
-	s.Require().ErrorIs(err, ErrSaverNotCharacter)
+	s.Require().NoError(err)
+
+	got := s.outcomeOf(out)
+	s.Require().Equal(11, got.Result.Roll)
+	s.Require().Equal(12, got.Result.Total, "the wolf adds its +1 STR modifier")
+	s.Require().True(got.Result.Success)
+}
+
+func (s *ResolveTestSuite) TestAMonsterCanFailASavingThrowWithANegativeModifier() {
+	s.roller.single = 10
+
+	out, err := Resolve(s.ctx, &Input{
+		World:        s.world(),
+		Participants: []Participant{{Monster: s.wolf()}},
+		Machine: NewSave(&SaveInput{
+			SaverID: wolfID,
+			Ability: abilities.INT,
+			DC:      7,
+			Roller:  s.roller,
+		}),
+	})
+	s.Require().NoError(err)
+
+	got := s.outcomeOf(out)
+	s.Require().Equal(10, got.Result.Roll)
+	s.Require().Equal(6, got.Result.Total, "the wolf adds its -4 INT modifier")
+	s.Require().False(got.Result.Success)
 }
 
 func TestResolveSuite(t *testing.T) {
