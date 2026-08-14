@@ -91,20 +91,32 @@
 //
 // # What this package does not do yet
 //
-// The step vocabulary is [Gather] and [Done], and nothing else. [ADR-0038]
-// seals it as Gather | Pose | Request | Done, but that set was derived from a
-// table of six machines of which one was implemented; each remaining case
-// lands with the caller that forces it — Pose with the walk machine, Request
-// with concentration. Sealing an enumeration against hypotheticals is the
-// mistake [ADR-0007] exists to remember.
+// The step vocabulary is [Gather], [Request] and [Done]. [ADR-0038] seals it as
+// Gather | Pose | Request | Done, and each case lands with the caller that
+// forces it rather than in advance: Request arrived with the contest machine,
+// which needs a saving throw's answer before it knows whether to impose
+// anything, and Pose waits for the walk machine. Sealing an enumeration against
+// hypotheticals is the mistake [ADR-0007] exists to remember.
+//
+// [Request] runs its machine to Done inside the requester's own step loop —
+// no suspension. That is enough for every consumer today, and the boundary it
+// crosses is self-describing data (a machine, and a continuation taking its
+// outcome), so the case where the answer comes from outside the process is a
+// new step rather than a redesign of this one.
 //
 // No game context is installed. Effect predicates read world state through
-// five separate installers in the gamectx package, and a saving throw's
-// predicates read none of them — [conditions.RagingCondition] decides on the
-// event alone. Resolution is where they will be populated, because it is the
-// one place that holds both the world and the effects; the first predicate
-// that needs one brings its installer with it. Populating a registry nothing
-// reads would be building the wrong thing convincingly.
+// five separate installers in the gamectx package, and neither a saving throw's
+// predicates nor a contest's read any of them — [conditions.RagingCondition]
+// decides on the event alone. Resolution is where they will be populated,
+// because it is the one place that holds both the world and the effects; the
+// first predicate that needs one brings its installer with it. Populating a
+// registry nothing reads would be building the wrong thing convincingly.
+//
+// The knockdown lane is the case that nearly forces one and does not. The prone
+// condition reads positions — advantage from within five feet, disadvantage
+// beyond — but it reads them on the *attack* chain, and a contest folds a
+// saving throw. So the room arrives with the strike (#965), which is the
+// interaction whose predicates actually ask where everyone is standing.
 //
 // The machine for a saving throw lives here rather than in the rules package
 // that owns saves, because `rulebooks/dnd5e` cannot import this module — this

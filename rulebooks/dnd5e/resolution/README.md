@@ -35,12 +35,40 @@ What happens, in order:
 4. **attach everyone, sorted by ID** — each sheet through its own view of the
    surface, each effect through a view stamped with its ref
 5. **drive the machine** — it yields `Gather`, resolution folds the chain on
-   *its* bus and hands back the folded result; it yields `Done`
+   *its* bus and hands back the folded result; or it yields `Request`, and
+   resolution runs that interaction here, on the same bus, and hands back its
+   outcome; it yields `Done`
 6. **teardown** — revoke every subscription this call granted, newest first
 7. **return data** — the world, the dirty sheets (and only those), the
    outcome, and the full registration list
 
 Nothing survives step 7. Not the bus, not a loaded sheet, not a subscription.
+
+## Two machines, one interaction
+
+The knockdown lane is the first thing built out of `Request`, and it is the
+whole ADR-0039 loop in one call:
+
+```go
+out, err := resolution.Resolve(ctx, &resolution.Input{
+    World:        worldData,
+    Participants: []resolution.Participant{{Character: heroData}, {Monster: wolfData}},
+    Machine: resolution.NewContest(&resolution.ContestInput{
+        Gate:        bite.SaveGate(),  // the wolf's stat block says DC 11 STR or prone
+        SaverID:     "hero",
+        Consequence: resolution.ImposeCondition(refs.Conditions.Prone(), events.ConditionProne),
+    }),
+})
+```
+
+Nobody wired anything. The gate is data the content declared; the contest reads
+which abilities it offers, asks the gate for its DC, requests the save, and on a
+failure announces the condition on the bus — where the sheet's own keeper hears
+it, applies it, and marks the sheet dirty. What comes back is the hero's data
+with prone in it.
+
+The contest is gate-generic: nothing in it knows what a bite is, so the monk's
+Flurry — same shape, DEX, a different DC — needs no code here.
 
 ## What comes back
 
@@ -60,10 +88,13 @@ stamps the surface before calling `Apply`.
 
 ## The vocabulary, deliberately incomplete
 
-`Gather | Done`, and no others. The ADR seals
-`Gather | Pose | Request | Done`, but that table was written when exactly one
-machine existed — so each case lands with the caller that forces it: `Pose`
-with the walk machine, `Request` with concentration. Sealing an enumeration
+`Gather | Request | Done`. The ADR seals
+`Gather | Pose | Request | Done`, and each case lands with the caller that
+forces it rather than in advance. `Request` arrived with the contest machine —
+"roll this save, and tell me whether the consequence lands" — and it runs the
+requested machine on the same bus, over the same cast, so an effect attached
+for the interaction folds into the requested save exactly as it would into a
+direct one. `Pose` still waits for the walk machine. Sealing an enumeration
 against hypotheticals is the ADR-0007 mistake.
 
 `Gather` is opaque on purpose: its fields are unexported, so a machine cannot

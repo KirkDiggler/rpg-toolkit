@@ -25,4 +25,16 @@ var (
 	// passed in. Silently rolling without the saver's modifier would be a
 	// wrong answer wearing a right one's clothes.
 	ErrNoSaver = errors.New("resolution: saver is not a participant")
+
+	// ErrBadGate indicates a save gate that does not describe a save anyone
+	// could make — no ability to roll, no DC source, a DC nobody can fail. The
+	// declaration is content, so this is content being wrong rather than a
+	// caller being wrong, and it says which.
+	ErrBadGate = errors.New("resolution: invalid save gate")
+
+	// ErrRecurrenceUnsupported indicates a gate asking for a repeat save this
+	// package cannot yet run. Refusing is the point: treating "save again at
+	// the end of each of your turns" as a single save would produce a
+	// paralysis nobody ever shakes off, and it would look like it worked.
+	ErrRecurrenceUnsupported = errors.New("resolution: save gate recurrence not supported yet")
 )
