@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -46,7 +47,10 @@ func (p Participant) ID() string {
 
 func (p Participant) validate() error {
 	if p.Character != nil && p.Monster != nil {
-		return fmt.Errorf("%w: %q is both a character and a monster", ErrBadParticipant, p.ID())
+		// Both IDs, not p.ID() — which reads the character branch and would
+		// silently hide the monster's when the two differ.
+		return fmt.Errorf("%w: one participant carries character %q and monster %q",
+			ErrBadParticipant, p.Character.ID, p.Monster.ID)
 	}
 
 	if p.Character == nil && p.Monster == nil {
@@ -215,7 +219,13 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	tearErr := surf.teardown(ctx)
 
 	if runErr != nil {
-		return nil, fmt.Errorf("resolution: %w", runErr)
+		// The machine's error leads, but a teardown failure on this path is
+		// the one that must not be masked — it means subscriptions outlived a
+		// failed interaction. Join keeps both reachable by errors.Is and drops
+		// a nil tearErr. No extra prefix: the package's sentinels and its
+		// machines' errors already name themselves, and re-wrapping here was
+		// yielding "resolution: resolution: ...".
+		return nil, errors.Join(runErr, tearErr)
 	}
 	if tearErr != nil {
 		return nil, fmt.Errorf("resolution: teardown: %w", tearErr)

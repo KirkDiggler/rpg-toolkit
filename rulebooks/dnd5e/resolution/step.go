@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 )
@@ -85,7 +86,7 @@ func drive(ctx context.Context, bus events.EventBus, machine Machine, cast *Part
 				// Refusing is better than folding nothing and calling it a
 				// result, which would look exactly like a chain no one
 				// subscribed to.
-				return nil, ErrBadStep
+				return nil, fmt.Errorf("%w: Gather built outside this package", ErrBadStep)
 			}
 
 			step, err = s.run(ctx, bus)
@@ -94,7 +95,12 @@ func drive(ctx context.Context, bus events.EventBus, machine Machine, cast *Part
 			}
 
 		default:
-			return nil, ErrBadStep
+			// Names the concrete type, because the likeliest way here is a
+			// machine returning *Done or *Gather — pointer forms satisfy Step
+			// (value receiver on isStep) but the vocabulary is the value
+			// forms, one spelling per case. %T turns that mistake from a
+			// riddle into a one-character diff.
+			return nil, fmt.Errorf("%w: %T", ErrBadStep, step)
 		}
 	}
 }
