@@ -200,6 +200,11 @@ func (m *Monster) ProficiencyBonus() int {
 	return m.proficiencyBonus
 }
 
+// GetSavingThrowModifier returns the monster's modifier for a saving throw.
+func (m *Monster) GetSavingThrowModifier(ability abilities.Ability) int {
+	return m.abilityScores.Modifier(ability)
+}
+
 // PassivePerception returns the monster's passive Perception score, from the
 // static Senses field seeded at load time. Implements combat.Combatant.
 func (m *Monster) PassivePerception() int {

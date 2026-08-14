@@ -75,6 +75,35 @@ func (s *MonsterTestSuite) TestNewGoblin() {
 	s.Equal(2, scores.Modifier(abilities.DEX))
 }
 
+func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
+	monster := New(Config{
+		ID:   "test-monster-1",
+		Name: "Test Monster",
+		HP:   10,
+		AC:   10,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.CON: 10,
+			abilities.INT: 8,
+		},
+	})
+
+	tests := map[string]struct {
+		ability abilities.Ability
+		want    int
+	}{
+		"positive modifier": {ability: abilities.STR, want: 3},
+		"zero modifier":     {ability: abilities.CON, want: 0},
+		"negative modifier": {ability: abilities.INT, want: -1},
+	}
+
+	for name, test := range tests {
+		s.Run(name, func() {
+			s.Equal(test.want, monster.GetSavingThrowModifier(test.ability))
+		})
+	}
+}
+
 // TestMeleeWeapon_GoblinResolvesScimitar is the regression guard for
 // rpg-toolkit#722: a goblin's OA must swing its real scimitar, not fall
 // back to unarmed. NewGoblin's default action ID ("scimitar") must resolve
