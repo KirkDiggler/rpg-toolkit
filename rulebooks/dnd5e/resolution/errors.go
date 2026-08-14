@@ -25,10 +25,4 @@ var (
 	// passed in. Silently rolling without the saver's modifier would be a
 	// wrong answer wearing a right one's clothes.
 	ErrNoSaver = errors.New("resolution: saver is not a participant")
-
-	// ErrSaverNotCharacter indicates a saving throw for a participant whose
-	// sheet has no saving-throw modifier to read. Monsters make saves in the
-	// game; the rules package does not yet expose that modifier, and inventing
-	// one here would put a rule in the wiring.
-	ErrSaverNotCharacter = errors.New("resolution: saver has no saving throw modifier")
 )
