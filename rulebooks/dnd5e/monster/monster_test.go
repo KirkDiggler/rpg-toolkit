@@ -84,7 +84,8 @@ func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16,
 			abilities.CON: 10,
-			abilities.INT: 8,
+			abilities.INT: 3,
+			abilities.WIS: 8,
 		},
 	})
 
@@ -92,9 +93,10 @@ func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 		ability abilities.Ability
 		want    int
 	}{
-		"positive modifier": {ability: abilities.STR, want: 3},
-		"zero modifier":     {ability: abilities.CON, want: 0},
-		"negative modifier": {ability: abilities.INT, want: -1},
+		"positive modifier":  {ability: abilities.STR, want: 3},
+		"zero modifier":      {ability: abilities.CON, want: 0},
+		"negative modifier":  {ability: abilities.WIS, want: -1},
+		"odd score below 10": {ability: abilities.INT, want: -4},
 	}
 
 	for name, test := range tests {
