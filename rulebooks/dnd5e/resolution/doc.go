@@ -64,24 +64,30 @@
 // its loader, call Apply. That loop is free-standing, and this package is
 // where it ends up.
 //
-// Today is one inversion short of that. [Resolve] delegates each
-// participant's load to character.LoadFromData and the monster three-call
-// assembly, which still take a bus and run the condition loop themselves;
-// the EffectScoper seam (#982) is how per-effect attribution survives the
-// delegation. What actually keeps the bus in those signatures is not the
-// conditions — it is the entity's own machinery: a character subscribes five
-// handlers for itself (conditions applied to it, healing received, actions
-// granted) and mutates its sheet when those events land. That is the sheet
-// reacting to the world, which is real behaviour — it is just behaviour that
-// belongs in an attachable of its own, attached and attributed like any
-// effect, rather than wired invisibly inside a constructor.
+// That inversion has landed. [Resolve] loads each participant purely —
+// character.Load, monstertraits.LoadMonster: data → sheet, no bus in the call —
+// and then attaches it to the bus this package made, through
+// character.Attach and monstertraits.AttachMonster. Each of those runs the
+// loop this package used to delegate: the sheet's own keeper first, then every
+// persisted effect through a view stamped with the ref its loader routed on.
+// The entity's own machinery — the handlers a character keeps for itself, the
+// two a monster does, the recoverable resources — is a sheet-keeper attachable,
+// so it appears in the registration list under the participant that made it
+// instead of as the zero-Ref entries this paragraph used to describe.
 //
-// The remaining migration is therefore its own PR, not a side effect of any
-// machine landing: the entity loaders drop their bus parameter and become
-// data → sheet; this package runs the ref → loader → Apply loop itself; the
-// self-subscriptions extract into a sheet-keeper attachable. Until then,
-// those self-subscriptions are the zero-Ref entries in the registration
-// list.
+// Two behaviours ride in with it. Loading is strict: a persisted effect blob
+// this build cannot route fails the resolution and names the blob, where the
+// legacy path logged and carried on — and since [Resolve] hands sheets back to
+// be persisted, an effect dropped on the way in is an effect deleted on the way
+// out. And a failed attach is a no-op: whatever attached before the failure
+// comes back off, by the entity's contract and again by this package's teardown
+// on the error path, so a refused resolution leaves nothing on a bus and no
+// half-written sheet.
+//
+// What remains is retirement rather than migration. character.LoadFromData and
+// the monster three-call assembly still exist for their other callers, and a
+// sheet still parks a bus for the verb methods that read one. Both go with
+// #965 and #966.
 //
 // # What this package does not do yet
 //

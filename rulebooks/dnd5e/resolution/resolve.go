@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
 
@@ -266,7 +265,7 @@ func attachAll(
 
 		switch {
 		case p.Character != nil:
-			ch, err := character.LoadFromData(ctx, p.Character, view)
+			ch, err := attachCharacter(ctx, view, p.Character)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
 			}
@@ -286,25 +285,62 @@ func attachAll(
 	return cast, nil
 }
 
-// attachMonster performs the three-call assembly the monster package documents.
+// attachCharacter loads a sheet and puts it on this participant's view of the
+// bus — two calls, and the split between them is the point.
 //
-// All three calls, not one: monster.LoadFromData deliberately loads neither
-// actions nor conditions (both would be import cycles), and ToData serializes
-// both. Skipping either call therefore does not merely leave a monster
-// underpowered — it writes back a monster that has silently lost them.
-func attachMonster(
-	ctx context.Context, view *surface, data *monster.Data, roller dice.Roller,
-) (*monster.Monster, error) {
-	m, err := monster.LoadFromData(ctx, data, view)
+// character.Load is data → sheet: no bus, no subscriptions, nothing applied.
+// character.Attach is the loop this package used to delegate: the sheet's own
+// keeper first, then each condition through a bus scoped to the ref its loader
+// routed on. The view implements dnd5eEvents.EffectScoper, so that scoping is
+// what fills the registration list — attribution by construction, and now by
+// construction *here*, rather than inside a constructor two modules away
+// (rpg-toolkit#985).
+//
+// Loading strictly is the behaviour change that comes with it: a condition blob
+// that will not parse fails the resolution, naming the blob, where the legacy
+// path logged and carried on. Resolution is the wrong place to be forgiving —
+// it hands back sheets to be persisted, so an effect quietly dropped on the way
+// in is an effect deleted on the way out (rpg-toolkit#948).
+func attachCharacter(
+	ctx context.Context, view *surface, data *character.Data,
+) (*character.Character, error) {
+	ch, err := character.Load(ctx, data)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := monsterActions.LoadMonsterActions(m, data.Actions); err != nil {
+	if err := character.Attach(ctx, ch, view); err != nil {
 		return nil, err
 	}
 
-	if err := monstertraits.LoadMonsterConditions(ctx, m, data.Conditions, view, roller); err != nil {
+	return ch, nil
+}
+
+// attachMonster is the same two calls, over the composition that knows what a
+// whole monster is.
+//
+// monstertraits.LoadMonster is the pure load — sheet, actions, and the trait
+// blobs it was persisted with — and it lives in that package because it is the
+// only one that can see both loaders without an import cycle. Calling it rather
+// than assembling the pieces here is safer by construction than by test: the
+// actions round-trip pin would catch a forgotten LoadMonsterActions, but a
+// composition that cannot forget it needs no pin at all, and this caller is the
+// one it was written for.
+//
+// The trait blobs ride on the loaded monster rather than being passed alongside
+// it, so the assembly's other old failure — writing a monster back without the
+// conditions a skipped call would have restored — is unreachable too. And a
+// failed attach is a no-op: the blobs go back, whatever was applied comes off,
+// and nothing half-attached survives the error this returns.
+func attachMonster(
+	ctx context.Context, view *surface, data *monster.Data, roller dice.Roller,
+) (*monster.Monster, error) {
+	m, err := monstertraits.LoadMonster(ctx, data)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := monstertraits.AttachMonster(ctx, m, view, roller); err != nil {
 		return nil, err
 	}
 

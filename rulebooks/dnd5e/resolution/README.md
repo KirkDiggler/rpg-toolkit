@@ -78,14 +78,32 @@ vocabulary over pure data, and resolution is the only attacher. A condition
 was never really *inside* a character — the sheet carries its persisted JSON,
 and the bus belongs to whoever runs the attach loop.
 
-Today is one inversion short: `Resolve` delegates each load to
-`character.LoadFromData` / the monster three-call assembly, which still take
-a bus (the `EffectScoper` seam, #982, keeps attribution per-effect through
-the delegation). What pins the bus there is not conditions but the entity's
-own five self-subscriptions — the sheet reacting to the world. The remaining
-migration PR inverts the loop into this package, drops the bus from the
-entity loaders, and extracts those handlers into a sheet-keeper attachable.
-See "Where this sits on the migration" in [doc.go](doc.go).
+That inversion has landed (#985, #986, #989). The entity loaders come in two
+halves now: `character.Load` and `monstertraits.LoadMonster` turn data into a
+sheet with no bus anywhere in the call, and `character.Attach` /
+`monstertraits.AttachMonster` put that sheet on the bus **this** package made —
+the sheet's own keeper first, then each effect through a view stamped with its
+ref. The five self-subscriptions that used to pin the bus inside a constructor
+are a sheet-keeper attachable, so they show up in the registration list under
+the participant that made them rather than as the anonymous zero-Ref entries
+this section used to warn about.
+
+Two consequences, worth knowing before you read a failure here:
+
+- **Resolution is strict.** A persisted effect blob this build cannot route
+  fails the whole resolution, naming the blob. The legacy path logged it and
+  carried on — which is how a sheet came back one effect short and was
+  persisted in that state (#948). `Resolve` hands sheets back to be saved, so
+  forgiving here means deleting there.
+- **A failed attach is a no-op.** Whatever attached before the failure comes
+  back off: by the entity's own contract, and again by this package's teardown
+  on the error path. A refused resolution leaves no hooks on a bus and no
+  half-written sheet.
+
+What remains is retirement rather than inversion. `character.LoadFromData` and
+the monster three-call assembly still exist for their other callers, and the
+bus a sheet parks for its verb methods is still parked. Both go with #965 and
+#966. See "Where this sits on the migration" in [doc.go](doc.go).
 
 ## Reading order
 
