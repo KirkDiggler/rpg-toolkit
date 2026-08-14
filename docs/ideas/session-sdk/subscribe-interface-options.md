@@ -1,7 +1,8 @@
 # The subscribe interface — options for ADR-0038
 
-**Status:** options on the table, awaiting Kirk's pick. The winner and the
-rejects go into ADR-0038.
+**Status:** **B picked (Kirk, 2026-08-14), refined below** — see "The
+refinement: does Apply need a bus?". ADR-0038 records it once the refinement
+is confirmed.
 **Context:** [journey 053](../../journey/053-resolution-seam-attach-responsibility.md)
 — read it first; this doc deliberately does not restate it.
 **Process:** ADR-0037's note — genuine options with trade-offs in the open,
@@ -229,6 +230,55 @@ What would change the recommendation: a genuine consumer need to inspect
 scoring hypothetical actions. If that arrives, C's declarations become worth
 their migration, and B's `Apply` objects can grow a `Contributions()` view
 without breaking anyone — B → B+C is additive; C → B is not.
+
+## The refinement: does Apply need a bus? (Kirk, 2026-08-14)
+
+> *"Does Apply need a bus? What if the apply was in resolution and we just
+> asked: gimme the data that powers the effect."*
+
+The layered answer, which resolves B's last conceded weakness:
+
+**What Apply irreducibly needs is a place to register interest**, because the
+topics are the effect's own domain knowledge — Bless knows it cares about
+attack chains; concentration knows it cares about damage. Moving that out of
+the effect is option C's declaration vocabulary, already declined.
+
+**What Apply does NOT need is the bus as an owned thing.** Unbundle "the bus"
+into three parts: the registration surface (the effect needs it), the
+instance and its lifetime (resolution's alone), the delivery machinery (an
+implementation detail). B as originally written hands effects all three; the
+refinement keeps only the first in the effect's hands.
+
+**"Gimme the data that powers the effect" is the other half, already built:**
+effects persist as ref + config (`ToJSON`), `factory.CreateFromRef` routes
+ref → behavior. Resolution's loop:
+
+```
+for each participant's effect record:      // the data that powers it
+    behavior := factory(ref, config)       // routing already exists
+    behavior.Apply(ctx, surface)           // names its topics; nothing else
+```
+
+**The free win: `events.EventBus` is an interface**, so the surface resolution
+passes can be an *instrumented* implementation that records every subscription
+at attach time. At zero migration cost (~26 Apply sites keep their exact
+signature) this buys:
+
+- **Pre-execution inspectability** — the weakness conceded to C. Resolution
+  can answer "bless hooked the attack chain at StageConditions" before
+  anything executes, because it watched the registration happen.
+- **Silent absence becomes observable** — "this effect attached zero hooks"
+  is a loggable, assertable fact; the per-effect test writes itself.
+- **Deterministic teardown** — resolution drops every subscription it
+  granted, trusting no effect to clean up (the `character.Cleanup` trap,
+  avoided structurally).
+
+A further tightening — a capability type that cannot publish — stays
+available as a later, deliberate signature migration. Not forced now.
+
+**The picked shape, in one sentence:** effects are data records; resolution
+routes ref → factory → behavior and attaches each behavior through an
+instrumented surface it owns — *the bus never leaves resolution*.
 
 ## What ADR-0038 records, once picked
 
