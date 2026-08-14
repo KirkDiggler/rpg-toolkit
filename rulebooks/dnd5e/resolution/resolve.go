@@ -266,7 +266,7 @@ func attachAll(
 
 		switch {
 		case p.Character != nil:
-			ch, err := character.LoadFromData(ctx, p.Character, view)
+			ch, err := attachCharacter(ctx, view, p.Character)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
 			}
@@ -286,16 +286,56 @@ func attachAll(
 	return cast, nil
 }
 
-// attachMonster performs the three-call assembly the monster package documents.
+// attachCharacter loads a sheet and puts it on this participant's view of the
+// bus — two calls, and the split between them is the point.
 //
-// All three calls, not one: monster.LoadFromData deliberately loads neither
-// actions nor conditions (both would be import cycles), and ToData serializes
-// both. Skipping either call therefore does not merely leave a monster
-// underpowered — it writes back a monster that has silently lost them.
+// character.Load is data → sheet: no bus, no subscriptions, nothing applied.
+// character.Attach is the loop this package used to delegate: the sheet's own
+// keeper first, then each condition through a bus scoped to the ref its loader
+// routed on. The view implements dnd5eEvents.EffectScoper, so that scoping is
+// what fills the registration list — attribution by construction, and now by
+// construction *here*, rather than inside a constructor two modules away
+// (rpg-toolkit#985).
+//
+// Loading strictly is the behaviour change that comes with it: a condition blob
+// that will not parse fails the resolution, naming the blob, where the legacy
+// path logged and carried on. Resolution is the wrong place to be forgiving —
+// it hands back sheets to be persisted, so an effect quietly dropped on the way
+// in is an effect deleted on the way out (rpg-toolkit#948).
+func attachCharacter(
+	ctx context.Context, view *surface, data *character.Data,
+) (*character.Character, error) {
+	ch, err := character.Load(ctx, data)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := character.Attach(ctx, ch, view); err != nil {
+		return nil, err
+	}
+
+	return ch, nil
+}
+
+// attachMonster is the same two steps with the monster's third call in the
+// middle, which is import-cycle bookkeeping rather than a decision: the action
+// loader imports the monster package, so only a caller can run both.
+//
+// The trait blobs ride on the loaded monster rather than being passed alongside
+// it — monster.Load carries them, monstertraits.AttachMonster drains them — so
+// the old failure mode of this function, where forgetting a call wrote a
+// monster back without what that call would have restored, is no longer
+// reachable for conditions. And a failed attach is a no-op: the blobs go back,
+// whatever was applied comes off, and nothing half-attached survives the error
+// this returns.
+//
+// monstertraits.LoadMonster would collapse the first two calls into one. It is
+// spelled out here because #989 specified these three by name; folding it is a
+// one-line change if the composition is preferred.
 func attachMonster(
 	ctx context.Context, view *surface, data *monster.Data, roller dice.Roller,
 ) (*monster.Monster, error) {
-	m, err := monster.LoadFromData(ctx, data, view)
+	m, err := monster.Load(ctx, data)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +344,7 @@ func attachMonster(
 		return nil, err
 	}
 
-	if err := monstertraits.LoadMonsterConditions(ctx, m, data.Conditions, view, roller); err != nil {
+	if err := monstertraits.AttachMonster(ctx, m, view, roller); err != nil {
 		return nil, err
 	}
 
