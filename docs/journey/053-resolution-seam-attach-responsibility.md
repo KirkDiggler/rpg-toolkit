@@ -213,6 +213,24 @@ resubscribe-after-crash problem — which is the attach caution in its worst
 form. If wall-clock simulation is ever wanted, that is a *driver* choice —
 a host calling Pump on a schedule — not a toolkit architecture change.
 
+**The per-click cost, measured rather than argued (2026-08-14):** the concern
+"free roam means load-act-save on every click" is real and quantified. One
+full cycle — JSON-decode a 2.7KB blob, `LoadEncounter` on a tomb-shaped world
+(3 rooms, walls, doors, 6 members), walk a 4-cell path with per-step trigger
+evaluation, `ToData`, re-encode — costs **~187µs / 67KB / 982 allocs**
+(benchmarked in-package). With Redis round trips, ~1ms per click server-side,
+under a 30–100ms client RTT: two orders of magnitude below perception. One
+core sustains ~5k clicks/sec; a six-player party clicking every second uses
+~0.1% of it. Two structural facts keep the rate low: **a click is a path, not
+a cell** (`Move` walks the whole path in one verb), and the blob stays small
+because retention bounds the story log. The escape hatch if scale ever changes
+is already written into the contract — `EncounterRepository`'s doc: *"an
+encounter held in memory on a live server and checkpointed periodically is
+invisible from here."* A host-side RAM repository with write-through IS the
+simulation server, without the toolkit ever knowing. rpg-api already ships
+load-per-RPC today (Chapter 1's "one private load(id) per orchestrator
+method"), so this pattern is in prod, not hypothetical.
+
 ## Open before an ADR
 
 1. **The subscribe interface's shape** — the seam decision. What does a data
