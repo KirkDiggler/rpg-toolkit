@@ -336,9 +336,22 @@ func Resolve(ctx, in *Input) *Output {
         participants[p.ID] = p
     }
 
-    outcome := combat.RunStrike(ctx, bus, participants, in.Action)
-    //   declare → roll → damage: each phase folds a chain,
-    //   each boundary is DATA (suspension probe pins this; W5 suspends between)
+    // combat is a PURE STEP MACHINE — it never sees the bus (Kirk's catch:
+    // an earlier draft passed it in, violating the charter). The suspension
+    // requirement forces this shape anyway: W5 suspends BETWEEN phases in a
+    // fresh process, so phases must return control at every boundary — which
+    // means combat describes what to gather and resolution does the gathering.
+    st := combat.NewStrike(in.Action.Actor, in.Action.Target)
+    var outcome combat.Outcome
+    for done := false; !done; {
+        switch s := combat.Next(ctx, st, world).(type) {
+        case combat.Gather:                 // "publish this chain event, hand me the fold"
+            folded := gather(bus, s.Event)  // resolution's only job; the bus stays home
+            st = s.Resume(st, folded)       // st is DATA here — a legal suspend point
+        case combat.Done:
+            outcome, done = s.Outcome, true
+        }
+    }
 
     return &Output{
         World:           world.ToData(),
@@ -362,7 +375,44 @@ func (b *BlessSpell) Apply(ctx, bus events.EventBus) error {   // today's signat
 }
 ```
 
-Two sharpenings the code makes visible:
+And the concentration link the repo's example lacks (Kirk's catch) — two
+fields and a lifecycle subscription:
+
+```go
+type BlessSpell struct {
+    Caster        ID     // THE LINK: whose lifecycle owns this effect
+    Targets       []ID
+    Bonus         int
+    Concentration bool   // the flag that already exists in effects/types.go
+}
+
+func (b *BlessSpell) Apply(ctx, bus events.EventBus) error {
+    attackHook(bus, b.Targets, b.Bonus)   // contribution, as above
+
+    // lifecycle: listen for THE CASTER taking damage
+    return DamageReceived.On(bus).Subscribe(ctx, func(ctx, e DamageReceivedEvent) error {
+        if e.TargetID != b.Caster { return nil }
+        // Do not roll here — REQUEST a follow-up interaction:
+        requestSave(ctx, SaveRequest{
+            Saver: b.Caster, Ability: CON, DC: max(10, e.Damage/2),
+            Trigger: SaveTriggerConcentration,   // already exists
+            OnFail:  Expire{Effect: b},          // single-record write, on the caster
+        })
+        return nil
+    })
+}
+```
+
+`requestSave` queues a follow-up that resolution runs as its own step sequence
+after the damage phase — the effect never rolls inline. Three reasons that is
+right rather than convenient: it is ADR-0027's reaction-window shape (things
+that happen *between* phases); the save is a chain of its own, so the aura's
++CHA folds in — the caster-in-her-own-aura case composes with no special
+code; and a queued save is data, so a suspension landing between the damage
+and the save persists cleanly. On failure, `Expire` removes Bless from the
+caster's list — lifecycle ownership making the break a single-record write.
+
+Three sharpenings the code makes visible:
 
 1. **"session →→→ resolution" is one arrow.** No intermediate layers; combat
    and encounter sit *below* resolution as value-returning libraries.
@@ -370,6 +420,13 @@ Two sharpenings the code makes visible:
    `session → encounter` directly (~187µs, measured). Resolution is entered
    when an *interaction* occurs: a strike, a trap cell, first contact. Two
    doors into one building.
+3. **Combat never sees the bus** — it is a step machine over data, describing
+   what to gather; resolution gathers. Forced by suspension, not taste: W5
+   resumes in a fresh process, so no phase may live on a stack. Every
+   `Gather` return is a legal suspension point, which makes the charter's
+   "re-enterable from line one" the shape of the code rather than a
+   discipline imposed on it. This is also Kirk's "combat is the composable
+   data" noodle, realized.
 
 On "I was trying to remove the bus from Apply": what was removed is real even
 though the parameter remains — the effect receives an interface whose
