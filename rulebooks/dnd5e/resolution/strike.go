@@ -219,10 +219,10 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	// not a hit range: an effect that widens CriticalThreshold to 19–20
 	// widens which HITS crit, never which rolls hit — a 19 that cannot
 	// reach the AC is still a miss.
-	switch {
-	case roll == 20:
+	switch roll {
+	case 20:
 		m.outcome.Hit = true
-	case roll == 1:
+	case 1:
 		m.outcome.Hit = false
 	default:
 		m.outcome.Hit = m.outcome.Total >= folded.TargetAC
