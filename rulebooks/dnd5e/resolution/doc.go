@@ -54,6 +54,35 @@
 //     conditions — silently. It buys nothing when the bus dies with the call
 //     anyway.
 //
+// # Where this sits on the migration
+//
+// [ADR-0038]'s end state is one sentence of its Consequences: combat and
+// character shed infrastructure and become what they are — rules vocabulary
+// and data. In that world a character is a pure sheet. A condition is not
+// part of it: the sheet merely carries the condition's persisted JSON, and
+// the bus belongs to whoever runs the attach loop — route each blob's ref to
+// its loader, call Apply. That loop is free-standing, and this package is
+// where it ends up.
+//
+// Today is one inversion short of that. [Resolve] delegates each
+// participant's load to character.LoadFromData and the monster three-call
+// assembly, which still take a bus and run the condition loop themselves;
+// the EffectScoper seam (#982) is how per-effect attribution survives the
+// delegation. What actually keeps the bus in those signatures is not the
+// conditions — it is the entity's own machinery: a character subscribes five
+// handlers for itself (conditions applied to it, healing received, actions
+// granted) and mutates its sheet when those events land. That is the sheet
+// reacting to the world, which is real behaviour — it is just behaviour that
+// belongs in an attachable of its own, attached and attributed like any
+// effect, rather than wired invisibly inside a constructor.
+//
+// The remaining migration is therefore its own PR, not a side effect of any
+// machine landing: the entity loaders drop their bus parameter and become
+// data → sheet; this package runs the ref → loader → Apply loop itself; the
+// self-subscriptions extract into a sheet-keeper attachable. Until then,
+// those self-subscriptions are the zero-Ref entries in the registration
+// list.
+//
 // # What this package does not do yet
 //
 // The step vocabulary is [Gather] and [Done], and nothing else. [ADR-0038]
