@@ -210,7 +210,16 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, err
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	beatBytes, _ := json.Marshal(payload)
+	// Unreachable for today's payloads (strings and ID slices marshal
+	// unconditionally), but this helper is the one seam every clock beat
+	// flows through — a future payload that cannot marshal must fail its
+	// verb loudly here, not append a truncated beat and lose the failure.
+	// The per-verb beat sites elsewhere in this module predate the seam and
+	// keep their own convention.
+	beatBytes, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("clock beat payload: %w", err)
+	}
 	out, err := e.appendBeat(&record.AppendInput{
 		At:       uint64(e.clock.ToData().HighWater),
 		Audience: memberIDs,
