@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
@@ -201,6 +202,20 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
+	}
+
+	// Install the room this interaction happens in, so that a predicate which
+	// reads positions — prone's advantage-within-five-feet, first of them —
+	// has them. Built from in.World, which is the persisted world the caller
+	// handed over: see interactionRoom. Nothing is installed when the
+	// participants do not share one room, and a machine that needs positions
+	// says so rather than measuring across coordinate systems.
+	room, err := interactionRoom(in.World, in.Participants)
+	if err != nil {
+		return nil, err
+	}
+	if room != nil {
+		ctx = gamectx.WithRoom(ctx, room)
 	}
 
 	cast, err := attachAll(ctx, surf, in.Participants, roller)
