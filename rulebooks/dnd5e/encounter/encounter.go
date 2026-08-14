@@ -37,11 +37,22 @@ type declaredEnding struct {
 type Encounter struct {
 	orchestrator *spatial.BasicRoomOrchestrator
 	clock        *clock.Tick
-	intelLog     *intel.Intel
-	story        *record.Log
-	members      map[MemberID]*Member
-	everMembers  map[MemberID]bool // Track all members who have ever joined (for Story access)
-	deciders     map[MemberID]Decider
+	// bubbles are the localized initiative bubbles currently running. Zero or
+	// more: a bubble exists only while a fight does, and an encounter with no
+	// fight has none.
+	//
+	// A slice rather than a single pointer even though policy allows at most one
+	// today, because a slice grows to N additively and a pointer does not. And
+	// deliberately WITHOUT identity: a bubble is never named, it is always
+	// reached through a member, which R6 makes a total function ("an entity
+	// belongs to at most one clock"). Inventing an ID would create a second
+	// thing to keep true.
+	bubbles     []*clock.Turn
+	intelLog    *intel.Intel
+	story       *record.Log
+	members     map[MemberID]*Member
+	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
+	deciders    map[MemberID]Decider
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Move, Traverse, Join) declaration order is
@@ -1067,6 +1078,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
+
+		// Every member starts on the world clock. Free roam is not a mode, it
+		// is simply where you are when no fight has pulled you elsewhere.
+		if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(mi.ID)}); cerr != nil {
+			return nil, fmt.Errorf("newencounter member %q world clock: %w", mi.ID, cerr)
+		}
 
 		// Store decider if present (monsters only, validated above)
 		if mi.Decider != nil {
@@ -2194,6 +2211,13 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	e.members[in.Member.ID] = member
 	e.everMembers[in.Member.ID] = true // Track in everMembers
 
+	// A joiner lands on the world clock, never mid-fight. Being pulled into a
+	// running bubble is Transfer's job and is a separate decision from joining
+	// the encounter at all.
+	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(in.Member.ID)}); cerr != nil {
+		return nil, fmt.Errorf("join member %q world clock: %w", in.Member.ID, cerr)
+	}
+
 	// Store decider if present (monsters only, validated above)
 	if in.Member.Decider != nil {
 		e.deciders[in.Member.ID] = in.Member.Decider
@@ -2342,6 +2366,12 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("exit remove entity: %w: %w", ErrBadPlacement, err)
+	}
+
+	// Remove from whichever clock holds them — the world clock normally, a
+	// bubble if they were in a fight when they left.
+	if cerr := e.leaveAnyClock(in.Member); cerr != nil {
+		return nil, fmt.Errorf("exit member %q clock: %w", in.Member, cerr)
 	}
 
 	// Remove from member set (and deciders if present)

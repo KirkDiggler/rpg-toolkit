@@ -10,6 +10,26 @@
 // Members exit, encounters close; player activity pumps the clock, the world
 // thinks on the tick.
 //
+// # Atomicity, and what R5 does and does not promise
+//
+// Verbs validate before they mutate, and the first validation failure wins
+// (R5). That covers the common case completely: a rejected verb never touched
+// anything.
+//
+// It does NOT mean a verb's MUTATE phase is atomic. Join and Exit each perform
+// several fallible steps after their first mutation — refreshSight and
+// appendBeat both come after placement and member registration — so a failure
+// late in a verb can leave the in-memory encounter partially changed.
+//
+// That is safe because of how this module is used, not by accident: every
+// caller loads, acts, and saves, so a verb returning an error means the
+// encounter is DISCARDED UNSAVED and the persisted world is untouched. There
+// is no long-lived encounter to repair. Rolling back individual steps would
+// buy nothing and would imply an atomicity the mutate phase does not have.
+//
+// The obligation this places on a caller is the whole of it: on error, drop
+// the encounter. Do not save it, and do not keep using it.
+//
 // Design contract: docs/ideas/encounter/design.md (composition laws C1–C8).
 // This is not a play/ leaf: the module composes published pieces and exposes
 // one aggregate persistence pair at the host seam.
