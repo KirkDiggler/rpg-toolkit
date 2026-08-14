@@ -181,38 +181,45 @@ homebrew when it comes.
 | Mechanisms needed | 2 | **1** | 2 | 1 + interpreter |
 | ADR precedent | violates 0007 | extends 0024/0026 | half-violates 0007 | — |
 
-## The Bless example — prior art that amends a ruling
+## The Bless example — prior art, and the granted/projected distinction
 
-`events/example_journey_test.go` already contains the pattern (Kirk's
-recall, verified): `BlessSpell{targets []string, bonus int}` implements
-`Apply(bus)`, subscribes to the attack chain, and **projects onto its targets
-by ID** — one effect object, living with its owner, matching beneficiaries by
-predicate. The aura and Bless are the same shape with different predicates:
-proximity versus an ID list.
+`events/example_journey_test.go` contains the pattern (Kirk's recall,
+verified): `BlessSpell{targets []string, bonus int}` implements `Apply(bus)`
+and matches beneficiaries by predicate. **It is evidence for B's subscription
+mechanics — not a storage model.** An earlier revision of this doc over-read
+it as "Bless lives only on the caster; targets carry nothing," which Kirk
+corrected (2026-08-14): *"I cast bless on someone — **they get the bless
+condition**. Later I am hit and fail my save — that removes the bless
+conditions **I have granted**."*
 
-This amends 053's concentration ruling in a strictly better direction:
+Kirk's model is the rules-correct one, and RAW's own grammar decides it.
+There are **two kinds of effect**:
 
-- **Breaking concentration is a single-record write.** Bless lives on the
-  caster's list; the break removes one condition from one character. There is
-  no ripple to the targets, because the targets carry nothing.
-- **The orphan problem disappears instead of self-healing.** "Granted
-  conditions are claims validated at load" was solving a problem this shape
-  does not have. (The dirty-participants ruling stands — damage to several
-  targets still writes several records.)
-- **The price is already paid** by the pass-everyone-in scope ruling: the
-  target's roll sees the owner's projection only if the owner's effects are
-  attached when the target acts.
+- **Granted** — *"whenever **a target** makes an attack roll or saving
+  throw…"* (Bless, no range limit while active). The effect transfers to the
+  beneficiary at cast time and thereafter works **from their sheet**,
+  carrying a **link back to what kills it**: the target gets
+  `BlessedCondition{Source: link}`, the caster gets
+  `ConcentratingCondition{Granted: [ids]}`. Both sides of the link are data.
+  The buff works even in an interaction where the caster is not loaded —
+  matching RAW — and the beneficiary's sheet is self-describing, which is
+  what a UI or a monster AI reads.
+- **Projected** — *"**while** a friendly creature is **within 10 feet**…"*
+  (the aura). Live-conditional on the owner's state every single roll; it
+  never leaves the owner and cannot be granted.
 
-The principle for the ADR: **an effect lives with the entity whose lifecycle
-owns it.** Bless dies when the *caster's* concentration breaks → it lives on
-the caster. Prone ends when the *target* stands → it lives on the target.
-Storage location is derived from what kills the effect, never a style choice
-— and concentration linkage then costs nothing, because the effect already
-sits on the thing whose state controls it.
+The lifecycle principle survives, sharpened: **an effect lives where it
+works, and links to what kills it.**
 
-It is also evidence for B rather than argument: the example *is* option B —
-`Apply(bus)`, `SubscribeWithChain`, predicate over event fields — already in
-the repo.
+Consequences for the concentration break, in Kirk's three sentences: the
+failed save fires `RevokeGrants{From: c.Granted}` — the caster loses
+`Concentrating`, every grantee loses `Blessed`, all returned dirty (the
+dirty-participants ruling). And this **reinstates 053's crash-safety
+ruling** the earlier revision deleted: with conditions on grantees, a crash
+between the caster's write and a grantee's write strands an orphan — so
+*granted conditions are claims, validated against their source at load*.
+`BlessedCondition.Source` is exactly the field that makes the validation
+possible. Orphans self-heal on the next load; no transactions.
 
 ## Recommendation
 
@@ -375,28 +382,34 @@ func (b *BlessSpell) Apply(ctx, bus events.EventBus) error {   // today's signat
 }
 ```
 
-And the concentration link the repo's example lacks (Kirk's catch) — two
-fields and a lifecycle subscription:
+And the concentration link — **both sides of it are conditions, on the
+entities they live with** (corrected to Kirk's model, 2026-08-14):
 
 ```go
-type BlessSpell struct {
-    Caster        ID     // THE LINK: whose lifecycle owns this effect
-    Targets       []ID
-    Bonus         int
-    Concentration bool   // the flag that already exists in effects/types.go
+// On the TARGET — granted: works from Bob's sheet, no caster presence needed (RAW).
+type BlessedCondition struct {
+    Owner  ID    // bob
+    Source Link  // THE LINK: alice's concentration on this cast
+    Bonus  int
+}
+// its Apply adds the d4 to BOB's attack/save chains — Bob's own condition.
+
+// On the CASTER — the granter's side of the same link.
+type ConcentratingCondition struct {
+    Owner   ID    // alice
+    Spell   Ref   // bless
+    Granted []ID  // bob, carl — "the bless conditions I have granted"
 }
 
-func (b *BlessSpell) Apply(ctx, bus events.EventBus) error {
-    attackHook(bus, b.Targets, b.Bonus)   // contribution, as above
-
+func (c *ConcentratingCondition) Apply(ctx, bus events.EventBus) error {
     // lifecycle: listen for THE CASTER taking damage
     return DamageReceived.On(bus).Subscribe(ctx, func(ctx, e DamageReceivedEvent) error {
-        if e.TargetID != b.Caster { return nil }
+        if e.TargetID != c.Owner { return nil }
         // Do not roll here — REQUEST a follow-up interaction:
         requestSave(ctx, SaveRequest{
-            Saver: b.Caster, Ability: CON, DC: max(10, e.Damage/2),
-            Trigger: SaveTriggerConcentration,   // already exists
-            OnFail:  Expire{Effect: b},          // single-record write, on the caster
+            Saver: c.Owner, Ability: CON, DC: max(10, e.Damage/2),
+            Trigger: SaveTriggerConcentration,             // already exists
+            OnFail:  RevokeGrants{From: c.Granted, Source: c},
         })
         return nil
     })
@@ -409,8 +422,10 @@ right rather than convenient: it is ADR-0027's reaction-window shape (things
 that happen *between* phases); the save is a chain of its own, so the aura's
 +CHA folds in — the caster-in-her-own-aura case composes with no special
 code; and a queued save is data, so a suspension landing between the damage
-and the save persists cleanly. On failure, `Expire` removes Bless from the
-caster's list — lifecycle ownership making the break a single-record write.
+and the save persists cleanly. On failure, `RevokeGrants` removes
+`Concentrating` from the caster and `Blessed` from every grantee — the
+multi-record ripple the dirty-participants ruling exists for, with
+claims-validated-at-load as the crash net.
 
 Three sharpenings the code makes visible:
 
@@ -489,7 +504,8 @@ Three findings the walk-through surfaced:
 
 The chosen interface; the rejects with reasons (including D's deferral and
 its homebrew door); the rulings it inherits — pass everyone in,
-dirty-participant returns, and **an effect lives with the entity whose
-lifecycle owns it** (which replaced 053's claims-validated-at-load ruling
-once the Bless example resurfaced); and the determinism rule (attach in
-sorted participant order).
+dirty-participant returns, **granted vs projected effects** (*an effect
+lives where it works, and links to what kills it*), and **granted
+conditions are claims validated against their source at load** (the crash
+net for revocation ripples); and the determinism rule (attach in sorted
+participant order).
