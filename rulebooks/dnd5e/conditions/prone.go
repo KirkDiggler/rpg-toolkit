@@ -119,25 +119,46 @@ func (p *ProneCondition) Apply(ctx context.Context, bus events.EventBus) error {
 }
 
 // Remove unsubscribes this condition from all events.
+//
+// A nil bus falls back to the one Apply was given, because that is the bus the
+// subscription IDs were issued by and the only one that can revoke them —
+// passing some other bus revokes nothing, since IDs mean nothing to a bus that
+// did not grant them.
+//
+// The condition stays applied if any unsubscription fails. Clearing state
+// regardless would have it report itself removed while its handler is still on
+// the bus, and a modifier that keeps appearing from a condition nobody can see
+// is a bad afternoon; leaving it applied keeps IsApplied honest and lets the
+// caller try again.
 func (p *ProneCondition) Remove(ctx context.Context, bus events.EventBus) error {
 	if p.bus == nil {
 		return nil // Not applied, nothing to remove
 	}
 
+	if bus == nil {
+		bus = p.bus
+	}
+
 	total := len(p.subscriptionIDs)
 	var errs []error
+	var stillSubscribed []string
 	for _, subID := range p.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil {
 			errs = append(errs, fmt.Errorf("unsubscribe %s: %w", subID, err))
+			stillSubscribed = append(stillSubscribed, subID)
 		}
+	}
+
+	if len(errs) > 0 {
+		// Keep exactly the ones that are still live, so a retry does not try to
+		// revoke what is already gone.
+		p.subscriptionIDs = stillSubscribed
+		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
 	}
 
 	p.subscriptionIDs = nil
 	p.bus = nil
 
-	if len(errs) > 0 {
-		return fmt.Errorf("failed to unsubscribe %d/%d subscriptions: %w", len(errs), total, errors.Join(errs...))
-	}
 	return nil
 }
 

@@ -6,6 +6,7 @@ package conditions_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -249,6 +250,56 @@ func (s *ProneConditionSuite) TestRemovedProneStopsModifyingAttacks() {
 
 	s.Assert().Empty(final.AdvantageSources)
 	s.Assert().Empty(final.DisadvantageSources)
+}
+
+// unsubscribeFailingBus is a real bus whose Unsubscribe always refuses, so a
+// test can reach Remove's failure path — which no real bus in this repo takes,
+// and which is exactly why it is worth pinning.
+type unsubscribeFailingBus struct {
+	events.EventBus
+}
+
+func (b *unsubscribeFailingBus) Unsubscribe(_ context.Context, _ string) error {
+	return errUnsubscribeRefused
+}
+
+var errUnsubscribeRefused = errors.New("bus refused the unsubscribe")
+
+// Remove with no bus falls back to the one Apply was given. Without the
+// fallback this is a nil-interface panic, not a graceful no-op.
+func (s *ProneConditionSuite) TestRemoveWithANilBusUsesTheAppliedOne() {
+	s.place(proneID, 5, 5)
+	s.place(attackerID, 5, 6)
+	prone := s.applied()
+
+	s.Require().NoError(prone.Remove(s.ctx, nil))
+	s.Assert().False(prone.IsApplied())
+
+	final := s.resolveAttack(s.withRoom(), attackerID, proneID)
+	s.Assert().Empty(final.AdvantageSources, "the handler really is off the bus")
+	s.Assert().Empty(final.DisadvantageSources)
+}
+
+// A Remove that could not unsubscribe leaves the condition applied rather than
+// reporting a removal that did not happen. The handler is still live, and
+// IsApplied still says so.
+func (s *ProneConditionSuite) TestAFailedRemoveLeavesTheConditionApplied() {
+	s.place(proneID, 5, 5)
+	s.place(attackerID, 5, 6)
+	prone := s.applied()
+
+	err := prone.Remove(s.ctx, &unsubscribeFailingBus{EventBus: s.bus})
+
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, errUnsubscribeRefused)
+	s.Assert().True(prone.IsApplied(), "it is still on the bus, so it still says so")
+
+	final := s.resolveAttack(s.withRoom(), attackerID, proneID)
+	s.Require().Len(final.AdvantageSources, 1, "and the handler is indeed still live")
+
+	// The retry, on a bus that cooperates, works.
+	s.Require().NoError(prone.Remove(s.ctx, s.bus))
+	s.Assert().False(prone.IsApplied())
 }
 
 // The persisted form round-trips through the loader that routes on its ref, and
