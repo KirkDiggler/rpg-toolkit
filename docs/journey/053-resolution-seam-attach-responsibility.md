@@ -171,6 +171,48 @@ all of them; combat is merely the first rules content it executes.
 - **The bus — keeps observation**, exactly as 052 said, inside resolution's
   walls. Facts for optional listeners; the broker bridging to clients.
 
+## The edges the decision must survive
+
+Named here because "do we have our edges?" (Kirk) is the right gate for an
+ADR, and because the subscribe-interface options genuinely differ on some of
+these. Hardest first:
+
+- **The aura.** A paladin's aura modifies *other creatures'* saves, so
+  "participants = attacker + target" is wrong: enumeration scope must include
+  proximate entities whose effects project onto others. The strongest argument
+  for the composition *raising* interactions — it is the only layer that knows
+  who is near.
+- **Concentration.** Damage to the caster ends an effect on someone else — an
+  interaction's writes can ripple beyond its participants.
+- **Shield.** Covered above: re-attach at resume; the freeze makes it
+  deterministic.
+- **The trap, in free roam and in combat.** Same seam, different clock — one
+  code path. Detection is already composition-side machinery:
+  `TriggerReachedPosition` is evaluated per step against the destination cell
+  (verified — the ending-evaluation loop in Move). A trap is the same
+  detection with a different consequence: raise an interaction instead of
+  closing the encounter. The trap never sits subscribed anywhere waiting —
+  the difference from the old stack, where 052's census had the trap as the
+  canonical long-lived movement listener.
+- **A monster's action on the tick.** Pump's decider intents will raise
+  interactions too (the monster steps on the trap; the monster attacks, which
+  is #964's mutual-awareness trigger). The seam must be caller-agnostic:
+  session verb or Pump, same resolution.
+- **Unconscious mid-walk.** #845 already files that free roam has no HP gate;
+  the interaction seam is where that gate naturally lands.
+
+**And the simulation-server question, answered while it was asked (Kirk,
+2026-08-14):** free-roam trap triggering does NOT need a resident world
+process. Detection is world data consulted per step; resolution is a one-call
+bus. What a sim server would buy — the world acting while nobody plays — is
+against the composition's own charter ("player activity pumps the clock, the
+world thinks on the tick"), and everything else it provides, load-act-save
+provides more honestly: attachment rebuilt from data every call (~5µs a
+character, measured), suspension surviving process death, no
+resubscribe-after-crash problem — which is the attach caution in its worst
+form. If wall-clock simulation is ever wanted, that is a *driver* choice —
+a host calling Pump on a schedule — not a toolkit architecture change.
+
 ## Open before an ADR
 
 1. **The subscribe interface's shape** — the seam decision. What does a data
@@ -178,7 +220,10 @@ all of them; combat is merely the first rules content it executes.
    typed dispatch, or stage-declared contributions (052's original three),
    now posed as "what does *anything attachable* implement" rather than "what
    does a condition implement". Genuine options and trade-offs before choosing
-   (ADR-0037's process note).
+   (ADR-0037's process note). **The route to the ADR:** one options document,
+   each candidate tested against the edge list above — the aura especially,
+   since scoping is where the shapes actually differ — then Kirk picks, and
+   ADR-0038 records the winner with the rejects.
 2. **Where an interaction begins.** A plain geometry move loads nobody today,
    and probably still should not. Lean: the composition walks and *raises* an
    interaction when one occurs (a trap cell, first contact); resolution
