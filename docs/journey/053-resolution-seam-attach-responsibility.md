@@ -231,6 +231,52 @@ simulation server, without the toolkit ever knowing. rpg-api already ships
 load-per-RPC today (Chapter 1's "one private load(id) per orchestrator
 method"), so this pattern is in prod, not hypothetical.
 
+## Working the two hardest edges
+
+Kirk's gate, verbatim: *"if we can work through concentration and aura we can
+be good."* Worked here.
+
+**The aura resolves by taking the model's own sentence literally: "we pass in
+all the data objects."** Split scope from applicability. Scope — who *could*
+contribute — belongs to the caller: pass every member of the encounter into
+resolution. Applicability — does it contribute — belongs to the effect's own
+predicate: the aura checks "is my owner within 10 ft of the saver" via
+`gamectx` spatial data, exactly as Dodging checks "am I the target".
+Over-inclusion is safe by construction (a loaded effect whose predicate says
+no contributes nothing); under-inclusion is the silent fail-open this whole
+doc exists to avoid. Affordable: ~5µs a character makes a 10-member pass ~50µs
+against the 187µs click. Room-scoping is therefore a later *optimization*,
+never a correctness rule — no aura radius ever leaks into the composition.
+
+Composability falls out unasked: a caster concentrating inside her own aura
+takes damage → the concentration save is a chain, the aura Adds +CHA, Bless
+Adds its d4. Effects stack because the save IS a chain.
+
+**Concentration's novelty is the write set, not the save.** The break is
+ordinary machinery — `ConcentratingCondition` self-attaches, hears damage,
+rolls through the chain (`SaveTriggerConcentration` already names the
+trigger). The new thing: a failed save removes granted conditions from OTHER
+participants — writes exceed the trigger's participants. Two rulings:
+
+1. **Resolution returns every dirty participant's data**, not just the
+   actor's (`IsDirty()`/`MarkClean()` already exist on the combatant
+   interface for exactly this shape). The session saves them all under the
+   per-session lock, which is already exclusive — no new locking.
+2. **Granted conditions are claims, validated against their source at load.**
+   The grantee's condition names its source; if a crash lands between writing
+   the caster (concentration gone) and the grantee (still blessed), the
+   orphan drops on the grantee's next load. Partial multi-record writes
+   self-heal without transactions. Derive validity; never trust the stored
+   claim.
+
+**And the free-roam concurrency profile, confirmed (Kirk, 2026-08-14):**
+free roam is where concurrent calls arrive, and most writes are positions —
+but position writes are NOT independent: every move evaluates triggers,
+sight, and endings, and a move can start a fight or close the encounter. So
+serializing them through the per-session lock is *correct*, not conservative.
+At ~1ms hold per click, six concurrent clickers contend for ~0.6% of the
+lock; the buffer is lock-wait with a timeout.
+
 ## Open before an ADR
 
 1. **The subscribe interface's shape** — the seam decision. What does a data
