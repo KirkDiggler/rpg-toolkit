@@ -49,16 +49,20 @@ func (s *ContestTestSuite) SetupTest() {
 // so a test that hand-builds it proves the machine works on a gate nobody
 // ships.
 func (s *ContestTestSuite) wolfsKnockdown() *saves.SaveGate {
-	wolf := monsters.NewWolf(wolfID)
-	s.Require().Len(wolf.Actions(), 1)
+	for _, action := range monsters.NewWolf(wolfID).Actions() {
+		bite, isBite := action.(*monsterActions.BiteAction)
+		if !isBite {
+			continue
+		}
 
-	bite, ok := wolf.Actions()[0].(*monsterActions.BiteAction)
-	s.Require().True(ok, "the wolf's action is its bite")
+		if gate := bite.SaveGate(); gate != nil {
+			return gate
+		}
+	}
 
-	gate := bite.SaveGate()
-	s.Require().NotNil(gate, "and the bite declares what its knockdown can be contested with")
+	s.Require().Fail("the catalog wolf has no bite declaring a save gate")
 
-	return gate
+	return nil
 }
 
 func (s *ContestTestSuite) world() encounter.EncounterData {
@@ -389,18 +393,48 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 	})
 }
 
-// The step log says what the interaction did, in order: request the save, then
-// impose. A reader of the ledger should not have to infer the second half.
-func (s *ContestTestSuite) TestTheStepsAreNamedForWhatTheyDo() {
-	gate := s.wolfsKnockdown()
+// Choosing which ability to roll reads a modifier off a sheet, so a saver the
+// cast does not have is refused there rather than rolling without one.
+func (s *ContestTestSuite) TestASaverTheCastDoesNotHaveIsRefusedBeforeAnyRoll() {
+	machine := s.contest(s.wolfsKnockdown(), &scriptedRoller{single: straightRoll})
 
-	machine := s.contest(gate, &scriptedRoller{single: straightRoll})
 	step, err := machine.Start(s.ctx, &Participants{
 		characters: map[string]*character.Character{},
 		monsters:   map[string]*monster.Monster{},
 	})
 
-	// The cast is empty, so the ability choice cannot read a modifier.
 	s.Require().ErrorIs(err, ErrNoSaver)
-	s.Require().Nil(step)
+	s.Require().Nil(step, "and no step is yielded, so nothing is rolled or imposed")
+}
+
+// The imposition step says what it does, so a reader of the step log sees
+// "impose the prone condition" rather than a fold that folds nothing.
+func (s *ContestTestSuite) TestTheImpositionStepSaysWhatItDoes() {
+	step := imposeOnBus(
+		ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+		&Participants{},
+		heroID,
+		func([]ImposedEffect) Step { return Done{} },
+	)
+
+	s.Require().Equal("impose the prone condition", step.Name())
+}
+
+// A consequence naming no condition is a caller defect, refused before the
+// contest rolls anything — rather than a description reading "unknown" and a
+// contest that imposes something nobody can name.
+func (s *ContestTestSuite) TestAConsequenceWithNoRefIsRefused() {
+	_, err := Resolve(s.ctx, &Input{
+		World:        s.world(),
+		Participants: []Participant{{Character: s.hero()}, {Monster: s.wolfData()}},
+		Machine: NewContest(&ContestInput{
+			Gate:        s.wolfsKnockdown(),
+			SaverID:     heroID,
+			Consequence: ImposeCondition(nil, dnd5eEvents.ConditionProne),
+			Roller:      &scriptedRoller{single: straightRoll},
+		}),
+	})
+
+	s.Require().ErrorIs(err, ErrNilInput)
+	s.Require().Contains(err.Error(), "condition ref")
 }

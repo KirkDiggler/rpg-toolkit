@@ -56,7 +56,7 @@ out, err := resolution.Resolve(ctx, &resolution.Input{
     Machine: resolution.NewContest(&resolution.ContestInput{
         Gate:        bite.SaveGate(),  // the wolf's stat block says DC 11 STR or prone
         SaverID:     "hero",
-        Consequence: resolution.ImposeCondition(refs.Conditions.Prone(), events.ConditionProne),
+        Consequence: resolution.ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
     }),
 })
 ```

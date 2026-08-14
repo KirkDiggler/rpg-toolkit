@@ -102,8 +102,12 @@ func (ContestOutcome) isOutcome() {}
 // imposed is resolution's to know. A caller names one through a constructor
 // here.
 type Consequence interface {
+	// validate reports whether this consequence could actually be imposed, so
+	// that a contest refuses one that could not before it rolls anything.
+	validate() error
+
 	// atStake describes what the contest is about, before it is known whether
-	// it lands.
+	// it lands. It may assume validate passed.
 	atStake() ImposedEffect
 
 	// impose puts the consequence on the saver.
@@ -136,6 +140,22 @@ type conditionConsequence struct {
 }
 
 func (conditionConsequence) isConsequence() {}
+
+// validate refuses a consequence naming no condition.
+//
+// Checked once, at the seam, so that atStake and impose can rely on the ref
+// rather than each guarding it. The alternative — a stable "unknown" whenever
+// the ref is missing — would turn a caller's mistake into a contest that runs,
+// rolls, and imposes something nobody can name, which is the shape of wrongness
+// this codebase refuses on principle: failing at construction is a bug report,
+// failing soft is a bug that ships.
+func (c conditionConsequence) validate() error {
+	if c.ref == nil {
+		return fmt.Errorf("%w: consequence names no condition ref", ErrNilInput)
+	}
+
+	return nil
+}
 
 func (c conditionConsequence) atStake() ImposedEffect {
 	return ImposedEffect{
@@ -216,6 +236,9 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 	}
 	if m.in.Consequence == nil {
 		return nil, fmt.Errorf("%w: contest has no consequence", ErrNilInput)
+	}
+	if err := m.in.Consequence.validate(); err != nil {
+		return nil, err
 	}
 	if m.in.Gate.Recurrence != saves.RecurrenceNone {
 		// Silently treating a recurring gate as a one-shot would produce a
