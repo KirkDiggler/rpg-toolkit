@@ -2,7 +2,7 @@
 
 **Read this file. Do not read the ADR corpus.**
 
-Thirty-seven ADRs is a large context load and much of it is history: superseded
+The ADR corpus is a large context load and much of it is history: superseded
 shapes, proposals never built, and narrative that made sense at the time. Loading
 it wholesale costs a lot and imports baggage — the danger is not the tokens, it
 is reasoning from a decision that no longer holds.
@@ -105,6 +105,16 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   code-resident content from a ref. *Rule: **a ref names the package that can load
   the data** — so a host-owned character has no ref, because claiming one would be
   false. Also: an option that "fits" is not thereby true.*
+- **0038** — **Resolution owns the bus**: one package creates it per
+  interaction, attaches every participant's effects through an instrumented
+  surface, and the bus dies with the call. Rules packages (`combat`,
+  `character`) never see it — every verb is a step machine over data yielding
+  a **sealed vocabulary** (`Gather | Pose | Request | Done`) that resolution
+  drives. Effects keep `Apply(ctx, bus)` unchanged; **granted** effects live
+  on the beneficiary with a link to what kills them, **projected** effects
+  never leave their owner. *Rule: the bus is wiring, and wiring lives in
+  exactly one place — a package that needs the bus to construct is claiming
+  wiring it does not own.*
 
 ---
 

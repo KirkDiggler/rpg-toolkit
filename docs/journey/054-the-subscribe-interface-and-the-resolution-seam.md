@@ -1,9 +1,13 @@
-# The subscribe interface — options for ADR-0038
+# Journey 054: The Subscribe Interface and the Resolution Seam
 
-**Status:** **B picked (Kirk, 2026-08-14), refined below** — see "The
-refinement: does Apply need a bus?". ADR-0038 records it once the refinement
-is confirmed.
-**Context:** [journey 053](../../journey/053-resolution-seam-attach-responsibility.md)
+**Date:** 2026-08-14
+**Status:** decided — ratified as
+[ADR-0038](../adr/0038-resolution-owns-the-bus.md). This doc began life as an
+options document in `docs/ideas/session-sdk/` and was reclassified a journey
+(Kirk's call: "our current idea doc *is* the journey doc — it was written in
+that style anyway"). It is the record of how the decision was reached,
+noodle by noodle; the ADR is the distilled decision.
+**Predecessor:** [journey 053](053-resolution-seam-attach-responsibility.md)
 — read it first; this doc deliberately does not restate it.
 **Process:** ADR-0037's note — genuine options with trade-offs in the open,
 including one from a different direction, *before* choosing. An option that
