@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -19,8 +20,18 @@ import (
 // All leaves (Clock, Intel, Log) embed their Data types verbatim.
 // Deciders are NOT persisted; they are re-registered at load.
 type EncounterData struct {
-	Outcome     *OutcomeData   `json:"outcome,omitempty"`
-	Clock       clock.TickData `json:"clock"`
+	Outcome *OutcomeData   `json:"outcome,omitempty"`
+	Clock   clock.TickData `json:"clock"`
+	// Bubbles holds the localized initiative bubbles running in this
+	// encounter — zero or more, and zero for any encounter not currently in a
+	// fight. Absent in blobs written before this field existed, which load as
+	// an empty slice: no bubbles, everyone on the world clock, which is what
+	// those encounters meant.
+	//
+	// A list rather than a single optional bubble because a list grows to N
+	// additively. There is no identifier per bubble on purpose — a bubble is
+	// reached through a member (R6), never addressed by name.
+	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
 	Intel       intel.Data     `json:"intel"`
 	Log         record.LogData `json:"log"`
 	Field       FieldData      `json:"field"`
@@ -260,9 +271,18 @@ func (e *Encounter) ToData() EncounterData {
 		}
 	}
 
+	var bubblesData []clock.TurnData
+	if len(e.bubbles) > 0 {
+		bubblesData = make([]clock.TurnData, 0, len(e.bubbles))
+		for _, b := range e.bubbles {
+			bubblesData = append(bubblesData, b.ToData())
+		}
+	}
+
 	return EncounterData{
 		Outcome:     outcomeData,
 		Clock:       e.clock.ToData(),
+		Bubbles:     bubblesData,
 		Intel:       e.intelLog.ToData(),
 		Log:         e.story.ToData(),
 		Field:       fieldData,
@@ -536,6 +556,46 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 		return nil, fmt.Errorf("load encounter clock: %w: %w", ErrInvalidData, err)
 	}
 
+	var loadedBubbles []*clock.Turn
+	if len(data.Bubbles) > 0 {
+		loadedBubbles = make([]*clock.Turn, 0, len(data.Bubbles))
+		for i := range data.Bubbles {
+			b, berr := clock.LoadTurn(data.Bubbles[i])
+			if berr != nil {
+				return nil, fmt.Errorf("load encounter bubble %d: %w: %w", i, ErrInvalidData, berr)
+			}
+			loadedBubbles = append(loadedBubbles, b)
+		}
+	}
+
+	// R6 — an entity belongs to at most one clock. Validated HERE rather than
+	// trusted, because this is the trust boundary for persisted bytes: a blob
+	// placing someone in two clocks at once would make ClockOf's answer depend
+	// on iteration order, and the whole point of reaching a bubble through a
+	// member is that the lookup is a function.
+	onAClock := make(map[core.EntityID]struct{})
+	tickMembers, err := loadedClock.Members()
+	if err != nil {
+		return nil, fmt.Errorf("load encounter clock members: %w: %w", ErrInvalidData, err)
+	}
+	for _, id := range tickMembers {
+		onAClock[id] = struct{}{}
+	}
+	for i, b := range loadedBubbles {
+		order, oerr := b.Order()
+		if oerr != nil {
+			return nil, fmt.Errorf("load encounter bubble %d order: %w: %w", i, ErrInvalidData, oerr)
+		}
+		for _, id := range order {
+			if _, dup := onAClock[id]; dup {
+				return nil, fmt.Errorf(
+					"load encounter bubble %d: %q is on more than one clock: %w",
+					i, id, ErrInvalidData)
+			}
+			onAClock[id] = struct{}{}
+		}
+	}
+
 	loadedIntel, err := intel.LoadIntel(data.Intel)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter intel: %w: %w", ErrInvalidData, err)
@@ -622,6 +682,7 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 
 	// Load leaf state (constructors always succeed after validation)
 	e.clock = loadedClock
+	e.bubbles = loadedBubbles
 	e.intelLog = loadedIntel
 	e.story = loadedLog
 
@@ -663,6 +724,24 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 				return nil, fmt.Errorf("load encounter: player %s cannot carry a decider: %w: %w", m.ID, ErrInvalidData, ErrNoMember)
 			}
 			e.deciders[m.ID] = d
+		}
+	}
+
+	// Put every member on a clock that is not already on one.
+	//
+	// This is what makes the field retrofittable with no migration. A blob
+	// written before members were tracked on the world clock has an empty
+	// budget map and no bubbles, so every member lands here and goes to the
+	// world clock — which is exactly what such an encounter meant. A blob
+	// written after carries its own membership and this loop finds nothing to
+	// do. Deriving the default rather than storing a flag is deliberate: a
+	// migration nobody runs is a migration that silently did not happen.
+	for _, m := range data.Members {
+		if _, ok := onAClock[core.EntityID(m.ID)]; ok {
+			continue
+		}
+		if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(m.ID)}); cerr != nil {
+			return nil, fmt.Errorf("load encounter member %q world clock: %w: %w", m.ID, ErrInvalidData, cerr)
 		}
 	}
 
