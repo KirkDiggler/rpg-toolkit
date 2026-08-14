@@ -352,11 +352,24 @@ still listening next request.
 *Ponder:* what must be in the persisted shape for the **next** action to be
 decidable without replaying this one.
 
-**2 — The encounter owns the wiring; combat owns the rules.** The model is
-`play/clock`: a leaf that returns milestones as values and **never publishes**,
-with the composition as courier. Today `combat` is the inverse —
-`NewTurnManager` *requires* an `EventBus` and publishes `TurnStartEvent`/
-`TurnEndEvent` itself.
+**2 — ~~The encounter owns the wiring~~; combat owns the rules.**
+
+> **SUPERSEDED by [ADR-0038](../../adr/0038-resolution-owns-the-bus.md)
+> (2026-08-14).** The ponder below was pondered, and the answer moved the
+> wiring somewhere neither half of this clause anticipated: **a resolution
+> package owns the bus** — it creates one per interaction, attaches everything
+> passed in, and the bus dies with the call. The **encounter stays entirely
+> bus-free**, exactly like `combat` and `character`. Read the ADR, plus
+> journeys [053](../../journey/053-resolution-seam-attach-responsibility.md)
+> and [054](../../journey/054-the-subscribe-interface-and-the-resolution-seam.md),
+> before opening a PR against this clause. The landing plan is
+> [resolution.md](resolution.md). The clause text is kept below as the record
+> of what was believed going in.
+
+The model is `play/clock`: a leaf that returns milestones as values and
+**never publishes**, with the composition as courier. Today `combat` is the
+inverse — `NewTurnManager` *requires* an `EventBus` and publishes
+`TurnStartEvent`/`TurnEndEvent` itself.
 *Deflect:* new code making combat responsible for who hears about it.
 *Ponder:* how much of combat's bus use is genuinely **rules** (conditions
 intercepting a chain — real and load-bearing) versus **notification** (the
