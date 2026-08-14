@@ -110,9 +110,9 @@ func TestVaultChase(t *testing.T) {
 	// same topology and target, no memory of its own carried over (its
 	// INTEL does — beliefs are state and traveled in the aggregate).
 	data := enc.ToData()
-	enc2, err := encounter.LoadEncounter(data, map[encounter.MemberID]encounter.Decider{
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 		goblin: &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice},
-	})
+	}})
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 

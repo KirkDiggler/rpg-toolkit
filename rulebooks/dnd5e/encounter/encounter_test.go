@@ -1656,7 +1656,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerMustAccept() {
 			s.Require().NoError(err, tc.name)
 
 			data := enc.ToData()
-			_, err = encounter.LoadEncounter(data, nil)
+			_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 			s.Require().NoError(err, "%s must survive a ToData/LoadEncounter round trip", tc.name)
 		})
 	}
@@ -1680,7 +1680,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() 
 	s.Require().NoError(err, "a negative-axial hex trigger position is the NORMAL case, not an edge case")
 
 	data := enc.ToData()
-	_, err = encounter.LoadEncounter(data, nil)
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().NoError(err, "must survive a ToData/LoadEncounter round trip")
 }
 

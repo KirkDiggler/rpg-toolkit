@@ -124,7 +124,7 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 		Round:     3,
 	}}
 
-	reloaded, err := encounter.LoadEncounter(data, nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -175,7 +175,7 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 		Order: []core.EntityID{alice, goblin}, ActiveIdx: 0, Round: 1,
 	}}
 
-	reloaded, err := encounter.LoadEncounter(data, nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().NoError(err)
 
 	fighting, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -208,7 +208,7 @@ func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter(
 	delete(data.Clock.Budgets, goblin)
 	data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
-	reloaded, err := encounter.LoadEncounter(data, nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -231,7 +231,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		delete(data.Clock.Budgets, goblin)
 		data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
-		_, err := encounter.LoadEncounter(data, nil)
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -246,7 +246,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 			{Order: []core.EntityID{alice}, ActiveIdx: 0, Round: 1},
 		}
 
-		_, err := encounter.LoadEncounter(data, nil)
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -271,7 +271,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data := enc.ToData()
 		data.Clock.Budgets["ghost"] = 0
 
-		_, err := encounter.LoadEncounter(data, nil)
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -284,7 +284,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 			Order: []core.EntityID{alice, core.EntityID("ghost")}, ActiveIdx: 0, Round: 1,
 		}}
 
-		_, err := encounter.LoadEncounter(data, nil)
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -296,7 +296,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 			Order: []core.EntityID{"ghost", "phantom"}, ActiveIdx: 0, Round: 1,
 		}}
 
-		_, err := encounter.LoadEncounter(data, nil)
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -315,7 +315,7 @@ func (s *ClocksTestSuite) TestABlobFromBeforeClockMembershipLoadsEveryoneOntoThe
 	data.Clock.Budgets = nil
 	data.Bubbles = nil
 
-	reloaded, err := encounter.LoadEncounter(data, nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().NoError(err)
 
 	for _, id := range []core.EntityID{alice, goblin} {
@@ -375,7 +375,7 @@ func (s *ClocksTestSuite) assertR6(enc *encounter.Encounter, members ...core.Ent
 		_, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
 		s.Require().NoError(err, "member %q must be on exactly one clock", id)
 	}
-	_, err := encounter.LoadEncounter(enc.ToData(), nil)
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
 	s.Require().NoError(err, "the persisted shape must pass the trust boundary (R6)")
 }
 
@@ -796,7 +796,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 	data := enc.ToData()
 	data.Bubbles = []clock.TurnData{{}}
 
-	_, err := encounter.LoadEncounter(data, nil)
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInvalidData)
 }
@@ -811,7 +811,7 @@ func (s *ClocksTestSuite) TestAMidFightBlobRoundTrips() {
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
-	reloaded, err := encounter.LoadEncounter(enc.ToData(), nil)
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: bob})
