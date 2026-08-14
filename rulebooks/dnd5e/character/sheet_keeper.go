@@ -8,6 +8,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -27,8 +28,10 @@ import (
 // ledger under the participant that made them instead of as anonymous entries
 // nobody can attribute (ADR-0038, and rpg-toolkit#985).
 //
-// Get one from [Character.SheetKeeper]. It is the character's, not a copy of
-// it: applying the same character's keeper twice subscribes it twice.
+// Get one from [Character.SheetKeeper]. It is the character's own, not a fresh
+// one per call, and an already-applied keeper refuses a second [SheetKeeper.Apply]
+// with [rpgerr.CodeAlreadyExists] rather than quietly subscribing the sheet
+// twice. A failed Apply leaves nothing behind and can be retried.
 type SheetKeeper struct {
 	character *Character
 
@@ -62,12 +65,35 @@ func (c *Character) SheetKeeper() *SheetKeeper {
 // sheet, and is dropped from the sheet on a leniently loaded one — dropping is
 // what LoadFromData has always done, and it is exactly how a resource goes
 // missing between two saves.
+//
+// **A failed Apply is a no-op.** Whatever it managed to subscribe before the
+// failure is revoked, the sheet is left holding the bus it held before, and the
+// keeper is not left in the applied state — so the bus carries no hooks nobody
+// asked for, and the caller can retry against another bus. A half-attached
+// sheet that still reports itself attached is worse than one that never
+// attached: the second is a failure, the first is a leak with an alibi.
 func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
+	// Read before subscribeSelf parks the new one, so the rollback below can
+	// give the sheet back exactly what it was holding.
+	var previousBus events.EventBus
+	if k.character != nil {
+		previousBus = k.character.bus
+	}
+
 	if err := k.subscribeSelf(ctx, bus); err != nil {
 		return err
 	}
 
-	return k.applyResources(ctx, bus)
+	if err := k.applyResources(ctx, bus); err != nil {
+		// The handlers went on before the resources did, so they are this
+		// function's to take back.
+		k.unsubscribeSelf(ctx, bus)
+		k.character.bus = previousBus
+
+		return err
+	}
+
+	return nil
 }
 
 // subscribeSelf makes the five self-subscriptions, and nothing else.
@@ -95,6 +121,7 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 	}
 
 	c := k.character
+	previousBus := c.bus
 
 	// Park the bus on the sheet for the verb methods that still read it —
 	// MakeSavingThrow, ActivateCombatAbility, EffectiveAC, the rests, Cleanup.
@@ -103,43 +130,64 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 	// was handed.
 	c.bus = bus
 
-	appliedID, err := dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(ctx,
-		func(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-			return c.onConditionApplied(ctx, bus, event)
-		})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to condition applied")
+	// One table rather than five near-identical blocks, so that the rollback
+	// on a failed subscription is written once and cannot be forgotten for one
+	// of them.
+	handlers := []struct {
+		what      string
+		subscribe func() (string, error)
+	}{
+		{"condition applied", func() (string, error) {
+			return dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(ctx,
+				func(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+					return c.onConditionApplied(ctx, bus, event)
+				})
+		}},
+		{"condition removed events", func() (string, error) {
+			return dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx, c.onConditionRemoved)
+		}},
+		{"healing received", func() (string, error) {
+			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, c.onHealingReceived)
+		}},
+		{"action granted", func() (string, error) {
+			return dnd5eEvents.ActionGrantedTopic.On(bus).Subscribe(ctx,
+				func(ctx context.Context, event dnd5eEvents.ActionGrantedEvent) error {
+					return c.onActionGranted(ctx, bus, event)
+				})
+		}},
+		{"action removed", func() (string, error) {
+			return dnd5eEvents.ActionRemovedTopic.On(bus).Subscribe(ctx, c.onActionRemoved)
+		}},
 	}
-	k.track(appliedID)
 
-	removedID, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx, c.onConditionRemoved)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to condition removed events")
-	}
-	k.track(removedID)
+	for _, handler := range handlers {
+		subID, err := handler.subscribe()
+		if err != nil {
+			// Take back the ones that did land, and give the sheet back the bus
+			// it was holding: a sheet subscribed to two of its five handlers
+			// reacts to some of the world and not the rest, which is a harder
+			// bug to see than not attaching at all.
+			k.unsubscribeSelf(ctx, bus)
+			c.bus = previousBus
 
-	healingID, err := dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, c.onHealingReceived)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to healing received")
-	}
-	k.track(healingID)
+			return rpgerr.Wrapf(err, "failed to subscribe to %s", handler.what)
+		}
 
-	grantedID, err := dnd5eEvents.ActionGrantedTopic.On(bus).Subscribe(ctx,
-		func(ctx context.Context, event dnd5eEvents.ActionGrantedEvent) error {
-			return c.onActionGranted(ctx, bus, event)
-		})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to action granted")
+		k.track(subID)
 	}
-	k.track(grantedID)
-
-	actionRemovedID, err := dnd5eEvents.ActionRemovedTopic.On(bus).Subscribe(ctx, c.onActionRemoved)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to action removed")
-	}
-	k.track(actionRemovedID)
 
 	return nil
+}
+
+// unsubscribeSelf revokes the subscriptions this keeper granted and forgets
+// them, leaving the keeper unapplied and therefore appliable again.
+func (k *SheetKeeper) unsubscribeSelf(ctx context.Context, bus events.EventBus) {
+	for _, subID := range k.subscriptionIDs {
+		_ = bus.Unsubscribe(ctx, subID)
+	}
+
+	k.character.forgetSubscriptions(k.subscriptionIDs)
+	k.subscriptionIDs = nil
 }
 
 // Remove revokes every subscription this keeper granted and takes the
@@ -177,8 +225,14 @@ func (k *SheetKeeper) Remove(ctx context.Context, bus events.EventBus) error {
 }
 
 // applyResources puts each recoverable resource on the bus so it hears rests.
+//
+// On the strict path a resource that will not apply takes the whole attach with
+// it, and the ones already applied come back off: a sheet holding some of its
+// resources on a bus and the rest off it recovers unevenly on the next rest,
+// and nothing about the sheet says which is which.
 func (k *SheetKeeper) applyResources(ctx context.Context, bus events.EventBus) error {
 	c := k.character
+	applied := make([]*combat.RecoverableResource, 0, len(c.resources))
 
 	for key, resource := range c.resources {
 		if err := resource.Apply(ctx, bus); err != nil {
@@ -186,12 +240,20 @@ func (k *SheetKeeper) applyResources(ctx context.Context, bus events.EventBus) e
 			_ = resource.Remove(ctx, bus)
 
 			if c.policy == strictEffects {
+				for i := len(applied) - 1; i >= 0; i-- {
+					_ = applied[i].Remove(ctx, bus)
+				}
+
 				return rpgerr.Wrapf(err, "failed to apply resource %q", key)
 			}
 
 			// Lenient: the legacy path kept only the resources that applied.
 			delete(c.resources, key)
+
+			continue
 		}
+
+		applied = append(applied, resource)
 	}
 
 	return nil

@@ -169,6 +169,12 @@ func (m *Monster) SheetKeeper() *SheetKeeper {
 //
 // The handlers close over this bus rather than reading one off the monster: a
 // purely loaded monster has none of its own.
+//
+// **A failed Apply is a no-op.** A monster subscribed to damage but not healing
+// would take every hit and heal from nothing, and a keeper left holding that
+// half-attachment would refuse every later Apply as already applied — a leak
+// that also cannot be retried. So whatever went on comes back off, the monster
+// gets back the bus it was holding, and the keeper is appliable again.
 func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 	if k.monster == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "sheet keeper has no monster")
@@ -183,25 +189,49 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 	}
 
 	m := k.monster
+	previousBus := m.bus
 
 	// Park the bus on the monster for Cleanup, which is the only method still
 	// reading it. It goes away with the rest of the migration
 	// (rpg-toolkit#965, #966); the handlers below never read it.
 	m.bus = bus
 
-	damageID, err := dnd5eEvents.DamageReceivedTopic.On(bus).Subscribe(ctx, m.onDamageReceived)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to damage received")
+	handlers := []struct {
+		what      string
+		subscribe func() (string, error)
+	}{
+		{"damage received", func() (string, error) {
+			return dnd5eEvents.DamageReceivedTopic.On(bus).Subscribe(ctx, m.onDamageReceived)
+		}},
+		{"healing received", func() (string, error) {
+			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, m.onHealingReceived)
+		}},
 	}
-	k.track(damageID)
 
-	healingID, err := dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, m.onHealingReceived)
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to subscribe to healing received")
+	for _, handler := range handlers {
+		subID, err := handler.subscribe()
+		if err != nil {
+			k.unsubscribeSelf(ctx, bus)
+			m.bus = previousBus
+
+			return rpgerr.Wrapf(err, "failed to subscribe to %s", handler.what)
+		}
+
+		k.track(subID)
 	}
-	k.track(healingID)
 
 	return nil
+}
+
+// unsubscribeSelf revokes the subscriptions this keeper granted and forgets
+// them, leaving the keeper unapplied and therefore appliable again.
+func (k *SheetKeeper) unsubscribeSelf(ctx context.Context, bus events.EventBus) {
+	for _, subID := range k.subscriptionIDs {
+		_ = bus.Unsubscribe(ctx, subID)
+	}
+
+	k.monster.forgetSubscriptions(k.subscriptionIDs)
+	k.subscriptionIDs = nil
 }
 
 // Remove revokes every subscription this keeper granted, and nothing else.

@@ -106,6 +106,18 @@ func Load(_ context.Context, d *Data) (*Character, error) {
 // That is the keeper's doing, not this function's, because a character built
 // by Draft.Finalize gets there without ever passing through here; see
 // SheetKeeper.subscribeSelf.
+//
+// **A failed strict Attach is a no-op.** Every effect that did go on comes back
+// off, newest first; the keeper is removed; the sheet gets back the bus it was
+// holding; and the conditions the load parsed are still pending, still paired
+// with their refs. So the bus is left carrying nothing this call put there, the
+// sheet is unchanged (ToData writes exactly what it wrote before), and the
+// caller can attach again — to this bus or another one. Half-attached and
+// reported as failed is the worst of the three states: the leak has an alibi
+// and the retry is impossible.
+//
+// The lenient path is unchanged: it is LoadFromData's, and dropping what will
+// not apply is the behaviour its callers have.
 func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 	if c == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character is required")
@@ -114,14 +126,20 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
 
+	previousBus := c.bus
+
 	if err := c.SheetKeeper().Apply(ctx, bus); err != nil {
+		// A failed Apply already put itself back; there is nothing else to undo.
 		return err
 	}
 
 	// Drained, not read: a second Attach must not put the same conditions on a
-	// second bus, and the sheet keeps them in c.conditions either way.
+	// second bus, and the sheet keeps them in c.conditions either way. A strict
+	// failure below puts them back.
 	pending := c.pendingEffects
 	c.pendingEffects = nil
+
+	attached := make([]attachedEffect, 0, len(pending))
 
 	for _, effect := range pending {
 		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
@@ -131,15 +149,53 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 			_ = effect.behavior.Remove(ctx, effectBus)
 
 			if c.policy == strictEffects {
+				c.unattach(ctx, bus, attached, pending, previousBus)
+
 				return rpgerr.Wrapf(err, "failed to apply condition %s", effect.ref.String())
 			}
 
 			// Lenient: the legacy path drops a condition it could not apply.
 			c.dropCondition(effect.behavior)
+
+			continue
 		}
+
+		attached = append(attached, attachedEffect{effect: effect, bus: effectBus})
 	}
 
 	return nil
+}
+
+// attachedEffect is an effect this attach put on a bus, with the bus it was put
+// on. Remembered rather than recomputed: asking an EffectScoper for a scope is
+// how it learns an effect exists, and a rollback that asked again would leave a
+// registration ledger describing an attach that did not happen.
+type attachedEffect struct {
+	effect loadedEffect
+	bus    events.EventBus
+}
+
+// unattach returns the sheet to the state [Attach] found it in: every effect
+// that went on comes back off newest first, the keeper is removed, the pending
+// effects are restored whole, and the sheet gets back the bus it was holding.
+func (c *Character) unattach(
+	ctx context.Context,
+	bus events.EventBus,
+	attached []attachedEffect,
+	pending []loadedEffect,
+	previousBus events.EventBus,
+) {
+	// Newest first, the order resolution tears down in (ADR-0038 R5).
+	for i := len(attached) - 1; i >= 0; i-- {
+		_ = attached[i].effect.behavior.Remove(ctx, attached[i].bus)
+	}
+
+	_ = c.SheetKeeper().Remove(ctx, bus)
+
+	// All of them, including the one that failed: nothing is applied now, so
+	// nothing has been attached, so everything is still waiting to be.
+	c.pendingEffects = pending
+	c.bus = previousBus
 }
 
 // loadSheet builds the sheet both loaders hand back. Everything that reads

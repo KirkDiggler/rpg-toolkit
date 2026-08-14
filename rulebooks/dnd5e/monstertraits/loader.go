@@ -187,6 +187,17 @@ func LoadMonster(ctx context.Context, d *monster.Data) (*monster.Monster, error)
 // Ordering is fixed rather than incidental: the monster's own hooks are
 // attached before any trait's, so two attaches over identical data grant
 // identical registrations in identical order (ADR-0038 R4).
+//
+// **A failed attach is a no-op**, and here that is the whole point rather than
+// tidiness. The blobs come off the monster before anything is known to work, so
+// an error partway through — an unroutable ref, a bus that will not take a
+// subscription — would otherwise leave every unprocessed blob nowhere at all,
+// and the next ToData would write the monster back without conditions nobody
+// removed. That is the silent loss rpg-toolkit#948 named and this PR exists to
+// close, so: nothing is added to the monster until every trait has loaded and
+// applied, and any failure puts the blobs back, takes off whatever went on, and
+// removes the keeper. ToData after a failed attach writes what it wrote before
+// it, and the attach can be retried.
 func AttachMonster(
 	ctx context.Context,
 	m *monster.Monster,
@@ -204,7 +215,75 @@ func AttachMonster(
 		return rpgerr.Wrap(err, "failed to attach monster sheet keeper")
 	}
 
-	return LoadMonsterConditions(ctx, m, m.TakeUnappliedConditions(), bus, roller)
+	blobs := m.TakeUnappliedConditions()
+	attached := make([]attachedTrait, 0, len(blobs))
+
+	for i, blob := range blobs {
+		condition, err := LoadJSON(blob, roller)
+		if err != nil {
+			unattachMonster(ctx, m, bus, attached, blobs)
+
+			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
+		}
+
+		// The ref LoadJSON just routed on, peeked again because a
+		// ConditionBehavior cannot name itself.
+		traitBus := dnd5eEvents.BusForEffect(bus, peekTraitRef(blob))
+
+		if err := condition.Apply(ctx, traitBus); err != nil {
+			// Clean up any partial subscriptions from the failed Apply.
+			_ = condition.Remove(ctx, traitBus)
+			unattachMonster(ctx, m, bus, attached, blobs)
+
+			return rpgerr.Wrapf(err, "failed to apply monster condition %d: %s", i, blob)
+		}
+
+		attached = append(attached, attachedTrait{condition: condition, bus: traitBus})
+	}
+
+	// Only now, when every one of them worked. A trait added to the monster
+	// mid-loop would have to be taken back out again on the next failure, and
+	// the monster has no verb for that — which is exactly the kind of missing
+	// undo that makes partial writes permanent.
+	for _, trait := range attached {
+		m.AddCondition(trait.condition)
+	}
+
+	return nil
+}
+
+// attachedTrait is a trait this attach put on a bus, with the bus it went on.
+// Remembered rather than recomputed: asking an EffectScoper for a scope is how
+// it learns an effect exists, and a rollback that asked again would leave a
+// registration ledger describing an attach that did not happen.
+type attachedTrait struct {
+	condition dnd5eEvents.ConditionBehavior
+	bus       events.EventBus
+}
+
+// unattachMonster returns the monster to the state [AttachMonster] found it in:
+// every trait that went on comes back off newest first, the keeper is removed,
+// and the blobs go back where they were taken from, in order.
+func unattachMonster(
+	ctx context.Context,
+	m *monster.Monster,
+	bus events.EventBus,
+	attached []attachedTrait,
+	blobs []json.RawMessage,
+) {
+	// Newest first, the order resolution tears down in (ADR-0038 R5).
+	for i := len(attached) - 1; i >= 0; i-- {
+		_ = attached[i].condition.Remove(ctx, attached[i].bus)
+	}
+
+	_ = m.SheetKeeper().Remove(ctx, bus)
+
+	// All of them, including the one that failed and every one never reached.
+	// Nothing was added to the monster, so putting the blobs back is the whole
+	// of the undo, and ToData writes exactly what it wrote before the attach.
+	for _, blob := range blobs {
+		m.AddTraitData(blob)
+	}
 }
 
 // peekTraitRef reads the ref a persisted trait routes on, which is the same
