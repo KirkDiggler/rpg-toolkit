@@ -251,6 +251,56 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 	})
 }
 
+// TestLoadRejectsANonMemberOnAClock pins that only members may be on a clock.
+//
+// Raised in review on PR #960 and confirmed by probe before being believed. A
+// non-member on the world clock accrues budget on every Advance forever; a
+// non-member in a bubble order can be reported as Active, so ClockOf would
+// answer a real member's question by naming somebody who is not in the
+// encounter. Neither announces itself.
+//
+// The world-clock case deserves the explicit budget-0 fixture: LoadTick
+// independently rejects a budget above the high-water mark, so a ghost carrying
+// a non-zero budget was already failing for an unrelated reason. That is
+// accidental coverage, and accidental coverage reads as a guarantee — with
+// budget 0 the same ghost loaded clean.
+func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
+	s.Run("on the world clock, carrying no budget", func() {
+		enc := s.twoMemberEncounter()
+		data := enc.ToData()
+		data.Clock.Budgets["ghost"] = 0
+
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().Error(err)
+		s.ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("in a bubble order", func() {
+		enc := s.twoMemberEncounter()
+		data := enc.ToData()
+		delete(data.Clock.Budgets, alice)
+		data.Bubbles = []clock.TurnData{{
+			Order: []core.EntityID{alice, core.EntityID("ghost")}, ActiveIdx: 0, Round: 1,
+		}}
+
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().Error(err)
+		s.ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a bubble of nothing but non-members", func() {
+		enc := s.twoMemberEncounter()
+		data := enc.ToData()
+		data.Bubbles = []clock.TurnData{{
+			Order: []core.EntityID{"ghost", "phantom"}, ActiveIdx: 0, Round: 1,
+		}}
+
+		_, err := encounter.LoadEncounter(data, nil)
+		s.Require().Error(err)
+		s.ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
 // TestABlobFromBeforeClockMembershipLoadsEveryoneOntoTheWorldClock pins the
 // retrofit. Encounters persisted before members were tracked on the world clock
 // carry an empty budget map; they meant "everyone is free-roaming", and they

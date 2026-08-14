@@ -573,12 +573,33 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	// placing someone in two clocks at once would make ClockOf's answer depend
 	// on iteration order, and the whole point of reaching a bubble through a
 	// member is that the lookup is a function.
+	// Only members may be on a clock, and no member may be on two.
+	//
+	// The membership half is not decoration. A non-member on the world clock
+	// accrues budget on every Advance forever; a non-member in a bubble order
+	// can be reported as Active, so ClockOf would answer a real member's
+	// question by naming somebody who is not in the encounter. Neither
+	// announces itself — the encounter simply runs with a passenger. LoadTick
+	// rejects some of these incidentally (a budget above the high-water mark),
+	// which is exactly the kind of accidental coverage that reads as a
+	// guarantee: a ghost with budget 0 sails through, and a bubble made
+	// entirely of non-members loaded clean before this check existed.
+	isMember := make(map[core.EntityID]struct{}, len(data.Members))
+	for _, m := range data.Members {
+		isMember[m.ID] = struct{}{}
+	}
+
 	onAClock := make(map[core.EntityID]struct{})
 	tickMembers, err := loadedClock.Members()
 	if err != nil {
 		return nil, fmt.Errorf("load encounter clock members: %w: %w", ErrInvalidData, err)
 	}
 	for _, id := range tickMembers {
+		if _, ok := isMember[id]; !ok {
+			return nil, fmt.Errorf(
+				"load encounter clock: %q is on the world clock but is not a member: %w",
+				id, ErrInvalidData)
+		}
 		onAClock[id] = struct{}{}
 	}
 	for i, b := range loadedBubbles {
@@ -587,6 +608,11 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 			return nil, fmt.Errorf("load encounter bubble %d order: %w: %w", i, ErrInvalidData, oerr)
 		}
 		for _, id := range order {
+			if _, ok := isMember[id]; !ok {
+				return nil, fmt.Errorf(
+					"load encounter bubble %d: %q is in the order but is not a member: %w",
+					i, id, ErrInvalidData)
+			}
 			if _, dup := onAClock[id]; dup {
 				return nil, fmt.Errorf(
 					"load encounter bubble %d: %q is on more than one clock: %w",
