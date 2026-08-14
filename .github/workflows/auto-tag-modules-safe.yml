@@ -37,8 +37,10 @@ jobs:
         # Function to determine version bump from commit messages
         # Looks for conventional commit patterns:
         # - feat: minor bump
-        # - fix: patch bump  
-        # - BREAKING CHANGE: major bump
+        # - fix: patch bump
+        # - BREAKING CHANGE: major bump — but see increment_version: on a v0.x
+        #   module this lands as a MINOR bump, per semver §4. v1.0.0 is never
+        #   reached automatically.
         # - chore/docs/style/refactor/test: patch bump
         determine_bump() {
           local module=$1
@@ -80,9 +82,24 @@ jobs:
           
           case $bump in
             major)
-              major=$((major + 1))
-              minor=0
-              patch=0
+              # Semver §4: "Major version zero (0.y.z) is for initial development.
+              # Anything MAY change at any time." On a v0.x module a breaking change
+              # is therefore a MINOR bump, not a major one — and reaching v1.0.0 is a
+              # deliberate act of declaring an API stable, never a side effect of a
+              # commit message containing "!:".
+              #
+              # Without this, a single `refactor(x)!:` promotes a mid-development
+              # module straight to v1.0.0. Every module in this repo is currently
+              # v0.x, so that promotion would always be wrong and is not something a
+              # tag can cleanly take back once a consumer has fetched it.
+              if [[ "$major" == "0" ]]; then
+                minor=$((minor + 1))
+                patch=0
+              else
+                major=$((major + 1))
+                minor=0
+                patch=0
+              fi
               ;;
             minor)
               minor=$((minor + 1))
