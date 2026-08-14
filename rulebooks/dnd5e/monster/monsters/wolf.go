@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -30,12 +31,15 @@ func NewWolf(id string) *monster.Monster {
 		},
 	})
 
-	// Bite attack with knockdown (DC 11 STR save or prone)
+	// Bite attack: "if the target is a creature, it must succeed on a DC 11
+	// Strength saving throw or be knocked prone" — declared as a gate rather
+	// than as a bare DC, so the stat block says what can be contested and how
+	// (ADR-0039).
 	m.AddAction(actions.NewBiteAction(actions.BiteConfig{
 		AttackBonus: 4,       // +2 DEX + 2 proficiency
 		DamageDice:  "2d4+2", // 2d4 + STR
-		KnockdownDC: 11,      // DC 11 STR save
 		DamageType:  damage.Piercing,
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	}))
 
 	// Set movement speed (wolves are fast)
