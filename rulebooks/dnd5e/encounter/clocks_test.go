@@ -146,9 +146,61 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 	s.Equal(data.Bubbles, reloaded.ToData().Bubbles)
 }
 
-// TestReturnedOrderIsACopy pins that a caller cannot reach into the clock's own
-// slice. ClockOf is a read; a read that hands out a mutable interior is not.
-func (s *ClocksTestSuite) TestReturnedOrderIsACopy() {
+// TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns is the point of the
+// whole design, and the one case a single-bubble fixture cannot show: a fight
+// is LOCALIZED. Somebody on the other side of the map is not paused by it and
+// is not in it — they are still on the world clock while the bubble takes turns.
+//
+// Added because mutation testing found the gap: making bubbleFor return the
+// first bubble unconditionally, ignoring membership entirely, passed every
+// other test in this file. Every fixture had all its members inside the one
+// bubble, so "the bubble holding this member" and "the bubble" were
+// indistinguishable.
+func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns() {
+	enc := s.twoMemberEncounter()
+
+	// bob is far away, doing something else entirely.
+	_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
+		ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 9, Y: 9},
+	}})
+	s.Require().NoError(err)
+
+	data := enc.ToData()
+	// alice and the goblin are fighting. bob is deliberately left on the world
+	// clock.
+	delete(data.Clock.Budgets, alice)
+	delete(data.Clock.Budgets, goblin)
+	data.Bubbles = []clock.TurnData{{
+		Order: []core.EntityID{alice, goblin}, ActiveIdx: 0, Round: 1,
+	}}
+
+	reloaded, err := encounter.LoadEncounter(data, nil)
+	s.Require().NoError(err)
+
+	fighting, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(encounter.ClockTurn, fighting.Kind)
+
+	roaming, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: bob})
+	s.Require().NoError(err)
+	s.Equal(encounter.ClockWorld, roaming.Kind, "bob is not in the fight and must not be reported as in it")
+	s.Empty(roaming.Active)
+	s.Zero(roaming.Round)
+	s.Nil(roaming.Order)
+}
+
+// TestMutatingTheReturnedOrderCannotCorruptTheEncounter pins the OBSERVABLE
+// guarantee — ClockOf is a read, and a read whose result can be edited into the
+// encounter is not one.
+//
+// It deliberately does not claim where the guarantee comes from. It comes from
+// clock.Turn.Order, which copies before returning; this composition adds
+// nothing. An earlier version of this test copied again here and described
+// itself as the reason the encounter was safe, which mutation testing
+// disproved: deleting the copy changed no behaviour and failed no test. The
+// test is still worth keeping, because it is what notices if the leaf's promise
+// ever changes underneath us.
+func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter() {
 	enc := s.twoMemberEncounter()
 	data := enc.ToData()
 	delete(data.Clock.Budgets, alice)

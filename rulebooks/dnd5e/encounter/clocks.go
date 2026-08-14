@@ -56,7 +56,8 @@ type ClockOfOutput struct {
 	Round int
 
 	// Order is the full initiative order of that clock, or nil for ClockWorld.
-	// Returned as a copy; mutating it does not affect the encounter.
+	// Safe to mutate — clock.Turn.Order copies before returning it, so this is
+	// already the caller's own slice.
 	Order []MemberID
 }
 
@@ -83,6 +84,25 @@ func (e *Encounter) ClockOf(in *ClockOfInput) (*ClockOfOutput, error) {
 		return nil, fmt.Errorf("clock_of %q: %w", in.Member, err)
 	}
 	if bubble == nil {
+		// Not in a bubble is not the same as being on the world clock, and
+		// answering ClockWorld without checking would make the two
+		// indistinguishable.
+		//
+		// This branch is UNREACHABLE through today's API and is not covered by
+		// a test, which is stated rather than implied: every construction seam
+		// joins the world clock, and load puts any member it finds on no clock
+		// onto it. It is here for the verbs arriving next — Transfer and
+		// Dissolve move members BETWEEN clocks, and the way that goes wrong is
+		// leaving somebody on neither. Without this check that bug reports
+		// "free roaming", which is a plausible answer and therefore the
+		// expensive kind of wrong. A test lands with the verb that can reach it.
+		onWorld, cerr := e.clock.Contains(&clock.ContainsInput{ID: core.EntityID(in.Member)})
+		if cerr != nil {
+			return nil, fmt.Errorf("clock_of %q world: %w", in.Member, cerr)
+		}
+		if !onWorld {
+			return nil, fmt.Errorf("clock_of %q: member is on no clock: %w", in.Member, ErrInvalidData)
+		}
 		return &ClockOfOutput{Kind: ClockWorld}, nil
 	}
 
@@ -99,11 +119,15 @@ func (e *Encounter) ClockOf(in *ClockOfInput) (*ClockOfOutput, error) {
 		return nil, fmt.Errorf("clock_of %q order: %w", in.Member, err)
 	}
 
+	// order is already the caller's own slice to keep: clock.Turn.Order copies
+	// before returning. Copying it again here would be a second guarantee with
+	// no second effect — and mutation testing showed a redundant copy reads, to
+	// the next person, as the thing that makes this safe when it is not.
 	return &ClockOfOutput{
 		Kind:   ClockTurn,
 		Active: MemberID(active),
 		Round:  round,
-		Order:  toMemberIDs(order),
+		Order:  order,
 	}, nil
 }
 
@@ -140,17 +164,4 @@ func (e *Encounter) leaveAnyClock(id MemberID) error {
 	}
 	_, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)})
 	return lerr
-}
-
-// toMemberIDs converts a clock's entity order into member IDs, copying so the
-// caller cannot reach the clock's own slice.
-func toMemberIDs(ids []core.EntityID) []MemberID {
-	if len(ids) == 0 {
-		return nil
-	}
-	out := make([]MemberID, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, MemberID(id))
-	}
-	return out
 }
