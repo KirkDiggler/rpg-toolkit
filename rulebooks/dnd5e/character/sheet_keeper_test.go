@@ -1,0 +1,237 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package character
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+)
+
+// keptCondition is a condition that does nothing but exist and serialize —
+// enough to be applied to a sheet and found on it again.
+type keptCondition struct {
+	applied bool
+}
+
+func (c *keptCondition) IsApplied() bool { return c.applied }
+
+func (c *keptCondition) Apply(_ context.Context, _ events.EventBus) error {
+	c.applied = true
+	return nil
+}
+
+func (c *keptCondition) Remove(_ context.Context, _ events.EventBus) error {
+	c.applied = false
+	return nil
+}
+
+func (c *keptCondition) ToJSON() (json.RawMessage, error) {
+	return json.Marshal(map[string]any{"ref": refs.Conditions.Dodging()})
+}
+
+// SheetKeeperTestSuite drives each of the five things a sheet does about the
+// world through a real bus. Every test here fails outright for a keeper whose
+// Apply subscribes nothing, which is the mutation this file exists to catch:
+// the wiring it replaced was invisible, so nothing would have noticed its
+// absence except behaviour that quietly stopped happening.
+type SheetKeeperTestSuite struct {
+	suite.Suite
+
+	ctx  context.Context
+	bus  events.EventBus
+	char *Character
+}
+
+func (s *SheetKeeperTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+
+	char, err := Load(s.ctx, s.sheet())
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, char, s.bus))
+
+	s.char = char
+}
+
+func (s *SheetKeeperTestSuite) sheet() *Data {
+	return &Data{
+		ID:               "keeper-char",
+		PlayerID:         "keeper-player",
+		Name:             "Kept",
+		Level:            3,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Barbarian,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 15,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:    10,
+		MaxHitPoints: 30,
+		ArmorClass:   14,
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			resources.RageCharges: {Current: 1, Maximum: 3, ResetType: coreResources.ResetLongRest},
+		},
+	}
+}
+
+// A condition applied to this character lands on its sheet — and the sheet goes
+// dirty, because ToData serializes conditions and only dirty sheets get written
+// back.
+func (s *SheetKeeperTestSuite) TestConditionAppliedLandsOnTheSheet() {
+	condition := &keptCondition{}
+
+	err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.char,
+		Type:      dnd5eEvents.ConditionDodging,
+		Condition: condition,
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.char.GetConditions(), 1)
+	s.Require().True(condition.applied, "the keeper applies the condition it was handed")
+	s.Require().True(s.char.IsDirty(), "a sheet that gained a condition needs saving")
+}
+
+func (s *SheetKeeperTestSuite) TestConditionAppliedToSomeoneElseIsIgnored() {
+	other, err := Load(s.ctx, s.sheet())
+	s.Require().NoError(err)
+	other.id = "someone-else"
+
+	condition := &keptCondition{}
+	err = dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    other,
+		Condition: condition,
+	})
+
+	s.Require().NoError(err)
+	s.Require().Empty(s.char.GetConditions())
+	s.Require().False(s.char.IsDirty())
+}
+
+func (s *SheetKeeperTestSuite) TestConditionRemovedLeavesTheSheet() {
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.char,
+		Condition: &keptCondition{},
+	}))
+	s.char.MarkClean()
+
+	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  s.char.GetID(),
+		ConditionRef: refs.Conditions.Dodging().String(),
+		Reason:       "test",
+	})
+
+	s.Require().NoError(err)
+	s.Require().Empty(s.char.GetConditions())
+	s.Require().True(s.char.IsDirty(), "a sheet that lost a condition needs saving")
+}
+
+func (s *SheetKeeperTestSuite) TestHealingReceivedMovesHitPoints() {
+	err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: s.char.GetID(),
+		Amount:   5,
+		Source:   "test",
+	})
+
+	s.Require().NoError(err)
+	s.Require().Equal(15, s.char.GetHitPoints())
+	s.Require().True(s.char.IsDirty())
+}
+
+func (s *SheetKeeperTestSuite) TestHealingIsCappedAtMaximum() {
+	err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: s.char.GetID(),
+		Amount:   500,
+	})
+
+	s.Require().NoError(err)
+	s.Require().Equal(30, s.char.GetHitPoints())
+}
+
+func (s *SheetKeeperTestSuite) TestActionGrantedJoinsTheSheet() {
+	action := &mockAction{id: "granted-action", temporary: true}
+
+	err := dnd5eEvents.ActionGrantedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: s.char.GetID(),
+		Action:      action,
+		Source:      "test",
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.char.actions, 1)
+	s.Require().True(action.applied, "the keeper applies the action on the bus it was attached to")
+}
+
+func (s *SheetKeeperTestSuite) TestActionRemovedLeavesTheSheet() {
+	action := &mockAction{id: "granted-action", temporary: true}
+	s.Require().NoError(dnd5eEvents.ActionGrantedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
+		CharacterID: s.char.GetID(),
+		Action:      action,
+	}))
+
+	err := dnd5eEvents.ActionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ActionRemovedEvent{
+		ActionID: "granted-action",
+		OwnerID:  s.char.GetID(),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Empty(s.char.actions)
+}
+
+// The keeper's other half: the character's recoverable resources are on the
+// bus, so a rest recovers them.
+func (s *SheetKeeperTestSuite) TestResourcesHearARest() {
+	s.Require().Equal(1, s.char.GetResource(resources.RageCharges).Current())
+
+	err := dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: s.char.GetID(),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Equal(3, s.char.GetResource(resources.RageCharges).Current())
+}
+
+// Remove gives the bus back: nothing the keeper subscribed is still listening,
+// and the sheet is not left claiming subscriptions that no longer exist.
+func (s *SheetKeeperTestSuite) TestRemoveStopsTheSheetListening() {
+	s.Require().NoError(s.char.SheetKeeper().Remove(s.ctx, s.bus))
+
+	err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: s.char.GetID(),
+		Amount:   5,
+	})
+
+	s.Require().NoError(err)
+	s.Require().Equal(10, s.char.GetHitPoints(), "the sheet is no longer listening")
+	s.Require().Empty(s.char.subscriptionIDs, "and no longer claims to be")
+}
+
+// A keeper is the character's own, not a fresh one per call: two callers asking
+// cannot subscribe the same sheet twice between them.
+func (s *SheetKeeperTestSuite) TestKeeperIsTheCharactersOwn() {
+	s.Require().Same(s.char.SheetKeeper(), s.char.SheetKeeper())
+}
+
+func TestSheetKeeperSuite(t *testing.T) {
+	suite.Run(t, new(SheetKeeperTestSuite))
+}

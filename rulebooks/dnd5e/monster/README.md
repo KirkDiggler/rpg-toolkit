@@ -33,7 +33,7 @@ factory, a canonical ref, actions and traits, whichever stack drives it.
 
 | Import path suffix | Current responsibility |
 |---|---|
-| `monster` | `Monster` runtime type, `Data`, action/perception contracts, targeting, `TakeTurn`, base `LoadFromData` / `ToData`; also the older `NewGoblin` factory |
+| `monster` | `Monster` runtime type, `Data`, action/perception contracts, targeting, `TakeTurn`, pure `Load` + `SheetKeeper`, legacy `LoadFromData` / `ToData`; also the older `NewGoblin` factory |
 | `monster/actions` | Loadable generic melee, ranged, multiattack, and bite action implementations plus the action loader |
 | `monster/monsters` | Built-in stat factories and the canonical-ref-to-constructor registry |
 | `monstertraits` | Loadable condition-style monster traits (separate sibling package to avoid import cycles) |
@@ -125,8 +125,21 @@ A factory returns a ready-to-serialize runtime monster:
 monster/monsters constructor → *monster.Monster → ToData / JSON
 ```
 
-Reload currently has multiple explicit steps because importing action or trait
-loaders from package `monster` would create cycles:
+Reload comes in two shapes. The one to write new code against is a pure load
+and an attach, and neither can be two-thirds made:
+
+```text
+monstertraits.LoadMonster(ctx, data)             # sheet + actions + the trait blobs, no bus
+monstertraits.AttachMonster(ctx, mon, bus, roller)  # sheet keeper, then each trait, attributed
+```
+
+`LoadMonster(data).ToData()` is the data it was given, actions and conditions
+included, with no bus anywhere in the call. The composition lives in
+`monstertraits` for a mechanical reason: package `monster` cannot import either
+loader (both import it), and `monstertraits` is the only package that can see
+both without a cycle.
+
+The older shape is the three-call assembly, still used by existing callers:
 
 ```text
 monster.LoadFromData(ctx, data, bus)             # base state + monster subscriptions
@@ -139,7 +152,10 @@ monstertraits.LoadMonsterConditions(             # trait JSON → Apply on bus �
 The encounter's `LoadFromData` hydration cascade performs all three and later
 writes held combatants back through `ToData`. Outside the encounter, the caller
 must perform the extra action and trait steps. A test that calls only
-`monster.LoadFromData` has not proven a full monster round trip.
+`monster.LoadFromData` has not proven a full monster round trip — and neither
+has production code: `ToData` serializes actions and conditions, so a monster
+assembled by two of the three calls is written back with the third's contents
+silently gone. That trap is the reason the pair above exists.
 
 ## Supported first contribution
 

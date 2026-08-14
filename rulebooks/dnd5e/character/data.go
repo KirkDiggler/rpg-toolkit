@@ -3,21 +3,14 @@ package character
 import (
 	"context"
 	"encoding/json"
-	"maps"
 	"time"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -115,195 +108,33 @@ type RecoverableResourceData struct {
 	ResetType coreResources.ResetType `json:"reset_type"`
 }
 
-// LoadFromData creates a Character from persistent data
+// LoadFromData creates a Character from persistent data and puts it on the bus.
+//
+// It is [Load] followed by [Attach], and nothing else. The two halves are
+// separately callable — a sheet loaded with Load exists without a bus at all —
+// and this signature stays for the callers that have it, until
+// rpg-toolkit#965 and #966 retire the verb methods that need the character to
+// be holding a bus of its own.
+//
+// This path is forgiving where Load is strict: a condition, feature, or
+// inventory item it cannot make sense of is dropped and the load continues,
+// which is the behaviour every existing caller has. Read that as a warning
+// rather than a feature — it means a sheet can come back from a round trip
+// missing something nobody removed (rpg-toolkit#948). Load refuses instead,
+// and names the blob.
 func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character, error) {
 	if bus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
 
-	char := &Character{
-		id:                  d.ID,
-		playerID:            d.PlayerID,
-		name:                d.Name,
-		level:               d.Level,
-		proficiencyBonus:    d.ProficiencyBonus,
-		raceID:              d.RaceID,
-		subraceID:           d.SubraceID,
-		classID:             d.ClassID,
-		subclassID:          d.SubclassID,
-		abilityScores:       d.AbilityScores,
-		hitPoints:           d.HitPoints,
-		maxHitPoints:        d.MaxHitPoints,
-		armorClass:          d.ArmorClass,
-		deathSaveState:      d.DeathSaveState,
-		skills:              d.Skills,
-		savingThrows:        d.SavingThrows,
-		languages:           d.Languages,
-		armorProficiencies:  d.ArmorProficiencies,
-		weaponProficiencies: d.WeaponProficiencies,
-		toolProficiencies:   d.ToolProficiencies,
-		equipmentSlots:      d.EquipmentSlots,
-		// Round-trip fix (#659): SpellSlots and ClassResources are written
-		// by ToData (character.go ~954-957) via maps.Clone, but were not
-		// being read back here. A finalized character round-tripping through
-		// Data lost its spell slots and class resources, breaking any
-		// consumer that gates on them — most visibly Wave 2.11d's
-		// applyReactionConditions.hasFirstLevelSpellSlot check in rpg-api
-		// that decides whether to Apply()  the Shield reaction.
-		// maps.Clone(nil) safely returns nil; consumers (hasFirstLevelSpellSlot,
-		// etc.) already handle the nil-map case.
-		spellSlots:      maps.Clone(d.SpellSlots),
-		classResources:  maps.Clone(d.ClassResources),
-		bus:             bus,
-		subscriptionIDs: make([]string, 0),
-		resources:       make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+	char, err := loadSheet(d, lenientEffects)
+	if err != nil {
+		return nil, err
 	}
 
-	// Deep-copy action economy state to avoid aliasing mutable Granted map.
-	// Granted is tagged json:"granted,omitempty", so a freshly-StartTurn-seeded
-	// EMPTY map is omitted from the serialized JSON and comes back nil after a
-	// round-trip. fromToolkitActionEconomy writes into Granted unconditionally,
-	// so a nil map there panics ("assignment to entry in nil map") on the next
-	// ability activation. Always re-init: clone when non-nil, else make a fresh
-	// empty map so the loaded economy is immediately writable (#706).
-	if d.ActionEconomy != nil {
-		aeCopy := *d.ActionEconomy
-		if d.ActionEconomy.Granted != nil {
-			aeCopy.Granted = maps.Clone(d.ActionEconomy.Granted)
-		} else {
-			aeCopy.Granted = make(map[GrantedActionKey]int)
-		}
-		char.actionEconomy = &aeCopy
-	}
-
-	// Get hit dice from class data
-	if classData := classes.GetData(d.ClassID); classData != nil {
-		char.hitDice = classData.HitDice
-	}
-
-	// Convert inventory data back to Equipment items
-	char.inventory = make([]InventoryItem, 0, len(d.Inventory))
-	for _, itemData := range d.Inventory {
-		// Use the unified GetByID function
-		equip, err := equipment.GetByID(itemData.ID)
-		if err != nil {
-			// Log error but continue loading other items
-			// TODO: Consider how to handle missing equipment
-			continue
-		}
-		char.inventory = append(char.inventory, InventoryItem{
-			Equipment: equip,
-			Quantity:  itemData.Quantity,
-		})
-	}
-
-	// Load features from persisted JSON data
-	char.features = make([]features.Feature, 0, len(d.Features))
-	for _, rawFeature := range d.Features {
-		// Peek at the ref to check module
-		var peek struct {
-			Ref core.Ref `json:"ref"`
-		}
-		if err := json.Unmarshal(rawFeature, &peek); err != nil {
-			// Skip malformed features
-			continue
-		}
-
-		// Check if this is a dnd5e feature (for now, only module we support)
-		if peek.Ref.Module == "dnd5e" {
-			// Load the actual feature implementation
-			feature, err := features.LoadJSON(rawFeature)
-			if err != nil {
-				// Log error but continue loading other features
-				// TODO: Consider how to handle feature loading errors
-				continue
-			}
-			char.features = append(char.features, feature)
-		}
-		// Silently skip non-dnd5e features for now
-		// In the future, this would route to a module registry
-	}
-
-	// Load conditions from persisted JSON data (following same pattern as features)
-	char.conditions = make([]dnd5eEvents.ConditionBehavior, 0, len(d.Conditions))
-	for _, rawCondition := range d.Conditions {
-		// Load the actual condition implementation
-		condition, err := conditions.LoadJSON(rawCondition)
-		if err != nil {
-			// Log error but continue loading other conditions
-			// TODO: Consider how to handle condition loading errors
-			continue
-		}
-
-		// Apply through the bus this particular effect should be attributed to.
-		// A plain bus returns itself, so this is a no-op for every caller that
-		// is not an attach site keeping a registration list; a bus that
-		// implements dnd5eEvents.EffectScoper gets to record which effect made
-		// each subscription. The ref is the one conditions.LoadJSON just routed
-		// on, peeked again here because a ConditionBehavior cannot name itself.
-		effectBus := dnd5eEvents.BusForEffect(bus, peekEffectRef(rawCondition))
-
-		// Re-apply the condition so it subscribes to events
-		if err := condition.Apply(ctx, effectBus); err != nil {
-			// Clean up any partial subscriptions to avoid resource leaks
-			_ = condition.Remove(ctx, effectBus)
-			// Log error but continue loading other conditions
-			// TODO: Consider how to handle condition apply errors
-			continue
-		}
-
-		char.conditions = append(char.conditions, condition)
-	}
-
-	// Load resources from persisted data
-	for key, resData := range d.Resources {
-		resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          string(key),
-			Maximum:     resData.Maximum,
-			CharacterID: char.id,
-			ResetType:   resData.ResetType,
-		})
-
-		// Set current value if different from maximum
-		if resData.Current != resData.Maximum {
-			deficit := resData.Maximum - resData.Current
-			_ = resource.Use(deficit) // Ignore error - we know the value is valid
-		}
-
-		// Apply resource to subscribe to rest events
-		if err := resource.Apply(ctx, bus); err != nil {
-			// Clean up on failure
-			_ = resource.Remove(ctx, bus)
-			// Log error but continue loading other resources
-			// TODO: Consider how to handle resource apply errors
-			continue
-		}
-
-		char.resources[key] = resource
-	}
-
-	// Re-register standard combat abilities (not persisted, always available)
-	initStandardCombatAbilities(char)
-
-	// Subscribe to events - character comes out fully initialized
-	if err := char.subscribeToEvents(ctx); err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")
+	if err := Attach(ctx, char, bus); err != nil {
+		return nil, err
 	}
 
 	return char, nil
-}
-
-// peekEffectRef reads the ref a persisted effect routes on, which is the same
-// field its loader routes on. It returns the zero Ref for a blob that has none
-// rather than an error: an effect that loaded is applied either way, and the
-// only thing a missing ref costs is attribution.
-func peekEffectRef(raw json.RawMessage) core.Ref {
-	var peek struct {
-		Ref core.Ref `json:"ref"`
-	}
-	if err := json.Unmarshal(raw, &peek); err != nil {
-		return core.Ref{}
-	}
-
-	return peek.Ref
 }

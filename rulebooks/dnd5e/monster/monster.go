@@ -56,6 +56,7 @@ type Monster struct {
 	// Event bus wiring
 	bus             events.EventBus
 	subscriptionIDs []string
+	keeper          *SheetKeeper
 
 	// Dirty tracking for persistence
 	dirty bool
@@ -333,97 +334,39 @@ func (m *Monster) AddCondition(condition dnd5eEvents.ConditionBehavior) {
 // This is used by factory functions to store trait data before a bus is available.
 // The traits will be serialized to Data.Conditions and applied when LoadFromData
 // is called with LoadMonsterConditions.
+//
+// [Load] carries persisted condition blobs the same way, and
+// monstertraits.AttachMonster is what turns either into behaviour — see
+// [Monster.TakeUnappliedConditions].
 func (m *Monster) AddTraitData(data json.RawMessage) {
 	m.traitData = append(m.traitData, data)
 }
 
 // LoadFromData creates a Monster from persistent data and wires it to the bus.
-// This follows the same pattern as character.LoadFromData.
+//
+// It is [Load] followed by the monster's own [SheetKeeper], with one
+// difference that is the whole reason both exist: LoadFromData throws away the
+// condition blobs in d, because its callers hand the same blobs to
+// monstertraits.LoadMonsterConditions themselves and carrying them here too
+// would write every condition back twice. Load carries them instead, and
+// monstertraits.AttachMonster is what applies them — so the new path cannot
+// lose a monster's conditions by forgetting a second call, which is exactly
+// how the three-call assembly has always been able to.
 func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, error) {
 	if bus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
 
-	// Handle proficiency bonus - default to 2 if not set
-	profBonus := d.ProficiencyBonus
-	if profBonus == 0 {
-		profBonus = 2
+	m, err := loadMonster(d, dropConditions)
+	if err != nil {
+		return nil, err
 	}
 
-	// Create the monster with basic data
-	m := &Monster{
-		id:               d.ID,
-		name:             d.Name,
-		ref:              d.Ref,
-		hp:               d.HitPoints,
-		maxHP:            d.MaxHitPoints,
-		ac:               d.ArmorClass,
-		abilityScores:    d.AbilityScores,
-		proficiencyBonus: profBonus,
-		speed:            d.Speed,
-		senses:           d.Senses,
-		targeting:        d.Targeting,
-		bus:              bus,
-		subscriptionIDs:  make([]string, 0),
-		actions:          make([]MonsterAction, 0, len(d.Actions)),
-		proficiencies:    make(map[string]int),
-	}
-
-	// Actions must be loaded by the caller to avoid import cycles.
-	// The monster package cannot import monster/actions because actions imports monster.
-	// Use LoadMonsterActions helper to load actions after creating the monster.
-	// Example:
-	//   monster, err := LoadFromData(ctx, data, bus)
-	//   if err := LoadMonsterActions(monster, data.Actions); err != nil {
-	//       // handle error
-	//   }
-
-	// Load proficiencies
-	for _, prof := range d.Proficiencies {
-		m.proficiencies[prof.Skill] = prof.Bonus
-	}
-
-	// Conditions must be loaded by the caller to avoid import cycles.
-	// The monster package cannot import monstertraits because traits need monster types.
-	// Use LoadMonsterConditions helper to load conditions after creating the monster.
-	// Example:
-	//   monster, err := LoadFromData(ctx, data, bus)
-	//   if err := monstertraits.LoadMonsterConditions(ctx, monster, data.Conditions, bus, roller); err != nil {
-	//       // handle error
-	//   }
-	m.conditions = make([]dnd5eEvents.ConditionBehavior, 0, len(d.Conditions))
-
-	// Subscribe to events
-	if err := m.subscribeToEvents(ctx); err != nil {
+	if err := m.SheetKeeper().Apply(ctx, bus); err != nil {
 		return nil, rpgerr.Wrapf(err, "failed to subscribe to events")
 	}
 
 	return m, nil
-}
-
-// subscribeToEvents subscribes the monster to gameplay events
-func (m *Monster) subscribeToEvents(ctx context.Context) error {
-	if m.bus == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "monster has no event bus")
-	}
-
-	// Subscribe to damage received
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(m.bus)
-	subID, err := damageTopic.Subscribe(ctx, m.onDamageReceived)
-	if err != nil {
-		return err
-	}
-	m.subscriptionIDs = append(m.subscriptionIDs, subID)
-
-	// Subscribe to healing received
-	healingTopic := dnd5eEvents.HealingReceivedTopic.On(m.bus)
-	subID, err = healingTopic.Subscribe(ctx, m.onHealingReceived)
-	if err != nil {
-		return err
-	}
-	m.subscriptionIDs = append(m.subscriptionIDs, subID)
-
-	return nil
 }
 
 // onDamageReceived handles damage events
@@ -432,6 +375,12 @@ func (m *Monster) onDamageReceived(_ context.Context, event dnd5eEvents.DamageRe
 		return nil
 	}
 	m.TakeDamage(event.Amount)
+
+	// HP is persisted, and ApplyDamage marks dirty for the same reason: a
+	// monster that took damage and did not go dirty is a monster whose new HP
+	// never gets written down.
+	m.dirty = true
+
 	return nil
 }
 
@@ -444,6 +393,8 @@ func (m *Monster) onHealingReceived(_ context.Context, event dnd5eEvents.Healing
 	if m.hp > m.maxHP {
 		m.hp = m.maxHP
 	}
+	m.dirty = true
+
 	return nil
 }
 
