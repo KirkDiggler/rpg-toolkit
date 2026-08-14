@@ -89,7 +89,11 @@ func (a AbilityScores) ApplyIncreases(increases map[abilities.Ability]int) error
 
 // Modifier calculates the ability modifier for a given ability
 func (a AbilityScores) Modifier(ability abilities.Ability) int {
-	return (a[ability] - 10) / 2
+	difference := a[ability] - 10
+	if difference >= 0 {
+		return difference / 2
+	}
+	return (difference - 1) / 2
 }
 
 // ProficiencyLevel represents expertise levels
