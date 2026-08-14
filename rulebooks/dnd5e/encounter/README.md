@@ -134,6 +134,11 @@ the contract rather than being coded defensively.
   just means that monster fails to act this tick. Everything else proceeds.
 - **Sight refreshes once**, after all actions — then one tick beat, then the
   move/traverse beats in decision order.
+- **A monster in a fight is not consulted.** `Pump` is the world thinking, and
+  a monster caught in a turn bubble (`Form`) belongs to the fight, not the
+  world — its decider is skipped entirely until the fight dissolves or the
+  monster transfers out. Your decider never needs to detect "am I in combat";
+  if it is being asked, it is free-roaming.
 
 ### What you cannot express yet
 

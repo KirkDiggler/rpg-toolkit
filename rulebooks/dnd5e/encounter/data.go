@@ -560,6 +560,13 @@ func LoadEncounter(data EncounterData, deciders map[MemberID]Decider) (*Encounte
 	if len(data.Bubbles) > 0 {
 		loadedBubbles = make([]*clock.Turn, 0, len(data.Bubbles))
 		for i := range data.Bubbles {
+			// An idle bubble has no meaning in a blob: a bubble exists only
+			// while a fight does, and every verb that can empty one prunes it
+			// in the same call (dropBubbleIfIdle) — this module never writes
+			// this shape, so reading it means the blob was edited.
+			if len(data.Bubbles[i].Order) == 0 {
+				return nil, fmt.Errorf("load encounter bubble %d: idle bubble persisted: %w", i, ErrInvalidData)
+			}
 			b, berr := clock.LoadTurn(data.Bubbles[i])
 			if berr != nil {
 				return nil, fmt.Errorf("load encounter bubble %d: %w: %w", i, ErrInvalidData, berr)

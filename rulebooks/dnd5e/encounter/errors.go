@@ -128,6 +128,31 @@ var (
 	// ErrBadConnection, which is a declaration-time defect at Setup/Load.
 	ErrNoConnection = errors.New("no such connection")
 
+	// ErrInBubble is returned when a verb requires its member NOT be in a
+	// running bubble and they are: Form names a member already in a fight
+	// (rejected, never silently merged — merging is a Merge-verb decision
+	// that arrives with multiple bubbles), Form is called while this
+	// encounter's one allowed bubble is already running (#963 policy: one
+	// bubble per encounter, so fights stay linear and the party stays
+	// together), Transfer names ClockTurn for a member already in the
+	// fight, or Move/Traverse is asked to free-roam a member who is
+	// mid-fight — a fight member acts through the bubble's own turn
+	// structure, never by stepping around it.
+	ErrInBubble = errors.New("already in a bubble")
+
+	// ErrNoBubble is returned when a verb requires a running bubble and
+	// finds none: Transfer names ClockTurn while no fight is running, or
+	// Transfer-to-world, EndTurn, or Dissolve names a member who is on the
+	// world clock — there is no bubble to leave, act in, or dissolve.
+	ErrNoBubble = errors.New("no bubble")
+
+	// ErrBadClock is returned when TransferInput.To names neither
+	// ClockWorld nor ClockTurn. Direction is load-bearing on a transfer —
+	// inferring it from the member's current clock would make the verb a
+	// toggle, and a toggle applied to stale state silently moves somebody
+	// the WRONG way instead of failing.
+	ErrBadClock = errors.New("unknown clock kind")
+
 	// ErrInvalidData is returned when LoadEncounter rejects the input data.
 	ErrInvalidData = errors.New("invalid encounter data")
 

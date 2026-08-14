@@ -1338,6 +1338,19 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		return nil, fmt.Errorf("move: %w", ErrNotMember)
 	}
 
+	// Free-roam movement is a world-clock verb. A member caught in a bubble
+	// acts through the fight's own turn structure — the composition has no
+	// in-fight movement verb yet (that arrives with the resolution work), and
+	// until it does a fight member cannot move at all rather than moving
+	// outside initiative.
+	bubble, err := e.bubbleFor(in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("move: %w", err)
+	}
+	if bubble != nil {
+		return nil, fmt.Errorf("move: member %q: %w", in.Member, ErrInBubble)
+	}
+
 	// Execute the move through the managed seam
 	currentPos, err := e.moveMember(member, in.To)
 	if err != nil {
@@ -1599,6 +1612,16 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 		return nil, fmt.Errorf("traverse: %w", ErrNotMember)
 	}
 
+	// Same world-clock gate as Move, checked before the connection resolves:
+	// a fight member cannot free-roam through a doorway either.
+	bubble, err := e.bubbleFor(in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("traverse: %w", err)
+	}
+	if bubble != nil {
+		return nil, fmt.Errorf("traverse: member %q: %w", in.Member, ErrInBubble)
+	}
+
 	result, err := e.traverseMember(member, in.Connection)
 	if err != nil {
 		return nil, fmt.Errorf("traverse: %w", err)
@@ -1766,6 +1789,20 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		if m.Kind != KindMonster {
 			continue
 		}
+
+		// A monster caught in a bubble is not the world's to think for: the
+		// world thinks on the tick, and a fight thinks in turns. Skipped, not
+		// rejected — being mid-fight is ordinary state, and Pump's job is
+		// everyone else. Its budget entry is gone with it (Form removed it
+		// from the tick), so the Advance below grants it nothing either.
+		bubble, berr := e.bubbleFor(m.ID)
+		if berr != nil {
+			return nil, fmt.Errorf("pump bubble: %w", berr)
+		}
+		if bubble != nil {
+			continue
+		}
+
 		decider, hasDecider := e.deciders[m.ID]
 		if !hasDecider {
 			continue // no decider = hold

@@ -10,6 +10,17 @@
 // Members exit, encounters close; player activity pumps the clock, the world
 // thinks on the tick.
 //
+// Every member is on exactly one clock (R6). The world tick is the default —
+// free roam is not a mode, it is where you are when no fight has pulled you
+// elsewhere. A fight is a turn bubble: Form pulls its members off the world
+// clock into a caller-rolled order (R7 — initiative arrives from outside),
+// Transfer moves a straggler in or out mid-round, EndTurn advances the fight,
+// and Dissolve re-homes everyone to the tick. Everyone not in the fight keeps
+// free-roaming while it runs; everyone in it is the fight's alone — Move,
+// Traverse, and Pump are world-clock verbs and will not act for a fight
+// member. Which clock somebody is on is always askable, per member, via
+// ClockOf.
+//
 // # Atomicity, and what R5 does and does not promise
 //
 // Verbs validate before they mutate, and the first validation failure wins
@@ -19,7 +30,11 @@
 // It does NOT mean a verb's MUTATE phase is atomic. Join and Exit each perform
 // several fallible steps after their first mutation — refreshSight and
 // appendBeat both come after placement and member registration — so a failure
-// late in a verb can leave the in-memory encounter partially changed.
+// late in a verb can leave the in-memory encounter partially changed. The
+// clock verbs are the same: Form moves members off the world clock one at a
+// time and Dissolve re-homes them one at a time, so a failure mid-verb can
+// leave a member between clocks — a state ClockOf reports as a defect rather
+// than guessing (see its on-no-clock check).
 //
 // That is safe because of how this module is used, not by accident: every
 // caller loads, acts, and saves, so a verb returning an error means the
