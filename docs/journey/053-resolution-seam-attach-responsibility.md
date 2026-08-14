@@ -99,39 +99,103 @@ same self-contained objects: the effect still owns its predicate, stages, and
 persistence — attached to a player, a monster, anything. Only *how it is
 found* changes: read from the entity, not overheard on a wire.
 
+**Noodle 3 (Kirk): everything is data, and resolution is the one place a bus
+exists.** The reconciliation, and where this doc lands:
+
+> *"What if the character was just data, monsters just data — both have an
+> interface that says they should subscribe. We pass all the data objects into
+> a resolution package which loads the data, takes the action, and is
+> responsible for loading everything on the bus. … We need the bus, but that
+> should be in a single spot and just load the data. This isn't just combat
+> that needs the bus — all actions must go through the bus, all interactions."*
+
+This keeps 052's discipline and the bus mechanism both. The subscribe
+interface is the enumerable contract: **the data declares that it has
+attachments; resolution alone honors that.** Discovery becomes enumeration one
+level up — *who is in scope* — with bus self-registration below — *what each
+contributes*. The attach inventory collapses from N load paths that must each
+remember into one loop in one package: for each participant, attach. A trap
+contributes because it was passed in.
+
+Custody falls out cleanly: the **session** keeps the repositories and passes
+data in, saves data out — it never holds a bus again (`loadCharacter` +
+`newCallBus` migrate out of it). **Resolution** owns the bus for exactly one
+call. The **composition** stays bus-free. And **combat becomes the rules
+vocabulary**: stage definitions and their order, the phase shapes of an attack
+(ADR-0027), damage pools and crit rules (ADR-0026/0036), action economy — the
+chain definitions and pure functions resolution executes. Combat says what a
+strike *is*; resolution makes one *happen*; the courier tells everyone it
+*did*.
+
+One duplication resolves itself before being built: `TurnManager` publishes
+`TurnStartEvent`/`TurnEndEvent` today, but `play/clock` already returns
+`TurnStarted`/`TurnEnded` as milestone values. Under this split those
+publishes do not move — they disappear. The clock was always the source of
+truth for turn lifecycle; combat was duplicating it onto a bus. Evidence the
+split carves at a real joint.
+
+And "all interactions" reframes #965 from combat-specific to
+**interaction-generic**: a walk through a trapped corridor is an interaction;
+alertness modifying perception is an interaction. Resolution is the seam for
+all of them; combat is merely the first rules content it executes.
+
 ## The direction, assembled
 
-- **`combat` — rules as values.** Stages, chains, phases. `core/chain` is
-  already bus-free; the package sheds its required-bus construction as part of
-  wave 4 (the *ponder* is how much of its ~45 observe sites are genuinely
-  notification, which the courier takes over).
-- **Effects — self-contained, per Kirk.** Write one object; it declares its
-  contributions. Enumerable because it is persisted on the entity it affects.
-- **Resolution — a phase machine whose boundaries are data.** Each phase
-  enumerates the participants' effects against freshly loaded state. Suspend =
-  persist the folded-so-far event; resume = reload, re-enumerate, continue.
-  Shield works *because* of the re-enumerate, not despite it.
+- **Everything at the seams is data.** The session fetches participant data
+  from its repositories, passes it in, saves what comes back. Characters,
+  monsters, traps — data objects carrying an interface that says they have
+  attachments.
+- **Resolution — the ONE place a bus exists, for one call at a time.** It
+  receives the participants, loads each onto its bus (the single attach site —
+  Kirk's caution answered structurally), executes the interaction through the
+  chains, and returns outcomes plus updated data. It is
+  **interaction-generic**: combat is its first content, not its definition.
+- **A phase machine whose boundaries are data.** Each phase runs against
+  freshly loaded participants. Suspend = persist the folded-so-far event;
+  resume = pass the data in again, re-attach, continue. Shield works *because*
+  of the re-attach, not despite it; the suspension freeze makes it
+  deterministic.
+- **`combat` — the rules vocabulary.** Stages and their order, attack phases
+  (ADR-0027), damage pools and crit rules (ADR-0026/0036), action economy.
+  Chain definitions and pure functions. It sheds its required-bus construction
+  and its turn-lifecycle publishing — the latter was duplicating `play/clock`'s
+  milestones.
+- **Effects — self-contained, per Kirk, unchanged.** Write one object; it
+  subscribes itself when resolution attaches its owner. The authorship model
+  is the fixed point every option was measured against.
 - **Encounter — geometry, story, clocks. Still bus-free.** What a modifier
   needs from the world (Pack Tactics' adjacency, prone's 5-foot split) rides
   `gamectx` (ADR-0025 — verified: `room.go`, `combatant.go`,
-  `reaction_readiness.go` already exist) into the chain functions.
-- **The bus — keeps observation**, exactly as 052 said. Facts for optional
-  listeners; the trap listening to movement; the broker bridging to clients.
+  `reaction_readiness.go` already exist) into the chain functions. The
+  composition *raises* interactions; resolution resolves them.
+- **The bus — keeps observation**, exactly as 052 said, inside resolution's
+  walls. Facts for optional listeners; the broker bridging to clients.
 
 ## Open before an ADR
 
-1. **The contribute interface's shape** — 052's open question, still open:
-   per-chain-type methods, a single typed dispatch, or stage-declared. This is
-   the seam decision; genuine options and trade-offs before choosing
+1. **The subscribe interface's shape** — the seam decision. What does a data
+   object expose so resolution can attach it: per-chain-type methods, a single
+   typed dispatch, or stage-declared contributions (052's original three),
+   now posed as "what does *anything attachable* implement" rather than "what
+   does a condition implement". Genuine options and trade-offs before choosing
    (ADR-0037's process note).
-2. **The probe that gates suspension points:** verify each phase boundary's
+2. **Where an interaction begins.** A plain geometry move loads nobody today,
+   and probably still should not. Lean: the composition walks and *raises* an
+   interaction when one occurs (a trap cell, first contact); resolution
+   resolves it with exactly the participants involved — the interrupt
+   architecture doing what it was built for. Undecided, and it bounds
+   resolution's cost per verb.
+3. **Heterogeneous loading is ADR-0037 again.** Resolution receives mixed
+   data — characters, monsters, traps — and routing each to its loader is
+   what a ref is for: *a ref names the package that can load the data*. Same
+   seam `Spawn`'s `instantiate` already routes on. The monster three-call
+   assembly wants collapsing behind one loader *anyway*; this gives it the
+   reason.
+4. **The probe that gates suspension points:** verify each phase boundary's
    chain output is fully self-describing data. Any phase whose intermediate
    state holds a closure or live object cannot be a suspension point, and the
    boundaries move. First thing #965 should do.
-3. **Monster and trap enumeration paths** — the table's empty cells. The
-   monster three-call assembly wants collapsing behind one seam *anyway*; this
-   gives it the reason.
-4. **Whether `ReactionTriggerEvent` survives** — it exists to compensate for
+5. **Whether `ReactionTriggerEvent` survives** — it exists to compensate for
    straight-line resolution; a real suspension replaces it (052's question,
    now concrete in wave 5's scope).
 
