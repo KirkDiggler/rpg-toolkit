@@ -235,10 +235,18 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 			continue
 		}
 
+		// Apply through the bus this particular effect should be attributed to.
+		// A plain bus returns itself, so this is a no-op for every caller that
+		// is not an attach site keeping a registration list; a bus that
+		// implements dnd5eEvents.EffectScoper gets to record which effect made
+		// each subscription. The ref is the one conditions.LoadJSON just routed
+		// on, peeked again here because a ConditionBehavior cannot name itself.
+		effectBus := dnd5eEvents.BusForEffect(bus, peekEffectRef(rawCondition))
+
 		// Re-apply the condition so it subscribes to events
-		if err := condition.Apply(ctx, bus); err != nil {
+		if err := condition.Apply(ctx, effectBus); err != nil {
 			// Clean up any partial subscriptions to avoid resource leaks
-			_ = condition.Remove(ctx, bus)
+			_ = condition.Remove(ctx, effectBus)
 			// Log error but continue loading other conditions
 			// TODO: Consider how to handle condition apply errors
 			continue
@@ -283,4 +291,19 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 	}
 
 	return char, nil
+}
+
+// peekEffectRef reads the ref a persisted effect routes on, which is the same
+// field its loader routes on. It returns the zero Ref for a blob that has none
+// rather than an error: an effect that loaded is applied either way, and the
+// only thing a missing ref costs is attribution.
+func peekEffectRef(raw json.RawMessage) core.Ref {
+	var peek struct {
+		Ref core.Ref `json:"ref"`
+	}
+	if err := json.Unmarshal(raw, &peek); err != nil {
+		return core.Ref{}
+	}
+
+	return peek.Ref
 }

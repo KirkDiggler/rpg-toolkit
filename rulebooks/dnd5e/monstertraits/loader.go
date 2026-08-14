@@ -120,14 +120,37 @@ func LoadMonsterConditions(
 			return rpgerr.Wrap(err, "failed to load monster condition")
 		}
 
+		// Apply through the bus this particular trait should be attributed to.
+		// A plain bus returns itself, so this is a no-op for every caller that
+		// is not an attach site keeping a registration list; a bus that
+		// implements dnd5eEvents.EffectScoper gets to record which trait made
+		// each subscription. The ref is the one LoadJSON just routed on, peeked
+		// again here because a ConditionBehavior cannot name itself.
+		traitBus := dnd5eEvents.BusForEffect(bus, peekTraitRef(data))
+
 		// Apply the condition so it subscribes to events
-		if err := condition.Apply(ctx, bus); err != nil {
+		if err := condition.Apply(ctx, traitBus); err != nil {
 			// Clean up any partial subscriptions
-			_ = condition.Remove(ctx, bus)
+			_ = condition.Remove(ctx, traitBus)
 			return rpgerr.Wrap(err, "failed to apply monster condition")
 		}
 
 		m.AddCondition(condition)
 	}
 	return nil
+}
+
+// peekTraitRef reads the ref a persisted trait routes on, which is the same
+// field LoadJSON routes on. It returns the zero Ref for a blob that has none
+// rather than an error: LoadJSON has already accepted the blob by this point,
+// and the only thing a missing ref costs is attribution.
+func peekTraitRef(data json.RawMessage) core.Ref {
+	var peek struct {
+		Ref core.Ref `json:"ref"`
+	}
+	if err := json.Unmarshal(data, &peek); err != nil {
+		return core.Ref{}
+	}
+
+	return peek.Ref
 }
