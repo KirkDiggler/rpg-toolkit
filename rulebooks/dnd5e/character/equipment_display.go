@@ -6,7 +6,6 @@ package character
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
@@ -134,9 +133,13 @@ func MainHandDamage(mainWeapon *weapons.Weapon, offHand *EquippedItem) string {
 		return ""
 	}
 
+	// An empty off hand is the whole of this function's contribution: it means
+	// the weapon is gripped two-handed. Whether that changes the die is the
+	// weapon's own business, which is what VersatileDamage answers — a
+	// property check here would ask the same question twice.
 	damage := mainWeapon.Damage
-	if mainWeapon.HasProperty(weapons.PropertyVersatile) && offHand == nil {
-		damage = versatileTwoHandedDamage(damage)
+	if offHand == nil {
+		damage = mainWeapon.VersatileDamage()
 	}
 
 	line := fmt.Sprintf("%s %s", damage, mainWeapon.DamageType)
@@ -144,35 +147,6 @@ func MainHandDamage(mainWeapon *weapons.Weapon, offHand *EquippedItem) string {
 		line += fmt.Sprintf(" · off-hand %s", offWeapon.Damage)
 	}
 	return line
-}
-
-// versatileStepUp is the standard 5e versatile-weapon die progression: a
-// versatile weapon's two-handed die is always exactly one step up from
-// its one-handed die on this table (longsword 1d8 -> 1d10, spear 1d6 ->
-// 1d8, etc — no versatile weapon in the ruleset skips a step).
-var versatileStepUp = map[int]int{4: 6, 6: 8, 8: 10, 10: 12}
-
-// versatileTwoHandedDamage steps a "NdM" damage notation's die size up
-// one notch per versatileStepUp, e.g. "1d8" -> "1d10". Returns damage
-// unchanged if it doesn't parse as "NdM" or the size isn't in the table.
-func versatileTwoHandedDamage(damage string) string {
-	parts := strings.SplitN(damage, "d", 2)
-	if len(parts) != 2 {
-		return damage
-	}
-	count, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return damage
-	}
-	size, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return damage
-	}
-	next, ok := versatileStepUp[size]
-	if !ok {
-		return damage
-	}
-	return fmt.Sprintf("%dd%d", count, next)
 }
 
 // slotFor returns the slot itemID is equipped in, or "" if it's carried
