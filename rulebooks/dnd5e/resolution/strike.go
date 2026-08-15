@@ -266,8 +266,9 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	// character.Data.ArmorClass INERT on this path, which two existing tests
 	// depend on (one sets an AC no rules-legal character can have, to prove a
 	// widened crit range is not a widened hit range). That is a behavior
-	// change with its own evidence to produce, so it ships as its own change
-	// rather than riding this one — rpg-toolkit#1017.
+	// change with its own evidence to produce and two existing tests to
+	// redesign, so it ships as its own change rather than riding this one.
+	// The proving suite is written and green; it lands with that change.
 	//
 	// Read once and used for both the outcome and the chain event: the event's
 	// number is what decides the hit, since afterAttackChain compares against
