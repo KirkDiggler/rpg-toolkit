@@ -121,7 +121,7 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 	})
 }
 
-func (s *EncounterTestSuite) TestSetupPillarBlocksSight() {
+func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
 	s.Run("occluder blocks both directions", func() {
 		// Arrange: alice and goblin separated by a WALL — a pillar is leaned
 		// around now (spatial v0.9.1, see testwalls_test.go), so a fixture
@@ -176,7 +176,7 @@ func (s *EncounterTestSuite) TestSetupPillarBlocksSight() {
 		// Assert: goblin does not see alice (symmetric)
 		goblinView, err := enc.View(&encounter.ViewInput{Member: goblin})
 		s.Require().NoError(err)
-		s.Len(goblinView, 0, "goblin should see nothing (blocked by pillar)")
+		s.Len(goblinView, 0, "goblin should see nothing (blocked by the wall)")
 	})
 }
 

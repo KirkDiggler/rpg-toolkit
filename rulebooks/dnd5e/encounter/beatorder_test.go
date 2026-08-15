@@ -173,8 +173,9 @@ func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 }
 
 // blockedScene opens the shared set with alice at (6,2) and the goblin at
-// (0,10) — the wall sits square between them, so first light starts no fight
-// and each verb under test is the sole cause of the one that follows. An optional decider drives the goblin for the Pump pin.
+// (6,10) — the wall spans x=4..8 at y=6, so the file they share is blocked and
+// first light starts no fight. Each verb under test is then the sole cause of
+// the one that follows. An optional decider drives the goblin for the Pump pin.
 func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encounter.Encounter {
 	monster := encounter.MemberInput{
 		ID: goblin, Kind: encounter.KindMonster, Room: beatOrderRoom,
