@@ -38,6 +38,11 @@ func TestLineOfSightLawSuite(t *testing.T) {
 const (
 	lawRoomType   = "law"
 	lawGridSquare = "square"
+
+	// blockersPerRoom is how cluttered a fuzzed room gets. Eight in an 8x8 is
+	// enough to produce the corner-clipping cases the old rule disagreed with
+	// itself about — it measured 4.97% asymmetric at this density.
+	blockersPerRoom = 8
 )
 
 // opaque is a wall for the purposes of these laws.
@@ -171,10 +176,22 @@ func (s *LineOfSightLawSuite) TestSightIsSymmetric() {
 				room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 					ID: lawRoomType, Type: lawRoomType, Grid: g.grid,
 				})
-				for i := 0; i < 8; i++ {
+				// Distinct cells, and every placement is REQUIRED to land.
+				// Drawing at random and discarding the error looked like eight
+				// blockers and was sometimes fewer: opaque blocks movement, so
+				// a repeat draw collides and is refused. A fuzz whose strength
+				// is unknown is a fuzz that quietly weakens.
+				chosen := make(map[spatial.Position]bool, blockersPerRoom)
+				for len(chosen) < blockersPerRoom {
 					cell := g.cells[rng.Intn(len(g.cells))]
-					_ = room.PlaceEntity(&opaque{id: fmt.Sprintf("w%d-%d", run, i)}, cell)
+					if chosen[cell] {
+						continue
+					}
+					chosen[cell] = true
+					s.Require().NoError(room.PlaceEntity(
+						&opaque{id: fmt.Sprintf("w%d-%d", run, len(chosen))}, cell))
 				}
+				s.Require().Len(chosen, blockersPerRoom, "the room must be as cluttered as claimed")
 				for i := 0; i < len(g.cells); i++ {
 					for j := i + 1; j < len(g.cells); j++ {
 						a, b := g.cells[i], g.cells[j]

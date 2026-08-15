@@ -534,6 +534,9 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
+	// ONE RASTERIZATION FOR THE DIRECT LANE, reused by both checks below.
+	direct := CanonicalBoundaryRay(r.grid, from, to)
+
 	// A BOUNDARY IS AN EDGE AND STAYS A HARD BLOCK. Neighbour lanes model
 	// leaning around something that has extent — an occluding cell is a pillar
 	// or a wall block, and a viewer really can look past its corner. A boundary
@@ -542,11 +545,11 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 	// describes. Softening it would rewrite a primitive nobody reported, and
 	// rpg-toolkit#1022 is about occluders: the wall cells a player watches
 	// swallow their sightline.
-	if r.boundaryBlocksSightUnsafe(from, to) {
+	if r.boundaryBlocksAlongUnsafe(direct) {
 		return true
 	}
 
-	if !r.lineOfSightLaneBlockedUnsafe(from, to) {
+	if !r.entityBlocksAlongUnsafe(direct) {
 		return false
 	}
 
@@ -592,34 +595,16 @@ func (r *BasicRoom) IsLineOfSightBlocked(from, to Position) bool {
 	return true
 }
 
-// boundaryBlocksSightUnsafe reports whether the canonical ray between two cells
-// crosses a sight-blocking boundary.
-//
-// Split out from the lane test because the two are not the same kind of
-// obstacle: this one is absolute, and the lane test is what neighbour lanes are
-// allowed to route around. Both rasterize the same canonical ray, so a boundary
-// answer never depends on which end asked — that was already true before
-// rpg-toolkit#1022 and is unchanged by it.
-func (r *BasicRoom) boundaryBlocksSightUnsafe(from, to Position) bool {
-	if len(r.boundaries) == 0 {
-		return false
-	}
-	path := CanonicalBoundaryRay(r.grid, from, to)
-	for i := 1; i < len(path); i++ {
-		if r.isBoundaryLineOfSightBlockedUnsafe(path[i-1], path[i]) {
-			return true
-		}
-	}
-	return false
-}
-
 // lineOfSightLaneBlockedUnsafe reports whether ONE lane between two cells is
 // obstructed, by a boundary it crosses or by something standing in it.
 //
-// It rasterizes the canonical ray for BOTH checks. Until rpg-toolkit#1022 a
-// single call consulted two different rays — [CanonicalBoundaryRay] for
-// boundaries, the caller's own ray for entities — and the second of those was
-// the direction-dependence this issue is named for. One lane, one ray.
+// It rasterizes the canonical ray ONCE and runs both checks over it. Until
+// rpg-toolkit#1022 a single call consulted two different rays —
+// [CanonicalBoundaryRay] for boundaries, the caller's own ray for entities —
+// and the second of those was the direction-dependence this issue is named
+// for. One lane, one ray, and one rasterization of it: alternative lanes are
+// only built when the direct one is already blocked, which is the case the
+// cost lands on.
 //
 // The endpoints are never opaque: you are not blocked by the cell you stand in
 // or the one you are looking at.
@@ -631,17 +616,36 @@ func (r *BasicRoom) boundaryBlocksSightUnsafe(from, to Position) bool {
 // cost per query on hexes, on a path callers already run O(range²) per viewer.
 // Recorded so the comparison does not have to be re-derived: rpg-toolkit#1022.
 func (r *BasicRoom) lineOfSightLaneBlockedUnsafe(from, to Position) bool {
-	if r.boundaryBlocksSightUnsafe(from, to) {
-		return true
-	}
-
 	path := CanonicalBoundaryRay(r.grid, from, to)
+	return r.boundaryBlocksAlongUnsafe(path) || r.entityBlocksAlongUnsafe(path)
+}
+
+// boundaryBlocksAlongUnsafe reports whether a rasterized ray crosses a
+// sight-blocking boundary.
+//
+// Split from the entity check because the two are not the same kind of
+// obstacle: this one is absolute, and the entity one is what neighbour lanes
+// are allowed to route around.
+func (r *BasicRoom) boundaryBlocksAlongUnsafe(path []Position) bool {
+	if len(r.boundaries) == 0 {
+		return false
+	}
+	for i := 1; i < len(path); i++ {
+		if r.isBoundaryLineOfSightBlockedUnsafe(path[i-1], path[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// entityBlocksAlongUnsafe reports whether anything opaque stands in a
+// rasterized ray, endpoints excluded.
+func (r *BasicRoom) entityBlocksAlongUnsafe(path []Position) bool {
 	for i := 1; i < len(path)-1; i++ {
 		if r.blocksLineOfSightUnsafe(path[i]) {
 			return true
 		}
 	}
-
 	return false
 }
 
