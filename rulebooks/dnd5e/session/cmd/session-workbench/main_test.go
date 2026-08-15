@@ -33,9 +33,9 @@ func TestWorkbenchRuns(t *testing.T) {
 
 		// A fight that starts itself, end to end. Each of these is a different
 		// claim, and any one regressing would leave the others still true:
-		"a fight starts, in order [alice skel-1]",    // contact at the doorway starts it, unasked
-		"free roam refused for a fight member: true", // and a fighter stops free-roaming
-		"bob walks on regardless, 1 step(s)",         // while everyone not in it carries on
+		"a fight starts, in order [alice skel-1 wight]", // contact at the doorway starts it, unasked
+		"free roam refused for a fight member: true",    // and a fighter stops free-roaming
+		"bob walks on regardless, 1 step(s)",            // while everyone not in it carries on
 
 		`ended by "withdraw"`,
 		"alice in vault at (0,1)", // she is where the fight stopped her, and it persisted
