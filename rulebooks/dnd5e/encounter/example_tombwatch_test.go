@@ -42,14 +42,14 @@ func tell(enc *encounter.Encounter, who, about core.EntityID) {
 // this narration can never drift from what the composition actually
 // does. This is the pre-UI loop: the story is the screen.
 func Example_theTombWatch() {
-	// The crypt: a pillar at (6,6); alice enters at (2,6); a goblin
+	// The crypt: a wall across y=6 from x=5 to x=7; alice enters at (2,6); a goblin
 	// stands at (6,10). One way out: the stairs at (11,11).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: "crypt", Width: 12, Height: 12,
-				Occluders: []spatial.Position{{X: 6, Y: 6}},
+				Occluders: wallRow(6, 5, 7),
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -77,7 +77,7 @@ func Example_theTombWatch() {
 		return
 	}
 
-	fmt.Println("-- alice slips behind the pillar's file --")
+	fmt.Println("-- alice slips behind the wall --")
 	if _, err := enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: 6, Y: 2}}); err != nil {
 		fmt.Println("move:", err)
 		return
@@ -111,7 +111,7 @@ func Example_theTombWatch() {
 	// -- first light --
 	// alice sees goblin at (6,10)
 	// goblin sees alice at (2,6)
-	// -- alice slips behind the pillar's file --
+	// -- alice slips behind the wall --
 	// alice holds a GHOST of goblin at last-seen (6,10)
 	// goblin holds a GHOST of alice at last-seen (2,6)
 	// -- the table saves and comes back tomorrow --

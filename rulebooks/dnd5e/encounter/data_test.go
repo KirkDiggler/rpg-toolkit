@@ -392,7 +392,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 						ID:        "crypt",
 						Width:     10,
 						Height:    10,
-						Occluders: []spatial.Position{{X: 5, Y: 5}},
+						Occluders: wallColumn(5, 3, 7),
 						Boundaries: []spatial.Boundary{
 							{
 								From:              spatial.Position{X: 3, Y: 3},
@@ -455,7 +455,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 // round-trip with the ghost still Held.
 func (s *DataTestSuite) TestRoundTripMidFade() {
 	s.Run("mid-fade ghost survives reload still Held", func() {
-		// Create encounter with a pillar that will cause a ghost to form
+		// Create encounter with a wall that will cause a ghost to form
 		setup := &encounter.SetupInput{
 			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
@@ -464,8 +464,13 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 						ID:     "crypt",
 						Width:  10,
 						Height: 10,
-						// Pillar at (5, 5) blocks sight
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						// A wall across y=3 blocks sight. It was a lone pillar
+						// until spatial v0.9.1, which leans around one — see
+						// testwalls_test.go. Its span is chosen so the scene
+						// still reads the same three ways: blocked at first
+						// light, open once playerA steps to (4,1), blocked
+						// again once the goblin ducks behind it.
+						Occluders:  wallRow(3, 3, 5),
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -497,7 +502,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		enc1, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
-		// Move goblin behind pillar to create a ghost
+		// Move goblin behind the wall to create a ghost
 		_, err = enc1.Move(&encounter.MoveInput{
 			Member: "playerA",
 			To:     spatial.Position{X: 4, Y: 1},
@@ -506,7 +511,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 
 		// The two saw each other, which starts a fight (rpg-toolkit#964), and
 		// a fight member cannot free-roam — so they break off before the
-		// goblin steps behind the pillar and becomes the ghost this test is
+		// goblin steps behind the wall and becomes the ghost this test is
 		// about.
 		_, err = enc1.Dissolve(&encounter.DissolveInput{Member: "goblin"})
 		s.Require().NoError(err)
@@ -514,7 +519,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		// Move goblin to create ghost at last-seen position
 		_, err = enc1.Move(&encounter.MoveInput{
 			Member: "goblin",
-			To:     spatial.Position{X: 5, Y: 6}, // Behind pillar from A's view
+			To:     spatial.Position{X: 5, Y: 6}, // Behind the wall from A's view
 		})
 		s.Require().NoError(err)
 
@@ -2788,10 +2793,16 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A wall across y=3, not the lone pillar this fixture
+						// used to have: spatial v0.9.1 leans around one (see
+						// testwalls_test.go). Its span is chosen so the scene
+						// still reads the same three ways — blocked at first
+						// light, open once playerA steps to (4,1), blocked
+						// again once the goblin ducks to (5,6).
+						Occluders:  wallRow(3, 3, 5),
 						Boundaries: []spatial.Boundary{},
 					},
 				},

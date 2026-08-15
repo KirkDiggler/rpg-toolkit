@@ -31,9 +31,9 @@ import (
 // All five are asserted here so a future verb inherits a guarded law rather
 // than a remembered one.
 //
-// Every scene below uses the same set: a 12x12 room with a pillar at (6,6),
-// and sight blocked exactly along the file the pillar stands on. Nobody is in
-// contact until the verb under test puts them in contact.
+// Every scene below uses the same set: a 12x12 room split by a wall across
+// y=6, open at either end. Nobody is in contact until the verb under test puts
+// them in contact.
 type BeatOrderTestSuite struct {
 	suite.Suite
 }
@@ -44,11 +44,16 @@ func TestBeatOrderSuite(t *testing.T) {
 
 const beatOrderRoom = "hall"
 
-// pillarRoom is the shared set: one room, one occluder at (6,6).
-func pillarRoom() encounter.RoomInput {
+// wallRoom is the shared set: one room, split by a wall across y=6 with open
+// ground at either end of it.
+//
+// It was a single pillar until spatial v0.9.1, which leans around a lone
+// obstacle — see testwalls_test.go. The scenes are unchanged; what changed is
+// that the set has to be something a sightline genuinely cannot get past.
+func wallRoom() encounter.RoomInput {
 	return encounter.RoomInput{
 		ID: beatOrderRoom, Width: 12, Height: 12,
-		Occluders: []spatial.Position{{X: 6, Y: 6}},
+		Occluders: wallRow(6, 4, 8),
 	}
 }
 
@@ -72,11 +77,11 @@ func (s *BeatOrderTestSuite) beatKinds(enc *encounter.Encounter, audience encoun
 func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
-		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{pillarRoom()}},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
 		Members: []encounter.MemberInput{
-			// Off the pillar's file: they see each other at first light.
-			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: beatOrderRoom, Position: spatial.Position{X: 6, Y: 10}},
+			// Both clear of the wall's span: they see each other at first light.
+			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: beatOrderRoom, Position: spatial.Position{X: 0, Y: 10}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -86,13 +91,13 @@ func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 		"the scene opens, THEN the fight inside it starts")
 }
 
-// TestMoveBeforeItFights pins Move's half. Alice starts behind the pillar's
-// file and steps off it; stepping off is what puts her in contact, so the
+// TestMoveBeforeItFights pins Move's half. Alice starts behind the wall and
+// walks out past its end; clearing it is what puts her in contact, so the
 // moved beat is the cause and the bubble-formed beat is its effect.
 func (s *BeatOrderTestSuite) TestMoveBeforeItFights() {
 	enc := s.blockedScene()
 
-	out, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 2, Y: 2}})
+	out, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "stepping into the open puts her in contact")
 	s.Greater(out.Formed.Seq, out.Seq, "she moves, THEN the fight starts")
@@ -138,11 +143,11 @@ func (s *BeatOrderTestSuite) TestTraverseBeforeItFights() {
 // own beats are the tick frame AND the action inside it, so both precede the
 // fight the action caused.
 func (s *BeatOrderTestSuite) TestPumpBeforeItFights() {
-	enc := s.blockedScene(&patrolDecider{positions: []spatial.Position{{X: 2, Y: 10}}})
+	enc := s.blockedScene(&patrolDecider{positions: []spatial.Position{{X: 0, Y: 10}}})
 
 	out, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "the goblin steps out from behind the pillar and is seen")
+	s.Require().NotNil(out.Formed, "the goblin steps out from behind the wall and is seen")
 	s.Require().Len(out.Seqs, 2, "pump's own beats: the tick frame and the goblin's step")
 	for _, seq := range out.Seqs {
 		s.Greater(out.Formed.Seq, seq, "the world moves, THEN the fight starts")
@@ -158,7 +163,7 @@ func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 
 	out, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
 		ID: cormac, Kind: encounter.KindPlayer, Room: beatOrderRoom,
-		Position: spatial.Position{X: 2, Y: 2},
+		Position: spatial.Position{X: 0, Y: 2},
 	}})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "he lands in the open, in the goblin's sight")
@@ -168,9 +173,9 @@ func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 }
 
 // blockedScene opens the shared set with alice at (6,2) and the goblin at
-// (6,10) — the pillar at (6,6) sits square between them, so first light
-// starts no fight and each verb under test is the sole cause of the one that
-// follows. An optional decider drives the goblin for the Pump pin.
+// (6,10) — the wall spans x=4..8 at y=6, so the file they share is blocked and
+// first light starts no fight. Each verb under test is then the sole cause of
+// the one that follows. An optional decider drives the goblin for the Pump pin.
 func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encounter.Encounter {
 	monster := encounter.MemberInput{
 		ID: goblin, Kind: encounter.KindMonster, Room: beatOrderRoom,
@@ -182,7 +187,7 @@ func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encount
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
-		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{pillarRoom()}},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 6, Y: 2}},
 			monster,
@@ -191,6 +196,6 @@ func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encount
 	})
 	s.Require().NoError(err)
 	s.Require().Equal([]string{"scene-opened"}, s.beatKinds(enc, alice),
-		"the pillar keeps them apart: no fight before the verb under test")
+		"the wall keeps them apart: no fight before the verb under test")
 	return enc
 }

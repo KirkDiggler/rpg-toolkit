@@ -48,15 +48,19 @@ func seen(t *testing.T, enc *encounter.Encounter, observer core.EntityID, subjec
 // documentation: a host wires the free-roam encounter exactly like this.
 func TestTombWatch(t *testing.T) {
 	// ---- Beat 1: the crypt lights up -------------------------------
-	// A 12x12 crypt with a pillar at (6,6). Alice (2,2) and Bella (3,2)
-	// enter; a goblin patrols the far end between (7,10) and (6,10).
+	// A 12x12 crypt with a wall across the middle, x=5..7 at y=6. Alice
+	// (2,2) and Bella (3,2) enter; a goblin patrols the far end between
+	// (7,10) and (6,10). The wall is three cells wide rather than the one
+	// this scene used to have: spatial v0.9.1 leans around a lone pillar
+	// (see testwalls_test.go), and this crypt needs a sightline that really
+	// cannot get through.
 	goblinPatrol := &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
-				Occluders: []spatial.Position{{X: 6, Y: 6}},
+				Occluders: wallRow(6, 5, 7),
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -97,18 +101,18 @@ func TestTombWatch(t *testing.T) {
 	require.Equal(t, 7.0, p.X, "beat 2: alice's view tracks the patrol step to (7,10)")
 
 	// A second pump brings the goblin back to (6,10) — directly behind
-	// the pillar's file, setting up the ghost.
+	// the wall, setting up the ghost.
 	_, err = enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 2: the watch continues")
 	_, p = seen(t, enc, alice, goblin)
 	require.Equal(t, 6.0, p.X, "beat 2: the goblin returns to (6,10), still in alice's sight from (2,6)")
 
 	// ---- Beat 3: the ghost forms -----------------------------------
-	// Alice slips to (6,2): the pillar at (6,6) now sits square on the
+	// Alice slips to (6,2): the wall now sits square on the
 	// vertical line between her and the goblin at (6,10). Both lose
 	// sight of each other — and both keep a ghost at last-seen.
 	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 6, Y: 2}})
-	require.NoError(t, err, "beat 3: alice slips behind the pillar's file")
+	require.NoError(t, err, "beat 3: alice slips behind the wall")
 
 	st, p = seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Held, st, "beat 3: alice's sight of the goblin fades — the ghost forms")
@@ -148,7 +152,7 @@ func TestTombWatch(t *testing.T) {
 	require.NoError(t, err, "beat 5: cormac joins the delve")
 	require.NotZero(t, joinOut.Seq, "beat 5: his arrival is a story beat")
 	st, _ = seen(t, enc, cormac, goblin)
-	require.Equal(t, intel.Current, st, "beat 5: from (10,2) the pillar doesn't block him — first light lands")
+	require.Equal(t, intel.Current, st, "beat 5: from (10,2) the wall doesn't block him — first light lands")
 	st, _ = seen(t, enc, goblin, cormac)
 	require.Equal(t, intel.Current, st, "beat 5: the goblin notices the newcomer")
 	require.NotNil(t, joinOut.Formed, "beat 5: noticing each other IS the fight starting")
@@ -231,7 +235,7 @@ func TestTombWatch(t *testing.T) {
 		"moved",         // beat 2: alice advances
 		"tick", "moved", // beat 2: pump 1, goblin steps out
 		"tick", "moved", // beat 2: pump 2, goblin steps back
-		"moved",  // beat 3: alice slips behind the pillar's file
+		"moved",  // beat 3: alice slips behind the wall
 		"joined", // beat 5: cormac (the pause leaves no beat — pause is free)
 		// beat 5: and the goblin sees him arrive — his fight starts AFTER the
 		// arrival that caused it. Cause before effect: the reverse order is
@@ -262,7 +266,7 @@ func TestTombWatch(t *testing.T) {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
-				Occluders: []spatial.Position{{X: 6, Y: 6}},
+				Occluders: wallRow(6, 5, 7),
 			}},
 		},
 		Members: sequelMembers,

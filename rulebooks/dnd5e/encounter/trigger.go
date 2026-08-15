@@ -45,14 +45,25 @@ const (
 	// decides in free roam — back away, sneak, or approach — with attacking
 	// from here counting as initiation.
 	//
-	// UNREACHABLE TODAY, and deliberately kept. Sight is pure symmetric
-	// geometry: refreshSight builds every percept from IsLineOfSightBlocked
-	// with no facing, stealth, or perception input, so if the player sees the
-	// wolf the wolf sees the player and this case has no producible input.
-	// rpg-toolkit#1020 is the prerequisite that makes it real. The arm stays
-	// because it is the documented design rather than dead ceremony — what is
-	// NOT here is any behavior hanging off it, because unbuilt beats
-	// built-and-dead.
+	// UNREACHABLE TODAY, and deliberately kept. Sight is symmetric: every
+	// percept is built from IsLineOfSightBlocked with no facing, stealth or
+	// perception input, and that predicate is symmetric BY LAW as of
+	// rpg-toolkit#1022 — spatial pins it as a property over fuzzed rooms in
+	// every grid family. So if the player sees the wolf, the wolf sees the
+	// player, and this case has no producible input.
+	//
+	// It was briefly reachable and nobody meant it to be, which is why the law
+	// exists: sight used to be one rasterized line, and Bresenham chose
+	// different cells by direction on square grids, so a wall corner could
+	// hide a player from a monster it did not hide the monster from. A
+	// one-sided ambush earned by ray-rounding rather than by anything in the
+	// fiction. Fixed in spatial v0.9.1, and asymmetry now arrives only where
+	// it is designed to.
+	//
+	// rpg-toolkit#1020 is that design and the prerequisite that makes this arm
+	// real. It stays because it is the documented shape rather than dead
+	// ceremony — what is NOT here is any behavior hanging off it, because
+	// unbuilt beats built-and-dead.
 	contactDrop
 
 	// contactSpotted: the monster saw the player and the player did not see
@@ -94,6 +105,20 @@ type trigger struct {
 // sees everyone, so nobody is unaware. Honest option C under B-prime's design,
 // not a compromise: the machinery is the permanent part and the percepts are
 // the part that grows.
+//
+// THAT CLAIM WAS FALSE WHEN IT WAS FIRST WRITTEN, and the correction is worth
+// keeping rather than quietly editing away. Sight was symmetric by intent and
+// not in fact: it was decided by one rasterized line, and the line differed by
+// direction on square grids, so a wall corner produced real one-sided contact
+// — Surprised populated, with no stealth anywhere in the module. Found by the
+// session wave probing this very seam, filed as rpg-toolkit#1022, and fixed in
+// spatial v0.9.1, which now pins symmetry as a LAW over fuzzed rooms in every
+// grid family rather than leaving it as a property of an algorithm.
+//
+// The consumer needed no change, which is the part that mattered: Surprised
+// populated, crossed the boundary and reported correctly the whole time. The
+// invariant above held — what was wrong was the PRODUCTION of percepts, and
+// fixing it there is exactly where the design said it would happen.
 //
 // v2 is asymmetric perception (rpg-toolkit#1020), where Stealth against
 // passive Perception decides whether an observer's percept exists at all. The
