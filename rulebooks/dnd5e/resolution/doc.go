@@ -91,13 +91,12 @@
 //
 // # The bus-effect tally
 //
-// Steps come in two kinds, and the difference is worth counting because
-// [Gather]'s name only fits one of them. Three fold a chain and hand back the
-// folded event — the saving throw, the attack chain, the damage chain. One does
-// something on the bus and hands back nothing but the next step: imposing a
-// contest's consequence. Both kinds are built by constructors here, both run on
-// resolution's bus, and both are named for what they do; what differs is
-// whether anything is gathered.
+// [Gather] is a step resolution runs with the bus in hand — folding a chain,
+// first and mainly. Three of the four do exactly that and hand back the folded
+// event: the saving throw, the attack chain, the damage chain. The fourth does
+// something on the bus and hands back nothing but the next step — imposing a
+// contest's consequence. All four are built by constructors here, all four run
+// on resolution's bus, and each is named for what it does.
 //
 // ADR-0026's Notify would have been a second of the latter kind, and is
 // deliberately absent — see strikeMachine.afterDamage. Publishing
@@ -107,20 +106,26 @@
 // two things is the classification slice 2 owes, and slice 1 records it rather
 // than shipping a double-apply.
 //
-// Two consumers now agree on that shape, which is the evidence the question was
-// waiting for: either Gather means "do this on the bus and hand me what
-// happened" — which is what it has always been mechanically — or the step
-// vocabulary grows a case ADR-0038 does not name. That is a decision for the
-// ADR, not for this file.
+// Slice 2 settled it: the vocabulary does NOT grow a case. Three folds to one
+// pure effect does not justify a fifth step kind, the odd one out is honest
+// about itself, and its Name already reads correctly in a step log ("impose the
+// prone condition" rather than a fold that folds nothing). Not extending a
+// sealed set costs nothing; extending it against one example is the mistake
+// [ADR-0007] exists to remember.
 //
-// One of the three folds carries a debt. The damage chain is folded by
-// combat.ResolveDamage, which takes a bus, because every exported attack and
-// damage entry point in that package requires one and the arithmetic that
-// applies resistance and vulnerability is unexported — folding here would mean
-// reimplementing damage multipliers. The fold still happens on this package's
-// bus, over subscribers this package attached; what differs from the save
-// precedent is custody of the fold mechanics. Every such call site says
-// "divestment debt — #965 slice 2" so the divestment has a grep-able worklist.
+// The trigger for reopening it is recorded rather than left to memory: if wave
+// 5's reactions multiply the pure-effect steps — several suspension windows
+// that act on the bus without folding — the three-to-one ratio reverses and the
+// argument reverses with it. At that point the question comes back as an ADR
+// with the new tally as its evidence. Until then there is nothing to decide.
+//
+// All three folds are this package's own. The damage chain was the last one
+// held elsewhere: slice 1 handed resolution's bus to combat.ResolveDamage,
+// because every exported attack and damage entry point in that package required
+// one and the multiplier arithmetic was unexported. Slice 2 exported that
+// arithmetic bus-free ([combat.FinalDamage]) and moved the fold here, so
+// custody now matches where the bus lives. The grep-able worklist that tracked
+// it — every call site marked "divestment debt — #965 slice 2" — is empty.
 //
 // # What this package does not do yet
 //
