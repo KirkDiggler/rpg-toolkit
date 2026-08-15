@@ -81,6 +81,16 @@ type Input struct {
 	// Machine is the interaction to run.
 	Machine Machine
 
+	// Initiative orders a fight that starts while this interaction runs.
+	// REQUIRED.
+	//
+	// The composition asks for one at construction and refuses without it
+	// (rpg-toolkit#964): sight starts fights on its own, so an encounter that
+	// cannot order one is an encounter that cannot be loaded. This package
+	// does not know what initiative is and does not want to — it hands over
+	// what the caller supplied, the way Deciders one field up are handed over.
+	Initiative encounter.InitiativeRoller
+
 	// Roller is used to reconstitute effects that need one — a monster's Undead
 	// Fortitude, for instance, which rolls when it is triggered rather than
 	// when it is loaded. Nil takes the default roller. It is not the machine's
@@ -96,6 +106,20 @@ func (in *Input) Validate() error {
 
 	if in.Machine == nil {
 		return ErrNoMachine
+	}
+
+	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. Both of these are things
+	// only the caller can provide, and both used to be forgivable — Initiative
+	// was absent entirely, and a nil Roller quietly became real randomness.
+	// Kirk's ruling on the composition's own roller applies to each: "a nil
+	// initiative is an error returned way upstream". A silent default masks
+	// missing wiring, and for a roller it does it in the worst possible way,
+	// by putting untestable randomness into a result that looks fine.
+	if in.Initiative == nil {
+		return ErrNoInitiative
+	}
+	if in.Roller == nil {
+		return ErrNoRoller
 	}
 
 	seen := make(map[string]struct{}, len(in.Participants))
@@ -192,13 +216,11 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	}
 
 	roller := in.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:     in.World,
-		Deciders: in.Deciders,
+		Data:       in.World,
+		Deciders:   in.Deciders,
+		Initiative: in.Initiative,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
