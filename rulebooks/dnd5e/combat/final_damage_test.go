@@ -227,6 +227,34 @@ func (s *FinalDamageTestSuite) TestDiceAndFlatBonusBothCount() {
 	s.Require().Equal(12, total)
 }
 
+// An instance that resolves to zero is not reported as landing. Resistance
+// halving a single point of damage is the realistic way to get there — 1
+// halved truncates to 0 — and a target that took no cold damage should not
+// appear in the breakdown as having taken cold damage of zero.
+func (s *FinalDamageTestSuite) TestAnInstanceThatResolvesToZeroIsDropped() {
+	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
+		s.flat(1, damage.Cold),
+		s.multiplier(0.5, damage.Cold),
+		s.flat(6, damage.Slashing),
+	})
+
+	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 6, Type: damage.Slashing}}, instances,
+		"the cold instance is absent, not present at zero")
+	s.Require().Equal(6, total)
+}
+
+// The same boundary from a component that simply carries no damage — the
+// catalog has weapons whose damage is "0" (a net).
+func (s *FinalDamageTestSuite) TestAComponentCarryingNoDamageProducesNoInstance() {
+	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
+		s.flat(0, damage.Bludgeoning),
+		s.flat(3, damage.Piercing),
+	})
+
+	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 3, Type: damage.Piercing}}, instances)
+	s.Require().Equal(3, total)
+}
+
 func (s *FinalDamageTestSuite) TestNoComponentsIsNoDamage() {
 	instances, total := combat.FinalDamage(nil)
 
