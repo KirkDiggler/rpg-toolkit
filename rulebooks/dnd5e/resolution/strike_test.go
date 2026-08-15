@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -120,6 +121,14 @@ func (s *StrikeTestSuite) world(secondWolfAt spatial.Position) encounter.Encount
 
 // hero has AC 14 and a +5 STR save: the wolf's +4 bite needs an 10 to hit, and
 // its DC 11 knockdown is a real contest.
+//
+// The 14 is EARNED rather than declared: hide armor's 12 plus a capped +2 from
+// DEX 14. It used to be a bare ArmorClass field on an unarmored sheet, which
+// the strike honored only because it read that field directly — an unarmored
+// character with DEX 14 is really AC 12, so the number was a fiction the flat
+// read kept alive. Now that the strike folds the AC chain (#1018), the fixture
+// has to be a character who could actually have this AC, and every assertion
+// about 14 in this file stays true because the arithmetic agrees.
 func (s *StrikeTestSuite) hero(conds ...json.RawMessage) *character.Data {
 	return &character.Data{
 		ID:       heroID,
@@ -142,6 +151,12 @@ func (s *StrikeTestSuite) hero(conds ...json.RawMessage) *character.Data {
 		ProficiencyBonus: 2,
 		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
 			abilities.STR: shared.Proficient,
+		},
+		Inventory: []character.InventoryItemData{
+			{Type: shared.EquipmentTypeArmor, ID: string(armor.Hide), Quantity: 1},
+		},
+		EquipmentSlots: character.EquipmentSlots{
+			character.SlotArmor: string(armor.Hide),
 		},
 		Conditions: conds,
 	}
@@ -486,15 +501,24 @@ func (s *StrikeTestSuite) widenCritTo(bus events.EventBus, threshold int) {
 
 // resolveWith is resolve on a bus the test holds, so a test can subscribe its
 // own chain modifiers before the machine folds.
+//
+// secondWolf replaces the stock second wolf when a case needs a specific one —
+// a stat block with an armor class no character could wear, say.
 func (s *StrikeTestSuite) resolveWith(
 	bus events.EventBus, world encounter.EncounterData, hero *character.Data, machine Machine,
+	secondWolf ...*monster.Data,
 ) (*Output, error) {
+	second := s.wolf(secondWolfID)
+	if len(secondWolf) > 0 {
+		second = secondWolf[0]
+	}
+
 	return resolveOn(s.ctx, &Input{
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
 			{Monster: s.wolf(wolfID)},
-			{Monster: s.wolf(secondWolfID)},
+			{Monster: second},
 		},
 		Machine: machine,
 	}, newSurface(bus))
@@ -507,16 +531,24 @@ func (s *StrikeTestSuite) TestAWidenedCritRangeDoesNotWidenTheHitRange() {
 	bus := events.NewEventBus()
 	s.widenCritTo(bus, 19)
 
-	armored := s.hero()
+	// A MONSTER wearing an absurd armor class, not a character.
+	//
+	// The rule under test needs a target the attack cannot reach, and 25 is
+	// past anything 5e's armor can produce — plate and a shield stop at 20. A
+	// character's AC is now computed from what they wear (#1018), so a flat 25
+	// on a character sheet is simply ignored and the test would prove nothing.
+	// A stat block's AC is a declared number by design: monsters have no AC
+	// chain, GetEffectiveAC falls through to AC(), and 25 stands.
+	armored := s.wolf(secondWolfID)
 	armored.ArmorClass = 25
 
-	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), armored,
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(),
 		NewStrike(&StrikeInput{
 			AttackerID: wolfID,
-			TargetID:   heroID,
+			TargetID:   secondWolfID,
 			Attack:     s.wolfAttack(),
 			Roller:     &sequenceRoller{singles: []int{19}, fallback: 2},
-		}))
+		}), armored)
 	s.Require().NoError(err)
 
 	outcome := s.strikeOutcome(out)

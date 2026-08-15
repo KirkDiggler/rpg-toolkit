@@ -214,7 +214,7 @@ type strikeMachine struct {
 }
 
 // Start validates the profile, reads the target's AC, and folds the attack chain.
-func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, error) {
+func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
 	}
@@ -236,25 +236,37 @@ func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, erro
 		return nil, err
 	}
 
-	// The flat number the sheet carries: a character's ArmorClass field, a
-	// monster's stat-block AC. Armor worn and effects folded onto the AC chain
-	// do NOT reach it — an unarmored character whose sheet says 14 is measured
-	// against 14 here, whatever the rules would compute.
+	// The AC the target actually has — armor worn and every effect folded onto
+	// the AC chain — rather than the flat number the sheet happens to carry.
 	//
-	// That is the current behavior, and it is wrong on purpose for one more
-	// change. combat.GetEffectiveAC would fold the AC chain correctly from
-	// inside an interaction — measured, not assumed, in a proving suite that
-	// watches a Defense-style fighter's +1 reach the number the d20 is compared
-	// against. What the flip also does is make character.Data.ArmorClass inert
-	// on this path, which two existing tests depend on, so it carries a
-	// behavior change and two test redesigns of its own: rpg-toolkit#1018.
+	// combat.GetEffectiveAC is bus-free at its signature and dispatches on the
+	// sheet: a character folds combat.ACChain, a monster has no such method and
+	// falls through to its stat block's AC, which is correct for a stat block.
 	//
-	// Read once and used for both the outcome and the chain event, because the
-	// event's number is what decides the hit: afterAttackChain compares against
-	// the FOLDED event and overwrites the outcome from it. Setting only the
-	// outcome would report one AC and roll against another — the trap #1018's
-	// proving test caught.
-	effectiveAC := target.AC()
+	// The character's fold rides the bus parked on the sheet, and under Resolve
+	// that bus IS this interaction's participant view — Attach was handed it —
+	// so the fold runs among the same subscribers everything else in this strike
+	// folds among. That is the legacy shape and it is load-bearing here: a
+	// resolution-owned step (an AC Gather before the attack event is built) is
+	// the eventual form if AC folding ever needs to be inspectable in the step
+	// log or suspendable at a reaction window. Documented rather than built —
+	// nothing asks for it yet, and the fold reaches the right subscribers
+	// either way.
+	//
+	// THE CHAIN EVENT'S COPY IS THE ONE THAT MATTERS. afterAttackChain compares
+	// against the FOLDED event and then assigns m.outcome.TargetAC from it, so
+	// the event's number both decides the hit and replaces whatever the outcome
+	// was built with. Setting only the outcome would report the effective AC
+	// and roll against the flat one — a strike that tells the truth and does
+	// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
+	//
+	// The outcome is seeded with it anyway, and that seed is dead on every
+	// path that exists today: nothing returns a StrikeOutcome before the fold
+	// runs. It stays because a future phase that can end the strike earlier —
+	// a reaction window declining the attack, say — would otherwise hand back
+	// an outcome with a zero AC, and that is a worse failure than a redundant
+	// assignment.
+	effectiveAC := combat.GetEffectiveAC(ctx, target)
 
 	m.outcome = StrikeOutcome{
 		AttackerID: m.in.AttackerID,
