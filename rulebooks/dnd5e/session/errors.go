@@ -200,6 +200,14 @@ var (
 	// one they guessed wrong about.
 	ErrNotInFight = errors.New("member is not in a fight")
 
+	// ErrNoCause is returned when a verb that must say WHY is not told.
+	//
+	// Ending a fight is the one that has it: a fight ends either because
+	// somebody chose to leave or because the world noticed something, and a
+	// caller that will not say which is asking for an effect without an
+	// account of it.
+	ErrNoCause = errors.New("no cause given")
+
 	// ErrFrozen, ErrNoWindow, ErrNotAudience, ErrNotOffered and ErrNoWindowID
 	// lived here. Every one of them described an open interrupt window, and
 	// nothing in this module opens one (rpg-toolkit#964 slice 2) — a sentinel

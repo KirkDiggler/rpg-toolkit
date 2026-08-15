@@ -389,3 +389,32 @@ func structFields(v any) []string {
 	}
 	return names
 }
+
+// unexportedInterfaceMethods reports the UNEXPORTED methods an interface
+// declares — the ones that seal it, since a type outside the declaring package
+// cannot implement them.
+//
+// Reflection rather than the AST parsing above, and deliberately: for an
+// INTERFACE type, reflect's NumMethod includes unexported methods and reports
+// each one's package. That is documented behaviour rather than an accident of
+// same-module compilation — verified from a separate module entirely, where
+// DissolveCause reports NumMethod=2 with isDissolveCause carrying
+// PkgPath=".../session" and IsExported()=false. (It is NON-interface types
+// whose unexported methods reflect omits, which is the rule this is often
+// confused with.)
+//
+// Pass a typed nil pointer: unexportedInterfaceMethods((*Foo)(nil)).
+func unexportedInterfaceMethods(ptr any) []string {
+	t := reflect.TypeOf(ptr)
+	if t == nil || t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Interface {
+		return nil
+	}
+	iface := t.Elem()
+	var sealed []string
+	for i := 0; i < iface.NumMethod(); i++ {
+		if m := iface.Method(i); !m.IsExported() {
+			sealed = append(sealed, m.Name)
+		}
+	}
+	return sealed
+}
