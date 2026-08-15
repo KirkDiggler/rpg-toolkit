@@ -4,6 +4,8 @@
 package encounter_test
 
 import (
+	"reflect"
+
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -47,4 +49,22 @@ func wallColumn(x, fromY, toY int) []spatial.Position {
 		out = append(out, spatial.Position{X: float64(x), Y: float64(y)})
 	}
 	return out
+}
+
+// structFieldNames reports a struct's exported field names in declaration
+// order, so a test can assert on a type's SHAPE rather than on the values one
+// instance happens to carry.
+//
+// Used where the guarantee is structural: RecordInput's claim is that prose is
+// inexpressible, and the only way to hold that is to notice a new field.
+func structFieldNames(v any) []string {
+	t := reflect.TypeOf(v)
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	names := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		names = append(names, t.Field(i).Name)
+	}
+	return names
 }
