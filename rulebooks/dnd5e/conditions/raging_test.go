@@ -815,7 +815,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionAppliesResistanceToPhysica
 
 			// Verify resistance component was added with 0.5 multiplier
 			s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[1].Source)
-			s.Equal(0.5, finalEvent.Components[1].Multiplier, "Resistance should halve damage")
+			s.Require().NotNil(finalEvent.Components[1].Multiplier)
+			s.Equal(0.5, *finalEvent.Components[1].Multiplier, "Resistance should halve damage")
 		})
 	}
 }

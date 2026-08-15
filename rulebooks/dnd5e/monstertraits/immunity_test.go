@@ -77,7 +77,9 @@ func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 	// Second component: immunity multiplier (0 = negate damage)
 	s.Assert().Equal(dnd5eEvents.DamageSourceMonsterTrait, result.Components[1].Source)
 	s.Assert().Equal(damage.Poison, result.Components[1].DamageType)
-	s.Assert().Equal(0.0, result.Components[1].Multiplier)
+	s.Require().NotNil(result.Components[1].Multiplier,
+		"immunity is a modifier carrying the factor zero, not an absent modifier — rpg-toolkit#1012")
+	s.Assert().Equal(0.0, *result.Components[1].Multiplier)
 }
 
 func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {

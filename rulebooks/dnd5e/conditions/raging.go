@@ -348,7 +348,7 @@ func (r *RagingCondition) onDamageChain(
 				Source:     dnd5eEvents.DamageSourceCondition,
 				SourceRef:  refs.Conditions.Raging(),
 				DamageType: e.DamageType,
-				Multiplier: 0.5, // Resistance halves damage
+				Multiplier: dnd5eEvents.Multiply(0.5), // Resistance halves damage
 			})
 			return e, nil
 		}

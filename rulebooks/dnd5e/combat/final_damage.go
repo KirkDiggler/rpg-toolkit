@@ -11,11 +11,8 @@ import (
 )
 
 // FinalDamage turns folded damage components into the instances that land,
-// applying 5e's resistance and vulnerability stacking, and reports the total
-// alongside them.
-//
-// IMMUNITY IS NOT APPLIED — see the gap named below. Do not read this as
-// "damage multipliers, handled".
+// applying 5e's resistance, vulnerability, and immunity stacking, and reports
+// the total alongside them.
 //
 // Bus-free on purpose. This is the arithmetic half of [ResolveDamage], split
 // out so a caller that folds the damage chain on its own bus can still get the
@@ -27,17 +24,14 @@ import (
 // ResolveDamage calls this too, so there is one implementation rather than a
 // copy per stack.
 //
-// Components carrying a non-zero Multiplier are modifiers (resistance 0.5,
-// vulnerability 2.0); every other component contributes its Total() as base
-// damage. Both are grouped by damage type before the multipliers apply,
-// because 5e resists a TYPE rather than a source.
+// Components carrying a Multiplier are modifiers (resistance 0.5,
+// vulnerability 2.0, immunity 0.0); every other component contributes its
+// Total() as base damage. Both are grouped by damage type before the
+// multipliers apply, because 5e resists a TYPE rather than a source.
 //
-// KNOWN GAP — immunity does not reduce damage (rpg-toolkit#1012). Immunity is
-// authored as Multiplier: 0, and "is this a modifier" is decided by
-// Multiplier != 0, so an immunity component fails that test and is read as a
-// base contribution of Total() == 0 — discarded, with full damage landing on
-// an immune target. A caller must not rely on this function to enforce
-// immunity until #1012 lands. Pinned by TestKnownGapImmunityIsIgnored.
+// Modifier-or-damage is decided by the Multiplier's PRESENCE, never its value:
+// immunity's factor is zero, so a value test cannot tell it from an absent
+// modifier. It could not, and immunity silently did nothing (rpg-toolkit#1012).
 //
 // Instances come back sorted by damage type, and a zero or negative instance
 // is dropped rather than reported as landing.
@@ -55,10 +49,6 @@ func FinalDamage(components []dnd5eEvents.DamageComponent) (instances []DamageIn
 // - Resistance (0.5) halves damage, Vulnerability (2.0) doubles it, Immunity (0.0) negates
 // - Multiple resistances don't stack (apply most beneficial once)
 // - If both resistance and vulnerability exist for a type, they cancel out
-//
-// The immunity line above describes the RULE, not this code: the dispatch
-// below reads a component as a multiplier only when Multiplier != 0, so
-// immunity's 0.0 never reaches resolveMultipliers (rpg-toolkit#1012).
 func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInstanceInput {
 	// Group damage and multipliers by type
 	type damageGroup struct {
@@ -73,10 +63,11 @@ func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInst
 			byType[dmgType] = &damageGroup{}
 		}
 
-		// If component has a multiplier, it's a modifier (resistance/vulnerability)
-		// Otherwise, it contributes base damage
-		if component.Multiplier != 0 {
-			byType[dmgType].multipliers = append(byType[dmgType].multipliers, component.Multiplier)
+		// Presence, not value: a component either IS a modifier or is damage,
+		// and immunity's factor is zero. Testing `!= 0` conflated the two and
+		// dropped immunity entirely (rpg-toolkit#1012).
+		if component.Multiplier != nil {
+			byType[dmgType].multipliers = append(byType[dmgType].multipliers, *component.Multiplier)
 		} else {
 			byType[dmgType].baseDamage += component.Total()
 		}
@@ -114,11 +105,6 @@ func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInst
 }
 
 // resolveMultipliers applies D&D 5e stacking rules for resistance/vulnerability.
-//
-// Its immunity branch is UNREACHABLE today: callers only reach this function
-// with multipliers that passed a `!= 0` test, so 0.0 never arrives
-// (rpg-toolkit#1012). The branch is kept rather than deleted because it is the
-// correct rule and #1012's fix is to make it reachable, not to write it.
 // - Immunity (0.0) always wins
 // - Resistance (0.5) and vulnerability (2.0) cancel out if both present
 // - Multiple resistances don't stack (use 0.5 once)

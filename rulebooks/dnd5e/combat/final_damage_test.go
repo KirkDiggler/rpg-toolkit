@@ -34,7 +34,7 @@ func (s *FinalDamageTestSuite) flat(amount int, t damage.Type) dnd5eEvents.Damag
 func (s *FinalDamageTestSuite) multiplier(m float64, t damage.Type) dnd5eEvents.DamageComponent {
 	return dnd5eEvents.DamageComponent{
 		Source:     dnd5eEvents.DamageSourceCondition,
-		Multiplier: m,
+		Multiplier: dnd5eEvents.Multiply(m),
 		DamageType: t,
 	}
 }
@@ -109,42 +109,28 @@ func (s *FinalDamageTestSuite) TestVulnerabilityDoubles() {
 	s.Require().Equal(14, total)
 }
 
-// KNOWN GAP — damage immunity does not reduce damage, and never has.
+// Immunity negates, and an instance that lands for nothing is not reported as
+// landing at all.
 //
-// Pinned rather than fixed, in the style of TestKnownRoundTripGaps (#987):
-// this PR moves the arithmetic without changing it, and correcting immunity is
-// a live behavior change to the legacy stack. Filed separately.
-//
-// The mechanism: a component is read as a MULTIPLIER only when
-// `component.Multiplier != 0`, so immunity — which monstertraits/immunity.go
-// expresses as `Multiplier: 0` with the comment "Multiply by 0 = no damage" —
-// fails that test and is read as a base-damage contribution of Total() == 0
-// instead. The immunity component is silently discarded and full damage lands.
-// resolveMultipliers' `m == 0.0 -> hasImmunity` branch is unreachable as a
-// direct consequence.
-//
-// Nothing pins the correct behavior today, which is why it went unnoticed:
-// monstertraits' immunity tests assert the condition applies, never that
-// damage drops. WHEN THIS IS FIXED, THIS TEST SHOULD FAIL — update it to
-// assert the poison instance is dropped entirely.
-func (s *FinalDamageTestSuite) TestKnownGapImmunityIsIgnored() {
+// This is rpg-toolkit#1012's fix-day assertion. Until the dispatch keyed on
+// presence rather than the value zero, immunity's 0.0 was indistinguishable
+// from "no multiplier" and the immune target took full damage — the shape of
+// bug where the rule is written, the branch exists, and nothing ever reaches it.
+func (s *FinalDamageTestSuite) TestImmunityDropsTheInstanceEntirely() {
 	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
 		s.flat(12, damage.Poison),
 		s.multiplier(0.0, damage.Poison),
 		s.flat(4, damage.Slashing),
 	})
 
-	s.Require().Equal([]combat.DamageInstanceInput{
-		{Amount: 12, Type: damage.Poison},
-		{Amount: 4, Type: damage.Slashing},
-	}, instances, "CURRENT behavior: the immune target takes full poison damage")
-	s.Require().Equal(16, total)
+	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 4, Type: damage.Slashing}}, instances,
+		"the poison instance is gone, not present at zero")
+	s.Require().Equal(4, total)
 }
 
-// The same gap from the stacking side: with immunity inert, a target that is
-// vulnerable AND resistant AND immune resolves as the cancel case (1.0) rather
-// than as immune (0.0).
-func (s *FinalDamageTestSuite) TestKnownGapImmunityDoesNotTrumpTheOthers() {
+// Immunity beats vulnerability and resistance both, whatever else is stacked —
+// the branch that was unreachable until #1012, now reached.
+func (s *FinalDamageTestSuite) TestImmunityTrumpsEverythingElse() {
 	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
 		s.flat(20, damage.Fire),
 		s.multiplier(2.0, damage.Fire),
@@ -152,9 +138,23 @@ func (s *FinalDamageTestSuite) TestKnownGapImmunityDoesNotTrumpTheOthers() {
 		s.multiplier(0.0, damage.Fire),
 	})
 
-	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 20, Type: damage.Fire}}, instances,
-		"CURRENT behavior: resistance and vulnerability cancel, immunity never counted")
-	s.Require().Equal(20, total)
+	s.Require().Empty(instances, "immune, so nothing lands — not the 1.0 cancel case")
+	s.Require().Zero(total)
+}
+
+// A zero factor is a MODIFIER, not an absent one. The distinction the whole
+// fix rests on, asserted directly rather than only through its consequences:
+// a component carrying Multiply(0) must never be read as damage of zero.
+func (s *FinalDamageTestSuite) TestAZeroFactorIsAModifierNotAbsentDamage() {
+	// If Multiply(0) were read as a base contribution, its Total() of 0 would
+	// add nothing and the fire would land in full.
+	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
+		s.flat(15, damage.Fire),
+		s.multiplier(0.0, damage.Fire),
+	})
+
+	s.Require().Empty(instances)
+	s.Require().Zero(total)
 }
 
 // Resistance and vulnerability cancel exactly — not 0.5 * 2.0 applied in some
