@@ -82,6 +82,7 @@ func goblinPatrol() *patrol {
 // someone launches the workbench by hand.
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
+		Initiative: rollOrderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{
@@ -492,9 +493,10 @@ func main() {
 				fmt.Println(" ", err)
 				continue
 			}
-			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-				"goblin": goblinPatrol(),
-			}})
+			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: rollOrderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+					"goblin": goblinPatrol(),
+				}})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
@@ -532,4 +534,13 @@ func showView(enc *encounter.Encounter, who core.EntityID) {
 func num(s string) float64 {
 	f, _ := strconv.ParseFloat(s, 64)
 	return f
+}
+
+// rollOrderAsGiven is the workbench's initiative roller: it keeps the order it
+// is handed. The workbench is a deterministic demo, so a shuffle would make
+// its transcript differ run to run for no gain.
+type rollOrderAsGiven struct{}
+
+func (rollOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+	return members, nil
 }

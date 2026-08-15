@@ -26,12 +26,23 @@ type ClocksTestSuite struct {
 // monster in one room.
 func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			// The goblin waits in the NEXT ROOM, which is how real content is
+			// authored and is the only way to open a scene that is not
+			// already a fight: sight is symmetric and unlimited within a room,
+			// so co-locating them means trigger detection forms the bubble at
+			// first light (rpg-toolkit#964). These tests drive the clock verbs
+			// against a fight they start themselves, so the scene has to begin
+			// as free roam.
+			Rooms: []encounter.RoomInput{
+				{ID: room1, Width: 10, Height: 10},
+				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+			},
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: room2, Position: spatial.Position{X: 7, Y: 7}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
@@ -124,7 +135,8 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 		Round:     3,
 	}}
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -175,7 +187,8 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 		Order: []core.EntityID{alice, goblin}, ActiveIdx: 0, Round: 1,
 	}}
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	fighting, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -208,7 +221,8 @@ func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter(
 	delete(data.Clock.Budgets, goblin)
 	data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -231,7 +245,8 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		delete(data.Clock.Budgets, goblin)
 		data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -246,7 +261,8 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 			{Order: []core.EntityID{alice}, ActiveIdx: 0, Round: 1},
 		}
 
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -271,7 +287,8 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data := enc.ToData()
 		data.Clock.Budgets["ghost"] = 0
 
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -284,7 +301,8 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 			Order: []core.EntityID{alice, core.EntityID("ghost")}, ActiveIdx: 0, Round: 1,
 		}}
 
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -296,7 +314,8 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 			Order: []core.EntityID{"ghost", "phantom"}, ActiveIdx: 0, Round: 1,
 		}}
 
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -315,7 +334,8 @@ func (s *ClocksTestSuite) TestABlobFromBeforeClockMembershipLoadsEveryoneOntoThe
 	data.Clock.Budgets = nil
 	data.Bubbles = nil
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	for _, id := range []core.EntityID{alice, goblin} {
@@ -341,15 +361,25 @@ const (
 // monster in one room, plus an external ending so closure is reachable.
 func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Rooms: []encounter.RoomInput{
+				{ID: room1, Width: 10, Height: 10},
+				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+			},
 		},
+		// The split party, which is now a SCENE rather than a sequence of
+		// calls: alice walks into the goblin's room and the two of them are a
+		// fight from first light, while bob, carl and dana explore next door
+		// none the wiser. Trigger detection forms the bubble — there is no
+		// caller-driven Form any more — and it forms it LOCALIZED, around the
+		// members who actually noticed each other (rpg-toolkit#964).
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: carl, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 8, Y: 8}},
-			{ID: dana, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 9, Y: 8}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 2, Y: 3}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 3, Y: 2}},
+			{ID: carl, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 8, Y: 8}},
+			{ID: dana, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 9, Y: 8}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
@@ -375,7 +405,8 @@ func (s *ClocksTestSuite) assertR6(enc *encounter.Encounter, members ...core.Ent
 		_, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
 		s.Require().NoError(err, "member %q must be on exactly one clock", id)
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: enc.ToData()})
 	s.Require().NoError(err, "the persisted shape must pass the trust boundary (R6)")
 }
 
@@ -390,20 +421,17 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	enc := s.fiveMemberEncounter()
 	everyone := []core.EntityID{alice, bob, carl, dana, goblin}
 
-	// Everyone free-roams: the world clock is the default, not a mode.
+	// The fight is already on when the scene opens — alice and the goblin
+	// share a room, so first light formed their bubble (rpg-toolkit#964). The
+	// party next door is the point: a fight is LOCALIZED, so bob, carl and
+	// dana keep free-roaming while it runs.
 	s.assertR6(enc, everyone...)
-	for _, id := range everyone {
+	for _, id := range []core.EntityID{bob, carl, dana} {
 		out, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
 		s.Require().NoError(err)
 		s.Require().Equal(encounter.ClockWorld, out.Kind, "member %q", id)
 	}
 
-	// Alice and Bob trigger a fight with the goblin. The rulebook has rolled
-	// initiative — the order arrives from outside (R7); trigger detection is
-	// deliberately not this step's business.
-	formOut, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin, bob}})
-	s.Require().NoError(err)
-	s.NotZero(formOut.Seq, "forming a fight is a story beat")
 	s.assertR6(enc, everyone...)
 
 	fighting, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -411,7 +439,9 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.Equal(encounter.ClockTurn, fighting.Kind)
 	s.Equal(alice, fighting.Active, "round 1 opens with the first in the order")
 	s.Equal(1, fighting.Round)
-	s.Equal([]core.EntityID{alice, goblin, bob}, fighting.Order)
+	// Sorted, because trigger detection orders the engaged deterministically
+	// and the suite's roller keeps what it is handed.
+	s.Equal([]core.EntityID{alice, goblin}, fighting.Order)
 
 	// The fight is LOCALIZED: the distant pair is not in it and not paused
 	// by it.
@@ -432,11 +462,11 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.Require().NoError(err)
 
 	budgets := enc.ToData().Clock.Budgets
-	s.Equal(1, budgets[carl], "the distant pair accrues while the fight runs")
+	s.Equal(1, budgets[bob], "the distant party accrues while the fight runs")
+	s.Equal(1, budgets[carl])
 	s.Equal(1, budgets[dana])
 	s.NotContains(budgets, alice, "fight members are off the tick entirely")
 	s.NotContains(budgets, goblin)
-	s.NotContains(budgets, bob)
 
 	// A round of combat: alice and the goblin take their turns.
 	et, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
@@ -445,7 +475,8 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.False(et.RoundWrapped)
 	et, err = enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
 	s.Require().NoError(err)
-	s.Equal(bob, et.Next)
+	s.Equal(alice, et.Next, "two in the fight, so the round wraps back to her")
+	s.True(et.RoundWrapped)
 	s.assertR6(enc, everyone...)
 
 	// Carl wanders too close and falls in mid-round, slotted after the
@@ -458,9 +489,8 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	joined, err := enc.ClockOf(&encounter.ClockOfInput{Member: carl})
 	s.Require().NoError(err)
 	s.Equal(encounter.ClockTurn, joined.Kind)
-	s.Equal([]core.EntityID{alice, goblin, carl, bob}, joined.Order, "carl landed at the requested slot")
-	s.Equal(bob, joined.Active, "falling in does not steal the active turn")
-	s.Equal(1, joined.Round)
+	s.Equal([]core.EntityID{alice, goblin, carl}, joined.Order, "carl landed at the requested slot")
+	s.Equal(alice, joined.Active, "falling in does not steal the active turn")
 
 	// And having fallen in, carl is the fight's now — free-roam movement is
 	// no longer his to make.
@@ -468,21 +498,26 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInBubble)
 
-	// Bob closes the round: it wraps into round 2 with carl in the order.
-	et, err = enc.EndTurn(&encounter.EndTurnInput{Member: bob})
+	// Alice and the goblin take their turns again; carl closes the round he
+	// fell into, and it wraps across the grown order.
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
+	s.Require().NoError(err)
+	et, err = enc.EndTurn(&encounter.EndTurnInput{Member: carl})
 	s.Require().NoError(err)
 	s.True(et.RoundWrapped, "the round wraps across the grown order")
 	s.Equal(alice, et.Next)
 	wrapped, err := enc.ClockOf(&encounter.ClockOfInput{Member: carl})
 	s.Require().NoError(err)
-	s.Equal(2, wrapped.Round)
+	s.Equal(3, wrapped.Round)
 
 	// The fight ends, reached through any of its members: everyone re-homes
 	// to the world clock at budget zero — time spent fighting was spent,
 	// not banked. Dana never left, so hers is intact.
 	dis, err := enc.Dissolve(&encounter.DissolveInput{Member: alice})
 	s.Require().NoError(err)
-	s.Equal([]core.EntityID{alice, goblin, carl, bob}, dis.Members, "dissolve reports the bubble order")
+	s.Equal([]core.EntityID{alice, goblin, carl}, dis.Members, "dissolve reports the bubble order")
 	s.assertR6(enc, everyone...)
 
 	for _, id := range everyone {
@@ -517,78 +552,16 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 		"tick",
 		"turn-ended", "turn-ended",
 		"transferred",
-		"turn-ended",
+		"turn-ended", "turn-ended", "turn-ended",
 		"bubble-dissolved",
 	}, clockBeats)
 }
 
-// TestFormRejections pins Form's refusals, including the issue's named
-// requirement: a member already in a bubble is rejected, never silently
-// merged. The disjoint-second-fight case is the one-bubble policy — when
-// that policy lifts, the per-member overlap check is what remains.
-func (s *ClocksTestSuite) TestFormRejections() {
-	s.Run("an empty order", func() {
-		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: nil})
-		s.Require().Error(err)
-		s.ErrorIs(err, encounter.ErrNoMember)
-	})
-
-	s.Run("a duplicated entry", func() {
-		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin, alice}})
-		s.Require().Error(err)
-		s.ErrorIs(err, encounter.ErrNoMember)
-	})
-
-	s.Run("a non-member in the order", func() {
-		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, "stranger"}})
-		s.Require().Error(err)
-		s.ErrorIs(err, encounter.ErrNotMember)
-	})
-
-	s.Run("a member who is already fighting", func() {
-		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
-
-		_, err = enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, bob}})
-		s.Require().Error(err)
-		s.ErrorIs(err, encounter.ErrInBubble)
-	})
-
-	s.Run("a disjoint second fight while one runs", func() {
-		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
-
-		_, err = enc.Form(&encounter.FormInput{Order: []core.EntityID{carl, dana}})
-		s.Require().Error(err)
-		s.ErrorIs(err, encounter.ErrInBubble)
-	})
-
-	s.Run("a rejected form touches nothing", func() {
-		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin, "stranger"}})
-		s.Require().Error(err)
-
-		// alice and the goblin were named BEFORE the defect: R5 means they
-		// were never pulled off the world clock.
-		for _, id := range []core.EntityID{alice, goblin} {
-			out, cerr := enc.ClockOf(&encounter.ClockOfInput{Member: id})
-			s.Require().NoError(cerr)
-			s.Equal(encounter.ClockWorld, out.Kind, "member %q", id)
-		}
-		s.Empty(enc.ToData().Bubbles)
-	})
-}
-
-// TestTransferRejections pins Transfer's refusals, and the one guarantee a
-// refusal must keep: both clocks unchanged (the leaf compensates, R6).
 func (s *ClocksTestSuite) TestTransferRejections() {
 	s.Run("into a fight that is not running", func() {
-		enc := s.fiveMemberEncounter()
+		// The two-member scene opens with the goblin a room away, so no
+		// bubble exists to transfer into.
+		enc := s.twoMemberEncounter()
 		_, err := enc.Transfer(&encounter.TransferInput{Member: alice, To: encounter.ClockTurn})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrNoBubble)
@@ -596,20 +569,16 @@ func (s *ClocksTestSuite) TestTransferRejections() {
 
 	s.Run("into a fight the member is already in", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
 
-		_, err = enc.Transfer(&encounter.TransferInput{Member: alice, To: encounter.ClockTurn})
+		_, err := enc.Transfer(&encounter.TransferInput{Member: alice, To: encounter.ClockTurn})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInBubble)
 	})
 
 	s.Run("out of a fight the member is not in", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
 
-		_, err = enc.Transfer(&encounter.TransferInput{Member: bob, To: encounter.ClockWorld})
+		_, err := enc.Transfer(&encounter.TransferInput{Member: bob, To: encounter.ClockWorld})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrNoBubble)
 	})
@@ -623,10 +592,8 @@ func (s *ClocksTestSuite) TestTransferRejections() {
 
 	s.Run("an out-of-range slot leaves both clocks unchanged", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
 
-		_, err = enc.Transfer(&encounter.TransferInput{Member: bob, To: encounter.ClockTurn, Pos: 7})
+		_, err := enc.Transfer(&encounter.TransferInput{Member: bob, To: encounter.ClockTurn, Pos: 7})
 		s.Require().Error(err)
 		s.ErrorIs(err, clock.ErrBadPosition, "the leaf's own rejection propagates")
 
@@ -645,17 +612,17 @@ func (s *ClocksTestSuite) TestTransferRejections() {
 func (s *ClocksTestSuite) TestEndTurnRejections() {
 	s.Run("a member not in a fight", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+		// bob explores next door while alice and the goblin fight, so he is
+		// the one with no turn to end.
+		_, err := enc.EndTurn(&encounter.EndTurnInput{Member: bob})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrNoBubble)
 	})
 
 	s.Run("not their turn", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
 
-		_, err = enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
+		_, err := enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
 		s.Require().Error(err)
 		s.ErrorIs(err, clock.ErrNotActive)
 
@@ -669,7 +636,9 @@ func (s *ClocksTestSuite) TestEndTurnRejections() {
 // through a fight member — a free-roamer names no bubble.
 func (s *ClocksTestSuite) TestDissolveRejectsAMemberNotInAFight() {
 	enc := s.fiveMemberEncounter()
-	_, err := enc.Dissolve(&encounter.DissolveInput{Member: alice})
+	// bob is exploring next door while alice and the goblin fight, so he
+	// names no bubble to dissolve.
+	_, err := enc.Dissolve(&encounter.DissolveInput{Member: bob})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrNoBubble)
 }
@@ -681,8 +650,8 @@ func (s *ClocksTestSuite) TestClockVerbsRejectAClosedEncounter() {
 	_, err := enc.End(&encounter.EndInput{Ending: "called"})
 	s.Require().NoError(err)
 
-	_, err = enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-	s.ErrorIs(err, encounter.ErrClosed)
+	// Form's row is gone with the verb (rpg-toolkit#964) — it is unexported
+	// now, and its ErrClosed is pinned from inside in clocks_internal_test.go.
 	_, err = enc.Transfer(&encounter.TransferInput{Member: alice, To: encounter.ClockTurn})
 	s.ErrorIs(err, encounter.ErrClosed)
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
@@ -697,10 +666,8 @@ func (s *ClocksTestSuite) TestClockVerbsRejectAClosedEncounter() {
 // arrives a fight member moving AT ALL would be moving outside initiative.
 func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 	enc := s.fiveMemberEncounter()
-	_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-	s.Require().NoError(err)
 
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 2, Y: 1}})
+	_, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 2, Y: 1}})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInBubble)
 
@@ -723,9 +690,14 @@ func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	wanderer := &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 5}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
 		},
+		// Same room, so they see each other at first light and the fight
+		// forms — which is the state this test is about. The goblin's decider
+		// is willing; the world simply is not the thing that consults it any
+		// more.
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}, Decider: wanderer},
@@ -734,9 +706,6 @@ func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 			{Key: "called", Trigger: encounter.TriggerExternal{}},
 		},
 	})
-	s.Require().NoError(err)
-
-	_, err = enc.Form(&encounter.FormInput{Order: []core.EntityID{goblin, alice}})
 	s.Require().NoError(err)
 
 	_, err = enc.Pump(&encounter.PumpInput{})
@@ -759,10 +728,8 @@ func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 func (s *ClocksTestSuite) TestADrainedBubbleIsPruned() {
 	s.Run("drained by Exit", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
 
-		_, err = enc.Exit(&encounter.ExitInput{Member: alice})
+		_, err := enc.Exit(&encounter.ExitInput{Member: alice})
 		s.Require().NoError(err)
 		s.Len(enc.ToData().Bubbles, 1, "a fight of one is still a fight")
 
@@ -773,10 +740,8 @@ func (s *ClocksTestSuite) TestADrainedBubbleIsPruned() {
 
 	s.Run("drained by Transfer", func() {
 		enc := s.fiveMemberEncounter()
-		_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin}})
-		s.Require().NoError(err)
 
-		_, err = enc.Transfer(&encounter.TransferInput{Member: goblin, To: encounter.ClockWorld})
+		_, err := enc.Transfer(&encounter.TransferInput{Member: goblin, To: encounter.ClockWorld})
 		s.Require().NoError(err)
 		s.Len(enc.ToData().Bubbles, 1)
 
@@ -796,7 +761,8 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 	data := enc.ToData()
 	data.Bubbles = []clock.TurnData{{}}
 
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInvalidData)
 }
@@ -806,24 +772,26 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 // shape, and the reloaded encounter continues the same round.
 func (s *ClocksTestSuite) TestAMidFightBlobRoundTrips() {
 	enc := s.fiveMemberEncounter()
-	_, err := enc.Form(&encounter.FormInput{Order: []core.EntityID{alice, goblin, bob}})
-	s.Require().NoError(err)
-	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
-	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: bob})
+	// Reached through a member of the fight — bob is exploring next door.
+	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: goblin})
 	s.Require().NoError(err)
 	s.Equal(encounter.ClockTurn, out.Kind)
 	s.Equal(goblin, out.Active, "the reloaded fight is mid-round, exactly where it was")
 	s.Equal(1, out.Round)
 
-	// And it keeps playing: the goblin's turn ends in the reloaded world.
+	// And it keeps playing: the goblin's turn ends in the reloaded world and
+	// the round wraps back to alice, the two of them being the whole fight.
 	et, err := reloaded.EndTurn(&encounter.EndTurnInput{Member: goblin})
 	s.Require().NoError(err)
-	s.Equal(bob, et.Next)
+	s.Equal(alice, et.Next)
+	s.True(et.RoundWrapped)
 }
 
 func TestClocksSuite(t *testing.T) {

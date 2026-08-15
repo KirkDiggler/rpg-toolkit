@@ -72,13 +72,13 @@ func (f *failOnceDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error)
 
 // vandalDecider mutates every byte of its view then holds.
 type vandalDecider struct {
-	sawAlice bool
+	sawPeer bool
 }
 
 func (v *vandalDecider) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
 	for i := range snap.Holdings {
-		if snap.Holdings[i].Subject == "alice" {
-			v.sawAlice = true
+		if snap.Holdings[i].Subject == "rat" {
+			v.sawPeer = true
 		}
 		for j := range snap.Holdings[i].Payload {
 			snap.Holdings[i].Payload[j] = 'X'
@@ -174,9 +174,10 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 // cleanup: an exited monster's decider must never be consulted again.
 func (s *PumpTestSuite) TestPumpDoesNotConsultExitedMonsterDecider() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
 				Position: spatial.Position{X: 4, Y: 4}, Decider: &errorDecider{err: errors.New("must never be called")}},
 		},
@@ -208,12 +209,19 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 		}
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -222,7 +230,7 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -254,26 +262,17 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 		s.Equal(spatial.Position{X: 1, Y: 1}, pumpOut1.MonsterMoves[0].From, "goblin should start at (1,1)")
 		s.Equal(spatial.Position{X: 5, Y: 5}, pumpOut1.MonsterMoves[0].To, "goblin should move to (5,5)")
 
-		// Assert: alice sees goblin at new position via View
-		aliceView, err := enc.View(&encounter.ViewInput{Member: aliceID})
-		s.Require().NoError(err)
-		s.Len(aliceView, 1, "alice should see goblin after pump")
-
-		var payload encounter.SightPayload
-		err = json.Unmarshal(aliceView[0].Payload, &payload)
-		s.Require().NoError(err)
-		s.Equal(5.0, payload.X, "alice should see goblin at x=5")
-		s.Equal(5.0, payload.Y, "alice should see goblin at y=5")
-
-		// Assert: goblin sees alice via its own View (symmetric intel)
+		// The mutual-sight half of this test is gone with rpg-toolkit#964's v1:
+		// alice waits in the next room because a monster she can SEE is a
+		// monster she is FIGHTING, and Pump does not move a fight member. What
+		// a patrol looks like once somebody notices it is pinned separately,
+		// by TestPumpStopsMovingAMonsterOnceSeen.
+		//
+		// The goblin's own view is still the honest check that it moved and
+		// perceives from where it now stands.
 		goblinView, err := enc.View(&encounter.ViewInput{Member: goblinID})
 		s.Require().NoError(err)
-		s.Len(goblinView, 1, "goblin should see alice after pump")
-
-		err = json.Unmarshal(goblinView[0].Payload, &payload)
-		s.Require().NoError(err)
-		s.Equal(0.0, payload.X, "goblin should see alice at x=0")
-		s.Equal(0.0, payload.Y, "goblin should see alice at y=0")
+		s.Empty(goblinView, "nobody to see from (5,5) — alice is a room away")
 
 		// Second Pump: goblin should move to (3,3)
 		pumpOut2, err := enc.Pump(&encounter.PumpInput{})
@@ -284,86 +283,70 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 		s.Equal(spatial.Position{X: 3, Y: 3}, pumpOut2.MonsterMoves[0].To, "goblin should move to (3,3)")
 
 		// Assert: alice sees goblin at new position
-		aliceView, err = enc.View(&encounter.ViewInput{Member: aliceID})
+		goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 		s.Require().NoError(err)
-		err = json.Unmarshal(aliceView[0].Payload, &payload)
-		s.Require().NoError(err)
-		s.Equal(3.0, payload.X)
-		s.Equal(3.0, payload.Y)
+		s.Empty(goblinView, "still a room away")
 	})
 }
 
 func (s *PumpTestSuite) TestPumpDeciderIsolation() {
-	s.Run("decider receives exactly its own holdings (anti-wall-hack)", func() {
-		// Arrange: alice, bob (players), and goblin (monster) in same room
+	s.Run("a decider's snapshot holds what it can see and nothing else", func() {
 		aliceID := core.EntityID("alice")
-		bobID := core.EntityID("bob")
 		goblinID := core.EntityID("goblin")
 
-		spyDecider := &spyDecider{}
+		spy := &spyDecider{}
 
-		setup := &encounter.SetupInput{
+		// Alice stands ONE CELL from the goblin with a wall between them. She
+		// is real, adjacent, and invisible — which is the only way to ask the
+		// anti-wall-hack question in v1: a monster that could SEE her would be
+		// fighting her, and Pump would not consult its decider at all
+		// (rpg-toolkit#964).
+		//
+		// WHAT THIS TEST LOST, named rather than quietly dropped: C2 has two
+		// halves, and only the no-leak half survives here. The other half —
+		// "holdings contain what it DID see" — needs a monster that watches
+		// players peacefully, which v1 cannot express. It comes back with
+		// asymmetric perception (#1020) or a faction model, at which point
+		// this test should grow the positive case again.
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Rooms: []encounter.RoomInput{{
+					ID: room1, Width: 10, Height: 10,
+					Occluders: []spatial.Position{{X: 5, Y: 5}},
+				}},
 			},
 			Members: []encounter.MemberInput{
+				{ID: aliceID, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 5}},
 				{
-					ID:       aliceID,
-					Kind:     encounter.KindPlayer,
-					Room:     room1,
-					Position: spatial.Position{X: 0, Y: 0},
-				},
-				{
-					ID:       bobID,
-					Kind:     encounter.KindPlayer,
-					Room:     room1,
-					Position: spatial.Position{X: 2, Y: 2},
-				},
-				{
-					ID:       goblinID,
-					Kind:     encounter.KindMonster,
-					Room:     room1,
-					Position: spatial.Position{X: 5, Y: 5},
-					Decider:  spyDecider,
+					ID: goblinID, Kind: encounter.KindMonster, Room: room1,
+					Position: spatial.Position{X: 6, Y: 5}, Decider: spy,
 				},
 			},
-			Endings: []encounter.EndingInput{
-				{
-					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
-				},
-			},
-		}
-
-		// Act: Create encounter and pump
-		enc, err := encounter.NewEncounter(setup)
+			Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		})
 		s.Require().NoError(err)
+
+		// Nothing formed: the wall means neither noticed the other, so the
+		// goblin is still the world's to move and its decider still runs.
+		clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblinID})
+		s.Require().NoError(err)
+		s.Require().Equal(encounter.ClockWorld, clockOf.Kind)
 
 		_, err = enc.Pump(&encounter.PumpInput{})
 		s.Require().NoError(err)
 
-		// Assert: goblin's spy decider saw exactly one holding (alice only, as bob is further away)
-		// In this setup, alice at (0,0) and goblin at (5,5) are in LoS; bob at (2,2) and goblin at (5,5) are also in LoS
-		// So goblin should see both alice and bob. But the key test is: did it see ONLY them, not anything else?
-		s.Len(spyDecider.capturedView, 2, "goblin should see exactly two holdings (alice and bob)")
+		s.Equal(room1, spy.capturedSnap.Room, "its own room")
+		s.Equal(spatial.Position{X: 6, Y: 5}, spy.capturedSnap.Position, "its own position")
 
-		// Verify the holdings are alice and bob (order may vary, so check both are present)
-		holdingSubjects := make(map[intel.Subject]bool)
-		for _, holding := range spyDecider.capturedView {
-			holdingSubjects[holding.Subject] = true
-		}
-		s.True(holdingSubjects[intel.Subject(aliceID)], "goblin should see alice")
-		s.True(holdingSubjects[intel.Subject(bobID)], "goblin should see bob")
+		// THE PIN: alice exists one cell away and does not appear. The
+		// snapshot is built from what this member holds, not from the
+		// encounter's live truth — so an adjacent player it cannot see is a
+		// player it cannot read.
+		s.Empty(spy.capturedView,
+			"an adjacent but unseen player must not leak into a decider's snapshot")
 	})
 }
-
 func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 	s.Run("decider error aborts pump atomically", func() {
 		// Arrange
@@ -374,12 +357,19 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		errDecider := &errorDecider{err: deciderErr}
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -388,7 +378,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -428,13 +418,18 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		s.Require().NoError(err)
 		s.Equal(initialLen, len(afterStory), "story should not have new entries after failed pump")
 
-		// Assert: alice's holding of the goblin is unchanged (it never moved)
-		aliceView, err := enc.View(&encounter.ViewInput{Member: aliceID})
-		s.Require().NoError(err)
-		s.Require().Len(aliceView, 1, "alice must still hold the goblin")
-		var payload encounter.SightPayload
-		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &payload))
-		s.Equal(5.0, payload.X, "goblin must not have moved on a failed pump (R5)")
+		// Assert: the goblin is where it started. Read from placement rather
+		// than from alice's percept — she waits a room away, because a
+		// monster she could see would be a monster she was fighting, and a
+		// fight monster is never pumped at all (rpg-toolkit#964).
+		var goblinPos encounter.PositionData
+		for _, m := range enc.ToData().Members {
+			if m.ID == goblinID {
+				goblinPos = m.Position
+			}
+		}
+		s.Equal(5.0, goblinPos.X, "goblin must not have moved on a failed pump (R5)")
+		s.Equal(5.0, goblinPos.Y)
 	})
 }
 
@@ -443,9 +438,10 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 // NEXT (successful) pump reports reading 1, not 2.
 func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
 				Position: spatial.Position{X: 4, Y: 4}, Decider: &failOnceDecider{}},
 		},
@@ -467,9 +463,10 @@ func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 // have moved — no partial mutation (R5).
 func (s *PumpTestSuite) TestPumpPartialAbort() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			// "aaa-goblin" sorts before "zzz-goblin": it decides (and
 			// would move) before the erroring decider is consulted.
 			{ID: core.EntityID("aaa-goblin"), Kind: encounter.KindMonster, Room: room1,
@@ -511,9 +508,17 @@ func (s *PumpTestSuite) TestPumpPartialAbort() {
 func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	vandal := &vandalDecider{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
+			// The vandal's victim is a MONSTER peer, not a player. Two
+			// monsters seeing each other starts no fight — classification
+			// pairs players against monsters — so the goblin keeps a real,
+			// current holding to scribble on while staying the world's to
+			// pump (rpg-toolkit#964).
+			{ID: core.EntityID("rat"), Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 6, Y: 6}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
 				Position: spatial.Position{X: 4, Y: 4}, Decider: vandal},
 		},
@@ -524,7 +529,7 @@ func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
-	s.Require().True(vandal.sawAlice, "precondition: the vandal saw and scribbled on a holding")
+	s.Require().True(vandal.sawPeer, "precondition: the vandal saw and scribbled on a holding")
 
 	goblinView, err := enc.View(&encounter.ViewInput{Member: core.EntityID("goblin")})
 	s.Require().NoError(err)
@@ -547,12 +552,19 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 		}
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -561,7 +573,7 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -607,12 +619,19 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 		aliceID := core.EntityID("alice")
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -621,7 +640,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -650,14 +669,17 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 		// Assert: No monster moves recorded
 		s.Len(pumpOut.MonsterMoves, 0, "monster with nil decider should not move")
 
-		// Assert: Goblin is still at (5,5) via alice's view
-		aliceView, err := enc.View(&encounter.ViewInput{Member: aliceID})
-		s.Require().NoError(err)
-		var payload encounter.SightPayload
-		err = json.Unmarshal(aliceView[0].Payload, &payload)
-		s.Require().NoError(err)
-		s.Equal(5.0, payload.X)
-		s.Equal(5.0, payload.Y)
+		// Assert: the goblin is still at (5,5), read from placement. Alice
+		// waits a room away — a monster she could see would be one she was
+		// fighting, and a fight monster is never pumped (rpg-toolkit#964).
+		var goblinPos encounter.PositionData
+		for _, m := range enc.ToData().Members {
+			if m.ID == goblinID {
+				goblinPos = m.Position
+			}
+		}
+		s.Equal(5.0, goblinPos.X)
+		s.Equal(5.0, goblinPos.Y)
 	})
 }
 
@@ -669,9 +691,10 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 // this seam.
 func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
 			Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
@@ -704,12 +727,19 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 		}
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -718,7 +748,7 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -777,12 +807,19 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 		}
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -791,7 +828,7 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -856,12 +893,19 @@ func (s *PumpTestSuite) TestPumpClockAdvanceByOne() {
 		goblinID := core.EntityID("goblin")
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -870,7 +914,7 @@ func (s *PumpTestSuite) TestPumpClockAdvanceByOne() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
@@ -930,12 +974,19 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 		aliceID := core.EntityID("alice")
 
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
 						Width:  10,
 						Height: 10,
+					},
+					{
+						ID:     room2,
+						Width:  10,
+						Height: 10,
+						Origin: spatial.Position{X: 10, Y: 0},
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -944,7 +995,7 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
+					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 					Decider:  &patrolDecider{}, // Players cannot have deciders!
 				},
@@ -989,6 +1040,7 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 	spyB := &snapshotSpyDecider{}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1029,6 +1081,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseSuccess() {
 	decider := &onceTraverseDecider{connection: "door1"}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1074,6 +1127,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
 	decider := &onceTraverseDecider{connection: "door1"}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1128,6 +1182,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
 	decider := &onceTraverseDecider{connection: "no-such-door"}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1179,6 +1234,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 	deciderErr := errors.New("test decider error")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1222,6 +1278,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinID := core.EntityID("goblin")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1243,6 +1300,12 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
 	s.Equal(intel.Current, goblinView[0].Status, "precondition: goblin must see alice before she leaves")
+
+	// Seeing each other started a fight (rpg-toolkit#964), and a fight member
+	// cannot free-roam. Alice breaks off before she runs — which is the story
+	// this test always told, now with the fight it implied made explicit.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: aliceID})
+	s.Require().NoError(err)
 
 	// Stage 1: alice traverses away, then repositions within room-b so
 	// the monster's eventual arrival isn't a trivial same-cell coincidence.
@@ -1322,6 +1385,7 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 	bID := core.EntityID("zzz-goblin")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10},
@@ -1420,7 +1484,8 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 
 	s.Run("control: decision order and declaration order agree", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+			Initiative: orderAsGiven{},
+			Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				{ID: aID, Kind: encounter.KindMonster, Room: room1,
 					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
@@ -1444,7 +1509,8 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 
 	s.Run("cross: decision order dominates — the SECOND-declared ending wins", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+			Initiative: orderAsGiven{},
+			Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				// Same decision order (aaa first, zzz second), but now each
 				// monster's landing position fires the OTHER declared ending.
@@ -1502,9 +1568,10 @@ func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
 	decider := &reentrantSelfExitDecider{self: goblinID}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
-			{ID: aliceID, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblinID, Kind: encounter.KindMonster, Room: room1,
 				Position: spatial.Position{X: 4, Y: 4}, Decider: decider},
 		},
@@ -1523,4 +1590,182 @@ func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
 	s.Require().NoError(err)
 	s.Require().Len(members, 1, "only alice remains — goblin's self-exit went through")
 	s.Equal(aliceID, members[0].ID)
+}
+
+// TestPumpStopsMovingAMonsterOnceSeen pins the invariant v1's trigger
+// detection creates, deliberately rather than incidentally: a monster the
+// party has seen is in a bubble, and Pump does not move a bubble member.
+//
+// This is a regression guard as much as a rule. Pump drives everyone on the
+// WORLD clock; if it ever also drove fight members, a monster would act twice
+// per round — once on its turn and once on the world tick — and the symptom
+// would be a monster that moves further than its turn allowed rather than an
+// error anybody could see.
+//
+// The patrol walks the goblin out of its own room and into alice's view. The
+// step that reaches her forms the bubble; the step after that does not happen.
+func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
+	aliceID := core.EntityID("alice")
+	goblinID := core.EntityID("goblin")
+
+	// Two cells, one each side of the doorway: the goblin traverses into
+	// alice's room and is seen the moment it arrives.
+	gate := encounter.ConnectionInput{
+		ID: "door", From: room1, To: room2,
+		FromPosition: spatial.Position{X: 9, Y: 5},
+		ToPosition:   spatial.Position{X: 0, Y: 5},
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: room1, Width: 10, Height: 10},
+				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+			},
+			Connections: []encounter.ConnectionInput{gate},
+		},
+		Members: []encounter.MemberInput{
+			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 3, Y: 5}},
+			{
+				ID: goblinID, Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 9, Y: 5},
+				Decider:  &traverseThenWander{connection: "door"},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// Free roam to start: nobody has seen anybody.
+	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblinID})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockWorld, clockOf.Kind, "unseen monsters are the world's to move")
+
+	// The pump that walks it through the door is the pump that starts the fight.
+	first, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().Len(first.MonsterTraverses, 1, "the goblin went through the door")
+	s.Require().NotNil(first.Formed, "and was seen on arrival, so the bubble formed")
+	s.Require().ElementsMatch([]core.EntityID{aliceID, goblinID}, first.Formed.Order)
+
+	clockOf, err = enc.ClockOf(&encounter.ClockOfInput{Member: goblinID})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, clockOf.Kind, "a seen monster is in the fight")
+
+	// THE PIN: the next pump leaves it alone. Its decider would happily wander
+	// again — the pump simply is not the thing that moves it any more.
+	second, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Empty(second.MonsterMoves, "a seen monster is not the world's to move")
+	s.Empty(second.MonsterTraverses, "and not the world's to walk through doors either")
+}
+
+// traverseThenWander goes through its connection once, then shuffles.
+type traverseThenWander struct {
+	connection string
+	gone       bool
+}
+
+func (t *traverseThenWander) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
+	if !t.gone {
+		t.gone = true
+		return encounter.IntentTraverse{Connection: t.connection}, nil
+	}
+
+	return encounter.IntentMoveTo{To: spatial.Position{X: snap.Position.X + 1, Y: snap.Position.Y}}, nil
+}
+
+// TestPumpDeciderHuntsLastKnownPosition is C2's anti-wall-hack contract in
+// full — both halves — in a scene v1 can actually reach.
+//
+// The trick is fight → Dissolve → hunt. Contact forms the bubble; Dissolve
+// returns the goblin to the world clock still CARRYING what it saw, because
+// dissolving moves clocks and never touches intel; alice then steps behind a
+// pillar, which fades her from the goblin's percept without deleting her from
+// its memory. Now the goblin is a world-clock monster with real, stale intel,
+// so Pump consults its decider and the snapshot has something to be wrong
+// about.
+//
+// Both halves pin at once:
+//   - POSITIVE: the snapshot holds what the goblin ITSELF saw — alice at the
+//     cell she was standing in when it last had eyes on her.
+//   - NEGATIVE: it does NOT hold where she actually is now.
+//
+// That is the anti-wall-hack in its truest form: the monster hunts your last
+// known position rather than your current one. It is falsifiable in the way
+// that matters — a snapshot builder that read the room's ground truth instead
+// of the member's holdings would report alice's NEW cell, and this test would
+// fail with the two coordinates side by side.
+func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
+	aliceID := core.EntityID("alice")
+	goblinID := core.EntityID("goblin")
+
+	spy := &spyDecider{}
+
+	seen := spatial.Position{X: 7, Y: 5}
+	hidden := spatial.Position{X: 4, Y: 5}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{
+				ID: room1, Width: 10, Height: 10,
+				// One pillar, positioned so that alice is visible from the
+				// goblin where she starts and hidden where she ends up.
+				Occluders: []spatial.Position{{X: 5, Y: 5}},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: aliceID, Kind: encounter.KindPlayer, Room: room1, Position: seen},
+			{
+				ID: goblinID, Kind: encounter.KindMonster, Room: room1,
+				Position: spatial.Position{X: 6, Y: 5}, Decider: spy,
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// They saw each other at first light, so they are fighting.
+	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: goblinID})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, clockOf.Kind)
+
+	// The fight breaks off. Dissolve moves clocks and nothing else — the
+	// goblin walks away still remembering where alice was.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: goblinID})
+	s.Require().NoError(err)
+
+	clockOf, err = enc.ClockOf(&encounter.ClockOfInput{Member: goblinID})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockWorld, clockOf.Kind, "back to the world's to move")
+
+	// Alice slips behind the pillar. She fades from the goblin's percept — no
+	// current sight, so nothing re-triggers (classification reads first
+	// contact, and a fade is not a contact).
+	moved, err := enc.Move(&encounter.MoveInput{Member: aliceID, To: hidden})
+	s.Require().NoError(err)
+	s.Require().Nil(moved.Formed, "she left its sight rather than entering it")
+
+	clockOf, err = enc.ClockOf(&encounter.ClockOfInput{Member: goblinID})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockWorld, clockOf.Kind, "and no fight restarted")
+
+	// The pump consults the decider, because the goblin is the world's again.
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+
+	s.Require().Len(spy.capturedView, 1, "the goblin still remembers alice")
+
+	var payload encounter.SightPayload
+	s.Require().NoError(json.Unmarshal(spy.capturedView[0].Payload, &payload))
+
+	// POSITIVE: its own memory, at the cell it last saw her in.
+	s.Equal(float64(seen.X), payload.X, "the goblin hunts where it last saw her")
+	s.Equal(float64(seen.Y), payload.Y)
+
+	// NEGATIVE: not where she actually is. A snapshot built from ground truth
+	// would report this instead.
+	s.NotEqual(float64(hidden.X), payload.X, "her live position must not leak into the snapshot")
 }

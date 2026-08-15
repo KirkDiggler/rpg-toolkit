@@ -45,6 +45,7 @@ func Example_theTombWatch() {
 	// The crypt: a pillar at (6,6); alice enters at (2,6); a goblin
 	// stands at (6,10). One way out: the stairs at (11,11).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: "crypt", Width: 12, Height: 12,
@@ -69,6 +70,13 @@ func Example_theTombWatch() {
 	tell(enc, "alice", "goblin")
 	tell(enc, "goblin", "alice")
 
+	// Seeing each other starts a fight (rpg-toolkit#964); the party breaks
+	// off, which is what lets alice slip away rather than trade blows.
+	if _, err := enc.Dissolve(&encounter.DissolveInput{Member: "alice"}); err != nil {
+		fmt.Println("dissolve:", err)
+		return
+	}
+
 	fmt.Println("-- alice slips behind the pillar's file --")
 	if _, err := enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: 6, Y: 2}}); err != nil {
 		fmt.Println("move:", err)
@@ -79,7 +87,8 @@ func Example_theTombWatch() {
 
 	fmt.Println("-- the table saves and comes back tomorrow --")
 	data := enc.ToData()
-	enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	if err != nil {
 		fmt.Println("load:", err)
 		return

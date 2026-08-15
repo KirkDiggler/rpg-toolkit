@@ -358,6 +358,14 @@ type LoadEncounterInput struct {
 	// Nil is legal and means no member acts on its own. A player member naming a
 	// Decider here is rejected (design law C2).
 	Deciders map[MemberID]Decider
+
+	// Initiative rolls the order a bubble forms in. REQUIRED, exactly as it is
+	// on SetupInput: a loaded encounter runs trigger detection from its first
+	// sight refresh, so it can start a fight before its caller does anything,
+	// and one it cannot order is a misconfiguration. Refused here rather than
+	// guarded where it is used — a nil roller is an error returned at the
+	// door, not a branch taken deep inside a verb.
+	Initiative InitiativeRoller
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -371,6 +379,9 @@ type LoadEncounterInput struct {
 func (in *LoadEncounterInput) Validate() error {
 	if in == nil {
 		return fmt.Errorf("load encounter: %w", ErrNilInput)
+	}
+	if in.Initiative == nil {
+		return fmt.Errorf("load encounter: Initiative is required: %w", ErrNoInitiative)
 	}
 
 	return nil
@@ -690,6 +701,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		members:     make(map[MemberID]*Member),
 		everMembers: make(map[MemberID]bool),
 		deciders:    make(map[MemberID]Decider),
+		initiative:  input.Initiative,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),

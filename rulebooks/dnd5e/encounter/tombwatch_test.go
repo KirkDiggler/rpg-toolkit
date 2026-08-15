@@ -52,6 +52,7 @@ func TestTombWatch(t *testing.T) {
 	// enter; a goblin patrols the far end between (7,10) and (6,10).
 	goblinPatrol := &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
@@ -78,6 +79,11 @@ func TestTombWatch(t *testing.T) {
 	require.Equal(t, intel.Current, st, "beat 1: bella sees it too")
 	st, _ = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees them back — intel is symmetric, nobody wall-hacks")
+
+	// Seeing each other started the fight (rpg-toolkit#964). The party breaks
+	// off to keep watching rather than trading blows — the watch is the scene.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: alice})
+	require.NoError(t, err, "beat 1: the party breaks off to watch")
 
 	// ---- Beat 2: the watch -----------------------------------------
 	// Alice advances to (2,6) to watch; the world moves on her action:
@@ -121,9 +127,10 @@ func TestTombWatch(t *testing.T) {
 	// goblin's patrol at load (its route position restarts; its INTEL
 	// does not — beliefs are state and traveled in the aggregate).
 	data := enc.ToData()
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-		goblin: &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}},
-	}})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+			goblin: &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}},
+		}})
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
@@ -144,6 +151,9 @@ func TestTombWatch(t *testing.T) {
 	require.Equal(t, intel.Current, st, "beat 5: from (10,2) the pillar doesn't block him — first light lands")
 	st, _ = seen(t, enc, goblin, cormac)
 	require.Equal(t, intel.Current, st, "beat 5: the goblin notices the newcomer")
+	require.NotNil(t, joinOut.Formed, "beat 5: noticing each other IS the fight starting")
+	require.Greater(t, joinOut.Formed.Seq, joinOut.Seq,
+		"beat 5: he arrives, THEN the fight starts — the story never runs backwards")
 	st, _ = seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Held, st, "beat 5: the join's refresh does not disturb alice's ghost")
 
@@ -214,14 +224,22 @@ func TestTombWatch(t *testing.T) {
 		kinds = append(kinds, beat["beat"].(string))
 	}
 	require.Equal(t, []string{
-		"scene-opened",  // beat 1
+		"scene-opened", // beat 1
+		// beat 1: they see each other, the fight starts, the party breaks off
+		// to watch instead
+		"bubble-formed", "bubble-dissolved",
 		"moved",         // beat 2: alice advances
 		"tick", "moved", // beat 2: pump 1, goblin steps out
 		"tick", "moved", // beat 2: pump 2, goblin steps back
 		"moved",  // beat 3: alice slips behind the pillar's file
 		"joined", // beat 5: cormac (the pause leaves no beat — pause is free)
-		"exited", // beat 6: bella
-		"moved",  // beat 7: alice reaches the stairs
+		// beat 5: and the goblin sees him arrive — his fight starts AFTER the
+		// arrival that caused it. Cause before effect: the reverse order is
+		// what this transcript caught when trigger detection moved inside
+		// refreshSight (see refreshSight's law).
+		"bubble-formed",
+		"exited", // beat 6: bella (alice and the goblin's watchers free-roam
+		"moved",  // beat 7: on — cormac's fight is localized to cormac)
 	}, kinds, "beat 8: the story IS the scene, told in order")
 
 	// ---- Beat 9: the sequel seed -----------------------------------
@@ -240,6 +258,7 @@ func TestTombWatch(t *testing.T) {
 		})
 	}
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,

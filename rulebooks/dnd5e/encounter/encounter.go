@@ -53,6 +53,11 @@ type Encounter struct {
 	members     map[MemberID]*Member
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders    map[MemberID]Decider
+
+	// initiative rolls the order a bubble forms with. Nil until Setup is given
+	// one; trigger detection refuses to start a fight without it rather than
+	// dropping the fight silently.
+	initiative InitiativeRoller
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Move, Traverse, Join) declaration order is
@@ -881,6 +886,17 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 	}
 
+	// Required, because construction is total (S8): trigger detection runs
+	// from first light onward, so an encounter that can hold players and
+	// monsters can start a fight before its caller does anything, and a fight
+	// it cannot order is a misconfiguration. Refusing here rather than
+	// mid-fight is the difference between a bug report and a bug — the
+	// alternative, discovering it when two members finally see each other,
+	// fails at the least convenient moment and looks like a rules bug.
+	if in.Initiative == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoInitiative)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -961,6 +977,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		members:          make(map[MemberID]*Member),
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
+		initiative:       in.Initiative,
 		endings:          nil,
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
@@ -1097,7 +1114,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	// First light: build sight percepts for each member using refreshSight
-	_, err = e.refreshSight(memberIDs)
+	firstLight, err := e.rebuildPercepts(memberIDs)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter first light: %w", err)
 	}
@@ -1112,6 +1129,22 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("newencounter append beat: %w", err)
+	}
+
+	// Trigger detection at first light, AFTER the scene has opened. A scene
+	// can open with a wolf already staring at the party, and a fight that
+	// waited for somebody to take a step would let them stand there
+	// indefinitely — but the story still has to read in the order it happened,
+	// and a fight that starts before the scene opens is a story nobody can
+	// follow. Setup ruled that first; it generalizes to every verb and the
+	// law is stated at [Encounter.refreshSight].
+	//
+	// This is also what makes reading only the transition lists complete
+	// everywhere else: every awareness that exists was created by some
+	// refreshSight, and this is the first one, so no awareness predates
+	// classification and no stale asymmetry can be missed.
+	if _, terr := e.applyTrigger(firstLight); terr != nil {
+		return nil, fmt.Errorf("newencounter first light: %w", terr)
 	}
 
 	return e, nil
@@ -1364,13 +1397,8 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	// Refresh sight for all members
-	intelDeltas, err := e.refreshSight(memberIDs)
-	if err != nil {
-		return nil, fmt.Errorf("move refresh sight: %w", err)
-	}
-
-	// Record the movement beat
+	// Record the movement beat BEFORE refreshing sight: the walk is the cause,
+	// anything trigger detection appends is its effect (see refreshSight).
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
@@ -1391,6 +1419,12 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}
 
 	seqNum := appendOut.Seq
+
+	// Refresh sight for all members
+	intelDeltas, formed, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("move refresh sight: %w", err)
+	}
 
 	// Evaluate ReachedPosition endings
 	var firedOutcome *Outcome
@@ -1458,6 +1492,7 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		IntelDeltas: intelDeltas,
 		Seq:         seqNum,
 		Outcome:     firedOutcome,
+		Formed:      formed,
 	}, nil
 }
 
@@ -1633,12 +1668,9 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	intelDeltas, err := e.refreshSight(memberIDs)
-	if err != nil {
-		return nil, fmt.Errorf("traverse refresh sight: %w", err)
-	}
-
-	// Record the traversal beat. The clock is NOT advanced (law T4).
+	// Record the traversal beat BEFORE refreshing sight: walking through the
+	// doorway is the cause, anything trigger detection appends is its effect
+	// (see refreshSight). The clock is NOT advanced (law T4).
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
@@ -1661,6 +1693,11 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 	}
 
 	seqNum := appendOut.Seq
+
+	intelDeltas, formed, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("traverse refresh sight: %w", err)
+	}
 
 	// Evaluate ReachedPosition endings against the ARRIVAL room/position.
 	var firedOutcome *Outcome
@@ -1715,6 +1752,7 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 	}
 
 	return &TraverseOutput{
+		Formed: formed,
 		Traversed: struct {
 			Member   MemberID
 			FromRoom string
@@ -1739,6 +1777,19 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 // the complete sight refresh happens once, and the story accrues tick and
 // move/traverse beats. Errors from a decider abort the pump atomically (R5):
 // no clock advance, no moves, no record entries.
+//
+// WHAT PUMP DRIVES IN v1, stated plainly because the answer narrowed: members
+// on the WORLD clock. Under v1's sight model (rpg-toolkit#964) any monster a
+// player can see is in a bubble, and a bubble member is deliberately not
+// pumped — so in practice this verb moves the monsters NOBODY HAS SEEN YET.
+// Free-roam monster behaviour is offscreen behaviour.
+//
+// That is a narrowing rather than the intent. It widens back when percept
+// production grows: asymmetric perception (#1020) lets a monster be watched
+// without a fight starting, and a faction model lets a visible creature be
+// non-hostile. Both change what forms a bubble, not what Pump does — see
+// classify's doc for the invariant. Pinned by
+// TestPumpStopsMovingAMonsterOnceSeen.
 //
 // Semantics:
 //   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
@@ -1917,11 +1968,10 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	intelDeltas, err := e.refreshSight(memberIDs)
-	if err != nil {
-		return nil, fmt.Errorf("pump refresh sight: %w", err)
-	}
-
+	// Pump's own beats — the tick frame and every action inside it — are
+	// recorded BEFORE sight refreshes: the monsters' walk is the cause,
+	// anything trigger detection appends is its effect (see refreshSight).
+	//
 	// Record the tick beat first (the frame)
 	tickBeatPayload := map[string]interface{}{
 		"beat": "tick",
@@ -1973,6 +2023,11 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 
 		seqs = append(seqs, actionAppendOut.Seq)
+	}
+
+	intelDeltas, formed, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("pump refresh sight: %w", err)
 	}
 
 	// Evaluate ReachedPosition endings, in decision order. For a
@@ -2075,14 +2130,55 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		IntelDeltas:      intelDeltas,
 		Seqs:             seqs,
 		Outcome:          firedOutcome,
+		Formed:           formed,
 	}, nil
 }
 
-// refreshSight rebuilds the complete percept for all given observers,
+// refreshSight rebuilds every observer's percept AND runs trigger detection on
+// what changed, returning the deltas and any fight that started.
+//
+// The two are ONE call on purpose. Trigger detection is a rule about sight, so
+// it belongs wherever sight changes — and wiring it at the verbs instead left
+// Traverse and Join silently untriggered until review caught them
+// (rpg-toolkit#964). A verb cannot refresh sight and forget the rule if
+// refreshing sight IS running the rule; a future verb gets it by writing the
+// obvious call.
+//
+// CALL THIS AFTER YOUR VERB HAS APPENDED ITS OWN BEAT. The law, stated once
+// here because here is where every verb meets it: A VERB'S OWN BEAT PRECEDES
+// ANY BEAT ITS CONSEQUENCES APPEND — cause before effect, in every story. A
+// reader of Story must be able to see the walk that started the fight before
+// the fight. Setup ruled this first (a scene records that it opened before it
+// records a fight starting inside it); the same law holds for Move, Traverse,
+// Pump and Join, and each one pins its own half of it.
+//
+// [Encounter.rebuildPercepts] is the half without the rule, and Setup is its
+// only caller — Setup needs the two halves separated so its scene-opened beat
+// can land between them.
+func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.SurveilOutput, *FormedBubble, error) {
+	deltas, err := e.rebuildPercepts(observers)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// A closed encounter has nothing to start a fight about, and form refuses
+	// one anyway — checking here turns that refusal into a non-event.
+	if e.outcome != nil {
+		return deltas, nil, nil
+	}
+
+	formed, err := e.applyTrigger(deltas)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return deltas, formed, nil
+}
+
+// rebuildPercepts rebuilds the complete percept for all given observers,
 // surveils each, and returns a map of member IDs to their SurveilOutput deltas.
-// This is shared between Setup's first-light and Move's percept refresh.
 // The current clock reading is stamped on each Surveil call.
-func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.SurveilOutput, error) {
+func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.SurveilOutput, error) {
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)
@@ -2260,19 +2356,17 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		e.deciders[in.Member.ID] = in.Member.Decider
 	}
 
-	// refreshSight for all members: the joiner sees incumbents, incumbents see the joiner
+	// Audience for both the join beat and the sight refresh: the joiner sees
+	// incumbents, incumbents see the joiner.
 	memberIDs := make([]MemberID, 0, len(e.members))
 	for id := range e.members {
 		memberIDs = append(memberIDs, id)
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	intelDeltas, err := e.refreshSight(memberIDs)
-	if err != nil {
-		return nil, fmt.Errorf("join refresh sight: %w", err)
-	}
-
-	// Record the join beat (audience = all members including the joiner)
+	// Record the join beat BEFORE refreshing sight: arriving is the cause,
+	// anything trigger detection appends is its effect (see refreshSight).
+	// Audience = all members including the joiner.
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
@@ -2292,6 +2386,11 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	seqNum := appendOut.Seq
+
+	intelDeltas, formed, err := e.refreshSight(memberIDs)
+	if err != nil {
+		return nil, fmt.Errorf("join refresh sight: %w", err)
+	}
 
 	// Evaluate ReachedPosition endings (a player could join ON the stairs)
 	var firedOutcome *Outcome
@@ -2347,6 +2446,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	return &JoinOutput{
+		Formed:      formed,
 		Member:      *member,
 		IntelDeltas: intelDeltas,
 		Seq:         seqNum,
@@ -2453,7 +2553,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	// refreshSight for REMAINING members only (the exiter's holdings remain in intel archive)
 	if len(memberIDs) > 0 {
-		_, err := e.refreshSight(memberIDs)
+		_, _, err := e.refreshSight(memberIDs)
 		if err != nil {
 			return nil, fmt.Errorf("exit refresh sight: %w", err)
 		}

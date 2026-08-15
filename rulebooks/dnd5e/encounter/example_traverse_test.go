@@ -28,6 +28,7 @@ func Example_theTraverse() {
 		ToPosition:   spatial.Position{X: 0, Y: 4},
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 8, Height: 8},
@@ -56,6 +57,13 @@ func Example_theTraverse() {
 	fmt.Println("-- first light --")
 	tell(enc, "alice", "goblin")
 	tell(enc, "goblin", "alice")
+
+	// Seeing each other starts a fight (rpg-toolkit#964); alice breaks off
+	// before she runs, which is what makes the rest of this a chase.
+	if _, err := enc.Dissolve(&encounter.DissolveInput{Member: "alice"}); err != nil {
+		fmt.Println("dissolve:", err)
+		return
+	}
 
 	fmt.Println("-- alice slips through the gate --")
 	if _, err := enc.Traverse(&encounter.TraverseInput{Member: "alice", Connection: "gate"}); err != nil {

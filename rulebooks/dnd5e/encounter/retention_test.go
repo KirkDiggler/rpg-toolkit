@@ -34,7 +34,8 @@ type RetentionTestSuite struct {
 // with the ending at (4,4).
 func (s *RetentionTestSuite) walkingEncounter(retention int) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -240,7 +241,8 @@ func (s *RetentionTestSuite) TestRetentionSurvivesReload() {
 	data := enc.ToData()
 	s.Equal(window, data.Retention, "retention is persisted, not inferred")
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	// The reloaded encounter must still be trimming to the SAME window: keep
@@ -260,7 +262,8 @@ func (s *RetentionTestSuite) TestFloorSurvivesReload() {
 	enc := s.walkingEncounter(window)
 	s.generateBeats(enc, 40)
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 33})
@@ -279,7 +282,8 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 	enc := s.walkingEncounter(encounter.RetentionUnbounded)
 	s.generateBeats(enc, 5)
 
-	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc.ToData()})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	for seq := uint64(1); seq <= 6; seq++ {

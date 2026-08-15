@@ -197,6 +197,13 @@ type SetupInput struct {
 	// Endings are the declared ways the encounter can close.
 	Endings []EndingInput
 
+	// Initiative rolls the order a bubble forms in when trigger detection
+	// starts a fight (rpg-toolkit#964). REQUIRED — trigger detection runs from
+	// first light, so a fight can start before the caller does anything, and
+	// an encounter that cannot order one is a misconfiguration. Setup refuses
+	// without it (ErrNoInitiative).
+	Initiative InitiativeRoller
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.
@@ -311,6 +318,22 @@ type MoveOutput struct {
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
 	Outcome *Outcome
+
+	// Formed is set when this step started a fight. Nil otherwise.
+	Formed *FormedBubble
+}
+
+// FormedBubble reports a fight that trigger detection started.
+type FormedBubble struct {
+	// Order is the initiative order the bubble formed with, first to act
+	// first.
+	Order []MemberID
+
+	// Surprised names who entered unaware, sorted. A subset of Order.
+	Surprised []MemberID
+
+	// Seq is the story sequence of the formation beat.
+	Seq uint64
 }
 
 // TraverseInput contains the member and connection to traverse. The member
@@ -335,6 +358,11 @@ type TraverseOutput struct {
 		ToRoom   string
 		To       spatial.Position
 	}
+
+	// Formed is set when walking through the door started a fight — the case
+	// review caught, because traversing into a room refreshes sight exactly
+	// like moving within one does.
+	Formed *FormedBubble
 
 	// IntelDeltas maps member IDs to their updated percepts after traversal
 	// (SurveilOutput deltas from the refreshSight cycle, across both rooms).
@@ -385,6 +413,10 @@ type PumpOutput struct {
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
 	Outcome *Outcome
+
+	// Formed is set when a monster's own movement started a fight — first
+	// contact with nobody walking, the case a walk-only trigger seam misses.
+	Formed *FormedBubble
 }
 
 // JoinInput contains the member and placement information for joining the encounter.
@@ -397,6 +429,10 @@ type JoinInput struct {
 type JoinOutput struct {
 	// Member is the joined member's read-side data.
 	Member Member
+
+	// Formed is set when arriving in sight of the other side started a fight.
+	// A joiner walks into a scene like anybody else.
+	Formed *FormedBubble
 
 	// IntelDeltas maps member IDs to their updated percepts after the join
 	// (SurveilOutput deltas from the refreshSight cycle).
