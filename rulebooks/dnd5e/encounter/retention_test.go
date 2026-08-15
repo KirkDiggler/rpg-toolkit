@@ -34,7 +34,8 @@ type RetentionTestSuite struct {
 // with the ending at (4,4).
 func (s *RetentionTestSuite) walkingEncounter(retention int) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},

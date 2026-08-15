@@ -26,6 +26,7 @@ import (
 // all exercised by the same tests that already cover Cells/Occluders.
 func validAtlasOrderingSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "atlas-r3", Width: 4, Height: 3, Origin: spatial.Position{X: 9950, Y: 7}},
@@ -64,6 +65,7 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 // a point off in empty space (#929 T3 fix round item 5).
 func validAtlasVoidGapSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "gap-a", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0}},
@@ -83,6 +85,7 @@ func validAtlasVoidGapSetup() *encounter.SetupInput {
 // IsValidPosition without any Origin arithmetic in the way.
 func singleRoomSetup(shape spatial.GridShape, width, height int) *encounter.SetupInput {
 	return &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "solo", Width: width, Height: height, Grid: shape}},
 		},
@@ -461,6 +464,7 @@ func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripFractionalSquare() {
 func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripExactAtExtremeOrigin() {
 	const extreme = (1 << 30) - 8
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "extreme", Width: 10, Height: 10, Origin: spatial.Position{X: extreme, Y: -extreme}},
