@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -67,6 +68,24 @@ type AttackProfile struct {
 
 	// DamageType is what kind of harm lands.
 	DamageType damage.Type
+
+	// AbilityUsed is the ability the compiler swung with, when it chose one.
+	//
+	// It carries no arithmetic — the modifier is already inside DamageDice —
+	// and exists because effects predicate on it. Rage's damage bonus applies
+	// only to melee attacks made with Strength, so it reads this off the
+	// folded damage event; with the field empty its predicate never matches
+	// and a raging character silently loses the bonus. Measured, not assumed:
+	// a raging hero's longsword dealt 8 instead of 10 before this was
+	// plumbed (TestARagingHerosBonusArrivesViaTheChainNotTheCompiler).
+	//
+	// The empty value is meaningful and correct for a stat block: a monster
+	// action's numbers are pre-computed and name no ability, so
+	// AttackFromMonsterAction leaves it unset rather than guessing STR.
+	//
+	// This is the field the attack-profile seam named as additive when a
+	// predicate finally needed it (docs/ideas/session-sdk/attack-profile-seam.md).
+	AbilityUsed abilities.Ability
 
 	// Gate is the rider's contest, if the attack declares one (ADR-0039).
 	// Nil means the attack just hits.
@@ -312,7 +331,11 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		HasAdvantage: len(m.outcome.Folded.AdvantageSources) > 0,
 		WeaponDamage: m.in.Attack.DamageDice,
 		IsMelee:      true,
-		WeaponRef:    m.in.Attack.Ref,
+		// Which ability swung, for the effects that predicate on it — Rage
+		// only pays out on a melee Strength attack. Empty when the compiler
+		// named none, which is a stat block's honest answer.
+		AbilityUsed: m.in.Attack.AbilityUsed,
+		WeaponRef:   m.in.Attack.Ref,
 	}, m.afterDamageChain), nil
 }
 
