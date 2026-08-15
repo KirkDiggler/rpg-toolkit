@@ -128,6 +128,15 @@ func (p *AttackProfile) validate() error {
 		return fmt.Errorf("%w: the attack declares a gate but names no consequence", ErrBadAttack)
 	}
 
+	// And the other direction, because the pair is a pair. A consequence with
+	// no gate is never imposed — afterNotify returns early on a nil gate — so
+	// accepting it would silently discard a rule its author believed they had
+	// written. Refusing both directions is what makes "Gate and Imposes travel
+	// together" a contract rather than a comment.
+	if p.Gate == nil && p.Imposes != nil {
+		return fmt.Errorf("%w: the attack names a consequence but declares no gate to contest it", ErrBadAttack)
+	}
+
 	return nil
 }
 

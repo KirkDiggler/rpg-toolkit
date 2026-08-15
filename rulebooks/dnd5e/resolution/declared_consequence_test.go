@@ -184,6 +184,35 @@ func (s *DeclaredConsequenceTestSuite) TestAGateWithNoConsequenceIsRefused() {
 	s.Require().Contains(err.Error(), "names no consequence")
 }
 
+// The other direction is refused too: a consequence with no gate would never
+// be imposed, because a strike with no gate never contests anything. Accepting
+// it would silently discard a rule its author believed they had written.
+//
+// The pair is a pair, and validating only one direction would make that a
+// comment rather than a contract (Copilot review, #1014).
+func (s *DeclaredConsequenceTestSuite) TestAConsequenceWithNoGateIsRefused() {
+	stranded := s.biteProfile()
+	stranded.Gate = nil
+
+	err := stranded.validate()
+	s.Require().ErrorIs(err, ErrBadAttack)
+	s.Require().Contains(err.Error(), "declares no gate")
+}
+
+// And the machine refuses that direction too, not only the constructor.
+func (s *DeclaredConsequenceTestSuite) TestTheMachineRefusesAConsequenceWithNoGate() {
+	stranded := s.biteProfile()
+	stranded.Gate = nil
+
+	_, err := s.resolve(NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   heroID,
+		Attack:     stranded,
+		Roller:     &sequenceRoller{singles: []int{hitRoll, 2}, pair: []int{3, 4}, fallback: 2},
+	}))
+	s.Require().ErrorIs(err, ErrBadAttack)
+}
+
 // And the machine refuses it too, rather than only the constructor — a
 // hand-built profile reaches Start without passing through any compiler.
 func (s *DeclaredConsequenceTestSuite) TestTheMachineRefusesAGateWithNoConsequence() {
@@ -232,6 +261,10 @@ func (s *DeclaredConsequenceTestSuite) TestAProfileNamingADifferentConsequenceIm
 		"the contest was about what the profile named")
 
 	s.Require().Len(out.DirtyCharacters, 1)
+	// Require the condition landed before indexing it: a consequence that
+	// failed to apply should fail this test by NAMING the missing condition,
+	// not by panicking on an empty slice.
+	s.Require().Len(out.DirtyCharacters[0].Conditions, 1, "exactly one condition was imposed")
 	conditions := string(out.DirtyCharacters[0].Conditions[0])
 	s.Require().Contains(conditions, refs.Conditions.Dodging().ID,
 		"the hero gained what the profile named")
@@ -258,6 +291,7 @@ func (s *DeclaredConsequenceTestSuite) TestASavedGateImposesNothing() {
 	s.Require().True(ok)
 	s.Require().NotNil(outcome.Contest)
 	s.Require().True(outcome.Contest.Succeeded)
+	s.Require().Len(out.DirtyCharacters, 1)
 	s.Require().Empty(out.DirtyCharacters[0].Conditions, "a made save costs nothing")
 }
 
