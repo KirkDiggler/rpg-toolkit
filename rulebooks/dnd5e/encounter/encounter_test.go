@@ -1702,7 +1702,8 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerMustAccept() {
 			s.Require().NoError(err, tc.name)
 
 			data := enc.ToData()
-			_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+			_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: orderAsGiven{}, Data: data})
 			s.Require().NoError(err, "%s must survive a ToData/LoadEncounter round trip", tc.name)
 		})
 	}
@@ -1727,7 +1728,8 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() 
 	s.Require().NoError(err, "a negative-axial hex trigger position is the NORMAL case, not an edge case")
 
 	data := enc.ToData()
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, "must survive a ToData/LoadEncounter round trip")
 }
 
@@ -2513,6 +2515,10 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
 			{ID: bob, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 8, Y: 5}},
+			// The goblin stands in room-b, which means walking through the
+			// door starts a fight (rpg-toolkit#964). Tests here that only
+			// look at what arrived can leave it running; the ones that hop
+			// back break off first.
 			{ID: goblin, Kind: encounter.KindMonster, Room: "room-b", Position: spatial.Position{X: 1, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{
@@ -2624,7 +2630,12 @@ func (s *EncounterTestSuite) TestTraverseBothDirections() {
 
 	s.Run("room-b to room-a (bidirectional through the same connection)", func() {
 		enc := s.newTwoRoomEncounterWithConnection()
-		_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		arrived, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+		s.Require().NoError(err)
+		s.Require().NotNil(arrived.Formed, "walking in on the goblin starts a fight")
+
+		// Break off before walking back out — a fight member cannot free-roam.
+		_, err = enc.Dissolve(&encounter.DissolveInput{Member: alice})
 		s.Require().NoError(err)
 
 		out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
@@ -2823,6 +2834,12 @@ func (s *EncounterTestSuite) TestTraverseMonsterOnUnfilteredEndingDoesNotClose()
 
 // TestTraverseBeatPinned pins the traversed beat: tag, payload, and
 // Story reflects it in position (the Move/Exit precedent applied here).
+//
+// Walking through this door lands alice in the goblin's room, so the
+// traverse also starts a fight and appends a beat of its own AFTER the
+// traversed beat — hence len-2 rather than last. That ordering is the
+// cause-before-effect law and is pinned in beatorder_test.go; here it is
+// only the reason this test reads the second-to-last entry.
 func (s *EncounterTestSuite) TestTraverseBeatPinned() {
 	enc := s.newTwoRoomEncounterWithConnection()
 	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
@@ -2830,12 +2847,12 @@ func (s *EncounterTestSuite) TestTraverseBeatPinned() {
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
-	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
-	s.Equal(out.Seq, last.Seq, "TraverseOutput.Seq references the traversed beat")
+	s.Require().GreaterOrEqual(len(story), 2)
+	traversed := story[len(story)-2]
+	s.Equal(out.Seq, traversed.Seq, "TraverseOutput.Seq references the traversed beat")
 
 	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
+	s.Require().NoError(json.Unmarshal(traversed.Payload, &beat))
 	s.Equal("traversed", beat["beat"])
 	s.Equal(string(alice), beat["member"])
 	s.Equal("door1", beat["connection"])
@@ -2865,6 +2882,12 @@ func (s *EncounterTestSuite) TestTraverseThenJoinVacatedCellThenTraverseBack() {
 	enc := s.newTwoRoomEncounterWithConnection()
 
 	_, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	s.Require().NoError(err)
+
+	// She walked in on the goblin, so a fight started; she breaks off before
+	// walking back out (rpg-toolkit#964). The registry question this test is
+	// about is unaffected either way.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: alice})
 	s.Require().NoError(err)
 
 	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{

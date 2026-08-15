@@ -345,7 +345,8 @@ func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 	s.Require().NoError(err)
 
 	data := enc1.ToData()
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	atlas2, err := enc2.Atlas()

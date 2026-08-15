@@ -224,9 +224,10 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// path a host is actively rendering, not just a static snapshot.
 	beforeReload := alicePath[len(alicePath)-1]
 	data := enc.ToData()
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-		goblin: &pursuitDecider{connections: []encounter.ConnectionInput{vaultChaseHexGate()}, target: alice},
-	}})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+			goblin: &pursuitDecider{connections: []encounter.ConnectionInput{vaultChaseHexGate()}, target: alice},
+		}})
 	require.NoError(t, err, "the suspended chase crosses a process boundary")
 	enc = enc2
 	proj.useEncounter(enc) // SAME projector, reloaded enc — the transcript keeps accumulating

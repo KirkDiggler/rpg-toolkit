@@ -359,6 +359,11 @@ type TraverseOutput struct {
 		To       spatial.Position
 	}
 
+	// Formed is set when walking through the door started a fight — the case
+	// review caught, because traversing into a room refreshes sight exactly
+	// like moving within one does.
+	Formed *FormedBubble
+
 	// IntelDeltas maps member IDs to their updated percepts after traversal
 	// (SurveilOutput deltas from the refreshSight cycle, across both rooms).
 	IntelDeltas map[MemberID]*intel.SurveilOutput
@@ -424,6 +429,10 @@ type JoinInput struct {
 type JoinOutput struct {
 	// Member is the joined member's read-side data.
 	Member Member
+
+	// Formed is set when arriving in sight of the other side started a fight.
+	// A joiner walks into a scene like anybody else.
+	Formed *FormedBubble
 
 	// IntelDeltas maps member IDs to their updated percepts after the join
 	// (SurveilOutput deltas from the refreshSight cycle).

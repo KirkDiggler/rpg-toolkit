@@ -126,7 +126,8 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: enc1.ToData()})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: enc1.ToData()})
 	s.Require().NoError(err)
 
 	out, err := enc2.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: 3, Y: 3}})
@@ -186,7 +187,8 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	}
 	s.Equal(expected, data1.Field.Connections, "connections persist sorted by ID with endpoints intact")
 
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data1})
 	s.Require().NoError(err)
 
 	data2 := enc2.ToData()
@@ -228,7 +230,8 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	got := enc.ToData().Field.Connections
@@ -273,7 +276,8 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		s.Require().Len(data1.Field.Rooms, 1)
 		s.Equal("", data1.Field.Rooms[0].Grid, "square is the zero value — omitted, not the literal \"square\"")
 
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1})
 		s.Require().NoError(err)
 
 		data2 := enc2.ToData()
@@ -301,7 +305,8 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		s.Require().Len(data1.Field.Rooms, 1)
 		s.Equal(spatial.GridTypeHex, data1.Field.Rooms[0].Grid)
 
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1})
 		s.Require().NoError(err)
 
 		data2 := enc2.ToData()
@@ -365,7 +370,8 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 }
 
@@ -429,7 +435,8 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 		data1 := enc1.ToData()
 
 		// Load from data (without decider for goblin)
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Convert to data again
@@ -514,7 +521,8 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		data1 := enc1.ToData()
 
 		// Load and verify ghost is still there
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Get holdings - ghost should still be Held (not Current)
@@ -584,7 +592,8 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 		data1 := enc1.ToData()
 
 		// Load and verify everMembers includes the exited player
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Story should work for the exited member
@@ -652,7 +661,8 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 		data1 := enc1.ToData()
 
 		// Load and verify outcome matches
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		status2, _ := enc2.Status()
@@ -716,7 +726,8 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 		data1 := enc1.ToData()
 		s.Require().Equal(2, data1.Clock.HighWater, "precondition: two ticks persisted")
 
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1})
 		s.Require().NoError(err)
 
 		out, err := enc2.Pump(&encounter.PumpInput{})
@@ -770,7 +781,8 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 		data1 := enc1.ToData()
 
 		// Load
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Move should work
@@ -1009,7 +1021,8 @@ func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 
 		// Load FIRST, then vandalize the caller's Data: the loaded
 		// aggregate must be untouched (load-side deep copy).
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().NoError(err)
 
 		data.Members[0].ID = "mutated"
@@ -1057,7 +1070,8 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		holding.CurrentVia = nil
 		data.Intel.Holdings["playerA"]["goblin"] = holding
 
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().NoError(err)
 
 		view, err := enc2.View(&encounter.ViewInput{Member: "playerA"})
@@ -1123,9 +1137,10 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 				To: spatial.Position{X: 7, Y: 7},
 			},
 		}
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
-			encounter.MemberID("goblin"): decider,
-		}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+				encounter.MemberID("goblin"): decider,
+			}})
 		s.Require().NoError(err)
 
 		// Pump should execute the decider's move intent
@@ -1191,7 +1206,8 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 		data1 := enc1.ToData()
 
 		// Load WITHOUT goblin's decider
-		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Pump should succeed (goblin holds)
@@ -1227,9 +1243,10 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	s.Require().NoError(err)
 	data1 := enc1.ToData()
 
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
-		"goblin": nil,
-	}})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+			"goblin": nil,
+		}})
 	s.Require().NoError(err, "a present-but-nil reattachment entry must load, not reject")
 
 	s.Require().NotPanics(func() {
@@ -1270,10 +1287,11 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	data1 := enc1.ToData()
 
 	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: spatial.Position{X: 3, Y: 8}}}
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
-		"goblin": nil,
-		"rat":    ratDecider,
-	}})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+			"goblin": nil,
+			"rat":    ratDecider,
+		}})
 	s.Require().NoError(err)
 
 	out, err := enc2.Pump(&encounter.PumpInput{})
@@ -1358,7 +1376,8 @@ func validEncounterDataWithConnection() encounter.EncounterData {
 func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
 	data := validEncounterDataWithConnection()
 	data.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1397,7 +1416,8 @@ func (s *DataTestSuite) TestLoadNilInputRejected() {
 // call sites, so it is stated once rather than left implied by them.
 func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: validEncounterData(),
+		Initiative: orderAsGiven{},
+		Data:       validEncounterData(),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(enc)
@@ -1417,7 +1437,8 @@ func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
@@ -1436,7 +1457,8 @@ func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide at Load either`)
 }
 
@@ -1453,7 +1475,8 @@ func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1473,7 +1496,8 @@ func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 			{Key: "dup", Kind: "external"},
 		},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -1587,7 +1611,8 @@ func (s *DataTestSuite) TestLoadRejections() {
 		s.Run(tc.name, func() {
 			data := validEncounterData()
 			tc.mutate(&data)
-			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().Contains(err.Error(), tc.fragment,
@@ -1600,7 +1625,8 @@ func (s *DataTestSuite) TestLoadRejections() {
 
 	// The valid base itself must load — the one-defect discipline only
 	// means something if zero defects pass.
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: validEncounterData()})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: validEncounterData()})
 	s.Require().NoError(err, "the valid base fixture must load")
 
 	// The valid CONNECTION base must also load. Since FromPosition{9,1} is
@@ -1611,7 +1637,8 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// in convertConnectionDataToConnectionInput would not error here —
 	// it would silently swap the values — so the values are re-inspected,
 	// not just the absence of an error).
-	connEnc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: validEncounterDataWithConnection()})
+	connEnc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: validEncounterDataWithConnection()})
 	s.Require().NoError(err, "the valid connection base fixture must load")
 	connData := connEnc.ToData()
 	s.Require().Len(connData.Field.Connections, 1)
@@ -1661,7 +1688,8 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 	s.Run("X exactly at width is rejected", func() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 4, Y: 0}
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1669,7 +1697,8 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 	s.Run("Y exactly at height is rejected", func() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 0, Y: 3}
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1677,7 +1706,8 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 	s.Run("negative X is rejected", func() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: -1, Y: 0}
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1685,7 +1715,8 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 	s.Run("negative Y is rejected", func() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 0, Y: -1}
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1693,7 +1724,8 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 	s.Run("Width-1,Height-1 is accepted (positive control)", func() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 3, Y: 2}
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data})
 		s.Require().NoError(err, "the last valid cell must be accepted")
 	})
 }
@@ -1722,7 +1754,8 @@ func (s *DataTestSuite) TestLoadRoomValidation() {
 		s.Run(tc.name, func() {
 			data := validEncounterData()
 			tc.mutate(&data)
-			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
@@ -1748,7 +1781,8 @@ func (s *DataTestSuite) TestLoadRoomEmptyIDReportsIDDefectNotOrigin() {
 	data.Field.Rooms[0].ID = ""
 	data.Field.Rooms[0].Origin = nil
 
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1780,29 +1814,34 @@ func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 // encounter_test.go's TestHexRoomBounds.
 func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 	s.Run("positive Q, positive R within span accepted", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connHexRoomData(encounter.PositionData{X: 1, Y: 1})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 1, Y: 1})})
 		s.Require().NoError(err)
 	})
 
 	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connHexRoomData(encounter.PositionData{X: -1, Y: 0})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -1, Y: 0})})
 		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
 	})
 
 	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "out of bounds")
 	})
 
 	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connHexRoomData(encounter.PositionData{X: -2, Y: 0})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -2, Y: 0})})
 		s.Require().NoError(err)
 	})
 
 	s.Run("Q beyond -Width/2 rejected", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "out of bounds")
@@ -1835,7 +1874,8 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
 }
 
@@ -1895,7 +1935,8 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 		s.Run(tc.name, func() {
 			data := validHexAxialData()
 			tc.mutate(&data)
-			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			if tc.alsoErr != nil {
@@ -1906,7 +1947,8 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 		})
 	}
 
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: validHexAxialData()})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: validHexAxialData()})
 	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
 }
 
@@ -2030,7 +2072,8 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 		s.Run(tc.name, func() {
 			data := validAnchoredHexData()
 			tc.mutate(&data)
-			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
@@ -2041,7 +2084,8 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 
 	// The valid base itself must load — the one-defect discipline only
 	// means something if zero defects pass.
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: validAnchoredHexData()})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: validAnchoredHexData()})
 	s.Require().NoError(err, "the valid anchored base fixture must load")
 }
 
@@ -2066,7 +2110,8 @@ func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2094,7 +2139,8 @@ func (s *DataTestSuite) TestLoadAnchoringSquareOriginRejected() {
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2126,7 +2172,8 @@ func (s *DataTestSuite) TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2166,7 +2213,8 @@ func (s *DataTestSuite) TestLoadAnchoringFractionalSquareEndpointSubUnitDistance
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrBadConnection)
@@ -2191,7 +2239,8 @@ func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint()
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2214,7 +2263,8 @@ func (s *DataTestSuite) TestLoadRoomCellBudgetRejectsPanicReproduction() {
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "a 2^30 x 2^30 room from a persisted blob must REJECT, not panic")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2234,7 +2284,8 @@ func (s *DataTestSuite) TestLoadOversizedRoomHeightRejected() {
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2260,7 +2311,8 @@ func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
 		Field:   encounter.FieldData{Rooms: rooms},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2302,7 +2354,8 @@ func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
 		s.Run(tc.name, func() {
 			data := validEndingTriggerData()
 			tc.mutate(&data)
-			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrNoEnding, tc.name)
@@ -2311,7 +2364,8 @@ func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
 		})
 	}
 
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: validEndingTriggerData()})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: validEndingTriggerData()})
 	s.Require().NoError(err, "a trigger naming a real room and in-bounds position must validate")
 }
 
@@ -2326,7 +2380,8 @@ func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 			{Key: "reach", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 1.5, Y: 0}},
 		},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -2340,13 +2395,15 @@ func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 // catches a tag or field-order regression a decoded-struct comparison
 // would not.
 func (s *DataTestSuite) TestOriginRoundTripByteIdentical() {
-	enc1, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: validAnchoredHexData()})
+	enc1, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: validAnchoredHexData()})
 	s.Require().NoError(err)
 	data1 := enc1.ToData()
 	bs1, err := json.Marshal(data1.Field)
 	s.Require().NoError(err)
 
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data1})
 	s.Require().NoError(err)
 	data2 := enc2.ToData()
 	bs2, err := json.Marshal(data2.Field)
@@ -2404,7 +2461,8 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 			dataPreTraverse.Members[i].Position = encounter.PositionData{X: 4, Y: 0}
 		}
 	}
-	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: dataPreTraverse})
+	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: dataPreTraverse})
 	s.Require().NoError(err)
 
 	out2, err := enc2.Traverse(&encounter.TraverseInput{Member: "p1", Connection: "gate"})
@@ -2438,7 +2496,8 @@ func (s *DataTestSuite) TestLoadAnchoringSquareEndpointNotAdjacentDistance2() {
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrBadConnection)
@@ -2468,7 +2527,8 @@ func (s *DataTestSuite) TestLoadRejectsHostileNonKissingBlob() {
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(hostile, &data))
 
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data})
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "a hand-edited blob with a non-kissing doorway must reject")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrBadConnection)
@@ -2501,7 +2561,8 @@ func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
 // regardless of the member position within it.
 func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
 	s.Run("gridless grid string rejected regardless of member position", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connGridlessRoomData(encounter.PositionData{X: 4, Y: 0})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connGridlessRoomData(encounter.PositionData{X: 4, Y: 0})})
 		s.Require().Error(err, `a stored "gridless" grid string no longer loads`)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2510,7 +2571,8 @@ func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
 	})
 
 	s.Run("still rejected for a position that would also be out of bounds", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: connGridlessRoomData(encounter.PositionData{X: -1, Y: 0})})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: connGridlessRoomData(encounter.PositionData{X: -1, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().ErrorIs(err, encounter.ErrNoField,
@@ -2522,9 +2584,10 @@ func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
 // cannot carry a decider at load any more than at Setup or Join.
 func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
 	data := validEncounterData()
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-		"p1": &spyDecider{},
-	}})
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+			"p1": &spyDecider{},
+		}})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().Contains(err.Error(), "cannot carry a decider")
 }
@@ -2668,7 +2731,8 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		dataB := encB.ToData()
 
 		// Control: loading dataA verbatim, p1 holds p2.
-		ctrl, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: dataA})
+		ctrl, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: dataA})
 		s.Require().NoError(err)
 		ctrlView, err := ctrl.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -2678,7 +2742,8 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		// must reflect the LOADED intel — empty — proving the Intel field
 		// is genuinely consumed, never re-derived from the field.
 		dataA.Intel = dataB.Intel
-		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: dataA})
+		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: dataA})
 		s.Require().NoError(err)
 		swappedView, err := swapped.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -2708,7 +2773,8 @@ func (s *DataTestSuite) TestMutation5MissingRoomCheck() {
 			},
 		}
 
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().Error(err)
 		s.True(errors.Is(err, encounter.ErrInvalidData), "must validate member rooms exist")
 	})
@@ -2764,7 +2830,8 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		}
 
 		data := enc1.ToData()
-		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
 
 		holdings2, _ := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		var goblinStatusAfter intel.Status
@@ -2804,7 +2871,8 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		data1 := enc1.ToData()
 		tick1 := data1.Clock.HighWater
 
-		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		data2 := enc2.ToData()
 		tick2 := data2.Clock.HighWater
 
