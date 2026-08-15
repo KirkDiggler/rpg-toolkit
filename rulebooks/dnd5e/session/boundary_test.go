@@ -390,25 +390,31 @@ func structFields(v any) []string {
 	return names
 }
 
-// interfaceMethodNames reports the method names an interface type declares,
-// including the unexported ones — which is the point, since an unexported
-// method is how a Go interface seals its set of implementations.
+// unexportedInterfaceMethods reports the UNEXPORTED methods an interface
+// declares — the ones that seal it, since a type outside the declaring package
+// cannot implement them.
 //
-// Pass a typed nil pointer: interfaceMethodNames((*Foo)(nil)).
-func interfaceMethodNames(ptr any) []string {
+// Reflection rather than the AST parsing above, and deliberately: for an
+// INTERFACE type, reflect's NumMethod includes unexported methods and reports
+// each one's package. That is documented behaviour rather than an accident of
+// same-module compilation — verified from a separate module entirely, where
+// DissolveCause reports NumMethod=2 with isDissolveCause carrying
+// PkgPath=".../session" and IsExported()=false. (It is NON-interface types
+// whose unexported methods reflect omits, which is the rule this is often
+// confused with.)
+//
+// Pass a typed nil pointer: unexportedInterfaceMethods((*Foo)(nil)).
+func unexportedInterfaceMethods(ptr any) []string {
 	t := reflect.TypeOf(ptr)
 	if t == nil || t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Interface {
 		return nil
 	}
 	iface := t.Elem()
-	names := make([]string, 0, iface.NumMethod())
+	var sealed []string
 	for i := 0; i < iface.NumMethod(); i++ {
-		names = append(names, iface.Method(i).Name)
+		if m := iface.Method(i); !m.IsExported() {
+			sealed = append(sealed, m.Name)
+		}
 	}
-	return names
-}
-
-// isExportedName reports whether a Go identifier is exported.
-func isExportedName(name string) bool {
-	return name != "" && ast.IsExported(name)
+	return sealed
 }

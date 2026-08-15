@@ -125,13 +125,7 @@ func (s *DissolveTestSuite) TestTheCauseIsRequired() {
 // This reads the interface's own method set, because the guarantee is
 // structural: the day the seal is removed, this fails and says why.
 func (s *DissolveTestSuite) TestTheCauseSetIsSealed() {
-	sealed := false
-	for _, name := range interfaceMethodNames((*session.DissolveCause)(nil)) {
-		if !isExportedName(name) {
-			sealed = true
-		}
-	}
-	s.True(sealed,
+	s.NotEmpty(unexportedInterfaceMethods((*session.DissolveCause)(nil)),
 		"DissolveCause must keep an unexported method: without it any caller can "+
 			"declare a cause the world cannot yet notice, and defeat stops being "+
 			"something earned by the caller that forces it")
