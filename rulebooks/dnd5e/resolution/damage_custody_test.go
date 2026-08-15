@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -12,13 +13,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -146,6 +153,91 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 	s.Require().True(ok)
 	// Piercing 9 halved to 4; fire 6 untouched.
 	s.Require().Equal(4+6, outcome.Damage, "each type resolves on its own")
+}
+
+// The event's own DamageType is load-bearing, not decoration: Rage's
+// resistance predicates on it twice — event.DamageType.IsPhysical() decides
+// whether to resist at all, and the multiplier component it appends carries
+// event.DamageType so the grouping puts it with the right damage.
+//
+// Real content, and the case a synthetic subscriber cannot pin: a raging
+// barbarian takes half from the wolf's piercing bite.
+func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamageType() {
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 8, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	data := monsters.NewWolf(wolfID).ToData()
+	attack, err := AttackFromMonsterAction(data.Actions[0])
+	s.Require().NoError(err)
+
+	raging, err := (&conditions.RagingCondition{
+		CharacterID: heroID,
+		DamageBonus: 2,
+		Level:       1,
+		Source:      "rage",
+	}).ToJSON()
+	s.Require().NoError(err)
+
+	out, err := Resolve(s.ctx, &Input{
+		World: world.ToData(),
+		Participants: []Participant{
+			{Character: s.ragingHero(raging)},
+			{Monster: data},
+		},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Attack:     attack,
+			Roller:     &sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2},
+		}),
+	})
+	s.Require().NoError(err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Require().True(outcome.Hit)
+	s.Require().Equal(4, outcome.Damage,
+		"2d4[3 4]+2 = 9 piercing, halved by rage to 4 — resistance the event's type selected")
+
+	s.Require().Len(out.DirtyCharacters, 1)
+	s.Require().Equal(14-4, out.DirtyCharacters[0].HitPoints)
+}
+
+// ragingHero is a barbarian who can take the hit: AC 14, 14 hit points.
+func (s *DamageCustodyTestSuite) ragingHero(conds ...json.RawMessage) *character.Data {
+	return &character.Data{
+		ID:       heroID,
+		PlayerID: "player-1",
+		Name:     "Grog",
+		Level:    1,
+		ClassID:  classes.Barbarian,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:        14,
+		MaxHitPoints:     14,
+		ArmorClass:       14,
+		ProficiencyBonus: 2,
+		SavingThrows: map[abilities.Ability]shared.ProficiencyLevel{
+			abilities.STR: shared.Proficient,
+		},
+		Conditions: conds,
+	}
 }
 
 // --- chain-subscriber helpers -------------------------------------------------
