@@ -181,29 +181,22 @@ var (
 	// and be permanently unusable.
 	ErrInvalidWorld = errors.New("invalid encounter data")
 
-	// ErrFrozen is returned by every verb that would change the world while an
-	// interrupt window is open. Read verbs are unaffected.
+	// ErrInBubble is returned when a member is asked to free-roam while they
+	// are in a fight. Movement inside a fight goes through its turn structure,
+	// which this SDK does not surface yet.
 	//
-	// Errors wrapping this are *FrozenError, which names the window and who
-	// owes it. Match the sentinel with errors.Is to detect the condition; use
-	// errors.As to recover the window and tell the caller what to do about it.
-	ErrFrozen = errors.New("world frozen")
+	// It became reachable with rpg-toolkit#964: a fight now starts by itself,
+	// so a walk can end with the walker in one, and the very next Move is
+	// refused. Before that a member could only enter a fight by a caller
+	// deciding to start one, which nothing in this package ever did — the
+	// sentinel had no path to a host and so did not exist.
+	ErrInBubble = errors.New("member is in a fight")
 
-	// ErrNoWindow is returned when a verb names a window that is not open —
-	// unknown, never opened, or already answered. One answer per window.
-	ErrNoWindow = errors.New("no such open window")
-
-	// ErrNotAudience is returned when a member answers a window they do not
-	// owe. Answering for someone else is a rejection, not a courtesy.
-	ErrNotAudience = errors.New("not this window's audience")
-
-	// ErrNotOffered is returned when an answer names a choice the window did
-	// not offer.
-	ErrNotOffered = errors.New("choice not offered")
-
-	// ErrNoWindowID is returned when a verb is given an empty or unparseable
-	// window identifier.
-	ErrNoWindowID = errors.New("bad window id")
+	// ErrFrozen, ErrNoWindow, ErrNotAudience, ErrNotOffered and ErrNoWindowID
+	// lived here. Every one of them described an open interrupt window, and
+	// nothing in this module opens one (rpg-toolkit#964 slice 2) — a sentinel
+	// no code path can return reads as a condition a caller should handle, and
+	// is worse than an absence. See doc.go for what wave 5 re-creates.
 
 	// ErrInvalidSession is returned when stored session state is not a state
 	// this module could have written — a hand-edited or corrupted blob.

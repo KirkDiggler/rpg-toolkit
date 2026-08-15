@@ -32,7 +32,7 @@ func Example_theSession() {
 	ctx := context.Background()
 
 	// The host's entire integration: two stores.
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
@@ -123,20 +123,18 @@ func Example_theSession() {
 	//     bob at (1,3)
 }
 
-// Example_thePending is the host's whole suspension loop, and it is short on
-// purpose.
+// Example_theFightThatStartsItself is the host's whole "a fight broke out"
+// loop, and it is short on purpose: there is no loop.
 //
-// A verb returns having done less than it was asked and says who owes an
-// answer. The host renders that, collects a choice, and hands it back. It never
-// learns what kind of checkpoint fired — it branches on the option kinds it was
-// offered, which is what lets new checkpoint kinds arrive without any client
-// changing.
-//
-// The earlier version of this example simulated the shape with an ending,
-// because nothing could genuinely suspend yet. This is the real thing.
-func Example_thePending() {
+// A verb returns having done less than it was asked and says why in the same
+// response. The host renders it. There is no second call, no window to answer,
+// and — the point — no decision the host has to make about what a sighting
+// means. It used to be a suspension loop, back when THIS package decided that
+// seeing something stops a walk; the composition decides now
+// (rpg-toolkit#964), so what reaches the host is news rather than a question.
+func Example_theFightThatStartsItself() {
 	ctx := context.Background()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
@@ -155,42 +153,23 @@ func Example_thePending() {
 		panic(err)
 	}
 
-	if out.Pending == nil {
+	if out.Formed == nil {
 		fmt.Printf("walked all %d cells\n", len(out.Steps))
 		return
 	}
+	fmt.Printf("stopped after %d/%d: a fight starts, in order %v\n",
+		len(out.Steps), len(path), out.Formed.Order)
 
-	offered := make([]string, 0, len(out.Pending.Options))
-	for _, opt := range out.Pending.Options {
-		offered = append(offered, string(opt.Kind))
-	}
-	fmt.Printf("stopped after %d/%d: %s sees %v and must choose %v\n",
-		len(out.Steps), len(path), out.Pending.Audience, out.Pending.Prompt.Sighted, offered)
-
-	// Everything that would change the world is refused until she answers, and
-	// the refusal says who to go ask.
+	// She cannot simply walk on: she is in the fight, and free roam is for
+	// members who are not. The refusal is the composition's, translated.
 	_, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "run", Member: "alice", Path: []spatial.Position{{X: 2, Y: 4}},
 	})
-	var frozen *session.FrozenError
-	if errors.As(err, &frozen) {
-		fmt.Printf("meanwhile the world is frozen, waiting on %s\n", frozen.Audience)
-	}
-
-	// The answer may arrive from anywhere, at any time — it is just another call.
-	resumed, err := mgr.Answer(ctx, &session.AnswerInput{
-		Session: "run", Window: out.Pending.Window,
-		Member: "alice", Option: string(session.OptionContinue),
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("she presses on, %d cell(s) further\n", len(resumed.Steps))
+	fmt.Printf("walking on is refused: %v\n", errors.Is(err, session.ErrInBubble))
 
 	// Output:
-	// stopped after 2/3: alice sees [ogre] and must choose [continue stop]
-	// meanwhile the world is frozen, waiting on alice
-	// she presses on, 1 cell(s) further
+	// stopped after 2/3: a fight starts, in order [alice ogre]
+	// walking on is refused: true
 }
 
 // panicFataler adapts the test fixtures for use from an Example, which has no
@@ -204,7 +183,7 @@ func (panicFataler) Fatalf(format string, args ...any) {
 // authoredTomb is content, not a live encounter: the blob a host would have
 // sitting in storage from an authoring pipeline.
 func authoredTomb() *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},

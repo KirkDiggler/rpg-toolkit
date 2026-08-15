@@ -20,14 +20,14 @@ import (
 //
 // There is no session process. A verb loads what it needs, attaches it to a bus
 // created for that call, acts, writes back, and returns; the whole object graph
-// is garbage the moment the response is written. Answer is not the resumption
-// of anything living — it is this same load-and-attach performed again from
-// persisted data.
+// is garbage the moment the response is written. The next verb is not the
+// resumption of anything living — it is this same load-and-attach performed
+// again from persisted data.
 //
-// That shape is forced rather than chosen. The interrupt spine established that
-// no Go stack survives a wait, and a loaded character with live subscriptions
-// is exactly that kind of state. So a suspension drops every entity, and
-// anything a condition holds that does not survive ToData() is lost across it.
+// That shape is forced rather than chosen. No Go stack survives the gap between
+// two verbs, and a loaded character with live subscriptions is exactly that
+// kind of state. So every entity is dropped at the end of a call, and anything
+// a condition holds that does not survive ToData() is lost with it.
 //
 // ONE BUS PER CALL, SHARED BY EVERY ENTITY IN THAT CALL. Shared rather than
 // per-entity because a condition on one member must be able to observe what

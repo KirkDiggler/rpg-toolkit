@@ -207,31 +207,43 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 	}{
 		{
 			name: "sessions absent",
-			config: &session.Config{Encounters: newFakeEncounters(),
+			config: &session.Config{Dice: testDice{}, Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Sessions",
 		},
 		{
 			name: "encounters absent",
-			config: &session.Config{Sessions: newFakeSessions(),
+			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Encounters",
 		},
 		{
 			name: "characters absent",
-			config: &session.Config{Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Events: session.DiscardEvents{},
 			},
 			expect: "Characters",
 		},
 		{
 			name: "events absent",
-			config: &session.Config{Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(),
 			},
 			expect: "Events",
+		},
+		{
+			// A fight now starts by itself, inside an ordinary Move. A host
+			// that wired everything else and forgot this one would get a
+			// working session that failed the first time two sides saw each
+			// other — which is exactly the mid-turn panic S8 exists to convert
+			// into a startup failure.
+			name: "dice absent",
+			config: &session.Config{Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+				Characters: testCharacters(), Events: session.DiscardEvents{},
+			},
+			expect: "Dice",
 		},
 	}
 
@@ -252,7 +264,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 // between "fix these in order" and "guess again."
 func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 	for i := 0; i < 20; i++ {
-		_, err := session.NewManager(&session.Config{})
+		_, err := session.NewManager(&session.Config{Dice: testDice{}})
 		s.Require().Error(err)
 		s.Contains(err.Error(), "Sessions", "the first missing name must be stable across runs")
 	}
@@ -269,7 +281,7 @@ func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 // being a stated decision. A nil reads as an oversight; this reads as a choice,
 // and it greps.
 func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
@@ -282,7 +294,7 @@ func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 // TestFullyWiredConstructs is the other positive control: a real stream,
 // which is what any actual game supplies.
 func (s *ManagerTestSuite) TestFullyWiredConstructs() {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),

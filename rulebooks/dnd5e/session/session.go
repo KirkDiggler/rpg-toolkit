@@ -3,7 +3,11 @@
 
 package session
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+)
 
 // Config carries what a Manager needs from the host. Construct a Manager with
 // NewManager; the zero Manager is unusable.
@@ -54,6 +58,22 @@ type Config struct {
 	// genuinely wants no delivery — an explicit opt-out that reads as a
 	// decision, rather than a nil that reads as an oversight.
 	Events EventStream
+
+	// Dice is where random numbers come from. Required.
+	//
+	// Required rather than optional because a fight now starts on its own, and
+	// it starts inside an ordinary Move: absent a source of randomness, the
+	// verb a player just called fails. There is no "the capability simply does
+	// not happen" version of that — an unorderable fight is a broken world,
+	// not a reduced one.
+	//
+	// The host supplies the dice and nothing else; the rule that turns a d20
+	// into an initiative order is the rulebook's. See Roller.
+	//
+	// It lands at the same moment the composition made its own initiative
+	// roller mandatory, and for the same reason: refuse at the door, never
+	// guard at the use site.
+	Dice Roller
 }
 
 // Manager is the host's single point of contact with the toolkit.
@@ -69,6 +89,7 @@ type Manager struct {
 	encounters EncounterRepository
 	characters CharacterRepository
 	events     EventStream
+	initiative encounter.InitiativeRoller
 }
 
 // NewManager returns a Manager wired to what the host supplied.
@@ -97,6 +118,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Encounters", cfg.Encounters != nil},
 		{"Characters", cfg.Characters != nil},
 		{"Events", cfg.Events != nil},
+		{"Dice", cfg.Dice != nil},
 	}
 	for _, dep := range required {
 		if !dep.present {
@@ -109,5 +131,6 @@ func NewManager(cfg *Config) (*Manager, error) {
 		encounters: cfg.Encounters,
 		characters: cfg.Characters,
 		events:     cfg.Events,
+		initiative: initiativeSeam{dice: cfg.Dice},
 	}, nil
 }

@@ -54,10 +54,10 @@ type MoveOutput struct {
 	// walk stopped.
 	Outcome *Outcome `json:"outcome,omitempty"`
 
-	// Pending is present if the walk stopped at a checkpoint and is waiting on
-	// a decision. The world is frozen until it is answered, and the remaining
-	// steps resume from exactly where these left off.
-	Pending *Pending `json:"pending,omitempty"`
+	// Formed is present if the walk put the walker in sight of the other side
+	// and a fight started, which is also why the walk stopped. The remaining
+	// cells were not attempted: a fight member does not free-roam.
+	Formed *Formed `json:"formed,omitempty"`
 
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
@@ -101,6 +101,10 @@ type TraverseOutput struct {
 	// Outcome is present if an ending fired on arrival.
 	Outcome *Outcome `json:"outcome,omitempty"`
 
+	// Formed is present if walking through the doorway put the crosser in
+	// sight of the other side and a fight started.
+	Formed *Formed `json:"formed,omitempty"`
+
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -141,7 +145,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", ErrEmptyPath)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -150,11 +154,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	res, err := m.runWalk(scope, &frozenResolution{
-		Kind:   kindWalk,
-		Member: in.Member,
-		Path:   in.Path,
-	})
+	res, err := m.runWalk(scope, in.Member, in.Path)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -168,7 +168,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		Steps:      res.steps,
 		Discovered: nilIfEmpty(res.discovered),
 		Outcome:    res.outcome,
-		Pending:    res.pending,
+		Formed:     res.formed,
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -194,7 +194,7 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		return nil, fmt.Errorf("traverse: %w", ErrNoConnection)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("traverse: %w", err)
 	}
@@ -220,9 +220,86 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		Discovered: projectDiscoveries(crossed.IntelDeltas),
 		Seq:        crossed.Seq,
 		Outcome:    projectOutcome(crossed.Outcome),
+		Formed:     projectFormed(crossed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
+}
+
+// walkResult is what one run of the walk produced.
+type walkResult struct {
+	steps      []Step
+	discovered map[string]Discovery
+	outcome    *Outcome
+	formed     *Formed
+}
+
+// runWalk steps a member along a path, stopping at the first fight, the first
+// ending, or the last cell.
+//
+// IT DECIDES NONE OF THAT. Until rpg-toolkit#964 this loop held a game rule: it
+// read each step's perception delta, and a subject seen for the first time
+// stopped the walk and opened a window for the walker to answer. That was the
+// SDK deciding when an encounter begins — a rule, in the one package whose
+// charter is to hold none — and it was wrong twice over besides, because sight
+// is not the only way a fight starts and a walker is not the only one who can
+// see.
+//
+// The composition owns it now, at the one place all sight changes pass through,
+// and reports a formed bubble on the Move that caused it. This loop reads that
+// report exactly the way it already read Outcome: as news. The walk stops
+// because the walker is IN a fight and a fight member does not free-roam — the
+// composition would refuse the next step with ErrInBubble — so stopping is a
+// fact about the world rather than a policy about perception.
+func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Position) (*walkResult, error) {
+	res := &walkResult{discovered: map[string]Discovery{}}
+
+	for i, cell := range path {
+		moved, err := scope.enc.Move(&encounter.MoveInput{
+			Member: encounter.MemberID(member),
+			To:     cell,
+		})
+		if err != nil {
+			// Nothing is saved on a mid-walk rejection. The member has really
+			// moved in memory for the steps already taken, but that encounter is
+			// discarded unsaved, so the persisted world is untouched.
+			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(path), translate(err))
+		}
+
+		res.steps = append(res.steps, Step{Position: moved.Moved.To, Seq: moved.Seq})
+		mergeDiscoveries(res.discovered, projectDiscoveries(moved.IntelDeltas))
+
+		if moved.Outcome != nil {
+			// The encounter ended underfoot. Every remaining step is abandoned:
+			// a closed encounter refuses movement anyway, and attempting them
+			// would turn a clean stop into a rejection the caller must interpret.
+			res.outcome = projectOutcome(moved.Outcome)
+			return res, nil
+		}
+
+		if moved.Formed != nil {
+			res.formed = projectFormed(moved.Formed)
+			return res, nil
+		}
+	}
+
+	return res, nil
+}
+
+// projectFormed turns the composition's report of a started fight into the
+// SDK's own shape.
+func projectFormed(f *encounter.FormedBubble) *Formed {
+	if f == nil {
+		return nil
+	}
+	out := &Formed{Seq: f.Seq}
+	for _, id := range f.Order {
+		out.Order = append(out.Order, string(id))
+	}
+	for _, id := range f.Surprised {
+		out.Surprised = append(out.Surprised, string(id))
+	}
+	return out
 }
 
 // validatePath rejects a path that is not a walk, before any of it is walked.

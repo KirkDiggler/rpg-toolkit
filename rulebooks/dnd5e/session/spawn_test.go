@@ -38,7 +38,7 @@ func (s *SpawnTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -209,38 +209,6 @@ func (s *SpawnTestSuite) TestBothEntryVerbsEnforceTheSamePlacementRules() {
 	s.ErrorIs(spawnErr, session.ErrBadPosition,
 		"both doors must translate the composition's rejection the same way")
 	s.Empty(s.storedNPCs(), "the rejected spawn stored nothing")
-}
-
-// TestSpawnIsRefusedWhileTheWorldIsFrozen pins that the new verb obeys the
-// interrupt spine like every other change verb.
-//
-// A verb added later that quietly bypasses the freeze is the failure this
-// guards: the world is waiting on an answer, and something walks a new monster
-// into it.
-func (s *SpawnTestSuite) TestSpawnIsRefusedWhileTheWorldIsFrozen() {
-	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
-		Sessions: sessions, Encounters: encounters,
-		Characters: testCharacters(), Events: session.DiscardEvents{},
-	})
-	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
-	})
-	s.Require().NoError(err)
-
-	out, err := mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(out.Pending, "the walk must suspend for this test to mean anything")
-
-	_, err = mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Room: "hall", Position: spatial.Position{X: 6, Y: 6},
-	})
-	s.ErrorIs(err, session.ErrFrozen)
 }
 
 // storedNPCs reports what the session repository actually holds.

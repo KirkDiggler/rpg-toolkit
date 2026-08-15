@@ -72,7 +72,7 @@ func (s *ConditionsTestSuite) SetupSubTest() { s.SetupTest() }
 func (s *ConditionsTestSuite) managerOverStores(
 	sessions *fakeSessions, encounters *fakeEncounters, characters *fakeCharacters,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -114,6 +114,8 @@ func (s *ConditionsTestSuite) storedBytes(id string) []byte {
 	return raw
 }
 
+// walkIntoTheAmbush walks alice into the ogre's line of sight, which starts a
+// fight and stops the walk short.
 func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.MoveOutput {
 	out, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
@@ -125,7 +127,7 @@ func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.M
 
 // TestAVerbLeavesTheCharacterStoreUntouched is the no-clobber pin.
 //
-// Every write verb, including the one that suspends. Byte comparison rather
+// Every write verb, including the one that ends in a fight. Byte comparison rather
 // than a field-by-field check on purpose: the failure this guards against is a
 // well-meaning SaveCharacter added to the write path, and ToData stamps
 // UpdatedAt with time.Now() on every call — so an unconditional save changes
@@ -144,53 +146,40 @@ func (s *ConditionsTestSuite) TestAVerbLeavesTheCharacterStoreUntouched() {
 		s.Equal(string(before), string(s.storedBytes("bob")))
 	})
 
-	s.Run("move that suspends", func() {
+	s.Run("move that starts a fight", func() {
 		before := s.storedBytes("alice")
 		out := s.walkIntoTheAmbush(s.mgr)
-		s.Require().NotNil(out.Pending, "this walk is supposed to suspend")
-		s.Equal(string(before), string(s.storedBytes("alice")))
-	})
-
-	s.Run("answer that resumes", func() {
-		out := s.walkIntoTheAmbush(s.mgr)
-		s.Require().NotNil(out.Pending)
-		before := s.storedBytes("alice")
-		_, err := s.mgr.Answer(ctx, &session.AnswerInput{
-			Session: "sess", Window: out.Pending.Window,
-			Member: "alice", Option: string(session.OptionContinue),
-		})
-		s.Require().NoError(err)
+		s.Require().NotNil(out.Formed, "this walk is supposed to start a fight")
 		s.Equal(string(before), string(s.storedBytes("alice")))
 	})
 }
 
-// TestTheRageSurvivesSuspensionRestartAndAnswer is the wave-2 invariant applied
-// to an entity, and the closest a test gets to the real failure: the answer
-// arrives from a process that never saw the walk begin.
+// TestTheRageSurvivesTheFightAndARestart is the wave-2 invariant applied to an
+// entity, and the closest a test gets to the real failure: play continues from
+// a process that never saw the fight start.
 //
-// All three stores round-trip through JSON, so the resumed manager shares no
-// pointer with the one that suspended. The assertion is on the DURABLE fields
-// rather than on "a condition is present", because presence is what a
-// reconstructed-from-scratch rage would also satisfy.
-func (s *ConditionsTestSuite) TestTheRageSurvivesSuspensionRestartAndAnswer() {
+// It used to resume a suspended walk across the restart. Nothing suspends now
+// (rpg-toolkit#964 slice 2), so the restart is what it always really was — the
+// stores round-tripping through JSON — and the claim is unchanged: a condition
+// is DURABLE, not an artifact of the manager that wrote it. All three stores go
+// through, so the second manager shares no pointer with the first. The
+// assertion is on the durable FIELDS rather than on "a condition is present",
+// because presence is what a reconstructed-from-scratch rage would also
+// satisfy.
+func (s *ConditionsTestSuite) TestTheRageSurvivesTheFightAndARestart() {
 	ctx := context.Background()
 
 	out := s.walkIntoTheAmbush(s.mgr)
-	s.Require().NotNil(out.Pending)
+	s.Require().NotNil(out.Formed, "she walks into a fight")
 
 	sessions, encounters, characters := s.roundTripAllStores()
 	restarted := s.managerOverStores(sessions, encounters, characters)
 
-	pending, err := restarted.Pending(ctx, &session.PendingInput{Session: "sess"})
+	// The far side reads the same world: she is where the fight stopped her.
+	seen, err := restarted.View(ctx, &session.ViewInput{Session: "sess", Member: "ogre"})
 	s.Require().NoError(err)
-	s.Require().Len(pending.Windows, 1, "the window outlived the process")
-
-	resumed, err := restarted.Answer(ctx, &session.AnswerInput{
-		Session: "sess", Window: pending.Windows[0].Window,
-		Member: "alice", Option: string(session.OptionContinue),
-	})
-	s.Require().NoError(err)
-	s.Require().Len(resumed.Steps, 1, "the walk picked up where it stopped")
+	s.Require().Len(seen, 1, "the ogre still holds her across the restart")
+	s.Equal("alice", seen[0].Subject)
 
 	stored, ok := characters.byID["alice"]
 	s.Require().True(ok)
