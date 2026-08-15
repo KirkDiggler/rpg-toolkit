@@ -259,6 +259,15 @@ const (
 	// EventTick reports that the clock advanced.
 	EventTick EventKind = "tick"
 
+	// EventTurnEnded reports that a member's turn in a fight ended and the
+	// order moved on.
+	//
+	// It arrived at clients as EventUnknown until the turn verbs existed —
+	// delivered but uninterpretable, which is correct by the delivery rule and
+	// useless to a client rendering a turn tracker. The beat was always there;
+	// nothing in this package could produce it.
+	EventTurnEnded EventKind = "turn_ended"
+
 	// EventFightStarted reports that two sides came into contact and a fight
 	// began, with its initiative order.
 	//

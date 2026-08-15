@@ -192,6 +192,14 @@ var (
 	// sentinel had no path to a host and so did not exist.
 	ErrInBubble = errors.New("member is in a fight")
 
+	// ErrNotInFight is returned when a verb needs the member to be in a fight
+	// and they are not — ending a turn while free-roaming, most obviously.
+	//
+	// The mirror of ErrInBubble, and both exist because a member is always in
+	// exactly one kind of time: the two errors are how a caller learns which
+	// one they guessed wrong about.
+	ErrNotInFight = errors.New("member is not in a fight")
+
 	// ErrFrozen, ErrNoWindow, ErrNotAudience, ErrNotOffered and ErrNoWindowID
 	// lived here. Every one of them described an open interrupt window, and
 	// nothing in this module opens one (rpg-toolkit#964 slice 2) — a sentinel

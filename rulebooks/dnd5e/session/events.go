@@ -184,6 +184,8 @@ func kindOf(payload []byte) EventKind {
 		return EventSceneOpened
 	case "tick":
 		return EventTick
+	case "turn-ended":
+		return EventTurnEnded
 	case "bubble-formed":
 		return EventFightStarted
 	case "bubble-dissolved":

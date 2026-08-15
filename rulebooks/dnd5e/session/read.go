@@ -255,6 +255,8 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrInBubble):
 		return fmt.Errorf("%w", ErrInBubble)
+	case errors.Is(err, encounter.ErrNoBubble):
+		return fmt.Errorf("%w", ErrNotInFight)
 	default:
 		return err
 	}
