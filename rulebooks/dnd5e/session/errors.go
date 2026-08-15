@@ -217,6 +217,14 @@ var (
 	// case arrives with the behavior work that calls for it.
 	ErrNotACharacter = errors.New("member is not a character")
 
+	// ErrNoSheet is returned when a member has no stored sheet to resolve
+	// against — an authored monster standing in a world nobody spawned.
+	//
+	// Distinct from ErrNoCharacter, which is about a player's sheet being
+	// missing from the host's repository: this one is about content the
+	// session itself never recorded.
+	ErrNoSheet = errors.New("member has no stored sheet")
+
 	// ErrBadAttack is returned when an attack cannot be compiled from the
 	// attacker's sheet — an empty hand, or a weapon the strike has no
 	// semantics for.

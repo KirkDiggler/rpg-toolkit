@@ -309,3 +309,42 @@ func (s *AttackTestSuite) TestAnEmptyHandIsRefused() {
 	s.ErrorIs(err, session.ErrBadAttack,
 		"an unarmed character is refused rather than silently swinging for 1")
 }
+
+// TestASheetlessTargetIsRefusedByName covers content standing in a world that
+// nobody spawned.
+//
+// An authored monster has no stored sheet until Spawn records one, so there is
+// nothing to read an armour class off and nothing for damage to land on. The
+// strike would fail on its own, but further from the cause and in the
+// resolution module's vocabulary — this refuses earlier, names who, and keeps
+// that module's sentinels off the seam.
+func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"))
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: encOrderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	data := enc.ToData()
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: &data,
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "ogre",
+	})
+	s.ErrorIs(err, session.ErrNoSheet)
+}

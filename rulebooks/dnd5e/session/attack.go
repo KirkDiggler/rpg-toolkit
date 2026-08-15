@@ -128,6 +128,17 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
 	}
 
+	// A member with no stored sheet cannot be swung at: there is nothing to
+	// read an armour class off and nothing for damage to land on. Authored
+	// content placed straight into a world has no sheet until something spawns
+	// it, so this is reachable and worth naming here — the alternative is the
+	// strike failing later, further from the cause.
+	if kinds[in.Target] == encounter.MemberKind(KindMonster) {
+		if _, ok := m.storedNPC(scope, in.Target); !ok {
+			return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrNoSheet)
+		}
+	}
+
 	profile, err := m.compileAttack(ctx, in.Attacker)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
@@ -219,6 +230,11 @@ func translateResolution(err error) error {
 	switch {
 	case errors.Is(err, resolution.ErrBadParticipant):
 		return fmt.Errorf("%w: %w", ErrBadCharacter, err)
+	case errors.Is(err, resolution.ErrNoCombatant):
+		// Reachable when a member has no stored sheet — an authored monster
+		// standing in a world nobody spawned. Refused earlier by name, so this
+		// arm is the backstop rather than the path.
+		return fmt.Errorf("%w: %w", ErrNoSheet, err)
 	case errors.Is(err, resolution.ErrNilInput), errors.Is(err, resolution.ErrNoMachine):
 		return fmt.Errorf("%w: %w", ErrNilInput, err)
 	default:
@@ -299,6 +315,16 @@ func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolutio
 // is the effect's own predicate (ADR-0038). A bard three cells away whose
 // Bless is running has to be in the room for their subscription to fire, and
 // deciding they are irrelevant here would be this package deciding a rule.
+// storedNPC finds an NPC's sheet in the session record.
+func (m *Manager) storedNPC(scope *writeScope, id string) (*monster.Data, bool) {
+	for i := range scope.data.NPCs {
+		if scope.data.NPCs[i].ID == id {
+			return &scope.data.NPCs[i], true
+		}
+	}
+	return nil, false
+}
+
 func (m *Manager) castFor(
 	ctx context.Context, scope *writeScope, roster []encounter.Member,
 ) ([]resolution.Participant, error) {
@@ -342,14 +368,20 @@ func (m *Manager) castFor(
 // verb in the package that writes a character at all — damage has to persist —
 // and the no-clobber pin gained a row for it rather than losing its guard.
 func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolution.Output) error {
+	// The report names what LANDED as well as what did not (S6). A sheet
+	// written before the failure is durable, and a caller told only about the
+	// failure would retry a write that already succeeded — which is the
+	// difference between repair and retry that the report exists to carry.
+	var written []string
 	for _, data := range out.DirtyCharacters {
 		if data == nil {
 			continue
 		}
 		if err := m.characters.SaveCharacter(ctx, data); err != nil {
-			report := SaveReport{Failed: []string{"character:" + data.ID}}
+			report := SaveReport{Written: written, Failed: []string{"character:" + data.ID}}
 			return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
 		}
+		written = append(written, "character:"+data.ID)
 	}
 
 	for _, dirty := range out.DirtyMonsters {
