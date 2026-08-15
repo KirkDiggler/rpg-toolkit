@@ -217,7 +217,10 @@ func (m *Manager) loadWorldWithBaseline(
 			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
-	enc, err := encounter.LoadEncounter(*world, nil)
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:       *world,
+		Initiative: m.initiative,
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("%q: %w: %w", encID, ErrInvalidWorld, err)
 	}
@@ -250,6 +253,8 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrNoConnection)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
+	case errors.Is(err, encounter.ErrInBubble):
+		return fmt.Errorf("%w", ErrInBubble)
 	default:
 		return err
 	}

@@ -132,6 +132,41 @@ type Outcome struct {
 	Members []MemberOutcome `json:"members,omitempty"`
 }
 
+// Formed reports that a fight started, and who is in it.
+//
+// It is NEWS, not a decision anyone made. Nothing in this package chooses when
+// an encounter begins: the composition detects contact wherever sight changes
+// and starts the fight itself (rpg-toolkit#964), and the verb that happened to
+// cause it carries the report back. A client renders "roll for initiative"
+// from this; it never asks for one.
+//
+// It appears on every verb that can put two sides in sight of each other — a
+// walk, a doorway, an arrival — because a verb that started a fight and said
+// nothing would leave the caller to discover it from the NEXT verb's refusal.
+type Formed struct {
+	// Order is the fight's initiative order, first to act first.
+	Order []string `json:"order"`
+
+	// Surprised names the members who entered unaware, a subset of Order.
+	//
+	// It is populated TODAY, which is worth saying because the composition's
+	// own notes predicted it would stay empty until asymmetric perception
+	// arrives (rpg-toolkit#1020). Occlusion already produces one-sided
+	// contact: a wall's line-of-sight ray is direction-dependent on a square
+	// grid, so a monster can hold a player who does not hold it back, and the
+	// player enters that fight surprised. See
+	// TestTheOgreCanSeeWhatAliceCannot.
+	//
+	// Surprise is a fact about the MOMENT the fight started — a member
+	// surprised at formation stays surprised through their first turn however
+	// the fight then develops — which is why it is carried here rather than
+	// re-derived by whoever asks later.
+	Surprised []string `json:"surprised,omitempty"`
+
+	// Seq is the story sequence of the beat that recorded the fight starting.
+	Seq uint64 `json:"seq"`
+}
+
 // MemberOutcome is one member's final placement.
 type MemberOutcome struct {
 	// ID is the member's identifier.
@@ -217,6 +252,25 @@ const (
 
 	// EventTick reports that the clock advanced.
 	EventTick EventKind = "tick"
+
+	// EventFightStarted reports that two sides came into contact and a fight
+	// began, with its initiative order.
+	//
+	// Every member of the encounter hears it, not only the ones in the fight:
+	// a fight is localized (the rest of the party keeps free-roaming) but it is
+	// not secret, and a client that learns about it only from the fighters'
+	// own responses could not render the party's shared view of the scene.
+	//
+	// It is the reason this list needed extending at all. The beat existed as
+	// soon as the composition started fights by itself (rpg-toolkit#964) and
+	// arrived at clients as EventUnknown — technically fine, since unknown
+	// beats are delivered rather than dropped, and useless in practice for the
+	// single most important thing that can happen in a session.
+	EventFightStarted EventKind = "fight_started"
+
+	// EventFightEnded reports that a fight dissolved and its members returned
+	// to free roam.
+	EventFightEnded EventKind = "fight_ended"
 
 	// EventUnknown is a beat this version does not recognise.
 	//

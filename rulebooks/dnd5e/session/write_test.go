@@ -27,7 +27,7 @@ func (s *WriteTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -194,7 +194,7 @@ func (s *WriteTestSuite) TestWriteVerbsRejectMissingIdentifiers() {
 func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -228,7 +228,7 @@ func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 	ctx := context.Background()
 
-	other, err := session.NewManager(&session.Config{
+	other, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})

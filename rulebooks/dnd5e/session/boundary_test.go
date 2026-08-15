@@ -108,17 +108,15 @@ var persistenceShapes = map[string]string{
 	// matter, and is what this list exists to keep out.
 	"encounter.EncounterData": "persistence shape the host already holds (S3)",
 
-	// The same S3 exception, for the same reason: SessionData is a persistence
-	// shape, and the ledger of open windows is part of what a session *is*.
-	// The host stores these bytes opaquely and never constructs one — it has no
-	// reason to name interrupt.LedgerData in its own code, and every reason to
-	// round-trip it untouched.
+	// interrupt.LedgerData was admitted here — SessionData carried a ledger of
+	// open windows, and the host round-tripped those bytes without reading
+	// them. Nothing in this package opens a window any more (rpg-toolkit#964
+	// slice 2), so the field went and the exception went with it.
 	//
-	// Note what this does NOT admit: interrupt.Window, interrupt.Ledger, or
-	// interrupt.Option appearing in a verb signature. Suspension reaches the
-	// host through SDK-owned Pending and Option types precisely so the custody
-	// module underneath can be replaced. Only the stored shape crosses.
-	"interrupt.LedgerData": "persistence shape the host stores opaquely (S3)",
+	// The list SHRINKING is the note worth leaving. An allow-list only ever
+	// grows if nobody checks whether an entry is still earning its place, and
+	// an exception outliving the thing it excepted is how one turns into
+	// decoration.
 
 	// A spawned NPC's sheet, inside SessionData.
 	//

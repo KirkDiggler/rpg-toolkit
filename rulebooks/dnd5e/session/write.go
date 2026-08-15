@@ -6,9 +6,7 @@ package session
 import (
 	"context"
 	"fmt"
-	"strconv"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -54,6 +52,10 @@ type JoinOutput struct {
 
 	// Outcome is present if an ending fired on the join.
 	Outcome *Outcome
+
+	// Formed is present if arriving put the newcomer in sight of the other
+	// side and a fight started around them.
+	Formed *Formed
 
 	// Saved names what was persisted.
 	Saved SaveReport
@@ -104,6 +106,11 @@ type SpawnOutput struct {
 
 	// Outcome is present if an ending fired on the spawn.
 	Outcome *Outcome
+
+	// Formed is present if the spawned content arrived in sight of the party
+	// and a fight started. This is the reason Formed is not a movement-only
+	// field: nobody walked anywhere, and a fight started.
+	Formed *Formed
 
 	// Saved names what was persisted.
 	Saved SaveReport
@@ -181,7 +188,7 @@ type EndOutput struct {
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrClosed if the encounter
-// has already ended, ErrFrozen if an interrupt window is open, or
+// has already ended, or
 // ErrSaveFailed with a populated report.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
@@ -191,7 +198,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -217,6 +224,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
+		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -240,7 +248,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef, ErrBadRef,
 // ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter, ErrClosed,
-// ErrFrozen if an interrupt window is open, or ErrSaveFailed with a populated
+// or ErrSaveFailed with a populated
 // report.
 func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, error) {
 	if in == nil {
@@ -250,7 +258,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -297,6 +305,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
+		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -344,7 +353,7 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
@@ -379,7 +388,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: %w", ErrNilInput)
 	}
 
-	scope, err := m.openForChange(ctx, in.Session)
+	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -404,6 +413,12 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 // A read verb has no use for the ID, so it uses open instead. Splitting them
 // keeps a read from carrying a value it cannot act on, and keeps the "which ID
 // do I save under" question answered in exactly one place.
+//
+// It used to have a twin, openForChange, that additionally refused a verb while
+// an interrupt window was open. Nothing in this module opens a window any more
+// (rpg-toolkit#964 slice 2), so a freeze that could never be entered was a
+// branch no test could reach — see doc.go on what retired with the walk's rule
+// and what wave 5 re-creates.
 func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeScope, error) {
 	if sessionID == "" {
 		return nil, ErrNoSessionID
@@ -411,14 +426,6 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	data, err := m.loadSessionData(ctx, sessionID)
 	if err != nil {
 		return nil, err
-	}
-	ledger, err := interrupt.LoadLedger(data.Windows)
-	if err != nil {
-		// Reject, never crash. A stored ledger that LoadLedger refuses is a blob
-		// no version of this module wrote, so the honest answer is that the
-		// session record is unreadable — not to repair it into something
-		// plausible and resume a resolution that never happened.
-		return nil, fmt.Errorf("session %q: %w: %w", sessionID, ErrInvalidSession, err)
 	}
 	enc, baseline, err := m.loadWorldWithBaseline(ctx, data.Encounter)
 	if err != nil {
@@ -429,68 +436,24 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		encounter: data.Encounter,
 		data:      data,
 		enc:       enc,
-		ledger:    ledger,
 		baseline:  baseline,
 	}, nil
 }
 
-// openForChange is openForWrite plus the freeze: a verb that would change the
-// world is refused while a window is open.
-//
-// The split is deliberate and structural. Answer must reach a frozen session —
-// it is the only thing that can unfreeze it — so the check cannot live inside
-// openForWrite. Putting it in a differently named opener means a new verb picks
-// its policy by picking its opener, and forgetting the freeze requires choosing
-// the one Answer uses rather than merely omitting a line.
-func (m *Manager) openForChange(ctx context.Context, sessionID string) (*writeScope, error) {
-	scope, err := m.openForWrite(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	if err := scope.frozen(); err != nil {
-		return nil, err
-	}
-	return scope, nil
-}
-
-// frozen reports the oldest open window as an error, or nil if the world is
-// running.
-//
-// The oldest rather than an arbitrary one: windows are ordered by pose, that
-// order is persisted, and a caller who is told which window blocks them should
-// be told the same one every time they ask.
-func (s *writeScope) frozen() error {
-	open, err := s.ledger.Open()
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSession, err)
-	}
-	if len(open) == 0 {
-		return nil
-	}
-	w := open[0]
-	return &FrozenError{
-		Window:   strconv.FormatUint(uint64(w.ID), 10),
-		Audience: string(w.Audience),
-	}
-}
-
 // writeScope is everything a write verb needs to act, save, and fan out: the
-// live encounter, the session record and its window ledger, the IDs to save and
-// address them under, and the sequence boundary separating what was already
-// recorded from what this verb records.
+// live encounter, the session record, the IDs to save and address them under,
+// and the sequence boundary separating what was already recorded from what this
+// verb records.
 type writeScope struct {
 	session   string
 	encounter string
 	data      *SessionData
 	enc       *encounter.Encounter
-	ledger    *interrupt.Ledger
 	baseline  uint64
 
-	// touched marks the ledger as changed by this verb, so a walk that opened
-	// or closed a window writes the session and one that did not leaves it
-	// alone. Writes stay proportional to what actually changed: the common
-	// case is a walk that suspends nothing and touches one aggregate, exactly
-	// as it did before windows existed.
+	// touched marks the session record as changed by this verb — a spawned
+	// sheet, today — so a verb that changed only the world writes only the
+	// world. Writes stay proportional to what actually changed.
 	touched bool
 }
 
@@ -500,18 +463,17 @@ type writeScope struct {
 // correctness decision rather than a style one. Both orders can fail halfway;
 // they fail differently:
 //
-//   - Encounter lands, session does not: the world holds the steps that were
-//     taken and no window remembers the pause. The walk is stuck, but every
-//     persisted fact is true, and the caller is told the save failed.
-//   - Session lands, encounter does not: a window says "resume from step three"
-//     over a world that still has the walker at step zero. Resuming would skip
-//     three cells nobody walked, silently.
+//   - Encounter lands, session does not: the world holds what happened and the
+//     session record does not know about it — a spawned monster is standing
+//     there with no sheet. Every persisted fact is true, the caller is told the
+//     save failed, and retrying the verb repairs it.
+//   - Session lands, encounter does not: the session holds a sheet for a
+//     monster that is not in any room. A record that looks healthy, describing
+//     a world that never happened.
 //
 // The first is a stoppage; the second is corruption that looks like progress.
 // So the aggregate that records what happened goes first, and the one that
-// records what is owed goes second. Resume re-validates against the world it
-// actually loads, which turns even the bad half of the first case into a clean
-// rejection rather than a wrong walk.
+// describes it goes second.
 func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *encounter.EncounterData, error) {
 	data := scope.enc.ToData()
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
@@ -527,12 +489,11 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 		return report, &data, nil
 	}
 
-	scope.data.Windows = scope.ledger.ToData()
 	if err := m.sessions.SaveSession(ctx, scope.data); err != nil {
 		// The encounter is already durable, so the report names both what landed
 		// and what did not (S6). A bare error here would leave the caller unable
 		// to tell a total failure from a half one, which is the difference
-		// between "retry the verb" and "the world moved but the window is gone".
+		// between "retry the verb" and "the world moved but its record did not".
 		report.Failed = append(report.Failed, "session:"+scope.session)
 		return report, nil, &SaveError{
 			Report: report,

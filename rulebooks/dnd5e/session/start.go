@@ -76,7 +76,10 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	// The loaded encounter is deliberately discarded. This is a validation
 	// call, and the manager holds no domain state between verbs (S1); the next
 	// verb loads its own.
-	if _, err := encounter.LoadEncounter(*in.World, nil); err != nil {
+	if _, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:       *in.World,
+		Initiative: m.initiative,
+	}); err != nil {
 		return nil, fmt.Errorf("startsession: %w: %w", ErrInvalidWorld, err)
 	}
 

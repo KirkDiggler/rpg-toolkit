@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,6 +54,28 @@ func run(w io.Writer) error {
 	}
 	_, err := w.Write(buf.Bytes())
 	return err
+}
+
+// loadedDice is this host's source of randomness, and it is here because a
+// fight now starts by itself: sight starts it, mid-walk, and something must be
+// able to say who acts first at that moment.
+//
+// Note what the host supplies: DICE, not an order. A real server wires its
+// seeded or crypto source here and never writes a line of initiative logic —
+// the rule that turns a d20 into an order belongs to the rulebook, and the SDK
+// routes between the two. The workbench returns a constant because a
+// demonstration that printed a different transcript on every run would be
+// demonstrating nothing.
+type loadedDice struct{}
+
+func (loadedDice) Roll(_ context.Context, _ int) (int, error) { return 10, nil }
+
+// encOrderAsGiven is the same for the authored world this workbench builds
+// with the composition directly, before any session exists to own it.
+type encOrderAsGiven struct{}
+
+func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.MemberID, error) {
+	return m, nil
 }
 
 // memSessions is a SessionRepository over a map. Get-by-id and put-by-id is
@@ -151,7 +174,7 @@ func (p *printStream) Publish(_ context.Context, events []session.Event) error {
 func drive(out *bytes.Buffer) error {
 	ctx := context.Background()
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: loadedDice{},
 		Sessions:   &memSessions{byID: map[string]*session.SessionData{}},
 		Encounters: &memEncounters{byID: map[string]*encounter.EncounterData{}},
 		Characters: &memCharacters{byID: map[string]*character.Data{"bob": bobTheDwarf()}},
@@ -194,10 +217,15 @@ func drive(out *bytes.Buffer) error {
 	// skeleton is INSTANTIATED from a ref, because it exists in code and
 	// nobody stored it. Two verbs, because the two are genuinely different;
 	// the caller never has to say which kind of thing it is.
+	//
+	// It arrives in the vault, behind the rubble, and that placement is now
+	// load-bearing: spawning it into the antechamber in plain view of the party
+	// would start a fight on the spot, before anybody had walked a step. That
+	// is why SpawnOutput carries Formed at all.
 	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
 		Session: "crypt-run", ID: "skel-1",
 		Ref:  refs.Monsters.Skeleton().String(),
-		Room: "antechamber", Position: spatial.Position{X: 4, Y: 2},
+		Room: "vault", Position: spatial.Position{X: 4, Y: 5},
 	})
 	if err != nil {
 		return err
@@ -236,7 +264,7 @@ func drive(out *bytes.Buffer) error {
 	}
 	fmt.Fprintf(out, "   delivered %d events\n", walked.Delivery.Events)
 
-	fmt.Fprintln(out, "\n== and through it ==")
+	fmt.Fprintln(out, "\n== and through it, into something waiting ==")
 	crossed, err := mgr.Traverse(ctx, &session.TraverseInput{
 		Session: "crypt-run", Member: "alice", Connection: "gate",
 	})
@@ -247,41 +275,35 @@ func drive(out *bytes.Buffer) error {
 		crossed.FromRoom, crossed.From.X, crossed.From.Y,
 		crossed.ToRoom, crossed.To.X, crossed.To.Y)
 
-	fmt.Fprintln(out, "\n== something moves in the dark ==")
-	vaultPath := []spatial.Position{{X: 1, Y: 1}, {X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}}
-	probe, err := mgr.Move(ctx, &session.MoveInput{
+	// The doorway is where the fight starts, and the host is told in the same
+	// response that told it about the crossing. There is no window to answer
+	// and no rule for the host to apply: the composition detected the contact,
+	// started the fight, and named the order.
+	if crossed.Formed == nil {
+		return fmt.Errorf("expected crossing into the vault to start a fight")
+	}
+	fmt.Fprintf(out, "   a fight starts, in order %v\n", crossed.Formed.Order)
+	if len(crossed.Formed.Surprised) > 0 {
+		fmt.Fprintf(out, "   caught unaware: %v\n", crossed.Formed.Surprised)
+	}
+
+	fmt.Fprintln(out, "\n== and she cannot simply walk away ==")
+	vaultPath := []spatial.Position{{X: 1, Y: 1}, {X: 1, Y: 2}}
+	_, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "crypt-run", Member: "alice", Path: vaultPath,
 	})
-	if err != nil {
-		return err
-	}
-	for _, step := range probe.Steps {
-		fmt.Fprintf(out, "   alice enters (%v,%v)\n", step.Position.X, step.Position.Y)
-	}
-	if probe.Pending == nil {
-		return fmt.Errorf("expected the vault to interrupt the walk, got %d/%d steps",
-			len(probe.Steps), len(vaultPath))
-	}
-	fmt.Fprintf(out, "   the world freezes after %d/%d: %s sees %v\n",
-		len(probe.Steps), len(vaultPath), probe.Pending.Audience, probe.Pending.Prompt.Sighted)
+	fmt.Fprintf(out, "   free roam refused for a fight member: %v\n",
+		errors.Is(err, session.ErrInBubble))
 
-	// Everything that would change the world is refused now, and says why.
-	if _, err := mgr.End(ctx, &session.EndInput{
-		Session: "crypt-run", Ending: "withdraw",
-	}); err != nil {
-		fmt.Fprintf(out, "   end refused while frozen: %v\n", err)
-	}
-
-	resumed, err := mgr.Answer(ctx, &session.AnswerInput{
-		Session: "crypt-run", Window: probe.Pending.Window,
-		Member: "alice", Option: string(session.OptionContinue),
+	// Bob is not in it. A fight is localized to the members who are in contact,
+	// so the rest of the party keeps exploring while it runs.
+	bobWalk, err := mgr.Move(ctx, &session.MoveInput{
+		Session: "crypt-run", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
 	})
 	if err != nil {
 		return err
 	}
-	for _, step := range resumed.Steps {
-		fmt.Fprintf(out, "   alice presses on to (%v,%v)\n", step.Position.X, step.Position.Y)
-	}
+	fmt.Fprintf(out, "   bob walks on regardless, %d step(s)\n", len(bobWalk.Steps))
 
 	fmt.Fprintln(out, "\n== bob's story ==")
 	story, err := mgr.Story(ctx, &session.StoryInput{Session: "crypt-run", Member: "bob"})
@@ -316,7 +338,7 @@ func drive(out *bytes.Buffer) error {
 // gate between them, anchored so the doorway's endpoints are adjacent in
 // absolute space.
 func authoredCrypt() (*encounter.EncounterData, error) {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "antechamber", Width: 6, Height: 6},

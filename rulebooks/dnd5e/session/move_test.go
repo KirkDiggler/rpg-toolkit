@@ -29,7 +29,7 @@ func (s *MoveTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -41,7 +41,7 @@ func (s *MoveTestSuite) SetupTest() {
 // three steps to her east — near enough to walk onto, far enough that a walk
 // can be interrupted before reaching it.
 func corridorWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},

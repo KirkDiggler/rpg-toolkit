@@ -16,30 +16,71 @@
 //	mgr, err := session.NewManager(&session.Config{
 //	    Sessions:   sessRepo,
 //	    Encounters: encRepo,
+//	    Characters: charRepo,
 //	    Events:     stream,
+//	    Dice:       roller,
 //	})
 //
 //	out, err := mgr.Move(ctx, &session.MoveInput{Session: s, Member: m, Path: p})
 //	// len(out.Steps) < len(p)  =>  something stopped the walk
 //	// out.Outcome != nil       =>  and that something was an ending
+//	// out.Formed  != nil       =>  and that something was a fight starting
 //
 // Every verb is load, act, save, return. There is no setup call, no teardown,
 // and no ordering for the caller to get wrong.
 //
-// # What this version does and does not do
+// # What this package does not hold
 //
-// Every law below is in force and exercised. S5 and S7 were commitments in
-// v0.1.0 — nothing could suspend yet — and are descriptions as of v0.2.0: a
-// walk stops mid-path, freezes as data, survives a process restart, and
-// resumes. The loop did not change shape when they became real, which is why
-// they were stated at the first tag rather than invented at the second.
+// It holds no game rules. That is the charter, and it is checkable: read every
+// file here and there is no die, no modifier, no threshold, and no decision
+// about what any of it means. Verbs load, hand the world what the caller asked
+// for, and report what the world says happened.
 //
-// What is genuinely absent is scope, not law. Only one thing can suspend a
-// resolution today: a member seeing something for the first time. Characters,
-// NPCs and their conditions arrive with the entities wave; combat and
-// reactions after that. Each is a new checkpoint kind, and a new checkpoint
-// kind is additive by construction — Prompt names what the player is looking
-// at and never why the resolution stopped, so no client learns a reason code.
+// It got there by giving one away. This package used to decide when an
+// encounter begins: a walk read each step's perception delta, and a subject
+// seen for the first time stopped the walk and opened a window for the walker
+// to answer. That is a rule — and a wrong one twice over, since sight is not
+// the only way a fight starts and a walker is not the only one who can see.
+// The composition owns it now (rpg-toolkit#964), detecting contact wherever
+// sight changes and starting the fight itself; the walk reads the result as
+// news and stops because the walker is IN a fight.
+//
+// Dice are the same principle at the other end. A fight that starts by itself
+// needs an order, so a host supplies the randomness (Config.Dice) and the
+// RULEBOOK supplies the rule that turns it into an order. Neither the host nor
+// this package writes initiative.
+//
+// # The suspension spine, and where it went
+//
+// S5 and S7 were laws here through v0.2.0: Pending was the one suspension
+// vocabulary, a frozen resolution was data, and an open window froze every
+// change verb until it was answered. They are gone, because their only
+// producer was the rule above. Nothing opened a window once the walk stopped
+// posing one, and a spine with no producer is a shape no caller can reach:
+// Pending always empty, Answer always refusing, a freeze branch no test can
+// enter.
+//
+// NOTHING ABOUT THE CUSTODY DESIGN WAS LOST. It lives in play/interrupt, which
+// this wave did not touch by a single byte and whose own suite is that design's
+// home: pose, audience, options, one-answer-per-window, and the ledger's
+// persisted shape are all tested there, against the module that owns them.
+// What retired was this package's ADAPTER to it — roughly 250 lines of walk-
+// shaped plumbing.
+//
+// Wave 5 brings the first honest producer (a reaction: a real checkpoint that
+// is not a perception rule) and re-creates four things, each of which existed
+// and worked. The reference implementation is this module's git history at the
+// rpg-toolkit#964 slice-2 commit, where all four are readable in full:
+//
+//   - the ledger load in openForWrite, and its reject-never-crash handling of a
+//     stored ledger no version of this module wrote;
+//   - the verb classification for the freeze — which verbs are refused while a
+//     window is open and which are not, with reads deliberately exempt;
+//   - restart survival: the frozen value written to the session aggregate, the
+//     encounter-then-session write order, and the partial-save report;
+//   - an Answer path, which will NOT be the old one — a reaction's window has a
+//     different audience, different options and a different payload, so the
+//     resume half was going to be rewritten whichever way this went.
 //
 // # Laws
 //
@@ -49,7 +90,7 @@
 //
 // S2 — no inner type crosses the boundary. Exported signatures reference types
 // owned here plus stable value types (spatial.Position). Never an encounter,
-// combat, clock, intel, record or interrupt type. This is what allows the
+// combat, clock, intel or record type. This is what allows the
 // modules underneath to be replaced without the host changing a line, and it
 // is enforced by a test rather than by good intentions.
 //
@@ -58,17 +99,11 @@
 //
 // S4 — every verb is load, act, save, return.
 //
-// S5 — Pending is the only suspension vocabulary. Every pause, whatever caused
-// it, surfaces in one shape and resolves through one Answer. While a window is
-// open every verb that would change the world is refused; read verbs are not,
-// because what is frozen is change, not observation.
+// S5 and S7 — retired with the spine above, not repealed. When a resolution can
+// suspend again they are the laws it suspends under.
 //
 // S6 — failure names its pieces. A partial save is an error with a populated
 // report, never a silent shrug.
-//
-// S7 — a frozen resolution is data. The walk is a re-enterable phase machine
-// holding nothing across a suspension, so a window survives the process that
-// opened it: the answer may arrive days later, on another machine.
 //
 // S8 — construction is total. The manager refuses to exist without what it
 // needs; there is no lazy discovery at call time.
