@@ -67,16 +67,32 @@ func managerOverRepos(
 
 // ambushWorld is a hall split by a wall of occluders with a single gap at y=3.
 //
-// Alice starts at (1,1) with no line of sight to anything; the ogre waits at
-// (5,3) behind the wall. Walking north to (2,3) lines her up with the gap and
-// they see each other — first contact, mid-path, with a cell still to go.
+// Alice starts at (1,0) with no line of sight to anything; the ogre waits at
+// (5,3) behind the wall. Walking north brings her close enough to the gap that
+// they see each other — first contact, mid-path, with cells still to go.
+//
+// She used to start at (1,1), one row further in. Sight became a LANE rather
+// than a line (rpg-toolkit#1022, spatial v0.9.1): a viewer leans around
+// obstacles now, so from (1,1) she already found the gap at first light and
+// the scene opened mid-fight. One row back and the wall does its job again —
+// the geometry moved because the rule did, not because the scene changed.
 //
 // The scene outlived the rule it was built for. It was written when THIS
 // package decided that a sighting stops a walk; the composition owns that now
 // (rpg-toolkit#964) and the same geometry produces a started fight instead of
 // an opened window. A fixture that survives the rule it was built to test is
 // a fixture that was describing the world rather than the code.
+// ambushWorldWithAliceAt is ambushWorld with alice moved, for tests that ask
+// what the wall does from a particular spot rather than what a walk produces.
+func ambushWorldWithAliceAt(t fataler, at spatial.Position) *encounter.EncounterData {
+	return buildAmbush(t, at)
+}
+
 func ambushWorld(t fataler, extra ...encounter.MemberInput) *encounter.EncounterData {
+	return buildAmbush(t, spatial.Position{X: 1, Y: 0}, extra...)
+}
+
+func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInput) *encounter.EncounterData {
 	occluders := make([]spatial.Position, 0, 7)
 	for y := 0; y < 8; y++ {
 		if y == 3 {
@@ -86,7 +102,7 @@ func ambushWorld(t fataler, extra ...encounter.MemberInput) *encounter.Encounter
 	}
 
 	members := []encounter.MemberInput{
-		{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+		{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: alice},
 		{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 5, Y: 3}},
 	}
 	members = append(members, extra...)
@@ -117,12 +133,13 @@ func (s *FightStartsTestSuite) startAmbush(extra ...encounter.MemberInput) {
 	s.Require().NoError(err)
 }
 
-// walkIntoTheAmbush walks the three-cell path that meets the ogre on cell two,
-// and returns the output.
+// walkIntoTheAmbush walks the four-cell path that meets the ogre on cell two,
+// and returns the output — two cells still to go, which is what makes "the
+// fight stopped the walk" a claim rather than a coincidence.
 func (s *FightStartsTestSuite) walkIntoTheAmbush() *session.MoveOutput {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
 	})
 	s.Require().NoError(err)
 	return out
@@ -143,7 +160,7 @@ func (s *FightStartsTestSuite) TestTheFightStopsTheWalk() {
 	out := s.walkIntoTheAmbush()
 
 	s.Require().Len(out.Steps, 2, "the walk stopped where the fight started")
-	s.Equal(spatial.Position{X: 2, Y: 3}, out.Steps[1].Position,
+	s.Equal(spatial.Position{X: 2, Y: 2}, out.Steps[1].Position,
 		"where she stopped, not where she was headed")
 
 	s.Require().NotNil(out.Formed, "lining up with the gap started a fight")
@@ -202,7 +219,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 
 		out, err := mgr.Move(context.Background(), &session.MoveInput{
 			Session: "sess", Member: "alice",
-			Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}},
+			Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}},
 		})
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Formed, "run %d", i)
@@ -233,7 +250,7 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 
 	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}},
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}},
 	})
 	s.Require().Error(err, "the fight could not be ordered, so the verb fails")
 	s.ErrorIs(err, errNoRandomness, "and the host's own failure is still matchable")
@@ -261,22 +278,28 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 	s.startAmbush()
 
-	// She walks the other way, into the corner at (0,0). The wall stays
-	// between her and the ogre the whole time and neither ever holds the
-	// other — verified below rather than assumed, because "no fight" would
-	// also be the answer if the walk had simply failed.
+	// She walks up the near side of the wall, (2,0) then (2,1), staying off
+	// the file the gap opens onto. Neither ever holds the other — verified
+	// below rather than assumed, because "no fight" would also be the answer
+	// if the walk had simply failed.
+	//
+	// This route used to run to the corner at (0,0). Lane sight reaches
+	// through the gap at a much shallower angle than a single ray did, and the
+	// whole x=0 column turned out to be in view of it — so the old "quiet"
+	// corner is now the loudest cell in the room.
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 0, Y: 1}, {X: 0, Y: 0}},
+		Path: []spatial.Position{{X: 2, Y: 0}, {X: 2, Y: 1}},
 	})
 	s.Require().NoError(err)
 	s.Nil(out.Formed, "nobody saw anybody, so no fight started")
 	s.Len(out.Steps, 2, "so the whole path is walked")
 	s.Empty(out.Discovered["alice"].FirstContact, "and there was nothing to see")
 
-	// Both directions, because sight is NOT symmetric in this composition: a
-	// walk the ogre could see would start a fight just as surely as one alice
-	// could see (see TestTheOgreCanSeeWhatAliceCannot).
+	// Both directions on purpose, even though TestSightIsSymmetric proves they
+	// must agree. A negative control that leans on another test's conclusion
+	// inherits its failure: if symmetry ever broke, this test would go on
+	// reporting a quiet walk while only checking the quiet half.
 	for _, who := range []string{"alice", "ogre"} {
 		seen, verr := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: who})
 		s.Require().NoError(verr)
@@ -284,50 +307,78 @@ func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 	}
 }
 
-// TestTheOgreCanSeeWhatAliceCannot records a live fact this wave discovered,
-// and it contradicts something rpg-toolkit#964 slice 1 shipped in a comment.
+// TestSightIsSymmetric is what TestTheOgreCanSeeWhatAliceCannot became.
 //
-// Slice 1 reasoned that sight is symmetric line-of-sight with no stealth,
-// facing or range, so a one-sided contact — and therefore Surprised — could
-// not happen until asymmetric perception lands (rpg-toolkit#1020). It happens
-// today. Alice steps to (1,2), a diagonal across the wall from the ogre at
-// (5,3): the ogre holds her and she holds nothing, so the fight starts with
-// her surprised.
+// That test recorded a defect as evidence and deliberately did not bless it:
+// alice stepped to (1,2), a diagonal across the wall from the ogre at (5,3),
+// and the ogre held her while she held nothing — a one-sided contact with
+// Surprised populated and NO STEALTH ANYWHERE IN THE MODULE. It was not a
+// rule, it was the ray: occluders blocked by rasterizing the line between two
+// cells, and that rasterization was direction-dependent on a square grid, so
+// A→B and B→A were different cells and one of them clipped the wall.
 //
-// The cause is not a rule, it is the ray. Occluders block by rasterizing the
-// line between two cells, and the rasterization is direction-dependent on a
-// square grid — spatial's own IsLineOfSightBlocked comments that "the
-// canonical boundary ray differs on square grids". A→B and B→A are not the
-// same set of cells, so one of them can clip the wall and the other miss it.
+// Filed as rpg-toolkit#1022, ruled a BUG by Kirk — line of sight should be
+// symmetric by definition, and asymmetry should arrive deliberately with
+// #1020's stealth and perception, never by rounding. Fixed in spatial v0.9.1,
+// which now pins symmetry as a LAW over fuzzed rooms in every grid family.
 //
-// This test does NOT bless that. It pins what the module does today so the
-// claim in slice 1 stops being believed, and so that whoever decides whether
-// direction-dependent sight is a feature or a spatial bug finds the evidence
-// rather than the assumption. What it proves for THIS wave is the part that is
-// not in doubt: the consumer was built right. Surprised is populated, carried
-// across the boundary, and reported — no upgrade required.
-func (s *FightStartsTestSuite) TestTheOgreCanSeeWhatAliceCannot() {
-	s.startAmbush()
+// So the test flips: same scene, opposite claim. What it proved for this
+// module has not changed — the consumer was always right. Surprised populated,
+// crossed the boundary and reported correctly the whole time; what was wrong
+// was the PRODUCTION of percepts, exactly where the design said a fix belongs.
+// holds reports whether these holdings include a live sighting of a named
+// subject.
+//
+// The symmetry claim is about WHO each side can see, not how many things they
+// hold: equal counts would still pass if the two were seeing different things,
+// and a symmetry test that cannot tell those apart is not one.
+func holds(holdings []session.Sighting, subject string) bool {
+	for _, h := range holdings {
+		if h.Subject == subject {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *FightStartsTestSuite) TestSightIsSymmetric() {
 	ctx := context.Background()
 
-	out, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
-	})
-	s.Require().NoError(err)
+	// Walked one cell at a time, each in its own session, because a fight
+	// forming would stop the walk — the question here is what the WALL does at
+	// each spot, not what happens after contact.
+	contacts := 0
+	for _, at := range []spatial.Position{
+		{X: 1, Y: 1}, {X: 1, Y: 2}, {X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3},
+	} {
+		sessions, encounters := newFakeSessions(), newFakeEncounters()
+		mgr := managerOverRepos(s.T(), sessions, encounters)
+		_, err := mgr.StartSession(ctx, &session.StartSessionInput{
+			Session: "sess", Encounter: "world",
+			World: ambushWorldWithAliceAt(s.T(), at),
+		})
+		s.Require().NoError(err)
 
-	s.Require().NotNil(out.Formed, "the ogre noticing her is enough to start it")
-	s.Equal([]string{"alice", "ogre"}, out.Formed.Order)
-	s.Equal([]string{"alice"}, out.Formed.Surprised,
-		"she is in a fight she never saw coming")
+		aliceSees, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
+		s.Require().NoError(err)
+		ogreSees, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "ogre"})
+		s.Require().NoError(err)
 
-	aliceSees, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	s.Empty(aliceSees, "she holds nothing — the wall is between them from her side")
+		// Subjects rather than counts. Equal lengths would still pass if the
+		// two were seeing DIFFERENT things, and a symmetry claim that cannot
+		// tell those apart is not a symmetry claim.
+		aliceHoldsOgre, ogreHoldsAlice := holds(aliceSees, "ogre"), holds(ogreSees, "alice")
+		s.Equal(aliceHoldsOgre, ogreHoldsAlice,
+			"at %v the wall must do the same thing to both of them", at)
+		if aliceHoldsOgre {
+			contacts++
+		}
+	}
 
-	ogreSees, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "ogre"})
-	s.Require().NoError(err)
-	s.Require().Len(ogreSees, 1, "and it holds her — the same wall, the other direction")
-	s.Equal("alice", ogreSees[0].Subject)
+	s.Require().Positive(contacts,
+		"the fixture must actually put them in sight somewhere, or this proves nothing")
+	s.Require().Less(contacts, 5,
+		"and must block them somewhere, or the wall is not in the way")
 }
 
 // TestAFightOnTheFinalCellIsStillReported is the inverted twin of a rule that
@@ -346,7 +397,7 @@ func (s *FightStartsTestSuite) TestAFightOnTheFinalCellIsStillReported() {
 
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}}, // contact lands on the last cell
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}}, // contact lands on the last cell
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Steps, 2, "the walk finished")
@@ -396,7 +447,7 @@ func (s *FightStartsTestSuite) TestAWalkWritesOnlyTheEncounter() {
 
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 1, Y: 2}},
+		Path: []spatial.Position{{X: 2, Y: 0}},
 	})
 	s.Require().NoError(err)
 	s.Equal([]string{"encounter:world"}, out.Saved.Written,
@@ -448,7 +499,7 @@ func (s *FightStartsTestSuite) TestATotalSaveFailureNamesOnlyWhatWasAttempted() 
 	mgr := managerOverRepos(s.T(), s.sessions, encounters)
 
 	_, err := mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 2}},
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
 	})
 	s.Require().Error(err)
 

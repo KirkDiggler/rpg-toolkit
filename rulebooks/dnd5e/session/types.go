@@ -149,13 +149,19 @@ type Formed struct {
 
 	// Surprised names the members who entered unaware, a subset of Order.
 	//
-	// It is populated TODAY, which is worth saying because the composition's
-	// own notes predicted it would stay empty until asymmetric perception
-	// arrives (rpg-toolkit#1020). Occlusion already produces one-sided
-	// contact: a wall's line-of-sight ray is direction-dependent on a square
-	// grid, so a monster can hold a player who does not hold it back, and the
-	// player enters that fight surprised. See
-	// TestTheOgreCanSeeWhatAliceCannot.
+	// EMPTY TODAY, and the round trip is worth recording. The composition's
+	// notes originally predicted it would stay empty until asymmetric
+	// perception arrives (rpg-toolkit#1020) — then this doc said the opposite,
+	// because occlusion really was producing one-sided contact: a wall's
+	// line-of-sight ray was direction-dependent on a square grid, so a monster
+	// could hold a player who did not hold it back. That was a defect, not a
+	// rule (rpg-toolkit#1022), and spatial v0.9.1 fixed it by making symmetry
+	// a law. Under symmetric sight nobody can be unaware of somebody who is
+	// aware of them, so this cannot fill.
+	//
+	// The original prediction is therefore true again: it fills when #1020
+	// brings asymmetry DELIBERATELY, through stealth against perception, and
+	// never through geometry. See TestSightIsSymmetric.
 	//
 	// Surprise is a fact about the MOMENT the fight started — a member
 	// surprised at formation stays surprised through their first turn however

@@ -343,8 +343,11 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 			Rooms: []encounter.RoomInput{
 				{ID: "antechamber", Width: 6, Height: 6},
 				// The vault is split by rubble with one sightline through it at
-				// y=3, so what waits at (4,3) is invisible until someone lines
-				// up with the gap.
+				// y=3. Crossing the gate puts alice where both of them can be
+				// seen — sight is a LANE now (spatial v0.9.1), so she looks
+				// past the rubble's corner rather than dead down its file, and
+				// the fight that starts is the whole room's rather than one
+				// skeleton's.
 				{ID: "vault", Width: 6, Height: 6, Origin: spatial.Position{X: 6, Y: 0}, Occluders: []spatial.Position{
 					{X: 2, Y: 0}, {X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 4}, {X: 2, Y: 5},
 				}},

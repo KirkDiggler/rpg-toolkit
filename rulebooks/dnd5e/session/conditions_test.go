@@ -119,7 +119,7 @@ func (s *ConditionsTestSuite) storedBytes(id string) []byte {
 func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.MoveOutput {
 	out, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
 	})
 	s.Require().NoError(err)
 	return out

@@ -147,7 +147,7 @@ func Example_theFightThatStartsItself() {
 		panic(err)
 	}
 
-	path := []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}}
+	path := []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}}
 	out, err := mgr.Move(ctx, &session.MoveInput{Session: "run", Member: "alice", Path: path})
 	if err != nil {
 		panic(err)
@@ -163,12 +163,12 @@ func Example_theFightThatStartsItself() {
 	// She cannot simply walk on: she is in the fight, and free roam is for
 	// members who are not. The refusal is the composition's, translated.
 	_, err = mgr.Move(ctx, &session.MoveInput{
-		Session: "run", Member: "alice", Path: []spatial.Position{{X: 2, Y: 4}},
+		Session: "run", Member: "alice", Path: []spatial.Position{{X: 2, Y: 3}},
 	})
 	fmt.Printf("walking on is refused: %v\n", errors.Is(err, session.ErrInBubble))
 
 	// Output:
-	// stopped after 2/3: a fight starts, in order [alice ogre]
+	// stopped after 2/4: a fight starts, in order [alice ogre]
 	// walking on is refused: true
 }
 
