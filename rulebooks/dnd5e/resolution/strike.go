@@ -214,7 +214,7 @@ type strikeMachine struct {
 }
 
 // Start validates the profile, reads the target's AC, and folds the attack chain.
-func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
+func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
 	}
@@ -236,44 +236,24 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 		return nil, err
 	}
 
-	// The AC the target actually has, armor and effects included, rather than
-	// the flat number on the sheet.
+	// The flat number the sheet carries: a character's ArmorClass field, a
+	// monster's stat-block AC. Armor worn and effects folded onto the AC chain
+	// do NOT reach it — an unarmored character whose sheet says 14 is measured
+	// against 14 here, whatever the rules would compute.
 	//
-	// GetEffectiveAC is bus-free at its signature and dispatches to the sheet:
-	// a character folds combat.ACChain on its parked bus, and under Resolve
-	// that bus IS this interaction's surface — Attach was handed it — so the
-	// fold runs among the same subscribers everything else in this strike
-	// folds among. A monster has no such method and falls through to its stat
-	// block's number, which is correct for a stat block.
+	// That is the current behavior, and it is wrong on purpose for one more
+	// change. combat.GetEffectiveAC would fold the AC chain correctly from
+	// inside an interaction — measured, not assumed, in a proving suite that
+	// watches a Defense-style fighter's +1 reach the number the d20 is compared
+	// against. What the flip also does is make character.Data.ArmorClass inert
+	// on this path, which two existing tests depend on, so it carries a
+	// behavior change and two test redesigns of its own: rpg-toolkit#1018.
 	//
-	// Slice 1 used the flat number because it could not tell whether that fold
-	// would reach the right bus; measured now, it does. Pinned end to end by
-	// TestTheDefenseStyleFoldsIntoTheACTheStrikeUses — a Defense fighter's +1
-	// changes the number the d20 is compared against, not merely the report.
-	//
-	// The fold rides the character's parked bus rather than a step this machine
-	// owns, which is the legacy shape and still is. A resolution-owned version
-	// — an AC Gather before the attack event is built — is the eventual shape
-	// if AC folding ever needs to be inspectable or suspendable. Deferred with
-	// no consumer asking for it, not because anything blocks it.
-	// The flat number on the sheet, still — and now for a sequencing reason
-	// rather than an unknown one.
-	//
-	// Slice 1 could not tell whether combat.GetEffectiveAC would fold the AC
-	// chain on the right bus from inside an interaction. It does: measured, in
-	// a proving suite that shows a Defense-style fighter's +1 reaching the
-	// number the d20 is compared against. What the flip also does is make
-	// character.Data.ArmorClass INERT on this path, which two existing tests
-	// depend on (one sets an AC no rules-legal character can have, to prove a
-	// widened crit range is not a widened hit range). That is a behavior
-	// change with its own evidence to produce and two existing tests to
-	// redesign, so it ships as its own change rather than riding this one.
-	// The proving suite is written and green; it lands with that change.
-	//
-	// Read once and used for both the outcome and the chain event: the event's
-	// number is what decides the hit, since afterAttackChain compares against
+	// Read once and used for both the outcome and the chain event, because the
+	// event's number is what decides the hit: afterAttackChain compares against
 	// the FOLDED event and overwrites the outcome from it. Setting only the
-	// outcome would report one AC and roll against another.
+	// outcome would report one AC and roll against another — the trap #1018's
+	// proving test caught.
 	effectiveAC := target.AC()
 
 	m.outcome = StrikeOutcome{
