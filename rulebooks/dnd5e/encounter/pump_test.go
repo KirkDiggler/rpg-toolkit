@@ -313,7 +313,10 @@ func (s *PumpTestSuite) TestPumpDeciderIsolation() {
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{{
 					ID: room1, Width: 10, Height: 10,
-					Occluders: []spatial.Position{{X: 5, Y: 5}},
+					// A wall down x=5 rather than one cell of it: spatial
+					// v0.9.1 leans around a lone obstacle, so a fixture that
+					// wants sight blocked builds a wall (testwalls_test.go).
+					Occluders: wallColumn(5, 4, 6),
 				}},
 			},
 			Members: []encounter.MemberInput{
@@ -1682,7 +1685,7 @@ func (t *traverseThenWander) Decide(snap encounter.Snapshot) (encounter.Intent, 
 // The trick is fight → Dissolve → hunt. Contact forms the bubble; Dissolve
 // returns the goblin to the world clock still CARRYING what it saw, because
 // dissolving moves clocks and never touches intel; alice then steps behind a
-// pillar, which fades her from the goblin's percept without deleting her from
+// wall, which fades her from the goblin's percept without deleting her from
 // its memory. Now the goblin is a world-clock monster with real, stale intel,
 // so Pump consults its decider and the snapshot has something to be wrong
 // about.
@@ -1711,9 +1714,11 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: room1, Width: 10, Height: 10,
-				// One pillar, positioned so that alice is visible from the
-				// goblin where she starts and hidden where she ends up.
-				Occluders: []spatial.Position{{X: 5, Y: 5}},
+				// A short wall, positioned so that alice is visible from the
+				// goblin where she starts and hidden where she ends up. It
+				// was a single pillar until spatial v0.9.1, which leans
+				// around one — see testwalls_test.go.
+				Occluders: wallColumn(5, 4, 6),
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -1741,7 +1746,7 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 	s.Require().NoError(err)
 	s.Require().Equal(encounter.ClockWorld, clockOf.Kind, "back to the world's to move")
 
-	// Alice slips behind the pillar. She fades from the goblin's percept — no
+	// Alice slips behind the wall. She fades from the goblin's percept — no
 	// current sight, so nothing re-triggers (classification reads first
 	// contact, and a fade is not a contact).
 	moved, err := enc.Move(&encounter.MoveInput{Member: aliceID, To: hidden})

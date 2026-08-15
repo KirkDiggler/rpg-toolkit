@@ -123,18 +123,18 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 
 func (s *EncounterTestSuite) TestSetupPillarBlocksSight() {
 	s.Run("occluder blocks both directions", func() {
-		// Arrange: alice and goblin separated by a pillar
+		// Arrange: alice and goblin separated by a WALL — a pillar is leaned
+		// around now (spatial v0.9.1, see testwalls_test.go), so a fixture
+		// that wants sight blocked has to build something worth blocking.
 		setup := &encounter.SetupInput{
 			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-						Occluders: []spatial.Position{
-							{X: 4, Y: 5}, // Pillar in the middle
-						},
+						ID:        room1,
+						Width:     10,
+						Height:    10,
+						Occluders: wallColumn(4, 0, 9),
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -171,7 +171,7 @@ func (s *EncounterTestSuite) TestSetupPillarBlocksSight() {
 		// Assert: alice does not see goblin
 		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
-		s.Len(aliceView, 0, "alice should see nothing (blocked by pillar)")
+		s.Len(aliceView, 0, "alice should see nothing (blocked by the wall)")
 
 		// Assert: goblin does not see alice (symmetric)
 		goblinView, err := enc.View(&encounter.ViewInput{Member: goblin})
@@ -1983,22 +1983,23 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 }
 
 func (s *EncounterTestSuite) TestMoveGhostForms() {
-	s.Run("moving behind the pillar fades holdings both ways", func() {
-		// Geometry: pillar at (10,10). alice starts at (2,2); bob at (10,18).
-		// The line (2,2)->(10,18) misses the pillar: initially visible.
-		// alice moves to (10,2): the line (10,2)->(10,18) is the x=10
-		// vertical and crosses (10,10): blocked BOTH ways.
+	s.Run("moving behind the wall fades holdings both ways", func() {
+		// Geometry: a wall across y=10 from x=7 to x=13. alice starts at
+		// (2,2); bob at (10,18). The line (2,2)->(10,18) passes west of the
+		// wall's end: initially visible. alice moves to (10,2), square behind
+		// it: blocked BOTH ways.
+		//
+		// A wall rather than the single pillar this fixture used to have —
+		// spatial v0.9.1 leans around a lone obstacle (see testwalls_test.go).
 		setup := &encounter.SetupInput{
 			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:     room1,
-						Width:  20,
-						Height: 20,
-						Occluders: []spatial.Position{
-							{X: 10, Y: 10},
-						},
+						ID:        room1,
+						Width:     20,
+						Height:    20,
+						Occluders: wallRow(10, 7, 13),
 					},
 				},
 			},
@@ -2026,7 +2027,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Require().Len(aliceView, 1, "the ghost is HELD, not gone")
-		s.Equal(intel.Held, aliceView[0].Status, "alice's sight of bob must fade behind the pillar")
+		s.Equal(intel.Held, aliceView[0].Status, "alice's sight of bob must fade behind the wall")
 		var bobSeen encounter.SightPayload
 		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &bobSeen))
 		s.Equal(18.0, bobSeen.Y, "ghost holds bob at his last-seen position")
