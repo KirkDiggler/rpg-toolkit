@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -12,8 +13,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -141,6 +145,30 @@ func (s *DeclaredConsequenceTestSuite) TestAnUngatedAttackNamesNoConsequence() {
 	s.Require().NotEmpty(melee.DamageDice, "the skeleton has a generic melee action")
 	s.Require().Nil(melee.Gate, "a plain weapon just hits")
 	s.Require().Nil(melee.Imposes, "so there is nothing riding on it")
+}
+
+// A bite with no gate names no consequence either. Content can author one —
+// BiteConfig's own doc says "Nil means the bite just bites" — and a
+// consequence sitting on a profile nothing can trigger is a claim the code
+// would be making and never honouring.
+func (s *DeclaredConsequenceTestSuite) TestAGatelessBiteNamesNoConsequence() {
+	config, err := json.Marshal(monsterActions.BiteConfig{
+		AttackBonus: 4,
+		DamageDice:  "2d4+2",
+		DamageType:  damage.Piercing,
+		// No SaveGate, no KnockdownDC: a bite that just bites.
+	})
+	s.Require().NoError(err)
+
+	profile, err := AttackFromMonsterAction(monster.ActionData{
+		Ref:    *refs.MonsterActions.Bite(),
+		Config: config,
+	})
+	s.Require().NoError(err)
+
+	s.Require().Nil(profile.Gate, "nothing to contest")
+	s.Require().Nil(profile.Imposes, "so nothing rides on it")
+	s.Require().Equal("2d4+2", profile.DamageDice, "and it is still a bite")
 }
 
 // A gate that names no consequence is refused BY NAME, before anything rolls.
