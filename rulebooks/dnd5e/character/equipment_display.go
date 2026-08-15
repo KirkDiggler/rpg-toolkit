@@ -133,8 +133,12 @@ func MainHandDamage(mainWeapon *weapons.Weapon, offHand *EquippedItem) string {
 		return ""
 	}
 
+	// An empty off hand is the whole of this function's contribution: it means
+	// the weapon is gripped two-handed. Whether that changes the die is the
+	// weapon's own business, which is what VersatileDamage answers — a
+	// property check here would ask the same question twice.
 	damage := mainWeapon.Damage
-	if mainWeapon.HasProperty(weapons.PropertyVersatile) && offHand == nil {
+	if offHand == nil {
 		damage = mainWeapon.VersatileDamage()
 	}
 
