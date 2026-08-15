@@ -171,11 +171,30 @@ type DamageComponent struct {
 	FlatBonus         int              // Flat modifier (0 if none)
 	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
 	IsCritical        bool             // Was this doubled for crit?
-	// Multiplier for this component (0 means 1.0/no multiplier).
-	// Used for vulnerability (2.0), resistance (0.5), or immunity (0.0 to negate).
-	// When non-zero, this component represents a multiplier to apply to other
-	// components of the same damage type, not additional damage itself.
-	Multiplier float64
+	// Multiplier scales the other components of the same damage type rather
+	// than adding damage of its own: vulnerability (2.0), resistance (0.5),
+	// immunity (0.0).
+	//
+	// A pointer because ZERO IS A LEGAL FACTOR. This was a plain float64 whose
+	// doc read "0 means 1.0/no multiplier" and, two lines later, "immunity (0.0
+	// to negate)" — one value carrying both meanings. The dispatch had to pick
+	// one, picked "absent", and immunity silently stopped working: an immune
+	// target took full damage and the immunity branch of the stacking rules was
+	// unreachable (rpg-toolkit#1012). Nil now means "this component is damage",
+	// and any float — zero included — means "this component modifies damage".
+	//
+	// Build one with [Multiply]; &0.0 is not expressible inline.
+	Multiplier *float64
+}
+
+// Multiply returns a factor for [DamageComponent.Multiplier].
+//
+// It exists because the zero factor — immunity — cannot be written inline as
+// a pointer, and because a named constructor makes "this component is a
+// modifier" the visible act at every call site rather than a consequence of
+// which field happens to be set.
+func Multiply(factor float64) *float64 {
+	return &factor
 }
 
 // Total returns the total damage for this component

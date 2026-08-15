@@ -161,7 +161,7 @@ func (i *immunityCondition) onDamageChain(
 			Source:     dnd5eEvents.DamageSourceMonsterTrait,
 			SourceRef:  refs.MonsterTraits.Immunity(),
 			DamageType: i.damageType,
-			Multiplier: 0, // Multiply by 0 = no damage
+			Multiplier: dnd5eEvents.Multiply(0), // immunity: nothing gets through
 		})
 		return e, nil
 	}
