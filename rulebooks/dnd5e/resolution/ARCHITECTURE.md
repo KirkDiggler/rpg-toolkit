@@ -5,7 +5,7 @@
 named plug-in points. The per-module contracts live in each module's godoc;
 this is the cross-cutting picture. Background: [ADR-0038] (resolution owns
 the bus), [ADR-0039] (the save gate is data), and the
-[attack profile seam](../ideas/session-sdk/attack-profile-seam.md).
+[attack profile seam](../../../docs/ideas/session-sdk/attack-profile-seam.md).
 
 ## The big picture
 
@@ -162,5 +162,5 @@ with a gated bite without writing Go; a new step kind takes a design record.
 - **`Pose`** — arrives with the walk; every machine above is already shaped
   for it.
 
-[ADR-0038]: ../adr/0038-resolution-owns-the-bus.md
-[ADR-0039]: ../adr/0039-the-save-gate.md
+[ADR-0038]: ../../../docs/adr/0038-resolution-owns-the-bus.md
+[ADR-0039]: ../../../docs/adr/0039-the-save-gate.md

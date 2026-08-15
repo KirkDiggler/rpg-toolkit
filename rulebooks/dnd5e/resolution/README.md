@@ -173,6 +173,8 @@ bus a sheet parks for its verb methods is still parked. Both go with #965 and
 
 ## Reading order
 
+0. [ARCHITECTURE.md](ARCHITECTURE.md) — the cross-cutting picture: machines,
+   compilers, the one bus, and every plug-in socket with its cost
 1. [ADR-0038 — resolution owns the bus](../../../docs/adr/0038-resolution-owns-the-bus.md)
 2. Journeys [053](../../../docs/journey/053-resolution-seam-attach-responsibility.md)
    and [054](../../../docs/journey/054-the-subscribe-interface-and-the-resolution-seam.md)
