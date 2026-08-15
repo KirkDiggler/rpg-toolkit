@@ -214,7 +214,7 @@ type strikeMachine struct {
 }
 
 // Start validates the profile, reads the target's AC, and folds the attack chain.
-func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, error) {
+func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
 	}
@@ -236,14 +236,49 @@ func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, erro
 		return nil, err
 	}
 
-	// Plain AC, deliberately. Folding the AC chain is GetEffectiveAC's job and
-	// it folds on the character's own parked bus — the legacy shape this
-	// migration is retiring — so slice 1 uses the number on the sheet and
-	// names the gap rather than papering it. Divestment debt — #965 slice 2.
+	// The AC the target actually has, armor and effects included, rather than
+	// the flat number on the sheet.
+	//
+	// GetEffectiveAC is bus-free at its signature and dispatches to the sheet:
+	// a character folds combat.ACChain on its parked bus, and under Resolve
+	// that bus IS this interaction's surface — Attach was handed it — so the
+	// fold runs among the same subscribers everything else in this strike
+	// folds among. A monster has no such method and falls through to its stat
+	// block's number, which is correct for a stat block.
+	//
+	// Slice 1 used the flat number because it could not tell whether that fold
+	// would reach the right bus; measured now, it does. Pinned end to end by
+	// TestTheDefenseStyleFoldsIntoTheACTheStrikeUses — a Defense fighter's +1
+	// changes the number the d20 is compared against, not merely the report.
+	//
+	// The fold rides the character's parked bus rather than a step this machine
+	// owns, which is the legacy shape and still is. A resolution-owned version
+	// — an AC Gather before the attack event is built — is the eventual shape
+	// if AC folding ever needs to be inspectable or suspendable. Deferred with
+	// no consumer asking for it, not because anything blocks it.
+	// The flat number on the sheet, still — and now for a sequencing reason
+	// rather than an unknown one.
+	//
+	// Slice 1 could not tell whether combat.GetEffectiveAC would fold the AC
+	// chain on the right bus from inside an interaction. It does: measured, in
+	// a proving suite that shows a Defense-style fighter's +1 reaching the
+	// number the d20 is compared against. What the flip also does is make
+	// character.Data.ArmorClass INERT on this path, which two existing tests
+	// depend on (one sets an AC no rules-legal character can have, to prove a
+	// widened crit range is not a widened hit range). That is a behavior
+	// change with its own evidence to produce, so it ships as its own change
+	// rather than riding this one — rpg-toolkit#1017.
+	//
+	// Read once and used for both the outcome and the chain event: the event's
+	// number is what decides the hit, since afterAttackChain compares against
+	// the FOLDED event and overwrites the outcome from it. Setting only the
+	// outcome would report one AC and roll against another.
+	effectiveAC := target.AC()
+
 	m.outcome = StrikeOutcome{
 		AttackerID: m.in.AttackerID,
 		TargetID:   m.in.TargetID,
-		TargetAC:   target.AC(),
+		TargetAC:   effectiveAC,
 	}
 
 	event := dnd5eEvents.AttackChainEvent{
@@ -252,7 +287,7 @@ func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, erro
 		WeaponRef:         m.in.Attack.Ref,
 		IsMelee:           true,
 		AttackBonus:       m.in.Attack.AttackBonus,
-		TargetAC:          target.AC(),
+		TargetAC:          effectiveAC,
 		CriticalThreshold: criticalThreshold,
 	}
 
@@ -267,7 +302,11 @@ func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, erro
 // always misses, a natural 20 always hits. Rolling here rather than calling
 // combat is not a preference — every exported attack entry point in that
 // package requires an event bus, and there is no bus-free roll to call.
-// Divestment debt — #965 slice 2.
+//
+// Slice 2 left it that way on purpose. Exporting a bus-free attack roll would
+// be a second divestment with its own evidence to produce, and the old attack
+// path is the one that would have to give it up; it retires with #966, which
+// is when this stops being a mirror and starts being the only copy.
 func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents.AttackChainEvent) (Step, error) {
 	roller := m.in.Roller
 	if roller == nil {
@@ -363,10 +402,11 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		IsCritical:        m.outcome.Critical,
 	}
 
-	return foldDamage(&combat.ResolveDamageInput{
+	return foldDamage(&dnd5eEvents.DamageChainEvent{
 		AttackerID:   m.in.AttackerID,
 		TargetID:     m.in.TargetID,
 		Components:   []dnd5eEvents.DamageComponent{component},
+		DamageType:   m.in.Attack.DamageType,
 		IsCritical:   m.outcome.Critical,
 		HasAdvantage: len(m.outcome.Folded.AdvantageSources) > 0,
 		WeaponDamage: m.in.Attack.DamageDice,
@@ -386,15 +426,21 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 // one-topic-two-meanings finding #965 slice 2 owes a classification for.
 // Pinned by TestAMonsterTargetTakesItsDamageOnce.
 func (m *strikeMachine) afterDamageChain(
-	ctx context.Context, resolved *combat.ResolveDamageOutput,
+	ctx context.Context, folded *dnd5eEvents.DamageChainEvent,
 ) (Step, error) {
 	target, err := combatantFor(m.cast, m.in.TargetID)
 	if err != nil {
 		return nil, err
 	}
 
-	instances := make([]combat.DamageInstance, 0, len(resolved.FinalInstances))
-	for _, instance := range resolved.FinalInstances {
+	// The multipliers are combat's arithmetic, called bus-free now that it is
+	// exported (#965 slice 2 PR-A). Resistance, vulnerability, and immunity
+	// stacking stays one implementation shared with the legacy stack rather
+	// than a copy that can drift.
+	final, _ := combat.FinalDamage(folded.Components)
+
+	instances := make([]combat.DamageInstance, 0, len(final))
+	for _, instance := range final {
 		instances = append(instances, combat.DamageInstance{
 			Amount: instance.Amount,
 			Type:   string(instance.Type),
@@ -422,13 +468,23 @@ func (m *strikeMachine) afterDamageChain(
 // event is inert for half the roster: the topic means two different things
 // depending on who is listening.
 //
-// That is the rules-versus-notification classification #965 slice 2 exists to
-// make, arriving as evidence rather than as opinion, so slice 1 applies damage
-// once and announces nothing. What it costs is real and worth naming: Undead
-// Fortitude listens to this topic legitimately, and does not fire here. It
-// converts with its gate (#977), by which point the double-apply is gone.
+// Slice 2's census classified it, and the answer was sharper than the question:
+// DamageReceivedTopic has FIVE subscribers across THREE meanings. One applies
+// damage (monster.onDamageReceived calls TakeDamage — the instruction). Three
+// are genuine rules that only observe: Undead Fortitude's survival save,
+// Unconscious's death-save failures, and Rage's was-I-hit upkeep. One is the
+// encounter layer, which captures the events and DRAINS them precisely to stop
+// the damage landing twice. A character subscribes for none of it, so the topic
+// is inert for half the roster.
 //
-// Divestment debt — #965 slice 2.
+// The topic MEANS "damage has landed" — a notification. The subscriber that
+// treats it as an instruction is the defect, not the topic, and it retires with
+// #977 when Undead Fortitude converts to a gate. Publishing here before then
+// would double-apply to every monster; publishing after costs nothing and buys
+// the three rules back. So this waits on that conversion, not on a question.
+//
+// What it costs meanwhile is named rather than hidden: those three rules do not
+// fire for resolution-driven damage yet.
 func (m *strikeMachine) afterDamage(ctx context.Context) (Step, error) {
 	return m.afterNotify(ctx)
 }
@@ -470,8 +526,12 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 // single swing.
 //
 // Reach is not enforced, for melee weapons exactly as for the bite: the
-// strike does not yet check adjacency at all. That is one shared, named gap
-// (#965 slice 2's list), not one this case adds.
+// strike does not check adjacency at all. Deferred explicitly rather than
+// carried silently — rpg-toolkit#1010 owns the rule inventory (five-foot
+// reach, the reach property, ranged brackets) and it lands with the movement
+// wave, where the MovementChain custody it belongs beside already sits.
+// Positions exist and the room is built, so the check is cheap whenever
+// someone owns the rule.
 func AttackFromMonsterAction(action monster.ActionData) (AttackProfile, error) {
 	switch action.Ref.ID {
 	case refs.MonsterActions.Bite().ID:
@@ -639,31 +699,40 @@ func gatherAttack(
 	}
 }
 
-// foldDamage builds the step that folds the damage chain.
+// foldDamage builds the step that folds the damage chain on this
+// interaction's own bus.
 //
-// **Divestment debt — #965 slice 2.** This hands resolution's own bus to
-// combat.ResolveDamage, which folds the chain itself. Functionally it is the
-// save precedent — the fold happens on the interaction's bus either way, since
-// resolution attached every subscriber to it — and what differs is custody of
-// the fold mechanics. There is no bus-free alternative to call: every exported
-// attack and damage entry point in combat requires a bus, and the arithmetic
-// that applies resistance and vulnerability is unexported, so folding here
-// would mean reimplementing damage multipliers. Slice 2 retires this.
+// Resolution publishes and executes the chain itself, the same way it already
+// does for the attack and the saving throw, and then calls the exported
+// [combat.FinalDamage] for the multiplier arithmetic. Slice 1 handed its bus
+// to combat.ResolveDamage instead — the fold happened on the right bus either
+// way, since resolution attached every subscriber to it, but custody of the
+// fold sat in the other module and there was no bus-free arithmetic to call.
+// PR-A exported that arithmetic; this is the half that uses it.
+//
+// What is deliberately NOT reimplemented: the stacking rules. FinalDamage is
+// shared with the legacy stack, so resistance and immunity cannot drift
+// between the two.
 func foldDamage(
-	in *combat.ResolveDamageInput,
-	next func(context.Context, *combat.ResolveDamageOutput) (Step, error),
+	event *dnd5eEvents.DamageChainEvent,
+	next func(context.Context, *dnd5eEvents.DamageChainEvent) (Step, error),
 ) Gather {
 	return Gather{
 		name: "damage chain",
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			in.EventBus = bus
+			chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 
-			resolved, err := combat.ResolveDamage(ctx, in)
+			modified, err := dnd5eEvents.DamageChain.On(bus).PublishWithChain(ctx, event, chain)
 			if err != nil {
-				return nil, fmt.Errorf("resolve damage: %w", err)
+				return nil, fmt.Errorf("publish damage chain: %w", err)
 			}
 
-			return next(ctx, resolved)
+			folded, err := modified.Execute(ctx, event)
+			if err != nil {
+				return nil, fmt.Errorf("execute damage chain: %w", err)
+			}
+
+			return next(ctx, folded)
 		},
 	}
 }
