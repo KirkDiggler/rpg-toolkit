@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -62,7 +63,7 @@ func (s *StrictnessTestSuite) SetupTest() {
 // world is a two-member encounter: the hero, and a second character whose sheet
 // is the corrupt one.
 func (s *StrictnessTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -128,7 +129,7 @@ func (s *StrictnessTestSuite) save() Machine {
 // error says which participant and which blob. The legacy path resolved it
 // happily, one effect short, and returned a sheet to persist in that state.
 func (s *StrictnessTestSuite) TestAnUnroutableConditionFailsTheResolution() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.sheet(heroID, unroutable)}},
 		Machine:      s.save(),
@@ -143,7 +144,7 @@ func (s *StrictnessTestSuite) TestAnUnroutableConditionFailsTheResolution() {
 // The control that makes the refusal mean something: the same sheet, the same
 // machine, a condition this build does know — and the resolution runs.
 func (s *StrictnessTestSuite) TestTheSameSheetWithAReadableConditionResolves() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.sheet(heroID, s.raging(heroID))}},
 		Machine:      s.save(),
@@ -164,7 +165,7 @@ func (s *StrictnessTestSuite) TestTheSameSheetWithAReadableConditionResolves() {
 func (s *StrictnessTestSuite) TestAFailedResolutionLeavesNothingOnTheBus() {
 	inner := events.NewEventBus()
 
-	out, err := resolveOn(s.ctx, &Input{
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.sheet(heroID, s.raging(heroID))},
@@ -204,7 +205,7 @@ func (s *StrictnessTestSuite) TestAnUnroutableMonsterTraitFailsTheResolution() {
 		},
 	}
 
-	world, err := encounter.NewEncounter(&encounter.SetupInput{
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -216,7 +217,7 @@ func (s *StrictnessTestSuite) TestAnUnroutableMonsterTraitFailsTheResolution() {
 	})
 	s.Require().NoError(err)
 
-	out, resolveErr := Resolve(s.ctx, &Input{
+	out, resolveErr := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: world.ToData(),
 		Participants: []Participant{
 			{Character: s.sheet(heroID)},
@@ -265,7 +266,7 @@ func (b *refusingBus) Publish(ctx context.Context, topic events.Topic, event any
 func (s *StrictnessTestSuite) TestAnAttachThatFailsFailsTheResolution() {
 	bus := &refusingBus{inner: events.NewEventBus(), failOn: 1}
 
-	out, err := resolveOn(s.ctx, &Input{
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.sheet(heroID, s.raging(heroID))}},
 		Machine:      s.save(),

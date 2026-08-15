@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -62,7 +63,7 @@ func (s *DeclaredConsequenceTestSuite) biteProfile() AttackProfile {
 // world places the hero and the wolf three cells apart — far enough that
 // prone's range predicate stays out of these cases.
 func (s *DeclaredConsequenceTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -105,7 +106,7 @@ func (s *DeclaredConsequenceTestSuite) hero() *character.Data {
 }
 
 func (s *DeclaredConsequenceTestSuite) resolve(machine Machine) (*Output, error) {
-	return Resolve(s.ctx, &Input{
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.hero()},

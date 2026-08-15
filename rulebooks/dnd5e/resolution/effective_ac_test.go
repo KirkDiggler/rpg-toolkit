@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -97,7 +98,7 @@ func (s *EffectiveACTestSuite) defenseStyle() json.RawMessage {
 }
 
 func (s *EffectiveACTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -119,7 +120,7 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 	attack, err := AttackFromMonsterAction(data.Actions[0])
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: data}},
 		Machine: NewStrike(&StrikeInput{
@@ -187,7 +188,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	attack, err := AttackFromMonsterAction(data.Actions[0])
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -199,7 +200,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	})
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        enc.ToData(),
 		Participants: []Participant{{Monster: data}, {Monster: second}},
 		Machine: NewStrike(&StrikeInput{

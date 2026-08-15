@@ -9,6 +9,17 @@ var (
 	// ErrNilInput indicates a caller defect: Resolve was handed no input at all.
 	ErrNilInput = errors.New("resolution: nil input")
 
+	// ErrNoInitiative indicates an interaction given no way to order a fight
+	// that starts while it runs. The composition requires one to load at all.
+	ErrNoInitiative = errors.New("resolution: no initiative roller")
+
+	// ErrNoRoller indicates an interaction given no dice.
+	//
+	// It used to default to real randomness, which made a missing capability
+	// look like a working one and put untestable rolls into results that
+	// seemed fine. Refused at the door instead.
+	ErrNoRoller = errors.New("resolution: no roller")
+
 	// ErrNoMachine indicates an interaction with nothing to resolve. Distinct
 	// from a machine that finishes immediately, which is legal.
 	ErrNoMachine = errors.New("resolution: no machine")

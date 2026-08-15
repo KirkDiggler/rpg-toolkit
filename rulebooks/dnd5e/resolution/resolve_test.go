@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -67,7 +69,7 @@ func (s *ResolveTestSuite) SetupTest() {
 // world is a two-member encounter, already normalised by a load/save cycle so
 // that "unchanged" can be asserted literally.
 func (s *ResolveTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -211,7 +213,7 @@ func (s *ResolveTestSuite) outcomeOf(out *Output) SaveOutcome {
 // own predicate decided it applied. This single assertion is ADR-0038 end to
 // end.
 func (s *ResolveTestSuite) TestRagingBarbarianGetsAdvantageOnAStrengthSave() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
@@ -233,7 +235,7 @@ func (s *ResolveTestSuite) TestRagingBarbarianGetsAdvantageOnAStrengthSave() {
 // The control that makes the headline mean something: the same barbarian, the
 // same save, no condition — a straight roll.
 func (s *ResolveTestSuite) TestTheSameBarbarianWithoutRageRollsStraight() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian()}},
 		Machine:      s.save(abilities.STR),
@@ -248,7 +250,7 @@ func (s *ResolveTestSuite) TestTheSameBarbarianWithoutRageRollsStraight() {
 
 // The second effect, on a different chain, through the same machinery.
 func (s *ResolveTestSuite) TestDodgingGrantsAdvantageOnADexteritySave() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.dodging())}},
 		Machine:      s.save(abilities.DEX),
@@ -263,7 +265,7 @@ func (s *ResolveTestSuite) TestDodgingGrantsAdvantageOnADexteritySave() {
 // Applicability is the effect's own predicate, never resolution's. Raging is
 // attached for a DEX save exactly as it is for a STR save, and declines.
 func (s *ResolveTestSuite) TestRagingDeclinesADexteritySaveOnItsOwn() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.DEX),
@@ -281,7 +283,7 @@ func (s *ResolveTestSuite) TestRagingDeclinesADexteritySaveOnItsOwn() {
 // R3. A participant nobody expected to matter is passed in, attaches, and folds
 // nothing. Pass-everyone-in costs correctness nothing.
 func (s *ResolveTestSuite) TestAnIrrelevantParticipantAttachesAndFoldsNothing() {
-	alone, err := Resolve(s.ctx, &Input{
+	alone, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
@@ -289,7 +291,7 @@ func (s *ResolveTestSuite) TestAnIrrelevantParticipantAttachesAndFoldsNothing() 
 	s.Require().NoError(err)
 
 	s.SetupTest()
-	together, err := Resolve(s.ctx, &Input{
+	together, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.barbarian(s.raging())},
@@ -311,7 +313,7 @@ func (s *ResolveTestSuite) TestAnIrrelevantParticipantAttachesAndFoldsNothing() 
 // caller happened to list participants in. Without this, a resumed suspension
 // could attach into a differently-ordered world.
 func (s *ResolveTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
-	forward, err := Resolve(s.ctx, &Input{
+	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.barbarian(s.raging())},
@@ -322,7 +324,7 @@ func (s *ResolveTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 	s.Require().NoError(err)
 
 	s.SetupTest()
-	reversed, err := Resolve(s.ctx, &Input{
+	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Monster: s.skeleton()},
@@ -343,7 +345,7 @@ func (s *ResolveTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 func (s *ResolveTestSuite) TestNothingSurvivesTheCall() {
 	inner := events.NewEventBus()
 
-	out, err := resolveOn(s.ctx, &Input{
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
@@ -374,7 +376,7 @@ func (s *ResolveTestSuite) TestTheWorldRoundTripsUnchanged() {
 	before, err := json.Marshal(world)
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        world,
 		Participants: []Participant{{Character: s.barbarian(s.raging())}},
 		Machine:      s.save(abilities.STR),
@@ -409,7 +411,7 @@ func (s *ResolveTestSuite) TestTheWorldRoundTripsUnchanged() {
 func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 	machine := &captureMachine{}
 
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.skeleton()}},
 		Machine:      machine,
@@ -431,7 +433,7 @@ func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 // A save changes nobody, so nobody comes back dirty. The point is that dirty
 // means dirty rather than "was present".
 func (s *ResolveTestSuite) TestASaveLeavesNobodyDirty() {
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.barbarian(s.raging())},
@@ -454,13 +456,13 @@ func (s *ResolveTestSuite) TestNilInputRejected() {
 }
 
 func (s *ResolveTestSuite) TestMissingMachineRejected() {
-	_, err := Resolve(s.ctx, &Input{World: s.world()})
+	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(), World: s.world()})
 	s.Require().ErrorIs(err, ErrNoMachine)
 }
 
 func (s *ResolveTestSuite) TestBadParticipantsRejected() {
 	s.Run("empty", func() {
-		_, err := Resolve(s.ctx, &Input{
+		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 			World:        s.world(),
 			Participants: []Participant{{}},
 			Machine:      s.save(abilities.STR),
@@ -469,7 +471,7 @@ func (s *ResolveTestSuite) TestBadParticipantsRejected() {
 	})
 
 	s.Run("both a character and a monster", func() {
-		_, err := Resolve(s.ctx, &Input{
+		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 			World:        s.world(),
 			Participants: []Participant{{Character: s.barbarian(), Monster: s.skeleton()}},
 			Machine:      s.save(abilities.STR),
@@ -478,7 +480,7 @@ func (s *ResolveTestSuite) TestBadParticipantsRejected() {
 	})
 
 	s.Run("the same id twice", func() {
-		_, err := Resolve(s.ctx, &Input{
+		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 			World:        s.world(),
 			Participants: []Participant{{Character: s.barbarian()}, {Character: s.barbarian(s.raging())}},
 			Machine:      s.save(abilities.STR),
@@ -490,7 +492,7 @@ func (s *ResolveTestSuite) TestBadParticipantsRejected() {
 // Rolling a save for someone who was not passed in would silently drop their
 // modifier and every effect they carry, and still return a plausible number.
 func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
-	_, err := Resolve(s.ctx, &Input{
+	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.skeleton()}},
 		Machine:      NewSave(&SaveInput{SaverID: "nobody", Ability: abilities.STR, DC: saveDifficulty}),
@@ -501,7 +503,7 @@ func (s *ResolveTestSuite) TestASaverWhoIsNotAParticipantIsRefused() {
 func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
 	s.roller.single = 11
 
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.wolf()}},
 		Machine: NewSave(&SaveInput{
@@ -522,7 +524,7 @@ func (s *ResolveTestSuite) TestAMonsterCanSucceedOnASavingThrow() {
 func (s *ResolveTestSuite) TestAMonsterCanFailASavingThrowWithANegativeModifier() {
 	s.roller.single = 10
 
-	out, err := Resolve(s.ctx, &Input{
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Monster: s.wolf()}},
 		Machine: NewSave(&SaveInput{
@@ -542,4 +544,44 @@ func (s *ResolveTestSuite) TestAMonsterCanFailASavingThrowWithANegativeModifier(
 
 func TestResolveSuite(t *testing.T) {
 	suite.Run(t, new(ResolveTestSuite))
+}
+
+// TestCapabilitiesAreSuppliedNeverDefaulted pins both halves of one principle.
+//
+// Initiative was absent from this input entirely — the composition grew a
+// required roller (rpg-toolkit#964) and this package kept calling LoadEncounter
+// without one, so against encounter v0.9.0 every Resolve failed at the door.
+// That was found by the session seam adopting this module for the first time
+// (rpg-toolkit#966), which is the only place it could have been found: nothing
+// here loads a world that requires one.
+//
+// Roller was worse, because it looked fine. A nil roller quietly became real
+// randomness, so a caller who forgot to wire dice got a result that passed
+// every assertion and could not be reproduced. Kirk's ruling on the
+// composition's own roller covers both: a missing capability is an error
+// returned way upstream, not a default.
+//
+// Exactly ONE literal in this suite was relying on that default when it was
+// removed — the surface it was protecting was almost entirely imaginary.
+func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
+	machine := NewSave(&SaveInput{
+		SaverID: "x", Ability: abilities.CON, DC: 10, Roller: dice.NewRoller(),
+	})
+
+	t.Run("no initiative", func(t *testing.T) {
+		err := (&Input{Machine: machine, Roller: dice.NewRoller()}).Validate()
+		require.ErrorIs(t, err, ErrNoInitiative)
+	})
+
+	t.Run("no roller", func(t *testing.T) {
+		err := (&Input{Machine: machine, Initiative: orderAsGiven{}}).Validate()
+		require.ErrorIs(t, err, ErrNoRoller)
+	})
+
+	t.Run("both supplied", func(t *testing.T) {
+		err := (&Input{
+			Machine: machine, Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+		}).Validate()
+		require.NoError(t, err)
+	})
 }

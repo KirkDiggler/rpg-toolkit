@@ -121,7 +121,7 @@ func (s *CharacterAttackTestSuite) mainHand() *CharacterAttackInput {
 // world puts the hero next to the wolf. Adjacency matters only to prone's
 // range predicate, which nobody here triggers.
 func (s *CharacterAttackTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -139,7 +139,7 @@ func (s *CharacterAttackTestSuite) world() encounter.EncounterData {
 func (s *CharacterAttackTestSuite) swingAt(
 	hero *character.Data, profile AttackProfile, roller *sequenceRoller,
 ) (*Output, error) {
-	return Resolve(s.ctx, &Input{
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: roller,
 		World: s.world(),
 		Participants: []Participant{
 			{Character: hero},
