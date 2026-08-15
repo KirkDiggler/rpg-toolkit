@@ -32,6 +32,19 @@ var (
 	// caller being wrong, and it says which.
 	ErrBadGate = errors.New("resolution: invalid save gate")
 
+	// ErrBadWorld indicates world data this package cannot make sense of — a
+	// member placed in a room the field does not contain, or a position the
+	// room refuses. The world is the caller's to hand over intact.
+	ErrBadWorld = errors.New("resolution: world data is unusable")
+
+	// ErrBadAttack indicates an action this build cannot read as an attack.
+	// Refused by name rather than treated as a generic swing, because guessing
+	// an attack bonus is how a stat block starts lying again.
+	ErrBadAttack = errors.New("resolution: unreadable attack")
+
+	// ErrNoCombatant indicates a strike naming somebody who was not passed in.
+	ErrNoCombatant = errors.New("resolution: combatant is not a participant")
+
 	// ErrRecurrenceUnsupported indicates a gate asking for a repeat save this
 	// package cannot yet run. Refusing is the point: treating "save again at
 	// the end of each of your turns" as a single save would produce a

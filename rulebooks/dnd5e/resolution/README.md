@@ -70,6 +70,41 @@ with prone in it.
 The contest is gate-generic: nothing in it knows what a bite is, so the monk's
 Flurry — same shape, DEX, a different DC — needs no code here.
 
+## The strike, and the room it needs
+
+The strike machine is the first interaction that folds an attack chain, and the
+first that needs to know where anybody is standing:
+
+```go
+out, err := resolution.Resolve(ctx, &resolution.Input{
+    World:        worldData,
+    Participants: []resolution.Participant{{Character: heroData}, {Monster: wolfData}},
+    Machine: resolution.NewStrike(&resolution.StrikeInput{
+        AttackerID: "wolf", TargetID: "hero",
+        Action:     wolfData.Actions[0], // the bite, as content persists it
+    }),
+})
+```
+
+Phases, each a yielded value: fold the attack chain → roll against AC → on a
+miss, done (and **no save is rolled** — the rider is gated on the blow landing)
+→ on a hit, fold the damage chain and apply it to the sheet → if the action
+declared a `SaveGate`, `Request` the contest.
+
+ADR-0026's third beat — Notify — is deliberately missing: publishing
+`DamageReceivedEvent` applies the damage *again* to a monster target, whose
+sheet keeper subscribes to that topic and treats it as an instruction, while a
+character has no such handler and the event is inert. Measured, not assumed. One
+topic meaning two things is exactly the rules-versus-notification classification
+slice 2 owes.
+
+`Resolve` builds a `spatial` room from `Input.World` — the persisted world
+already carries every member's room and position — and installs it via
+`gamectx`, which is what lets prone's predicate answer *advantage from within
+five feet, disadvantage from beyond*. Participants spanning rooms install none,
+and a machine that needs positions says so rather than measuring across two
+rooms' coordinate systems.
+
 ## What comes back
 
 `Output.Hooks` is the registration list: every subscription granted, in

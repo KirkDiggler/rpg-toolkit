@@ -89,6 +89,39 @@
 // sheet still parks a bus for the verb methods that read one. Both go with
 // #965 and #966.
 //
+// # The bus-effect tally
+//
+// Steps come in two kinds, and the difference is worth counting because
+// [Gather]'s name only fits one of them. Three fold a chain and hand back the
+// folded event — the saving throw, the attack chain, the damage chain. One does
+// something on the bus and hands back nothing but the next step: imposing a
+// contest's consequence. Both kinds are built by constructors here, both run on
+// resolution's bus, and both are named for what they do; what differs is
+// whether anything is gathered.
+//
+// ADR-0026's Notify would have been a second of the latter kind, and is
+// deliberately absent — see strikeMachine.afterDamage. Publishing
+// DamageReceivedEvent applies the damage a second time to a monster target,
+// because that sheet's keeper treats the topic as an instruction, while a
+// character has no such handler and the same event is inert. One event meaning
+// two things is the classification slice 2 owes, and slice 1 records it rather
+// than shipping a double-apply.
+//
+// Two consumers now agree on that shape, which is the evidence the question was
+// waiting for: either Gather means "do this on the bus and hand me what
+// happened" — which is what it has always been mechanically — or the step
+// vocabulary grows a case ADR-0038 does not name. That is a decision for the
+// ADR, not for this file.
+//
+// One of the three folds carries a debt. The damage chain is folded by
+// combat.ResolveDamage, which takes a bus, because every exported attack and
+// damage entry point in that package requires one and the arithmetic that
+// applies resistance and vulnerability is unexported — folding here would mean
+// reimplementing damage multipliers. The fold still happens on this package's
+// bus, over subscribers this package attached; what differs from the save
+// precedent is custody of the fold mechanics. Every such call site says
+// "divestment debt — #965 slice 2" so the divestment has a grep-able worklist.
+//
 // # What this package does not do yet
 //
 // The step vocabulary is [Gather], [Request] and [Done]. [ADR-0038] seals it as
@@ -112,11 +145,17 @@
 // first predicate that needs one brings its installer with it. Populating a
 // registry nothing reads would be building the wrong thing convincingly.
 //
-// The knockdown lane is the case that nearly forces one and does not. The prone
-// condition reads positions — advantage from within five feet, disadvantage
-// beyond — but it reads them on the *attack* chain, and a contest folds a
-// saving throw. So the room arrives with the strike (#965), which is the
-// interaction whose predicates actually ask where everyone is standing.
+// One installer is now populated, by the machine that forced it. The strike
+// folds the attack chain, and prone's predicate reads positions off that chain —
+// advantage from within five feet, disadvantage beyond — so [Resolve] builds a
+// spatial room out of [Input.World] and installs it for the interaction. The
+// world it builds from is the persisted one the caller already handed over:
+// members carry their room and position, rooms carry their grid and size. See
+// interactionRoom for why one room rather than all of them, and why a
+// participant list spanning rooms installs none.
+//
+// Nothing else is installed. The other four registries stay empty until a
+// predicate that reads one arrives with its own consumer.
 //
 // The machine for a saving throw lives here rather than in the rules package
 // that owns saves, because `rulebooks/dnd5e` cannot import this module — this
