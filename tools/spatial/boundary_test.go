@@ -2,6 +2,7 @@ package spatial_test
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -402,15 +403,40 @@ func (s *BoundaryTestSuite) TestBoundaryLineOfSightUsesCanonicalSquareRay() {
 	s.Equal(forwardBlocked, reverseBlocked, "boundary LoS must be reciprocal")
 }
 
-func (s *BoundaryTestSuite) TestCanonicalBoundaryRayDoesNotWeakenEntityBlockers() {
+// TestEntityBlockersUseTheCanonicalRayAndCanBeSeenAround replaces a pin that
+// was right for its era and is now the bug's own fingerprint.
+//
+// It used to be TestCanonicalBoundaryRayDoesNotWeakenEntityBlockers, and it
+// asserted that (2,1)→(0,0) is blocked by a lone entity at (1,1) BECAUSE the
+// reverse Bresenham ray visits (1,1) while the canonical ray does not. Read
+// that again: the guarantee it protected was that entity sight depends on
+// which end asked. That is not a feature preserved — it is exactly the
+// direction-dependence reported as rpg-toolkit#1022, written down as a
+// promise.
+//
+// Two things are true now, and the old test could hold neither. Entity
+// blocking rasterizes the SAME canonical ray as boundary blocking, so one call
+// no longer consults two different rays. And a lone blocker in open ground is
+// seen around, because sight asks for a lane rather than a line: the corner
+// rule the game actually states agrees, and so does anyone at the table.
+func (s *BoundaryTestSuite) TestEntityBlockersUseTheCanonicalRayAndCanBeSeenAround() {
 	from := spatial.Position{X: 0, Y: 0}
 	to := spatial.Position{X: 2, Y: 1}
 	blocker := NewMockEntity("directional-ray-blocker", "wall").WithBlocking(false, true)
-
-	// The reverse Bresenham ray visits (1,1), while the canonical boundary
-	// ray does not. Entity blocker checks retain the requested-direction ray.
 	s.Require().NoError(s.room.PlaceEntity(blocker, spatial.Position{X: 1, Y: 1}))
-	s.True(s.room.IsLineOfSightBlocked(to, from))
+
+	s.False(s.room.IsLineOfSightBlocked(to, from), "one body in the open is leaned around")
+	s.Equal(s.room.IsLineOfSightBlocked(from, to), s.room.IsLineOfSightBlocked(to, from),
+		"and the answer no longer depends on which end asked")
+
+	// It is not that the blocker stopped mattering. Wall the lanes around it
+	// and it decides the sightline again.
+	for i, cell := range []spatial.Position{{X: 1, Y: 0}, {X: 1, Y: 2}} {
+		s.Require().NoError(s.room.PlaceEntity(
+			NewMockEntity(fmt.Sprintf("flank-%d", i), "wall").WithBlocking(false, true), cell))
+	}
+	s.True(s.room.IsLineOfSightBlocked(to, from), "with no lane left, the wall blocks")
+	s.True(s.room.IsLineOfSightBlocked(from, to))
 }
 
 func (s *BoundaryTestSuite) TestBoundaryClearAndRemovalRestoreOnlyThatCrossing() {
