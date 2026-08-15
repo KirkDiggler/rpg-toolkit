@@ -464,16 +464,24 @@ type writeScope struct {
 // they fail differently:
 //
 //   - Encounter lands, session does not: the world holds what happened and the
-//     session record does not know about it — a spawned monster is standing
-//     there with no sheet. Every persisted fact is true, the caller is told the
-//     save failed, and retrying the verb repairs it.
+//     session record does not know about it — a spawned monster standing in a
+//     room with no sheet. Every persisted fact is true and the caller is told
+//     which half failed, so the damage is bounded and describable.
 //   - Session lands, encounter does not: the session holds a sheet for a
 //     monster that is not in any room. A record that looks healthy, describing
 //     a world that never happened.
 //
-// The first is a stoppage; the second is corruption that looks like progress.
-// So the aggregate that records what happened goes first, and the one that
-// describes it goes second.
+// The first is visible wreckage; the second is corruption that looks like
+// progress. So the aggregate that records what happened goes first, and the one
+// that describes it goes second.
+//
+// NOTE WHAT THIS DOES NOT PROMISE. Retrying the verb does not repair the first
+// case: Spawn is not idempotent, and a second attempt is refused because the
+// member ID is already in the world (see TestADuplicateArrivalIsRejectedButMisreported,
+// which pins that rejection including the part of it that is wrong). The caller
+// is told exactly which aggregate is missing — that is S6's whole job — and
+// repairing it needs a decision, not a retry. Making the entry verbs idempotent
+// for this case is the fix, and it is not this wave's.
 func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *encounter.EncounterData, error) {
 	data := scope.enc.ToData()
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {

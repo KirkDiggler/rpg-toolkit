@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -51,29 +52,46 @@ type initiativeSeam struct {
 // RollInitiative asks the rulebook to order the members a fight is starting
 // between, using the host's dice.
 //
-// TWO KNOWN GAPS, both deliberate and both about production rather than shape.
+// It asks ONE MEMBER AT A TIME, in sorted order, and that loop is the point of
+// this function rather than an accident of it. dnd5e/initiative.RollForOrder
+// takes a map and iterates it, so handing it the whole fight would draw the
+// rolls in a random order and assign them to whoever came up first — two
+// replays of the same session, with the same dice, ordering the fight
+// differently. Its own source says so (TODO #285). Asking per member keeps the
+// rule where it belongs (the d20 and the modifier are still the rulebook's) and
+// puts the only non-reproducible part, the ORDER OF THE ASKING, under this
+// package's control.
 //
-// FLAT ROLLS, NO MODIFIERS. Every member is passed a Dexterity modifier of
-// zero, because a member ID is all the composition hands over at formation and
-// resolving each one to a sheet mid-verb is its own piece of work. The shape is
-// what matters now: when the modifier arrives it is looked up HERE, and neither
-// the host's interface nor the composition's changes.
+// The result is then ordered by total, and equal totals by ID. Ordering equal
+// rolls is not something 5e states — it leaves ties to the table — so choosing
+// one is a reproducibility decision (C8: identical inputs, identical outputs),
+// made in the open rather than left to map iteration. Flat rolls make ties
+// common rather than rare, which is what makes it load-bearing today.
 //
-// DETERMINISTIC TIES. RollForOrder iterates a map and sorts unstably, so two
-// members on the same total come back in whatever order Go felt like — its own
-// source says so (TODO #285). Flat rolls make ties common rather than rare, and
-// this module promises identical inputs yield identical outputs (C8): a session
-// reloaded and re-run must produce the same fight. So the rulebook's answer is
-// re-sorted here by total, then by ID. Ordering equal rolls is not a rule 5e
-// states — it leaves ties to the table — so choosing one is a reproducibility
-// decision, and it is made in the open rather than left to map iteration.
+// FLAT ROLLS, NO MODIFIERS is the one gap left, and it is about production
+// rather than shape. Every member is passed a Dexterity modifier of zero,
+// because a member ID is all the composition hands over at formation and
+// resolving each one to a sheet mid-verb is its own piece of work. When the
+// modifier arrives it is looked up HERE, and neither the host's interface nor
+// the composition's changes.
+//
+// A dice failure ABORTS, and has to be caught rather than returned: RollForOrder
+// discards the roller's error (`roll, _ := roller.Roll(...)`) and would hand
+// back a member who rolled zero. A fight that cannot be ordered must not
+// half-start, so the seam remembers what the rulebook dropped.
 func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	entities := make(map[core.Entity]int, len(members))
-	for _, id := range members {
-		entities[memberEntity(id)] = 0
-	}
+	asking := append([]encounter.MemberID(nil), members...)
+	sort.Slice(asking, func(i, j int) bool { return asking[i] < asking[j] })
 
-	rolls := initiative.RollForOrder(entities, diceSeam{roller: s.dice})
+	dice := &diceSeam{roller: s.dice}
+	rolls := make([]initiative.Roll, 0, len(asking))
+	for _, id := range asking {
+		one := initiative.RollForOrder(map[core.Entity]int{memberEntity(id): 0}, dice)
+		if dice.err != nil {
+			return nil, fmt.Errorf("rolling initiative for %q: %w", id, dice.err)
+		}
+		rolls = append(rolls, one...)
+	}
 
 	sort.SliceStable(rolls, func(i, j int) bool {
 		if rolls[i].Total != rolls[j].Total {
@@ -101,22 +119,33 @@ type memberEntity string
 func (m memberEntity) GetID() string          { return string(m) }
 func (memberEntity) GetType() core.EntityType { return "member" }
 
-// diceSeam adapts the host's Roller to the one the rulebook takes.
+// diceSeam adapts the host's Roller to the one the rulebook takes, and
+// remembers the error the rulebook throws away.
+//
+// The remembering is not defensive tidiness. RollForOrder discards its roller's
+// error, so a host whose randomness failed would silently contribute a member
+// who rolled zero — a wrong fight rather than a refused one. The first failure
+// is kept and the caller checks it.
 //
 // RollN is a loop because the rule only ever rolls a single d20; implementing
 // it by delegation keeps the host's side to the one method it genuinely owns.
 type diceSeam struct {
 	roller Roller
+	err    error
 }
 
-func (d diceSeam) Roll(ctx context.Context, size int) (int, error) {
-	return d.roller.Roll(ctx, size)
+func (d *diceSeam) Roll(ctx context.Context, size int) (int, error) {
+	roll, err := d.roller.Roll(ctx, size)
+	if err != nil && d.err == nil {
+		d.err = err
+	}
+	return roll, err
 }
 
-func (d diceSeam) RollN(ctx context.Context, count, size int) ([]int, error) {
+func (d *diceSeam) RollN(ctx context.Context, count, size int) ([]int, error) {
 	out := make([]int, 0, count)
 	for i := 0; i < count; i++ {
-		roll, err := d.roller.Roll(ctx, size)
+		roll, err := d.Roll(ctx, size)
 		if err != nil {
 			return nil, err
 		}
@@ -128,6 +157,6 @@ func (d diceSeam) RollN(ctx context.Context, count, size int) ([]int, error) {
 // compile-time proof the adapters satisfy what they are handed to.
 var (
 	_ encounter.InitiativeRoller = initiativeSeam{}
-	_ dice.Roller                = diceSeam{}
+	_ dice.Roller                = &diceSeam{}
 	_ core.Entity                = memberEntity("")
 )

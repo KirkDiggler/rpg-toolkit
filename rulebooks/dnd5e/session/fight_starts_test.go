@@ -157,18 +157,72 @@ func (s *FightStartsTestSuite) TestTheFightStopsTheWalk() {
 	s.Equal("ogre", out.Discovered["alice"].FirstContact[0].Subject)
 }
 
-// TestTheDiceReachTheRule pins that the host's randomness is actually
-// consulted, which the rest of this suite cannot tell.
+// TestTheDiceDecideTheOrder pins that the host's randomness is consulted, that
+// it is what decides, and that the same dice always decide the same way.
 //
-// Every other fixture wires a constant roll so the order is reproducible, and
-// a constant makes the dice invisible: an implementation that ignored the
-// host's Roller entirely and sorted by ID would satisfy every order assertion
-// in this file. This one counts the rolls instead of reading the order — one
-// d20 per member entering the fight, taken from the host and nowhere else.
-func (s *FightStartsTestSuite) TestTheDiceReachTheRule() {
-	rolled := 0
+// Every other fixture wires a constant roll, and a constant makes the dice
+// invisible: an implementation that ignored the host's Roller entirely and
+// sorted by ID would satisfy every order assertion in this file. Here three
+// members roll differently and the expected order is the inverse of the
+// alphabet, so a passing run proves the roll drives the order AND that each
+// roll landed on the member the seam meant it to.
+//
+// IT RUNS THE SAME FIGHT EIGHT TIMES, and that is the half Copilot's review
+// earned. The rulebook's RollForOrder iterates a map, so asking it for the
+// whole fight at once assigns the scripted rolls to whoever comes up first.
+// A single run catches that only sometimes — measured at 4 kills in 20 against
+// the mutant, because Go's iteration of a small map is a rotation rather than a
+// fresh permutation and lands on insertion order more often than not. Eight
+// independent fights take the same mutant to 20 of 20, and they assert the
+// property the fix actually delivers rather than a symptom of it: identical
+// dice, identical fight, every time.
+func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
+	const runs = 8
+
+	// Members are asked alphabetically — aardvark, alice, ogre — so the
+	// scripted rolls land 5, 18, 11 in that order and the fight comes back
+	// 18, 11, 5.
+	for i := 0; i < runs; i++ {
+		sessions, encounters := newFakeSessions(), newFakeEncounters()
+		dice := &sequenceDice{rolls: []int{5, 18, 11}}
+		mgr, err := session.NewManager(&session.Config{
+			Dice: dice, Sessions: sessions, Encounters: encounters,
+			Characters: testCharacters(), Events: session.DiscardEvents{},
+		})
+		s.Require().NoError(err)
+		_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+			Session: "sess", Encounter: "world", World: ambushWorld(s.T(),
+				encounter.MemberInput{
+					ID: "aardvark", Kind: encounter.KindMonster,
+					Room: "hall", Position: spatial.Position{X: 5, Y: 3},
+				}),
+		})
+		s.Require().NoError(err)
+		s.Require().Zero(dice.next, "run %d: nothing has met anything yet", i)
+
+		out, err := mgr.Move(context.Background(), &session.MoveInput{
+			Session: "sess", Member: "alice",
+			Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}},
+		})
+		s.Require().NoError(err)
+		s.Require().NotNil(out.Formed, "run %d", i)
+
+		s.Equal(3, dice.next, "run %d: one d20 per member, from the host's dice", i)
+		s.Equal([]string{"alice", "ogre", "aardvark"}, out.Formed.Order,
+			"run %d: 18, 11, 5 — the dice decide, not the alphabet, and they decide the same way twice", i)
+	}
+}
+
+// TestADiceFailureAbortsTheFight pins that a host whose randomness is down gets
+// a refused verb rather than a wrong fight.
+//
+// It is not automatic. The rulebook's RollForOrder discards its roller's error
+// (`roll, _ := roller.Roll(...)`) and would hand back a member who rolled zero
+// — an order that looks fine and is not. The seam keeps the error the rulebook
+// threw away, and a fight that cannot be ordered does not half-start.
+func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{calls: &rolled}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: brokenDice{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -176,15 +230,20 @@ func (s *FightStartsTestSuite) TestTheDiceReachTheRule() {
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
 	s.Require().NoError(err)
-	s.Require().Zero(rolled, "nothing has met anything yet")
 
-	out, err := mgr.Move(context.Background(), &session.MoveInput{
+	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: []spatial.Position{{X: 2, Y: 2}, {X: 2, Y: 3}},
 	})
+	s.Require().Error(err, "the fight could not be ordered, so the verb fails")
+	s.ErrorIs(err, errNoRandomness, "and the host's own failure is still matchable")
+
+	// The whole verb, not just the step that met the ogre. Nothing was saved,
+	// so the persisted world still has her where she started — the walk did not
+	// half-happen with an unordered fight left behind it.
+	view, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "ogre"})
 	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed)
-	s.Equal(2, rolled, "one d20 per member of the fight, from the host's dice")
+	s.Empty(view, "the ogre never saw her: not one step was persisted")
 }
 
 // TestAWalkThatStartsNoFightRunsToTheEnd is the negative control.
