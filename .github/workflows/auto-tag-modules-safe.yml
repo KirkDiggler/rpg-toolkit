@@ -67,7 +67,11 @@ jobs:
           fi
           
           # Check commit messages for this module — excluding nested modules,
-          # whose subjects must not grade the parent's bump (#917)
+          # whose subjects must not grade the parent's bump (#917). local, so
+          # this can never shadow a caller's excludes — belt and braces: the
+          # function is only ever invoked via $(...) command substitution,
+          # whose subshell already isolates it.
+          local -a excludes
           mapfile -t excludes < <(nested_module_excludes "$module")
           commits=$(git log --format="%s" "$compare_from..HEAD" -- "$module" "${excludes[@]}" 2>/dev/null || echo "")
           
@@ -193,9 +197,14 @@ jobs:
             if [[ -n "$last_tag" ]]; then
               # Include commit summary
               release_notes="${release_notes}### Changes\n"
-              git log --format="- %s (%h)" "$last_tag..HEAD" -- "$module_path" "${excludes[@]}" | while read -r line; do
-                release_notes="${release_notes}${line}\n"
-              done
+              # Captured, not piped into `while read`: the pipe's subshell
+              # discarded every appended line, so annotated tags have carried
+              # an empty change list since this workflow was written. The
+              # capture has real newlines; echo -e passes them through.
+              commit_lines=$(git log --format="- %s (%h)" "$last_tag..HEAD" -- "$module_path" "${excludes[@]}")
+              if [[ -n "$commit_lines" ]]; then
+                release_notes="${release_notes}${commit_lines}\n"
+              fi
             else
               release_notes="${release_notes}Initial release\n"
             fi
