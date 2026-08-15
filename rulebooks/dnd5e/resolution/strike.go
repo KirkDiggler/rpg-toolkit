@@ -394,14 +394,54 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 // StrikeInput.Attack names; a character's weapon-plus-sheet compiler is its
 // sibling (rpg-toolkit#1003) and the machine cannot tell them apart.
 //
-// One ref for slice 1. An action this build cannot read is refused by name
+// Two refs for slice 1: the bite, and the generic melee action every
+// stat-block weapon is authored as (a skeleton's scimitar is a MeleeAction
+// named "scimitar"). An action this build cannot read is refused by name
 // rather than treated as a generic swing, because guessing an attack bonus is
-// how a stat block starts lying again.
+// how a stat block starts lying again — the ranged action waits on range
+// semantics the strike does not have, and multiattack is turn economy, not a
+// single swing.
+//
+// Reach is not enforced, for melee weapons exactly as for the bite: the
+// strike does not yet check adjacency at all. That is one shared, named gap
+// (#965 slice 2's list), not one this case adds.
 func AttackFromMonsterAction(action monster.ActionData) (AttackProfile, error) {
-	if action.Ref.ID != refs.MonsterActions.Bite().ID {
-		return AttackProfile{}, fmt.Errorf("%w: %q (slice 1 understands the bite)", ErrBadAttack, action.Ref.ID)
+	switch action.Ref.ID {
+	case refs.MonsterActions.Bite().ID:
+		return attackFromBite(action)
+	case refs.MonsterActions.Melee().ID:
+		return attackFromMelee(action)
+	default:
+		return AttackProfile{}, fmt.Errorf(
+			"%w: %q (the strike compiles the bite and the generic melee action)", ErrBadAttack, action.Ref.ID)
+	}
+}
+
+// attackFromMelee compiles a stat-block weapon — MeleeConfig is the profile's
+// shape already, and a plain weapon declares no gate: the blow just lands.
+func attackFromMelee(action monster.ActionData) (AttackProfile, error) {
+	var config monsterActions.MeleeConfig
+	if len(action.Config) > 0 {
+		if err := json.Unmarshal(action.Config, &config); err != nil {
+			return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
+		}
 	}
 
+	if config.DamageDice == "" {
+		return AttackProfile{}, fmt.Errorf("%w: the action declares no damage dice", ErrBadAttack)
+	}
+
+	ref := action.Ref
+
+	return AttackProfile{
+		Ref:         &ref,
+		AttackBonus: config.AttackBonus,
+		DamageDice:  config.DamageDice,
+		DamageType:  config.DamageType,
+	}, nil
+}
+
+func attackFromBite(action monster.ActionData) (AttackProfile, error) {
 	var config monsterActions.BiteConfig
 	if len(action.Config) > 0 {
 		if err := json.Unmarshal(action.Config, &config); err != nil {

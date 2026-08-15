@@ -596,3 +596,60 @@ func (s *StrikeTestSuite) wolfAttack() AttackProfile {
 
 	return profile
 }
+
+// The compiler's second source: a stat-block weapon. The skeleton's shortsword
+// is a generic MeleeAction — proof the profile seam is attack-kind-neutral on
+// the monster side too, and that a weapon with no gate just hits.
+func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
+	skeleton := monsters.NewSkeleton("skeleton").ToData()
+
+	var sword monster.ActionData
+	found := false
+	for _, action := range skeleton.Actions {
+		if action.Ref.ID == refs.MonsterActions.Melee().ID {
+			sword, found = action, true
+			break
+		}
+	}
+	s.Require().True(found, "the catalog skeleton carries a melee weapon")
+
+	attack, err := AttackFromMonsterAction(sword)
+	s.Require().NoError(err)
+	s.Require().Nil(attack.Gate, "a plain weapon declares no rider")
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
+			{ID: "skeleton", Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	out, err := Resolve(s.ctx, &Input{
+		World: enc.ToData(),
+		Participants: []Participant{
+			{Character: s.hero()},
+			{Monster: skeleton},
+		},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: "skeleton",
+			TargetID:   heroID,
+			Attack:     attack,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}, fallback: 2},
+		}),
+	})
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().True(outcome.Hit, "15 + 4 beats AC 14")
+	s.Require().Equal(3+2, outcome.Damage, "1d6 rolled [3], plus the +2 — exact, not merely positive")
+	s.Require().Nil(outcome.Contest, "no gate, no save, nobody falls over")
+
+	s.Require().Len(out.DirtyCharacters, 1)
+	s.Require().Equal(14-5, out.DirtyCharacters[0].HitPoints)
+	s.Require().Empty(out.DirtyCharacters[0].Conditions)
+}
