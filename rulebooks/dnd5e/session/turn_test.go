@@ -61,14 +61,13 @@ func (s *TurnTestSuite) TestAskingWhatOneMemberIsWaitingOn() {
 	s.Require().NoError(err)
 	s.Equal(session.ClockTurn, alice.Clock, "she is in a fight")
 	s.Equal([]string{"alice", "ogre"}, alice.Order)
-	s.Equal("alice", alice.Active)
-	s.True(alice.Yours, "and it is her turn")
+	s.Equal("alice", alice.Active, "and it is her turn")
 	s.Equal(1, alice.Round)
 
 	ogre, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "ogre"})
 	s.Require().NoError(err)
-	s.Equal("alice", ogre.Active, "the same fight reads the same to both of them")
-	s.False(ogre.Yours, "but it is not the ogre's turn")
+	s.Equal("alice", ogre.Active,
+		"the same fight reads the same to both of them, and it is not the ogre's turn")
 }
 
 // TestTheWorldClockHasNoTurn pins that free roam answers honestly rather than
@@ -86,7 +85,6 @@ func (s *TurnTestSuite) TestTheWorldClockHasNoTurn() {
 	s.Empty(out.Active, "nobody is 'next' in free roam")
 	s.Empty(out.Order)
 	s.Zero(out.Round)
-	s.False(out.Yours, "and it is nobody's turn, which is not the same as being hers")
 }
 
 // TestTheMemberIsRequired is the clause-6 guard in its most literal form: the
@@ -129,7 +127,6 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 	after, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal("ogre", after.Active, "and the world remembers it")
-	s.False(after.Yours)
 }
 
 // TestTheRoundComesRoundPins RoundWrapped, which is the only thing in

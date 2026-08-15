@@ -53,13 +53,6 @@ type TurnOutput struct {
 	// Order is the initiative order of the fight they are in, first to act
 	// first. Empty on the world clock.
 	Order []string `json:"order,omitempty"`
-
-	// Yours is whether the member asked about is the one to act. A
-	// convenience over Active, because it is the question a client actually
-	// has and computing it from Active is the sort of thing every client
-	// would get subtly wrong on the world clock, where nobody is active and
-	// everybody may act.
-	Yours bool `json:"yours"`
 }
 
 // Turn reports what one member is waiting on.
@@ -102,7 +95,7 @@ func (m *Manager) Turn(ctx context.Context, in *TurnInput) (*TurnOutput, error) 
 		return nil, fmt.Errorf("turn: %w", translate(err))
 	}
 
-	return projectTurn(clock, in.Member), nil
+	return projectTurn(clock), nil
 }
 
 // EndTurnInput ends one member's turn in the fight they are in.
@@ -184,12 +177,23 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 }
 
 // projectTurn turns the composition's clock report into the SDK's own shape.
-func projectTurn(in *encounter.ClockOfOutput, member string) *TurnOutput {
+//
+// There was a Yours bool here — "is it this member's turn" — and it came out
+// because it could not be told apart from the comparison it wrapped. Active is
+// empty on the world clock and Member is validated non-empty, so
+// `Active == member` gives the same answer everywhere reachable, and the field
+// doc's claim that a client would get that subtly wrong was refuted by this
+// function.
+//
+// The question that WOULD have earned a field is a different one — "may I act
+// now", which is true in free roam — and it belongs to the action economy
+// rather than to a projection. Answering it with a bool here would be
+// pre-empting the package that will own it.
+func projectTurn(in *encounter.ClockOfOutput) *TurnOutput {
 	out := &TurnOutput{
 		Clock:  ClockKind(in.Kind),
 		Active: string(in.Active),
 		Round:  in.Round,
-		Yours:  in.Active != "" && string(in.Active) == member,
 	}
 	for _, id := range in.Order {
 		out.Order = append(out.Order, string(id))
