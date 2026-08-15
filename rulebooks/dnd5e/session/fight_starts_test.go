@@ -133,8 +133,9 @@ func (s *FightStartsTestSuite) startAmbush(extra ...encounter.MemberInput) {
 	s.Require().NoError(err)
 }
 
-// walkIntoTheAmbush walks the three-cell path that meets the ogre on cell two,
-// and returns the output.
+// walkIntoTheAmbush walks the four-cell path that meets the ogre on cell two,
+// and returns the output — two cells still to go, which is what makes "the
+// fight stopped the walk" a claim rather than a coincidence.
 func (s *FightStartsTestSuite) walkIntoTheAmbush() *session.MoveOutput {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
@@ -277,10 +278,15 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 	s.startAmbush()
 
-	// She walks the other way, into the corner at (0,0). The wall stays
-	// between her and the ogre the whole time and neither ever holds the
-	// other — verified below rather than assumed, because "no fight" would
-	// also be the answer if the walk had simply failed.
+	// She walks up the near side of the wall, (2,0) then (2,1), staying off
+	// the file the gap opens onto. Neither ever holds the other — verified
+	// below rather than assumed, because "no fight" would also be the answer
+	// if the walk had simply failed.
+	//
+	// This route used to run to the corner at (0,0). Lane sight reaches
+	// through the gap at a much shallower angle than a single ray did, and the
+	// whole x=0 column turned out to be in view of it — so the old "quiet"
+	// corner is now the loudest cell in the room.
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: []spatial.Position{{X: 2, Y: 0}, {X: 2, Y: 1}},
@@ -292,7 +298,7 @@ func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 
 	// Both directions, because sight is NOT symmetric in this composition: a
 	// walk the ogre could see would start a fight just as surely as one alice
-	// could see (see TestTheOgreCanSeeWhatAliceCannot).
+	// could see (see TestSightIsSymmetric).
 	for _, who := range []string{"alice", "ogre"} {
 		seen, verr := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: who})
 		s.Require().NoError(verr)
@@ -319,6 +325,21 @@ func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 // module has not changed — the consumer was always right. Surprised populated,
 // crossed the boundary and reported correctly the whole time; what was wrong
 // was the PRODUCTION of percepts, exactly where the design said a fix belongs.
+// holds reports whether these holdings include a live sighting of a named
+// subject.
+//
+// The symmetry claim is about WHO each side can see, not how many things they
+// hold: equal counts would still pass if the two were seeing different things,
+// and a symmetry test that cannot tell those apart is not one.
+func holds(holdings []session.Sighting, subject string) bool {
+	for _, h := range holdings {
+		if h.Subject == subject {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *FightStartsTestSuite) TestSightIsSymmetric() {
 	ctx := context.Background()
 
@@ -342,9 +363,13 @@ func (s *FightStartsTestSuite) TestSightIsSymmetric() {
 		ogreSees, err := mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "ogre"})
 		s.Require().NoError(err)
 
-		s.Equal(len(aliceSees), len(ogreSees),
+		// Subjects rather than counts. Equal lengths would still pass if the
+		// two were seeing DIFFERENT things, and a symmetry claim that cannot
+		// tell those apart is not a symmetry claim.
+		aliceHoldsOgre, ogreHoldsAlice := holds(aliceSees, "ogre"), holds(ogreSees, "alice")
+		s.Equal(aliceHoldsOgre, ogreHoldsAlice,
 			"at %v the wall must do the same thing to both of them", at)
-		if len(aliceSees) > 0 {
+		if aliceHoldsOgre {
 			contacts++
 		}
 	}
