@@ -2,6 +2,7 @@ package spatial
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -585,13 +586,34 @@ func (s *RoomDataTestSuite) TestSpatialPropertiesPreserved() {
 	loadedRoom, err := LoadRoomFromContext(context.Background(), gameCtx)
 	s.Require().NoError(err)
 
-	// Test that spatial queries work correctly
-	// Ghost should not block line of sight
-	blocked := loadedRoom.IsLineOfSightBlocked(Position{X: 0, Y: 5}, Position{X: 10, Y: 5})
+	// Test that spatial queries work correctly.
+	//
+	// The probe is a WALLED lane rather than an open one, and that is the
+	// change rpg-toolkit#1022 made: a lone body in open ground stops nothing
+	// now, because sight leans around it. This test is about a FLAG surviving
+	// a round trip, so the query has to be one the flag can still decide —
+	// wall the column except for the cell the creature stands in, and the
+	// answer turns on that creature and nothing else.
+	wallColumn := func(col int, gap int) {
+		for y := 0; y < 20; y++ {
+			if y == gap {
+				continue
+			}
+			s.Require().NoError(loadedRoom.PlaceEntity(&MockEntity{
+				id: fmt.Sprintf("wall-%d-%d", col, y), entityType: "wall",
+				size: 1, blocksMovement: true, blocksLineOfSight: true,
+			}, Position{X: float64(col), Y: float64(y)}))
+		}
+	}
+
+	// Ghost should not block line of sight: its cell is the gap in the wall.
+	wallColumn(5, 5)
+	blocked := loadedRoom.IsLineOfSightBlocked(Position{X: 0, Y: 5}, Position{X: 9, Y: 5})
 	s.False(blocked, "Ghost should not block line of sight")
 
-	// Dragon should block line of sight
-	blocked = loadedRoom.IsLineOfSightBlocked(Position{X: 0, Y: 10}, Position{X: 20, Y: 10})
+	// Dragon should block line of sight: same wall, same gap, opaque occupant.
+	wallColumn(10, 10)
+	blocked = loadedRoom.IsLineOfSightBlocked(Position{X: 0, Y: 10}, Position{X: 19, Y: 10})
 	s.True(blocked, "Dragon should block line of sight")
 }
 
