@@ -100,8 +100,13 @@ type AttackProfile struct {
 	// with nowhere to live: the machine hardcoded prone, so every gated attack
 	// knocked its target down whatever the attack was (rpg-toolkit#1013).
 	//
-	// Nil whenever Gate is nil, and required whenever Gate is not — a contest
-	// that gates nothing is not a rule, it is a roll with no meaning.
+	// Nil whenever Gate is nil, and required whenever Gate is not. BOTH
+	// DIRECTIONS ARE ENFORCED by validate, because a consequence with no
+	// contest is as meaningless as a contest with no consequence: one is a
+	// roll that costs nothing, the other is a cost nothing ever rolls for.
+	// Enforcing only the first half is what let a stranded Imposes pass
+	// validation and then be silently dropped by afterNotify's early exit
+	// (Copilot review, #1014).
 	//
 	// The compiler names it, because translating an action's semantics is the
 	// compiler's job: the wolf's KnockdownDC becomes both the gate and prone in
