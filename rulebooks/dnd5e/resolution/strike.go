@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -27,11 +28,10 @@ const criticalThreshold = 20
 
 // StrikeInput describes one attack.
 //
-// The attack itself arrives as content — the action's persisted data, exactly
-// as a monster's stat block carries it — rather than as a runtime object with
-// its numbers pulled out. That is the same seam every other input here uses,
-// and it is what lets the headline test drive the catalog wolf's own bite
-// instead of a hand-built approximation of it.
+// The attack arrives as an [AttackProfile] — attacker-kind-neutral, compiled
+// at the seam from whatever persisted form the attacker has. The headline
+// tests still drive the catalog wolf's own bite: content in, one compilation
+// step, machine unchanged.
 type StrikeInput struct {
 	// AttackerID names the participant swinging.
 	AttackerID string
@@ -39,12 +39,51 @@ type StrikeInput struct {
 	// TargetID names the participant being swung at.
 	TargetID string
 
-	// Action is the attack, as the content declares it. Slice 1 understands
-	// the bite; another ref is refused by name rather than guessed at.
-	Action monster.ActionData
+	// Attack is the attack's numbers, attacker-kind-neutral. The machine
+	// never learns who compiled them: a monster action converts through
+	// AttackFromMonsterAction, and a character's weapon-plus-sheet compiles
+	// through a sibling constructor when it arrives (rpg-toolkit#1003). The
+	// phases are the same swing either way — only the compilation differs.
+	Attack AttackProfile
 
 	// Roller rolls the attack and its damage. Nil takes the default roller.
 	Roller dice.Roller
+}
+
+// AttackProfile is what a strike needs to know about an attack, whoever is
+// making it. It is derived at strike time, never persisted: the persisted
+// forms are the monster's action data and the character's sheet, and each
+// compiles into this shape at the seam.
+type AttackProfile struct {
+	// Ref names the attack for attribution — the weapon or action behind
+	// the swing.
+	Ref *core.Ref
+
+	// AttackBonus is added to the d20.
+	AttackBonus int
+
+	// DamageDice is the weapon pool's notation ("2d4+2").
+	DamageDice string
+
+	// DamageType is what kind of harm lands.
+	DamageType damage.Type
+
+	// Gate is the rider's contest, if the attack declares one (ADR-0039).
+	// Nil means the attack just hits.
+	Gate *saves.SaveGate
+}
+
+// validate refuses a profile that cannot drive a strike, naming what is
+// missing. Constructors produce valid profiles; this catches the hand-built.
+func (p *AttackProfile) validate() error {
+	if p.Ref == nil {
+		return fmt.Errorf("%w: the attack names no ref", ErrBadAttack)
+	}
+	if p.DamageDice == "" {
+		return fmt.Errorf("%w: the attack declares no damage dice", ErrBadAttack)
+	}
+
+	return nil
 }
 
 // StrikeOutcome is what an attack produced, in enough detail to explain it.
@@ -110,24 +149,12 @@ type strikeMachine struct {
 	// the first needs them and a step's closure is handed only a bus.
 	cast *Participants
 
-	// attack is the content's numbers, decoded once.
-	attack strikeProfile
-
 	// outcome accumulates across phases. It is the machine's whole state, and
 	// the reason a suspension between any two phases would need nothing else.
 	outcome StrikeOutcome
 }
 
-// strikeProfile is what this machine needs to know about an attack, decoded
-// from whatever action data it was handed.
-type strikeProfile struct {
-	attackBonus int
-	damageDice  string
-	damageType  string
-	gate        *saves.SaveGate
-}
-
-// Start decodes the action, reads the target's AC, and folds the attack chain.
+// Start validates the profile, reads the target's AC, and folds the attack chain.
 func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
@@ -135,14 +162,11 @@ func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, erro
 	if m.in.AttackerID == "" || m.in.TargetID == "" {
 		return nil, fmt.Errorf("%w: a strike needs an attacker and a target", ErrNilInput)
 	}
-
-	m.cast = cast
-
-	profile, err := decodeStrikeProfile(m.in.Action)
-	if err != nil {
+	if err := m.in.Attack.validate(); err != nil {
 		return nil, err
 	}
-	m.attack = profile
+
+	m.cast = cast
 
 	if _, err := combatantFor(cast, m.in.AttackerID); err != nil {
 		return nil, err
@@ -166,9 +190,9 @@ func (m *strikeMachine) Start(_ context.Context, cast *Participants) (Step, erro
 	event := dnd5eEvents.AttackChainEvent{
 		AttackerID:        m.in.AttackerID,
 		TargetID:          m.in.TargetID,
-		WeaponRef:         &m.in.Action.Ref,
+		WeaponRef:         m.in.Attack.Ref,
 		IsMelee:           true,
-		AttackBonus:       profile.attackBonus,
+		AttackBonus:       m.in.Attack.AttackBonus,
 		TargetAC:          target.AC(),
 		CriticalThreshold: criticalThreshold,
 	}
@@ -242,9 +266,9 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 // rollDamage rolls the action's damage dice and yields the fold that lets
 // effects modify it (ADR-0026's Resolve).
 func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Step, error) {
-	pool, err := dice.ParseNotation(m.attack.damageDice)
+	pool, err := dice.ParseNotation(m.in.Attack.DamageDice)
 	if err != nil {
-		return nil, fmt.Errorf("%w: damage dice %q: %w", ErrBadAttack, m.attack.damageDice, err)
+		return nil, fmt.Errorf("%w: damage dice %q: %w", ErrBadAttack, m.in.Attack.DamageDice, err)
 	}
 
 	result := pool.RollContext(ctx, roller)
@@ -272,11 +296,11 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 
 	component := dnd5eEvents.DamageComponent{
 		Source:            dnd5eEvents.DamageSourceWeapon,
-		SourceRef:         &m.in.Action.Ref,
+		SourceRef:         m.in.Attack.Ref,
 		OriginalDiceRolls: rolls,
 		FinalDiceRolls:    append([]int(nil), rolls...),
 		FlatBonus:         result.Modifier(),
-		DamageType:        damage.Type(m.attack.damageType),
+		DamageType:        m.in.Attack.DamageType,
 		IsCritical:        m.outcome.Critical,
 	}
 
@@ -286,9 +310,9 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		Components:   []dnd5eEvents.DamageComponent{component},
 		IsCritical:   m.outcome.Critical,
 		HasAdvantage: len(m.outcome.Folded.AdvantageSources) > 0,
-		WeaponDamage: m.attack.damageDice,
+		WeaponDamage: m.in.Attack.DamageDice,
 		IsMelee:      true,
-		WeaponRef:    &m.in.Action.Ref,
+		WeaponRef:    m.in.Attack.Ref,
 	}, m.afterDamageChain), nil
 }
 
@@ -348,12 +372,12 @@ func (m *strikeMachine) afterDamage(ctx context.Context) (Step, error) {
 
 // afterNotify contests the blow's rider, if it declared one.
 func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
-	if m.attack.gate == nil {
+	if m.in.Attack.Gate == nil {
 		return Done{Outcome: m.outcome}, nil
 	}
 
 	return requestContest(&ContestInput{
-		Gate:        m.attack.gate,
+		Gate:        m.in.Attack.Gate,
 		SaverID:     m.in.TargetID,
 		Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
 		DamageTaken: m.outcome.Damage,
@@ -365,41 +389,45 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 	}), nil
 }
 
-// decodeStrikeProfile reads an action's numbers out of the data content
-// declares it with.
+// AttackFromMonsterAction compiles a monster action's persisted data into the
+// neutral profile a strike consumes. This is the monster half of the seam
+// StrikeInput.Attack names; a character's weapon-plus-sheet compiler is its
+// sibling (rpg-toolkit#1003) and the machine cannot tell them apart.
 //
 // One ref for slice 1. An action this build cannot read is refused by name
 // rather than treated as a generic swing, because guessing an attack bonus is
 // how a stat block starts lying again.
-func decodeStrikeProfile(action monster.ActionData) (strikeProfile, error) {
+func AttackFromMonsterAction(action monster.ActionData) (AttackProfile, error) {
 	if action.Ref.ID != refs.MonsterActions.Bite().ID {
-		return strikeProfile{}, fmt.Errorf("%w: %q (slice 1 understands the bite)", ErrBadAttack, action.Ref.ID)
+		return AttackProfile{}, fmt.Errorf("%w: %q (slice 1 understands the bite)", ErrBadAttack, action.Ref.ID)
 	}
 
 	var config monsterActions.BiteConfig
 	if len(action.Config) > 0 {
 		if err := json.Unmarshal(action.Config, &config); err != nil {
-			return strikeProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
+			return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
 		}
 	}
 
 	if config.DamageDice == "" {
-		return strikeProfile{}, fmt.Errorf("%w: the action declares no damage dice", ErrBadAttack)
+		return AttackProfile{}, fmt.Errorf("%w: the action declares no damage dice", ErrBadAttack)
 	}
 
-	profile := strikeProfile{
-		attackBonus: config.AttackBonus,
-		damageDice:  config.DamageDice,
-		damageType:  string(config.DamageType),
-		gate:        config.SaveGate,
+	ref := action.Ref
+	profile := AttackProfile{
+		Ref:         &ref,
+		AttackBonus: config.AttackBonus,
+		DamageDice:  config.DamageDice,
+		DamageType:  config.DamageType,
+		Gate:        config.SaveGate,
 	}
 
 	// A bite persisted by an older build carries a bare knockdown DC rather
 	// than a gate; NewBiteAction is what translates it, so the profile comes
 	// through the action rather than the config when the gate is absent.
-	if profile.gate == nil {
+	if profile.Gate == nil {
 		if bite, ok := mustLoadBite(action); ok {
-			profile.gate = bite.SaveGate()
+			profile.Gate = bite.SaveGate()
 		}
 	}
 

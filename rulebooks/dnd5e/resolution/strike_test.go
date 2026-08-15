@@ -170,7 +170,7 @@ func (s *StrikeTestSuite) strike(attacker string, roller *scriptedRoller) Machin
 	return NewStrike(&StrikeInput{
 		AttackerID: attacker,
 		TargetID:   heroID,
-		Action:     s.wolfBite(),
+		Attack:     s.wolfAttack(),
 		Roller:     roller,
 	})
 }
@@ -206,7 +206,7 @@ func (s *StrikeTestSuite) TestAWolfBitesTheHeroAndKnocksHimDown() {
 	out, err := s.resolve(s.world(spatial.Position{X: 8, Y: 5}), s.hero(), NewStrike(&StrikeInput{
 		AttackerID: wolfID,
 		TargetID:   heroID,
-		Action:     s.wolfBite(),
+		Attack:     s.wolfAttack(),
 		Roller:     &sequenceRoller{singles: []int{hitRoll, missRoll}, fallback: 2},
 	}))
 	s.Require().NoError(err)
@@ -417,7 +417,7 @@ func (s *StrikeTestSuite) TestAMonsterTargetTakesItsDamageOnce() {
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   secondWolfID,
-			Action:     s.wolfBite(),
+			Attack:     s.wolfAttack(),
 			Roller:     &sequenceRoller{singles: []int{hitRoll, missRoll}, fallback: 2},
 		}),
 	})
@@ -436,11 +436,16 @@ func (s *StrikeTestSuite) TestAMonsterTargetTakesItsDamageOnce() {
 func (s *StrikeTestSuite) TestRefusesAStrikeItCannotRun() {
 	world := s.world(spatial.Position{X: 8, Y: 5})
 
-	s.Run("an action this build cannot read", func() {
+	s.Run("an action this build cannot read is refused at compilation", func() {
+		_, err := AttackFromMonsterAction(monster.ActionData{Ref: *refs.MonsterActions.Scimitar()})
+		s.Require().ErrorIs(err, ErrBadAttack)
+	})
+
+	s.Run("a hand-built profile with no dice is refused by the machine", func() {
 		_, err := s.resolve(world, s.hero(), NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Action:     monster.ActionData{Ref: *refs.MonsterActions.Scimitar()},
+			Attack:     AttackProfile{Ref: refs.MonsterActions.Bite()},
 		}))
 		s.Require().ErrorIs(err, ErrBadAttack)
 	})
@@ -449,13 +454,13 @@ func (s *StrikeTestSuite) TestRefusesAStrikeItCannotRun() {
 		_, err := s.resolve(world, s.hero(), NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   "nobody",
-			Action:     s.wolfBite(),
+			Attack:     s.wolfAttack(),
 		}))
 		s.Require().ErrorIs(err, ErrNoCombatant)
 	})
 
 	s.Run("no attacker or target named", func() {
-		_, err := s.resolve(world, s.hero(), NewStrike(&StrikeInput{Action: s.wolfBite()}))
+		_, err := s.resolve(world, s.hero(), NewStrike(&StrikeInput{Attack: s.wolfAttack()}))
 		s.Require().ErrorIs(err, ErrNilInput)
 	})
 }
@@ -509,7 +514,7 @@ func (s *StrikeTestSuite) TestAWidenedCritRangeDoesNotWidenTheHitRange() {
 		NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Action:     s.wolfBite(),
+			Attack:     s.wolfAttack(),
 			Roller:     &sequenceRoller{singles: []int{19}, fallback: 2},
 		}))
 	s.Require().NoError(err)
@@ -531,7 +536,7 @@ func (s *StrikeTestSuite) TestAWidenedCritRangeCritsOnAHit() {
 		NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Action:     s.wolfBite(),
+			Attack:     s.wolfAttack(),
 			Roller:     &sequenceRoller{singles: []int{19, 11}, pair: []int{3, 4, 1, 2}, fallback: 2},
 		}))
 	s.Require().NoError(err)
@@ -550,7 +555,7 @@ func (s *StrikeTestSuite) TestDamageKeepsItsFlatModifierExactlyOnce() {
 		NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Action:     s.wolfBite(),
+			Attack:     s.wolfAttack(),
 			Roller:     &sequenceRoller{singles: []int{hitRoll, 11}, pair: []int{3, 4}, fallback: 2},
 		}))
 	s.Require().NoError(err)
@@ -570,7 +575,7 @@ func (s *StrikeTestSuite) TestANaturalTwentyDoublesTheDiceNotTheModifier() {
 		NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Action:     s.wolfBite(),
+			Attack:     s.wolfAttack(),
 			Roller:     &sequenceRoller{singles: []int{20, 11}, pair: []int{3, 4, 1, 2}, fallback: 2},
 		}))
 	s.Require().NoError(err)
@@ -580,4 +585,14 @@ func (s *StrikeTestSuite) TestANaturalTwentyDoublesTheDiceNotTheModifier() {
 	s.Require().True(outcome.Critical)
 	s.Require().Equal(3+4+1+2+2, outcome.Damage,
 		"four dice for the crit, the modifier exactly once")
+}
+
+// wolfAttack compiles the catalog wolf's bite into the neutral profile the
+// strike consumes — the monster half of the StrikeInput.Attack seam.
+func (s *StrikeTestSuite) wolfAttack() AttackProfile {
+	profile, err := AttackFromMonsterAction(s.wolfBite())
+	s.Require().NoError(err)
+	s.Require().NotNil(profile.Gate, "the catalog wolf declares its knockdown")
+
+	return profile
 }
