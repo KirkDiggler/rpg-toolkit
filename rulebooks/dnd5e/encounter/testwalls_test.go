@@ -51,12 +51,15 @@ func wallColumn(x, fromY, toY int) []spatial.Position {
 	return out
 }
 
-// structFieldNames reports a struct's exported field names in declaration
-// order, so a test can assert on a type's SHAPE rather than on the values one
-// instance happens to carry.
+// structFieldNames reports EVERY field name a struct declares, in declaration
+// order — unexported ones included — so a test can assert on a type's SHAPE
+// rather than on the values one instance happens to carry.
 //
-// Used where the guarantee is structural: RecordInput's claim is that prose is
-// inexpressible, and the only way to hold that is to notice a new field.
+// Including the unexported ones is the point rather than an oversight. This
+// exists to hold RecordInput's claim that prose is inexpressible, and a claim
+// about what a type can EXPRESS is not weakened by a field being lowercase:
+// an unexported string on an input that callers construct is a smell of its
+// own, and a shape pin that looked away from it would be choosing not to see.
 func structFieldNames(v any) []string {
 	t := reflect.TypeOf(v)
 	if t == nil || t.Kind() != reflect.Struct {
