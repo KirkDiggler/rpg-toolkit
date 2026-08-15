@@ -233,13 +233,22 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, err
 }
 
 // FormInput carries the rulebook-rolled initiative order a new bubble starts
-// with.
+// with. Built by trigger detection; see form.
 type FormInput struct {
 	// Order is the complete initiative order for the fight, first-to-act
 	// first. It comes from OUTSIDE: play/clock holds no randomness (R7) and
 	// this composition holds none either — the rulebook rolls initiative and
 	// hands the result in.
 	Order []MemberID
+
+	// Surprised names the members entering this fight unaware, and is carried
+	// rather than derived because awareness is a fact about the moment the
+	// bubble formed: a member surprised at formation stays surprised through
+	// their first turn however the fight then develops.
+	//
+	// A subset of Order. Nobody outside the order can be surprised by a fight
+	// they are not in.
+	Surprised []MemberID
 }
 
 // FormOutput reports what forming the bubble appended to the story.
@@ -253,9 +262,20 @@ type FormOutput struct {
 // world clock and keeps free-roaming while the fight runs — a fight is
 // localized, and the rest of the encounter is not paused by it.
 //
-// Form does not decide WHEN a fight starts. Trigger detection is a later
-// step and is deliberately absent here: this verb is explicit and
-// caller-driven, and something else decides to call it.
+// UNEXPORTED as of rpg-toolkit#964, and the doc this replaces predicted it:
+// "Form does not decide WHEN a fight starts. Trigger detection is a later step
+// and is deliberately absent here... something else decides to call it." That
+// something else now exists. The verb was scaffolding until its decider
+// arrived, and a caller-driven Form beside an automatic one would be two
+// systems deciding the same thing (ADR-0032) — with the caller always losing,
+// because trigger detection reaches the contact first.
+//
+// The public story of "a fight exists" is unchanged and lives elsewhere:
+// [Encounter.Transfer] moves members in and out, [Encounter.ClockOf] and
+// [Encounter.Status] report who is on which clock, [Encounter.Dissolve] ends
+// it, and [FormedBubble] on the move-path outputs announces the start with its
+// order and who was surprised. What went away is the ability to start a fight
+// that nothing noticed.
 //
 // Policy today is ONE bubble per encounter — fights stay linear and the
 // party stays together. A second Form while a bubble runs is rejected with
@@ -266,7 +286,7 @@ type FormOutput struct {
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty order or a duplicated
 // entry), ErrNotMember (the order names somebody not in this encounter),
 // ErrInBubble.
-func (e *Encounter) Form(in *FormInput) (*FormOutput, error) {
+func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("form: %w", ErrNilInput)
 	}
@@ -296,6 +316,14 @@ func (e *Encounter) Form(in *FormInput) (*FormOutput, error) {
 	if len(e.bubbles) > 0 {
 		return nil, fmt.Errorf("form: a bubble is already running and policy is one per encounter: %w", ErrInBubble)
 	}
+	// Surprise is a fact about members of THIS fight. Somebody outside the
+	// order cannot be surprised by it, and accepting that quietly would put a
+	// name in the story that the order does not explain.
+	for _, id := range in.Surprised {
+		if !seen[id] {
+			return nil, fmt.Errorf("form: %q is surprised but not in the order: %w", id, ErrNotMember)
+		}
+	}
 
 	// Mutate. Validation above guarantees every named member is on the world
 	// clock (member + not-in-a-bubble + R6), so these cannot fail against a
@@ -312,10 +340,17 @@ func (e *Encounter) Form(in *FormInput) (*FormOutput, error) {
 	}
 	e.bubbles = append(e.bubbles, bubble)
 
-	seq, err := e.appendClockBeat(map[string]interface{}{
+	beat := map[string]interface{}{
 		"beat":  "bubble-formed",
 		"order": in.Order,
-	})
+	}
+	// Recorded rather than merely returned: surprise is consumed a turn later
+	// (a surprised creature loses its first turn), so the story has to carry
+	// it for a reader reconstructing the fight from beats alone.
+	if len(in.Surprised) > 0 {
+		beat["surprised"] = in.Surprised
+	}
+	seq, err := e.appendClockBeat(beat)
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
 	}

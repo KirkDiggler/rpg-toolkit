@@ -197,6 +197,13 @@ type SetupInput struct {
 	// Endings are the declared ways the encounter can close.
 	Endings []EndingInput
 
+	// Initiative rolls the order a bubble forms in when trigger detection
+	// starts a fight (rpg-toolkit#964). REQUIRED — trigger detection runs from
+	// first light, so a fight can start before the caller does anything, and
+	// an encounter that cannot order one is a misconfiguration. Setup refuses
+	// without it (ErrNoInitiative).
+	Initiative InitiativeRoller
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.
@@ -311,6 +318,22 @@ type MoveOutput struct {
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
 	Outcome *Outcome
+
+	// Formed is set when this step started a fight. Nil otherwise.
+	Formed *FormedBubble
+}
+
+// FormedBubble reports a fight that trigger detection started.
+type FormedBubble struct {
+	// Order is the initiative order the bubble formed with, first to act
+	// first.
+	Order []MemberID
+
+	// Surprised names who entered unaware, sorted. A subset of Order.
+	Surprised []MemberID
+
+	// Seq is the story sequence of the formation beat.
+	Seq uint64
 }
 
 // TraverseInput contains the member and connection to traverse. The member
@@ -385,6 +408,10 @@ type PumpOutput struct {
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
 	Outcome *Outcome
+
+	// Formed is set when a monster's own movement started a fight — first
+	// contact with nobody walking, the case a walk-only trigger seam misses.
+	Formed *FormedBubble
 }
 
 // JoinInput contains the member and placement information for joining the encounter.

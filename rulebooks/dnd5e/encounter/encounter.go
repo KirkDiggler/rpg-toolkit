@@ -53,6 +53,11 @@ type Encounter struct {
 	members     map[MemberID]*Member
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders    map[MemberID]Decider
+
+	// initiative rolls the order a bubble forms with. Nil until Setup is given
+	// one; trigger detection refuses to start a fight without it rather than
+	// dropping the fight silently.
+	initiative InitiativeRoller
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Move, Traverse, Join) declaration order is
@@ -881,6 +886,17 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoEnding)
 	}
 
+	// Required, because construction is total (S8): trigger detection runs
+	// from first light onward, so an encounter that can hold players and
+	// monsters can start a fight before its caller does anything, and a fight
+	// it cannot order is a misconfiguration. Refusing here rather than
+	// mid-fight is the difference between a bug report and a bug — the
+	// alternative, discovering it when two members finally see each other,
+	// fails at the least convenient moment and looks like a rules bug.
+	if in.Initiative == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoInitiative)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -961,6 +977,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		members:          make(map[MemberID]*Member),
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
+		initiative:       in.Initiative,
 		endings:          nil,
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
@@ -1097,7 +1114,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	// First light: build sight percepts for each member using refreshSight
-	_, err = e.refreshSight(memberIDs)
+	firstLight, err := e.refreshSight(memberIDs)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter first light: %w", err)
 	}
@@ -1112,6 +1129,21 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("newencounter append beat: %w", err)
+	}
+
+	// Trigger detection at first light, AFTER the scene has opened. A scene
+	// can open with a wolf already staring at the party, and a fight that
+	// waited for somebody to take a step would let them stand there
+	// indefinitely — but the story still has to read in the order it happened,
+	// and a fight that starts before the scene opens is a story nobody can
+	// follow.
+	//
+	// This is also what makes reading only the transition lists complete
+	// everywhere else: every awareness that exists was created by some
+	// refreshSight, and this is the first one, so no awareness predates
+	// classification and no stale asymmetry can be missed.
+	if _, terr := e.applyTrigger(firstLight); terr != nil {
+		return nil, fmt.Errorf("newencounter first light: %w", terr)
 	}
 
 	return e, nil
@@ -1445,6 +1477,20 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		break
 	}
 
+	// Trigger detection, after the beat so the story reads in the order it
+	// happened: the move, then whatever noticing it caused.
+	//
+	// Skipped once an ending has fired. A closed encounter has nothing to
+	// start a fight about, and Form refuses a closed encounter anyway — this
+	// turns that refusal into a non-event rather than an error on the way out.
+	var formed *FormedBubble
+	if firedOutcome == nil {
+		formed, err = e.applyTrigger(intelDeltas)
+		if err != nil {
+			return nil, fmt.Errorf("move: %w", err)
+		}
+	}
+
 	return &MoveOutput{
 		Moved: struct {
 			Member MemberID
@@ -1458,6 +1504,7 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		IntelDeltas: intelDeltas,
 		Seq:         seqNum,
 		Outcome:     firedOutcome,
+		Formed:      formed,
 	}, nil
 }
 
@@ -1739,6 +1786,19 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 // the complete sight refresh happens once, and the story accrues tick and
 // move/traverse beats. Errors from a decider abort the pump atomically (R5):
 // no clock advance, no moves, no record entries.
+//
+// WHAT PUMP DRIVES IN v1, stated plainly because the answer narrowed: members
+// on the WORLD clock. Under v1's sight model (rpg-toolkit#964) any monster a
+// player can see is in a bubble, and a bubble member is deliberately not
+// pumped — so in practice this verb moves the monsters NOBODY HAS SEEN YET.
+// Free-roam monster behaviour is offscreen behaviour.
+//
+// That is a narrowing rather than the intent. It widens back when percept
+// production grows: asymmetric perception (#1020) lets a monster be watched
+// without a fight starting, and a faction model lets a visible creature be
+// non-hostile. Both change what forms a bubble, not what Pump does — see
+// classify's doc for the invariant. Pinned by
+// TestPumpStopsMovingAMonsterOnceSeen.
 //
 // Semantics:
 //   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
@@ -2068,6 +2128,17 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 	}
 
+	// Trigger detection on the monsters' own movement. This is the call site
+	// a walk-only seam would not have: nobody walked, and a fight can still
+	// start because a monster rounded a corner.
+	var formed *FormedBubble
+	if firedOutcome == nil {
+		formed, err = e.applyTrigger(intelDeltas)
+		if err != nil {
+			return nil, fmt.Errorf("pump: %w", err)
+		}
+	}
+
 	return &PumpOutput{
 		Tick:             newTickReading,
 		MonsterMoves:     outputMoves,
@@ -2075,6 +2146,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		IntelDeltas:      intelDeltas,
 		Seqs:             seqs,
 		Outcome:          firedOutcome,
+		Formed:           formed,
 	}, nil
 }
 
