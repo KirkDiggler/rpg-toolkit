@@ -389,3 +389,26 @@ func structFields(v any) []string {
 	}
 	return names
 }
+
+// interfaceMethodNames reports the method names an interface type declares,
+// including the unexported ones — which is the point, since an unexported
+// method is how a Go interface seals its set of implementations.
+//
+// Pass a typed nil pointer: interfaceMethodNames((*Foo)(nil)).
+func interfaceMethodNames(ptr any) []string {
+	t := reflect.TypeOf(ptr)
+	if t == nil || t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Interface {
+		return nil
+	}
+	iface := t.Elem()
+	names := make([]string, 0, iface.NumMethod())
+	for i := 0; i < iface.NumMethod(); i++ {
+		names = append(names, iface.Method(i).Name)
+	}
+	return names
+}
+
+// isExportedName reports whether a Go identifier is exported.
+func isExportedName(name string) bool {
+	return name != "" && ast.IsExported(name)
+}
