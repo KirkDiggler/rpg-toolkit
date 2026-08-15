@@ -127,7 +127,12 @@ func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.M
 
 // TestAVerbLeavesTheCharacterStoreUntouched is the no-clobber pin.
 //
-// Every write verb, including the one that ends in a fight. Byte comparison rather
+// Every write verb EXCEPT Attack, which must write — see
+// TestDamagePersists. That exception is the pin getting stronger rather than
+// weaker: the rule is now "only the verb that should, does", and the guard
+// still covers every verb that has no business touching a sheet.
+//
+// Byte comparison rather
 // than a field-by-field check on purpose: the failure this guards against is a
 // well-meaning SaveCharacter added to the write path, and ToData stamps
 // UpdatedAt with time.Now() on every call — so an unconditional save changes

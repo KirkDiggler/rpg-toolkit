@@ -90,6 +90,11 @@ type Manager struct {
 	characters CharacterRepository
 	events     EventStream
 	initiative encounter.InitiativeRoller
+
+	// dice is the host's randomness, kept as well as wrapped: the initiative
+	// seam needs it wrapped for the composition, and a resolution machine
+	// needs it wrapped for the rulebook. One source, two adapters.
+	dice Roller
 }
 
 // NewManager returns a Manager wired to what the host supplied.
@@ -132,5 +137,6 @@ func NewManager(cfg *Config) (*Manager, error) {
 		characters: cfg.Characters,
 		events:     cfg.Events,
 		initiative: initiativeSeam{dice: cfg.Dice},
+		dice:       cfg.Dice,
 	}, nil
 }

@@ -457,6 +457,35 @@ type writeScope struct {
 	touched bool
 }
 
+// adopt replaces the scope's encounter with one loaded from a world that came
+// back from somewhere else.
+//
+// ONE VERB NEEDS THIS AND MORE WILL. A resolution takes the world as data and
+// returns a different world as data — that is the seam's whole design — so a
+// verb that resolves through it is holding a stale encounter the moment Resolve
+// returns. Recording the outcome or saving from the old one would drop
+// everything the interaction did.
+//
+// THE INVARIANT: after adopt, every earlier reference to the encounter is
+// DEAD. Read nothing from before it, and record only after it — the outcome is
+// a consequence of the interaction, so its beat belongs on the world the
+// interaction produced, in that order.
+//
+// It is a named method rather than an assignment inlined in the verb so the
+// next verb that resolves through data reuses this instead of hand-rolling the
+// swap, and so the novelty has exactly one home to document.
+func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error {
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:       world,
+		Initiative: m.initiative,
+	})
+	if err != nil {
+		return fmt.Errorf("%q: %w: %w", scope.encounter, ErrInvalidWorld, err)
+	}
+	scope.enc = enc
+	return nil
+}
+
 // persist writes the mutated aggregates back and reports the result.
 //
 // The encounter is written first and the session second, and the order is a

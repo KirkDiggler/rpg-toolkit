@@ -208,6 +208,20 @@ var (
 	// account of it.
 	ErrNoCause = errors.New("no cause given")
 
+	// ErrNotACharacter is returned when a verb needs a character and was
+	// given a member that is not one.
+	//
+	// Attack has it: v1 compiles character attackers only, because a
+	// monster's action can declare a save gate and the rider that gate
+	// resolves has no recorded vocabulary yet. Scope, not oversight — the
+	// case arrives with the behavior work that calls for it.
+	ErrNotACharacter = errors.New("member is not a character")
+
+	// ErrBadAttack is returned when an attack cannot be compiled from the
+	// attacker's sheet — an empty hand, or a weapon the strike has no
+	// semantics for.
+	ErrBadAttack = errors.New("attack cannot be made")
+
 	// ErrFrozen, ErrNoWindow, ErrNotAudience, ErrNotOffered and ErrNoWindowID
 	// lived here. Every one of them described an open interrupt window, and
 	// nothing in this module opens one (rpg-toolkit#964 slice 2) — a sentinel
