@@ -90,6 +90,23 @@ type AttackProfile struct {
 	// Gate is the rider's contest, if the attack declares one (ADR-0039).
 	// Nil means the attack just hits.
 	Gate *saves.SaveGate
+
+	// Imposes is what the rider does to a target who fails the gate's save.
+	//
+	// Gate and Imposes are the two halves of one rider and travel together:
+	// the gate is the contest — which abilities, what DC, what a success buys —
+	// and this is the consequence the contest is about. ADR-0039 deliberately
+	// kept the two apart in the gate's own shape, which left the consequence
+	// with nowhere to live: the machine hardcoded prone, so every gated attack
+	// knocked its target down whatever the attack was (rpg-toolkit#1013).
+	//
+	// Nil whenever Gate is nil, and required whenever Gate is not — a contest
+	// that gates nothing is not a rule, it is a roll with no meaning.
+	//
+	// The compiler names it, because translating an action's semantics is the
+	// compiler's job: the wolf's KnockdownDC becomes both the gate and prone in
+	// the same place, rather than the DC here and the meaning in the machine.
+	Imposes Consequence
 }
 
 // validate refuses a profile that cannot drive a strike, naming what is
@@ -100,6 +117,15 @@ func (p *AttackProfile) validate() error {
 	}
 	if p.DamageDice == "" {
 		return fmt.Errorf("%w: the attack declares no damage dice", ErrBadAttack)
+	}
+
+	// A gate with nothing riding on it is refused rather than run. The
+	// alternative — contest it and impose nothing — is a save the target rolls,
+	// can fail, and suffers nothing for, which reads as working while meaning
+	// nothing. Same principle the consequence's own validate states: failing at
+	// construction is a bug report, failing soft is a bug that ships.
+	if p.Gate != nil && p.Imposes == nil {
+		return fmt.Errorf("%w: the attack declares a gate but names no consequence", ErrBadAttack)
 	}
 
 	return nil
@@ -400,9 +426,13 @@ func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
 	}
 
 	return requestContest(&ContestInput{
-		Gate:        m.in.Attack.Gate,
-		SaverID:     m.in.TargetID,
-		Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+		Gate:    m.in.Attack.Gate,
+		SaverID: m.in.TargetID,
+		// What the profile named, not what this machine assumes. Until
+		// rpg-toolkit#1013 this was a hardcoded prone, so a ghoul's paralysis
+		// would have knocked its target over instead — the machine deciding a
+		// rule that belongs to the attack.
+		Consequence: m.in.Attack.Imposes,
 		DamageTaken: m.outcome.Damage,
 		Roller:      m.in.Roller,
 	}, func(_ context.Context, contest ContestOutcome) (Step, error) {
@@ -492,6 +522,19 @@ func attackFromBite(action monster.ActionData) (AttackProfile, error) {
 		if bite, ok := mustLoadBite(action); ok {
 			profile.Gate = bite.SaveGate()
 		}
+	}
+
+	// A bite's gate is a KNOCKDOWN — that is what the stat block's
+	// KnockdownDC means, and translating it is this function's job in both
+	// directions: the DC becomes the contest, and knocked-down becomes prone.
+	// Naming it here rather than in the machine is the whole of #1013: the
+	// machine imposed prone on every gated attack because the consequence had
+	// nowhere else to be said.
+	//
+	// Conditional on the gate, so a bite authored without one stays a plain
+	// bite rather than carrying a consequence nothing can trigger.
+	if profile.Gate != nil {
+		profile.Imposes = ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne)
 	}
 
 	return profile, nil
