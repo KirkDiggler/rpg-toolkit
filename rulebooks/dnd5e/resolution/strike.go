@@ -253,12 +253,19 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	// nothing asks for it yet, and the fold reaches the right subscribers
 	// either way.
 	//
-	// Read once and used for BOTH the outcome and the chain event, because the
-	// event's number is what decides the hit: afterAttackChain compares against
-	// the FOLDED event and overwrites the outcome from it. Setting only the
-	// outcome would report the effective AC and roll against the flat one — a
-	// strike that tells the truth and does something else. Pinned by
-	// TestTheFoldedACDecidesTheHitNotJustTheReport.
+	// THE CHAIN EVENT'S COPY IS THE ONE THAT MATTERS. afterAttackChain compares
+	// against the FOLDED event and then assigns m.outcome.TargetAC from it, so
+	// the event's number both decides the hit and replaces whatever the outcome
+	// was built with. Setting only the outcome would report the effective AC
+	// and roll against the flat one — a strike that tells the truth and does
+	// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
+	//
+	// The outcome is seeded with it anyway, and that seed is dead on every
+	// path that exists today: nothing returns a StrikeOutcome before the fold
+	// runs. It stays because a future phase that can end the strike earlier —
+	// a reaction window declining the attack, say — would otherwise hand back
+	// an outcome with a zero AC, and that is a worse failure than a redundant
+	// assignment.
 	effectiveAC := combat.GetEffectiveAC(ctx, target)
 
 	m.outcome = StrikeOutcome{
