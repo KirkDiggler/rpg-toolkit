@@ -190,6 +190,15 @@ func DealDamage(ctx context.Context, input *DealDamageInput) (*DealDamageOutput,
 	})
 
 	// NOTIFY: publish DamageReceivedEvent for reactions
+	//
+	// Applying above and publishing here is a latent double-apply for a target
+	// that treats this topic as an instruction: a bus-attached monster's sheet
+	// keeper subscribes and calls TakeDamage, so the same damage lands twice.
+	// Latent rather than live — nothing ships a DealDamage caller with a
+	// subscribed monster target yet — and dispositioned in rpg-toolkit#1009
+	// rather than changed here, because ApplyAttackOutcome's publish is the
+	// opposite case (there it IS the only application path) and the two cannot
+	// be fixed by the same edit.
 	damageTopic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
 	err = damageTopic.Publish(ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID:   targetID,
@@ -316,14 +325,10 @@ func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDama
 		return nil, rpgerr.Wrap(err, "failed to execute damage chain")
 	}
 
-	// Apply multipliers (resistance, vulnerability, immunity)
-	finalInstances := calculateFinalDamage(finalEvent.Components)
-
-	// Calculate total
-	totalDamage := 0
-	for _, inst := range finalInstances {
-		totalDamage += inst.Amount
-	}
+	// Apply multipliers (resistance, vulnerability, immunity) and total them.
+	// Shared with any caller that folds the chain on its own bus — one
+	// implementation of the arithmetic rather than a copy per stack.
+	finalInstances, totalDamage := FinalDamage(finalEvent.Components)
 
 	return &ResolveDamageOutput{
 		TotalDamage:     totalDamage,
@@ -331,96 +336,4 @@ func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDama
 		FinalComponents: finalEvent.Components,
 		AbilityUsed:     finalEvent.AbilityUsed,
 	}, nil
-}
-
-// calculateFinalDamage processes damage components and applies multipliers.
-// In D&D 5e:
-// - Resistance (0.5) halves damage, Vulnerability (2.0) doubles it, Immunity (0.0) negates
-// - Multiple resistances don't stack (apply most beneficial once)
-// - If both resistance and vulnerability exist for a type, they cancel out
-func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInstanceInput {
-	// Group damage and multipliers by type
-	type damageGroup struct {
-		baseDamage  int
-		multipliers []float64
-	}
-	byType := make(map[damage.Type]*damageGroup)
-
-	for _, component := range components {
-		dmgType := component.DamageType
-		if byType[dmgType] == nil {
-			byType[dmgType] = &damageGroup{}
-		}
-
-		// If component has a multiplier, it's a modifier (resistance/vulnerability)
-		// Otherwise, it contributes base damage
-		if component.Multiplier != 0 {
-			byType[dmgType].multipliers = append(byType[dmgType].multipliers, component.Multiplier)
-		} else {
-			byType[dmgType].baseDamage += component.Total()
-		}
-	}
-
-	// Apply multipliers to each damage type
-	result := make([]DamageInstanceInput, 0, len(byType))
-	for dmgType, group := range byType {
-		finalDamage := group.baseDamage
-
-		if len(group.multipliers) > 0 {
-			// Apply D&D 5e stacking rules
-			effectiveMultiplier := resolveMultipliers(group.multipliers)
-			finalDamage = int(float64(finalDamage) * effectiveMultiplier)
-		}
-
-		if finalDamage > 0 {
-			result = append(result, DamageInstanceInput{
-				Amount: finalDamage,
-				Type:   dmgType,
-			})
-		}
-	}
-
-	return result
-}
-
-// resolveMultipliers applies D&D 5e stacking rules for resistance/vulnerability.
-// - Immunity (0.0) always wins
-// - Resistance (0.5) and vulnerability (2.0) cancel out if both present
-// - Multiple resistances don't stack (use 0.5 once)
-// - Multiple vulnerabilities don't stack (use 2.0 once)
-func resolveMultipliers(multipliers []float64) float64 {
-	hasImmunity := false
-	hasResistance := false
-	hasVulnerability := false
-
-	for _, m := range multipliers {
-		switch {
-		case m == 0.0:
-			hasImmunity = true
-		case m < 1.0:
-			hasResistance = true
-		case m > 1.0:
-			hasVulnerability = true
-		}
-	}
-
-	// Immunity trumps everything
-	if hasImmunity {
-		return 0.0
-	}
-
-	// Resistance and vulnerability cancel out
-	if hasResistance && hasVulnerability {
-		return 1.0
-	}
-
-	// Apply resistance (0.5) or vulnerability (2.0)
-	if hasResistance {
-		return 0.5
-	}
-	if hasVulnerability {
-		return 2.0
-	}
-
-	return 1.0
 }
