@@ -4,6 +4,8 @@
 package encounter_test
 
 import (
+	"reflect"
+
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -47,4 +49,25 @@ func wallColumn(x, fromY, toY int) []spatial.Position {
 		out = append(out, spatial.Position{X: float64(x), Y: float64(y)})
 	}
 	return out
+}
+
+// structFieldNames reports EVERY field name a struct declares, in declaration
+// order — unexported ones included — so a test can assert on a type's SHAPE
+// rather than on the values one instance happens to carry.
+//
+// Including the unexported ones is the point rather than an oversight. This
+// exists to hold RecordInput's claim that prose is inexpressible, and a claim
+// about what a type can EXPRESS is not weakened by a field being lowercase:
+// an unexported string on an input that callers construct is a smell of its
+// own, and a shape pin that looked away from it would be choosing not to see.
+func structFieldNames(v any) []string {
+	t := reflect.TypeOf(v)
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	names := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		names = append(names, t.Field(i).Name)
+	}
+	return names
 }
