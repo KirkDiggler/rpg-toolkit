@@ -296,9 +296,10 @@ func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 	s.Len(out.Steps, 2, "so the whole path is walked")
 	s.Empty(out.Discovered["alice"].FirstContact, "and there was nothing to see")
 
-	// Both directions, because sight is NOT symmetric in this composition: a
-	// walk the ogre could see would start a fight just as surely as one alice
-	// could see (see TestSightIsSymmetric).
+	// Both directions on purpose, even though TestSightIsSymmetric proves they
+	// must agree. A negative control that leans on another test's conclusion
+	// inherits its failure: if symmetry ever broke, this test would go on
+	// reporting a quiet walk while only checking the quiet half.
 	for _, who := range []string{"alice", "ogre"} {
 		seen, verr := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: who})
 		s.Require().NoError(verr)
