@@ -104,7 +104,8 @@ func calculateFinalDamage(components []dnd5eEvents.DamageComponent) []DamageInst
 	return result
 }
 
-// resolveMultipliers applies D&D 5e stacking rules for resistance/vulnerability.
+// resolveMultipliers applies D&D 5e stacking rules for resistance,
+// vulnerability, and immunity.
 // - Immunity (0.0) always wins
 // - Resistance (0.5) and vulnerability (2.0) cancel out if both present
 // - Multiple resistances don't stack (use 0.5 once)
