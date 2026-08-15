@@ -49,6 +49,7 @@ func TestVaultChase(t *testing.T) {
 	// Holdings + its own construction-time config is all it gets (C2).
 	pursuit := &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: corridorRoom, Width: 10, Height: 10},
@@ -76,6 +77,12 @@ func TestVaultChase(t *testing.T) {
 	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open corridor")
 	st, _ = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees her back — intel is symmetric")
+
+	// Seeing each other started the fight (rpg-toolkit#964). She breaks off
+	// to run — which is what a chase IS, and what this scene always showed
+	// without having to say so.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: alice})
+	require.NoError(t, err, "beat 1: alice breaks off to run")
 
 	// ---- Beat 2: to the threshold, and through it ----------------------
 	// Alice crosses to the gate, then slips through it into the vault.
@@ -225,7 +232,10 @@ func TestVaultChase(t *testing.T) {
 		kinds = append(kinds, beat["beat"].(string))
 	}
 	require.Equal(t, []string{
-		"scene-opened",  // beat 1
+		"scene-opened", // beat 1
+		// beat 1: they see each other, so the fight starts; she breaks off
+		// to run, which is what makes the rest of this a chase
+		"bubble-formed", "bubble-dissolved",
 		"moved",         // beat 2: alice crosses to the gate
 		"traversed",     // beat 2: she slips through
 		"moved",         // beat 2: she moves deeper into the vault

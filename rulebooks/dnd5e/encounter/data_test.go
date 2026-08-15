@@ -71,6 +71,7 @@ type DataTestSuite struct {
 // of the shift vector's own shape.
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
@@ -113,7 +114,8 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 // ending order changes which outcome the campaign receives.
 func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	setup := &encounter.SetupInput{
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Initiative: orderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -154,6 +156,7 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 // origin simultaneously.
 func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	setup := &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5},
@@ -251,6 +254,7 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 	s.Run("square", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "square-room", Width: 5, Height: 5},
@@ -278,6 +282,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 
 	s.Run("hex", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
@@ -320,6 +325,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 // so they stay disjoint (W2) regardless of y.
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
@@ -373,6 +379,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 	s.Run("post-setup open encounter survives round-trip", func() {
 		// Create a simple encounter
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -443,6 +450,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 	s.Run("mid-fade ghost survives reload still Held", func() {
 		// Create encounter with a pillar that will cause a ghost to form
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -489,6 +497,13 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		})
 		s.Require().NoError(err)
 
+		// The two saw each other, which starts a fight (rpg-toolkit#964), and
+		// a fight member cannot free-roam — so they break off before the
+		// goblin steps behind the pillar and becomes the ghost this test is
+		// about.
+		_, err = enc1.Dissolve(&encounter.DissolveInput{Member: "goblin"})
+		s.Require().NoError(err)
+
 		// Move goblin to create ghost at last-seen position
 		_, err = enc1.Move(&encounter.MoveInput{
 			Member: "goblin",
@@ -524,13 +539,20 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 func (s *DataTestSuite) TestRoundTripPostExit() {
 	s.Run("exited member persists in everMembers and can Story", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A pillar on the diagonal keeps playerA and the
+						// goblin out of each other's sight, so the scene
+						// opens in free roam and the goblin stays the
+						// world's to pump. Co-located and visible would be
+						// a fight at first light (rpg-toolkit#964), and a
+						// fight monster's decider is never consulted.
+						Occluders:  []spatial.Position{{X: 5, Y: 5}},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -577,13 +599,20 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 func (s *DataTestSuite) TestRoundTripClosed() {
 	s.Run("closed encounter with ending outcome round-trips", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A pillar on the diagonal keeps playerA and the
+						// goblin out of each other's sight, so the scene
+						// opens in free roam and the goblin stays the
+						// world's to pump. Co-located and visible would be
+						// a fight at first light (rpg-toolkit#964), and a
+						// fight monster's decider is never consulted.
+						Occluders:  []spatial.Position{{X: 5, Y: 5}},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -639,13 +668,20 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 func (s *DataTestSuite) TestPumpContinuesTick() {
 	s.Run("Pump continues tick sequence post-reload", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A pillar on the diagonal keeps playerA and the
+						// goblin out of each other's sight, so the scene
+						// opens in free roam and the goblin stays the
+						// world's to pump. Co-located and visible would be
+						// a fight at first light (rpg-toolkit#964), and a
+						// fight monster's decider is never consulted.
+						Occluders:  []spatial.Position{{X: 5, Y: 5}},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -693,13 +729,20 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 func (s *DataTestSuite) TestMoveWorksPostReload() {
 	s.Run("Move works on reloaded encounter", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A pillar on the diagonal keeps playerA and the
+						// goblin out of each other's sight, so the scene
+						// opens in free roam and the goblin stays the
+						// world's to pump. Co-located and visible would be
+						// a fight at first light (rpg-toolkit#964), and a
+						// fight monster's decider is never consulted.
+						Occluders:  []spatial.Position{{X: 5, Y: 5}},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -746,6 +789,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 func (s *DataTestSuite) TestGoldenJSONOpen() {
 	s.Run("small open encounter golden JSON", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -795,6 +839,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 func (s *DataTestSuite) TestGoldenJSONClosed() {
 	s.Run("small closed encounter golden JSON", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -860,6 +905,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 func (s *DataTestSuite) TestAliasImmunityToData() {
 	s.Run("mutating ToData result doesn't affect aggregate", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -927,6 +973,7 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 	s.Run("mutating caller's Data after LoadEncounter doesn't affect loaded aggregate", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -990,7 +1037,8 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		// persisted holding says Held (a ghost). A load that re-runs
 		// first-light surveil would resurrect it to Current.
 		enc1, err := encounter.NewEncounter(&encounter.SetupInput{
-			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}}},
+			Initiative: orderAsGiven{},
+			Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}}},
 			Members: []encounter.MemberInput{
 				{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
 				{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 5, Y: 5}},
@@ -1022,13 +1070,20 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 func (s *DataTestSuite) TestDeciderReattachment() {
 	s.Run("reload with decider resumes monster decision", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A pillar on the diagonal keeps playerA and the
+						// goblin out of each other's sight, so the scene
+						// opens in free roam and the goblin stays the
+						// world's to pump. Co-located and visible would be
+						// a fight at first light (rpg-toolkit#964), and a
+						// fight monster's decider is never consulted.
+						Occluders:  []spatial.Position{{X: 5, Y: 5}},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -1088,13 +1143,20 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 	s.Run("reload without decider makes monster hold", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
-						ID:         "crypt",
-						Width:      10,
-						Height:     10,
-						Occluders:  []spatial.Position{},
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						// A pillar on the diagonal keeps playerA and the
+						// goblin out of each other's sight, so the scene
+						// opens in free roam and the goblin stays the
+						// world's to pump. Co-located and visible would be
+						// a fight at first light (rpg-toolkit#964), and a
+						// fight monster's decider is never consulted.
+						Occluders:  []spatial.Position{{X: 5, Y: 5}},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -1149,6 +1211,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 // nil entry is equivalent to an absent one: the monster simply holds.
 func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	setup := &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
 		},
@@ -1181,11 +1244,19 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 // same reattachment map: the real one decides normally, the nil one holds.
 func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	setup := &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
+			Rooms: []encounter.RoomInput{
+				{ID: "crypt", Width: 10, Height: 10},
+				// playerA watches from the antechamber. Two monsters sharing
+				// the crypt see only each other, which starts nothing —
+				// classification pairs players against monsters — so both
+				// stay the world's to pump (rpg-toolkit#964).
+				{ID: "antechamber", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+			},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "playerA", Kind: encounter.KindPlayer, Room: "antechamber", Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 8, Y: 8},
 				Decider: &testDecider{intent: encounter.IntentHold{}}},
 			{ID: "rat", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 2, Y: 8},
@@ -2295,6 +2366,7 @@ func (s *DataTestSuite) TestOriginRoundTripByteIdentical() {
 // Origins it didn't in v0.2.
 func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	setup := &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
@@ -2460,6 +2532,7 @@ func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
 func (s *DataTestSuite) TestMutation1ToDataAliases() {
 	s.Run("mutation 1: ToData aliases slices", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2499,6 +2572,7 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 	s.Run("mutation 2: wire tag renamed", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2529,6 +2603,7 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 func (s *DataTestSuite) TestMutation3StowawayField() {
 	s.Run("mutation 3: stowaway field in EncounterData", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2561,6 +2636,7 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 	s.Run("mutation 4: leaf data substitution (Intel/Log swapped)", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2642,6 +2718,7 @@ func (s *DataTestSuite) TestMutation5MissingRoomCheck() {
 func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 	s.Run("mutation 6: no re-surveil on load (ghost stays ghost)", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -2666,9 +2743,14 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		enc1, err := encounter.NewEncounter(setup)
 		s.Require().NoError(err)
 
-		// Create a ghost
+		// Create a ghost. Stepping into view starts a fight
+		// (rpg-toolkit#964), and a fight member cannot free-roam — so the two
+		// break off before the goblin walks back out of sight and fades. The
+		// ghost this makes is the same ghost; it just has a story now.
 		_, err = enc1.Move(&encounter.MoveInput{Member: "playerA", To: spatial.Position{X: 4, Y: 1}})
 		s.Require().NoError(err)
+		_, err = enc1.Dissolve(&encounter.DissolveInput{Member: "goblin"})
+		s.Require().NoError(err, "the sighting formed a fight to break off")
 		_, err = enc1.Move(&encounter.MoveInput{Member: "goblin", To: spatial.Position{X: 5, Y: 6}})
 		s.Require().NoError(err)
 
@@ -2703,6 +2785,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 	s.Run("mutation 7: tick continuation (clock not reset)", func() {
 		setup := &encounter.SetupInput{
+			Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 10, Height: 10, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},

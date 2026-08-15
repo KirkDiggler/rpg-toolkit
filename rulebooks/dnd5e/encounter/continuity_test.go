@@ -90,6 +90,7 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
 	pursuit := &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice}
 	return &encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
@@ -181,6 +182,11 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open corridor")
 	st, _ = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees her back")
+
+	// Seeing each other started the fight (rpg-toolkit#964); she breaks off
+	// before she runs.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: alice})
+	require.NoError(t, err, "beat 1: alice breaks off to run")
 
 	// ---- Beat 2: alice steps toward the gate, one hex at a time ----------
 	for _, to := range []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1}} {

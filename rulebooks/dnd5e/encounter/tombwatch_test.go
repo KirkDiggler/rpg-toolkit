@@ -52,6 +52,7 @@ func TestTombWatch(t *testing.T) {
 	// enter; a goblin patrols the far end between (7,10) and (6,10).
 	goblinPatrol := &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
@@ -78,6 +79,11 @@ func TestTombWatch(t *testing.T) {
 	require.Equal(t, intel.Current, st, "beat 1: bella sees it too")
 	st, _ = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Current, st, "beat 1: and the goblin sees them back — intel is symmetric, nobody wall-hacks")
+
+	// Seeing each other started the fight (rpg-toolkit#964). The party breaks
+	// off to keep watching rather than trading blows — the watch is the scene.
+	_, err = enc.Dissolve(&encounter.DissolveInput{Member: alice})
+	require.NoError(t, err, "beat 1: the party breaks off to watch")
 
 	// ---- Beat 2: the watch -----------------------------------------
 	// Alice advances to (2,6) to watch; the world moves on her action:
@@ -214,7 +220,10 @@ func TestTombWatch(t *testing.T) {
 		kinds = append(kinds, beat["beat"].(string))
 	}
 	require.Equal(t, []string{
-		"scene-opened",  // beat 1
+		"scene-opened", // beat 1
+		// beat 1: they see each other, the fight starts, the party breaks off
+		// to watch instead
+		"bubble-formed", "bubble-dissolved",
 		"moved",         // beat 2: alice advances
 		"tick", "moved", // beat 2: pump 1, goblin steps out
 		"tick", "moved", // beat 2: pump 2, goblin steps back
@@ -240,6 +249,7 @@ func TestTombWatch(t *testing.T) {
 		})
 	}
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,

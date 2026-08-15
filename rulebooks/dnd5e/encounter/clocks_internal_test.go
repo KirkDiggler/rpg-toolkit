@@ -28,6 +28,7 @@ import (
 // save. With it, the defect is loud: ErrInvalidData, never a guess.
 func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
+		Initiative: orderAsGiven{},
 		Field: FieldInput{
 			Rooms: []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -41,8 +42,9 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = enc.Form(&FormInput{Order: []MemberID{"alice", "goblin"}})
-	require.NoError(t, err)
+	// They saw each other at first light, so the fight already exists — no
+	// caller-driven form needed, and none available (rpg-toolkit#964).
+	require.Len(t, enc.bubbles, 1, "first light started the fight")
 
 	// The bug, fabricated: alice leaves the fight and nobody re-homes her.
 	// No public verb can do this — that is the point of the net.
@@ -59,4 +61,89 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	out, err := enc.ClockOf(&ClockOfInput{Member: "goblin"})
 	require.NoError(t, err)
 	require.Equal(t, ClockTurn, out.Kind)
+}
+
+// TestFormRejections pins form's refusals. It lives in the internal package
+// because form is unexported as of rpg-toolkit#964: trigger detection is the
+// only thing that starts a fight, so the verb's validation is reachable only
+// from inside. The refusals still matter — trigger detection builds the input
+// and a bad one must not half-start a fight.
+func TestFormRejections(t *testing.T) {
+	newEnc := func() *Encounter {
+		enc, err := NewEncounter(&SetupInput{
+			Initiative: orderAsGiven{},
+			Field: FieldInput{Rooms: []RoomInput{
+				{ID: "r1", Width: 8, Height: 8},
+				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
+			}},
+			Members: []MemberInput{
+				{ID: "alice", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+				{ID: "bob", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 2, Y: 1}},
+				{ID: "carl", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 3, Y: 1}},
+				{ID: "dana", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 4, Y: 1}},
+				// Next door, so first light does not start the fight these
+				// cases are about starting badly.
+				{ID: "goblin", Kind: KindMonster, Room: "r2", Position: spatial.Position{X: 6, Y: 6}},
+			},
+			Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		})
+		require.NoError(t, err)
+		return enc
+	}
+
+	t.Run("an empty order", func(t *testing.T) {
+		_, err := newEnc().form(&FormInput{Order: nil})
+		require.ErrorIs(t, err, ErrNoMember)
+	})
+
+	t.Run("a duplicated entry", func(t *testing.T) {
+		_, err := newEnc().form(&FormInput{Order: []MemberID{"alice", "goblin", "alice"}})
+		require.ErrorIs(t, err, ErrNoMember)
+	})
+
+	t.Run("a non-member in the order", func(t *testing.T) {
+		_, err := newEnc().form(&FormInput{Order: []MemberID{"alice", "stranger"}})
+		require.ErrorIs(t, err, ErrNotMember)
+	})
+
+	t.Run("surprised names somebody outside the order", func(t *testing.T) {
+		_, err := newEnc().form(&FormInput{
+			Order:     []MemberID{"alice", "goblin"},
+			Surprised: []MemberID{"bob"},
+		})
+		require.ErrorIs(t, err, ErrNotMember)
+	})
+
+	t.Run("a member who is already fighting", func(t *testing.T) {
+		enc := newEnc()
+		_, err := enc.form(&FormInput{Order: []MemberID{"alice", "goblin"}})
+		require.NoError(t, err)
+
+		_, err = enc.form(&FormInput{Order: []MemberID{"alice", "bob"}})
+		require.ErrorIs(t, err, ErrInBubble)
+	})
+
+	t.Run("a disjoint second fight while one runs", func(t *testing.T) {
+		enc := newEnc()
+		_, err := enc.form(&FormInput{Order: []MemberID{"alice", "goblin"}})
+		require.NoError(t, err)
+
+		_, err = enc.form(&FormInput{Order: []MemberID{"carl", "dana"}})
+		require.ErrorIs(t, err, ErrInBubble)
+	})
+
+	t.Run("a rejected form touches nothing", func(t *testing.T) {
+		enc := newEnc()
+		_, err := enc.form(&FormInput{Order: []MemberID{"alice", "goblin", "stranger"}})
+		require.Error(t, err)
+
+		// alice and the goblin were named BEFORE the defect: R5 means they
+		// were never pulled off the world clock.
+		for _, id := range []MemberID{"alice", "goblin"} {
+			out, cerr := enc.ClockOf(&ClockOfInput{Member: id})
+			require.NoError(t, cerr)
+			require.Equal(t, ClockWorld, out.Kind, "member %q", id)
+		}
+		require.Empty(t, enc.ToData().Bubbles)
+	})
 }
