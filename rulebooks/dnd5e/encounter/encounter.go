@@ -50,7 +50,7 @@ type Encounter struct {
 	bubbles     []*clock.Turn
 	intelLog    *intel.Intel
 	story       *record.Log
-	members     map[MemberID]*Member
+	members     map[MemberID]*memberRecord
 	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
 	deciders    map[MemberID]Decider
 
@@ -974,7 +974,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		members:          make(map[MemberID]*Member),
+		members:          make(map[MemberID]*memberRecord),
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
 		initiative:       in.Initiative,
@@ -1088,7 +1088,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter member placement: %w: %w", ErrBadPlacement, err)
 		}
 
-		member := &Member{
+		member := &memberRecord{
 			ID:   mi.ID,
 			Kind: mi.Kind,
 			Room: mi.Room,
@@ -1194,7 +1194,18 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 	return outcomes
 }
 
-// Members returns the current member roster in stable order.
+// Members returns the current member roster in stable order, each with the
+// dungeon-absolute cell they stand on.
+//
+// The position is why this exists in its current shape. Projecting a roster
+// used to mean calling ToData — serializing clock, intel, log, field and
+// endings to read two floats per member, once per frame in the worst case
+// (rpg-toolkit#933). A roster read should cost a roster read.
+//
+// Returns ErrNoField if a member's room or cell cannot be resolved, which
+// would mean the roster and the spatial field disagree about who is placed —
+// a defect worth surfacing rather than papering over with a zero position
+// that reads like the map's origin.
 func (e *Encounter) Members() ([]Member, error) {
 	// Sort by ID for stability
 	ids := make([]MemberID, 0, len(e.members))
@@ -1207,9 +1218,73 @@ func (e *Encounter) Members() ([]Member, error) {
 
 	members := make([]Member, 0, len(ids))
 	for _, id := range ids {
-		members = append(members, *e.members[id])
+		member, err := e.placementOf(e.members[id])
+		if err != nil {
+			return nil, fmt.Errorf("members: %w", err)
+		}
+		members = append(members, member)
 	}
 	return members, nil
+}
+
+// placementOf builds a member's read shape: the stored record plus where they
+// actually stand, projected into dungeon-absolute space.
+//
+// ONE projection path, used by every read that reports a member. Join and
+// Members answering the same question differently is the kind of drift that
+// stays invisible until two clients disagree about where somebody is.
+func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
+	local, err := e.cellOf(record)
+	if err != nil {
+		return Member{}, err
+	}
+
+	// Origin lives in construction truth, never on the spatial room — the
+	// same source Absolute projects through, so the two cannot disagree.
+	ri, ok := e.roomInput(record.Room)
+	if !ok {
+		return Member{}, fmt.Errorf("member %q: unknown room %q: %w", record.ID, record.Room, ErrNoField)
+	}
+
+	return Member{
+		ID:       record.ID,
+		Kind:     record.Kind,
+		Room:     record.Room,
+		Position: local.Add(ri.Origin),
+	}, nil
+}
+
+// cellOf reads a member's room-local cell from the spatial room that owns it,
+// which is the only place that knows it.
+func (e *Encounter) cellOf(record *memberRecord) (spatial.Position, error) {
+	room, ok := e.orchestrator.GetRoom(record.Room)
+	if !ok {
+		return spatial.Position{}, fmt.Errorf("member %q: unknown room %q: %w", record.ID, record.Room, ErrNoField)
+	}
+	local, ok := room.GetEntityPosition(string(record.ID))
+	if !ok {
+		return spatial.Position{}, fmt.Errorf("member %q: not placed in room %q: %w", record.ID, record.Room, ErrNoField)
+	}
+	return local, nil
+}
+
+// absoluteOf projects a room-local cell for a beat or a report.
+//
+// Beats speak absolute for the same reason Member.Position does: a
+// room-local coordinate with no room attached — which is exactly what the
+// moved beat carried before rpg-toolkit#1040 — cannot be resolved to
+// anywhere in a multi-room field.
+func (e *Encounter) absoluteOf(room string, local spatial.Position) spatial.Position {
+	ri, ok := e.roomInput(room)
+	if !ok {
+		// Unreachable through any verb: every beat is built from a room the
+		// verb just moved a member into or out of, and construction validates
+		// every room in the field. Returning the local cell unprojected is
+		// the least-wrong answer if that ever stops being true, and it is
+		// wrong in a way a test can see rather than a panic in a host.
+		return local
+	}
+	return local.Add(ri.Origin)
 }
 
 // Status returns the encounter's current state (Open or Closed with Outcome).
@@ -1291,7 +1366,7 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 // or an error if the spatial move was rejected. This is the shared managed seam for both
 // player moves (Move verb) and monster moves (Pump). The member must exist and be in an
 // open encounter; spatial rejection does not abort the operation (handled by caller).
-func (e *Encounter) moveMember(member *Member, to spatial.Position) (spatial.Position, error) {
+func (e *Encounter) moveMember(member *memberRecord, to spatial.Position) (spatial.Position, error) {
 	// Get the room and current position
 	room, ok := e.orchestrator.GetRoom(member.Room)
 	if !ok {
@@ -1402,9 +1477,13 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
-		"beat":     "moved",
-		"member":   string(in.Member),
-		"position": in.To,
+		"beat":   "moved",
+		"member": string(in.Member),
+		// DUNGEON-ABSOLUTE (#1040). This beat carried the room-local cell and
+		// no room at all, which in a multi-room field named nowhere: two
+		// members in different rooms could report the same "position" and mean
+		// cells at opposite ends of the map.
+		"position": e.absoluteOf(member.Room, in.To),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -1522,7 +1601,7 @@ type traverseResult struct {
 // Pump's silent-skip-on-failure semantics: ANY error returned here is
 // treated exactly like a spatially-rejected IntentMoveTo — the monster
 // simply fails to act this tick, no abort).
-func (e *Encounter) traverseMember(member *Member, connectionID string) (traverseResult, error) {
+func (e *Encounter) traverseMember(member *memberRecord, connectionID string) (traverseResult, error) {
 	var conn *ConnectionInput
 	for i := range e.connectionsInput {
 		if e.connectionsInput[i].ID == connectionID {
@@ -1677,8 +1756,10 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 		"beat":       "traversed",
 		"member":     string(in.Member),
 		"connection": in.Connection,
-		"room":       result.toRoom,
-		"position":   result.toPos,
+		// The arrival cell, DUNGEON-ABSOLUTE (#1040). The room key is gone
+		// with it: rooms are this composition's own business, and a caller
+		// that wants the arrival room asks Locate.
+		"position": e.absoluteOf(result.toRoom, result.toPos),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -1909,7 +1990,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	// deterministic per-monster order the deciders were consulted in
 	// (C8) — not "all moves then all traverses".
 	type executedAction struct {
-		member     *Member
+		member     *memberRecord
 		kind       string // "move" or "traverse"
 		connection string // only meaningful for "traverse"
 		fromRoom   string // only meaningful for "traverse"; a move never changes room
@@ -1999,15 +2080,14 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			beatPayload = map[string]interface{}{
 				"beat":     "moved",
 				"member":   string(action.member.ID),
-				"position": action.to,
+				"position": e.absoluteOf(action.member.Room, action.to),
 			}
 		case "traverse":
 			beatPayload = map[string]interface{}{
 				"beat":       "traversed",
 				"member":     string(action.member.ID),
 				"connection": action.connection,
-				"room":       action.toRoom,
-				"position":   action.to,
+				"position":   e.absoluteOf(action.toRoom, action.to),
 			}
 		}
 		beatBytes, _ := json.Marshal(beatPayload)
@@ -2336,7 +2416,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	// Register the member
-	member := &Member{
+	member := &memberRecord{
 		ID:   in.Member.ID,
 		Kind: in.Member.Kind,
 		Room: in.Member.Room,
@@ -2445,9 +2525,14 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		break
 	}
 
+	placement, err := e.placementOf(member)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
 	return &JoinOutput{
 		Formed:      formed,
-		Member:      *member,
+		Member:      placement,
 		IntelDeltas: intelDeltas,
 		Seq:         seqNum,
 		Outcome:     firedOutcome,

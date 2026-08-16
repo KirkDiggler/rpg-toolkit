@@ -698,7 +698,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	// All validated; now reconstruct via the same path Setup uses
 	e := &Encounter{
-		members:     make(map[MemberID]*Member),
+		members:     make(map[MemberID]*memberRecord),
 		everMembers: make(map[MemberID]bool),
 		deciders:    make(map[MemberID]Decider),
 		initiative:  input.Initiative,
@@ -793,7 +793,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter member placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 		}
 
-		member := &Member{
+		member := &memberRecord{
 			ID:   m.ID,
 			Kind: m.Kind,
 			Room: m.Room,

@@ -251,8 +251,43 @@ type StoryInput struct {
 	AfterSeq uint64
 }
 
-// Member represents a member's public read-side data.
+// Member represents a member's public read-side data: who they are, and
+// where they stand on the dungeon map.
+//
+// A READ SHAPE, not the stored record. What this composition keeps about a
+// member is [memberRecord]; a member's cell is the spatial room's to know,
+// and this type is built by asking it. The two were one type until #1040,
+// which put a position on the record that the record did not own — the dual
+// state this module has paid for before.
 type Member struct {
+	ID   MemberID
+	Kind MemberKind
+	Room string
+
+	// Position is where the member stands, in DUNGEON-ABSOLUTE space —
+	// already projected through their room's origin, so it can be compared
+	// with any other absolute coordinate this composition reports (an Atlas
+	// cell, a doorway endpoint, another member) without the caller redoing
+	// the arithmetic.
+	//
+	// Absolute rather than room-local because a position without its room is
+	// not an answer in a multi-room field, and pairing every coordinate with
+	// a room ID is the dialect the seam reshape exists to remove: the
+	// composition has rooms, and it projects the absolute geometry so its
+	// caller sees one map (rpg-project#227). W4 already put projection on
+	// this side of the line — absolute coordinates belong in query outputs,
+	// never in a rule's own logic.
+	//
+	// The room-local cell is still available: pass this position to [Locate],
+	// which is the exact inverse.
+	Position spatial.Position
+}
+
+// memberRecord is what the composition stores about a member: identity, kind,
+// and which room owns them. Deliberately NOT their cell — the spatial room
+// holds that, and duplicating it here would create a second truth that the
+// verbs would have to keep in step.
+type memberRecord struct {
 	ID   MemberID
 	Kind MemberKind
 	Room string
