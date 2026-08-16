@@ -120,6 +120,14 @@ func (s *ObstacleSuite) TestObstacle_BlocksMovement_False() {
 // HexNeighbors(h)[0] and [3] are diametrically opposite directions (their
 // deltas negate each other), so the obstacle sits exactly on the line
 // between them.
+//
+// The geometry is load-bearing, not incidental: since spatial v0.9.1
+// (rpg-toolkit#1022) an occluder on the direct ray does not block on its
+// own — sight survives if a neighbour strictly closer to the other end has
+// a clear lane. Two hexes that are one step apart on either side of the
+// obstacle leave no such neighbour, so this case still blocks. A pair
+// further apart and off axis would not, which is the point of the fix and
+// not a regression here.
 func (s *ObstacleSuite) TestObstacle_BlocksLoS_True() {
 	enc := encounter.New(context.Background(), "enc-obstacle-los-block", s.broker)
 	s.Require().NoError(enc.InitRoom(10, 10, environments.PatternEmpty))
