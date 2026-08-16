@@ -57,6 +57,37 @@ func newCallBus() events.EventBus {
 	return events.NewEventBus()
 }
 
+// fetchCharacterData reads one stored sheet and checks that the repository kept
+// its side of the contract.
+//
+// The fetch-and-validate half of loading a character, factored out because
+// three call sites need it and only one of them goes on to reconstitute
+// anything. Its whole job is the vocabulary: ErrNoCharacter when the repository
+// does not hold the ID, ErrBadRepository when it reports success with no data.
+//
+// It exists as ONE function because it used to exist as three, and the copies
+// disagreed. compileAttack and castFor each reported an ABSENT sheet as a
+// corrupt one (rpg-toolkit#1057), so the same package answered the same
+// question two different ways depending on which verb a host called. A sentinel
+// a host branches on cannot be restated per call site and stay honest.
+func (m *Manager) fetchCharacterData(ctx context.Context, id string) (*character.Data, error) {
+	data, err := m.characters.GetCharacter(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, fmt.Errorf("character %q: %w", id, ErrNoCharacter)
+		}
+		return nil, fmt.Errorf("character %q: %w", id, err)
+	}
+	if data == nil {
+		// A repository reporting success with no data has violated its
+		// contract. Guessing in either direction — treating it as absent, or
+		// carrying a nil into a loader — is worse than saying so.
+		return nil, fmt.Errorf(
+			"character %q: GetCharacter reported success with no data: %w", id, ErrBadRepository)
+	}
+	return data, nil
+}
+
 // loadCharacter reconstitutes a player character and attaches its features and
 // conditions to the call's bus.
 //
@@ -71,18 +102,9 @@ func newCallBus() events.EventBus {
 func (m *Manager) loadCharacter(
 	ctx context.Context, bus events.EventBus, id string,
 ) (*character.Character, error) {
-	data, err := m.characters.GetCharacter(ctx, id)
+	data, err := m.fetchCharacterData(ctx, id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("character %q: %w", id, ErrNoCharacter)
-		}
-		return nil, fmt.Errorf("character %q: %w", id, err)
-	}
-	if data == nil {
-		// A repository reporting success with no data has violated its
-		// contract. Guessing in either direction — treating it as absent, or
-		// carrying a nil into LoadFromData — is worse than saying so.
-		return nil, fmt.Errorf("character %q: %w", id, ErrBadRepository)
+		return nil, err
 	}
 
 	ch, err := character.LoadFromData(ctx, data, bus)
