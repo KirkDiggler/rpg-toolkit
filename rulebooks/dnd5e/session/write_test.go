@@ -52,12 +52,15 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 
 	out, err := s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
+		Position: spatial.Position{X: 6, Y: 0},
 	})
 	s.Require().NoError(err)
 	s.Equal("bob", out.Member.ID)
 	s.Equal(session.KindPlayer, out.Member.Kind)
-	s.Equal("vault", out.Member.Room)
+	// The cell he was placed on, reported back on the map rather than as a
+	// room he would have to look up. The vault is anchored at (6,0), so this
+	// number only exists if the projection happened.
+	s.Equal(spatial.Position{X: 6, Y: 0}, out.Member.Position)
 	s.Equal([]string{"encounter:world"}, out.Saved.Written)
 
 	// The proof: a fresh read sees him.
@@ -74,7 +77,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 func (s *WriteTestSuite) TestJoinReportsWhoNoticed() {
 	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Room: "corridor", Position: spatial.Position{X: 1, Y: 0},
+		Position: spatial.Position{X: 1, Y: 0},
 	})
 	s.Require().NoError(err)
 	s.NotEmpty(out.Discovered,
@@ -88,7 +91,7 @@ func (s *WriteTestSuite) TestExitCarriesKnowledgeOut() {
 	out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal("alice", out.Outcome.ID)
-	s.Equal("corridor", out.Outcome.Room)
+	s.Equal(spatial.Position{X: 0, Y: 0}, out.Outcome.Position, "where she stood when she left")
 	s.Equal([]string{"encounter:world"}, out.Saved.Written)
 
 	// And she is really gone, not merely reported gone.
@@ -123,7 +126,7 @@ func (s *WriteTestSuite) TestClosedEncounterRefusesChanges() {
 
 	_, err = s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
+		Position: spatial.Position{X: 6, Y: 0},
 	})
 	s.ErrorIs(err, session.ErrClosed)
 
@@ -210,7 +213,7 @@ func (s *WriteTestSuite) TestFailedSaveIsReportedNotSwallowed() {
 
 	out, err := mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
+		Position: spatial.Position{X: 6, Y: 0},
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrSaveFailed)
@@ -236,13 +239,13 @@ func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 
 	_, err = s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Room: "vault", Position: spatial.Position{X: 0, Y: 0},
+		Position: spatial.Position{X: 6, Y: 0},
 	})
 	s.Require().NoError(err)
 
 	_, err = other.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "carol",
-		Room: "vault", Position: spatial.Position{X: 1, Y: 0},
+		Position: spatial.Position{X: 7, Y: 0},
 	})
 	s.Require().NoError(err)
 
@@ -257,7 +260,7 @@ func (s *WriteTestSuite) TestStaleWorldIsNotResurrected() {
 // TestJoinOnUnknownSession pins the load failures reach the write verbs too.
 func (s *WriteTestSuite) TestJoinOnUnknownSession() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "nope", Member: "bob", Room: "vault",
+		Session: "nope", Member: "bob", Position: spatial.Position{X: 6, Y: 0},
 	})
 	s.ErrorIs(err, session.ErrNoSession)
 }

@@ -178,10 +178,8 @@ type MemberOutcome struct {
 	// ID is the member's identifier.
 	ID string `json:"id"`
 
-	// Room is the room they were in.
-	Room string `json:"room"`
-
-	// Position is where they stood within it.
+	// Position is the cell they stood on when it ended, in dungeon-absolute
+	// space — the same frame every other position on this seam speaks.
 	Position spatial.Position `json:"position"`
 }
 
@@ -407,8 +405,13 @@ type Member struct {
 	// Kind categorises the member.
 	Kind MemberKind `json:"kind"`
 
-	// Room is the room the member currently occupies.
-	Room string `json:"room"`
+	// Position is the cell they stand on, in dungeon-absolute space.
+	//
+	// It replaced a room id, and the swap is the reshape in one field: which
+	// chamber somebody is in is the composition's own decomposition, while
+	// where they STAND is the thing a client renders, a rule measures, and
+	// another member walks toward.
+	Position spatial.Position `json:"position"`
 }
 
 // CharacterState is what a loaded character reports about itself.

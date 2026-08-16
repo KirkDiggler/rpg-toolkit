@@ -25,12 +25,23 @@ type MoveInput struct {
 	// A path, not a destination. The caller says where to walk; what actually
 	// happened comes back as Steps, which may be shorter. A single-cell path is
 	// the ordinary case and entirely legal.
+	//
+	// Cells are DUNGEON-ABSOLUTE — the same coordinates the Atlas draws and
+	// every other verb speaks (rpg-project#227).
+	//
+	// A WALK STILL DOES NOT CROSS A DOORWAY. Absolute coordinates make a
+	// crossing expressible for the first time — the far side of a doorway is
+	// simply the next cell along — but expressible is not permitted: a path
+	// that leaves the walker's room is refused with ErrBadPosition, exactly
+	// as it was refused before, when it could not even be written down. That
+	// changes in its own slice, deliberately, so that a real behavior change
+	// is not smuggled in inside a change of dialect.
 	Path []spatial.Position
 }
 
 // Step is one cell actually entered.
 type Step struct {
-	// Position is the cell entered.
+	// Position is the cell entered, in dungeon-absolute space.
 	Position spatial.Position `json:"position"`
 
 	// Seq is the story sequence of the recorded step.
@@ -219,7 +230,7 @@ func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOut
 		To:         crossed.Traversed.To,
 		Discovered: projectDiscoveries(crossed.IntelDeltas),
 		Seq:        crossed.Seq,
-		Outcome:    projectOutcome(crossed.Outcome),
+		Outcome:    projectOutcome(scope.enc, crossed.Outcome),
 		Formed:     projectFormed(crossed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -254,10 +265,20 @@ type walkResult struct {
 func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Position) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
+	room, _, err := whereIs(scope.enc, encounter.MemberID(member))
+	if err != nil {
+		return nil, err
+	}
+
 	for i, cell := range path {
+		local, err := localTo(scope.enc, room, cell)
+		if err != nil {
+			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(path), err)
+		}
+
 		moved, err := scope.enc.Move(&encounter.MoveInput{
 			Member: encounter.MemberID(member),
-			To:     cell,
+			To:     local,
 		})
 		if err != nil {
 			// Nothing is saved on a mid-walk rejection. The member has really
@@ -266,14 +287,20 @@ func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Posit
 			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(path), translate(err))
 		}
 
-		res.steps = append(res.steps, Step{Position: moved.Moved.To, Seq: moved.Seq})
+		// Reported from what the composition says happened, projected back —
+		// not echoed from the input. A step that landed somewhere other than
+		// where it was aimed is a thing worth being able to see.
+		res.steps = append(res.steps, Step{
+			Position: onMap(scope.enc, room, moved.Moved.To),
+			Seq:      moved.Seq,
+		})
 		mergeDiscoveries(res.discovered, projectDiscoveries(moved.IntelDeltas))
 
 		if moved.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:
 			// a closed encounter refuses movement anyway, and attempting them
 			// would turn a clean stop into a rejection the caller must interpret.
-			res.outcome = projectOutcome(moved.Outcome)
+			res.outcome = projectOutcome(scope.enc, moved.Outcome)
 			return res, nil
 		}
 
@@ -328,32 +355,65 @@ func validatePath(enc *encounter.Encounter, member encounter.MemberID, path []sp
 
 	previous := from
 	for i, cell := range path {
-		if !grid.IsAdjacent(previous, cell) {
+		local, err := localTo(enc, room, cell)
+		if err != nil {
+			return fmt.Errorf("step %d of %d: %w", i+1, len(path), err)
+		}
+		if !grid.IsAdjacent(previous, local) {
 			return fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
 				i+1, previous.X, previous.Y, cell.X, cell.Y, ErrBrokenPath)
 		}
-		previous = cell
+		previous = local
 	}
 	return nil
 }
 
-// whereIs locates a member: which room, and which cell within it.
+// whereIs locates a member: which room owns them, and which cell within it.
 //
-// Read out of a snapshot rather than a query, because the composition's
-// Members() reports a member's room but not their position — the ergonomics gap
-// already filed as toolkit#933. A snapshot is heavier than the question
-// deserves, but it is the only source of truth for a member's current cell, and
-// it runs once per walk rather than once per step.
-//
-// When #933 lands this becomes a direct lookup and the snapshot goes away.
+// It used to serialize the whole aggregate — clock, intel, log, field and
+// endings — to read two floats, because the composition's roster reported a
+// room and no position. That was toolkit#933, and it has landed: Members now
+// carries each member's cell on the map, so this is a roster read and a
+// projection back down into the room-local terms the composition's own verbs
+// take.
 func whereIs(enc *encounter.Encounter, member encounter.MemberID) (string, spatial.Position, error) {
-	for _, m := range enc.ToData().Members {
+	members, err := enc.Members()
+	if err != nil {
+		return "", spatial.Position{}, err
+	}
+
+	for _, m := range members {
 		if m.ID != member {
 			continue
 		}
-		return m.Room, spatial.Position{X: m.Position.X, Y: m.Position.Y}, nil
+		located, lerr := enc.Locate(&encounter.LocateInput{Position: m.Position})
+		if lerr != nil {
+			return "", spatial.Position{}, fmt.Errorf("%q stands at %v, which no room owns: %w",
+				member, m.Position, ErrBadPosition)
+		}
+		return located.Room, located.Position, nil
 	}
 	return "", spatial.Position{}, fmt.Errorf("%q: %w", member, ErrNoMember)
+}
+
+// localTo resolves a map cell into the room-local cell the composition's verbs
+// take, refusing anything that is not in the given room.
+//
+// The refusal is the whole reason this is a named function rather than a call
+// to Locate. A walk is within one room, and after the reshape a caller CAN
+// write a path that leaves it — the coordinates no longer stop them. So the
+// rule that used to be enforced by the shape of the input has to be enforced
+// here instead, until the slice that makes a crossing an ordinary step.
+func localTo(enc *encounter.Encounter, room string, cell spatial.Position) (spatial.Position, error) {
+	located, err := enc.Locate(&encounter.LocateInput{Position: cell})
+	if err != nil {
+		return spatial.Position{}, fmt.Errorf("no room owns (%v,%v): %w", cell.X, cell.Y, ErrBadPosition)
+	}
+	if located.Room != room {
+		return spatial.Position{}, fmt.Errorf(
+			"(%v,%v) is not in the room being walked: %w", cell.X, cell.Y, ErrBadPosition)
+	}
+	return located.Position, nil
 }
 
 // gridFor builds a grid matching a room's family and span, for adjacency tests.

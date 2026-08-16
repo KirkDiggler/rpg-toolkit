@@ -92,7 +92,7 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 		return nil, fmt.Errorf("status: %w", err)
 	}
 
-	return projectStatus(status), nil
+	return projectStatus(enc, status), nil
 }
 
 // View returns what one member currently perceives.

@@ -269,7 +269,7 @@ func (s *EventsTestSuite) TestKindsComeFromTheBeatNotTheTag() {
 	s.stream.published = nil
 	_, err = s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "erin",
-		Room: "corridor", Position: spatial.Position{X: 3, Y: 3},
+		Position: spatial.Position{X: 3, Y: 3},
 	})
 	s.Require().NoError(err)
 	joined := s.kinds()
