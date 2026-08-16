@@ -265,15 +265,19 @@ func drive(out *bytes.Buffer) error {
 	fmt.Fprintf(out, "   delivered %d events\n", walked.Delivery.Events)
 
 	fmt.Fprintln(out, "\n== and through it, into something waiting ==")
-	crossed, err := mgr.Traverse(ctx, &session.TraverseInput{
-		Session: "crypt-run", Member: "alice", Connection: "gate",
+	// A doorway is a step. The antechamber's threshold is (5,1) and the
+	// vault's is (6,1): one cell apart on the map, so this is a one-step walk
+	// that happens to change rooms.
+	crossed, err := mgr.Move(ctx, &session.MoveInput{
+		Session: "crypt-run", Member: "alice",
+		Path: []spatial.Position{{X: 6, Y: 1}},
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "   %s (%v,%v) → %s (%v,%v)\n",
-		crossed.FromRoom, crossed.From.X, crossed.From.Y,
-		crossed.ToRoom, crossed.To.X, crossed.To.Y)
+	for _, step := range crossed.Steps {
+		fmt.Fprintf(out, "   alice steps through to (%v,%v)\n", step.Position.X, step.Position.Y)
+	}
 
 	// The doorway is where the fight starts, and the host is told in the same
 	// response that told it about the crossing. There is no window to answer

@@ -31,8 +31,8 @@ func TestWorkbenchRuns(t *testing.T) {
 		// names the rooms on either side (rpg-toolkit#1042).
 		"gate: (5,1) kisses (6,1)",
 		"one square map: 72 cells",
-		"alice enters (5,1)",              // the walk reached the doorway
-		"antechamber (5,1) → vault (0,1)", // and crossed it
+		"alice enters (5,1)",           // the walk reached the doorway
+		"alice steps through to (6,1)", // and crossed it — a doorway is a step
 
 		// A fight that starts itself, end to end. Each of these is a different
 		// claim, and any one regressing would leave the others still true:

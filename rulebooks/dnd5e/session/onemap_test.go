@@ -61,6 +61,11 @@ func offsetWorld(t fataler) *encounter.EncounterData {
 			// report is exercised in the same scene.
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
 				Room: "hall", Position: spatial.Position{X: 4, Y: 1}}},
+			// And one on the FAR SIDE of the doorway, for the pin that a
+			// crossing is an ordinary step: an ending there must fire as the
+			// crossing lands, inside the same Move.
+			{Key: "beyond", Trigger: encounter.TriggerReachedPosition{
+				Room: "annex", Position: spatial.Position{X: 0, Y: 2}}},
 		},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -129,31 +134,62 @@ func (s *OneMapSuite) TestAJoinIsAnsweredInTheSameCellItWasAskedFor() {
 	s.Equal(spatial.Position{X: 41, Y: 21}, placements["alice"], "alice never moved from her cell")
 }
 
-// TestAWalkStillDoesNotCrossADoorway is the deliberate NON-change, pinned so
-// that the slice which makes a crossing an ordinary step has to come here and
-// change a test on purpose.
+// TestAWalkCrossesTheDoorway is what four slices of reshaping were for, and it
+// replaces the pin that used to say the opposite.
 //
-// Absolute coordinates make the crossing EXPRESSIBLE for the first time — the
-// far side of the doorway is simply the next cell along — and it is still
-// refused. That is the difference between changing a dialect and changing a
-// rule, and only one of them is happening in this slice.
-func (s *OneMapSuite) TestAWalkStillDoesNotCrossADoorway() {
-	ctx := context.Background()
-
-	// Alice walks to the threshold, which is allowed…
-	_, err := s.mgr.Move(ctx, &session.MoveInput{
+// TestAWalkStillDoesNotCrossADoorway stood here through #1046, refusing this
+// exact path so that the change would have to be made ON PURPOSE rather than
+// inherited when the coordinates stopped preventing it. This is that purpose:
+// one Move call, out of the hall, through the gate, into the annex.
+func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
+	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 42, Y: 21}, {X: 43, Y: 22}, {X: 44, Y: 22}, {X: 45, Y: 22}},
+		Path: []spatial.Position{
+			{X: 42, Y: 22}, {X: 43, Y: 22}, {X: 44, Y: 22}, {X: 45, Y: 22}, // the hall
+			{X: 46, Y: 22}, // through the doorway
+		},
 	})
-	s.Require().NoError(err, "the threshold is in her own room")
+	s.Require().NoError(err, "the doorway is a step like any other")
 
-	// …and then tries to step through it, which is not.
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 46, Y: 22}},
+	s.Require().Len(out.Steps, 5)
+	s.Equal(spatial.Position{X: 45, Y: 22}, out.Steps[3].Position, "the threshold")
+	s.Equal(spatial.Position{X: 46, Y: 22}, out.Steps[4].Position, "the far side, in the annex")
+
+	// A crossing is a step, so an ending declared on the arrival cell fires as
+	// it lands — in THIS Move's own output, not on the next call.
+	s.Require().NotNil(out.Outcome, "the ending on the far side fired underfoot")
+	s.Equal("beyond", out.Outcome.Ending)
+}
+
+// TestACrossingReachesClientsAsACrossing: one map does not mean one narration.
+//
+// The step that changed rooms is still a distinguishable beat, so a client can
+// narrate a doorway differently from a corridor — which is the whole reason the
+// traversed event kind survives a reshape that removed rooms from everything
+// else a client sees.
+func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
+	stream := &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: testCharacters(), Events: stream,
 	})
-	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrBadPosition, "the far side of a doorway is another room, and a walk is one room")
+	s.Require().NoError(err)
+
+	_, err = mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{
+			{X: 42, Y: 22}, {X: 43, Y: 22}, {X: 44, Y: 22}, {X: 45, Y: 22}, {X: 46, Y: 22},
+		},
+	})
+	s.Require().NoError(err)
+
+	kinds := map[session.EventKind]int{}
+	for _, e := range stream.published {
+		kinds[e.Kind]++
+	}
+	s.Positive(kinds[session.EventMoved], "the cells inside the hall are moves")
+	s.Positive(kinds[session.EventTraversed], "and the one through the gate is a crossing")
+	s.Zero(kinds[session.EventUnknown], "with nothing unnameable in between")
 }
 
 // TestARefusalIsDescribedInTheCallersOwnCoordinates.
@@ -179,12 +215,24 @@ func (s *OneMapSuite) TestARefusalIsDescribedInTheCallersOwnCoordinates() {
 // refusal names the same sentinel as the doorway case — both are "that is not
 // a cell you can walk to from here".
 func (s *OneMapSuite) TestAWalkIntoTheVoidIsRefused() {
-	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+	ctx := context.Background()
+
+	// To the hall's corner first: the void has to be ADJACENT for this to be
+	// the refusal under test. A cell far away is refused earlier, as a path
+	// that is not a walk, which is a different mistake and is checked first.
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 900, Y: 900}},
+		Path: []spatial.Position{{X: 40, Y: 20}},
+	})
+	s.Require().NoError(err)
+
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 39, Y: 19}},
 	})
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrBadPosition)
+	s.ErrorIs(err, session.ErrBadPosition, "no room owns that cell")
+	s.NotErrorIs(err, session.ErrNoCrossing, "and it is not a doorway problem — there is nothing there")
 }
 
 // TestNothingOnThePlaySurfaceNamesARoom checks the claim structurally rather
