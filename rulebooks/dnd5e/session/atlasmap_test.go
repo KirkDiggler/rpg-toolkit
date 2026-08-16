@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -28,6 +29,40 @@ func TestAtlasMapSuite(t *testing.T) {
 	suite.Run(t, new(AtlasMapSuite))
 }
 
+// backwardsWorld is two 4x4 square rooms joined by a doorway, anchored so that
+// ROOM ORDER AND COORDINATE ORDER DISAGREE: the alphabetically-first room
+// ("alpha") sits to the RIGHT, at x 4..7, and "beta" occupies x 0..3.
+//
+// That disagreement is the entire reason this fixture exists rather than
+// reusing hexWorld. There, the first room by ID is also the leftmost, so a map
+// concatenated room by room comes out in coordinate order BY ACCIDENT — and an
+// order pin written against it passes with the sorting deleted, which is
+// exactly what the first version of this file did.
+func backwardsWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "alpha", Width: 4, Height: 4, Origin: spatial.Position{X: 4, Y: 0}},
+				{ID: "beta", Width: 4, Height: 4, Origin: spatial.Position{X: 0, Y: 0}},
+			},
+			Connections: []encounter.ConnectionInput{{
+				ID: "gate", From: "alpha", To: "beta",
+				FromPosition: spatial.Position{X: 0, Y: 0},
+				ToPosition:   spatial.Position{X: 3, Y: 0},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "beta", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+	})
+	if err != nil {
+		t.Fatalf("building backwards world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
 func (s *AtlasMapSuite) SetupTest() {
 	mgr, err := session.NewManager(&session.Config{
 		Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
@@ -35,12 +70,12 @@ func (s *AtlasMapSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 
-	// hexWorld's vault is anchored at (6,0), away from the origin, which is
-	// what makes the projection observable at all: in a field where every room
-	// sits at (0,0), local and absolute are the same number and a map that
-	// never projected would look identical to one that did.
+	// Both rooms are anchored away from where their local coordinates would
+	// put them, which is what makes the projection observable at all: in a
+	// field where a room sits at (0,0), local and absolute are the same number
+	// and a map that never projected would look identical to one that did.
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: hexWorld(s.T()),
+		Session: "sess", Encounter: "world", World: backwardsWorld(s.T()),
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -81,13 +116,13 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 // TestTheMapIsEveryCellOnce: the two rooms' footprints are folded together,
 // nothing lost and nothing counted twice.
 //
-// The count is exact and derived from the fixture's own geometry: two 6x6 hex
-// rooms, disjoint by W2, so 72 distinct cells. A projection that dropped the
+// The count is exact and derived from the fixture's own geometry: two 4x4
+// rooms, disjoint by W2, so 32 distinct cells. A projection that dropped the
 // second room, or emitted one room twice, moves this number.
 func (s *AtlasMapSuite) TestTheMapIsEveryCellOnce() {
 	atlas := s.atlas()
 
-	s.Len(atlas.Cells, 72, "two 6x6 rooms, folded into one map")
+	s.Len(atlas.Cells, 32, "two 4x4 rooms, folded into one map")
 
 	seen := map[spatial.Position]bool{}
 	for _, cell := range atlas.Cells {
@@ -95,10 +130,10 @@ func (s *AtlasMapSuite) TestTheMapIsEveryCellOnce() {
 		seen[cell] = true
 	}
 
-	// Cells from BOTH anchors are present. The vault's cells only exist at
-	// these coordinates if the projection happened.
-	s.True(seen[spatial.Position{X: -3, Y: -3}], "a corridor cell, anchored at the origin")
-	s.True(seen[spatial.Position{X: 8, Y: 2}], "a vault cell, anchored at (6,0)")
+	// Cells from BOTH anchors are present, and alpha's only exist at these
+	// coordinates if the projection happened.
+	s.True(seen[spatial.Position{X: 0, Y: 0}], "beta's corner, anchored at the origin")
+	s.True(seen[spatial.Position{X: 7, Y: 3}], "alpha's far corner, anchored at (4,0)")
 }
 
 // TestTheMapIsInCoordinateOrder guards the subtler half of flattening.
@@ -126,9 +161,9 @@ func (s *AtlasMapSuite) TestADoorwayIsTwoAdjacentCells() {
 
 	gate := atlas.Doorways[0]
 	s.Equal("gate", gate.Connection)
-	s.Equal(spatial.Position{X: 2, Y: 0}, gate.From, "corridor-local (2,0), anchored at the origin")
-	s.Equal(spatial.Position{X: 3, Y: 0}, gate.To, "vault-local (-3,0), anchored at (6,0)")
-	s.Equal(float64(1), gate.To.X-gate.From.X, "one step apart on the map")
+	s.Equal(spatial.Position{X: 4, Y: 0}, gate.From, "alpha-local (0,0), anchored at (4,0)")
+	s.Equal(spatial.Position{X: 3, Y: 0}, gate.To, "beta-local (3,0), anchored at the origin")
+	s.Equal(float64(1), gate.From.X-gate.To.X, "one step apart on the map")
 	s.Equal(gate.From.Y, gate.To.Y)
 }
 
