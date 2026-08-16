@@ -1121,14 +1121,19 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 	s.Equal(spatial.Position{X: 17, Y: 8}, spyB.snapshots[0].Position, "goblin-b's snapshot must be ITS OWN cell")
 }
 
-// TestPumpIntentTraverseSuccess pins that a monster standing at a
-// connection's threshold, deciding IntentTraverse, actually crosses:
-// room changes, the "traversed" beat is recorded, PumpOutput.MonsterTraverses
-// reflects it (and MonsterMoves does not), and the clock still advances
-// by exactly 1 — Pump's own tick is unconditional regardless of what a
-// monster does within it (traversal itself is not time, law T4, but the
-// PUMP is).
-func (s *PumpTestSuite) TestPumpIntentTraverseSuccess() {
+// TestAnIntendedStepCrossesADoorway pins the crossing as what it now is: a
+// monster standing at the threshold names the cell on the far side, and the
+// composition carries it through the door.
+//
+// There is no traverse intent to decide any more (rpg-toolkit#1044) — the same
+// IntentMoveTo that walks a monster across a room walks it through a doorway,
+// because W3 makes the far side an adjacent cell on the map. What the pump
+// reports is unchanged: the room changes, the "traversed" beat is recorded,
+// PumpOutput.MonsterTraverses reflects it (and MonsterMoves does not), and the
+// clock still advances by exactly 1 — Pump's own tick is unconditional
+// regardless of what a monster does within it (a crossing itself is not time,
+// law T4, but the PUMP is).
+func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	goblinID := core.EntityID("goblin")
 	// The cell on the far side of the doorway: room-b's local (0,5), anchored
 	// at (10,0). One step from the threshold, on the map.
@@ -1168,15 +1173,16 @@ func (s *PumpTestSuite) TestPumpIntentTraverseSuccess() {
 	s.Equal("room-b", members[0].Room)
 }
 
-// TestPumpIntentTraverseIllegalDoesNotAbort pins that an illegal traverse
-// intent (decider names a REAL connection but the monster isn't AT its
-// threshold) follows the SAME silent-skip contract Pump already
-// established for a spatially-rejected IntentMoveTo (traverseMember's own
-// doc comment): the pump does NOT abort — the clock still advances, the
-// tick beat is still recorded, refreshSight still runs — but no
-// "traversed" beat is recorded and the monster's room/position are
-// unchanged.
-func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
+// TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep pins the silent skip for the
+// crossing that is not available: the monster names a cell in the next room
+// while standing nowhere near the door between them.
+//
+// Same contract Pump already gave a spatially-rejected step, and the reason it
+// must hold is the pump, not the monster: an error here would abort the tick
+// for every OTHER monster in the encounter. So the pump does NOT abort — the
+// clock still advances, the tick beat is still recorded, refreshSight still
+// runs — but no "traversed" beat is recorded and the monster has not moved.
+func (s *PumpTestSuite) TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep() {
 	goblinID := core.EntityID("goblin")
 	// The far side of the doorway again — but this goblin does not stand at
 	// the near side, so nothing joins where it is to where it is going.
@@ -1203,7 +1209,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
 	beforeClock := enc.ToData().Clock.HighWater
 
 	out, err := enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err, "an illegal traverse intent must not abort the pump")
+	s.Require().NoError(err, "a step with no doorway to carry it must not abort the pump")
 
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances — matches IntentMoveTo's spatial-rejection contract")
@@ -1227,13 +1233,14 @@ func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
 	s.Equal(3.0, data.Members[0].Position.Y)
 }
 
-// TestPumpIntentTraverseUnknownConnectionDoesNotAbort pins that an
-// IntentTraverse naming an unknown connection (a decider bug) follows the
-// SAME silent-skip contract as an illegal-position traverse:
-// traverseMember's ErrNoConnection is treated identically to its
-// ErrBadPlacement by Pump's phase-2 executor — no abort, no beat, no
-// position change.
-func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
+// TestPumpDoesNotAbortWhenTheCellIsNowhere pins the third silent skip, and the
+// one that changed shape: a decider used to be able to name a connection that
+// did not exist, and now it can name a CELL that does not — void is not floor.
+//
+// Treated identically to the other two by stepTo — no abort, no beat, no
+// movement — which is what keeps one monster's bad arithmetic from costing
+// every other monster its tick.
+func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 	goblinID := core.EntityID("goblin")
 	// A cell no room owns: void is not floor, and stepping into it is the
 	// third way stepTo refuses in silence.
@@ -1259,7 +1266,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
 	beforeClock := enc.ToData().Clock.HighWater
 
 	out, err := enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err, "an unknown-connection traverse intent must not abort the pump")
+	s.Require().NoError(err, "a step into a cell no room owns must not abort the pump")
 
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances")
@@ -1424,9 +1431,9 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 }
 
 // TestPumpFullTickThenEvaluateAcrossTraverse pins full-tick-then-evaluate
-// as law, now that IntentTraverse raises its stakes (a fired ending
-// during phase-2 execution would otherwise need to REVERT a room
-// mutation, not just a same-room position). Two monsters decide in the
+// as law, and a doorway crossing is what raises its stakes: a fired ending
+// during phase-2 execution would otherwise need to REVERT a room mutation,
+// not just a same-room position. Two monsters decide in the
 // SAME pump: "aaa-goblin" (decides first — Members() stable order sorts
 // its ID before "zzz-goblin") traverses onto a FILTERED ending naming
 // it; "zzz-goblin" has an unrelated same-room move queued. The shipped

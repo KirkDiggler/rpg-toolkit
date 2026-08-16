@@ -1582,8 +1582,8 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 }
 
 // traverseResult holds the outcome of a successful cross-room move via
-// traverseMember — shared by the Traverse verb and Pump's IntentTraverse
-// executor.
+// traverseMember — shared by the Traverse verb and the doorway half of
+// stepTo, which is how a monster's intended step crosses one.
 type traverseResult struct {
 	fromRoom string
 	fromPos  spatial.Position
@@ -1603,10 +1603,11 @@ type traverseResult struct {
 // Shared by the Traverse verb (which owns the nil/closed/member-lookup
 // guards and propagates this function's error as its own public
 // contract — ErrNoConnection or ErrBadPlacement, already correctly
-// wrapped here) and Pump's phase-2 IntentTraverse executor (which owns
-// Pump's silent-skip-on-failure semantics: ANY error returned here is
-// treated exactly like a spatially-rejected IntentMoveTo — the monster
-// simply fails to act this tick, no abort).
+// wrapped here) and by stepTo, which calls it when a monster's intended
+// step lands on the far side of a doorway. stepTo owns Pump's
+// silent-skip-on-failure semantics: ANY error returned here means the
+// monster simply fails to act this tick, exactly as a refused move does,
+// and never aborts the pump.
 func (e *Encounter) traverseMember(member *memberRecord, connectionID string) (traverseResult, error) {
 	var conn *ConnectionInput
 	for i := range e.connectionsInput {
@@ -1881,13 +1882,14 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 // Semantics:
 //   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
 //   - Monsters act in deterministic order (stable Members() order, filtered to KindMonster).
-//   - Each decider receives exactly its own Snapshot: own room, own position,
-//     own holdings (anti-wall-hack contract C2 — placement included, not just sight).
-//   - IntentHold means do nothing; IntentMoveTo executes via the same-room managed
-//     seam; IntentTraverse executes via traverseMember (the Traverse verb's own
-//     mechanics, shared — see its doc comment).
-//   - A spatial rejection of a monster's move, or an illegal traverse intent
-//     (unknown connection, or not at the threshold), does NOT abort the pump; the
+//   - Each decider receives exactly its own Snapshot: its own cell on the map and
+//     its own holdings (anti-wall-hack contract C2 — placement included, not just
+//     sight).
+//   - IntentHold means do nothing; IntentMoveTo names a cell in dungeon-absolute
+//     space and executes through stepTo, which moves the monster within its room
+//     or carries it through a doorway, whichever the cell turns out to be.
+//   - A refused step does NOT abort the pump — a cell no room owns, a cell in
+//     another room with no doorway from here, or a spatial rejection all mean the
 //     monster simply fails to act. Only a decider error aborts.
 //   - After all monster actions: ONE refreshSight for all members, ONE tick beat
 //     (stamped with the new clock reading), then move/traverse beats in

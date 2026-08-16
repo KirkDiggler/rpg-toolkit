@@ -425,11 +425,11 @@ type PumpOutput struct {
 		To     spatial.Position
 	}
 
-	// MonsterTraverses contains the successful cross-room traverses executed by
-	// monsters during this pump (IntentTraverse). An illegal traverse intent
-	// (unknown connection, or the monster not at its threshold) does not appear
-	// here — it is silently skipped, matching MonsterMoves' spatial-rejection
-	// contract.
+	// MonsterTraverses contains the doorway crossings monsters made during this
+	// pump — an intended step whose cell turned out to be on the far side of a
+	// doorway. A step that could not be taken does not appear here: a cell in
+	// another room with no doorway joining it to where the monster stands is
+	// silently skipped, matching MonsterMoves' spatial-rejection contract.
 	MonsterTraverses []struct {
 		Member   MemberID
 		FromRoom string
