@@ -10,9 +10,9 @@ import (
 
 // Intent represents a decision made by a decider in response to their
 // Snapshot. The anti-wall-hack contract: a decider receives ONLY its own
-// Snapshot (own room, own position, own holdings), never the full
-// encounter state or another member's live truth. Intent is a sealed
-// type (unexported marker method).
+// Snapshot (its own cell and its own holdings), never the full encounter
+// state or another member's live truth. Intent is a sealed type
+// (unexported marker method).
 type Intent interface {
 	isIntent()
 }
@@ -69,7 +69,7 @@ type Snapshot struct {
 }
 
 // Decider is the interface for monster intelligence. A decider receives ONLY
-// its own Snapshot (own room, own position, own holdings — never another
+// its own Snapshot (its own cell and its own holdings — never another
 // member's live truth) and returns an Intent representing what the monster
 // wants to do, or an error that aborts the pump atomically. The anti-wall-
 // hack contract is structural: Decide receives exactly what the monster

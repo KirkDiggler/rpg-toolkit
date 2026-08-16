@@ -88,7 +88,6 @@ func (s *PursuitSuite) SetupTest() {
 // sightOf decodes what one member currently believes about another.
 func (s *PursuitSuite) sightOf(observer, subject core.EntityID) (string, spatial.Position) {
 	status, payload := seen(s.T(), s.enc, observer, subject)
-	_ = subject
 	return string(status), spatial.Position{X: payload.X, Y: payload.Y}
 }
 
