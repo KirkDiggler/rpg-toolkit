@@ -138,4 +138,7 @@ func (s *WhereSuite) TestItRefusesWhatItCannotAnswer() {
 
 	_, err = s.mgr.Where(ctx, &session.WhereInput{Session: "nope", Member: "alice"})
 	s.ErrorIs(err, session.ErrNoSession)
+
+	_, err = s.mgr.Where(ctx, &session.WhereInput{Member: "alice"})
+	s.ErrorIs(err, session.ErrNoSessionID, "an empty session id is refused before any load")
 }
