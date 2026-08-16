@@ -18,7 +18,7 @@ import "github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 // Everything here is also proto-shaped by construction: flat structs, string
 // enums, no interfaces, nothing whose meaning varies by another field's value.
 
-// GridKind names a room's coordinate family.
+// GridKind names the map's coordinate family.
 //
 // A string rather than a mirror of spatial's iota. The composition already
 // persists grid this way for the same reason: an iota is an in-process

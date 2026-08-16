@@ -49,8 +49,8 @@ type StoryInput struct {
 	FromSeq uint64
 }
 
-// Atlas returns the session's static world map: every room's absolute
-// footprint and every doorway's kissing pair.
+// Atlas returns the session's static world map: one set of cells, the ones
+// that block sight, the walls between them, and every doorway's kissing pair.
 //
 // Construction truth — unchanged by movement, joins, exits or endings — so a
 // host should fetch it once per session rather than per frame.

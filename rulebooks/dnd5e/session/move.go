@@ -11,7 +11,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// MoveInput walks a member along a path within their current room.
+// MoveInput walks a member along a path of cells on the map.
+//
+// The path stays inside the room the walker is standing in — see Path — until
+// the slice that makes a doorway crossing an ordinary step.
 type MoveInput struct {
 	// Session is the session to act in.
 	Session string
@@ -143,8 +146,9 @@ type TraverseOutput struct {
 // prefix of it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrEmptyPath,
-// ErrBrokenPath, ErrNoSession, ErrNoEncounter, ErrNoMember, ErrClosed,
-// ErrBadPosition, or ErrSaveFailed with a populated report.
+// ErrBrokenPath for a path with a gap in it, ErrNoSession, ErrNoEncounter,
+// ErrNoMember, ErrClosed, ErrBadPosition for a cell no room owns OR a cell in
+// a room other than the walker's, or ErrSaveFailed with a populated report.
 func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("move: %w", ErrNilInput)
