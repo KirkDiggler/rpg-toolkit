@@ -37,44 +37,44 @@ const (
 
 // Atlas is the static world map in dungeon-absolute space.
 //
+// ONE MAP. The composition underneath keeps rooms and projects the absolute
+// geometry out of them (rpg-project#227); by the time a map reaches here the
+// decomposition has done its job and is nobody else's business. What a client
+// renders is a set of cells, the ones that block sight, the walls between
+// cells, and the doorways — not a list of chambers with anchors and spans it
+// would have to reassemble.
+//
 // Construction truth: unchanged by movement, joins, exits, or endings. Cache
 // it per encounter rather than fetching it per frame.
+//
+// The INBOUND direction is deliberately different, and worth saying out loud
+// so the asymmetry is not read as an oversight: StartSessionInput.World is
+// authored content and still speaks rooms. Authoring is construction data,
+// and the one-map rule governs what a session SEES while it plays.
 type Atlas struct {
-	// Rooms is every room's absolute footprint, sorted by room ID.
-	Rooms []AtlasRoom `json:"rooms,omitempty"`
-
-	// Doorways is every connection's absolute endpoint pair, sorted by
-	// connection ID.
-	Doorways []AtlasDoorway `json:"doorways,omitempty"`
-}
-
-// AtlasRoom is one room's absolute-space footprint.
-type AtlasRoom struct {
-	// ID is the room's identifier.
-	ID string `json:"id"`
-
-	// Grid is the room's coordinate family.
+	// Grid is the coordinate family the whole map speaks. One value, not one
+	// per room: a field has a single grid family by law (W1), so a per-room
+	// grid was the same answer repeated.
 	Grid GridKind `json:"grid"`
 
-	// Origin is the room's dungeon-absolute anchor.
-	Origin spatial.Position `json:"origin"`
-
-	// Width is the room's horizontal dimension.
-	Width int `json:"width"`
-
-	// Height is the room's vertical dimension.
-	Height int `json:"height"`
-
-	// Cells is every cell of the room in dungeon-absolute space, occluded
-	// cells included: occlusion is walkability, not ownership.
+	// Cells is every cell of the map, sorted by coordinate. Occluded cells
+	// are included: occlusion is walkability, not ownership.
+	//
+	// Sorted by coordinate rather than concatenated room by room, so the
+	// flattening does not leak the grouping back through iteration order —
+	// a map that still came out room-by-room would be the old shape wearing
+	// a new type.
 	Cells []spatial.Position `json:"cells,omitempty"`
 
 	// Occluders is the subset of Cells that blocks line of sight, reported
-	// separately so a host can render them distinctly.
+	// separately so a host can render them distinctly. Sorted like Cells.
 	Occluders []spatial.Position `json:"occluders,omitempty"`
 
-	// Boundaries is the room's walls and barriers, both endpoints absolute.
+	// Boundaries is every wall and barrier on the map, sorted by endpoint.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
+
+	// Doorways is every crossable cell pair, sorted by connection ID.
+	Doorways []AtlasDoorway `json:"doorways,omitempty"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
@@ -92,23 +92,23 @@ type AtlasBoundary struct {
 	BlocksLineOfSight bool `json:"blocks_line_of_sight,omitempty"`
 }
 
-// AtlasDoorway is one connection's absolute endpoint pair. The two cells are
-// adjacent in absolute space, so crossing one is an ordinary step.
+// AtlasDoorway is one crossable pair of cells. The two are adjacent in
+// absolute space, which is what makes crossing one an ordinary step rather
+// than a jump between coordinate systems.
+//
+// It keeps an identifier and carries no room, because a doorway is a thing
+// with identity — a door that can be closed or locked is a capability still
+// ahead of this, and it will need to name one — while the rooms on either
+// side are the composition's own decomposition.
 type AtlasDoorway struct {
-	// Connection is the connection's identifier.
+	// Connection is the doorway's identifier.
 	Connection string `json:"connection"`
 
-	// From is the source room ID.
-	From string `json:"from"`
+	// From is one of the two cells, in dungeon-absolute space.
+	From spatial.Position `json:"from"`
 
-	// FromCell is the endpoint in From, in dungeon-absolute space.
-	FromCell spatial.Position `json:"from_cell"`
-
-	// To is the destination room ID.
-	To string `json:"to"`
-
-	// ToCell is the endpoint in To, in dungeon-absolute space.
-	ToCell spatial.Position `json:"to_cell"`
+	// To is the other, adjacent to From.
+	To spatial.Position `json:"to"`
 }
 
 // Status reports whether an encounter is still running.

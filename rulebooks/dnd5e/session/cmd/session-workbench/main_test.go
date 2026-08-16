@@ -27,9 +27,12 @@ func TestWorkbenchRuns(t *testing.T) {
 
 	for _, want := range []string{
 		"the party enters the crypt",
-		"gate: antechamber (5,1) kisses vault (6,1)", // W3 holds in absolute space
-		"alice enters (5,1)",                         // the walk reached the doorway
-		"antechamber (5,1) → vault (0,1)",            // and crossed it
+		// W3 holds in absolute space, and the map that reports it no longer
+		// names the rooms on either side (rpg-toolkit#1042).
+		"gate: (5,1) kisses (6,1)",
+		"one square map: 72 cells",
+		"alice enters (5,1)",              // the walk reached the doorway
+		"antechamber (5,1) → vault (0,1)", // and crossed it
 
 		// A fight that starts itself, end to end. Each of these is a different
 		// claim, and any one regressing would leave the others still true:

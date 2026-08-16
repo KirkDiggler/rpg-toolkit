@@ -60,8 +60,7 @@ func Example_theSession() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("  the hall is %dx%d on a %s grid\n",
-		atlas.Rooms[0].Width, atlas.Rooms[0].Height, atlas.Rooms[0].Grid)
+	fmt.Printf("  the map is %d cells on a %s grid\n", len(atlas.Cells), atlas.Grid)
 
 	// -- alice walks, and gets exactly as far as the world allows --
 	fmt.Println("-- alice walks toward the stairs --")
@@ -109,7 +108,7 @@ func Example_theSession() {
 
 	// Output:
 	// -- the party enters --
-	//   the hall is 8x8 on a square grid
+	//   the map is 64 cells on a square grid
 	// -- alice walks toward the stairs --
 	//   asked for 5 cells, walked 3
 	//     alice enters (2,1)

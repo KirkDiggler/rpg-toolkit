@@ -150,25 +150,18 @@ func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
 
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
 	s.Require().NoError(err)
-	s.Require().Len(atlas.Rooms, 2)
+
+	s.Equal(session.GridHex, atlas.Grid, "the grid family must survive as the wire enum")
+	s.Len(atlas.Cells, 72, "both 6x6 rooms, every cell, once each")
+	s.Require().Len(atlas.Occluders, 1, "occluders are not optional decoration")
+	s.Require().Len(atlas.Boundaries, 1, "walls must survive the projection")
+	s.True(atlas.Boundaries[0].BlocksLineOfSight)
+	s.True(atlas.Boundaries[0].BlocksMovement)
+
 	s.Require().Len(atlas.Doorways, 1)
-
-	corridor := atlas.Rooms[0]
-	s.Equal("corridor", corridor.ID)
-	s.Equal(session.GridHex, corridor.Grid, "the grid family must survive as the wire enum")
-	s.Equal(6, corridor.Width)
-	s.Equal(6, corridor.Height)
-	s.NotEmpty(corridor.Cells, "absolute cells must be carried across")
-	s.Require().Len(corridor.Occluders, 1, "occluders are not optional decoration")
-	s.Require().Len(corridor.Boundaries, 1, "walls must survive the projection")
-	s.True(corridor.Boundaries[0].BlocksLineOfSight)
-	s.True(corridor.Boundaries[0].BlocksMovement)
-
 	gate := atlas.Doorways[0]
 	s.Equal("gate", gate.Connection)
-	s.Equal("corridor", gate.From)
-	s.Equal("vault", gate.To)
-	s.NotEqual(gate.FromCell, gate.ToCell, "the kissing pair is two distinct absolute cells")
+	s.NotEqual(gate.From, gate.To, "the kissing pair is two distinct absolute cells")
 }
 
 // TestGridProjectionCoversBothFamilies guards the enum mapping in both
@@ -178,7 +171,7 @@ func (s *ReadTestSuite) TestGridProjectionCoversBothFamilies() {
 	s.startWith(hexWorld(s.T()))
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
 	s.Require().NoError(err)
-	s.Equal(session.GridHex, atlas.Rooms[0].Grid)
+	s.Equal(session.GridHex, atlas.Grid)
 
 	square := newFakeSessions()
 	squareEnc := newFakeEncounters()
@@ -193,7 +186,7 @@ func (s *ReadTestSuite) TestGridProjectionCoversBothFamilies() {
 
 	atlas, err = mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sq"})
 	s.Require().NoError(err)
-	s.Equal(session.GridSquare, atlas.Rooms[0].Grid,
+	s.Equal(session.GridSquare, atlas.Grid,
 		"a square room must not be reported as hex")
 }
 

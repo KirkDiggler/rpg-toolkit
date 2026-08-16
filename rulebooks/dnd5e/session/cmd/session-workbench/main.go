@@ -240,15 +240,11 @@ func drive(out *bytes.Buffer) error {
 		return err
 	}
 	fmt.Fprintln(out, "\n== the map, in dungeon-absolute space ==")
-	for _, room := range atlas.Rooms {
-		fmt.Fprintf(out, "   %-12s %dx%d %-6s origin (%v,%v)  %d cells\n",
-			room.ID, room.Width, room.Height, room.Grid,
-			room.Origin.X, room.Origin.Y, len(room.Cells))
-	}
+	fmt.Fprintf(out, "   one %s map: %d cells, %d of them blocking sight, %d walls\n",
+		atlas.Grid, len(atlas.Cells), len(atlas.Occluders), len(atlas.Boundaries))
 	for _, d := range atlas.Doorways {
-		fmt.Fprintf(out, "   %s: %s (%v,%v) kisses %s (%v,%v)\n",
-			d.Connection, d.From, d.FromCell.X, d.FromCell.Y,
-			d.To, d.ToCell.X, d.ToCell.Y)
+		fmt.Fprintf(out, "   %s: (%v,%v) kisses (%v,%v)\n",
+			d.Connection, d.From.X, d.From.Y, d.To.X, d.To.Y)
 	}
 
 	fmt.Fprintln(out, "\n== alice walks to the gate ==")
