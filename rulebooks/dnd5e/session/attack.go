@@ -365,16 +365,22 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 	// written before the failure is durable, and a caller told only about the
 	// failure would retry a write that already succeeded — which is the
 	// difference between repair and retry that the report exists to carry.
-	var written []string
+	//
+	// Every entry goes on the SCOPE rather than a local, so it outlives this
+	// call: the sheets are durable whether the next write succeeds or fails,
+	// and persist opens its report with them either way. Kept in a local, they
+	// were reported only when saveDirty itself failed — so a swing whose WORLD
+	// save failed named nothing at all, and the host retried a swing whose
+	// damage was already on disk (rpg-toolkit#1056).
 	for _, data := range out.DirtyCharacters {
 		if data == nil {
 			continue
 		}
 		if err := m.characters.SaveCharacter(ctx, data); err != nil {
-			report := SaveReport{Written: written, Failed: []string{"character:" + data.ID}}
+			report := SaveReport{Written: scope.written, Failed: []string{"character:" + data.ID}}
 			return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
 		}
-		written = append(written, "character:"+data.ID)
+		scope.written = append(scope.written, "character:"+data.ID)
 	}
 
 	for _, dirty := range out.DirtyMonsters {
