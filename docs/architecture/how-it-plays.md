@@ -102,13 +102,13 @@ sequenceDiagram
     S->>R: Resolve(…)
     R->>M: drive
     M->>M: Gather(attack) → roll 16 vs AC 13 → HIT
-    M-->>R: yield Pose — "you are hit; react?"
+    M-->>R: yield Pose — "you are hit. React?"
     Note over R,L: every yield is a legal suspension point —<br/>the machine's fields are its only state
     R-->>S: suspended — frozen machine + window, as data
     S->>L: persist the ledger + frozen resolution
     S-->>API: response — a pending window for the wizard
     API-->>W: reaction prompt (event stream)
-    Note over W,API: seconds pass — or the server restarts.<br/>Nothing is lost; nothing is running.
+    Note over W,API: seconds pass — or the server restarts.<br/>Nothing is lost, nothing is running.
     W->>API: cast Shield
     API->>S: Answer{window, choice}
     S->>L: load the ledger + frozen resolution
