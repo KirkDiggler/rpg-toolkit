@@ -288,8 +288,10 @@ const (
 	EventFightEnded EventKind = "fight_ended"
 
 	// EventStruck reports that an attack landed, and EventMissed that one did
-	// not. The beat carries the numbers behind it — the roll, what it totalled,
-	// what it had to reach, and how much was done.
+	// not. The beat carries the numbers behind it: the roll, what it totalled,
+	// and what it had to reach. A landed blow carries how much was done as
+	// well; a miss OMITS that key rather than reporting zero, because a beat
+	// saying "missed for 0" reads as a hit that did nothing.
 	//
 	// Two kinds rather than one with a hit flag, because a client branches on
 	// them: a landed blow and a whiffed one are different animations, different
