@@ -304,17 +304,21 @@ type resolvedWalk struct {
 // walk — and, worse, left two places free to disagree about which room a cell
 // belongs to.
 //
-// Adjacency is checked with the room's own grid rather than a hand-rolled
-// distance, because the two families disagree about what "one step" means and
-// substituting one for the other is a real, previously-shipped defect class:
-// Chebyshev distance on axial hex coordinates agrees with cube distance
-// everywhere except the diagonals, so a wrong formula passes almost every
-// fixture.
+// Adjacency is checked with a grid of the field's own family rather than a
+// hand-rolled distance, because the two families disagree about what "one
+// step" means and substituting one for the other is a real, previously-shipped
+// defect class: Chebyshev distance on axial hex coordinates agrees with cube
+// distance everywhere except the diagonals, so a wrong formula passes almost
+// every fixture. One grid answers for the whole path, including the step that
+// changes rooms — a field has a single family by law (W1), and adjacency in
+// both families survives translation, so an absolute pair is adjacent or not
+// regardless of which room's grid is asked.
 //
-// The restriction to one room is imposed now rather than later on purpose.
-// Loosening a rule is a compatible change; tightening one breaks every host
-// that was relying on the looser behaviour. If a walk should ever cross a
-// doorway, that can be granted; it could not be taken away.
+// A step MAY leave the room the walker is in, and that is the only way it may
+// leave: through a doorway joining the cell they stand on to the one they are
+// stepping to (rpg-toolkit#1048). Adjacency alone is not permission — W2 lets
+// two rooms touch without a door — so a cross-room step with no doorway is
+// refused with ErrNoCrossing, distinctly from a path that is not a walk at all.
 func resolveWalk(
 	enc *encounter.Encounter, member encounter.MemberID, path []spatial.Position,
 ) (resolvedWalk, error) {
@@ -323,16 +327,16 @@ func resolveWalk(
 		return resolvedWalk{}, err
 	}
 
-	grid, err := gridFor(enc, room)
+	// The map, fetched ONCE for the whole walk and used for both things this
+	// function needs it for: the grid to test adjacency with, and the doorway
+	// list to recognise a crossing. Building it twice is what the first
+	// version of this did, by asking gridFor to fetch its own.
+	atlas, err := enc.Atlas()
 	if err != nil {
 		return resolvedWalk{}, err
 	}
 
-	// The map, fetched once for the whole walk. gridFor already pays for it,
-	// so the doorway list is free — which is the practical half of why this
-	// package finds crossings here rather than asking the composition for a
-	// step verb. The other half is in resolveWalk's own doc.
-	atlas, err := enc.Atlas()
+	grid, err := gridFrom(atlas, room)
 	if err != nil {
 		return resolvedWalk{}, err
 	}
@@ -419,12 +423,13 @@ func whereIs(enc *encounter.Encounter, member encounter.MemberID) (string, spati
 	return "", spatial.Position{}, fmt.Errorf("%q: %w", member, ErrNoMember)
 }
 
-// gridFor builds a grid matching a room's family and span, for adjacency tests.
-func gridFor(enc *encounter.Encounter, roomID string) (spatial.Grid, error) {
-	atlas, err := enc.Atlas()
-	if err != nil {
-		return nil, err
-	}
+// gridFrom builds a grid matching a room's family and span, for adjacency
+// tests, from a map the caller already has.
+//
+// Takes the Atlas rather than fetching one: it is the caller that knows
+// whether it needs the map for anything else, and in resolveWalk's case it
+// does — the doorway list comes off the same fetch.
+func gridFrom(atlas encounter.Atlas, roomID string) (spatial.Grid, error) {
 	for _, room := range atlas.Rooms {
 		if room.ID != roomID {
 			continue
