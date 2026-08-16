@@ -101,7 +101,8 @@ sequenceDiagram
     API->>S: Attack{orc → wizard}
     S->>R: Resolve(…)
     R->>M: drive
-    M->>M: Gather(attack) → roll 16 vs AC 13 → HIT
+    M-->>R: yield Gather(attack) — the driver runs the chain
+    M->>M: roll 16 vs AC 13 → HIT
     M-->>R: yield Pose — "you are hit. React?"
     Note over R,L: every yield is a legal suspension point —<br/>the machine's fields are its only state
     R-->>S: suspended — frozen machine + window, as data
@@ -123,14 +124,14 @@ sequenceDiagram
 
 Why this is drawn now, before it runs:
 
-- **5–7**: `Pose` is the one step kind not yet driven — it arrives with wave 5
+- **6–8**: `Pose` is the one step kind not yet driven — it arrives with wave 5
   reactions. The custody it needs (`play/interrupt`: Pose, Answer, PendingFor,
   a validated persisted ledger) already exists and must not be rebuilt.
-- **6, 12–15**: "re-enterable by construction" is already pinned in shipped
+- **7, 13–16**: "re-enterable by construction" is already pinned in shipped
   machines — this diagram is that property paying off, not new design.
-- **14**: the bus died with the first call; resume makes a *new* one and
+- **15**: the bus died with the first call; resume makes a *new* one and
   re-attaches from data. There is no session process to keep alive.
-- **16–17**: order matters and the machine owns it: miss means the damage
+- **17–18**: order matters and the machine owns it: miss means the damage
   phase never runs. That sequencing is exactly why Strike is a machine and
   Shield is a chain subscriber — check ARCHITECTURE.md's "where a rule lives"
   table.
