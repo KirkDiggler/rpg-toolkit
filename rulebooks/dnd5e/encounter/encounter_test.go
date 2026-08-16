@@ -100,7 +100,6 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 		var payload encounter.SightPayload
 		err = json.Unmarshal(holding.Payload, &payload)
 		s.Require().NoError(err)
-		s.Equal(room1, payload.Room)
 		s.Equal(7.0, payload.X)
 		s.Equal(7.0, payload.Y)
 
@@ -2677,7 +2676,6 @@ func (s *EncounterTestSuite) TestTraverseGhostAtThreshold() {
 
 	var aliceSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(bobAfter[0].Payload, &aliceSeen))
-	s.Equal("room-a", aliceSeen.Room, "ghost holds alice's LAST-SEEN room")
 	s.Equal(9.0, aliceSeen.X, "ghost holds alice at the DEPARTURE endpoint, not the arrival one")
 	s.Equal(5.0, aliceSeen.Y)
 }
@@ -2698,8 +2696,10 @@ func (s *EncounterTestSuite) TestTraverseArrivalCurrent() {
 
 	var aliceSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
-	s.Equal("room-b", aliceSeen.Room)
-	s.Equal(0.0, aliceSeen.X)
+	// room-b is anchored at (10,0), so her local (0,5) arrival cell is
+	// (10,5) on the map — the projection is what makes this assertion mean
+	// "the arrival endpoint" rather than "somewhere called zero".
+	s.Equal(10.0, aliceSeen.X)
 	s.Equal(5.0, aliceSeen.Y)
 }
 
