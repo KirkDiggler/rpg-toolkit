@@ -287,6 +287,31 @@ const (
 	// to free roam.
 	EventFightEnded EventKind = "fight_ended"
 
+	// EventStruck reports that an attack landed, and EventMissed that one did
+	// not. The beat carries the numbers behind it — the roll, what it totalled,
+	// what it had to reach, and how much was done.
+	//
+	// Two kinds rather than one with a hit flag, because a client branches on
+	// them: a landed blow and a whiffed one are different animations, different
+	// sounds, and different things to say. Reading a boolean out of the payload
+	// to decide which is exactly the interpretation this enum exists to spare
+	// whoever renders it.
+	//
+	// The same round trip EventTurnEnded and EventFightStarted went through,
+	// and the third time it has happened: the beat existed as soon as a strike
+	// could be recorded (rpg-toolkit#966), and until rpg-toolkit#1038 every
+	// swing reached a client as EventUnknown — delivered, uninterpretable, and
+	// useless for the most common thing in a fight.
+	//
+	// Everyone in the encounter hears both, for the reason EventFightStarted
+	// spells out: an outcome is not secret, and a table that learned about a
+	// blow only from the striker's own response could not narrate the scene it
+	// is in.
+	EventStruck EventKind = "struck"
+
+	// EventMissed reports that an attack did not land. See EventStruck.
+	EventMissed EventKind = "missed"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret

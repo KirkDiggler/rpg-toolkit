@@ -76,21 +76,16 @@ func armedFighter(id string) *character.Data {
 // field to make a swing miss changes nothing at all.
 const duelAC = 12
 
-// duel is two armed characters standing next to each other, which is the
+// duelWorld is two armed characters standing next to each other, which is the
 // smallest world where a swing means anything.
 //
 // Both sides are CHARACTERS on purpose: damage dirties the target's stored
 // sheet, which is the case that earns Attack its row in the no-clobber pin.
-func (s *AttackTestSuite) duel(dice session.Roller) *session.Manager {
-	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-
-	mgr, err := session.NewManager(&session.Config{
-		Dice: dice, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
-	})
-	s.Require().NoError(err)
-
+//
+// Shared with the event-kind pins (attackevents_test.go), which need the same
+// duel delivered to a real stream rather than discarded. One world, so a
+// fixture drift cannot make the two suites disagree about what was swung at.
+func duelWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
 		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
@@ -101,11 +96,26 @@ func (s *AttackTestSuite) duel(dice session.Roller) *session.Manager {
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 	})
-	s.Require().NoError(err)
+	if err != nil {
+		t.Fatalf("building the duel: %v", err)
+	}
 	data := enc.ToData()
+	return &data
+}
+
+// duel wires the duel world to a manager whose events go nowhere.
+func (s *AttackTestSuite) duel(dice session.Roller) *session.Manager {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: dice, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
 	})
 	s.Require().NoError(err)
 	return mgr
