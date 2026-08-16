@@ -44,6 +44,16 @@ func newTestRoom(id string) *spatial.BasicRoom {
 // room's line of sight, so a wall placed there is guaranteed to sit on the
 // path IsLineOfSightBlocked actually walks (rather than a hand-picked
 // coordinate that may not land on the lerped hex line).
+//
+// Sitting on that path is necessary but no longer sufficient to block:
+// since spatial v0.9.1 (rpg-toolkit#1022) sight leans, and an occluder on
+// the direct ray is seen past whenever a neighbour strictly closer to the
+// other end has a clear lane. What makes the suite's cases block is that
+// the viewer and target sit on a straight hex axis (0,0,0 -> 4,-4,0), where
+// the only cell strictly closer is the next one on the same line and meets
+// the same wall. A helper that derives the wall from the ray therefore
+// cannot, by itself, tell a blocking rule from a broken one — see the
+// module's own occluder pins for the off-axis half.
 func midpointWallPosition(s *suite.Suite, room spatial.Room, from, to core.Hex) spatial.Position {
 	los := room.GetLineOfSight(from.ToPosition(), to.ToPosition())
 	s.Require().GreaterOrEqual(len(los), 3, "need an intermediate hex to place a wall on")

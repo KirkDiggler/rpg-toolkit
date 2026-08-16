@@ -257,10 +257,21 @@ type ObstacleData struct {
 	// blocking entity onto this obstacle's hex, exactly like a wall.
 	BlocksMovement bool `json:"blocks_movement"`
 
-	// BlocksLoS mirrors environments.WallProperties.BlocksLoS — when
-	// true, the reconstructed spatial.Room's IsLineOfSightBlocked reports
-	// true for any line of sight passing through this obstacle's hex,
-	// exactly like a wall.
+	// BlocksLoS mirrors environments.WallProperties.BlocksLoS — when true,
+	// this obstacle OCCLUDES its hex: the reconstructed spatial.Room counts
+	// it as something standing in the way, exactly like a wall entity.
+	//
+	// Occluding a hex is not the same as blocking every ray through it, and
+	// this doc used to say it was. Since spatial v0.9.1 (rpg-toolkit#1022)
+	// sight is a lane rather than a line: when the direct ray is obstructed,
+	// sight survives if a neighbour of either end that is strictly CLOSER to
+	// the other end has a clear lane — the corner a player leans around. A
+	// straight-axis hex sightline has no such neighbour (the only cell
+	// strictly closer is the next one on the same line, which meets the same
+	// occluder), so an obstacle on axis still blocks; off axis a viewer can
+	// often see past a single obstacle, depending on whether an alternative
+	// lane clears it. Boundaries — authored walls drawn on an edge rather
+	// than standing in a cell — stay hard blocks either way.
 	BlocksLoS bool `json:"blocks_los"`
 
 	// Facing is optional authored floor-prop metadata in canonical
