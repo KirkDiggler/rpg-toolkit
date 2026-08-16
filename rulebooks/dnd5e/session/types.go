@@ -236,10 +236,15 @@ const (
 	// EventMoved reports that a member stepped to a new cell.
 	EventMoved EventKind = "moved"
 
-	// EventTraversed reports that a member crossed a connection into another
-	// room. Distinct from EventMoved even though both are one step in absolute
-	// space, because a client may want to narrate a doorway differently from a
-	// corridor.
+	// EventTraversed reports that a member's step carried them through a
+	// doorway.
+	//
+	// Distinct from EventMoved even though both are one step of the same size
+	// on the same map — and it stayed distinct through the reshape that took
+	// rooms off everything else a client sees, because ONE MAP DOES NOT MEAN
+	// ONE NARRATION. A client renders a doorway differently from a corridor,
+	// and the composition still knows which happened; collapsing them would
+	// make a client re-derive it from the geometry.
 	EventTraversed EventKind = "traversed"
 
 	// EventJoined reports that a member entered the encounter.

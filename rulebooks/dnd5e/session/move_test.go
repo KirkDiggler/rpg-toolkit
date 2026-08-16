@@ -252,46 +252,62 @@ func (s *MoveTestSuite) TestWalkPersists() {
 	s.Len(out.Steps, 1)
 }
 
-// TestTraverseCrossesTheDoorway pins the crossing and its projection.
-func (s *MoveTestSuite) TestTraverseCrossesTheDoorway() {
+// TestAWalkCrossesTheDoorway is what the two Traverse tests here became.
+//
+// hexWorld's gate joins corridor-local (2,0) — absolute (2,0), the corridor
+// being anchored at the origin — to vault-local (-3,0), absolute (3,0). One
+// Move walks alice to the threshold and through it, and the far side is just
+// the next cell in the path.
+func (s *MoveTestSuite) TestAWalkCrossesTheDoorway() {
 	ctx := context.Background()
 	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
 		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
 	})
 	s.Require().NoError(err)
 
-	// Walk to the gate's own cell, then cross.
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "hex", Member: "alice",
+		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 0}},
+	})
+	s.Require().NoError(err, "the doorway is a step like any other")
+	s.Require().Len(out.Steps, 3, "two in the corridor, one through the gate")
+	s.Equal(spatial.Position{X: 3, Y: 0}, out.Steps[2].Position, "she is on the far side")
+	s.NotZero(out.Steps[2].Seq)
+}
+
+// TestAStepWithNoDoorwayIsRefused pins the sentinel that replaced
+// ErrNoConnection's role here.
+//
+// A caller can no longer name a connection, so "no such connection" is not a
+// mistake it can make. What it CAN do is name a cell in the next room with
+// nothing joining it to where the walker stands — and that has its own
+// refusal, because two rooms touching without a door is a thing W2 allows and
+// a client reading only the map's cells cannot see.
+func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
+	ctx := context.Background()
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	// Alice walks to the threshold itself.
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
 		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}},
 	})
 	s.Require().NoError(err)
 
-	out, err := s.mgr.Traverse(ctx, &session.TraverseInput{
-		Session: "hex", Member: "alice", Connection: "gate",
-	})
-	s.Require().NoError(err)
-	s.Equal("corridor", out.FromRoom)
-	s.Equal("vault", out.ToRoom)
-	s.NotZero(out.Seq)
-}
-
-// TestTraverseRejectsUnknownConnection pins the sentinel translation.
-func (s *MoveTestSuite) TestTraverseRejectsUnknownConnection() {
-	ctx := context.Background()
-	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
-		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
-	})
-	s.Require().NoError(err)
-
-	_, err = s.mgr.Traverse(ctx, &session.TraverseInput{
-		Session: "hex", Member: "alice", Connection: "not-a-door",
+	// (3,-1) is a vault cell and an axial neighbour of the threshold she is
+	// standing on — adjacent, in the next room, and joined to nothing. The
+	// doorway is at (3,0), one cell over.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "hex", Member: "alice",
+		Path: []spatial.Position{{X: 3, Y: -1}},
 	})
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoConnection)
-
-	_, err = s.mgr.Traverse(ctx, &session.TraverseInput{Session: "hex", Member: "alice"})
-	s.ErrorIs(err, session.ErrNoConnection, "an empty connection is refused before loading")
+	s.ErrorIs(err, session.ErrNoCrossing)
+	s.NotErrorIs(err, session.ErrBrokenPath, "the cells ARE adjacent — that is the point")
+	s.NotErrorIs(err, session.ErrBadPosition, "and the cell exists; there is just no way through")
 }
 
 func TestMoveSuite(t *testing.T) {

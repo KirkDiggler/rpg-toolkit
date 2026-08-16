@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -80,51 +82,12 @@ type MoveOutput struct {
 	Delivery DeliveryReport `json:"delivery"`
 }
 
-// TraverseInput moves a member through a connection into an adjoining room.
-type TraverseInput struct {
-	// Session is the session to act in.
-	Session string
-
-	// Member is the member crossing.
-	Member string
-
-	// Connection is the connection to cross.
-	Connection string
-}
-
-// TraverseOutput reports the crossing.
-type TraverseOutput struct {
-	// FromRoom is the room departed.
-	FromRoom string `json:"from_room"`
-
-	// From is where the member stood before crossing.
-	From spatial.Position `json:"from"`
-
-	// ToRoom is the room arrived in.
-	ToRoom string `json:"to_room"`
-
-	// To is where the member arrived.
-	To spatial.Position `json:"to"`
-
-	// Discovered is what changed in each observer's perception.
-	Discovered map[string]Discovery `json:"discovered,omitempty"`
-
-	// Seq is the story sequence of the recorded crossing.
-	Seq uint64 `json:"seq"`
-
-	// Outcome is present if an ending fired on arrival.
-	Outcome *Outcome `json:"outcome,omitempty"`
-
-	// Formed is present if walking through the doorway put the crosser in
-	// sight of the other side and a fight started.
-	Formed *Formed `json:"formed,omitempty"`
-
-	// Saved names what was persisted.
-	Saved SaveReport `json:"saved"`
-
-	// Delivery names what reached the event stream.
-	Delivery DeliveryReport `json:"delivery"`
-}
+// There were TraverseInput and TraverseOutput here, and a Traverse verb that
+// took a connection id and crossed it. All three retired with
+// rpg-toolkit#1048: a doorway's two cells are adjacent on the map, so crossing
+// one is a step, and Move takes steps. What the verb reported that a step does
+// not — which rooms were left and entered — was the room dialect this seam
+// stopped speaking two slices ago.
 
 // Move walks a member along a path, one cell at a time.
 //
@@ -190,58 +153,6 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}, nil
 }
 
-// Traverse moves a member through a connection into the adjoining room.
-//
-// Under world anchoring the two endpoint cells are adjacent in absolute space,
-// so a crossing is one ordinary step of the same size as any other — which is
-// why a client rendering the result cannot tell a doorway from a corridor.
-//
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, ErrNoConnection, ErrClosed, or ErrSaveFailed
-// with a populated report.
-func (m *Manager) Traverse(ctx context.Context, in *TraverseInput) (*TraverseOutput, error) {
-	if in == nil {
-		return nil, fmt.Errorf("traverse: %w", ErrNilInput)
-	}
-	if in.Member == "" {
-		return nil, fmt.Errorf("traverse: %w", ErrNoMemberID)
-	}
-	if in.Connection == "" {
-		return nil, fmt.Errorf("traverse: %w", ErrNoConnection)
-	}
-
-	scope, err := m.openForWrite(ctx, in.Session)
-	if err != nil {
-		return nil, fmt.Errorf("traverse: %w", err)
-	}
-
-	crossed, err := scope.enc.Traverse(&encounter.TraverseInput{
-		Member:     encounter.MemberID(in.Member),
-		Connection: in.Connection,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("traverse: %w", translate(err))
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
-	if err != nil {
-		return nil, fmt.Errorf("traverse: %w", err)
-	}
-
-	return &TraverseOutput{
-		FromRoom:   crossed.Traversed.FromRoom,
-		From:       crossed.Traversed.From,
-		ToRoom:     crossed.Traversed.ToRoom,
-		To:         crossed.Traversed.To,
-		Discovered: projectDiscoveries(crossed.IntelDeltas),
-		Seq:        crossed.Seq,
-		Outcome:    projectOutcome(scope.enc, crossed.Outcome),
-		Formed:     projectFormed(crossed.Formed),
-		Saved:      report,
-		Delivery:   delivery,
-	}, nil
-}
-
 // walkResult is what one run of the walk produced.
 type walkResult struct {
 	steps      []Step
@@ -270,11 +181,8 @@ type walkResult struct {
 func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
-	for i, local := range walk.steps {
-		moved, err := scope.enc.Move(&encounter.MoveInput{
-			Member: encounter.MemberID(member),
-			To:     local,
-		})
+	for i, step := range walk.steps {
+		moved, err := m.takeStep(scope, member, step)
 		if err != nil {
 			// Nothing is saved on a mid-walk rejection. The member has really
 			// moved in memory for the steps already taken, but that encounter is
@@ -286,7 +194,7 @@ func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (
 		// not echoed from the input. A step that landed somewhere other than
 		// where it was aimed is a thing worth being able to see.
 		res.steps = append(res.steps, Step{
-			Position: onMap(scope.enc, walk.room, moved.Moved.To),
+			Position: onMap(scope.enc, step.room, moved.to),
 			Seq:      moved.Seq,
 		})
 		mergeDiscoveries(res.discovered, projectDiscoveries(moved.IntelDeltas))
@@ -308,6 +216,54 @@ func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (
 	return res, nil
 }
 
+// stepResult is what one step produced, whichever mechanism carried it.
+//
+// The two composition verbs report the same news in different shapes, and this
+// is the small amount of translation that lets the walk loop treat a crossing
+// exactly like a step: same stop-on-ending, same stop-on-fight, same discovery
+// merge, same beat sequence.
+type stepResult struct {
+	to          spatial.Position
+	Seq         uint64
+	IntelDeltas map[encounter.MemberID]*intel.SurveilOutput
+	Outcome     *encounter.Outcome
+	Formed      *encounter.FormedBubble
+}
+
+// takeStep executes one resolved step: a move within the room, or a crossing
+// through the doorway the step named.
+//
+// Which of the two it is was decided during resolution, where the map was
+// already in hand; this only carries it out. Both are ONE step of a walk and
+// neither is time — the composition advances no clock for either.
+func (m *Manager) takeStep(scope *writeScope, member string, step walkStep) (stepResult, error) {
+	if step.connection == "" {
+		moved, err := scope.enc.Move(&encounter.MoveInput{
+			Member: encounter.MemberID(member),
+			To:     step.local,
+		})
+		if err != nil {
+			return stepResult{}, err
+		}
+		return stepResult{
+			to: moved.Moved.To, Seq: moved.Seq, IntelDeltas: moved.IntelDeltas,
+			Outcome: moved.Outcome, Formed: moved.Formed,
+		}, nil
+	}
+
+	crossed, err := scope.enc.Traverse(&encounter.TraverseInput{
+		Member:     encounter.MemberID(member),
+		Connection: step.connection,
+	})
+	if err != nil {
+		return stepResult{}, err
+	}
+	return stepResult{
+		to: crossed.Traversed.To, Seq: crossed.Seq, IntelDeltas: crossed.IntelDeltas,
+		Outcome: crossed.Outcome, Formed: crossed.Formed,
+	}, nil
+}
+
 // projectFormed turns the composition's report of a started fight into the
 // SDK's own shape.
 func projectFormed(f *encounter.FormedBubble) *Formed {
@@ -324,11 +280,18 @@ func projectFormed(f *encounter.FormedBubble) *Formed {
 	return out
 }
 
-// resolvedWalk is a path as the composition takes it: the room being walked,
-// and the room-local cell for each step, in order.
+// walkStep is one resolved step of a path: where it lands in the composition's
+// own terms, and — when the step crosses a doorway — which doorway carries it.
+type walkStep struct {
+	room       string
+	local      spatial.Position
+	connection string // empty for an ordinary step within a room
+}
+
+// resolvedWalk is a path as the composition takes it: each step resolved to
+// the room it lands in and the cell within it, in order.
 type resolvedWalk struct {
-	room  string
-	steps []spatial.Position
+	steps []walkStep
 }
 
 // resolveWalk validates a path whole and resolves it ONCE.
@@ -365,26 +328,67 @@ func resolveWalk(
 		return resolvedWalk{}, err
 	}
 
-	// Both frames are tracked: the local one to ask the grid about adjacency,
-	// the absolute one to describe a refusal in the coordinates the caller
-	// actually wrote. A message that mixed them would send whoever reads it
-	// looking for a cell nobody named.
-	walk := resolvedWalk{room: room, steps: make([]spatial.Position, 0, len(path))}
-	previous, previousCell := from, onMap(enc, room, from)
+	// The map, fetched once for the whole walk. gridFor already pays for it,
+	// so the doorway list is free — which is the practical half of why this
+	// package finds crossings here rather than asking the composition for a
+	// step verb. The other half is in resolveWalk's own doc.
+	atlas, err := enc.Atlas()
+	if err != nil {
+		return resolvedWalk{}, err
+	}
+
+	walk := resolvedWalk{steps: make([]walkStep, 0, len(path))}
+	// Both frames are tracked: absolute to test adjacency and to describe a
+	// refusal in the coordinates the caller actually wrote, room-local because
+	// that is what the composition's verbs take.
+	here, hereRoom := onMap(enc, room, from), room
 
 	for i, cell := range path {
-		local, lerr := localTo(enc, room, cell)
-		if lerr != nil {
-			return resolvedWalk{}, fmt.Errorf("step %d of %d: %w", i+1, len(path), lerr)
-		}
-		if !grid.IsAdjacent(previous, local) {
+		if !grid.IsAdjacent(here, cell) {
 			return resolvedWalk{}, fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
-				i+1, previousCell.X, previousCell.Y, cell.X, cell.Y, ErrBrokenPath)
+				i+1, here.X, here.Y, cell.X, cell.Y, ErrBrokenPath)
 		}
-		walk.steps = append(walk.steps, local)
-		previous, previousCell = local, cell
+
+		located, lerr := enc.Locate(&encounter.LocateInput{Position: cell})
+		if lerr != nil {
+			return resolvedWalk{}, fmt.Errorf("step %d of %d: no room owns (%v,%v): %w: %w",
+				i+1, len(path), cell.X, cell.Y, ErrBadPosition, lerr)
+		}
+
+		step := walkStep{room: located.Room, local: located.Position}
+		if located.Room != hereRoom {
+			// Another room: legal only through a doorway joining the cell the
+			// walker stands on to the one they are stepping to. Adjacency is
+			// not permission — W2 lets two rooms touch without a door between
+			// them, and that pair of cells is adjacent and unwalkable.
+			connection, ok := doorwayBetween(atlas, here, cell)
+			if !ok {
+				return resolvedWalk{}, fmt.Errorf(
+					"step %d from (%v,%v) to (%v,%v): %w",
+					i+1, here.X, here.Y, cell.X, cell.Y, ErrNoCrossing)
+			}
+			step.connection = connection
+		}
+
+		walk.steps = append(walk.steps, step)
+		here, hereRoom = cell, located.Room
 	}
 	return walk, nil
+}
+
+// doorwayBetween finds the doorway joining two cells, in either direction — a
+// doorway is crossable both ways.
+//
+// Reads the Atlas, which is where doorways live in absolute space: a pair of
+// adjacent cells and the connection that joins them. The composition holds the
+// same fact in its own room-shaped terms, and this is the projection of it.
+func doorwayBetween(atlas encounter.Atlas, from, to spatial.Position) (string, bool) {
+	for _, doorway := range atlas.Doorways {
+		if (doorway.FromCell == from && doorway.ToCell == to) || (doorway.ToCell == from && doorway.FromCell == to) {
+			return doorway.Connection, true
+		}
+	}
+	return "", false
 }
 
 // whereIs locates a member: which room owns them, and which cell within it.
@@ -413,30 +417,6 @@ func whereIs(enc *encounter.Encounter, member encounter.MemberID) (string, spati
 		return located.Room, located.Position, nil
 	}
 	return "", spatial.Position{}, fmt.Errorf("%q: %w", member, ErrNoMember)
-}
-
-// localTo resolves a map cell into the room-local cell the composition's verbs
-// take, refusing anything that is not in the given room.
-//
-// The refusal is the whole reason this is a named function rather than a call
-// to Locate. A walk is within one room, and after the reshape a caller CAN
-// write a path that leaves it — the coordinates no longer stop them. So the
-// rule that used to be enforced by the shape of the input has to be enforced
-// here instead, until the slice that makes a crossing an ordinary step.
-func localTo(enc *encounter.Encounter, room string, cell spatial.Position) (spatial.Position, error) {
-	located, err := enc.Locate(&encounter.LocateInput{Position: cell})
-	if err != nil {
-		// Both wrapped: the sentinel is what a caller matches on, and the
-		// composition's own error says WHICH way the cell was unusable —
-		// owned by nothing, off the grid, or not an integral cell.
-		return spatial.Position{}, fmt.Errorf(
-			"no room owns (%v,%v): %w: %w", cell.X, cell.Y, ErrBadPosition, err)
-	}
-	if located.Room != room {
-		return spatial.Position{}, fmt.Errorf(
-			"(%v,%v) is not in the room being walked: %w", cell.X, cell.Y, ErrBadPosition)
-	}
-	return located.Position, nil
 }
 
 // gridFor builds a grid matching a room's family and span, for adjacency tests.

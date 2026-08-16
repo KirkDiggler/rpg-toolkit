@@ -149,8 +149,31 @@ var (
 	// leaves the party somewhere nobody chose.
 	ErrBrokenPath = errors.New("path is not a walk")
 
-	// ErrNoConnection is returned when a verb names a connection the encounter
-	// does not have.
+	// ErrNoCrossing is returned by Move when a step lands in another room and
+	// no doorway joins it to the cell the walker is standing on.
+	//
+	// Distinct from ErrBrokenPath, which means the two cells are not adjacent
+	// at all. These are different author mistakes: a broken path is arithmetic
+	// a caller can check against the map it already has, while two rooms may
+	// TOUCH without a door between them (W2 permits it), so a pair of cells can
+	// be perfectly adjacent and still have nothing to walk through. That second
+	// case is invisible to a client reading only the Atlas's cells — it is in
+	// the doorway list or it is nowhere — which is exactly why it earns a
+	// sentinel of its own rather than being folded into "not a walk".
+	//
+	// Distinct from ErrBadPosition too: "there is no cell there" and "there is
+	// no way there from here" send whoever reads them to different places.
+	ErrNoCrossing = errors.New("no doorway joins those cells")
+
+	// ErrNoConnection is the translation of a composition-side refusal to cross
+	// a doorway.
+	//
+	// No verb takes a connection id any more (rpg-toolkit#1048): a caller names
+	// cells, and this package finds the doorway joining them in the Atlas. So
+	// this can no longer be a caller's mistake — if it appears, this package
+	// derived a crossing the composition then rejected, which is a defect here
+	// rather than in the call. It stays as the translation of record so that an
+	// inner sentinel never crosses the boundary (S2).
 	ErrNoConnection = errors.New("no such connection")
 
 	// ErrBadPosition is returned when a target cell is out of bounds, or is
