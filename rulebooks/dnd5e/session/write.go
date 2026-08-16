@@ -466,6 +466,21 @@ type writeScope struct {
 	// sheet, today — so a verb that changed only the world writes only the
 	// world. Writes stay proportional to what actually changed.
 	touched bool
+
+	// written names what this verb made durable BEFORE reaching persist —
+	// character sheets, today, which are the only aggregate a verb writes on
+	// its own (see [Manager.saveDirty]).
+	//
+	// It rides the scope for the same reason touched does: it is a fact the
+	// verb discovered on the way to the commit, and persist is the one place
+	// that turns facts into a report. Threading it through commit as a
+	// parameter would put a nil at every other call site — none of which
+	// writes a sheet — which reads as ceremony rather than as a decision.
+	//
+	// A verb that writes nothing early leaves this empty and its report is
+	// unchanged — the entries are added by whoever wrote, never by persist on
+	// their behalf.
+	written []string
 }
 
 // adopt replaces the scope's encounter with one loaded from a world that came
@@ -524,14 +539,24 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 // for this case is the fix, and it is not this wave's.
 func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *encounter.EncounterData, error) {
 	data := scope.enc.ToData()
+
+	// The report opens with what the verb already made durable rather than
+	// starting from nothing, which is the whole of rpg-toolkit#1056: a swing
+	// writes the damaged sheet before it gets here, so a world save that fails
+	// leaves a report claiming nothing landed while the damage is on disk. The
+	// host reads that as "safe to retry", retries, and the damage applies a
+	// second time. Copied rather than aliased so appending below cannot reach
+	// back into the scope.
+	report := SaveReport{Written: append([]string(nil), scope.written...)}
+
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
-		report := SaveReport{Failed: []string{"encounter:" + scope.encounter}}
+		report.Failed = []string{"encounter:" + scope.encounter}
 		return report, nil, &SaveError{
 			Report: report,
 			Err:    fmt.Errorf("saving world: %w", err),
 		}
 	}
-	report := SaveReport{Written: []string{"encounter:" + scope.encounter}}
+	report.Written = append(report.Written, "encounter:"+scope.encounter)
 
 	if !scope.touched {
 		return report, &data, nil

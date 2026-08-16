@@ -106,11 +106,24 @@ func duelWorld(t fataler) *encounter.EncounterData {
 
 // duel wires the duel world to a manager whose events go nowhere.
 func (s *AttackTestSuite) duel(dice session.Roller) *session.Manager {
+	mgr, _ := s.breakableDuel(dice)
+	return mgr
+}
+
+// breakableDuel is the duel with its encounter store wrapped so a test can arm
+// the world save to fail.
+//
+// Unarmed the wrapper delegates, so every duel goes through ONE wiring path
+// rather than two that could drift. The failure is armed after StartSession
+// because the interesting moment is late: the swing has already made a damaged
+// sheet durable, and only the world save is left to fail.
+func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, *failingEncounters) {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	encounters := &failingEncounters{fakeEncounters: s.encounters}
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: dice, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: dice, Sessions: s.sessions, Encounters: encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -119,7 +132,7 @@ func (s *AttackTestSuite) duel(dice session.Roller) *session.Manager {
 		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
 	})
 	s.Require().NoError(err)
-	return mgr
+	return mgr, encounters
 }
 
 func (s *AttackTestSuite) swing(mgr *session.Manager) (*session.AttackOutput, error) {
@@ -195,6 +208,86 @@ func (s *AttackTestSuite) TestDamagePersists() {
 	s.Equal(before-out.Damage, s.characters.byID["bob"].HitPoints,
 		"the blow reached the stored sheet")
 	s.Equal(24, s.characters.byID["alice"].HitPoints, "and the swinger is untouched")
+}
+
+// TestASwingNamesTheSheetItWrote is the success half of S6 for the one verb
+// that writes a character.
+//
+// The report is the caller's only account of what this call made durable, and
+// a swing makes TWO things durable — the damaged sheet and the world that
+// records the blow. A report naming only the world describes a call that half
+// happened.
+//
+// The order is the order the writes really went in: sheets first, then the
+// world. Reading the report top to bottom retells the save.
+func (s *AttackTestSuite) TestASwingNamesTheSheetItWrote() {
+	mgr := s.duel(&sequenceDice{rolls: []int{15, 5}})
+
+	out, err := s.swing(mgr)
+	s.Require().NoError(err)
+	s.Require().True(out.Hit)
+
+	s.Equal([]string{"character:bob", "encounter:world"}, out.Saved.Written,
+		"the damaged sheet is durable and the report has to say so")
+	s.Empty(out.Saved.Failed)
+	s.False(out.Saved.Partial(), "a whole save is not a partial one")
+}
+
+// TestAMissNamesNoCharacterWrite is the negative control that gives the test
+// above its meaning.
+//
+// Nothing is dirtied by a miss, so nothing is written, and the report must be
+// derived from the writes that actually happened rather than from the fact
+// that a swing occurred. An implementation that named the target
+// unconditionally would satisfy the success pin and lie here.
+func (s *AttackTestSuite) TestAMissNamesNoCharacterWrite() {
+	mgr := s.duel(&sequenceDice{rolls: []int{2, 5}})
+
+	out, err := s.swing(mgr)
+	s.Require().NoError(err)
+	s.Require().False(out.Hit)
+
+	s.Equal([]string{"encounter:world"}, out.Saved.Written,
+		"a miss changed no sheet, so the report names no sheet")
+}
+
+// TestAFailedWorldSaveStillNamesTheSheetThatLanded is the reason this report
+// exists at all, and the bug it was written for (rpg-toolkit#1056).
+//
+// The sheet is written BEFORE the world, so a world save that fails leaves the
+// damage durable and the blow unrecorded. The report's own documented rule —
+// "nothing was written" is safe to retry — then decides what the host does
+// next, and it decides it from Written. An empty Written makes Partial() read
+// false, the host retries, the retry loads the already-damaged sheet and
+// applies the damage again: DOUBLE DAMAGE for one recorded swing, with nothing
+// in the stored world to betray it, because the beat lived only on the
+// encounter whose save failed.
+//
+// So the assertion is not cosmetic. Written naming the sheet is what turns this
+// into a repair.
+func (s *AttackTestSuite) TestAFailedWorldSaveStillNamesTheSheetThatLanded() {
+	mgr, encounters := s.breakableDuel(&sequenceDice{rolls: []int{15, 5}})
+	before := s.characters.byID["bob"].HitPoints
+
+	// Armed only now, so the session could be started.
+	encounters.saveErr = errBroken
+
+	out, err := s.swing(mgr)
+	s.Require().Error(err)
+	s.Nil(out)
+	s.Require().ErrorIs(err, session.ErrSaveFailed)
+	s.ErrorIs(err, errBroken, "the store's own failure survives")
+
+	var saved *session.SaveError
+	s.Require().ErrorAs(err, &saved, "the report must survive the error")
+	s.Equal([]string{"character:bob"}, saved.Report.Written,
+		"bob's damaged sheet is already durable — retrying the swing would damage him twice")
+	s.Equal([]string{"encounter:world"}, saved.Report.Failed,
+		"and the world that would have recorded the blow is what needs repair")
+	s.True(saved.Report.Partial(), "half a save is a repair, not a retry")
+
+	s.Equal(before-8, s.characters.byID["bob"].HitPoints,
+		"the write the report names really did land")
 }
 
 // TestNothingSpendsYet is the known gap, pinned so it cannot be mistaken for a
