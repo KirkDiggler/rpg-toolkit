@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -357,4 +358,106 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 		Session: "sess", Attacker: "alice", Target: "ogre",
 	})
 	s.ErrorIs(err, session.ErrNoSheet)
+}
+
+// duelAmong wires a manager whose world holds the named players and whose
+// character repository holds exactly the sheets given.
+//
+// The two lists are independent on purpose. Every test below turns on a member
+// the roster HAS and the repository does NOT — a state only a host can produce,
+// and the one the character sentinels exist to describe.
+func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data) *session.Manager {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(sheets...)
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	placed := make([]encounter.MemberInput, 0, len(members))
+	for i, id := range members {
+		placed = append(placed, encounter.MemberInput{
+			ID: encounter.MemberID(id), Kind: encounter.KindPlayer, Room: "hall",
+			Position: spatial.Position{X: float64(i + 1), Y: 1},
+		})
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: encOrderAsGiven{},
+		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Members:    placed,
+		Endings:    []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention:  encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	data := enc.ToData()
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: &data,
+	})
+	s.Require().NoError(err)
+	return mgr
+}
+
+// unreadableFighter is a stored sheet that EXISTS and cannot be reconstituted.
+//
+// The malformed condition blob is what makes it unreadable, and it bites only
+// on the path under test: character.Load — what compileAttack uses — is STRICT
+// and fails the whole load, while the lenient character.LoadFromData that Join
+// uses drops the blob and carries on (pinned by
+// TestACorruptConditionIsDroppedRatherThanRejected). So this fixture is corrupt
+// exactly where the sentinel under test is chosen.
+func unreadableFighter(id string) *character.Data {
+	sheet := armedFighter(id)
+	sheet.Conditions = []json.RawMessage{json.RawMessage(`{"ref":"nonsense","x":`)}
+	return sheet
+}
+
+// The three tests below pin one contract: ABSENT and CORRUPT are different
+// answers, and Attack must give the same ones every other verb gives.
+//
+// errors.go defines ErrNoCharacter as "the repository does not hold it" and
+// ErrBadCharacter as "stored data exists but cannot be reconstituted", and
+// loadCharacter has always honoured that. Attack did not: it carried its own
+// copies of the fetch, and they mapped the pair backwards (rpg-toolkit#1057).
+// A host branching on these does opposite repairs — re-check the ID versus go
+// inspect storage — so the two must never be swapped. Each test asserts the
+// sentinel it wants AND denies the other, because an implementation returning
+// both would satisfy a one-sided assertion while telling the host nothing.
+
+func (s *AttackTestSuite) TestAnAbsentAttackerSheetIsAbsentRatherThanCorrupt() {
+	mgr := s.duelAmong([]string{"alice", "bob"}, armedFighter("bob"))
+
+	_, err := s.swing(mgr)
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrNoCharacter, "the repository does not hold alice at all")
+	s.NotErrorIs(err, session.ErrBadCharacter, "absent is not corrupt")
+}
+
+func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent() {
+	mgr := s.duelAmong([]string{"alice", "bob"}, unreadableFighter("alice"), armedFighter("bob"))
+
+	_, err := s.swing(mgr)
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadCharacter, "alice's bytes are there and cannot be read")
+	s.NotErrorIs(err, session.ErrNoCharacter, "corrupt is not absent")
+}
+
+// TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt covers the castFor path:
+// a member who is neither swinging nor being swung at still joins the cast,
+// because applicability is an effect's own predicate (ADR-0038). Their sheet
+// being absent is the same failure as the attacker's and must read the same way.
+func (s *AttackTestSuite) TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt() {
+	mgr := s.duelAmong([]string{"alice", "bob", "carol"}, armedFighter("alice"), armedFighter("bob"))
+
+	_, err := s.swing(mgr)
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrNoCharacter, "carol is in the roster and not in the repository")
+	s.NotErrorIs(err, session.ErrBadCharacter, "absent is not corrupt")
+
+	// The role noun earns its keep here more than anywhere else: the host asked
+	// alice to swing at bob and gets back a complaint about carol, who it never
+	// named. "participant" is the word that explains why she was read at all.
+	s.Contains(err.Error(), `participant "carol"`, "say which part the missing member was playing")
 }

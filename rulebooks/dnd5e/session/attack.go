@@ -95,8 +95,15 @@ type AttackOutput struct {
 // every dirty sheet is written back.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrBadAttack, ErrClosed, or
-// ErrSaveFailed with a populated report.
+// ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet, ErrNoCharacter,
+// ErrBadCharacter, ErrBadRepository, ErrBadAttack, ErrClosed, or ErrSaveFailed
+// with a populated report.
+//
+// ErrNoCharacter and ErrBadCharacter mean here exactly what they mean
+// everywhere else in this package: the repository does not hold that sheet,
+// versus it holds bytes that will not reconstitute. A host branches on the
+// difference — re-check the ID, versus go and inspect storage — so the two are
+// worth reading off carefully.
 func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("attack: %w", ErrNilInput)
@@ -283,21 +290,14 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 // attach effects to. Two purposes, one stored sheet, and no shared bus between
 // them.
 func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolution.AttackProfile, error) {
-	data, err := m.characters.GetCharacter(ctx, attacker)
+	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w", attacker, ErrBadCharacter)
-		}
 		return resolution.AttackProfile{}, err
-	}
-	if data == nil {
-		return resolution.AttackProfile{}, fmt.Errorf(
-			"attacker %q: GetCharacter reported success with no data: %w", attacker, ErrBadRepository)
 	}
 
 	loaded, err := character.Load(ctx, data)
 	if err != nil {
-		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %w", attacker, ErrNoCharacter, err)
+		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %w", attacker, ErrBadCharacter, err)
 	}
 
 	profile, err := resolution.AttackFromCharacter(loaded, &resolution.CharacterAttackInput{
@@ -345,16 +345,9 @@ func (m *Manager) castFor(
 			continue
 		}
 
-		data, err := m.characters.GetCharacter(ctx, id)
+		data, err := m.fetchCharacterData(ctx, "participant", id)
 		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, fmt.Errorf("participant %q: %w", id, ErrBadCharacter)
-			}
 			return nil, err
-		}
-		if data == nil {
-			return nil, fmt.Errorf(
-				"participant %q: GetCharacter reported success with no data: %w", id, ErrBadRepository)
 		}
 		cast = append(cast, resolution.Participant{Character: data})
 	}
