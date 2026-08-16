@@ -4,6 +4,8 @@
 package session
 
 import (
+	"sort"
+
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -42,45 +44,69 @@ func projectGrid(shape spatial.GridShape) GridKind {
 	}
 }
 
+// projectAtlas flattens the composition's room-by-room map into one map.
+//
+// The composition answers in its own terms — a footprint per room, a doorway
+// naming the two it joins — because rooms are how it holds a field together.
+// This is where that stops being anybody else's problem: the cells are
+// concatenated and sorted, and a doorway becomes the pair of adjacent cells
+// it always was in absolute space.
+//
+// Sorting matters more than it looks. Concatenating room by room would leave
+// the grouping perfectly visible in the order, so a client could reconstruct
+// the decomposition the reshape exists to hide — and would eventually depend
+// on it. One order, derived from the coordinates themselves.
 func projectAtlas(in encounter.Atlas) Atlas {
-	out := Atlas{
-		Rooms:    make([]AtlasRoom, 0, len(in.Rooms)),
-		Doorways: make([]AtlasDoorway, 0, len(in.Doorways)),
-	}
+	out := Atlas{Doorways: make([]AtlasDoorway, 0, len(in.Doorways))}
 
 	for _, room := range in.Rooms {
-		projected := AtlasRoom{
-			ID:         room.ID,
-			Grid:       projectGrid(room.Grid),
-			Origin:     room.Origin,
-			Width:      room.Width,
-			Height:     room.Height,
-			Cells:      append([]spatial.Position(nil), room.Cells...),
-			Occluders:  append([]spatial.Position(nil), room.Occluders...),
-			Boundaries: make([]AtlasBoundary, 0, len(room.Boundaries)),
-		}
+		// W1: every room in a field shares one grid family, so the last
+		// writer wins and every writer agrees.
+		out.Grid = projectGrid(room.Grid)
+		out.Cells = append(out.Cells, room.Cells...)
+		out.Occluders = append(out.Occluders, room.Occluders...)
 		for _, b := range room.Boundaries {
-			projected.Boundaries = append(projected.Boundaries, AtlasBoundary{
+			out.Boundaries = append(out.Boundaries, AtlasBoundary{
 				From:              b.From,
 				To:                b.To,
 				BlocksMovement:    b.BlocksMovement,
 				BlocksLineOfSight: b.BlocksLineOfSight,
 			})
 		}
-		out.Rooms = append(out.Rooms, projected)
 	}
+
+	sortCells(out.Cells)
+	sortCells(out.Occluders)
+	sort.Slice(out.Boundaries, func(i, j int) bool {
+		if out.Boundaries[i].From != out.Boundaries[j].From {
+			return before(out.Boundaries[i].From, out.Boundaries[j].From)
+		}
+		return before(out.Boundaries[i].To, out.Boundaries[j].To)
+	})
 
 	for _, d := range in.Doorways {
 		out.Doorways = append(out.Doorways, AtlasDoorway{
 			Connection: d.Connection,
-			From:       d.From,
-			FromCell:   d.FromCell,
-			To:         d.To,
-			ToCell:     d.ToCell,
+			From:       d.FromCell,
+			To:         d.ToCell,
 		})
 	}
 
 	return out
+}
+
+// sortCells puts positions in one deterministic order: by X, then by Y.
+func sortCells(cells []spatial.Position) {
+	sort.Slice(cells, func(i, j int) bool { return before(cells[i], cells[j]) })
+}
+
+// before is the map's coordinate order, shared by every sorted list on the
+// Atlas so that two of them can be read side by side.
+func before(a, b spatial.Position) bool {
+	if a.X != b.X {
+		return a.X < b.X
+	}
+	return a.Y < b.Y
 }
 
 func projectStatus(in *encounter.Status) *Status {

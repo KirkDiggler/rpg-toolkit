@@ -43,7 +43,13 @@ var projectedPairs = []struct {
 	outer any
 }{
 	{"Atlas", encounter.Atlas{}, session.Atlas{}},
-	{"AtlasRoom", encounter.AtlasRoom{}, session.AtlasRoom{}},
+	// The composition's per-room footprint is checked against the FLAT map it
+	// is folded into (rpg-toolkit#1042), not against a type of its own — there
+	// is no longer a room-shaped thing on this side. Pairing it this way keeps
+	// every field of a room accounted for: the ones that survive match by
+	// name, and the four that describe a room AS a room have to be justified
+	// below rather than quietly disappearing with the type that held them.
+	{"AtlasRoom folded into Atlas", encounter.AtlasRoom{}, session.Atlas{}},
 	{"AtlasBoundary", encounter.AtlasBoundary{}, session.AtlasBoundary{}},
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
 	{"Status", encounter.Status{}, session.Status{}},
@@ -62,6 +68,24 @@ var omitted = map[string]string{
 	// including members they have never perceived and rooms they have never
 	// entered. The audience is a delivery rule, not story content.
 	"record.Entry.Audience": "delivery rule, not story content — naming it leaks unperceived members",
+
+	// The seam speaks ONE MAP (rpg-project#227). The composition keeps rooms
+	// and projects the absolute geometry out of them; by the time a map
+	// reaches a client the decomposition has done its job.
+	"encounter.Atlas.Rooms":  "the decomposition itself — folded into the flat Cells/Occluders/Boundaries",
+	"encounter.AtlasRoom.ID": "a room id, which is exactly what the one-map seam stops carrying",
+	"encounter.AtlasRoom.Origin": "an anchor exists to project room-local coordinates, and nothing " +
+		"on this side has one left to project",
+	"encounter.AtlasRoom.Width":  "a room's span; the map's extent is the extent of Cells",
+	"encounter.AtlasRoom.Height": "a room's span; the map's extent is the extent of Cells",
+
+	// A doorway's endpoints kept their meaning and lost their qualifier: on one
+	// map there is no second pair of From/To fields naming rooms to
+	// distinguish these from.
+	"encounter.AtlasDoorway.From":     "the source ROOM id; the doorway now carries only its two cells",
+	"encounter.AtlasDoorway.To":       "the destination ROOM id; same",
+	"encounter.AtlasDoorway.FromCell": "renamed to From, now that no room id competes for the name",
+	"encounter.AtlasDoorway.ToCell":   "renamed to To, for the same reason",
 }
 
 // TestEveryInnerFieldIsCarriedOrJustified is the completeness check.
