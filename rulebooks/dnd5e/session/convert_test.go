@@ -54,6 +54,7 @@ var projectedPairs = []struct {
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
 	{"Status", encounter.Status{}, session.Status{}},
 	{"Outcome", encounter.Outcome{}, session.Outcome{}},
+	{"Member", encounter.Member{}, session.Member{}},
 	{"MemberOutcome", encounter.MemberOutcome{}, session.MemberOutcome{}},
 	{"Sighting", intel.Holding{}, session.Sighting{}},
 	{"StoryEntry", record.Entry{}, session.StoryEntry{}},
@@ -78,6 +79,12 @@ var omitted = map[string]string{
 		"on this side has one left to project",
 	"encounter.AtlasRoom.Width":  "a room's span; the map's extent is the extent of Cells",
 	"encounter.AtlasRoom.Height": "a room's span; the map's extent is the extent of Cells",
+
+	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The room is
+	// the composition's own decomposition, and a caller that wanted it would
+	// be reconstructing the frame the reshape removed.
+	"encounter.Member.Room":        "a room id; the seam reports the cell instead",
+	"encounter.MemberOutcome.Room": "a room id; Position is projected onto the map instead",
 
 	// A doorway's endpoints kept their meaning and lost their qualifier: on one
 	// map there is no second pair of From/To fields naming rooms to

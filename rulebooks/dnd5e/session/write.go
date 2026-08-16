@@ -25,10 +25,10 @@ type JoinInput struct {
 	// produce it. A "dnd5e:characters:..." ref would claim otherwise.
 	Member string
 
-	// Room is the room to place them in.
-	Room string
-
-	// Position is where within that room.
+	// Position is the cell to place them on, in dungeon-absolute space —
+	// the same coordinates the Atlas and every other verb speak. Which room
+	// owns that cell is worked out here; a caller places somebody on the map,
+	// not in a chamber (rpg-project#227).
 	Position spatial.Position
 }
 
@@ -82,10 +82,8 @@ type SpawnInput struct {
 	// rejected rather than guessed at.
 	Ref string
 
-	// Room is the room to place it in.
-	Room string
-
-	// Position is where within that room.
+	// Position is the cell to place it on, in dungeon-absolute space. See
+	// JoinInput.Position.
 	Position spatial.Position
 }
 
@@ -187,9 +185,9 @@ type EndOutput struct {
 // somewhere with no visible connection to the join that caused it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrClosed if the encounter
-// has already ended, or
-// ErrSaveFailed with a populated report.
+// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadPosition if no room
+// owns the cell they were placed on, ErrClosed if the encounter has already
+// ended, or ErrSaveFailed with a populated report.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
@@ -208,7 +206,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	placed, err := place(scope, in.Member, KindPlayer, in.Room, in.Position)
+	placed, err := place(scope, in.Member, KindPlayer, in.Position)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -223,7 +221,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Character:  projectCharacter(ch),
 		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
-		Outcome:    projectOutcome(placed.Outcome),
+		Outcome:    projectOutcome(scope.enc, placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -247,9 +245,9 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 // simply does not act on its own.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef, ErrBadRef,
-// ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter, ErrClosed,
-// or ErrSaveFailed with a populated
-// report.
+// ErrNoLoader, ErrUnknownContent, ErrNoSession, ErrNoEncounter,
+// ErrBadPosition if no room owns the cell, ErrClosed, or ErrSaveFailed with a
+// populated report.
 func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("spawn: %w", ErrNilInput)
@@ -286,7 +284,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 
-	placed, err := place(scope, in.ID, KindMonster, in.Room, in.Position)
+	placed, err := place(scope, in.ID, KindMonster, in.Position)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -304,7 +302,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		NPC:        projectMonster(sheet),
 		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
-		Outcome:    projectOutcome(placed.Outcome),
+		Outcome:    projectOutcome(scope.enc, placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -323,14 +321,27 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 // Setup and Load were made to share one validator so that a single mutation
 // kills the pins on both. Same reasoning, one layer up.
 func place(
-	scope *writeScope, id string, kind MemberKind, room string, at spatial.Position,
+	scope *writeScope, id string, kind MemberKind, at spatial.Position,
 ) (*encounter.JoinOutput, error) {
+	// The one place a cell becomes a room. The composition's verbs are
+	// room-local by law, so somebody has to resolve an absolute cell to the
+	// chamber that owns it; doing it HERE means every caller of this seam
+	// speaks one map, and a room id never has to appear in an input.
+	located, err := scope.enc.Locate(&encounter.LocateInput{Position: at})
+	if err != nil {
+		// Both wrapped: ErrBadPosition is what a caller matches on, and the
+		// composition's own error keeps WHY — owned by no room, off the grid,
+		// or not an integral cell — which is the difference between a typo
+		// and a fractional coordinate.
+		return nil, fmt.Errorf("no room owns %v: %w: %w", at, ErrBadPosition, err)
+	}
+
 	placed, err := scope.enc.Join(&encounter.JoinInput{
 		Member: encounter.MemberInput{
 			ID:       encounter.MemberID(id),
 			Kind:     encounter.MemberKind(kind),
-			Room:     room,
-			Position: at,
+			Room:     located.Room,
+			Position: located.Position,
 		},
 	})
 	if err != nil {
@@ -369,10 +380,10 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	}
 
 	return &ExitOutput{
-		Outcome:  projectMemberOutcome(left.Outcome),
+		Outcome:  projectMemberOutcome(scope.enc, left.Outcome),
 		Carry:    projectSightings(left.Carry),
 		Seq:      left.Seq,
-		Closed:   projectOutcome(left.Closed),
+		Closed:   projectOutcome(scope.enc, left.Closed),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
@@ -403,7 +414,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: %w", err)
 	}
 
-	outcome := projectOutcome(&ended.Outcome)
+	outcome := projectOutcome(scope.enc, &ended.Outcome)
 	return &EndOutput{Outcome: *outcome, Saved: report, Delivery: delivery}, nil
 }
 

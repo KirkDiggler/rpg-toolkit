@@ -41,7 +41,7 @@ func TestWorkbenchRuns(t *testing.T) {
 		"bob walks on regardless, 1 step(s)",            // while everyone not in it carries on
 
 		`ended by "withdraw"`,
-		"alice in vault at (0,1)", // she is where the fight stopped her, and it persisted
+		"alice at (6,1)", // she is where the fight stopped her, and it persisted
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("workbench output missing %q\nfull output:\n%s", want, got)

@@ -109,7 +109,7 @@ func before(a, b spatial.Position) bool {
 	return a.Y < b.Y
 }
 
-func projectStatus(in *encounter.Status) *Status {
+func projectStatus(enc *encounter.Encounter, in *encounter.Status) *Status {
 	if in == nil {
 		return nil
 	}
@@ -124,11 +124,7 @@ func projectStatus(in *encounter.Status) *Status {
 		Members: make([]MemberOutcome, 0, len(in.Outcome.Members)),
 	}
 	for _, m := range in.Outcome.Members {
-		outcome.Members = append(outcome.Members, MemberOutcome{
-			ID:       string(m.ID),
-			Room:     m.Room,
-			Position: m.Position,
-		})
+		outcome.Members = append(outcome.Members, projectMemberOutcome(enc, m))
 	}
 	out.Outcome = outcome
 	return out
@@ -184,24 +180,43 @@ func projectStory(in []record.Entry) []StoryEntry {
 
 func projectMember(in encounter.Member) Member {
 	return Member{
-		ID:   string(in.ID),
-		Kind: MemberKind(in.Kind),
-		Room: in.Room,
+		ID:       string(in.ID),
+		Kind:     MemberKind(in.Kind),
+		Position: in.Position,
 	}
 }
 
-func projectMemberOutcome(in encounter.MemberOutcome) MemberOutcome {
+// onMap projects a composition room-local cell into the one map this seam
+// speaks, by asking the composition rather than doing the arithmetic here.
+//
+// Placement reads already come back absolute (encounter v0.10.0), and this is
+// for the two shapes that do not: an outcome's member list, which the
+// composition still reports in its own terms. Asking Absolute means the seam
+// never learns what an origin is, which is the whole point of it living down
+// there.
+func onMap(enc *encounter.Encounter, room string, local spatial.Position) spatial.Position {
+	out, err := enc.Absolute(&encounter.AbsoluteInput{Room: room, Position: local})
+	if err != nil {
+		// Unreachable through any verb: an outcome names members the
+		// composition itself placed, in rooms it validated at construction.
+		// Returning the unprojected cell if that ever stops being true is
+		// wrong in a way a test can see, which a panic in a host would not be.
+		return local
+	}
+	return out.Position
+}
+
+func projectMemberOutcome(enc *encounter.Encounter, in encounter.MemberOutcome) MemberOutcome {
 	return MemberOutcome{
 		ID:       string(in.ID),
-		Room:     in.Room,
-		Position: in.Position,
+		Position: onMap(enc, in.Room, in.Position),
 	}
 }
 
 // projectOutcome converts a bare outcome. projectStatus has its own inline
 // copy of this walk because it must also handle the nil-Status case; this one
 // serves the verbs that return an outcome directly.
-func projectOutcome(in *encounter.Outcome) *Outcome {
+func projectOutcome(enc *encounter.Encounter, in *encounter.Outcome) *Outcome {
 	if in == nil {
 		return nil
 	}
@@ -211,7 +226,7 @@ func projectOutcome(in *encounter.Outcome) *Outcome {
 		Members: make([]MemberOutcome, 0, len(in.Members)),
 	}
 	for _, m := range in.Members {
-		out.Members = append(out.Members, projectMemberOutcome(m))
+		out.Members = append(out.Members, projectMemberOutcome(enc, m))
 	}
 	return out
 }

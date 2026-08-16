@@ -475,7 +475,7 @@ func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 
 	_, err := mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Room: "hall", Position: spatial.Position{X: 6, Y: 6},
+		Position: spatial.Position{X: 6, Y: 6},
 	})
 	s.Require().Error(err, "the spawned sheet had to be written to the session")
 	s.Require().ErrorIs(err, session.ErrSaveFailed, "the condition is matchable")

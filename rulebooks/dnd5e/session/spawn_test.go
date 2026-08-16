@@ -55,7 +55,7 @@ func (s *SpawnTestSuite) SetupSubTest() { s.SetupTest() }
 
 func (s *SpawnTestSuite) spawn(id, ref string, at spatial.Position) (*session.SpawnOutput, error) {
 	return s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: id, Ref: ref, Room: "vault", Position: at,
+		Session: "sess", ID: id, Ref: ref, Position: at,
 	})
 }
 
@@ -187,15 +187,17 @@ func (s *SpawnTestSuite) TestTheSpawnedSheetSurvivesAProcessRestart() {
 // apply to the other — so this asserts a placement rule through BOTH doors and
 // fails if either stops enforcing it.
 func (s *SpawnTestSuite) TestBothEntryVerbsEnforceTheSamePlacementRules() {
-	nowhere := "no-such-room"
+	// A cell in the void. Naming a room that does not exist used to be the way
+	// to be refused; on one map the equivalent is a cell no room owns, which
+	// is a better test anyway — it is the mistake a real caller can actually
+	// make, since a client works in coordinates rather than room ids.
+	nowhere := spatial.Position{X: 900, Y: 900}
 
 	_, joinErr := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob",
-		Room: nowhere, Position: spatial.Position{X: 0, Y: 0},
+		Session: "sess", Member: "bob", Position: nowhere,
 	})
 	_, spawnErr := s.mgr.Spawn(context.Background(), &session.SpawnInput{
-		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Room: nowhere, Position: spatial.Position{X: 0, Y: 0},
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(), Position: nowhere,
 	})
 
 	// The SENTINEL, not merely "an error". A Spawn with its own placement
@@ -262,11 +264,11 @@ func (s *SpawnTestSuite) TestADuplicateArrivalIsRejectedButMisreported() {
 	s.Len(s.storedNPCs(), 1, "and the refused duplicate stored no second sheet")
 
 	_, joinErr := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Room: "vault", Position: spatial.Position{X: 2, Y: 0},
+		Session: "sess", Member: "bob", Position: spatial.Position{X: 8, Y: 0},
 	})
 	s.Require().NoError(joinErr)
 	_, joinErr = s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Room: "vault", Position: spatial.Position{X: 3, Y: 0},
+		Session: "sess", Member: "bob", Position: spatial.Position{X: 8, Y: 1},
 	})
 	s.Require().Error(joinErr, "and the same holds through the other door")
 	s.ErrorIs(joinErr, session.ErrNoMember)

@@ -198,12 +198,14 @@ func drive(out *bytes.Buffer) error {
 
 	joined, err := mgr.Join(ctx, &session.JoinInput{
 		Session: "crypt-run", Member: "bob",
-		Room: "antechamber", Position: spatial.Position{X: 1, Y: 2},
+		// A cell on the map. The antechamber is anchored at the origin, so
+		// this one reads the same either way; the vault below does not.
+		Position: spatial.Position{X: 1, Y: 2},
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "   bob joins the %s\n", joined.Member.Room)
+	fmt.Fprintf(out, "   bob joins at (%v,%v)\n", joined.Member.Position.X, joined.Member.Position.Y)
 
 	// The sheet came back derived, not echoed. Speed is not a field of the
 	// stored data at all — a dwarf's 25 comes from reconstituting the
@@ -224,8 +226,10 @@ func drive(out *bytes.Buffer) error {
 	// is why SpawnOutput carries Formed at all.
 	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
 		Session: "crypt-run", ID: "skel-1",
-		Ref:  refs.Monsters.Skeleton().String(),
-		Room: "vault", Position: spatial.Position{X: 4, Y: 5},
+		Ref: refs.Monsters.Skeleton().String(),
+		// The vault is anchored at (6,0), so its local (4,5) is (10,5) on
+		// the map — and the map is what this seam speaks.
+		Position: spatial.Position{X: 10, Y: 5},
 	})
 	if err != nil {
 		return err
@@ -284,7 +288,9 @@ func drive(out *bytes.Buffer) error {
 	}
 
 	fmt.Fprintln(out, "\n== and she cannot simply walk away ==")
-	vaultPath := []spatial.Position{{X: 1, Y: 1}, {X: 1, Y: 2}}
+	// Cells on the map: alice arrived at the vault's (0,1) local, which is
+	// (6,1) with the vault anchored at (6,0). She tries to step deeper in.
+	vaultPath := []spatial.Position{{X: 7, Y: 1}, {X: 7, Y: 2}}
 	_, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "crypt-run", Member: "alice", Path: vaultPath,
 	})
@@ -319,7 +325,7 @@ func drive(out *bytes.Buffer) error {
 	}
 	final := make([]string, 0, len(ended.Outcome.Members))
 	for _, m := range ended.Outcome.Members {
-		final = append(final, fmt.Sprintf("%s in %s at (%v,%v)", m.ID, m.Room, m.Position.X, m.Position.Y))
+		final = append(final, fmt.Sprintf("%s at (%v,%v)", m.ID, m.Position.X, m.Position.Y))
 	}
 	sort.Strings(final)
 	fmt.Fprintf(out, "   ended by %q\n", ended.Outcome.Ending)
