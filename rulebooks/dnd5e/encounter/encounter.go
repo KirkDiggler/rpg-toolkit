@@ -19,10 +19,16 @@ import (
 // SightPayload is the composition-owned encoding of a sighted member's position —
 // the payload of every sight-channel intel report. Hosts decode it to render what
 // a player sees; intel itself never interprets it.
+//
+// DUNGEON-ABSOLUTE, and carrying no room (rpg-toolkit#1044). A sighted member is
+// somewhere on the map, and the chamber they happen to be standing in is this
+// composition's own bookkeeping. It matters most here of all the projections,
+// because this is the payload a DECIDER reads: a monster comparing a target's
+// position against its own needs both in one frame, and the two used to be in
+// different ones for every room whose origin is not (0,0).
 type SightPayload struct {
-	Room string  `json:"room"`
-	X    float64 `json:"x"`
-	Y    float64 `json:"y"`
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
 // declaredEnding pairs an ending key with its trigger, in Setup order.
@@ -1576,8 +1582,8 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 }
 
 // traverseResult holds the outcome of a successful cross-room move via
-// traverseMember — shared by the Traverse verb and Pump's IntentTraverse
-// executor.
+// traverseMember — shared by the Traverse verb and the doorway half of
+// stepTo, which is how a monster's intended step crosses one.
 type traverseResult struct {
 	fromRoom string
 	fromPos  spatial.Position
@@ -1597,10 +1603,11 @@ type traverseResult struct {
 // Shared by the Traverse verb (which owns the nil/closed/member-lookup
 // guards and propagates this function's error as its own public
 // contract — ErrNoConnection or ErrBadPlacement, already correctly
-// wrapped here) and Pump's phase-2 IntentTraverse executor (which owns
-// Pump's silent-skip-on-failure semantics: ANY error returned here is
-// treated exactly like a spatially-rejected IntentMoveTo — the monster
-// simply fails to act this tick, no abort).
+// wrapped here) and by stepTo, which calls it when a monster's intended
+// step lands on the far side of a doorway. stepTo owns Pump's
+// silent-skip-on-failure semantics: ANY error returned here means the
+// monster simply fails to act this tick, exactly as a refused move does,
+// and never aborts the pump.
 func (e *Encounter) traverseMember(member *memberRecord, connectionID string) (traverseResult, error) {
 	var conn *ConnectionInput
 	for i := range e.connectionsInput {
@@ -1875,13 +1882,14 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 // Semantics:
 //   - Tick advances by exactly 1 (via clock.Advance with displacement 1).
 //   - Monsters act in deterministic order (stable Members() order, filtered to KindMonster).
-//   - Each decider receives exactly its own Snapshot: own room, own position,
-//     own holdings (anti-wall-hack contract C2 — placement included, not just sight).
-//   - IntentHold means do nothing; IntentMoveTo executes via the same-room managed
-//     seam; IntentTraverse executes via traverseMember (the Traverse verb's own
-//     mechanics, shared — see its doc comment).
-//   - A spatial rejection of a monster's move, or an illegal traverse intent
-//     (unknown connection, or not at the threshold), does NOT abort the pump; the
+//   - Each decider receives exactly its own Snapshot: its own cell on the map and
+//     its own holdings (anti-wall-hack contract C2 — placement included, not just
+//     sight).
+//   - IntentHold means do nothing; IntentMoveTo names a cell in dungeon-absolute
+//     space and executes through stepTo, which moves the monster within its room
+//     or carries it through a doorway, whichever the cell turns out to be.
+//   - A refused step does NOT abort the pump — a cell no room owns, a cell in
+//     another room with no doorway from here, or a spatial rejection all mean the
 //     monster simply fails to act. Only a decider error aborts.
 //   - After all monster actions: ONE refreshSight for all members, ONE tick beat
 //     (stamped with the new clock reading), then move/traverse beats in
@@ -1962,13 +1970,16 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			return nil, fmt.Errorf("pump held_by: %w", err)
 		}
 
-		intent, err := decider.Decide(Snapshot{Room: m.Room, Position: ownPos, Holdings: ownHoldings})
+		intent, err := decider.Decide(Snapshot{
+			Position: e.absoluteOf(m.Room, ownPos),
+			Holdings: ownHoldings,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("pump decide: %w", err)
 		}
 
 		switch intent.(type) {
-		case IntentMoveTo, IntentTraverse:
+		case IntentMoveTo:
 			planned = append(planned, plannedAction{memberID: m.ID, intent: intent})
 		}
 	}
@@ -1985,19 +1996,11 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	newTickReading := uint64(e.clock.ToData().HighWater)
 
-	// executedAction is built in PLANNED (decision) order regardless of
-	// kind, so beats and ending evaluation below stay in the same
-	// deterministic per-monster order the deciders were consulted in
-	// (C8) — not "all moves then all traverses".
-	type executedAction struct {
-		member     *memberRecord
-		kind       string // "move" or "traverse"
-		connection string // only meaningful for "traverse"
-		fromRoom   string // only meaningful for "traverse"; a move never changes room
-		from       spatial.Position
-		toRoom     string // only meaningful for "traverse"
-		to         spatial.Position
-	}
+	// executedAction (declared at package scope, beside stepTo which builds
+	// one) is collected in PLANNED (decision) order regardless of kind, so
+	// beats and ending evaluation below stay in the same deterministic
+	// per-monster order the deciders were consulted in (C8) — not "all moves
+	// then all crossings".
 	var executed []executedAction
 
 	for _, p := range planned {
@@ -2016,28 +2019,9 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			// the pump otherwise proceeds normally.
 			continue
 		}
-		switch intent := p.intent.(type) {
-		case IntentMoveTo:
-			// Spatial rejection does not abort the pump; the monster
-			// simply fails to move and no beat is recorded for it.
-			fromPos, moveErr := e.moveMember(member, intent.To)
-			if moveErr == nil {
-				executed = append(executed, executedAction{
-					member: member, kind: "move", from: fromPos, to: intent.To,
-				})
-			}
-		case IntentTraverse:
-			// An illegal traverse (unknown connection, or not at the
-			// threshold) does not abort the pump either — same silent-skip
-			// contract as a spatially-rejected move (see traverseMember's
-			// doc comment).
-			result, travErr := e.traverseMember(member, intent.Connection)
-			if travErr == nil {
-				executed = append(executed, executedAction{
-					member: member, kind: "traverse", connection: intent.Connection,
-					fromRoom: result.fromRoom, from: result.fromPos,
-					toRoom: result.toRoom, to: result.toPos,
-				})
+		if intent, ok := p.intent.(IntentMoveTo); ok {
+			if action, stepped := e.stepTo(member, intent.To); stepped {
+				executed = append(executed, action)
 			}
 		}
 	}
@@ -2076,13 +2060,13 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	for _, action := range executed {
 		var beatPayload map[string]interface{}
 		switch action.kind {
-		case "move":
+		case actionMove:
 			beatPayload = map[string]interface{}{
 				"beat":     "moved",
 				"member":   string(action.member.ID),
 				"position": e.absoluteOf(action.member.Room, action.to),
 			}
-		case "traverse":
+		case actionTraverse:
 			beatPayload = map[string]interface{}{
 				"beat":       "traversed",
 				"member":     string(action.member.ID),
@@ -2186,13 +2170,13 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	}
 	for _, action := range executed {
 		switch action.kind {
-		case "move":
+		case actionMove:
 			outputMoves = append(outputMoves, struct {
 				Member MemberID
 				From   spatial.Position
 				To     spatial.Position
 			}{Member: action.member.ID, From: action.from, To: action.to})
-		case "traverse":
+		case actionTraverse:
 			outputTraverses = append(outputTraverses, struct {
 				Member   MemberID
 				FromRoom string
@@ -2304,11 +2288,8 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 			}
 
 			// Add to percept
-			pos := SightPayload{
-				Room: otherMember.Room,
-				X:    otherPos.X,
-				Y:    otherPos.Y,
-			}
+			absolute := e.absoluteOf(otherMember.Room, otherPos)
+			pos := SightPayload{X: absolute.X, Y: absolute.Y}
 			payload, _ := json.Marshal(pos)
 			percept = append(percept, intel.Report{
 				Subject: intel.Subject(otherMember.ID),
@@ -2330,6 +2311,98 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 	}
 
 	return deltas, nil
+}
+
+// The two kinds of step the pump can carry out. Constants rather than
+// literals because they are matched in three places — built in stepTo, then
+// switched on for beats and for ending evaluation — and a typo in any one of
+// them silently drops a monster's action from a transcript.
+const (
+	actionMove     = "move"
+	actionTraverse = "traverse"
+)
+
+// executedAction is one monster action the pump actually carried out: a step
+// within a room, or a step through a doorway. Both come out of stepTo, which
+// is the only thing that builds one.
+type executedAction struct {
+	member     *memberRecord
+	kind       string // "move" or "traverse"
+	connection string // only meaningful for "traverse"
+	fromRoom   string // only meaningful for "traverse"; a move never changes room
+	from       spatial.Position
+	toRoom     string // only meaningful for "traverse"
+	to         spatial.Position
+}
+
+// stepTo executes one intended step to a DUNGEON-ABSOLUTE cell, which after
+// rpg-toolkit#1044 is the only kind of movement a decider can intend.
+//
+// The dispatch that used to be the decider's job lives here instead, and it is
+// the whole reason IntentTraverse could retire: W3 makes a doorway's two
+// endpoints ADJACENT ABSOLUTE CELLS, so "walk to the cell on the other side of
+// the doorway" and "walk to the cell next to me" are the same sentence. Which
+// of the two mechanisms carries it out is bookkeeping, and bookkeeping belongs
+// on this side of the seam.
+//
+// Every refusal is SILENT — reported as not-stepped, never as an error — which
+// is the contract a spatially-rejected move already had and the one
+// IntentTraverse documented for an illegal crossing. Three ways to be refused:
+// a cell no room owns (void is not floor), a cell in another room with no
+// doorway joining it to where the member stands, and the spatial rejections
+// the move or the crossing itself raises.
+func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool) {
+	located, err := e.Locate(&LocateInput{Position: to})
+	if err != nil {
+		return executedAction{}, false
+	}
+
+	if located.Room == member.Room {
+		fromPos, moveErr := e.moveMember(member, located.Position)
+		if moveErr != nil {
+			return executedAction{}, false
+		}
+		return executedAction{
+			member: member, kind: actionMove, from: fromPos, to: located.Position,
+		}, true
+	}
+
+	connection, ok := e.doorwayFrom(member, to)
+	if !ok {
+		return executedAction{}, false
+	}
+	result, travErr := e.traverseMember(member, connection)
+	if travErr != nil {
+		return executedAction{}, false
+	}
+	return executedAction{
+		member: member, kind: actionTraverse, connection: connection,
+		fromRoom: result.fromRoom, from: result.fromPos,
+		toRoom: result.toRoom, to: result.toPos,
+	}, true
+}
+
+// doorwayFrom finds the connection joining where a member stands to the given
+// absolute cell, in either direction — a doorway is crossable both ways.
+//
+// Returns false when no connection joins the two, which is what makes a step
+// between rooms that merely TOUCH refuse: W2 lets two rooms share an edge
+// without a door, so absolute adjacency alone is not permission to cross.
+func (e *Encounter) doorwayFrom(member *memberRecord, to spatial.Position) (string, bool) {
+	local, err := e.cellOf(member)
+	if err != nil {
+		return "", false
+	}
+	from := e.absoluteOf(member.Room, local)
+
+	for _, c := range e.connectionsInput {
+		near := e.absoluteOf(c.From, c.FromPosition)
+		far := e.absoluteOf(c.To, c.ToPosition)
+		if (near == from && far == to) || (far == from && near == to) {
+			return c.ID, true
+		}
+	}
+	return "", false
 }
 
 // occluderEntity is an internal entity for blocking line of sight

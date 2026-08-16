@@ -182,6 +182,13 @@ func beliefGrid(enc *encounter.Encounter, data encounter.EncounterData, who core
 	if r == nil {
 		return nil, nil
 	}
+	// The room's anchor, needed because sight payloads are dungeon-absolute
+	// while this pane draws a single room in its own local frame.
+	var origin spatial.Position
+	if r.Origin != nil {
+		origin = spatial.Position{X: r.Origin.X, Y: r.Origin.Y}
+	}
+
 	grid := blankGrid(r.Width, r.Height)
 	for _, o := range r.Occluders {
 		set(grid, o.X, o.Y, '#')
@@ -191,10 +198,13 @@ func beliefGrid(enc *encounter.Encounter, data encounter.EncounterData, who core
 		if err := json.Unmarshal(h.Payload, &p); err != nil {
 			continue
 		}
-		if p.Room != room {
+		// Sight payloads are dungeon-absolute; this pane draws ONE room, so
+		// bring them back into its local frame and skip anything outside it.
+		local := spatial.Position{X: p.X, Y: p.Y}.Subtract(origin)
+		if local.X < 0 || local.Y < 0 || int(local.X) >= r.Width || int(local.Y) >= r.Height {
 			continue
 		}
-		set(grid, p.X, p.Y, initialOf(string(h.Subject), h.Status == intel.Current))
+		set(grid, local.X, local.Y, initialOf(string(h.Subject), h.Status == intel.Current))
 	}
 	for _, m := range data.Members {
 		if m.ID == who {

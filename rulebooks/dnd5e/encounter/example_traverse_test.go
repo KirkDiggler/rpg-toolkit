@@ -19,6 +19,11 @@ import (
 // Example_theTombWatch (sight, the ghost, save/reload, the ending);
 // this one shows what tomb watch predates: the room boundary itself.
 // Reuses tell() from example_tombwatch_test.go (same package).
+//
+// Every position printed here is DUNGEON-ABSOLUTE (rpg-toolkit#1044), which
+// is why alice's arrival reads as (8,4) rather than the vault-local (0,4) she
+// stands on: the vault is anchored at (8,0), and one map is what a decider —
+// and a reader — gets to work in.
 func Example_theTraverse() {
 	// Two rooms, one gate: alice starts exactly at the hall's threshold;
 	// the goblin, across the hall, can see her but not yet follow.
@@ -43,7 +48,13 @@ func Example_theTraverse() {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 7, Y: 4}},
 			{ID: "goblin", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 4},
-				Decider: &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: "alice"}},
+				Decider: &pursuitDecider{doorways: doorwaysFrom(encounter.FieldInput{
+					Rooms: []encounter.RoomInput{
+						{ID: "hall", Width: 8, Height: 8},
+						{ID: "vault", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
+					},
+					Connections: []encounter.ConnectionInput{gate},
+				}), target: "alice"}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "done", Trigger: encounter.TriggerExternal{}},
@@ -95,5 +106,5 @@ func Example_theTraverse() {
 	// -- alice slips through the gate --
 	// goblin holds a GHOST of alice at last-seen (7,4)
 	// -- the goblin gives chase, and follows her through --
-	// goblin sees alice at (0,4)
+	// goblin sees alice at (8,4)
 }

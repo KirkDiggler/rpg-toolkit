@@ -107,36 +107,66 @@ func (s *snapshotSpyDecider) Decide(snap encounter.Snapshot) (encounter.Intent, 
 	return encounter.IntentHold{}, nil
 }
 
-// onceTraverseDecider intends IntentTraverse{Connection} on its first
-// call, then holds forever after — a minimal fixture for pinning a
-// single traverse attempt's success or failure.
-type onceTraverseDecider struct {
-	connection string
-	called     bool
+// doorwaysFrom projects a field's connections into absolute cell pairs — the
+// same thing Atlas.Doorways carries.
+//
+// For fixtures that must hand a decider its map BEFORE the encounter that
+// would produce one exists. chase_test.go does it the other way round, taking
+// the real Atlas after construction, which is what a host would do; this is
+// the same arithmetic for the cases where ordering makes that awkward.
+func doorwaysFrom(field encounter.FieldInput) []encounter.AtlasDoorway {
+	origin := map[string]spatial.Position{}
+	for _, room := range field.Rooms {
+		origin[room.ID] = room.Origin
+	}
+
+	out := make([]encounter.AtlasDoorway, 0, len(field.Connections))
+	for _, c := range field.Connections {
+		out = append(out, encounter.AtlasDoorway{
+			Connection: c.ID,
+			From:       c.From,
+			FromCell:   c.FromPosition.Add(origin[c.From]),
+			To:         c.To,
+			ToCell:     c.ToPosition.Add(origin[c.To]),
+		})
+	}
+	return out
 }
 
-func (t *onceTraverseDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
+// onceStepDecider intends one step to a fixed absolute cell, then holds
+// forever after — a minimal fixture for pinning a single attempt's success or
+// failure, whether the cell is next door or through a door.
+type onceStepDecider struct {
+	to     spatial.Position
+	called bool
+}
+
+func (t *onceStepDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 	if t.called {
 		return encounter.IntentHold{}, nil
 	}
 	t.called = true
-	return encounter.IntentTraverse{Connection: t.connection}, nil
+	return encounter.IntentMoveTo{To: t.to}, nil
 }
 
-// pursuitDecider is constructed with the field's static connection
-// topology and a target subject to chase — it never reads encounter
-// state directly; Snapshot + Holdings + its own construction-time config
-// is all it gets (C2 extended to placement, not just sight). Logic: if it
-// currently holds a percept of the target, and it is standing EXACTLY
-// where that percept places them (its own room and position match), that
-// cell is either a connection endpoint in this room — traverse through
-// it — or nowhere useful — hold. Otherwise, if the percept's room matches
-// its own current room, walk toward the held position. A percept in a
-// DIFFERENT room is out of this simple pursuer's reach (it does not
-// cross-room-pathfind); it holds until circumstances change.
+// pursuitDecider walks toward the last place it saw its target.
+//
+// It is worth comparing against what this fixture used to be. It read a room
+// id off the percept, compared it with its own room and held if they differed;
+// then, if it happened to be standing exactly where the percept placed its
+// target, it scanned a room-local connection list for an endpoint matching
+// BOTH its room and its cell, and chose between two different intent types.
+// Every one of those steps existed to reconcile two coordinate systems.
+//
+// In one frame (rpg-toolkit#1044) it subtracts one cell from another and steps.
+// It crosses a doorway without knowing what a doorway is: the far side is
+// simply the next cell along. The only thing it still needs told is where the
+// doorways ARE — because a doorway is the one adjacency that is not implied by
+// the coordinates — and it takes that as the Atlas, the same absolute map a
+// host renders, rather than as the composition's room-shaped topology.
 type pursuitDecider struct {
-	connections []encounter.ConnectionInput
-	target      core.EntityID
+	doorways []encounter.AtlasDoorway
+	target   core.EntityID
 }
 
 func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
@@ -149,23 +179,23 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 			return nil, err
 		}
 
-		if snap.Room != seen.Room {
-			return encounter.IntentHold{}, nil
+		here := snap.Position
+		there := spatial.Position{X: seen.X, Y: seen.Y}
+		if here != there {
+			return encounter.IntentMoveTo{To: there}, nil
 		}
 
-		if snap.Position.X == seen.X && snap.Position.Y == seen.Y {
-			for _, c := range p.connections {
-				if c.From == snap.Room && c.FromPosition.X == snap.Position.X && c.FromPosition.Y == snap.Position.Y {
-					return encounter.IntentTraverse{Connection: c.ID}, nil
-				}
-				if c.To == snap.Room && c.ToPosition.X == snap.Position.X && c.ToPosition.Y == snap.Position.Y {
-					return encounter.IntentTraverse{Connection: c.ID}, nil
-				}
+		// Standing where it last saw them, and they are not here: the only
+		// place left to look is through the door it is standing in.
+		for _, d := range p.doorways {
+			if d.FromCell == here {
+				return encounter.IntentMoveTo{To: d.ToCell}, nil
 			}
-			return encounter.IntentHold{}, nil
+			if d.ToCell == here {
+				return encounter.IntentMoveTo{To: d.FromCell}, nil
+			}
 		}
-
-		return encounter.IntentMoveTo{To: spatial.Position{X: seen.X, Y: seen.Y}}, nil
+		return encounter.IntentHold{}, nil
 	}
 	return encounter.IntentHold{}, nil
 }
@@ -339,8 +369,7 @@ func (s *PumpTestSuite) TestPumpDeciderIsolation() {
 		_, err = enc.Pump(&encounter.PumpInput{})
 		s.Require().NoError(err)
 
-		s.Equal(room1, spy.capturedSnap.Room, "its own room")
-		s.Equal(spatial.Position{X: 6, Y: 5}, spy.capturedSnap.Position, "its own position")
+		s.Equal(spatial.Position{X: 6, Y: 5}, spy.capturedSnap.Position, "its own cell, on the map")
 
 		// THE PIN: alice exists one cell away and does not appear. The
 		// snapshot is built from what this member holds, not from the
@@ -539,7 +568,10 @@ func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	s.Require().Len(goblinView, 1)
 	var p encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &p))
-	s.Equal(room1, p.Room, "the vandal's scribbles must not reach encounter state")
+	// The rat, where the fixture placed it — room1 is anchored at the origin,
+	// so its local cell is its cell on the map.
+	s.Equal(6.0, p.X, "the vandal's scribbles must not reach encounter state")
+	s.Equal(6.0, p.Y)
 }
 
 func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
@@ -1033,6 +1065,20 @@ var twoRoomDoor = encounter.ConnectionInput{
 	ToPosition:   spatial.Position{X: 0, Y: 5},
 }
 
+// twoRoomField is the field most of this file's two-room fixtures build:
+// room-a at the origin, room-b anchored immediately east of it, joined at
+// the doorway above. Absolute footprints x:[0,9] and x:[10,19] (W2), and
+// the doorway's cells (9,5) and (10,5) are adjacent (W3).
+func twoRoomField() encounter.FieldInput {
+	return encounter.FieldInput{
+		Rooms: []encounter.RoomInput{
+			{ID: "room-a", Width: 10, Height: 10},
+			{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
+		},
+		Connections: []encounter.ConnectionInput{twoRoomDoor},
+	}
+}
+
 // TestPumpSnapshotIsOwnPlacement pins that each monster's Snapshot
 // carries ITS OWN room/position — never another member's (Task 3, item
 // 2). Two monsters in DIFFERENT rooms each get a spy decider; if Pump
@@ -1063,25 +1109,35 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 
+	// Absolute cells, so the two snapshots are distinguishable by position
+	// alone — which is the whole assertion now that a snapshot no longer
+	// names a room. room-b is anchored at (10,0), so its goblin's local
+	// (7,8) is (17,8) on the map: a snapshot built in the wrong frame, or
+	// from the wrong member, lands somewhere else.
 	s.Require().Len(spyA.snapshots, 1)
-	s.Equal("room-a", spyA.snapshots[0].Room, "goblin-a's snapshot must name ITS OWN room")
-	s.Equal(spatial.Position{X: 2, Y: 3}, spyA.snapshots[0].Position, "goblin-a's snapshot must be ITS OWN position")
+	s.Equal(spatial.Position{X: 2, Y: 3}, spyA.snapshots[0].Position, "goblin-a's snapshot must be ITS OWN cell")
 
 	s.Require().Len(spyB.snapshots, 1)
-	s.Equal("room-b", spyB.snapshots[0].Room, "goblin-b's snapshot must name ITS OWN room")
-	s.Equal(spatial.Position{X: 7, Y: 8}, spyB.snapshots[0].Position, "goblin-b's snapshot must be ITS OWN position")
+	s.Equal(spatial.Position{X: 17, Y: 8}, spyB.snapshots[0].Position, "goblin-b's snapshot must be ITS OWN cell")
 }
 
-// TestPumpIntentTraverseSuccess pins that a monster standing at a
-// connection's threshold, deciding IntentTraverse, actually crosses:
-// room changes, the "traversed" beat is recorded, PumpOutput.MonsterTraverses
-// reflects it (and MonsterMoves does not), and the clock still advances
-// by exactly 1 — Pump's own tick is unconditional regardless of what a
-// monster does within it (traversal itself is not time, law T4, but the
-// PUMP is).
-func (s *PumpTestSuite) TestPumpIntentTraverseSuccess() {
+// TestAnIntendedStepCrossesADoorway pins the crossing as what it now is: a
+// monster standing at the threshold names the cell on the far side, and the
+// composition carries it through the door.
+//
+// There is no traverse intent to decide any more (rpg-toolkit#1044) — the same
+// IntentMoveTo that walks a monster across a room walks it through a doorway,
+// because W3 makes the far side an adjacent cell on the map. What the pump
+// reports is unchanged: the room changes, the "traversed" beat is recorded,
+// PumpOutput.MonsterTraverses reflects it (and MonsterMoves does not), and the
+// clock still advances by exactly 1 — Pump's own tick is unconditional
+// regardless of what a monster does within it (a crossing itself is not time,
+// law T4, but the PUMP is).
+func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	goblinID := core.EntityID("goblin")
-	decider := &onceTraverseDecider{connection: "door1"}
+	// The cell on the far side of the doorway: room-b's local (0,5), anchored
+	// at (10,0). One step from the threshold, on the map.
+	decider := &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
@@ -1117,17 +1173,20 @@ func (s *PumpTestSuite) TestPumpIntentTraverseSuccess() {
 	s.Equal("room-b", members[0].Room)
 }
 
-// TestPumpIntentTraverseIllegalDoesNotAbort pins that an illegal traverse
-// intent (decider names a REAL connection but the monster isn't AT its
-// threshold) follows the SAME silent-skip contract Pump already
-// established for a spatially-rejected IntentMoveTo (traverseMember's own
-// doc comment): the pump does NOT abort — the clock still advances, the
-// tick beat is still recorded, refreshSight still runs — but no
-// "traversed" beat is recorded and the monster's room/position are
-// unchanged.
-func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
+// TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep pins the silent skip for the
+// crossing that is not available: the monster names a cell in the next room
+// while standing nowhere near the door between them.
+//
+// Same contract Pump already gave a spatially-rejected step, and the reason it
+// must hold is the pump, not the monster: an error here would abort the tick
+// for every OTHER monster in the encounter. So the pump does NOT abort — the
+// clock still advances, the tick beat is still recorded, refreshSight still
+// runs — but no "traversed" beat is recorded and the monster has not moved.
+func (s *PumpTestSuite) TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep() {
 	goblinID := core.EntityID("goblin")
-	decider := &onceTraverseDecider{connection: "door1"}
+	// The far side of the doorway again — but this goblin does not stand at
+	// the near side, so nothing joins where it is to where it is going.
+	decider := &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
@@ -1150,7 +1209,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
 	beforeClock := enc.ToData().Clock.HighWater
 
 	out, err := enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err, "an illegal traverse intent must not abort the pump")
+	s.Require().NoError(err, "a step with no doorway to carry it must not abort the pump")
 
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances — matches IntentMoveTo's spatial-rejection contract")
@@ -1174,15 +1233,18 @@ func (s *PumpTestSuite) TestPumpIntentTraverseIllegalDoesNotAbort() {
 	s.Equal(3.0, data.Members[0].Position.Y)
 }
 
-// TestPumpIntentTraverseUnknownConnectionDoesNotAbort pins that an
-// IntentTraverse naming an unknown connection (a decider bug) follows the
-// SAME silent-skip contract as an illegal-position traverse:
-// traverseMember's ErrNoConnection is treated identically to its
-// ErrBadPlacement by Pump's phase-2 executor — no abort, no beat, no
-// position change.
-func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
+// TestPumpDoesNotAbortWhenTheCellIsNowhere pins the third silent skip, and the
+// one that changed shape: a decider used to be able to name a connection that
+// did not exist, and now it can name a CELL that does not — void is not floor.
+//
+// Treated identically to the other two by stepTo — no abort, no beat, no
+// movement — which is what keeps one monster's bad arithmetic from costing
+// every other monster its tick.
+func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 	goblinID := core.EntityID("goblin")
-	decider := &onceTraverseDecider{connection: "no-such-door"}
+	// A cell no room owns: void is not floor, and stepping into it is the
+	// third way stepTo refuses in silence.
+	decider := &onceStepDecider{to: spatial.Position{X: 500, Y: 500}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
@@ -1204,7 +1266,7 @@ func (s *PumpTestSuite) TestPumpIntentTraverseUnknownConnectionDoesNotAbort() {
 	beforeClock := enc.ToData().Clock.HighWater
 
 	out, err := enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err, "an unknown-connection traverse intent must not abort the pump")
+	s.Require().NoError(err, "a step into a cell no room owns must not abort the pump")
 
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances")
@@ -1292,7 +1354,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 		Members: []encounter.MemberInput{
 			{ID: aliceID, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
 			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a", Position: spatial.Position{X: 8, Y: 5},
-				Decider: &pursuitDecider{connections: []encounter.ConnectionInput{twoRoomDoor}, target: aliceID}},
+				Decider: &pursuitDecider{doorways: doorwaysFrom(twoRoomField()), target: aliceID}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1323,8 +1385,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	s.Equal(intel.Held, goblinView[0].Status, "alice left the room — goblin's sight of her fades")
 	var ghostSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &ghostSeen))
-	s.Equal("room-a", ghostSeen.Room, "the ghost holds alice's LAST-SEEN room")
-	s.Equal(9.0, ghostSeen.X, "the ghost holds alice at the THRESHOLD, her last-seen position")
+	s.Equal(9.0, ghostSeen.X, "the ghost holds alice at the THRESHOLD, her last-seen cell")
 	s.Equal(5.0, ghostSeen.Y)
 
 	// Stage 2: pump — goblin walks toward the ghost's last-seen position.
@@ -1351,8 +1412,8 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	s.Equal(intel.Current, goblinView[0].Status, "the monster holds alice Current again, having crossed the threshold")
 	var aliceSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
-	s.Equal("room-b", aliceSeen.Room)
-	s.Equal(3.0, aliceSeen.X)
+	// room-b is anchored at (10,0), so her local (3,5) is (13,5) on the map.
+	s.Equal(13.0, aliceSeen.X)
 	s.Equal(5.0, aliceSeen.Y)
 
 	// Also verify via Story that the chase left the expected trail.
@@ -1370,9 +1431,9 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 }
 
 // TestPumpFullTickThenEvaluateAcrossTraverse pins full-tick-then-evaluate
-// as law, now that IntentTraverse raises its stakes (a fired ending
-// during phase-2 execution would otherwise need to REVERT a room
-// mutation, not just a same-room position). Two monsters decide in the
+// as law, and a doorway crossing is what raises its stakes: a fired ending
+// during phase-2 execution would otherwise need to REVERT a room mutation,
+// not just a same-room position. Two monsters decide in the
 // SAME pump: "aaa-goblin" (decides first — Members() stable order sorts
 // its ID before "zzz-goblin") traverses onto a FILTERED ending naming
 // it; "zzz-goblin" has an unrelated same-room move queued. The shipped
@@ -1400,7 +1461,8 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 			// aaa-goblin is AT the threshold, ready to traverse onto the
 			// filtered ending below.
 			{ID: aID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 9, Y: 5}, Decider: &onceTraverseDecider{connection: "door1"}},
+				Position: spatial.Position{X: 9, Y: 5},
+				Decider:  &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}},
 			// zzz-goblin has an unrelated same-room move queued.
 			{ID: bID, Kind: encounter.KindMonster, Room: "room-a",
 				Position: spatial.Position{X: 3, Y: 3}, Decider: &patrolDecider{positions: []spatial.Position{{X: 4, Y: 4}}}},
@@ -1633,7 +1695,7 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 			{
 				ID: goblinID, Kind: encounter.KindMonster, Room: room1,
 				Position: spatial.Position{X: 9, Y: 5},
-				Decider:  &traverseThenWander{connection: "door"},
+				Decider:  &crossThenWander{through: spatial.Position{X: 10, Y: 5}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -1664,16 +1726,16 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 	s.Empty(second.MonsterTraverses, "and not the world's to walk through doors either")
 }
 
-// traverseThenWander goes through its connection once, then shuffles.
-type traverseThenWander struct {
-	connection string
-	gone       bool
+// crossThenWander steps through a doorway once, then shuffles east.
+type crossThenWander struct {
+	through spatial.Position
+	gone    bool
 }
 
-func (t *traverseThenWander) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
+func (t *crossThenWander) Decide(snap encounter.Snapshot) (encounter.Intent, error) {
 	if !t.gone {
 		t.gone = true
-		return encounter.IntentTraverse{Connection: t.connection}, nil
+		return encounter.IntentMoveTo{To: t.through}, nil
 	}
 
 	return encounter.IntentMoveTo{To: spatial.Position{X: snap.Position.X + 1, Y: snap.Position.Y}}, nil

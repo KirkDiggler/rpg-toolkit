@@ -10,16 +10,24 @@ import (
 
 // Intent represents a decision made by a decider in response to their
 // Snapshot. The anti-wall-hack contract: a decider receives ONLY its own
-// Snapshot (own room, own position, own holdings), never the full
-// encounter state or another member's live truth. Intent is a sealed
-// type (unexported marker method).
+// Snapshot (its own cell and its own holdings), never the full encounter
+// state or another member's live truth. Intent is a sealed type
+// (unexported marker method).
 type Intent interface {
 	isIntent()
 }
 
-// IntentMoveTo represents a decision to move to a specific position.
+// IntentMoveTo represents a decision to step to a specific cell.
 type IntentMoveTo struct {
-	// To is the target position the member intends to move to.
+	// To is the cell the member intends to step to, in DUNGEON-ABSOLUTE
+	// space — the same frame Snapshot.Position and every sight payload
+	// speak, so a decider can compare where it stands with where it last
+	// saw something and subtract one from the other (rpg-toolkit#1044).
+	//
+	// A cell in the room the member is already in, or the far side of a
+	// doorway they are standing at: both are ordinary steps, and the
+	// composition decides which mechanism carries them out. An unreachable
+	// or unowned cell is skipped in silence rather than aborting the pump.
 	To spatial.Position
 }
 
@@ -32,36 +40,27 @@ type IntentHold struct{}
 // isIntent marks IntentHold as an Intent.
 func (i IntentHold) isIntent() {}
 
-// IntentTraverse represents a decision to cross a connection into the room
-// on its other side. Preconditions match the Traverse verb exactly: the
-// decider's own Snapshot.Room/Position (see Snapshot) must be standing
-// exactly on one of the named connection's two endpoints. An illegal
-// traverse intent (unknown connection, or not at the threshold) does not
-// abort the pump — it follows the same silent-skip contract Pump already
-// applies to a spatially-rejected IntentMoveTo: no beat, no room/position
-// change for that member, everything else in the pump proceeds normally.
-type IntentTraverse struct {
-	// Connection is the ID of the connection to traverse.
-	Connection string
-}
+// There was an IntentTraverse here, naming a connection to cross. It retired
+// with rpg-toolkit#1044: an intent now names a CELL in dungeon-absolute space,
+// and W3 makes a doorway's two endpoints adjacent absolute cells — so crossing
+// one is an ordinary intended step, and which mechanism carries it out is the
+// composition's bookkeeping rather than a decision a monster makes. See stepTo.
 
-// isIntent marks IntentTraverse as an Intent.
-func (i IntentTraverse) isIntent() {}
-
-// Snapshot is a decider's complete input: their OWN current placement
-// (room and position) plus their OWN held intel. The anti-wall-hack
-// contract (C2) extends to placement, not just holdings — a decider
-// learns where IT stands, never where any other member stands except
-// through Holdings' sighted percepts. Static field topology (e.g. a
-// connections list, for a pursuit decider that needs to know where the
-// doors are) is NOT part of Snapshot; give it to a decider at
-// construction time instead — Snapshot itself carries only what changes
-// tick to tick.
+// Snapshot is a decider's complete input: where it stands, plus its OWN held
+// intel. The anti-wall-hack contract (C2) extends to placement, not just
+// holdings — a decider learns where IT stands, never where any other member
+// stands except through Holdings' sighted percepts. Static field topology is
+// NOT part of Snapshot; give it to a decider at construction time instead —
+// Snapshot carries only what changes tick to tick.
 type Snapshot struct {
-	// Room is the decider's own current room ID.
-	Room string
-
-	// Position is the decider's own current position within Room.
+	// Position is where the decider stands, in DUNGEON-ABSOLUTE space.
+	//
+	// There was a Room beside this, and the position was local to it. Both
+	// halves were needed then and neither is now (rpg-toolkit#1044): a
+	// decider that knows its own cell on the map, and reads its targets'
+	// cells on the same map, has nothing left to reconcile. Keeping the room
+	// would keep the frame the reshape exists to remove — and it was never
+	// really identity a monster needed, only the key to a coordinate system.
 	Position spatial.Position
 
 	// Holdings is the decider's own held intel — exactly what HeldBy
@@ -70,7 +69,7 @@ type Snapshot struct {
 }
 
 // Decider is the interface for monster intelligence. A decider receives ONLY
-// its own Snapshot (own room, own position, own holdings — never another
+// its own Snapshot (its own cell and its own holdings — never another
 // member's live truth) and returns an Intent representing what the monster
 // wants to do, or an error that aborts the pump atomically. The anti-wall-
 // hack contract is structural: Decide receives exactly what the monster

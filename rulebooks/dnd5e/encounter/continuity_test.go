@@ -88,16 +88,17 @@ func vaultChaseHexGate() encounter.ConnectionInput {
 // quirk (W3).
 func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
-	pursuit := &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice}
+	field := encounter.FieldInput{
+		Rooms: []encounter.RoomInput{
+			{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
+			{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: 3}},
+		},
+		Connections: []encounter.ConnectionInput{gate},
+	}
+	pursuit := &pursuitDecider{doorways: doorwaysFrom(field), target: alice}
 	return &encounter.SetupInput{
 		Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{
-				{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
-				{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: 3}},
-			},
-			Connections: []encounter.ConnectionInput{gate},
-		},
+		Field:      field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 1, Y: 1}},
 			// One hex-step from the gate's corridor-side endpoint (4,1) via
@@ -209,7 +210,9 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// last sight of her, not the vault it has never seen.
 	st, p := seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — she left the room")
-	require.Equal(t, "corridor", p.Room)
+	// The corridor is anchored at the origin, so the threshold's absolute
+	// cell is its local one — and the ghost is at the threshold, not the
+	// far side the goblin has never seen.
 	require.Equal(t, 4.0, p.X)
 	require.Equal(t, 1.0, p.Y)
 
@@ -226,7 +229,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			goblin: &pursuitDecider{connections: []encounter.ConnectionInput{vaultChaseHexGate()}, target: alice},
+			goblin: &pursuitDecider{doorways: doorwaysFrom(vaultChaseHexSetup().Field), target: alice},
 		}})
 	require.NoError(t, err, "the suspended chase crosses a process boundary")
 	enc = enc2
@@ -234,7 +237,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 3: the ghost survived the reload")
-	require.Equal(t, "corridor", p.Room)
+	require.Equal(t, 4.0, p.X, "beat 3: still at the threshold — loading never re-derives sight")
 
 	// Re-project alice's CURRENT position on the reloaded encounter — it
 	// must be identical to her last pre-reload position (distance 0,

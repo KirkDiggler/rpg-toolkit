@@ -72,13 +72,17 @@ percepts.
 
 ### You return an intent, not an action
 
-`Intent` is a sealed type — three today:
+`Intent` is a sealed type — two today:
 
 | Intent | Means |
 |---|---|
-| `IntentMoveTo{To}` | walk to a position in my current room |
-| `IntentTraverse{Connection}` | cross a connection I am standing on |
+| `IntentMoveTo{To}` | step to a cell on the map |
 | `IntentHold{}` | do nothing this tick |
+
+`To` is DUNGEON-ABSOLUTE, like everything else a decider is given. There is no
+separate intent for crossing a doorway: a doorway's two cells are adjacent in
+absolute space, so "step through the door" and "step next to me" are the same
+sentence, and the composition works out which mechanism carries it.
 
 You return what you *want*. The composition decides whether it happens and makes
 it happen. This is what keeps a decider testable: it is a pure function from a
@@ -129,9 +133,10 @@ the contract rather than being coded defensively.
 - **Deterministic order.** Monsters act in stable `Members()` order.
 - **A decider error aborts the pump atomically.** No clock advance, no moves, no
   record beats. Return an error only when you genuinely cannot decide.
-- **A rejected move does not abort.** A spatially illegal `IntentMoveTo`, or an
-  `IntentTraverse` naming an unknown connection or one you are not standing on,
-  just means that monster fails to act this tick. Everything else proceeds.
+- **A rejected step does not abort.** A cell no room owns, a cell in another
+  room with no doorway joining it to where you stand, or a step the spatial
+  rules refuse: each just means that monster fails to act this tick. Everything
+  else proceeds.
 - **Sight refreshes once**, after all actions — then one tick beat, then the
   move/traverse beats in decision order.
 - **A monster in a fight is not consulted.** `Pump` is the world thinking, and

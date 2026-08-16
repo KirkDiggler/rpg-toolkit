@@ -47,7 +47,12 @@ func TestVaultChase(t *testing.T) {
 	// gate (static topology, given at construction) and its target
 	// (alice); it never reads encounter state directly — Snapshot +
 	// Holdings + its own construction-time config is all it gets (C2).
-	pursuit := &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice}
+	// The decider is built empty and handed the map once there is one to
+	// hand it: the doorways it needs are the Atlas's, and the Atlas comes
+	// from the encounter it is about to be part of. That ordering IS the
+	// point — a decider takes the same absolute map a host renders, not the
+	// composition's room-shaped topology (rpg-toolkit#1044).
+	pursuit := &pursuitDecider{target: alice}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
@@ -72,6 +77,10 @@ func TestVaultChase(t *testing.T) {
 		},
 	})
 	require.NoError(t, err, "beat 1: the corridor assembles")
+
+	atlas, err := enc.Atlas()
+	require.NoError(t, err, "beat 1: the map exists")
+	pursuit.doorways = atlas.Doorways
 
 	st, _ := seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open corridor")
@@ -99,7 +108,6 @@ func TestVaultChase(t *testing.T) {
 	// vault, which the goblin has never seen at all.
 	st, p := seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — she left the room")
-	require.Equal(t, corridorRoom, p.Room, "beat 2: its ghost holds her LAST-SEEN room")
 	require.Equal(t, 9.0, p.X, "beat 2: at the threshold, not the far side it never saw")
 	require.Equal(t, 5.0, p.Y)
 	st, _ = seen(t, enc, alice, goblin)
@@ -119,15 +127,14 @@ func TestVaultChase(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			goblin: &pursuitDecider{connections: []encounter.ConnectionInput{gate}, target: alice},
+			goblin: &pursuitDecider{doorways: atlas.Doorways, target: alice},
 		}})
 	require.NoError(t, err, "beat 3: the suspended chase crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 3: the ghost survived the reload")
-	require.Equal(t, corridorRoom, p.Room, "beat 3: still at the threshold — loading never re-derives sight")
-	require.Equal(t, 9.0, p.X)
+	require.Equal(t, 9.0, p.X, "beat 3: still at the threshold — loading never re-derives sight")
 
 	// ---- Beat 4: the pursuit traverse ------------------------------------
 	// First pump: the goblin, still in the corridor, walks toward the
@@ -153,8 +160,7 @@ func TestVaultChase(t *testing.T) {
 	// her Current again, at (4,5), where she stopped in beat 2.
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Current, st, "beat 4: the goblin holds alice Current again, having crossed the threshold")
-	require.Equal(t, vaultRoom, p.Room)
-	require.Equal(t, 4.0, p.X)
+	require.Equal(t, 14.0, p.X, "beat 4: vault-local (4,5), anchored at (10,0) — one map")
 	require.Equal(t, 5.0, p.Y)
 
 	// ---- Beat 5: sanctuary, in the far room ------------------------------
