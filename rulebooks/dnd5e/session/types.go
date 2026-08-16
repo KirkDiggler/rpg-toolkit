@@ -111,6 +111,13 @@ type AtlasDoorway struct {
 	To spatial.Position `json:"to"`
 }
 
+// WhereOutput is a member's own placement.
+type WhereOutput struct {
+	// Position is the cell they stand on, in dungeon-absolute space — the same
+	// coordinates the Atlas draws and every verb takes.
+	Position spatial.Position `json:"position"`
+}
+
 // Status reports whether an encounter is still running.
 type Status struct {
 	// Open reports whether the encounter is active.

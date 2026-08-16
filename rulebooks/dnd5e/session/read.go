@@ -23,6 +23,15 @@ type StatusInput struct {
 	Session string
 }
 
+// WhereInput asks where a member stands.
+type WhereInput struct {
+	// Session is the session to look inside.
+	Session string
+
+	// Member is the member whose own placement is being asked for.
+	Member string
+}
+
 // ViewInput asks what one member currently perceives.
 type ViewInput struct {
 	// Session is the session to look inside.
@@ -93,6 +102,51 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 	}
 
 	return projectStatus(enc, status), nil
+}
+
+// Where returns the cell a member stands on, in dungeon-absolute space.
+//
+// A client knows its own cell today only by remembering the last Move it made,
+// which holds until the moment it matters: a reconnect, a fresh tab, a second
+// device, a response it never received. This is the question asked directly.
+//
+// ONE MEMBER'S OWN PLACEMENT, and there is deliberately no read that returns
+// everybody's. A roster of positions would hand a client the cells of members
+// it has never perceived — around a corner, in a room it has not entered,
+// behind a door it has not opened — which is the one thing perception exists to
+// prevent. Where somebody ELSE is, is View's answer, and View gives it only for
+// members the observer actually holds.
+//
+// It is a live read, not a stored one: the position comes from the composition's
+// roster, which projects each member's cell through their room's anchor when
+// asked. A member who has walked is reported where they are now.
+//
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
+// ErrNoEncounter, or ErrNoMember if the member is not in this encounter.
+func (m *Manager) Where(ctx context.Context, in *WhereInput) (*WhereOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("where: %w", ErrNilInput)
+	}
+	if in.Member == "" {
+		return nil, fmt.Errorf("where: %w", ErrNoMemberID)
+	}
+
+	enc, err := m.open(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("where: %w", err)
+	}
+
+	members, err := enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("where: %w", err)
+	}
+
+	for _, member := range members {
+		if string(member.ID) == in.Member {
+			return &WhereOutput{Position: member.Position}, nil
+		}
+	}
+	return nil, fmt.Errorf("where: %q: %w", in.Member, ErrNoMember)
 }
 
 // View returns what one member currently perceives.
