@@ -190,6 +190,15 @@ func kindOf(payload []byte) EventKind {
 		return EventFightStarted
 	case "bubble-dissolved":
 		return EventFightEnded
+	// The two outcome beats. Unlike every other case here, these strings are
+	// not the composition's own vocabulary for a verb it ran — they are the
+	// OutcomeKind a rulebook handed it (encounter's Record), which is why the
+	// mapping is worth a word: adding an outcome kind upstream means adding a
+	// case here, or the new outcome goes out unnamed.
+	case "struck":
+		return EventStruck
+	case "missed":
+		return EventMissed
 	default:
 		return EventUnknown
 	}
