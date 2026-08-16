@@ -329,7 +329,11 @@ func place(
 	// speaks one map, and a room id never has to appear in an input.
 	located, err := scope.enc.Locate(&encounter.LocateInput{Position: at})
 	if err != nil {
-		return nil, fmt.Errorf("no room owns %v: %w", at, ErrBadPosition)
+		// Both wrapped: ErrBadPosition is what a caller matches on, and the
+		// composition's own error keeps WHY — owned by no room, off the grid,
+		// or not an integral cell — which is the difference between a typo
+		// and a fractional coordinate.
+		return nil, fmt.Errorf("no room owns %v: %w: %w", at, ErrBadPosition, err)
 	}
 
 	placed, err := scope.enc.Join(&encounter.JoinInput{

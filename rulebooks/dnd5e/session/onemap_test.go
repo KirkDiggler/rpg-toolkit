@@ -156,6 +156,25 @@ func (s *OneMapSuite) TestAWalkStillDoesNotCrossADoorway() {
 	s.ErrorIs(err, session.ErrBadPosition, "the far side of a doorway is another room, and a walk is one room")
 }
 
+// TestARefusalIsDescribedInTheCallersOwnCoordinates.
+//
+// A broken path is reported with the cell the caller wrote, at both ends. The
+// message used to mix frames — the "from" was room-local and the "to" was
+// absolute — which in this world differs by (40,20) and would send whoever
+// read it looking for a cell nobody named.
+func (s *OneMapSuite) TestARefusalIsDescribedInTheCallersOwnCoordinates() {
+	// Alice stands at (41,21). A jump three cells away is not a walk.
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 44, Y: 24}},
+	})
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, session.ErrBrokenPath)
+
+	s.Contains(err.Error(), "from (41,21)", "the cell she stands on, on the map")
+	s.Contains(err.Error(), "to (44,24)", "the cell the caller asked for, as the caller wrote it")
+}
+
 // TestAWalkIntoTheVoidIsRefused: a cell no room owns is not a step, and the
 // refusal names the same sentinel as the doorway case — both are "that is not
 // a cell you can walk to from here".

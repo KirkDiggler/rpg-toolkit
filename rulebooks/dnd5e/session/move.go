@@ -165,11 +165,12 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	if err := validatePath(scope.enc, encounter.MemberID(in.Member), in.Path); err != nil {
+	walk, err := resolveWalk(scope.enc, encounter.MemberID(in.Member), in.Path)
+	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	res, err := m.runWalk(scope, in.Member, in.Path)
+	res, err := m.runWalk(scope, in.Member, walk)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -266,20 +267,10 @@ type walkResult struct {
 // because the walker is IN a fight and a fight member does not free-roam — the
 // composition would refuse the next step with ErrInBubble — so stopping is a
 // fact about the world rather than a policy about perception.
-func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Position) (*walkResult, error) {
+func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
-	room, _, err := whereIs(scope.enc, encounter.MemberID(member))
-	if err != nil {
-		return nil, err
-	}
-
-	for i, cell := range path {
-		local, err := localTo(scope.enc, room, cell)
-		if err != nil {
-			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(path), err)
-		}
-
+	for i, local := range walk.steps {
 		moved, err := scope.enc.Move(&encounter.MoveInput{
 			Member: encounter.MemberID(member),
 			To:     local,
@@ -288,14 +279,14 @@ func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Posit
 			// Nothing is saved on a mid-walk rejection. The member has really
 			// moved in memory for the steps already taken, but that encounter is
 			// discarded unsaved, so the persisted world is untouched.
-			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(path), translate(err))
+			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(walk.steps), translate(err))
 		}
 
 		// Reported from what the composition says happened, projected back —
 		// not echoed from the input. A step that landed somewhere other than
 		// where it was aimed is a thing worth being able to see.
 		res.steps = append(res.steps, Step{
-			Position: onMap(scope.enc, room, moved.Moved.To),
+			Position: onMap(scope.enc, walk.room, moved.Moved.To),
 			Seq:      moved.Seq,
 		})
 		mergeDiscoveries(res.discovered, projectDiscoveries(moved.IntelDeltas))
@@ -333,7 +324,22 @@ func projectFormed(f *encounter.FormedBubble) *Formed {
 	return out
 }
 
-// validatePath rejects a path that is not a walk, before any of it is walked.
+// resolvedWalk is a path as the composition takes it: the room being walked,
+// and the room-local cell for each step, in order.
+type resolvedWalk struct {
+	room  string
+	steps []spatial.Position
+}
+
+// resolveWalk validates a path whole and resolves it ONCE.
+//
+// Two jobs in one pass, and they belong together. Validation must finish
+// before the first cell is entered (R5): a caller who mis-computed a route
+// wants none of it rather than an arbitrary prefix. Resolution turns each
+// dungeon-absolute cell into the room-local one the composition's Move takes.
+// Doing them separately located every cell twice and read the roster twice per
+// walk — and, worse, left two places free to disagree about which room a cell
+// belongs to.
 //
 // Adjacency is checked with the room's own grid rather than a hand-rolled
 // distance, because the two families disagree about what "one step" means and
@@ -342,34 +348,43 @@ func projectFormed(f *encounter.FormedBubble) *Formed {
 // everywhere except the diagonals, so a wrong formula passes almost every
 // fixture.
 //
-// The restriction is imposed now rather than later on purpose. Loosening a rule
-// is a compatible change; tightening one breaks every host that was relying on
-// the looser behaviour. If a path should ever be allowed to teleport, that can
-// be granted; it could not be taken away.
-func validatePath(enc *encounter.Encounter, member encounter.MemberID, path []spatial.Position) error {
+// The restriction to one room is imposed now rather than later on purpose.
+// Loosening a rule is a compatible change; tightening one breaks every host
+// that was relying on the looser behaviour. If a walk should ever cross a
+// doorway, that can be granted; it could not be taken away.
+func resolveWalk(
+	enc *encounter.Encounter, member encounter.MemberID, path []spatial.Position,
+) (resolvedWalk, error) {
 	room, from, err := whereIs(enc, member)
 	if err != nil {
-		return err
+		return resolvedWalk{}, err
 	}
 
 	grid, err := gridFor(enc, room)
 	if err != nil {
-		return err
+		return resolvedWalk{}, err
 	}
 
-	previous := from
+	// Both frames are tracked: the local one to ask the grid about adjacency,
+	// the absolute one to describe a refusal in the coordinates the caller
+	// actually wrote. A message that mixed them would send whoever reads it
+	// looking for a cell nobody named.
+	walk := resolvedWalk{room: room, steps: make([]spatial.Position, 0, len(path))}
+	previous, previousCell := from, onMap(enc, room, from)
+
 	for i, cell := range path {
-		local, err := localTo(enc, room, cell)
-		if err != nil {
-			return fmt.Errorf("step %d of %d: %w", i+1, len(path), err)
+		local, lerr := localTo(enc, room, cell)
+		if lerr != nil {
+			return resolvedWalk{}, fmt.Errorf("step %d of %d: %w", i+1, len(path), lerr)
 		}
 		if !grid.IsAdjacent(previous, local) {
-			return fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
-				i+1, previous.X, previous.Y, cell.X, cell.Y, ErrBrokenPath)
+			return resolvedWalk{}, fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
+				i+1, previousCell.X, previousCell.Y, cell.X, cell.Y, ErrBrokenPath)
 		}
-		previous = local
+		walk.steps = append(walk.steps, local)
+		previous, previousCell = local, cell
 	}
-	return nil
+	return walk, nil
 }
 
 // whereIs locates a member: which room owns them, and which cell within it.
@@ -411,7 +426,11 @@ func whereIs(enc *encounter.Encounter, member encounter.MemberID) (string, spati
 func localTo(enc *encounter.Encounter, room string, cell spatial.Position) (spatial.Position, error) {
 	located, err := enc.Locate(&encounter.LocateInput{Position: cell})
 	if err != nil {
-		return spatial.Position{}, fmt.Errorf("no room owns (%v,%v): %w", cell.X, cell.Y, ErrBadPosition)
+		// Both wrapped: the sentinel is what a caller matches on, and the
+		// composition's own error says WHICH way the cell was unusable —
+		// owned by nothing, off the grid, or not an integral cell.
+		return spatial.Position{}, fmt.Errorf(
+			"no room owns (%v,%v): %w: %w", cell.X, cell.Y, ErrBadPosition, err)
 	}
 	if located.Room != room {
 		return spatial.Position{}, fmt.Errorf(
