@@ -455,4 +455,9 @@ func (s *AttackTestSuite) TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt() 
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrNoCharacter, "carol is in the roster and not in the repository")
 	s.NotErrorIs(err, session.ErrBadCharacter, "absent is not corrupt")
+
+	// The role noun earns its keep here more than anywhere else: the host asked
+	// alice to swing at bob and gets back a complaint about carol, who it never
+	// named. "participant" is the word that explains why she was read at all.
+	s.Contains(err.Error(), `participant "carol"`, "say which part the missing member was playing")
 }

@@ -70,20 +70,26 @@ func newCallBus() events.EventBus {
 // corrupt one (rpg-toolkit#1057), so the same package answered the same
 // question two different ways depending on which verb a host called. A sentinel
 // a host branches on cannot be restated per call site and stay honest.
-func (m *Manager) fetchCharacterData(ctx context.Context, id string) (*character.Data, error) {
+//
+// role names the part the member is playing — "attacker", "participant",
+// plain "character" — and is the one thing a call site still gets to say for
+// itself. The sentinel is not negotiable; which member of the roster the host
+// should go look at is local knowledge, and castFor in particular reaches for
+// sheets the host never named.
+func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*character.Data, error) {
 	data, err := m.characters.GetCharacter(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("character %q: %w", id, ErrNoCharacter)
+			return nil, fmt.Errorf("%s %q: %w", role, id, ErrNoCharacter)
 		}
-		return nil, fmt.Errorf("character %q: %w", id, err)
+		return nil, fmt.Errorf("%s %q: %w", role, id, err)
 	}
 	if data == nil {
 		// A repository reporting success with no data has violated its
 		// contract. Guessing in either direction — treating it as absent, or
 		// carrying a nil into a loader — is worse than saying so.
 		return nil, fmt.Errorf(
-			"character %q: GetCharacter reported success with no data: %w", id, ErrBadRepository)
+			"%s %q: GetCharacter reported success with no data: %w", role, id, ErrBadRepository)
 	}
 	return data, nil
 }
@@ -102,7 +108,7 @@ func (m *Manager) fetchCharacterData(ctx context.Context, id string) (*character
 func (m *Manager) loadCharacter(
 	ctx context.Context, bus events.EventBus, id string,
 ) (*character.Character, error) {
-	data, err := m.fetchCharacterData(ctx, id)
+	data, err := m.fetchCharacterData(ctx, "character", id)
 	if err != nil {
 		return nil, err
 	}

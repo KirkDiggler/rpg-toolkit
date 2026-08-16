@@ -290,7 +290,7 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 // attach effects to. Two purposes, one stored sheet, and no shared bus between
 // them.
 func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolution.AttackProfile, error) {
-	data, err := m.fetchCharacterData(ctx, attacker)
+	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
 	if err != nil {
 		return resolution.AttackProfile{}, err
 	}
@@ -345,7 +345,7 @@ func (m *Manager) castFor(
 			continue
 		}
 
-		data, err := m.fetchCharacterData(ctx, id)
+		data, err := m.fetchCharacterData(ctx, "participant", id)
 		if err != nil {
 			return nil, err
 		}
