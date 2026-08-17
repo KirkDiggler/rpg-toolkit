@@ -80,7 +80,12 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 		Data:       *in.World,
 		Initiative: m.initiative,
 	}); err != nil {
-		return nil, fmt.Errorf("startsession: %w: %w", ErrInvalidWorld, err)
+		// The reason as TEXT, our sentinel as the only thing to match on. A
+		// blob that will not load fails several modules deep, and every one of
+		// those is replaceable underneath this seam (S2) — see
+		// loadWorldWithBaseline, which refuses the same way for the same
+		// reason.
+		return nil, fmt.Errorf("startsession: %w: %v", ErrInvalidWorld, err)
 	}
 
 	// Refuse to overwrite a session in progress. A miss is the expected path

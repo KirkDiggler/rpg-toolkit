@@ -76,7 +76,7 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 
 	atlas, err := enc.Atlas()
 	if err != nil {
-		return nil, fmt.Errorf("atlas: %w", err)
+		return nil, fmt.Errorf("atlas: %w", translate(err))
 	}
 
 	projected := projectAtlas(atlas)
@@ -98,7 +98,7 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 
 	status, err := enc.Status()
 	if err != nil {
-		return nil, fmt.Errorf("status: %w", err)
+		return nil, fmt.Errorf("status: %w", translate(err))
 	}
 
 	return projectStatus(enc, status), nil
@@ -138,7 +138,7 @@ func (m *Manager) Where(ctx context.Context, in *WhereInput) (*WhereOutput, erro
 
 	members, err := enc.Members()
 	if err != nil {
-		return nil, fmt.Errorf("where: %w", err)
+		return nil, fmt.Errorf("where: %w", translate(err))
 	}
 
 	// Converted once, at the boundary, and compared as the newtype it is —
@@ -281,7 +281,13 @@ func (m *Manager) loadWorldWithBaseline(
 		Initiative: m.initiative,
 	})
 	if err != nil {
-		return nil, 0, fmt.Errorf("%q: %w: %w", encID, ErrInvalidWorld, err)
+		// The reason is kept as TEXT, not as a chain. A blob this seam cannot
+		// reconstitute fails several modules deep — the composition's own
+		// validation, or a leaf's (clock, intel, record) underneath it — and
+		// every one of those is a module we intend to keep replaceable. %v
+		// hands whoever debugs it the whole account and hands a host nothing to
+		// match on but ours (S2).
+		return nil, 0, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
 	}
 	return enc, world.Log.NextSeq, nil
 }
@@ -295,9 +301,23 @@ func (m *Manager) loadWorldWithBaseline(
 // their error handling exactly as surely as leaking a struct would, and
 // nothing in CI would have said a word.
 //
-// Unrecognised errors pass through wrapped rather than being flattened: an
-// error we did not anticipate is more useful with its own message intact than
-// re-labelled as something we do recognise.
+// Unrecognised errors pass through UNCHANGED rather than being flattened. This
+// function adds nothing to them; the calling verb wraps what comes back with
+// its own prefix, which is where "view:" and "move:" come from.
+//
+// That limit is deliberate rather than an oversight. The default arm carries
+// errors that ORIGINATED WITH THE HOST as well as composition ones we did not
+// anticipate — a failing Roller comes back out through a composition verb — and
+// flattening those would break the host's matching on its own errors to protect
+// it from ours. So the guarantee here is that every sentinel this seam can
+// reach has an arm, and the mechanical part of that guarantee lives in the
+// tests: sentinels_test.go over the refusals a caller can drive, and
+// translate_internal_test.go over every arm below (rpg-toolkit#1058).
+//
+// A translated error carries our sentinel ALONE. Wrapping both — fmt.Errorf(
+// "%w: %w", ours, theirs) — reads like generosity and is the leak itself: a
+// host can still match on theirs. Where the inner message is worth keeping, the
+// call site keeps it with %v, which is text rather than a chain.
 func translate(err error) error {
 	switch {
 	case errors.Is(err, encounter.ErrTrimmed):
@@ -312,6 +332,13 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrNoConnection)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
+	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):
+		// Both mean the stored world cannot answer: a field that is defective
+		// or does not hold the room somebody stands in, and a blob that cannot
+		// be reconstituted at all. One sentinel because the host's remedy is
+		// the same either way — this encounter's data is unusable, and the
+		// repair is upstream of anything a caller can retry.
+		return fmt.Errorf("%w", ErrInvalidWorld)
 	case errors.Is(err, encounter.ErrInBubble):
 		return fmt.Errorf("%w", ErrInBubble)
 	case errors.Is(err, encounter.ErrNoBubble):

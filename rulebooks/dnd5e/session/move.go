@@ -333,7 +333,7 @@ func resolveWalk(
 	// version of this did, by asking gridFor to fetch its own.
 	atlas, err := enc.Atlas()
 	if err != nil {
-		return resolvedWalk{}, err
+		return resolvedWalk{}, translate(err)
 	}
 
 	grid, err := gridFrom(atlas, room)
@@ -355,7 +355,12 @@ func resolveWalk(
 
 		located, lerr := enc.Locate(&encounter.LocateInput{Position: cell})
 		if lerr != nil {
-			return resolvedWalk{}, fmt.Errorf("step %d of %d: no room owns (%v,%v): %w: %w",
+			// The composition's account of WHY is kept as text, not as a chain.
+			// Our sentinel is the one a caller matches on; wrapping theirs too
+			// would let a host match on encounter.ErrBadPlacement, which is the
+			// S2 leak the boundary test cannot see — and this is the refusal a
+			// routine pathing mistake actually reaches (rpg-toolkit#1058).
+			return resolvedWalk{}, fmt.Errorf("step %d of %d: no room owns (%v,%v): %w: %v",
 				i+1, len(path), cell.X, cell.Y, ErrBadPosition, lerr)
 		}
 
@@ -406,7 +411,7 @@ func doorwayBetween(atlas encounter.Atlas, from, to spatial.Position) (string, b
 func whereIs(enc *encounter.Encounter, member encounter.MemberID) (string, spatial.Position, error) {
 	members, err := enc.Members()
 	if err != nil {
-		return "", spatial.Position{}, err
+		return "", spatial.Position{}, translate(err)
 	}
 
 	for _, m := range members {

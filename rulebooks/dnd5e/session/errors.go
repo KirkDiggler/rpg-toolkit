@@ -202,6 +202,14 @@ var (
 	// cannot be reconstituted is rejected at the door rather than persisted
 	// and discovered on the next verb — at which point the session would exist
 	// and be permanently unusable.
+	//
+	// It is also the TRANSLATION OF RECORD for a composition-side complaint
+	// about the world itself — a blob that cannot be loaded, or a field that
+	// does not hold the room somebody is standing in — for the reason
+	// ErrNoConnection is the translation of record for a refused crossing: an
+	// inner sentinel must never cross the boundary (S2). One sentinel covers
+	// both because the host's remedy is the same either way. The stored world
+	// is unusable, and the repair is upstream of anything a caller can retry.
 	ErrInvalidWorld = errors.New("invalid encounter data")
 
 	// ErrInBubble is returned when a member is asked to free-roam while they

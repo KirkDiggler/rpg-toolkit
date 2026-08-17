@@ -310,6 +310,37 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	s.NotErrorIs(err, session.ErrBadPosition, "and the cell exists; there is just no way through")
 }
 
+// TestAStepOntoNoCellUsesOurSentinelNotTheirs is
+// TestTrimmedStoryUsesOurSentinelNotTheirs' walk-shaped twin, and it covers the
+// leak channel a routine caller mistake reaches (rpg-toolkit#1058).
+//
+// Pathing one cell too far is arithmetic any client can get wrong — not corrupt
+// state and not a defect here. Until this test existed the refusal carried the
+// composition's own ErrBadPlacement alongside our ErrBadPosition, matchable by
+// errors.Is, so a host handling "off the map" would have been coupled to the
+// module this seam exists to keep replaceable — through the one channel the AST
+// boundary test cannot see.
+func (s *MoveTestSuite) TestAStepOntoNoCellUsesOurSentinelNotTheirs() {
+	s.startCorridor()
+
+	// The hall runs (0,0)-(7,7). Alice steps to its corner, then off the map.
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 0, Y: 0}, {X: -1, Y: -1}},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadPosition, "the caller sees our vocabulary")
+	s.NotErrorIs(err, encounter.ErrBadPlacement,
+		"and must NOT be able to reach the composition's sentinel — a host that matched "+
+			"on it would break the day the composition is replaced")
+
+	// Demoting the inner error must cost its MESSAGE nothing: whoever debugs
+	// this still needs to know it was owned by no room rather than, say, a
+	// fractional hex cell.
+	s.Contains(err.Error(), "owned by no room",
+		"the composition's account of why survives, even though its sentinel does not")
+}
+
 func TestMoveSuite(t *testing.T) {
 	suite.Run(t, new(MoveTestSuite))
 }
