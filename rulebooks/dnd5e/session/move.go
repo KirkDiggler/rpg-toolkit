@@ -15,8 +15,8 @@ import (
 
 // MoveInput walks a member along a path of cells on the map.
 //
-// The path stays inside the room the walker is standing in — see Path — until
-// the slice that makes a doorway crossing an ordinary step.
+// The path may leave the room the walker is standing in, and a doorway is how
+// — see Path.
 type MoveInput struct {
 	// Session is the session to act in.
 	Session string
@@ -40,13 +40,16 @@ type MoveInput struct {
 	// Cells are DUNGEON-ABSOLUTE — the same coordinates the Atlas draws and
 	// every other verb speaks (rpg-project#227).
 	//
-	// A WALK STILL DOES NOT CROSS A DOORWAY. Absolute coordinates make a
-	// crossing expressible for the first time — the far side of a doorway is
-	// simply the next cell along — but expressible is not permitted: a path
-	// that leaves the walker's room is refused with ErrBadPosition, exactly
-	// as it was refused before, when it could not even be written down. That
-	// changes in its own slice, deliberately, so that a real behavior change
-	// is not smuggled in inside a change of dialect.
+	// A WALK CROSSES A DOORWAY, and a crossing is written like any other step:
+	// the far side is simply the next cell along (rpg-toolkit#1048, which is
+	// also where the Traverse verb went). Absolute coordinates made a crossing
+	// expressible, and that slice made it permitted.
+	//
+	// Adjacency is not permission, though. Two rooms may TOUCH without a door
+	// between them, so a step into the next room with no doorway joining it to
+	// the cell the walker stands on is refused with ErrNoCrossing — a refusal a
+	// client reading only the Atlas's cells cannot predict, since the doorway is
+	// in the doorway list or it is nowhere.
 	Path []spatial.Position
 }
 
