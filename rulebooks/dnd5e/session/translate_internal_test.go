@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // sentinels_test.go pins the refusals a caller can DRIVE this seam into. This
@@ -60,6 +61,51 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 			require.NotErrorIs(t, out, tc.inner,
 				"and must not be able to reach the composition's sentinel — matching on it "+
 					"would couple every host to a module we intend to replace (S2)")
+		})
+	}
+}
+
+// TestTranslateResolutionLetsNoResolutionSentinelThrough is the same table over
+// the swing's translation (rpg-toolkit#1066).
+//
+// One of these arms IS reachable from Attack and is driven there, in
+// sentinels_test.go, where a real host mistake produces it. The rest are not:
+// a member with no stored sheet is refused by name before the strike runs, and
+// Attack always builds an input and always hands over a machine, so
+// ErrNoCombatant, ErrNilInput and ErrNoMachine have no path from a verb. They
+// keep their arms because an unmapped sentinel is a leak the moment its path
+// opens, and this is where that promise is checkable without a fake standing in
+// for the module that would have produced it.
+func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
+	cases := []struct {
+		name  string
+		inner error
+		want  error
+	}{
+		// Driven for real in sentinels_test.go: one stored sheet answering to
+		// two member IDs.
+		{"one sheet under two ids", resolution.ErrBadParticipant, ErrBadCharacter},
+		// The backstop: a member with no stored sheet is refused by name
+		// before the strike runs, so this arm is the one that catches a
+		// combatant the cast turned out not to hold.
+		{"combatant not in the cast", resolution.ErrNoCombatant, ErrNoSheet},
+		// Defects here rather than in the call, and unreachable for that
+		// reason.
+		{"no input at all", resolution.ErrNilInput, ErrNilInput},
+		{"nothing to resolve", resolution.ErrNoMachine, ErrNilInput},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := translateResolution(fmt.Errorf("resolution: attach character %q: %w", "alice", tc.inner))
+
+			require.ErrorIs(t, out, tc.want,
+				"the host is answered in this package's vocabulary")
+			require.NotErrorIs(t, out, tc.inner,
+				"and must not be able to reach the resolution module's sentinel — matching on "+
+					"it would couple every host to the module the strike machine lives in (S2)")
+			require.Contains(t, out.Error(), tc.inner.Error(),
+				"while the reason itself survives as text, for whoever debugs it")
 		})
 	}
 }

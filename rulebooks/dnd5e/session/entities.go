@@ -105,6 +105,14 @@ func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*cha
 // The returned character is for this call only. It is never stored on the
 // manager (S1), never held across a suspension, and never returned to the host
 // (S2) — the host named an ID and gets data back, not an object.
+//
+// The loader's own reason is kept as TEXT. The rulebook answers a sheet it
+// cannot reconstitute through rpgerr rather than through sentinel values, so
+// there is nothing for a host to match on TODAY — which is exactly why this
+// reads %v rather than %w. A chain that leaks nothing only because the module
+// underneath happens not to export a sentinel is a leak waiting on somebody
+// else's commit, and S2 is not a promise this package gets to delegate
+// (rpg-toolkit#1066).
 func (m *Manager) loadCharacter(
 	ctx context.Context, bus events.EventBus, id string,
 ) (*character.Character, error) {
@@ -115,7 +123,7 @@ func (m *Manager) loadCharacter(
 
 	ch, err := character.LoadFromData(ctx, data, bus)
 	if err != nil {
-		return nil, fmt.Errorf("character %q: %w: %w", id, ErrBadCharacter, err)
+		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
 	}
 	return ch, nil
 }
@@ -146,11 +154,19 @@ func instantiate(id string, ref string) (*monster.Data, error) {
 	}
 	parsed, err := core.ParseString(ref)
 	if err != nil {
-		// The parse error is carried, not swallowed. core.ParseString reports
-		// WHICH segment was wrong and why, and a caller staring at a bad ref
-		// wants that far more than the string it already passed in. The
-		// sentinel stays first so errors.Is keeps working.
-		return nil, fmt.Errorf("%q: %w: %w", ref, ErrBadRef, err)
+		// The parse error is carried as TEXT, not swallowed and not chained.
+		// core.ParseString reports WHICH segment was wrong and why, and a
+		// caller staring at a bad ref wants that far more than the string it
+		// already passed in — so the message survives in full.
+		//
+		// What does not survive is the chain. A ref crosses this seam as a
+		// STRING, so parsing it with core is an implementation detail, and
+		// carrying core.ErrTooFewSegments out to the host made that detail
+		// matchable — the same leak the composition's and resolution's
+		// sentinels had (rpg-toolkit#1066). ErrBadRef is the whole vocabulary
+		// a caller needs: the ref is not a well-formed module:type:id, and the
+		// text says which part offended.
+		return nil, fmt.Errorf("%q: %w: %v", ref, ErrBadRef, err)
 	}
 	if parsed.Module != refs.Module || parsed.Type != refs.TypeMonsters {
 		return nil, fmt.Errorf("%q: %w", ref, ErrNoLoader)

@@ -230,20 +230,34 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 // The same reason translate exists for the composition's: a sentinel is not a
 // type in a signature, so the boundary test cannot see it, and a host that
 // matched on resolution.ErrBadParticipant would be coupled to a module we
-// intend to keep replaceable. Unrecognised errors pass through wrapped rather
-// than flattened — an error nobody anticipated is more useful with its own
-// message intact.
+// intend to keep replaceable.
+//
+// A translated error carries our sentinel ALONE, and the inner reason rides
+// along as TEXT. Every arm below used to wrap both — fmt.Errorf("%w: %w", ours,
+// theirs) — which reads like generosity and is the leak itself: it satisfies a
+// host matching on ours while leaving theirs just as matchable
+// (rpg-toolkit#1066). The %v keeps the account for whoever debugs it and hands
+// the host nothing to branch on but this package's vocabulary (S2).
+//
+// Unrecognised errors pass through UNCHANGED rather than being flattened, for
+// the reason translate's default arm does: it carries errors that ORIGINATED
+// WITH THE HOST — a failing Roller reaches the strike machine and comes back
+// out through here — and flattening those to protect the host from us would
+// break its matching on its own errors. The guarantee is instead that every
+// resolution sentinel this seam can REACH has an arm, and that guarantee is
+// mechanical: sentinels_test.go drives the refusals a caller can produce, and
+// translate_internal_test.go covers every arm below.
 func translateResolution(err error) error {
 	switch {
 	case errors.Is(err, resolution.ErrBadParticipant):
-		return fmt.Errorf("%w: %w", ErrBadCharacter, err)
+		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
 	case errors.Is(err, resolution.ErrNoCombatant):
 		// Reachable when a member has no stored sheet — an authored monster
 		// standing in a world nobody spawned. Refused earlier by name, so this
 		// arm is the backstop rather than the path.
-		return fmt.Errorf("%w: %w", ErrNoSheet, err)
+		return fmt.Errorf("%w: %v", ErrNoSheet, err)
 	case errors.Is(err, resolution.ErrNilInput), errors.Is(err, resolution.ErrNoMachine):
-		return fmt.Errorf("%w: %w", ErrNilInput, err)
+		return fmt.Errorf("%w: %v", ErrNilInput, err)
 	default:
 		return err
 	}
@@ -289,6 +303,15 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 // live character to read static facts off; resolution needs its own cast to
 // attach effects to. Two purposes, one stored sheet, and no shared bus between
 // them.
+//
+// Both refusals below keep the inner reason as TEXT rather than as a chain, the
+// way translateResolution's arms do. The second is the one that made it worth
+// saying: an empty main hand is refused by resolution, so its ErrBadAttack was
+// riding out under ours and a host could match on it (rpg-toolkit#1066). This
+// is not routed THROUGH translateResolution, deliberately — the compiler
+// answers everything the profile step refuses with ErrBadAttack, including the
+// resolution.ErrNilInput cases, and routing it would silently re-map those onto
+// a different sentinel than the one hosts have been given.
 func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolution.AttackProfile, error) {
 	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
 	if err != nil {
@@ -297,14 +320,14 @@ func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolutio
 
 	loaded, err := character.Load(ctx, data)
 	if err != nil {
-		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %w", attacker, ErrBadCharacter, err)
+		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCharacter, err)
 	}
 
 	profile, err := resolution.AttackFromCharacter(loaded, &resolution.CharacterAttackInput{
 		Slot: character.SlotMainHand,
 	})
 	if err != nil {
-		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %w", attacker, ErrBadAttack, err)
+		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadAttack, err)
 	}
 	return profile, nil
 }

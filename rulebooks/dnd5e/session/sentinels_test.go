@@ -14,14 +14,22 @@ package session_test
 // CI would have said a word.
 //
 // So every refusal this seam can be DRIVEN INTO is checked here against an
-// explicit list of the composition's own sentinels: our vocabulary must be
-// present, and none of theirs may be reachable through errors.Is.
+// explicit list of the sentinels the modules underneath export: our vocabulary
+// must be present, and none of theirs may be reachable through errors.Is.
+//
+// THE COMPOSITION IS NOT THE ONLY MODULE UNDERNEATH. This file was scoped to
+// encounter's sentinels when it was written, and said so — which left the same
+// leak open one module over for a swing, and one more for a ref
+// (rpg-toolkit#1066). The lists below are now every module a verb can be
+// refused BY, because a list that covers one of them reads like a guarantee and
+// is not one.
 //
 // Reachability is the discipline that keeps this honest. A case belongs here
 // only if a caller or a stored blob can really produce it, which is why the
 // list of scenarios below reads like a list of mistakes rather than a list of
 // error values. The paths that exist but cannot be reached from a verb are
-// pinned one layer down, on translate itself, in translate_internal_test.go.
+// pinned one layer down, on the translations themselves, in
+// translate_internal_test.go.
 
 import (
 	"context"
@@ -29,8 +37,10 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -61,6 +71,67 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrTrimmed":       encounter.ErrTrimmed,
 	"encounter.ErrNoInitiative":  encounter.ErrNoInitiative,
 }
+
+// resolutionSentinels is every error value the resolution module exports.
+//
+// Resolution is where a swing actually happens, and it is under S2 for the same
+// reason the composition is: the day the strike machine is replaced, a host
+// that branched on resolution.ErrBadParticipant breaks. translateResolution
+// exists to keep that from being possible, and this list is what makes the
+// claim mechanical rather than remembered.
+//
+// Written out whole rather than reduced to the four translateResolution names,
+// because the arms are the answer to a question this list asks: an unlisted
+// resolution error reaching a host is a leak whether or not anybody wrote an
+// arm for it.
+var resolutionSentinels = map[string]error{
+	"resolution.ErrNilInput":              resolution.ErrNilInput,
+	"resolution.ErrNoInitiative":          resolution.ErrNoInitiative,
+	"resolution.ErrNoRoller":              resolution.ErrNoRoller,
+	"resolution.ErrNoMachine":             resolution.ErrNoMachine,
+	"resolution.ErrBadParticipant":        resolution.ErrBadParticipant,
+	"resolution.ErrBadStep":               resolution.ErrBadStep,
+	"resolution.ErrNoSaver":               resolution.ErrNoSaver,
+	"resolution.ErrBadGate":               resolution.ErrBadGate,
+	"resolution.ErrBadWorld":              resolution.ErrBadWorld,
+	"resolution.ErrBadAttack":             resolution.ErrBadAttack,
+	"resolution.ErrNoCombatant":           resolution.ErrNoCombatant,
+	"resolution.ErrRecurrenceUnsupported": resolution.ErrRecurrenceUnsupported,
+}
+
+// refSentinels is core's identifier vocabulary — what a malformed ref is
+// refused with underneath ErrBadRef.
+//
+// This is the third list, and it is the one whose OWNER is worth stating.
+// ErrBadCharacter and ErrBadRef both sit over the rulebook modules the entity
+// loaders call into, and of those only the ref parser answers with sentinel
+// VALUES: character and monster report through rpgerr's codes, which are not
+// reachable by errors.Is at all. So the matchable set underneath the loaders is
+// core's, and listing it is what this file can actually assert.
+//
+// A ref crosses this seam as a STRING (S2 keeps core.Ref off the surface), so
+// which parser reads it is an implementation detail — and a host that matched
+// on core.ErrTooFewSegments would be coupled to that detail through the one
+// channel the boundary test cannot see. When character or monster grows a
+// sentinel of its own, it is added here and this file will say whether it
+// escapes.
+var refSentinels = map[string]error{
+	"core.ErrEmptyString":       core.ErrEmptyString,
+	"core.ErrInvalidFormat":     core.ErrInvalidFormat,
+	"core.ErrEmptyComponent":    core.ErrEmptyComponent,
+	"core.ErrInvalidCharacters": core.ErrInvalidCharacters,
+	"core.ErrTooManySegments":   core.ErrTooManySegments,
+	"core.ErrTooFewSegments":    core.ErrTooFewSegments,
+}
+
+// innerSentinels is the three lists as one: everything a refusal is checked
+// against, whichever module produced it.
+//
+// One collection rather than three call sites, so a new module underneath this
+// seam is covered by every scenario in this file the moment its list is added
+// here — which is the opposite of how the resolution and ref leaks survived
+// rpg-toolkit#1058.
+var innerSentinels = []map[string]error{compositionSentinels, resolutionSentinels, refSentinels}
 
 // SentinelSuite drives each reachable refusal and checks what a host can match
 // on afterwards.
@@ -96,7 +167,7 @@ func (s *SentinelSuite) SetupTest() {
 
 // refusedInOurVocabulary is the whole assertion of this file, in both
 // directions: the sentinel a host is documented to match on is present, and not
-// one of the composition's is.
+// one of the inner modules' is.
 //
 // Asserting only the first half is what let this class of leak in. A refusal
 // can carry our sentinel and theirs at the same time — errors.Is walks the
@@ -106,11 +177,47 @@ func (s *SentinelSuite) refusedInOurVocabulary(err error, want error) {
 	s.T().Helper()
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, want, "the host is answered in this package's vocabulary")
-	for name, inner := range compositionSentinels {
-		s.NotErrorIs(err, inner,
-			"a host can reach "+name+" through this refusal, and one that matched on it "+
-				"would break the day the composition is replaced (S2)")
+	for _, module := range innerSentinels {
+		for name, inner := range module {
+			s.NotErrorIs(err, inner,
+				"a host can reach "+name+" through this refusal, and one that matched on it "+
+					"would break the day that module is replaced (S2)")
+		}
 	}
+}
+
+// armedDuel rewires this suite onto a world where a swing means something.
+//
+// The map fixture in SetupTest is the wrong shape for one: its cast carries no
+// weapon, and its rooms are anchored to make PATHING mistakes real rather than
+// to put two people within reach of each other. duelWorld is already the
+// smallest world a strike resolves in, so the swings below are the same swings
+// attack_test.go pins rather than a second arrangement that could drift from
+// them.
+//
+// The character repository is the parameter because every case here turns on
+// what the host stored — an empty hand, one sheet under two names — which is
+// the only part of a duel these refusals differ in.
+func (s *SentinelSuite) armedDuel(chars *fakeCharacters) *session.Manager {
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Characters: chars, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+	return mgr
+}
+
+func (s *SentinelSuite) swing(mgr *session.Manager) error {
+	s.T().Helper()
+	_, err := mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob",
+	})
+	return err
 }
 
 // TestAWalkOffTheMap is the headline case, and the reason this file exists.
@@ -261,4 +368,73 @@ func (s *SentinelSuite) TestEndingATurnWhileFreeRoaming() {
 		Session: "sess", Member: "alice",
 	})
 	s.refusedInOurVocabulary(err, session.ErrNotInFight)
+}
+
+// TestASwingWithAnEmptyHand is the resolution module's headline case, and the
+// reason the second list above exists.
+//
+// A character with nothing in the main hand is refused rather than falling back
+// to an unarmed strike, which makes this the first refusal any host meets that
+// comes from the rules rather than from the map — a party member who unequipped
+// and forgot, or a sheet seeded without a weapon. The compiler asks resolution
+// to read the attack off the sheet, resolution says it cannot, and its sentinel
+// rode out under ours.
+func (s *SentinelSuite) TestASwingWithAnEmptyHand() {
+	mgr := s.armedDuel(newFakeCharacters(dwarfCharacter("alice"), armedFighter("bob")))
+
+	err := s.swing(mgr)
+	s.refusedInOurVocabulary(err, session.ErrBadAttack)
+	s.Contains(err.Error(), "alice",
+		"and the refusal still names who could not swing")
+}
+
+// TestOneSheetStoredUnderTwoNames drives the resolution module's own validation
+// — the arm translateResolution was written for.
+//
+// The roster holds two members and the repository answers both with the same
+// sheet, which is a seeding mistake rather than corruption: the bytes are
+// valid, and only their identity is wrong. Resolution refuses because two
+// sheets under one ID would attach twice and be written back once, and the host
+// is entitled to hear that in this package's vocabulary — its own character
+// data is what needs looking at.
+func (s *SentinelSuite) TestOneSheetStoredUnderTwoNames() {
+	chars := newFakeCharacters(armedFighter("alice"))
+	chars.byID["bob"] = armedFighter("alice")
+
+	err := s.swing(s.armedDuel(chars))
+	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+}
+
+// TestASwingWithAnUnreadableSheet is the loader's own refusal on the swing
+// path, kept here as the case that guards the OTHER wrap in the compiler.
+//
+// The rulebook answers this one through rpgerr rather than a sentinel value, so
+// there is nothing for a host to match on today and this case was green from
+// the start. It is here because that is a property of the character module this
+// package does not control: the day a sentinel appears underneath the strict
+// load, this scenario is what notices.
+func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
+	mgr := s.armedDuel(newFakeCharacters(unreadableFighter("alice"), armedFighter("bob")))
+
+	err := s.swing(mgr)
+	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+}
+
+// TestASpawnNamingAMalformedRef is the third module and the second door.
+//
+// A ref crosses this seam as a string, so getting one wrong is the most
+// ordinary mistake a host can make — a bare "skeleton" where the catalog wanted
+// "dnd5e:monsters:skeleton". The parser underneath answers in core's
+// vocabulary, and a host that matched on core.ErrTooFewSegments would be
+// coupled to the fact that this package parses refs with core at all.
+func (s *SentinelSuite) TestASpawnNamingAMalformedRef() {
+	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: "skeleton",
+		Position: spatial.Position{X: 42, Y: 22},
+	})
+	s.refusedInOurVocabulary(err, session.ErrBadRef)
+	s.Contains(err.Error(), "skeleton",
+		"and the refusal still names the ref it could not read")
+	s.Contains(err.Error(), "segments",
+		"and still says what was wrong with it")
 }
