@@ -2156,6 +2156,16 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	// Build the output, splitting executed actions by kind (each output
 	// slice preserves the SAME relative order it had in executed).
+	//
+	// Every cell is projected through the SAME absoluteOf the beats above
+	// used, and for the same reason (rpg-toolkit#1062): one movement is
+	// reported twice — once as a typed output, once as a beat — and a host
+	// reading both must be told the same cell. An executedAction carries
+	// room-local cells because that is what spatial hands back; a room-local
+	// cell is this composition's own bookkeeping, and rooms do not cross the
+	// seam. A move's cells belong to member.Room (a move never changes it);
+	// a crossing's belong to two DIFFERENT rooms, each side projected
+	// through its own anchor.
 	var outputMoves []struct {
 		Member MemberID
 		From   spatial.Position
@@ -2175,7 +2185,11 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 				Member MemberID
 				From   spatial.Position
 				To     spatial.Position
-			}{Member: action.member.ID, From: action.from, To: action.to})
+			}{
+				Member: action.member.ID,
+				From:   e.absoluteOf(action.member.Room, action.from),
+				To:     e.absoluteOf(action.member.Room, action.to),
+			})
 		case actionTraverse:
 			outputTraverses = append(outputTraverses, struct {
 				Member   MemberID
@@ -2183,7 +2197,13 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 				From     spatial.Position
 				ToRoom   string
 				To       spatial.Position
-			}{Member: action.member.ID, FromRoom: action.fromRoom, From: action.from, ToRoom: action.toRoom, To: action.to})
+			}{
+				Member:   action.member.ID,
+				FromRoom: action.fromRoom,
+				From:     e.absoluteOf(action.fromRoom, action.from),
+				ToRoom:   action.toRoom,
+				To:       e.absoluteOf(action.toRoom, action.to),
+			})
 		}
 	}
 

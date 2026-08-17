@@ -418,7 +418,20 @@ type PumpOutput struct {
 	// Tick is the exploration clock's reading after the advance.
 	Tick uint64
 
-	// MonsterMoves contains the successful same-room moves executed by monsters during this pump.
+	// MonsterMoves contains the successful same-room moves executed by monsters
+	// during this pump.
+	//
+	// From and To are DUNGEON-ABSOLUTE — already projected through the room's
+	// origin, so they can be compared with any other absolute coordinate this
+	// composition reports (a [Member]'s Position, an Atlas cell, the position
+	// on this move's own "moved" beat) without the caller redoing the
+	// arithmetic. They are also the frame the decider named the step in: what
+	// the pump reports back is the cell that was asked for.
+	//
+	// No room field, deliberately: an absolute cell does not need one, and
+	// carrying a composition-internal room ID beside a position is the dialect
+	// the seam reshape exists to remove (rpg-toolkit#1062). To recover the
+	// room-local cell, pass the position to [Encounter.Locate].
 	MonsterMoves []struct {
 		Member MemberID
 		From   spatial.Position
@@ -430,6 +443,12 @@ type PumpOutput struct {
 	// doorway. A step that could not be taken does not appear here: a cell in
 	// another room with no doorway joining it to where the monster stands is
 	// silently skipped, matching MonsterMoves' spatial-rejection contract.
+	//
+	// From and To are DUNGEON-ABSOLUTE, exactly as MonsterMoves' are — and here
+	// the two sides are projected through DIFFERENT anchors, since a crossing's
+	// departure cell belongs to FromRoom and its arrival cell to ToRoom. On the
+	// map the pair is simply two adjacent cells (W3), which is the whole point:
+	// a crossing reads like an ordinary step.
 	MonsterTraverses []struct {
 		Member   MemberID
 		FromRoom string

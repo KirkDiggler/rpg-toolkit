@@ -1164,13 +1164,159 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	s.Equal("room-a", out.MonsterTraverses[0].FromRoom)
 	s.Equal(spatial.Position{X: 9, Y: 5}, out.MonsterTraverses[0].From)
 	s.Equal("room-b", out.MonsterTraverses[0].ToRoom)
-	s.Equal(spatial.Position{X: 0, Y: 5}, out.MonsterTraverses[0].To)
+	// The arrival cell as the decider named it: room-b's local (0,5) is
+	// (10,5) on the map, and what the pump reports is the cell the decider
+	// asked for, not a room-local one it would have to re-anchor.
+	s.Equal(spatial.Position{X: 10, Y: 5}, out.MonsterTraverses[0].To)
 	s.Empty(out.MonsterMoves, "this is a traverse, not a move")
 
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
 	s.Equal("room-b", members[0].Room)
+}
+
+// TestPumpReportsMovementOnTheMap is the discriminating probe for
+// rpg-toolkit#1062: NEITHER room is anchored at the origin, so a room-local
+// coordinate and its absolute one differ in every single assertion below.
+//
+// Every other fixture in this file anchors room-a at (0,0), which made a
+// room-local report indistinguishable from an absolute one for a same-room
+// move and for a crossing's departure cell — the frame was pinned by
+// coincidence, not by a test. Here the coincidence is gone: the prowler
+// walks within a room anchored at (40,20) and then crosses into one anchored
+// at (50,20), and the pump's report is checked against BOTH the map and the
+// beat that describes the same movement.
+//
+// The beat cross-check is the point. Pump reports one movement twice — once
+// as a typed output a host reads, once as a beat a host renders — and the two
+// must be the same cell. They were not: the beat projected and the output did
+// not, so a host that trusted both drew the monster in two places the moment a
+// room stopped sitting at the origin.
+func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
+	prowler := core.EntityID("prowler")
+	const (
+		cellar = "cellar"
+		shrine = "shrine"
+	)
+
+	// cellar occupies absolute x:[40,49], shrine x:[50,59] — disjoint (W2) —
+	// and the door's endpoints, cellar-local (9,5) and shrine-local (0,5),
+	// land on absolute (49,25) and (50,25): adjacent cells (W3).
+	door := encounter.ConnectionInput{
+		ID: "cellar-door", From: cellar, To: shrine,
+		FromPosition: spatial.Position{X: 9, Y: 5},
+		ToPosition:   spatial.Position{X: 0, Y: 5},
+	}
+	// Both steps are named in absolute space, which is the only space a
+	// decider has spoken since rpg-toolkit#1044: walk to the threshold, then
+	// walk to the cell beyond it.
+	patrol := &patrolDecider{positions: []spatial.Position{
+		{X: 49, Y: 25}, {X: 50, Y: 25},
+	}}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: cellar, Width: 10, Height: 10, Origin: spatial.Position{X: 40, Y: 20}},
+				{ID: shrine, Width: 10, Height: 10, Origin: spatial.Position{X: 50, Y: 20}},
+			},
+			Connections: []encounter.ConnectionInput{door},
+		},
+		Members: []encounter.MemberInput{
+			// cellar-local (3,5) — absolute (43,25).
+			{ID: prowler, Kind: encounter.KindMonster, Room: cellar,
+				Position: spatial.Position{X: 3, Y: 5}, Decider: patrol},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// ---- The same-room move ------------------------------------------------
+	out1, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().Len(out1.MonsterMoves, 1)
+	s.Equal(prowler, out1.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 43, Y: 25}, out1.MonsterMoves[0].From,
+		"it departs from (43,25) on the map — cellar-local (3,5) is not an answer without the room")
+	s.Equal(spatial.Position{X: 49, Y: 25}, out1.MonsterMoves[0].To,
+		"and arrives at the cell the decider named, in the frame the decider named it")
+	s.Equal(out1.MonsterMoves[0].To, s.movedBeatPosition(enc, prowler, out1.Seqs),
+		"the moved beat and the typed output describe ONE movement")
+
+	// ---- The crossing ------------------------------------------------------
+	out2, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().Len(out2.MonsterTraverses, 1)
+	s.Equal(prowler, out2.MonsterTraverses[0].Member)
+	s.Equal(cellar, out2.MonsterTraverses[0].FromRoom)
+	s.Equal(shrine, out2.MonsterTraverses[0].ToRoom)
+	s.Equal(spatial.Position{X: 49, Y: 25}, out2.MonsterTraverses[0].From,
+		"the departure cell is the cellar-side threshold, projected through the CELLAR's anchor")
+	s.Equal(spatial.Position{X: 50, Y: 25}, out2.MonsterTraverses[0].To,
+		"and the arrival cell through the SHRINE's — the two sides of a doorway have different anchors")
+	s.Equal(out2.MonsterTraverses[0].To, s.traversedBeatPosition(enc, prowler, out2.Seqs),
+		"the traversed beat and the typed output describe ONE crossing")
+
+	// And the map agrees with both: Members() has spoken absolute since the
+	// seam reshape, so a host comparing a move's destination against a member's
+	// position must find them equal without redoing any arithmetic.
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	s.Require().Len(members, 1)
+	s.Equal(shrine, members[0].Room)
+	s.Equal(out2.MonsterTraverses[0].To, members[0].Position,
+		"where the pump says it went is where the field says it stands")
+}
+
+// movedBeatPosition reads the position off the "moved" beat this member
+// recorded among the given seqs — the beat half of the one-movement-one-frame
+// claim TestPumpReportsMovementOnTheMap makes.
+func (s *PumpTestSuite) movedBeatPosition(
+	enc *encounter.Encounter, member core.EntityID, seqs []uint64,
+) spatial.Position {
+	return s.beatPosition(enc, member, seqs, "moved")
+}
+
+// traversedBeatPosition is movedBeatPosition's sibling for a doorway crossing.
+func (s *PumpTestSuite) traversedBeatPosition(
+	enc *encounter.Encounter, member core.EntityID, seqs []uint64,
+) spatial.Position {
+	return s.beatPosition(enc, member, seqs, "traversed")
+}
+
+// beatPosition finds the one beat of the given kind naming this member within
+// seqs and returns the position it carries, failing the test if there is not
+// exactly one.
+func (s *PumpTestSuite) beatPosition(
+	enc *encounter.Encounter, member core.EntityID, seqs []uint64, kind string,
+) spatial.Position {
+	s.T().Helper()
+	wanted := make(map[uint64]bool, len(seqs))
+	for _, seq := range seqs {
+		wanted[seq] = true
+	}
+	story, err := enc.Story(&encounter.StoryInput{Audience: member, AfterSeq: 0})
+	s.Require().NoError(err)
+
+	var found []spatial.Position
+	for _, entry := range story {
+		if !wanted[entry.Seq] {
+			continue
+		}
+		var beat struct {
+			Beat     string           `json:"beat"`
+			Member   string           `json:"member"`
+			Position spatial.Position `json:"position"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat.Beat == kind && beat.Member == string(member) {
+			found = append(found, beat.Position)
+		}
+	}
+	s.Require().Len(found, 1, "expected exactly one %q beat for %s in this pump", kind, member)
+	return found[0]
 }
 
 // TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep pins the silent skip for the
@@ -1402,7 +1548,9 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	s.Equal(goblinID, out2.MonsterTraverses[0].Member)
 	s.Equal("room-a", out2.MonsterTraverses[0].FromRoom)
 	s.Equal("room-b", out2.MonsterTraverses[0].ToRoom)
-	s.Equal(spatial.Position{X: 0, Y: 5}, out2.MonsterTraverses[0].To)
+	// room-b is anchored at (10,0), so the arrival cell on the map is
+	// (10,5) — the same cell the traversed beat carries.
+	s.Equal(spatial.Position{X: 10, Y: 5}, out2.MonsterTraverses[0].To)
 
 	// The monster arrives in alice's room and, since THIS pump's own
 	// refreshSight ran AFTER the traverse, already holds her Current.
