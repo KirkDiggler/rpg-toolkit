@@ -27,6 +27,12 @@ type MoveInput struct {
 	// Path is the cells to walk through, in order, each adjacent to the last
 	// and the first adjacent to where the member currently stands.
 	//
+	// ADJACENT, not merely within one cell: a step onto the cell the walker has
+	// just reached is refused with ErrBadPosition rather than recorded as a
+	// movement of no distance. Revisiting a cell is fine — a there-and-back
+	// walks genuinely both ways — so it is only the step that goes nowhere that
+	// is refused.
+	//
 	// A path, not a destination. The caller says where to walk; what actually
 	// happened comes back as Steps, which may be shorter. A single-cell path is
 	// the ordinary case and entirely legal.
@@ -110,8 +116,9 @@ type MoveOutput struct {
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrEmptyPath,
 // ErrBrokenPath for a path with a gap in it, ErrNoSession, ErrNoEncounter,
-// ErrNoMember, ErrClosed, ErrBadPosition for a cell no room owns OR a cell in
-// a room other than the walker's, or ErrSaveFailed with a populated report.
+// ErrNoMember, ErrClosed, ErrBadPosition for a cell no room owns OR a cell the
+// walker is already standing on, ErrNoCrossing for a step into another room
+// with no doorway joining it, or ErrSaveFailed with a populated report.
 func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("move: %w", ErrNilInput)
@@ -314,6 +321,11 @@ type resolvedWalk struct {
 // both families survives translation, so an absolute pair is adjacent or not
 // regardless of which room's grid is asked.
 //
+// Adjacency is also not sufficient, in the other direction: a cell is adjacent
+// to ITSELF under every family's Distance <= 1, so the zero-distance step needs
+// refusing by name rather than falling out of the distance check
+// (rpg-toolkit#1060).
+//
 // A step MAY leave the room the walker is in, and that is the only way it may
 // leave: through a doorway joining the cell they stand on to the one they are
 // stepping to (rpg-toolkit#1048). Adjacency alone is not permission — W2 lets
@@ -348,6 +360,26 @@ func resolveWalk(
 	here, hereRoom := onMap(enc, room, from), room
 
 	for i, cell := range path {
+		if cell == here {
+			// A step of zero distance is not a step (rpg-toolkit#1060). Nothing
+			// downstream would have caught it: every grid family reads
+			// adjacency as Distance <= 1, so zero passes the check below, and
+			// the composition's placement explicitly permits the mover's own
+			// cell. The no-op then went the whole way — a genuine `moved` beat
+			// recorded and persisted, sight refreshed, EventMoved fanned out to
+			// every client — for a movement that never happened, and free-roam
+			// has no movement budget to notice the discrepancy later.
+			//
+			// Compared against HERE, which advances with the walk, so [A,B,B]
+			// is caught at its second B rather than only at the path's first
+			// cell. [A,B,A] stays legal and must: a there-and-back moves
+			// genuinely at every step, and a walker may retrace their route as
+			// often as they like. It is zero DISTANCE that is the phantom, not
+			// a repeated cell.
+			return resolvedWalk{}, fmt.Errorf("step %d of %d: already standing on (%v,%v): %w",
+				i+1, len(path), cell.X, cell.Y, ErrBadPosition)
+		}
+
 		if !grid.IsAdjacent(here, cell) {
 			return resolvedWalk{}, fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
 				i+1, here.X, here.Y, cell.X, cell.Y, ErrBrokenPath)
