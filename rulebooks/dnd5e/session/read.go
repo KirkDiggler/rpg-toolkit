@@ -301,8 +301,11 @@ func (m *Manager) loadWorldWithBaseline(
 // their error handling exactly as surely as leaking a struct would, and
 // nothing in CI would have said a word.
 //
-// Unrecognised errors pass through wrapped rather than being flattened, and
-// that is a deliberate limit rather than an oversight. The default arm carries
+// Unrecognised errors pass through UNCHANGED rather than being flattened. This
+// function adds nothing to them; the calling verb wraps what comes back with
+// its own prefix, which is where "view:" and "move:" come from.
+//
+// That limit is deliberate rather than an oversight. The default arm carries
 // errors that ORIGINATED WITH THE HOST as well as composition ones we did not
 // anticipate — a failing Roller comes back out through a composition verb — and
 // flattening those would break the host's matching on its own errors to protect
