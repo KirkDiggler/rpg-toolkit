@@ -119,7 +119,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 
 	roster, err := scope.enc.Members()
 	if err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
+		return nil, fmt.Errorf("attack: %w", translate(err))
 	}
 	kinds := map[string]encounter.MemberKind{}
 	for _, member := range roster {

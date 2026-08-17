@@ -329,11 +329,13 @@ func place(
 	// speaks one map, and a room id never has to appear in an input.
 	located, err := scope.enc.Locate(&encounter.LocateInput{Position: at})
 	if err != nil {
-		// Both wrapped: ErrBadPosition is what a caller matches on, and the
-		// composition's own error keeps WHY — owned by no room, off the grid,
-		// or not an integral cell — which is the difference between a typo
-		// and a fractional coordinate.
-		return nil, fmt.Errorf("no room owns %v: %w: %w", at, ErrBadPosition, err)
+		// ErrBadPosition is what a caller matches on, and the composition's own
+		// error keeps WHY — owned by no room, off the grid, or not an integral
+		// cell — which is the difference between a typo and a fractional
+		// coordinate. That account is kept as TEXT: wrapping it too would let a
+		// host match on encounter.ErrBadPlacement, which is the leak S2 exists
+		// to prevent and the one no AST test can see (rpg-toolkit#1058).
+		return nil, fmt.Errorf("no room owns %v: %w: %v", at, ErrBadPosition, err)
 	}
 
 	placed, err := scope.enc.Join(&encounter.JoinInput{
@@ -506,7 +508,7 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		Initiative: m.initiative,
 	})
 	if err != nil {
-		return fmt.Errorf("%q: %w: %w", scope.encounter, ErrInvalidWorld, err)
+		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
 	}
 	scope.enc = enc
 	return nil
