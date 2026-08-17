@@ -148,6 +148,25 @@ func (p *continuityProjector) project(member, verb, room string, pos spatial.Pos
 	return out.Position
 }
 
+// locate is project's sibling for a position the composition ALREADY
+// reports in dungeon-absolute space — a pump's monster move or doorway
+// crossing (rpg-toolkit#1062). It resolves the cell back to its owning
+// room through Locate (project's exact inverse), writes the SAME
+// transcript row project would have written for that room-local cell,
+// and returns the absolute position unchanged.
+//
+// Reading the reported cell back through Locate is what makes a
+// room-local value visible: a room-local cell either resolves to the
+// WRONG room or to no room at all, and the transcript row says which.
+func (p *continuityProjector) locate(member, verb string, absolute spatial.Position) spatial.Position {
+	p.t.Helper()
+	out, err := p.enc.Locate(&encounter.LocateInput{Position: absolute})
+	require.NoError(p.t, err, "%s %s: the reported cell must be an absolute cell some room owns", member, verb)
+	p.transcript = append(p.transcript, fmt.Sprintf("%s %s: %s(%g,%g) -> absolute(%g,%g)",
+		member, verb, out.Room, out.Position.X, out.Position.Y, absolute.X, absolute.Y))
+	return absolute
+}
+
 // TestVaultChaseAbsoluteContinuity is the wave's payoff scene (#929 T4):
 // W2 + W3 + the local/absolute bridge, proven as ONE property — a
 // member's path, projected into dungeon-absolute space, is continuous
@@ -249,15 +268,22 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	pumpOut1, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 4: the pursuit resumes")
 	require.Len(t, pumpOut1.MonsterMoves, 1, "beat 4: the goblin steps toward the threshold")
+	// The pump reports where it walked on the MAP — no room needed to read
+	// it, and no arithmetic to redo (rpg-toolkit#1062). The corridor is
+	// anchored at the origin, so this one cell reads the same either way;
+	// the crossing below is where the two frames part company.
 	require.Equal(t, spatial.Position{X: 4, Y: 1}, pumpOut1.MonsterMoves[0].To)
-	goblinPath = append(goblinPath, proj.project(string(goblin), "move", "corridor", pumpOut1.MonsterMoves[0].To))
+	goblinPath = append(goblinPath, proj.locate(string(goblin), "move", pumpOut1.MonsterMoves[0].To))
 
 	pumpOut2, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 4: the goblin follows her through")
 	require.Len(t, pumpOut2.MonsterTraverses, 1, "beat 4: the goblin traverses the gate")
 	require.Equal(t, "vault", pumpOut2.MonsterTraverses[0].ToRoom)
-	require.Equal(t, spatial.Position{X: -5, Y: -2}, pumpOut2.MonsterTraverses[0].To)
-	goblinPath = append(goblinPath, proj.project(string(goblin), "arrive via gate", "vault", pumpOut2.MonsterTraverses[0].To))
+	// vault-local (-5,-2) through the vault's (10,3) anchor: the same
+	// absolute cell alice's own Traverse projected to, and the same cell
+	// the traversed beat carries.
+	require.Equal(t, spatial.Position{X: 5, Y: 1}, pumpOut2.MonsterTraverses[0].To)
+	goblinPath = append(goblinPath, proj.locate(string(goblin), "arrive via gate", pumpOut2.MonsterTraverses[0].To))
 
 	// ---- Beat 5: sanctuary ------------------------------------------------
 	for _, to := range []spatial.Position{{X: -3, Y: -2}, {X: -2, Y: -2}} {

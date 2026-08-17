@@ -154,7 +154,12 @@ func TestVaultChase(t *testing.T) {
 	require.Equal(t, goblin, pumpOut2.MonsterTraverses[0].Member)
 	require.Equal(t, corridorRoom, pumpOut2.MonsterTraverses[0].FromRoom)
 	require.Equal(t, vaultRoom, pumpOut2.MonsterTraverses[0].ToRoom)
-	require.Equal(t, spatial.Position{X: 0, Y: 5}, pumpOut2.MonsterTraverses[0].To)
+	// The arrival cell on the MAP: vault-local (0,5) through the vault's
+	// (10,0) anchor. The same cell the traversed beat carries — one
+	// movement cannot be reported in two frames (rpg-toolkit#1062).
+	require.Equal(t, spatial.Position{X: 10, Y: 5}, pumpOut2.MonsterTraverses[0].To)
+	require.Equal(t, spatial.Position{X: 9, Y: 5}, pumpOut2.MonsterTraverses[0].From,
+		"the departure cell is the corridor-side threshold, on the map")
 
 	// It's in her room now — this pump's own refreshSight already shows
 	// her Current again, at (4,5), where she stopped in beat 2.

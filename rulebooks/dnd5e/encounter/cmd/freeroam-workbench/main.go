@@ -428,7 +428,10 @@ func main() {
 			}
 			fmt.Printf("  tick %d", out.Tick)
 			for _, mv := range out.MonsterMoves {
-				fmt.Printf("; %s prowls (%g,%g)->(%g,%g)", mv.Member, mv.From.X, mv.From.Y, mv.To.X, mv.To.Y)
+				// Absolute cells, same as the atlas above prints — a prowl in
+				// the ossuary (anchored at (12,0)) reads on the same map as
+				// one in the crypt (rpg-toolkit#1062).
+				fmt.Printf("; %s prowls (%g,%g)->(%g,%g) on the map", mv.Member, mv.From.X, mv.From.Y, mv.To.X, mv.To.Y)
 			}
 			fmt.Println()
 			if out.Outcome != nil {
