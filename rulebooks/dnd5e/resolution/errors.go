@@ -70,10 +70,13 @@ var (
 
 	// ErrBadCost indicates a cost that does not describe a price anybody could
 	// be charged — one that names no payer, or one whose profile is keyed to a
-	// currency no ledger holds. Refused at the door before the world is loaded,
-	// and kept distinct from ErrCannotPay on purpose: a malformed declaration is
-	// content or wiring being wrong, and translating it into "you are out of
-	// actions" would send a caller looking at the wrong sheet.
+	// currency no ledger holds. Refused at the door before the world is loaded.
+	//
+	// Kept distinct from [ErrCannotPay] on purpose, and this is the whole reason
+	// there are two: A MALFORMED PROFILE MUST NOT REACH A PLAYER AS "OUT OF
+	// ACTIONS". One is content or wiring being wrong and wants a developer; the
+	// other is an actor who spent what they had and wants a different verb. A
+	// single sentinel would send the first one looking at the wrong sheet.
 	ErrBadCost = errors.New("resolution: invalid cost")
 
 	// ErrNoPayer indicates a cost naming somebody this cast cannot charge —

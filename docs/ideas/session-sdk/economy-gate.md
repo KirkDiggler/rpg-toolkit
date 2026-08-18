@@ -299,6 +299,40 @@ what it wants" (`step.go:37-42`).
 identical technique: keep `Pay` where a machine does not import it, and the
 denial is a compile error rather than a code-review note.
 
+> **Correction — 2026-08-18, from E2's census ([#1094][e2], PR [#1096][e2pr]).**
+> The paragraph above and the *enforcement* row of the table are **wrong about
+> the ledger**, and the difference matters because it is the difference between
+> a guarantee and a habit.
+>
+> The bus's denial is structural and stays structural: `Gather`'s workings are
+> unexported and a machine cannot construct a step at all, so reaching the bus
+> is a compile error. **The ledger has no equivalent seal**, and the reason is
+> shape D itself. `drive` hands the machine `*Participants`
+> (`resolution/step.go:103`), the `*character.Character` values in it satisfy
+> `combat.Ledger` (`character/ledger.go:21`), and `combat.Pay` is an ordinary
+> exported function in a package anything may import. So "keep `Pay` where a
+> machine does not import it" describes no achievable arrangement: **the sheets
+> are the ledger, and the machine already holds them** — which is the same fact
+> D was chosen for, working against the denial rather than for it.
+>
+> **What E2 ships is the checkable half**, and `resolution/doc.go` says that
+> rather than repeating the claim above: the runner pays, no machine in the
+> package reads or writes an economy, and both are held by review and by test
+> rather than by the compiler. It becomes structural only behind a **read-only
+> cast view** — a change to *what a machine is handed*, not to where the debit
+> is called from — which is now a **named gap** rather than a property anyone
+> may rely on.
+>
+> **No falsifier fired and the ruling is unaffected.** The door still pays, the
+> runner still spends, and nothing in E2 needed the structural denial to be
+> true — it needed only that no machine *does* spend, which is what was built.
+> The correction lands here rather than in a side note because this doc's own
+> practice is to name what would overturn it: a DECIDED record carrying a false
+> load-bearing claim is worse than one carrying a dated correction.
+
+[e2]: https://github.com/KirkDiggler/rpg-toolkit/issues/1094
+[e2pr]: https://github.com/KirkDiggler/rpg-toolkit/pull/1096
+
 ### The runner already does this — verified, not asserted
 
 The claim that "the runner interprets yielded steps" is not aspirational. It is
@@ -688,7 +722,11 @@ Kirk, ruling on the shape above:
 3. **Machines yield; the runner spends.** No machine touches the ledger. It is
    denied to them by construction, exactly as ADR-0038 denies them the bus — keep
    `Pay` where a machine cannot import it, and the denial is a compile error
-   rather than a review note.
+   rather than a review note. **Corrected 2026-08-18** — see the
+   correction above the *runner already does this* section. The ledger's denial
+   is a checkable discipline rather than a compile error, and stays one until a
+   read-only cast view exists. The ruling — no machine spends — stands exactly
+   as written; only its claimed enforcement mechanism was wrong.
 4. **Debits ride answers.** Every candidate surviving *interested ∩ affordable*
    carries an answering policy. **auto ≡ decider**: a zero-latency window, posed
    and answered in the same runner pass, debited inline. **ask**: a `Pose` window

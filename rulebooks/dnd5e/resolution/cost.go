@@ -50,12 +50,16 @@ type Cost struct {
 	// and charges the bank exactly as it was stored.
 	//
 	// Nil is a legal statement rather than a missing capability, and the
-	// difference from rpg-toolkit#1033's roller is that nil INVENTS nothing: a
-	// caller who omits it gets the stored bank, and once that bank is empty
-	// they get a refusal. The failure is loud and it is never a free action,
-	// which is what makes the omission safe to allow. What this package will
-	// not do is guess a turn — see [Turn] for why neither half is derivable
-	// here.
+	// difference from rpg-toolkit#1033's roller is that nil INVENTS nothing.
+	// THE FAILURE DIRECTION IS THE WHOLE ARGUMENT FOR ALLOWING IT: forgetting
+	// this field yields refusals, never free actions. A caller who omits it
+	// gets the bank exactly as stored, and once that bank is empty every ask is
+	// refused — loudly, and pointing at the missing wiring. #1033's nil failed
+	// the other way, quietly becoming real randomness that looked like a
+	// working capability.
+	//
+	// What this package will not do is guess a turn — see [Turn] for why
+	// neither half of one is derivable here.
 	Turn *Turn
 }
 
