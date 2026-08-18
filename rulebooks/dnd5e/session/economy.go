@@ -152,6 +152,10 @@ func (m *Manager) priceSwing(
 // and is forbidden from reading a turn out of the world it is handed
 // ([resolution.Turn]). So the seam that knows both is the one that lights it.
 //
+// Stated as the rule it is: THE SESSION LIGHTS THE SHEET WHEN AN ACTOR ON THE
+// FIGHT CLOCK FIRST ACTS. Not when the bubble forms, because nothing loads the
+// sheets then; not for a free-roaming actor, because there is no turn to light.
+//
 // # Lit at the first ask, not pushed at the boundary
 //
 // Which is [character.RefreshForTurn]'s own argument, reused: "the sheet may not
