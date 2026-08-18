@@ -74,17 +74,28 @@ type AttackOutput struct {
 // which is its caller, and it earns its shape then. The same discipline
 // [DissolveCause] uses for defeat.
 //
-// Main hand, one-handed, melee. Two-handed grips and the off-hand swing are
-// the compiler's own named gaps and arrive with the economy that decides when
-// a second swing is allowed at all.
+// Main hand, one-handed, melee. Two-handed grips and the off-hand swing are the
+// compiler's own named gaps, and they did NOT arrive with the economy the way
+// this paragraph used to predict: the economy decides how many swings a turn
+// buys, and what a two-handed grip does to one is a question for whoever
+// compiles the attack rather than for whoever prices it.
 //
-// # Nothing spends
+// # A swing costs something, in a fight
 //
-// A character can attack as many times in a turn as the caller asks. That is a
-// KNOWN GAP, not a ruling that attacks are free: the thing that spends is an
-// economy machine that sits above this one and does not exist. It is named at
-// the one place it will go — see the comment at the resolution call below —
-// and pinned by TestNothingSpendsYet so it cannot be mistaken for a decision.
+// A character in a fight pays for the swing before it is resolved: the first in
+// a turn takes the Attack action, and what that action banks is what the swings
+// after it spend. A level-1 fighter therefore gets one swing per turn and a
+// level-5 fighter gets two, and the swing after that is refused with
+// [ErrCannotAfford] naming the currency that ran out.
+//
+// The price is compiled here and charged by resolution's door, before the
+// machine starts — so a refused swing resolves nothing, damages nobody, and
+// writes nothing at all. See [Manager.priceSwing] for what a turn costs and
+// [costOfSwing] for how one price is made out of the rulebook's two.
+//
+// IN FREE ROAM IT COSTS NOTHING, which is a ruling rather than the old gap: the
+// action economy is a fight's economy, and a member on the world clock has no
+// turn to spend a turn's slots from. TestFreeRoamChargesNothing pins it.
 //
 // # How it runs, and why the order is not a style choice
 //
@@ -113,8 +124,8 @@ type AttackOutput struct {
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet, ErrNoCharacter,
-// ErrBadCharacter, ErrBadRepository, ErrBadAttack, ErrClosed, or ErrSaveFailed
-// with a populated report.
+// ErrBadCharacter, ErrBadRepository, ErrBadAttack, ErrCannotAfford, ErrBadCost,
+// ErrClosed, or ErrSaveFailed with a populated report.
 //
 // ErrNoCharacter and ErrBadCharacter mean here exactly what they mean
 // everywhere else in this package: the repository does not hold that sheet,
@@ -172,29 +183,37 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		}
 	}
 
-	profile, err := m.compileAttack(ctx, in.Attacker)
+	sheet, profile, err := m.compileAttack(ctx, in.Attacker)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
-	cast, err := m.castFor(ctx, scope, roster)
+	// THE ONE PLACE A SPEND GOES, and it is the place its own comment predicted.
+	// The economy turned out not to need a machine above this call: the ruling
+	// (docs/ideas/session-sdk/economy-gate.md) put the price on Input as DATA and
+	// the debit at resolution's door, so what belongs here is compiling what this
+	// actor's swing costs — which is a question about a sheet, and this is where
+	// the sheets are. Nothing persistent or wire-shaped assumed attacks were
+	// free, and nothing had to migrate.
+	price, err := m.priceSwing(ctx, scope, in.Attacker, sheet)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
-	// THE ONE PLACE A SPEND WILL GO. An economy machine belongs above this
-	// call: it chooses what the actor is doing, spends the action or bonus
-	// action that buys it, and requests the strike below. Today nothing does,
-	// so nothing is spent — the strike runs directly. When the economy lands
-	// (its home is the combat package, whose ActionEconomy vocabulary already
-	// exists), the machine handed to Resolve becomes that one, and this line
-	// is where it changes. Nothing persistent or wire-shaped assumes attacks
-	// are free, so that change costs no migration.
+	// The readied sheet goes into the cast rather than the stored one: it is the
+	// sheet whose turn was just lit or refilled, and the door is about to charge
+	// exactly that bank. See swingPrice for why the two travel together.
+	cast, err := m.castFor(ctx, scope, roster, price.payer)
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+
 	out, err := resolution.Resolve(ctx, &resolution.Input{
 		World:        scope.enc.ToData(),
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
+		Cost:         price.cost,
 		Machine: resolution.NewStrike(&resolution.StrikeInput{
 			AttackerID: in.Attacker,
 			TargetID:   in.Target,
@@ -310,6 +329,20 @@ func reportUnrecorded(scope *writeScope, err error) error {
 // translate_internal_test.go covers every arm below.
 func translateResolution(err error) error {
 	switch {
+	case errors.Is(err, resolution.ErrCannotPay):
+		// The PLAYER-FACING one, and the reason it is not folded in with the two
+		// below. An actor who spent what they had is a fact about the game, and
+		// the gate's own refusal rides along as text so the message still names
+		// the currency that ran out — "action: 1 needed, 0 left" is what turns a
+		// refusal into something a client can say out loud.
+		return fmt.Errorf("%w: %v", ErrCannotAfford, err)
+	case errors.Is(err, resolution.ErrBadCost), errors.Is(err, resolution.ErrNoPayer):
+		// And the PROGRAMMER-FACING one. E2 split these deliberately and this
+		// seam keeps the split: a profile keyed to a currency no ledger holds, or
+		// a cost naming somebody who cannot be charged, is wiring that is wrong.
+		// Reporting it as "out of actions" would send whoever debugs it to a
+		// player's sheet to look for a bug that is in the code.
+		return fmt.Errorf("%w: %v", ErrBadCost, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
 		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
 	case errors.Is(err, resolution.ErrNoCombatant):
@@ -356,7 +389,7 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 }
 
 // compileAttack turns the attacker's stored sheet into the neutral profile the
-// strike machine takes.
+// strike machine takes, and hands back the sheet it read it off.
 //
 // The sheet is loaded here as well as inside Resolve, and that is not a
 // duplicate to be optimised away: character.Load is bus-free, so this
@@ -364,6 +397,11 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 // live character to read static facts off; resolution needs its own cast to
 // attach effects to. Two purposes, one stored sheet, and no shared bus between
 // them.
+//
+// THE LOADED SHEET COMES BACK OUT because the economy needs the same one. Its
+// turn is readied on this instance and its price compiled from what that leaves
+// ([Manager.priceSwing]), and loading a third copy to do it would ready a turn
+// on a sheet nobody hands over.
 //
 // Both refusals below keep the inner reason as TEXT rather than as a chain, the
 // way translateResolution's arms do. The second is the one that made it worth
@@ -373,24 +411,28 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 // answers everything the profile step refuses with ErrBadAttack, including the
 // resolution.ErrNilInput cases, and routing it would silently re-map those onto
 // a different sentinel than the one hosts have been given.
-func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolution.AttackProfile, error) {
+func (m *Manager) compileAttack(
+	ctx context.Context, attacker string,
+) (*character.Character, resolution.AttackProfile, error) {
 	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
 	if err != nil {
-		return resolution.AttackProfile{}, err
+		return nil, resolution.AttackProfile{}, err
 	}
 
 	loaded, err := character.Load(ctx, data)
 	if err != nil {
-		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCharacter, err)
+		return nil, resolution.AttackProfile{},
+			fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCharacter, err)
 	}
 
 	profile, err := resolution.AttackFromCharacter(loaded, &resolution.CharacterAttackInput{
 		Slot: character.SlotMainHand,
 	})
 	if err != nil {
-		return resolution.AttackProfile{}, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadAttack, err)
+		return nil, resolution.AttackProfile{},
+			fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadAttack, err)
 	}
-	return profile, nil
+	return loaded, profile, nil
 }
 
 // castFor gathers every member of the encounter as a participant.
@@ -399,9 +441,14 @@ func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolutio
 // is the effect's own predicate (ADR-0038). A bard three cells away whose
 // Bless is running has to be in the room for their subscription to fire, and
 // deciding they are irrelevant here would be this package deciding a rule.
-
+//
+// One member may arrive already in hand. The attacker's sheet has had its turn
+// readied by the time the cast is built (see [Manager.priceSwing]), and that
+// readying is state the stored copy does not have — so the readied sheet is
+// substituted rather than re-fetched. Passing nil means nobody was readied,
+// which is what free roam looks like.
 func (m *Manager) castFor(
-	ctx context.Context, scope *writeScope, roster []encounter.Member,
+	ctx context.Context, scope *writeScope, roster []encounter.Member, readied *character.Data,
 ) ([]resolution.Participant, error) {
 	npcs := map[string]*monster.Data{}
 	for i := range scope.data.NPCs {
@@ -417,6 +464,11 @@ func (m *Manager) castFor(
 				continue // content with no stored sheet contributes nothing
 			}
 			cast = append(cast, resolution.Participant{Monster: sheet})
+			continue
+		}
+
+		if readied != nil && readied.ID == id {
+			cast = append(cast, resolution.Participant{Character: readied})
 			continue
 		}
 

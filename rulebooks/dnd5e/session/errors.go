@@ -307,6 +307,41 @@ var (
 	// semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
 
+	// ErrCannotAfford is returned when an actor cannot pay for what they
+	// declared: a second swing in a turn that bought only one, a level-5
+	// fighter's third, an action after the action was spent.
+	//
+	// THIS IS A FACT ABOUT THE GAME, not about the code, and that is the whole
+	// reason it is separate from ErrBadCost. A player who has run out of actions
+	// has done nothing wrong and needs to hear a different sentence from the one
+	// a developer needs to hear, so the two are never merged — E2 split them at
+	// the door for the same reason and this seam keeps the split rather than
+	// flattening it on the way out (rpg-toolkit#1097).
+	//
+	// The message NAMES THE CURRENCY that ran out — "action: 1 needed, 0 left" —
+	// because a refusal a client cannot explain is a refusal that reads as a bug.
+	// A host may show it or match the sentinel and say it in its own words.
+	//
+	// It is a FIGHT's refusal. The action economy exists only in combat, so a
+	// member on the world clock is charged nothing and can never see this.
+	ErrCannotAfford = errors.New("action cannot be paid for")
+
+	// ErrBadCost is returned when a price could not be charged to anybody: a
+	// profile keyed to a currency no ledger holds, or a cost naming a payer this
+	// cast cannot charge.
+	//
+	// The programmer-facing half of the split ErrCannotAfford describes. This one
+	// means content or wiring is wrong — the remedy is to go and look at the
+	// code, not at a player's sheet — and reporting it as "out of actions" would
+	// send whoever debugs it to exactly the wrong place.
+	//
+	// Not reachable from a well-formed call today: this package compiles the only
+	// prices it charges, and it names the attacker, who is always in the cast. It
+	// exists so that the day something else compiles one, the failure has a name
+	// that is not a lie. Its translation is pinned in translate_internal_test.go
+	// rather than in sentinels_test.go for exactly that reason.
+	ErrBadCost = errors.New("cost cannot be charged")
+
 	// ErrFrozen, ErrNoWindow, ErrNotAudience, ErrNotOffered and ErrNoWindowID
 	// lived here. Every one of them described an open interrupt window, and
 	// nothing in this module opens one (rpg-toolkit#964 slice 2) — a sentinel
