@@ -91,10 +91,28 @@ type Input struct {
 	// what the caller supplied, the way Deciders one field up are handed over.
 	Initiative encounter.InitiativeRoller
 
+	// Standing reports which members are down. REQUIRED.
+	//
+	// Carried, never consulted. This package loads the world and reads it back
+	// out as data; no verb that refreshes sight runs in between, so nothing
+	// here ever asks the question. The composition still refuses to load
+	// without one (rpg-toolkit#1077), and answering on the caller's behalf —
+	// "nobody is down" — would be this package deciding a rule about hit
+	// points it holds none of. So it is handed over, the way Deciders and
+	// Initiative above are handed over, and the caller that owns the sheets
+	// owns the answer (rpg-toolkit#1079).
+	Standing encounter.Standing
+
 	// Roller is used to reconstitute effects that need one — a monster's Undead
 	// Fortitude, for instance, which rolls when it is triggered rather than
-	// when it is loaded. Nil takes the default roller. It is not the machine's
-	// roller: a machine that rolls carries its own.
+	// when it is loaded. REQUIRED. It is not the machine's roller: a machine
+	// that rolls carries its own.
+	//
+	// It used to say "nil takes the default roller", and that stopped being
+	// true when rpg-toolkit#1033 refused the default — a nil silently became
+	// real randomness, which put unreproducible rolls into results that looked
+	// fine. Validate has answered ErrNoRoller ever since; only this line had
+	// not caught up.
 	Roller dice.Roller
 }
 
@@ -117,6 +135,9 @@ func (in *Input) Validate() error {
 	// by putting untestable randomness into a result that looks fine.
 	if in.Initiative == nil {
 		return ErrNoInitiative
+	}
+	if in.Standing == nil {
+		return ErrNoStanding
 	}
 	if in.Roller == nil {
 		return ErrNoRoller
@@ -221,6 +242,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Data:       in.World,
 		Deciders:   in.Deciders,
 		Initiative: in.Initiative,
+		Standing:   in.Standing,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)

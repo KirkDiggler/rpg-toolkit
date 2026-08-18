@@ -20,6 +20,18 @@ var (
 	// seemed fine. Refused at the door instead.
 	ErrNoRoller = errors.New("resolution: no roller")
 
+	// ErrNoStanding indicates an interaction given no way to find out who is
+	// standing. The composition requires one to load at all, the same way it
+	// requires an initiative roller.
+	//
+	// Nothing in this package consults it. The world is loaded here and read
+	// back out as data, and no verb that refreshes sight runs in between — so
+	// this is a capability carried ACROSS rather than used, exactly like
+	// Deciders. Carried rather than invented, because a package that answered
+	// "nobody is down" on the caller's behalf would be deciding a rule it
+	// cannot see (rpg-toolkit#1079).
+	ErrNoStanding = errors.New("resolution: no standing capability")
+
 	// ErrNoMachine indicates an interaction with nothing to resolve. Distinct
 	// from a machine that finishes immediately, which is legal.
 	ErrNoMachine = errors.New("resolution: no machine")
