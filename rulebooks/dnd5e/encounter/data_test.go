@@ -913,7 +913,14 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// exists to exercise) and final member placements; the story
 		// carries all three beats (opening + the pump's tick + the
 		// closing move).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","room":"room1","position":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		//
+		// The outcome member's key is "cell", not "position" (#1068): room1
+		// is anchored at the origin here, so the NUMBERS are unchanged and
+		// only the key moved — which is the entire point of the rename. A
+		// blob written before the flip lands nowhere on today's shape and is
+		// refused by name rather than read in the wrong frame (see
+		// dialect_test.go).
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","room":"room1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -1602,12 +1609,19 @@ func (s *DataTestSuite) TestLoadRejections() {
 		}, "abandoned outcome with members", encounter.ErrNoMember},
 		{"outcome member room missing", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
-				{ID: "ghost", Room: "nowhere", Position: encounter.PositionData{X: 1, Y: 1}}}}
+				{ID: "ghost", Room: "nowhere", Cell: &encounter.PositionData{X: 1, Y: 1}}}}
 		}, "outcome member", encounter.ErrBadPlacement},
 		{"outcome member out of bounds", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
-				{ID: "p1", Room: "r1", Position: encounter.PositionData{X: 999, Y: 999}}}}
+				{ID: "p1", Room: "r1", Cell: &encounter.PositionData{X: 999, Y: 999}}}}
 		}, "out of bounds", encounter.ErrBadPlacement},
+		{"outcome member missing cell", func(d *encounter.EncounterData) {
+			// Deletes the field from the wire path (nil), which is exactly what
+			// a pre-#1068 blob's room-local "position" key does on arrival —
+			// see dialect_test.go for that whole blob read end to end.
+			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
+				{ID: "p1", Room: "r1"}}}
+		}, "has no cell", encounter.ErrBadPlacement},
 		{"ever_members missing current member", func(d *encounter.EncounterData) {
 			d.EverMembers = nil
 		}, "ever_members", encounter.ErrNoMember},

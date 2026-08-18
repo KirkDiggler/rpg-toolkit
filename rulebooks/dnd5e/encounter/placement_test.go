@@ -218,3 +218,108 @@ func (s *PlacementSuite) TestTheDoorwayKissesInAbsoluteSpace() {
 	s.Equal(float64(1), doorway.ToCell.X-doorway.FromCell.X, "one step apart on the dungeon map")
 	s.Equal(doorway.FromCell.Y, doorway.ToCell.Y)
 }
+
+// TestTheOutcomeSpeaksAbsolute (rpg-toolkit#1068) closes the last room-local
+// report on this surface.
+//
+// An outcome is the one placement report a host reads AFTER the encounter is
+// over, when it has nothing left to cross-check against — no roster call, no
+// further beats. It carried a room-local cell while every other read had
+// already flipped, so a party that finished in a room anchored anywhere but
+// the origin was drawn at cells belonging to whatever room happens to sit
+// there.
+func (s *PlacementSuite) TestTheOutcomeSpeaksAbsolute() {
+	ended, err := s.enc.End(&encounter.EndInput{Ending: "done"})
+	s.Require().NoError(err)
+
+	placed := map[encounter.MemberID]spatial.Position{}
+	for _, m := range ended.Outcome.Members {
+		placed[m.ID] = m.Position
+	}
+	s.Require().Len(placed, 2)
+	s.Equal(spatial.Position{X: 32, Y: 13}, placed["alice"], "hall-local (2,3) anchored at (30,10)")
+	s.Equal(spatial.Position{X: 43, Y: 11}, placed["ogre"], "vault-local (5,1) anchored at (38,10)")
+
+	s.Equal(s.absolute("hall", spatial.Position{X: 2, Y: 3}), placed["alice"],
+		"the outcome and the projection bridge must agree")
+	s.Equal(s.absolute("vault", spatial.Position{X: 5, Y: 1}), placed["ogre"],
+		"and for the other room's anchor too")
+}
+
+// TestTheOutcomeAgreesWithTheRoster is the cross-check that makes the flip
+// mean something: the last thing a host hears about where somebody stands must
+// be the same cell as the last roster read, not the same numbers in a
+// different frame.
+func (s *PlacementSuite) TestTheOutcomeAgreesWithTheRoster() {
+	roster, err := s.enc.Members()
+	s.Require().NoError(err)
+	standing := map[encounter.MemberID]spatial.Position{}
+	for _, m := range roster {
+		standing[m.ID] = m.Position
+	}
+
+	ended, err := s.enc.End(&encounter.EndInput{Ending: "done"})
+	s.Require().NoError(err)
+
+	for _, m := range ended.Outcome.Members {
+		s.Equal(standing[m.ID], m.Position, "%s finished where the roster last put them", m.ID)
+	}
+}
+
+// TestAClosedEncounterKeepsAnsweringAbsolute: Status re-reads the stored
+// outcome rather than rebuilding it, so it is its own path and its own pin.
+func (s *PlacementSuite) TestAClosedEncounterKeepsAnsweringAbsolute() {
+	_, err := s.enc.End(&encounter.EndInput{Ending: "done"})
+	s.Require().NoError(err)
+
+	status, err := s.enc.Status()
+	s.Require().NoError(err)
+	s.Require().NotNil(status.Outcome)
+
+	placed := map[encounter.MemberID]spatial.Position{}
+	for _, m := range status.Outcome.Members {
+		placed[m.ID] = m.Position
+	}
+	s.Equal(spatial.Position{X: 32, Y: 13}, placed["alice"])
+	s.Equal(spatial.Position{X: 43, Y: 11}, placed["ogre"])
+}
+
+// TestAnExitReportsAbsolutePlacement. Exit builds its departing member's
+// outcome itself — from the spatial room, not from buildMemberOutcomes — so
+// projecting the shared path and leaving this one alone would flip everything
+// except the report the leaver actually gets.
+func (s *PlacementSuite) TestAnExitReportsAbsolutePlacement() {
+	left, err := s.enc.Exit(&encounter.ExitInput{Member: "alice"})
+	s.Require().NoError(err)
+
+	s.Equal(spatial.Position{X: 32, Y: 13}, left.Outcome.Position,
+		"hall-local (2,3) anchored at (30,10)")
+	s.Equal(s.absolute("hall", spatial.Position{X: 2, Y: 3}), left.Outcome.Position)
+}
+
+// TestTheOutcomeSurvivesARoundTripStillAbsolute.
+//
+// Persistence is where a frame flip goes wrong quietly: a loader that stores
+// the cell it was given and hands it back unchanged passes every live test in
+// this file and still returns a different frame after a save/load, because the
+// blob was written in one dialect and read in another.
+func (s *PlacementSuite) TestTheOutcomeSurvivesARoundTripStillAbsolute() {
+	_, err := s.enc.End(&encounter.EndInput{Ending: "done"})
+	s.Require().NoError(err)
+
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: s.enc.ToData(), Initiative: orderAsGiven{},
+	})
+	s.Require().NoError(err)
+
+	status, err := reloaded.Status()
+	s.Require().NoError(err)
+	s.Require().NotNil(status.Outcome)
+
+	placed := map[encounter.MemberID]spatial.Position{}
+	for _, m := range status.Outcome.Members {
+		placed[m.ID] = m.Position
+	}
+	s.Equal(spatial.Position{X: 32, Y: 13}, placed["alice"], "still on the dungeon map after a save")
+	s.Equal(spatial.Position{X: 43, Y: 11}, placed["ogre"])
+}

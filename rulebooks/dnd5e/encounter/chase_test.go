@@ -188,11 +188,14 @@ func TestVaultChase(t *testing.T) {
 		}
 	}
 	require.Equal(t, vaultRoom, aliceOutcome.Room)
-	require.Equal(t, spatial.Position{X: 8, Y: 8}, aliceOutcome.Position)
+	// Dungeon-absolute (#1068): the vault is anchored at (10,0), so her
+	// vault-local (8,8) is (18,8) on the map — the same frame every other
+	// cell in this scene is reported in.
+	require.Equal(t, spatial.Position{X: 18, Y: 8}, aliceOutcome.Position)
 	// The goblin made it across the threshold too — the outcome reflects
 	// where it TRULY stands, in the vault, not its pre-chase corridor spot.
 	require.Equal(t, vaultRoom, goblinOutcome.Room, "beat 5: the outcome reflects the goblin's post-traverse room")
-	require.Equal(t, spatial.Position{X: 0, Y: 5}, goblinOutcome.Position)
+	require.Equal(t, spatial.Position{X: 10, Y: 5}, goblinOutcome.Position, "vault-local (0,5) anchored at (10,0)")
 
 	status, err := enc.Status()
 	require.NoError(t, err)

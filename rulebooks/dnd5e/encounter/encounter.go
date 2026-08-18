@@ -1195,7 +1195,7 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 		if !ok {
 			continue
 		}
-		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Room: m.Room, Position: mPos})
+		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Room: m.Room, Position: e.absoluteOf(m.Room, mPos)})
 	}
 	return outcomes
 }
@@ -2754,9 +2754,14 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	return &ExitOutput{
 		Outcome: MemberOutcome{
-			ID:       in.Member,
-			Room:     member.Room,
-			Position: finalPos,
+			ID:   in.Member,
+			Room: member.Room,
+			// Exit builds its own outcome rather than going through
+			// buildMemberOutcomes, so it needs the SAME projection explicitly:
+			// flipping only the shared path would leave the leaver's own
+			// report — the one thing they are handed on the way out — in the
+			// frame everything else stopped speaking.
+			Position: e.absoluteOf(member.Room, finalPos),
 		},
 		Carry:  carry,
 		Seq:    seqNum,

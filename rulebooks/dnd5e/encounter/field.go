@@ -314,7 +314,7 @@ type Outcome struct {
 	Members []MemberOutcome
 }
 
-// MemberOutcome is a member's position when the encounter closed.
+// MemberOutcome is where a member stood when the encounter closed.
 type MemberOutcome struct {
 	// ID is the member's identifier.
 	ID MemberID
@@ -322,7 +322,16 @@ type MemberOutcome struct {
 	// Room is their room ID when the encounter closed.
 	Room string
 
-	// Position is their position within the room.
+	// Position is the DUNGEON-ABSOLUTE cell they finished on
+	// (rpg-toolkit#1068) — the same frame Member.Position and every beat
+	// speak, projected through the same absoluteOf.
+	//
+	// This was the last room-local report on the surface, and the worst place
+	// for one to survive: an outcome is read AFTER the encounter is over, when
+	// a host has no roster call and no further beats left to cross-check it
+	// against. A party that finished in a room anchored anywhere but the
+	// origin was reported at cells belonging to whatever room happens to sit
+	// there.
 	Position spatial.Position
 }
 

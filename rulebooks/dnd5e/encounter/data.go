@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
@@ -53,11 +54,30 @@ type OutcomeData struct {
 	Members []MemberOutcomeData `json:"members,omitempty"`
 }
 
-// MemberOutcomeData is a member's position when the encounter closed.
+// MemberOutcomeData is where a member stood when the encounter closed.
+//
+// Cell is DUNGEON-ABSOLUTE (rpg-toolkit#1068), mirroring the MemberOutcome it
+// persists — unlike MemberData above, which stays room-local because it is
+// placement to be restored into a spatial room rather than a report already
+// made.
+//
+// It is a pointer under a NEW key on purpose. This value changed frame without
+// changing type, and a bare pair of numbers cannot be told apart by
+// inspection, so a blob written before the flip would have loaded clean and
+// reported room-local cells as absolute ones — a party drawn in the wrong room
+// by a load that reported success. Renaming "position" to "cell" makes the old
+// dialect land nowhere, and its absence is then the signal: REQUIRED at load,
+// rejected by name, never defaulted to (0,0) — a legal cell that would invent
+// a placement. That is the same call RoomData.Origin makes for a missing
+// anchor, and this is Kirk's fail-loudly ruling (2026-08-17) for the one
+// persisted shape in this family that could be given a detectable one.
+//
+// Room stays: MemberOutcome still carries it. The composition keeps rooms, it
+// only stops speaking them in coordinates.
 type MemberOutcomeData struct {
-	ID       MemberID     `json:"id"`
-	Room     string       `json:"room"`
-	Position PositionData `json:"position"`
+	ID   MemberID      `json:"id"`
+	Room string        `json:"room"`
+	Cell *PositionData `json:"cell"`
 }
 
 // FieldData is the persistent representation of the encounter's field.
@@ -264,9 +284,12 @@ func (e *Encounter) ToData() EncounterData {
 		}
 		for i, mo := range e.outcome.Members {
 			outcomeData.Members[i] = MemberOutcomeData{
-				ID:       mo.ID,
-				Room:     mo.Room,
-				Position: PositionData{X: mo.Position.X, Y: mo.Position.Y},
+				ID:   mo.ID,
+				Room: mo.Room,
+				// Always a fresh pointer, always written — RoomData.Origin's
+				// precedent — so presence itself is meaningful at load and two
+				// ToData calls never alias the same PositionData.
+				Cell: &PositionData{X: mo.Position.X, Y: mo.Position.Y},
 			}
 		}
 	}
@@ -412,8 +435,9 @@ func (in *LoadEncounterInput) Validate() error {
 // field, member position out of bounds or non-integral (hex), ending trigger validity
 // (unknown room or unreachable position on a TriggerReachedPosition — #929 T3 Opus round
 // F5, the SAME validateEndingTriggers Setup uses), an abandoned outcome with members
-// still present, outcome member room/bounds checks, everMembers missing a current
-// member.
+// still present, outcome member cell PRESENCE (a missing cell is the pre-#1068
+// room-local dialect announcing itself — MemberOutcomeData's doc comment) then that
+// member's room and bounds, everMembers missing a current member.
 //
 // One check runs OUTSIDE this up-front pass, later, during member re-placement and
 // decider re-attachment (construction has already begun by then): a player member
@@ -439,6 +463,9 @@ func (in *LoadEncounterInput) Validate() error {
 // errors with "newencounter:" instead, at its own call sites.
 //
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
+// Intel gets one check of its own first, because it cannot make it itself: a stored
+// sight payload naming a room is a pre-#1044 room-local frame, and intel holds
+// payloads as opaque bytes by contract — see refuseRoomLocalSightings.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
 func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
@@ -580,12 +607,29 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if data.Outcome.Ending == "abandoned" && len(data.Members) > 0 {
 			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w: %w", ErrInvalidData, ErrNoMember)
 		}
+		origins := make(map[string]spatial.Position, len(roomInputs))
+		for _, ri := range roomInputs {
+			origins[ri.ID] = ri.Origin
+		}
 		for _, om := range data.Outcome.Members {
+			// A missing cell is how the pre-#1068 dialect announces itself:
+			// that blob's "position" key lands nowhere on today's shape, so
+			// the field arrives absent rather than wrong (MemberOutcomeData's
+			// doc comment). Checked FIRST, so the older mistake is named as
+			// itself instead of surfacing as an out-of-bounds (0,0).
+			if om.Cell == nil {
+				return nil, fmt.Errorf("load encounter: outcome member %q has no cell — a room-local outcome from before rpg-toolkit#1068, recreate the save: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
+			}
 			_, ok := roomGrids[om.Room]
 			if !ok {
 				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w: %w", om.ID, om.Room, ErrInvalidData, ErrBadPlacement)
 			}
-			if !roomGrids[om.Room].IsValidPosition(spatial.Position{X: om.Position.X, Y: om.Position.Y}) {
+			// The cell is absolute and the room's grid speaks local, so the
+			// bounds check is the projection run backwards. One check, two
+			// defects: a cell outside the field at all, and a cell that
+			// belongs to a room other than the one named beside it.
+			local := spatial.Position{X: om.Cell.X, Y: om.Cell.Y}.Subtract(origins[om.Room])
+			if !roomGrids[om.Room].IsValidPosition(local) {
 				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
 		}
@@ -684,6 +728,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 			onAClock[id] = struct{}{}
 		}
+	}
+
+	if err = refuseRoomLocalSightings(data.Intel); err != nil {
+		return nil, err
 	}
 
 	loadedIntel, err := intel.LoadIntel(data.Intel)
@@ -856,9 +904,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		for i, m := range data.Outcome.Members {
 			outcome.Members[i] = MemberOutcome{
-				ID:       m.ID,
-				Room:     m.Room,
-				Position: spatial.Position{X: m.Position.X, Y: m.Position.Y},
+				ID:   m.ID,
+				Room: m.Room,
+				// Stored and returned in the frame it was reported in — no
+				// re-derivation, so a reloaded outcome and the one the host
+				// already saw cannot disagree. Non-nil by R5: every cell was
+				// checked before construction began.
+				Position: spatial.Position{X: m.Cell.X, Y: m.Cell.Y},
 			}
 		}
 		e.outcome = outcome
@@ -900,6 +952,68 @@ func endingTriggerFromData(ed EndingData) Trigger {
 		}
 	case "external":
 		return TriggerExternal{}
+	}
+	return nil
+}
+
+// refuseRoomLocalSightings rejects a persisted sight payload written in the
+// dialect rpg-toolkit#1044 replaced.
+//
+// Intel round-trips payloads as opaque bytes and carries no version — that is
+// the leaf's whole contract, and it means nothing beneath this composition can
+// notice that stored bytes now mean something different. A sighting written
+// before sight payloads went dungeon-absolute carries a "room" key beside a
+// room-LOCAL cell; decoded through today's SightPayload it becomes an absolute
+// cell in some other room entirely, or in no room at all, and the load reports
+// success. Load never re-derives sight (see the reconstruction below — the
+// outcomes are already in intel), so nothing downstream corrects it either.
+//
+// Kirk's ruling, 2026-08-17: fail loudly, no migration. The only blobs in
+// existence are dev and workbench saves, so a stale one is refused by name and
+// recreated rather than silently reinterpreted.
+func refuseRoomLocalSightings(data intel.Data) error {
+	// Sorted, so a blob holding several stale sightings names the same one on
+	// every run — a rejection that moves under map iteration is a rejection
+	// nobody can write a test against.
+	observers := make([]core.EntityID, 0, len(data.Holdings))
+	for observer := range data.Holdings {
+		observers = append(observers, observer)
+	}
+	slices.Sort(observers)
+
+	for _, observer := range observers {
+		subjects := make([]intel.Subject, 0, len(data.Holdings[observer]))
+		for subject := range data.Holdings[observer] {
+			subjects = append(subjects, subject)
+		}
+		slices.Sort(subjects)
+
+		for _, subject := range subjects {
+			holding := data.Holdings[observer][subject]
+			if holding.Channel != intel.Sight || len(holding.Payload) == 0 {
+				continue
+			}
+			// A payload this module cannot read as an object at all is
+			// somebody else's: intel carries testimony for any channel a
+			// composition invents, and only the room key THIS one used to
+			// write is ours to recognize. Unreadable bytes are left to
+			// whoever wrote them.
+			var peek map[string]json.RawMessage
+			if err := json.Unmarshal(holding.Payload, &peek); err != nil {
+				continue
+			}
+			// PRESENCE of the key, not its value. Decoding "room" into a
+			// typed field let a null through as absent and a non-string
+			// through as unparseable (raised by Copilot on #1072, and both
+			// loaded clean before this) — and since this composition is the
+			// only writer of sight payloads, a payload naming a room AT ALL
+			// is not one it wrote today, whatever the name decodes to.
+			if room, named := peek["room"]; named {
+				return fmt.Errorf(
+					"load encounter intel: %q's sighting of %q names a room (%s) — a room-local sight payload from before rpg-toolkit#1044, recreate the save: %w",
+					observer, subject, room, ErrInvalidData)
+			}
+		}
 	}
 	return nil
 }

@@ -159,7 +159,7 @@ behavior that decides *what to do to someone* is not.
 |---|---|
 | `encounter.go` | the aggregate: setup, verbs, `Pump`, member management |
 | `decider.go` | `Decider`, `Snapshot`, `Intent` and its three implementations |
-| `atlas.go` | the read projection — absolute coordinates appear only here |
+| `atlas.go` | the coordinate queries — `Atlas`, `Absolute`, `Locate` |
 | `field.go` | rooms, connections, and the per-verb output shapes |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 

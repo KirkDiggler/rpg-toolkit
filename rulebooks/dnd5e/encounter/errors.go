@@ -105,7 +105,11 @@ var (
 	// checks — room lookup miss, out-of-bounds position, non-integral
 	// (hex) position — which mirror NewEncounter's identical member
 	// checks and used to carry only ErrInvalidData (#929 hardening
-	// round F).
+	// round F) — plus, outcome-only, a MISSING cell, which has no Setup
+	// analogue for the same structural reason RoomData.Origin's absence
+	// does not: an outcome's position is a plain value in memory and a
+	// pointer on the wire, so only Load can tell a blob that omitted it
+	// (the pre-#1068 room-local dialect) from one that declared (0,0).
 	ErrBadPlacement = errors.New("bad placement")
 
 	// ErrBadConnection is returned when a connection's ID is empty or
