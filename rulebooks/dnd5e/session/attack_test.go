@@ -291,16 +291,33 @@ func (s *AttackTestSuite) TestAFailedWorldSaveStillNamesTheSheetThatLanded() {
 		"the write the report names really did land")
 }
 
-// TestNothingSpendsYet is the known gap, pinned so it cannot be mistaken for a
-// decision that attacks are free.
+// TestFreeRoamChargesNothing is TestNothingSpendsYet, flipped.
 //
-// A character may swing as many times in a turn as the caller asks, because
-// the thing that spends is an economy machine above this one and it does not
-// exist. The verb names the single place it will go. When it lands, THIS test
-// is the one that should fail — and its failure is the signal to write the
-// real economy assertions rather than to relax this one.
-func (s *AttackTestSuite) TestNothingSpendsYet() {
+// It used to pin a KNOWN GAP: nothing anywhere spent anything, a character could
+// swing as many times in a turn as the caller asked, and its failure was to be
+// the signal that the economy had landed. The economy has landed
+// (rpg-toolkit#1097), and the same three swings in the same scene still land —
+// which is now a RULING rather than a gap, and that is why the test is renamed
+// instead of deleted.
+//
+// The ruling is that the action economy is a FIGHT's economy. It is not this
+// package's invention: combat.Ledger opens with InCombat and refuses every
+// payment from a holder who is not in a fight, and a member on the world clock
+// has no turn to spend a turn's slots from. The duel below is free roam — two
+// characters standing next to each other, no bubble, no initiative order — so
+// the swing is passed no cost at all.
+//
+// EconomySuite is the other half, and neither test means much alone: the same
+// verb refuses a second swing the moment there is a fight to refuse it in. What
+// would make BOTH wrong is a swing charged where there is no economy to charge
+// it against, which the gate would refuse forever rather than once.
+func (s *AttackTestSuite) TestFreeRoamChargesNothing() {
 	mgr := s.duel(&sequenceDice{rolls: []int{15, 5, 15, 5, 15, 5}})
+
+	turn, err := mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal(session.ClockWorld, turn.Clock,
+		"the scene is free roam, which is the whole premise of this test")
 
 	for i := 0; i < 3; i++ {
 		out, err := s.swing(mgr)
@@ -310,7 +327,9 @@ func (s *AttackTestSuite) TestNothingSpendsYet() {
 
 	s.Equal(28-24, 4, "sanity: the fixture starts damaged, so HP is not clamped at max")
 	s.Less(s.characters.byID["bob"].HitPoints, 24,
-		"three unspent swings all landed — nothing anywhere is counting actions")
+		"three uncharged swings all landed — off the turn clock there is no economy")
+	s.Nil(s.characters.byID["alice"].ActionEconomy,
+		"and nothing lit one on her sheet: free roam is not a turn")
 }
 
 // TestAMonsterAttackerIsRefused pins v1's scope as a decision with a successor.

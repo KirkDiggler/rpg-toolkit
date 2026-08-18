@@ -99,6 +99,15 @@ var resolutionSentinels = map[string]error{
 	"resolution.ErrBadAttack":             resolution.ErrBadAttack,
 	"resolution.ErrNoCombatant":           resolution.ErrNoCombatant,
 	"resolution.ErrRecurrenceUnsupported": resolution.ErrRecurrenceUnsupported,
+	// The economy's three, added with the slice that made them reachable
+	// (rpg-toolkit#1097). ErrCannotPay is the one a PLAYER produces — a second
+	// swing in a turn that bought one — and it is driven for real below. The
+	// other two are wiring being wrong rather than an actor running out, and
+	// they are here for the reason the whole list is written out: an unlisted
+	// sentinel reaching a host is a leak whether or not anybody wrote an arm.
+	"resolution.ErrCannotPay": resolution.ErrCannotPay,
+	"resolution.ErrBadCost":   resolution.ErrBadCost,
+	"resolution.ErrNoPayer":   resolution.ErrNoPayer,
 }
 
 // refSentinels is core's identifier vocabulary — what a malformed ref is
@@ -457,6 +466,35 @@ func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
 	})
 	s.refusedInOurVocabulary(swingErr, session.ErrDowned)
 	s.Contains(swingErr.Error(), "alice", "and the refusal still names who could not act")
+}
+
+// TestASecondSwingInOneTurn is the economy's refusal, driven for real.
+//
+// This is the most ORDINARY mistake on the list. Every other case here is a
+// caller getting something wrong — a route off the map, a malformed ref, one
+// sheet stored under two names — and this one is a player doing exactly what
+// the game invites them to do and being told they have already acted. It will be
+// the refusal a host sees most often by a wide margin, which makes it the one a
+// leaked sentinel would hurt through most.
+//
+// The scene is a real fight rather than the duel the rest of this file uses,
+// because free roam charges nothing and the refusal has no path there. See
+// aFight in economy_test.go.
+func (s *SentinelSuite) TestASecondSwingInOneTurn() {
+	mgr, _, _, _ := aFight(s.T(), armedFighter("alice"), []int{1, 1, 1, 1})
+	ctx := context.Background()
+
+	_, err := mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton",
+	})
+	s.Require().NoError(err, "the first swing is bought by the Attack action")
+
+	_, err = mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton",
+	})
+	s.refusedInOurVocabulary(err, session.ErrCannotAfford)
+	s.Contains(err.Error(), "action",
+		"and the refusal still names the currency that ran out")
 }
 
 // TestASpawnNamingAMalformedRef is the third module and the second door.

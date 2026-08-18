@@ -89,6 +89,18 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// before the strike runs, so this arm is the one that catches a
 		// combatant the cast turned out not to hold.
 		{"combatant not in the cast", resolution.ErrNoCombatant, ErrNoSheet},
+		// Driven for real in sentinels_test.go: a second swing in a turn that
+		// bought one. The PLAYER-facing arm, and the only one of the economy's
+		// three a caller can reach.
+		{"an actor who has run out", resolution.ErrCannotPay, ErrCannotAfford},
+		// The economy's programmer-facing pair, unreachable because this package
+		// compiles the only prices it charges and names an attacker who is always
+		// in the cast. They are kept APART from the arm above deliberately: E2
+		// split them at the door so that a malformed profile could never reach a
+		// client as "out of actions", and flattening them here would undo that
+		// split one layer further out (rpg-toolkit#1097).
+		{"a price nobody could be charged", resolution.ErrBadCost, ErrBadCost},
+		{"a payer this cast cannot charge", resolution.ErrNoPayer, ErrBadCost},
 		// Defects here rather than in the call, and unreachable for that
 		// reason.
 		{"no input at all", resolution.ErrNilInput, ErrNilInput},
