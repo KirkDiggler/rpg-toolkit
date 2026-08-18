@@ -47,12 +47,16 @@ func TestDialectSuite(t *testing.T) {
 
 var dialectOrigin = spatial.Position{X: 30, Y: 10}
 
-// closedBlob is one small scene, closed, saved: two members standing in plain
-// sight of each other in an off-origin room, so the blob carries both a sight
-// holding and an outcome — the two things this file ages.
+// closedBlob is one small scene, closed, saved: three members standing in
+// plain sight of one another in an off-origin room, so the blob carries sight
+// holdings and an outcome — the two things this file ages.
 //
-// Both are players on purpose. A player and a monster in sight of each other
-// start a fight, and a bubble in the blob is noise for a test about
+// Three rather than two so that ONE observer holds more than one sighting:
+// alice holds both bob and carl. With two members every observer's holdings
+// are a walk of length one, and the order they are walked in pins nothing.
+//
+// All three are players on purpose. A player and a monster in sight of each
+// other start a fight, and a bubble in the blob is noise for a test about
 // coordinates.
 func (s *DialectSuite) closedBlob() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -63,6 +67,7 @@ func (s *DialectSuite) closedBlob() encounter.EncounterData {
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 3}},
 			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 5}},
+			{ID: "carl", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 4, Y: 4}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -74,9 +79,12 @@ func (s *DialectSuite) closedBlob() encounter.EncounterData {
 
 	data := enc.ToData()
 	s.Require().NotNil(data.Outcome, "the scene closed, so the blob has an outcome to age")
-	s.Require().NotEmpty(data.Intel.Holdings, "the two of them are in plain sight, so somebody holds something")
+	s.Require().Len(data.Intel.Holdings, 3, "each of them is in plain sight of the other two")
 	return data
 }
+
+// aRoomBearingSighting is one payload in the dialect #1044 replaced.
+const aRoomBearingSighting = `{"room":"hall","x":2,"y":5}`
 
 // load is the host's side of the seam: hand the loader a blob and see what it says.
 func (s *DialectSuite) load(data encounter.EncounterData) error {
@@ -106,7 +114,7 @@ func (s *DialectSuite) TestARoomBearingSightPayloadIsRefused() {
 	// composition is the only writer of sight payloads, so a payload that
 	// names a room AT ALL is not one it wrote today.
 	for _, payload := range []string{
-		`{"room":"hall","x":2,"y":5}`,
+		aRoomBearingSighting,
 		`{"room":null,"x":32,"y":15}`,
 		`{"room":7,"x":32,"y":15}`,
 	} {
@@ -139,6 +147,57 @@ func (s *DialectSuite) TestARoomLocalOutcomeIsRefused() {
 	s.ErrorIs(err, encounter.ErrBadPlacement)
 	s.Contains(err.Error(), "alice", "the refusal names the member it could not place")
 	s.Contains(err.Error(), "room-local", "and says what is wrong with the blob")
+}
+
+// TestAnotherChannelsPayloadIsNotOurs pins the guard's NARROWNESS, which is a
+// policy rather than an oversight.
+//
+// Intel carries testimony for any channel a composition cares to invent, and
+// the room key this one used to write is the only thing in those bytes that is
+// ours to recognize. A holding on some other channel is left alone whatever it
+// says — including saying "room", which in another channel's vocabulary might
+// mean something entirely reasonable.
+func (s *DialectSuite) TestAnotherChannelsPayloadIsNotOurs() {
+	data := s.closedBlob()
+	holding := data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")]
+	holding.Channel = intel.Channel("hearsay")
+	holding.CurrentVia = []intel.Channel{intel.Channel("hearsay")}
+	holding.Payload = []byte(aRoomBearingSighting)
+	data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")] = holding
+
+	s.Require().NoError(s.load(data),
+		"a channel this composition never writes is not this composition's business")
+}
+
+// TestTheRefusalNamesTheSameSightingEveryTime.
+//
+// Go randomizes map iteration, so a guard that walked its holdings in map
+// order would name a different stale sighting from one run to the next: a
+// rejection nobody can write a test against, and a bug report nobody can
+// reproduce. Sorted, the answer is alice's sighting of bob every time —
+// first observer, first subject — and both orderings have to hold for that
+// to be true.
+func (s *DialectSuite) TestTheRefusalNamesTheSameSightingEveryTime() {
+	data := s.closedBlob()
+	for observer, subjects := range data.Intel.Holdings {
+		for subject, holding := range subjects {
+			holding.Payload = []byte(aRoomBearingSighting)
+			data.Intel.Holdings[observer][subject] = holding
+		}
+	}
+
+	first := s.load(data)
+	s.Require().Error(first)
+	s.Contains(first.Error(), `"alice"`, "the first observer")
+	s.Contains(first.Error(), `"bob"`, "and their first subject")
+
+	// Fifty runs: an unsorted walk would have to pick the same one out of six
+	// holdings fifty times running to slip through here.
+	for i := range 50 {
+		again := s.load(data)
+		s.Require().Error(again)
+		s.Require().Equal(first.Error(), again.Error(), "run %d named a different sighting", i)
+	}
 }
 
 // agedOutcome rewrites a fresh blob's outcome members back into the wire shape
