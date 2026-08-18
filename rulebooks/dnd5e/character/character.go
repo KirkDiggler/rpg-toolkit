@@ -409,6 +409,11 @@ func (c *Character) SpendHitDice(ctx context.Context, input *SpendHitDiceInput) 
 		return nil, rpgerr.Wrapf(err, "failed to use hit dice")
 	}
 
+	// The pool moved, and says so for itself rather than leaning on the healing
+	// below: the hit points only get marked if the sheet's keeper is on this
+	// bus, and the spent die is persisted either way.
+	c.poolChanged()
+
 	// Publish healing event (character's onHealingReceived will handle HP update)
 	healingTopic := dnd5eEvents.HealingReceivedTopic.On(c.bus)
 	err = healingTopic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
@@ -468,6 +473,10 @@ func (c *Character) LongRest(ctx context.Context) error {
 		}
 	}
 
+	// Covers all three writes above — hit points, death saves, pools — in one
+	// place, because a rest is one change to the sheet.
+	c.poolChanged()
+
 	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
 	restTopic := dnd5eEvents.RestTopic.On(c.bus)
 	err := restTopic.Publish(ctx, dnd5eEvents.RestEvent{
@@ -495,6 +504,13 @@ func (c *Character) ShortRest(ctx context.Context) error {
 			resource.RestoreToFull()
 		}
 	}
+
+	// Unconditional rather than only when a pool actually moved: the rest event
+	// published below also reaches resources and conditions that restore or
+	// remove themselves, and a rest that changed nothing costs one redundant
+	// write while a rest that changed something silently would cost the party
+	// its ki.
+	c.poolChanged()
 
 	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
 	restTopic := dnd5eEvents.RestTopic.On(c.bus)
@@ -786,6 +802,23 @@ func (c *Character) IsDirty() bool {
 	return c.dirty
 }
 
+// poolChanged records that a write landed on the resource pools or on the state
+// that moves with them.
+//
+// GetResourceData feeds Data.Resources, so a spent ki point or a restored hit
+// die is state ToData writes — and, like the action economy, state that only
+// reaches storage if the sheet reports IsDirty() (#1087). The rests call it for
+// everything they touch at once, hit points and death saves included, because a
+// rest is one change to the sheet rather than three.
+//
+// The load paths deliberately do not call this: loadResources and
+// LoadResourceData rebuild pools at the values they were read from, so the
+// sheet already matches storage, and marking there would make every loaded
+// sheet write itself back over what it was read from.
+func (c *Character) poolChanged() {
+	c.dirty = true
+}
+
 // MarkClean marks the character as saved (not dirty).
 // Implements combat.Combatant interface.
 func (c *Character) MarkClean() {
@@ -802,6 +835,11 @@ var emptyResource = combat.NewRecoverableResource(combat.RecoverableResourceConf
 // GetResource returns the resource for the given key.
 // If the resource doesn't exist, returns an empty resource (not nil).
 // Use IsEmpty() to check if the resource exists and has uses available.
+//
+// The pool comes back live, not copied. Reading it is free; spending through it
+// mutates the sheet without the sheet noticing, and the spend is then dropped
+// on the next write-back. Spend through UseResource, which marks the sheet
+// dirty (#1087).
 func (c *Character) GetResource(key coreResources.ResourceKey) *combat.RecoverableResource {
 	if c.resources == nil {
 		return emptyResource
@@ -818,6 +856,7 @@ func (c *Character) AddResource(key coreResources.ResourceKey, resource *combat.
 		c.resources = make(map[coreResources.ResourceKey]*combat.RecoverableResource)
 	}
 	c.resources[key] = resource
+	c.poolChanged()
 }
 
 // IsResourceAvailable implements coreResources.ResourceAccessor.
@@ -844,7 +883,16 @@ func (c *Character) UseResource(key coreResources.ResourceKey, amount int) error
 	if !ok {
 		return rpgerr.Newf(rpgerr.CodeNotFound, "resource %s not found", key)
 	}
-	return r.Use(amount)
+	if err := r.Use(amount); err != nil {
+		return err
+	}
+
+	// The choke point every feature spend goes through — rage charges, ki for
+	// Flurry of Blows, Patient Defense, Step of the Wind — so this one line is
+	// what makes those spends survive the write-back.
+	c.poolChanged()
+
+	return nil
 }
 
 // GetResourceData returns serializable resource data for persistence
@@ -866,6 +914,10 @@ func (c *Character) GetResourceData() map[coreResources.ResourceKey]RecoverableR
 
 // LoadResourceData loads resources from serialized data and applies them to the event bus.
 // Resources are applied so they subscribe to rest events for automatic recovery.
+//
+// A load path, so it does not mark the sheet dirty: the pools come back at the
+// values they were read from, and a sheet that reported itself dirty for
+// having been read would write those values straight back over storage.
 func (c *Character) LoadResourceData(
 	ctx context.Context,
 	bus events.EventBus,
