@@ -174,6 +174,13 @@ func (m *Manager) priceSwing(
 // though the bank could pay, and would then be refused by a door that had just
 // wiped it. So the refresh happens here, on the sheet this seam is about to hand
 // over, and the [resolution.Cost.Turn] passed alongside finds nothing left to do.
+//
+// This is the CALLER COMPENSATING FOR AN ORDERING IT CANNOT SEE, which is a
+// seam wart rather than a fact of nature — filed as rpg-toolkit#1100, whose
+// current lean is to move the refresh out of the door entirely now that this
+// slice shows the caller must do it anyway. Nothing is broken today and the
+// workaround is pinned; the next caller to compile a state-dependent price is
+// who would otherwise hit it fresh.
 func readyForTurn(ctx context.Context, sheet *character.Character, turn int) error {
 	// Speed is read once and used for whichever verb applies, so the two cannot
 	// seed different movement for the same turn.
@@ -226,6 +233,8 @@ func readyForTurn(ctx context.Context, sheet *character.Character, turn int) err
 // this is the first caller that needed it — the same road CostOfAttack and
 // CostOfStrike travelled. When a second caller appears it should move next to
 // them as character.CostOfSwing, which is a move rather than a redesign.
+// Filed as rpg-toolkit#1100 so it is a decision waiting on its second caller
+// rather than a note that decays into nobody's business.
 func costOfSwing(c *character.Character) (*combat.SpendProfile, error) {
 	strike, err := character.CostOfStrike(c)
 	if err != nil {
