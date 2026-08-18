@@ -136,15 +136,28 @@ issue does not choose the shape.
 
 Dash spends an action and grants movement. No roll, no target, no chain.
 
+**First, a constraint that applies to all four** (caught in review of this doc):
+a nil `Machine` is refused — `Input.Validate` answers `ErrNoMachine`
+(`resolution/resolve.go:125-127`). But the error's own doc draws exactly the
+distinction this case needs: "**an interaction with nothing to resolve. Distinct
+from a machine that finishes immediately, which is legal**"
+(`resolution/errors.go:35-37`). So Dash gets a machine that starts and is
+immediately `Done` — already legal, already blessed — under *every* shape. "No
+machine at all" is not on the table for anyone without a contract change nobody
+has argued for.
+
 | | |
 |---|---|
-| **A** | A "machine" whose entire body is a debit and a `Done`. Expressible, but it names a machine where there is no interaction — and the vocabulary's own rule is that a machine's "identity is its **yield-shape**". |
-| **B** | Natural. `Cost` set, `Machine` nil or trivial. Kirk's "a machine maybe doesn't have a cost" read the other way. |
-| **C** | Natural, same as B. |
-| **D** | **Honestly, no better than A or B.** A Dash verb still needs *something* to run; what D changes is that the cost is not pretending to be a machine — it is a function that something calls. The awkwardness is relocated, not dissolved. |
+| **A** | The immediately-`Done` machine's entire body *is* the debit. Expressible, but it names a machine where there is no interaction — and the vocabulary's own rule is that a machine's "identity is its **yield-shape**", which here is empty. |
+| **B** | `Cost` set, machine trivially `Done`. The cost is a field; the empty machine is honest about being empty. Kirk's "a machine maybe doesn't have a cost" read the other way round. |
+| **C** | Same as B. |
+| **D** | Same as B, with the debit as a `combat.Pay` call rather than a field the door interprets. |
 
-**Discriminates: A (mildly).** Note the case is currently hypothetical at the
-seam — there is no Dash verb in `session` — but it is the shape of every
+**Discriminates: A, and only mildly.** The correction above shrinks this case's
+weight rather than growing it: every shape needs the same trivially-`Done`
+machine, so the only real difference is whether the *cost* has to pretend to be
+one (A) or can sit beside it (B/C/D). Note the case is currently hypothetical at
+the seam — there is no Dash verb in `session` — but it is the shape of every
 non-attack action in the catalogue (Dodge, Disengage, Help, Hide).
 
 ### Case (iii) — the wizard's Shield
