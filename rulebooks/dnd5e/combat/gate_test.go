@@ -201,6 +201,37 @@ func (s *GateTestSuite) TestNilProfileIsFree() {
 	s.Zero(ledger.writes)
 }
 
+// A profile that moves nothing is payable by anyone, in combat or out. There
+// is nothing to take and nowhere for it to fail to land, so refusing it would
+// mean a free action needs a turn to happen in.
+func (s *GateTestSuite) TestAProfileThatMovesNothingIsPayableOutOfCombat() {
+	ledger := newSpyLedger()
+	ledger.inCombat = false
+
+	s.True(combat.CanPay(ledger, &combat.SpendProfile{}))
+	s.Require().NoError(combat.Pay(ledger, &combat.SpendProfile{}))
+
+	s.True(combat.CanPay(ledger, nil))
+	s.Require().NoError(combat.Pay(ledger, nil))
+
+	s.Zero(ledger.writes)
+}
+
+// No ledger, no payment — including for a free action. A caller that reached
+// the gate without an actor is a caller with a bug, and answering "yes, that
+// was free" would hide it.
+func (s *GateTestSuite) TestWithoutALedgerNothingIsPayable() {
+	profile := &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+	}
+
+	s.False(combat.CanPay(nil, profile))
+	s.Require().Error(combat.Pay(nil, profile))
+
+	s.False(combat.CanPay(nil, nil))
+	s.Require().Error(combat.Pay(nil, nil))
+}
+
 // A ledger that is not in combat has no economy to spend from, and that has to
 // refuse even a profile that only GRANTS — otherwise the grant lands nowhere
 // and the caller is told it succeeded.
@@ -257,6 +288,21 @@ func (s *GateTestSuite) TestMalformedProfilesAreRefused() {
 		},
 		"zero slot cost": {
 			Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 0},
+		},
+		"zero capacity cost": {
+			Capacity: map[combat.CapacityType]int{combat.CapacityAttack: 0},
+		},
+		"zero grant": {
+			Grants: map[combat.CapacityType]int{combat.CapacityAttack: 0},
+		},
+		"zero requirement": {
+			Requires: map[combat.CapacityType]int{combat.CapacityAttack: 0},
+		},
+		"zero pool cost": {
+			Pools: map[coreResources.ResourceKey]int{"ki": 0},
+		},
+		"negative requirement": {
+			Requires: map[combat.CapacityType]int{combat.CapacityAttack: -1},
 		},
 		"negative capacity cost": {
 			Capacity: map[combat.CapacityType]int{combat.CapacityAttack: -1},

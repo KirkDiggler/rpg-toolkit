@@ -239,18 +239,83 @@ func (s *SheetLedgerTestSuite) TestEveryDeclaredCapacityRoundTripsThroughTheShee
 	}
 }
 
-// A capacity the sheet has no name for is stored under its own key rather than
-// dropped. This is the rule that keeps the bridge total as the vocabulary grows.
-func (s *SheetLedgerTestSuite) TestAnUndeclaredCapacityIsStoredNotDropped() {
+// A capacity the sheet has no name for is stored under its OWN key rather than
+// dropped. This is the rule that keeps the bridge total as the vocabulary
+// grows, and reading back what you banked is not enough to show it: two keys
+// collapsed into one drawer round-trip perfectly right up until both are used.
+func (s *SheetLedgerTestSuite) TestAnUndeclaredCapacityIsStoredUnderItsOwnName() {
 	char := s.loaded()
 	future := combat.CapacityType("arcane_recovery_die")
+	otherFuture := combat.CapacityType("superiority_die")
 
 	char.BankCapacity(future, 2)
 	s.Equal(2, char.CapacityLeft(future))
 	s.True(char.IsDirty())
+	s.Equal(2, char.GetActionEconomy().Granted[GrantedActionKey("arcane_recovery_die")],
+		"the sheet files it under the capacity's own name")
+
+	char.BankCapacity(otherFuture, 5)
+	s.Equal(2, char.CapacityLeft(future), "and two unaliased capacities are two drawers")
+	s.Equal(5, char.CapacityLeft(otherFuture))
 
 	char.SpendCapacity(future, 2)
 	s.Equal(0, char.CapacityLeft(future))
+	s.Equal(5, char.CapacityLeft(otherFuture))
+}
+
+// A sheet with no economy reports nothing left, in every currency the economy
+// holds. Zero is what refuses a cost; anything else would let a character who
+// is not in a fight spend a turn they do not have. The pools are the exception
+// and deliberately so — they live on the sheet rather than in the turn, and a
+// ki point is there whether or not anyone is swinging.
+func (s *SheetLedgerTestSuite) TestASheetOutOfCombatHasNothingLeft() {
+	char, err := LoadFromData(s.ctx, s.monk(), s.bus)
+	s.Require().NoError(err)
+	s.Require().False(char.InCombat())
+
+	s.Equal(0, char.SlotsLeft(coreCombat.ActionStandard))
+	s.Equal(0, char.SlotsLeft(coreCombat.ActionBonus))
+	s.Equal(0, char.SlotsLeft(coreCombat.ActionReaction))
+
+	for _, key := range combat.CapacityTypes() {
+		s.Equalf(0, char.CapacityLeft(key), "capacity %q", key)
+	}
+
+	s.Equal(3, char.PoolLeft(resources.Ki), "a pool is the sheet's, not the turn's")
+}
+
+// Writing to a sheet that has no economy writes nothing, and marks nothing —
+// there is no economy for the write to land in, and a sheet that reports itself
+// dirty over a write that did not happen gets saved over storage for no reason.
+func (s *SheetLedgerTestSuite) TestASheetOutOfCombatCannotBeWrittenTo() {
+	char, err := LoadFromData(s.ctx, s.monk(), s.bus)
+	s.Require().NoError(err)
+	char.MarkClean()
+
+	char.SpendSlots(coreCombat.ActionStandard, 1)
+	char.BankCapacity(combat.CapacityAttack, 2)
+	char.SpendCapacity(combat.CapacityMovement, 5)
+
+	s.False(char.IsDirty())
+	s.Nil(char.GetActionEconomy())
+}
+
+// CapacityNone is what an action answers when it consumes no capacity. It is
+// not a drawer: nothing can be banked under it, and nothing read out of it.
+//
+// The second half is not redundant with the first. The economy comes back live
+// — that is documented, and the reason spends go through these methods — so a
+// caller CAN write a nameless key into it, and reading that back as capacity
+// would make "no capacity" into something spendable.
+func (s *SheetLedgerTestSuite) TestCapacityNoneIsNotADrawer() {
+	char := s.loaded()
+
+	char.BankCapacity(combat.CapacityNone, 3)
+	s.Empty(char.GetActionEconomy().Granted, "banking nothing banks nowhere")
+	s.False(char.IsDirty())
+
+	char.GetActionEconomy().Granted[GrantedActionKey("")] = 3
+	s.Equal(0, char.CapacityLeft(combat.CapacityNone))
 }
 
 // The keyed capacity view reaches the same storage the sheet already had, so a
