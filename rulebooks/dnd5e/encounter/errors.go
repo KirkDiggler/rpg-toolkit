@@ -126,6 +126,19 @@ var (
 	// validateConnectionInputs Setup uses.
 	ErrBadConnection = errors.New("bad connection")
 
+	// ErrNoCrossing is returned by Step when the destination cell lies in
+	// ANOTHER room and no doorway joins it to the cell the member is standing
+	// on. The cell is real and the member simply cannot get there from here.
+	//
+	// Distinct from ErrBadPlacement on purpose, because the remedies differ:
+	// "that is not a cell" sends a caller back to its arithmetic, while "there
+	// is no way through" sends it back to the map. W2 lets two rooms share an
+	// edge without a door between them, so two absolutely-adjacent cells can be
+	// permanently unwalkable — a refusal a caller reading only the Atlas's
+	// CELLS cannot predict, since the doorway is in the doorway list or it is
+	// nowhere.
+	ErrNoCrossing = errors.New("no doorway joins those cells")
+
 	// ErrNoConnection is returned by Traverse when the given connection ID
 	// does not name any connection in this encounter — a runtime lookup
 	// miss, the ErrNotMember analogue for connections. Distinct from

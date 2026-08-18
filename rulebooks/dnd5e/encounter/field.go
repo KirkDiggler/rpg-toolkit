@@ -427,6 +427,58 @@ type TraverseOutput struct {
 	Outcome *Outcome
 }
 
+// StepInput names who steps and which cell they step to.
+type StepInput struct {
+	// Member is the ID of the member stepping.
+	Member MemberID
+
+	// To is the destination cell, DUNGEON-ABSOLUTE — the same frame the Atlas
+	// draws, a Member's Position reports, and every movement beat speaks.
+	//
+	// A cell, not a room and a cell. Whether this one is inside the stepper's
+	// current room or through a doorway is decided here rather than by the
+	// caller, which is the whole point of the verb (rpg-toolkit#1059).
+	To spatial.Position
+}
+
+// StepOutput reports what the step actually did.
+type StepOutput struct {
+	// Stepped is the movement, in dungeon-absolute cells at both ends.
+	//
+	// From and To are projected through their OWN rooms' anchors, which for a
+	// crossing are two different ones — on the map that is simply two adjacent
+	// cells (W3), and a caller never learns there was an anchor involved.
+	Stepped struct {
+		Member MemberID
+		From   spatial.Position
+		To     spatial.Position
+	}
+
+	// Crossing names the doorway this step went through, or is empty when the
+	// step stayed inside one room.
+	//
+	// A doorway identifier is not a room: it is a thing on the map, and the
+	// Atlas carries the same ids. It is reported because "what happened" is
+	// genuinely two answers here, and a caller narrating a crossing ("she
+	// slips through the gate") should not have to re-derive which one it was
+	// from the geometry.
+	Crossing string
+
+	// IntelDeltas maps member IDs to their updated percepts after the step
+	// (SurveilOutput deltas from the refreshSight cycle).
+	IntelDeltas map[MemberID]*intel.SurveilOutput
+
+	// Seq is the sequence number of the recorded movement beat.
+	Seq uint64
+
+	// Outcome is the encounter outcome if an ending fired underfoot; nil
+	// otherwise.
+	Outcome *Outcome
+
+	// Formed is set when this step started a fight. Nil otherwise.
+	Formed *FormedBubble
+}
+
 // PumpInput contains no parameters; the pump is parameterless in wave 1.
 type PumpInput struct{}
 
