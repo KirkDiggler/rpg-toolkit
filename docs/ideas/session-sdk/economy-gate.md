@@ -9,7 +9,8 @@ at the bottom are still open.
 cast, as data) + the **door** as the call site (paying a cost profile, not
 consulting a capability) + **doors debit, windows read** + casts assembled by
 **interested-by-declaration** + the **runner** owning both enforcement points so
-no machine ever spends.
+no machine ever spends + every answerer carrying an **ask/auto policy**, so
+**debits ride answers** whether they arrive synchronously or later.
 **Decides:** nothing formally. The evidence is the [#1035 census][census] and its
 [supplement][supp] and [movement addendum][move]; this doc does not re-derive
 any of it. What it does is lay four shapes side by side and walk each one
@@ -335,6 +336,93 @@ two enforcement points. Neither is a vocabulary change. What it buys is that
 **no machine, present or future, can spend anything** — including machines
 written later by somebody who never read this doc.
 
+### The sharpening: every answerer has a policy, and debits ride answers
+
+The keystone above says windows are opened by the runner and the debit happens
+at the answer. That quietly assumed a *human* answerer — and a monster taking an
+opportunity attack has no Answer verb to ride. **The doc left that gap unstated
+rather than open**, and Kirk closed it from an unexpected direction:
+
+> honestly, I think opportunity attack is going to be toggled to always do it or
+> always ask by the players.
+
+**A player toggled to always-take is structurally a monster decider.** Both are
+instant answerers. So the window machinery has **one case, not two**: every
+candidate surviving *interested ∩ affordable* carries an **answering policy**.
+
+| policy | what the runner does | when the debit lands |
+|---|---|---|
+| **ask** | opens a `Pose` window and suspends | on the `Answer` verb, later |
+| **auto** | answers synchronously, same runner pass | inline, in that pass |
+
+A monster decider is permanently *auto*. The player toggle is **choosing which
+kind of answerer you are** — and per reaction kind, not globally, because the
+same player may want opportunity attacks taken without asking and still want to
+be asked about Shield.
+
+**So the discipline sharpens.** "Doors debit, windows read" was almost right;
+the accurate rule is:
+
+> **Debits ride answers.** An answer may arrive synchronously (a policy or a
+> decider) or later (a human on the `Answer` verb). The debit rides it either
+> way, and nothing else needs to know which happened.
+
+### Verified: the interrupt module already anticipated this
+
+This is not a shape the ledger has to grow into — it was designed for it, and
+says so. The module doc:
+
+> Human and machine deciders are indistinguishable here: an auto-taken reaction
+> is an ordinary Pose answered immediately by composition.
+
+(`play/interrupt/doc.go:9-11`.) And the Shield scene has **a dedicated beat for
+exactly the auto-OA case** — beat 7 poses a window to a monster with options
+`["take-oa", "decline"]` and answers it in the same pass, commented "**NO queries
+between pose and answer**… the ledger cannot tell a policy answer from a human
+one" (`play/interrupt/shieldscene_test.go:135-161`).
+
+Two consequences follow, and both matter:
+
+1. **Auto is a zero-latency window, not the absence of a window.** The pose still
+   happens; it is simply answered before anyone can observe it open. Nothing
+   bypasses the interrupt spine.
+2. **The story records an auto-taken reaction exactly like an asked one**, and
+   not by convention — *by construction*, because the ledger cannot distinguish
+   them. The audit trail even survives the window's disappearance: `NextID`
+   persists across answers "so IDs are never reused within an encounter"
+   (`play/interrupt/data.go:31-37`), so a snapshot after everything resolved
+   still carries evidence of how many windows were posed.
+
+### What it buys, and Kirk's reason for wanting it
+
+**Suspension becomes the rare path.** Most opportunity-attack traffic resolves
+inline, in the pass that raised it, and the table never freezes. That is the
+motivation rather than a side effect: this is a **co-op game played in Discord**,
+where stopping four players to ask a fifth about an obvious stab is the
+difference between a fight and a queue. The machinery that *can* suspend is
+still there, unchanged, for the choices that deserve it.
+
+It also shrinks case (iv)'s blast radius. If most reactions never suspend, the
+open question about what travels with a frozen resolution applies to a much
+narrower set of moments than it first appeared to.
+
+### Named, not decided: where the policy lives
+
+Three candidates, and this doc does not pick:
+
+- **Supplied with the member, the way `Deciders` already are** — which has the
+  strongest precedent, since a decider *is* an answering policy for a monster,
+  and the parallel is exact.
+- **On the sheet**, persisted like the rest of the ledger.
+- **A host/table setting**, outside the rules entirely.
+
+Whichever it is, **capabilities are supplied, never defaulted** (#1036's law)
+applies with full force: a policy that silently defaults to *auto* would take
+reactions on a player's behalf without being asked, and one that silently
+defaults to *ask* would freeze the table Kirk is trying to keep moving. Neither
+is a safe guess, so it must be supplied.
+
+
 ## Where this leaves the comparison
 
 Reading the cases rather than the intuition:
@@ -515,7 +603,11 @@ C's would have to be written with `Pose` rather than before it.
    being a missed buff and becomes a missed refusal — and an unfireable Shield
    produces no error at all. Can the compiler or a test make an undeclared
    reaction impossible, or is it a convention somebody eventually breaks?
-7. **Does the declared trigger vocabulary want to be sealed?** `DCSource` was
+7. **Where does the answering policy live** — supplied with the member (the
+   `Deciders` precedent), on the sheet, or a host setting? And is *auto* allowed
+   to be a per-reaction-kind default a host sets once, or must every kind be
+   chosen explicitly?
+8. **Does the declared trigger vocabulary want to be sealed?** `DCSource` was
    closed because 5e closed it (ADR-0039). Trigger shapes — attacked-by,
    left-my-reach, ally-damaged, spell-cast-nearby — may or may not be a closed
    set, and getting that wrong in either direction is expensive.
