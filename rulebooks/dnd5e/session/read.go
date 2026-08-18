@@ -117,6 +117,14 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 // prevent. Where somebody ELSE is, is View's answer, and View gives it only for
 // members the observer actually holds.
 //
+// THE HOST MUST BIND Member TO THE AUTHENTICATED CALLER. This package cannot
+// know who is asking — a verb takes IDs, not identities — so the one check
+// that keeps this read self-only is necessarily the host's: wire a
+// client-supplied member ID through unchecked and this verb becomes the
+// unperceived-position roster it refuses to be, one ID at a time, with
+// monster IDs learnable from Story beats. The refusal above is only as good
+// as the host's binding.
+//
 // It is a live read, not a stored one: the position comes from the composition's
 // roster, which projects each member's cell through their room's anchor when
 // asked. A member who has walked is reported where they are now.
