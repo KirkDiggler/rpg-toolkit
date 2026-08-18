@@ -543,6 +543,9 @@ type DissolveOutput struct {
 	// the world clock at budget zero.
 	Members []MemberID
 
+	// Cause is why the fight ended.
+	Cause DissolveCause
+
 	// Seq is the story sequence of the dissolution beat.
 	Seq uint64
 }

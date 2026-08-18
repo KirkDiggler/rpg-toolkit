@@ -25,8 +25,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-type StandingSuite struct {
+// deathScene is the death lane's shared fixture — D1's standing pins run on it
+// here, D2's endings run on it in defeat_test.go. It holds no tests of its own;
+// embedding it hands a suite the crypt, the story readers, and the clock and
+// roster lookups every death scene asks the same questions with.
+type deathScene struct {
 	suite.Suite
+}
+
+type StandingSuite struct {
+	deathScene
 }
 
 func TestStandingSuite(t *testing.T) {
@@ -49,7 +57,7 @@ const wolf = encounter.MemberID("wolf")
 // Retention is unbounded because most of these tests read the story, and a
 // window would make "what the story says" a question about trimming.
 // TestAForgottenDeathIsToldAgain sets its own, on purpose.
-func (s *StandingSuite) scene(standing encounter.Standing, members ...encounter.MemberInput) *encounter.Encounter {
+func (s *deathScene) scene(standing encounter.Standing, members ...encounter.MemberInput) *encounter.Encounter {
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -69,7 +77,7 @@ func (s *StandingSuite) scene(standing encounter.Standing, members ...encounter.
 
 // pair is alice and a goblin in plain sight of each other, the goblin pacing
 // between two cells so a tick has something to show.
-func (s *StandingSuite) pair(standing encounter.Standing) *encounter.Encounter {
+func (s *deathScene) pair(standing encounter.Standing) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
@@ -85,7 +93,7 @@ func (s *StandingSuite) pair(standing encounter.Standing) *encounter.Encounter {
 
 // trio adds the wolf, so a fight has an order long enough for a gap in the
 // middle of it to be visible.
-func (s *StandingSuite) trio(standing encounter.Standing) *encounter.Encounter {
+func (s *deathScene) trio(standing encounter.Standing) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
@@ -98,7 +106,7 @@ func (s *StandingSuite) trio(standing encounter.Standing) *encounter.Encounter {
 	)
 }
 
-func (s *StandingSuite) clockOf(enc *encounter.Encounter, id encounter.MemberID) encounter.ClockKind {
+func (s *deathScene) clockOf(enc *encounter.Encounter, id encounter.MemberID) encounter.ClockKind {
 	s.T().Helper()
 
 	out, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
@@ -107,7 +115,7 @@ func (s *StandingSuite) clockOf(enc *encounter.Encounter, id encounter.MemberID)
 	return out.Kind
 }
 
-func (s *StandingSuite) orderOf(enc *encounter.Encounter, id encounter.MemberID) []encounter.MemberID {
+func (s *deathScene) orderOf(enc *encounter.Encounter, id encounter.MemberID) []encounter.MemberID {
 	s.T().Helper()
 
 	out, err := enc.ClockOf(&encounter.ClockOfInput{Member: id})
@@ -116,7 +124,7 @@ func (s *StandingSuite) orderOf(enc *encounter.Encounter, id encounter.MemberID)
 	return out.Order
 }
 
-func (s *StandingSuite) positionOf(enc *encounter.Encounter, id encounter.MemberID) spatial.Position {
+func (s *deathScene) positionOf(enc *encounter.Encounter, id encounter.MemberID) spatial.Position {
 	s.T().Helper()
 
 	members, err := enc.Members()
@@ -133,7 +141,7 @@ func (s *StandingSuite) positionOf(enc *encounter.Encounter, id encounter.Member
 
 // beatKindsOf reads one audience's whole retained story as its list of beat
 // kinds — the shape the beat-order law is asserted in.
-func (s *StandingSuite) beatKindsOf(enc *encounter.Encounter, audience encounter.MemberID) []string {
+func (s *deathScene) beatKindsOf(enc *encounter.Encounter, audience encounter.MemberID) []string {
 	s.T().Helper()
 
 	kinds := make([]string, 0)
@@ -144,7 +152,7 @@ func (s *StandingSuite) beatKindsOf(enc *encounter.Encounter, audience encounter
 	return kinds
 }
 
-func (s *StandingSuite) beatsOf(enc *encounter.Encounter, audience encounter.MemberID) []map[string]any {
+func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.MemberID) []map[string]any {
 	s.T().Helper()
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: audience})
@@ -289,20 +297,35 @@ func (s *StandingSuite) TestADownMemberLeavesTheTurnOrder() {
 		"which leaves it on the world clock — present, not gone")
 }
 
-// TestTheFightGoesOnWithoutIt pins what the splice must NOT do: end the fight.
-// A bubble holding one live side is still a fight in this slice; self-dissolve
-// when a whole side is down is D2's ruling (ByDefeat), not this one's.
-func (s *StandingSuite) TestTheFightGoesOnWithoutIt() {
+// TestTheSpliceIsNotWhatEndsTheFight replaces D1's TestTheFightGoesOnWithoutIt.
+//
+// That pin held the interim honestly: every monster down, alice still in a
+// fight, because self-dissolve was D2's ruling and not D1's. D2 landed
+// (rpg-toolkit#1078), so the scene it pinned now ends — and the pin is rewritten
+// rather than deleted, because the SPLICE still must not be what ends it. The
+// order closing over a body is one thing; a side being gone is another, and
+// defeat_test.go owns the second. If the two ever collapse into each other, this
+// is the test standing where the seam used to be.
+func (s *StandingSuite) TestTheSpliceIsNotWhatEndsTheFight() {
 	down := &downList{}
 	enc := s.trio(down)
 
-	down.down = []encounter.MemberID{goblin, wolf}
+	down.down = []encounter.MemberID{goblin}
 	_, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice),
-		"every monster is down and alice is STILL in a fight — D2 is what ends it")
-	s.Equal([]encounter.MemberID{alice}, s.orderOf(enc, alice))
+		"one body spliced out of a fight the wolf is still standing in")
+	s.Equal([]encounter.MemberID{alice, wolf}, s.orderOf(enc, alice))
+
+	// And the fight that pin used to describe — every monster down — is over.
+	down.down = []encounter.MemberID{goblin, wolf}
+	_, err = enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+
+	s.Equal(encounter.ClockWorld, s.clockOf(enc, alice),
+		"the last one down ends it, with no caller (ByDefeat)")
+	s.Empty(enc.ToData().Bubbles)
 }
 
 // --- a corpse does not walk -----------------------------------------------
