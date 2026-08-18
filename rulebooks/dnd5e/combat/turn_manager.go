@@ -47,27 +47,6 @@ type AbilityInfo struct {
 	ActionType coreCombat.ActionType
 }
 
-// CapacityType identifies what capacity an action consumes.
-type CapacityType string
-
-// CapacityType constants for different action capacity requirements.
-const (
-	// CapacityNone means the action has no capacity requirement.
-	CapacityNone CapacityType = ""
-
-	// CapacityAttack means the action consumes one attack from AttacksRemaining.
-	CapacityAttack CapacityType = "attack"
-
-	// CapacityMovement means the action consumes movement from MovementRemaining.
-	CapacityMovement CapacityType = "movement"
-
-	// CapacityOffHandAttack means the action consumes one off-hand attack.
-	CapacityOffHandAttack CapacityType = "off_hand_attack"
-
-	// CapacityFlurryStrike means the action consumes one flurry strike.
-	CapacityFlurryStrike CapacityType = "flurry_strike"
-)
-
 // ActionInfo provides metadata about an available action.
 type ActionInfo struct {
 	// ID is the unique identifier of this action instance.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
@@ -65,21 +66,83 @@ func (c *Character) ExitCombat(_ context.Context, _ *ExitCombatInput) (*ExitComb
 // StartTurn initializes the action economy for a new turn.
 // Sets 1 action, 1 bonus action, 1 reaction, and movement from input speed.
 // Returns the available abilities and actions for this turn.
+//
+// A call with no input is refused rather than dereferenced. The two turn verbs
+// answer the same way about the same mistake: [Character.RefreshForTurn] will
+// not reseed turn zero at zero speed either.
 func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartTurnOutput, error) {
-	c.actionEconomy = &ActionEconomyData{
-		TurnNumber:            input.TurnNumber,
-		ActionsRemaining:      1,
-		BonusActionsRemaining: 1,
-		ReactionsRemaining:    1,
-		MovementRemaining:     input.Speed,
-		Granted:               make(map[GrantedActionKey]int),
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no turn to start")
 	}
-	c.economyChanged()
+
+	c.seedTurn(input.TurnNumber, input.Speed)
 
 	return &StartTurnOutput{
 		Abilities: c.buildAvailableAbilities(),
 		Actions:   c.buildAvailableActions(),
 	}, nil
+}
+
+// seedTurn replaces the action economy with a full one for the given turn.
+//
+// Everything a turn grants is here and nothing else is: the three slots, the
+// movement the caller states (conditions modify speed, and that arithmetic
+// belongs above this), and an empty bank — capacity granted last turn is not
+// this turn's to spend. Shared by the turn-start verb and the freshness helper
+// so the two cannot drift into disagreeing about what a fresh turn looks like.
+func (c *Character) seedTurn(turnNumber, speed int) {
+	c.actionEconomy = &ActionEconomyData{
+		TurnNumber:            turnNumber,
+		ActionsRemaining:      1,
+		BonusActionsRemaining: 1,
+		ReactionsRemaining:    1,
+		MovementRemaining:     speed,
+		Granted:               make(map[GrantedActionKey]int),
+	}
+	c.economyChanged()
+}
+
+// RefreshForTurn fills a stale bank, so that the economy is observably full
+// when the character's turn begins.
+//
+// The stored TurnNumber is what makes this answerable without anybody
+// remembering: an economy left over from turn 3, asked about turn 4, is stale
+// and gets reseeded; asked about turn 3 again it is untouched, so a second
+// swing cannot refill what the first one spent. That is the whole rule, and it
+// is why this is safe to call at every ask rather than exactly once.
+//
+// Materialised at the first ask rather than pushed at the turn boundary: the
+// sheet may not have been loaded when the turn changed, and a bank that is
+// only correct if something remembered to announce the boundary is a bank that
+// is eventually wrong.
+//
+// A sheet that is not in combat has no turn to be stale and is left alone —
+// combat starts somewhere else, and inventing an economy here would put a
+// character in a fight nobody put them in.
+//
+// Nothing in this rulebook calls it yet. The door that pays an action's cost
+// is what will (rpg-toolkit#1091).
+func (c *Character) RefreshForTurn(
+	_ context.Context, input *RefreshForTurnInput,
+) (*RefreshForTurnOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no turn to refresh for")
+	}
+	if c.actionEconomy == nil {
+		return &RefreshForTurnOutput{}, nil
+	}
+
+	// Any turn number that is not the stored one is stale, including one that
+	// went backwards. A bank left empty because a number moved the wrong way is
+	// a character who cannot act on their own turn, which is a worse failure
+	// than a bank refilled once too often.
+	if c.actionEconomy.TurnNumber == input.TurnNumber {
+		return &RefreshForTurnOutput{}, nil
+	}
+
+	c.seedTurn(input.TurnNumber, input.Speed)
+
+	return &RefreshForTurnOutput{Reseeded: true}, nil
 }
 
 // EndTurn resets action economy resources to 0 and clears granted capacity.

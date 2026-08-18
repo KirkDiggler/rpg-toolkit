@@ -112,6 +112,24 @@ type StartTurnOutput struct {
 	Actions   []AvailableAction
 }
 
+// RefreshForTurnInput provides input for filling a stale action economy.
+type RefreshForTurnInput struct {
+	// TurnNumber is the turn being acted in. An economy stored under any
+	// other number is stale.
+	TurnNumber int
+
+	// Speed is the movement to seed, in feet — the character's speed after
+	// whatever conditions have to say about it, which the caller computes.
+	Speed int
+}
+
+// RefreshForTurnOutput reports whether the bank was actually filled.
+type RefreshForTurnOutput struct {
+	// Reseeded is true when the economy was stale and has been replaced with a
+	// full one. False means it was already this turn's, and nothing moved.
+	Reseeded bool
+}
+
 // ActivateAbilityInput provides input for activating a combat ability or feature.
 type ActivateAbilityInput struct {
 	AbilityRef *core.Ref // which ability to activate
