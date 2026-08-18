@@ -254,24 +254,96 @@ D's most useful property: it makes the call-site choice smaller and later,
 because moving a pure function call is a refactor, while moving a capability is
 a seam change.
 
-### D's honest cost — the cast-assembly obligation
+### D's obligation, and Kirk's refinement of it — interested-by-declaration
 
 D is only correct while **everyone who might react is already in the cast.**
-Today that holds for encounter members and is not a new requirement (fact 1),
-but it has three edges worth naming:
+Today that holds for encounter members and is not a new requirement (fact 1) —
+but "pass literally everyone" is a blunt instrument, and Kirk's refinement is to
+narrow it by *relevance to the declared action*:
 
-1. **It is paid for per verb.** `castFor` does a repository read per character
-   on every call (`session/attack.go:423-427`), and `standingSeam` does its own
-   on every consult. D adds no reads, but it makes the existing breadth
-   load-bearing for *correctness* rather than only for effects — a cast that was
-   merely generous becomes a cast that must be complete.
-2. **It collides with `interactionRoom`.** The wider the cast, the more likely
-   participants span rooms and the positional installer goes silent (case (v)).
-3. **A reactor who is not an encounter member cannot be reached at all.** Cast
-   membership is the roster; a monster with no stored sheet is skipped outright
-   (`session/attack.go:415-419`). Cross-encounter reactions are not expressible,
-   which is almost certainly fine and should be a stated limit rather than a
-   discovered one.
+> what cast enters the input? what action is being taken? what can counter that
+> action? if it is an attack, a shield would go in because a shield can counter
+> that. the key is not shoving every possible thing into the input but only the
+> things that can have an effect on it.
+
+**The tension to clear first.** `castFor` passes the whole roster *precisely
+because* the session is not allowed to filter: "applicability is the effect's
+own predicate (ADR-0038)… deciding they are irrelevant here would be this
+package deciding a rule" (`session/attack.go:398-401`). So a narrower cast is
+legal **only if the relevance answer comes from the rulebook**, never from the
+seam. That is the whole design constraint, and it has a known solution shape.
+
+**The mechanism: a reaction declares its trigger as data.** The house pattern
+already exists twice, and both times it was invented to solve this exact class —
+"can this be answered before anything runs?":
+
+- **`SaveGate`** declares a contestable consequence's whole contest as data:
+  abilities, DC source, success semantics, recurrence. Its own doc says "**It is
+  data — content carries it, nothing here executes it**", and names the founding
+  complaint: "a stat block could carry a knockdown DC and be lying about whether
+  anything read it" (`saves/gate.go:160-173`, ADR-0039).
+- **`AttackProfile.Imposes`** declares the consequence itself as data, after
+  #1013 found the machine hardcoding prone — with #1014 adding the both-directions
+  validation, because "a consequence with no contest is as meaningless as a
+  contest with no consequence".
+
+A reaction-shaped feature would declare the same way: Shield as *reacts-to an
+attack against me*; an opportunity attack as *reacts-to a creature leaving my
+reach*; and the same declaration is what a hook like Bless already expresses
+implicitly through its chain subscription. **Cast assembly then becomes
+mechanical** — something like `combat.Interested(declaredAction, roster)`,
+scanning sheets for declared triggers that match the action about to be taken.
+The session hands over an action and a roster and decides nothing; the rulebook
+answers who is interested. R3 is not violated, it is *implemented*: applicability
+is still the effect's own predicate, only now the predicate is readable before
+the bus exists.
+
+**The failure modes are asymmetric, and that asymmetry is the load-bearing
+constraint.** Over-inclusion fails safe, by R3's own reasoning — "attaching a
+participant who turns out to be irrelevant costs correctness nothing"
+(`resolution/doc.go:36-41`): the sheet rides along, its predicates do not match,
+nothing fires. Under-inclusion fails **silent**: a wizard left out of the cast
+has a Shield that can never fire, no window ever opens, and *no error is ever
+produced* — the resolution looks entirely healthy. Nothing distinguishes "had no
+reaction" from "was never asked".
+
+So the filter has to be **closed by construction**: a reaction may exist *only*
+by declaring its trigger, so that the feature **is** its own index entry and
+there is no separate registry anybody can forget to update. That is the rule
+ownership already lives under — ADR-0006 keeps "a registry for definitions,
+entity-centric storage for ownership. No central who-has-what table", and a
+condition exists because it is on the sheet (`character/data.go:73`), not because
+a table says so. *(Honest caveat: the precedent transfers on the ownership half,
+not the routing half — `conditions.LoadJSON` still routes refs through a switch
+(`conditions/loader.go:28+`), which is a build-time registry of a different kind.
+#971 is in that neighbourhood.)*
+
+**What composes out of this.** The window's audience becomes the intersection of
+two data reads, which is Kirk's two insights joined:
+
+> audience = **interested** (declared trigger matches the action) ∩ **affordable**
+> (`CanPay` on the sheet the cast already holds)
+
+Both halves are door-readable, both are data, and D is intact — no capability,
+no callback. The same intersection is also exactly the list a client needs to
+render "you may react" prompts, which is open question 4 answered by
+construction rather than by a new read.
+
+**What it relieves, and what it does not.** Narrowing the cast reduces a cost
+that is real and already paid: `castFor` performs a repository read per
+character on every verb (`session/attack.go:423-427`), and `standingSeam` does
+its own per consult — a cost that scales with **roster size** rather than with
+the interaction, which is the wrong axis. It also reduces pressure on
+[#1090](https://github.com/KirkDiggler/rpg-toolkit/issues/1090), since a smaller
+cast spans rooms less often — but **it does not fix #1090**, whose real answer is
+the one-map position question rather than cast width. Do not let this section be
+read as closing that issue.
+
+**The honest cost: none of this exists yet.** No feature carries trigger data
+today, so `Interested` has nothing to scan and the filter cannot be built. **The
+whole-roster rule remains v1's honest behaviour** — over-inclusive, safe, and
+paid for — and this section is its designed successor, arriving with the
+reaction wave that gives it both its first declarations and its first caller.
 
 ## The cross-cutting facts any shape must respect
 
@@ -325,12 +397,21 @@ C's would have to be written with `Pose` rather than before it.
 4. **The eligibility read.** "Could Shield fire?" is the may-I-act question in
    reaction clothes, and it is two questions: the server needs it to decide
    whether to open a window, and a client may want it to grey a button.
+   Interested-by-declaration answers both with one intersection — is the read
+   the *same* one, or does the client's version want more (why not, not just
+   whether)?
 5. **What travels with a frozen resolution?** Case (iv) suggests the actor's
    debit is part of the *suspension* contract rather than the economy's. Worth
    settling when `Pose` is designed, not before.
-6. **Is the cast-assembly obligation acceptable as a correctness requirement?**
-   Under D a missing participant stops being a missed buff and becomes a missed
-   refusal.
+6. **Is "a reaction exists only by declaring its trigger" enforceable?** It is
+   what makes a narrowed cast safe, because under D a missing participant stops
+   being a missed buff and becomes a missed refusal — and an unfireable Shield
+   produces no error at all. Can the compiler or a test make an undeclared
+   reaction impossible, or is it a convention somebody eventually breaks?
+7. **Does the declared trigger vocabulary want to be sealed?** `DCSource` was
+   closed because 5e closed it (ADR-0039). Trigger shapes — attacked-by,
+   left-my-reach, ally-damaged, spell-cast-nearby — may or may not be a closed
+   set, and getting that wrong in either direction is expensive.
 
 ## What each shape does to E1–E3
 
@@ -357,7 +438,14 @@ ruling while this conversation continues.
   fails and it collapses into A.
 - If the cast cannot be guaranteed complete for reaction purposes, D is unsafe
   in exactly the cases it was chosen for, and C's consult (which can go and ask)
-  becomes the honest answer.
+  becomes the honest answer. This is the one that would hurt most, because
+  under-inclusion is silent: there is no failing test to write for a window that
+  never opened.
+- If a reaction's relevance turns out not to be declarable ahead of the
+  interaction — if "can this counter that?" genuinely needs the interaction's
+  intermediate state — then interested-by-declaration cannot be computed at the
+  door, and the whole-roster cast is not a v1 compromise but the permanent
+  answer.
 - If `Pose` arrives shaped so a machine can consult supplied capabilities
   directly, C stops being distinct and becomes A with a longer reach.
 
