@@ -210,7 +210,7 @@ func (s *EconomyDirtyTestSuite) TestTheUnarmedStrikeMarks() {
 func (s *EconomyDirtyTestSuite) TestARefusedUnarmedStrikeLeavesTheSheetClean() {
 	char := s.inCombat()
 	char.GrantCapacity(GrantedMartialArtsBonus, 1)
-	char.GetActionEconomy().BonusActionsRemaining = 0
+	char.actionEconomy.BonusActionsRemaining = 0
 	char.MarkClean()
 
 	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.UnarmedStrike()})
@@ -343,6 +343,25 @@ func (s *EconomyDirtyTestSuite) TestAFailedFeatureActivationLeavesTheSheetDirty(
 
 	s.Equal(1, char.GetActionEconomy().ActionsRemaining, "the slot was given back")
 	s.True(char.IsDirty(), "but the sheet is not assumed to be untouched")
+}
+
+// A free action costs no slot, so activating a feature that takes one writes
+// nothing to the economy — and a sheet with nothing written has nothing to
+// save. (The free features that ship do change the sheet, but through other
+// sites: Reckless Attack applies a condition, which marks.)
+func (s *EconomyDirtyTestSuite) TestActivatingAFreeFeatureLeavesTheSheetClean() {
+	char := s.inCombat()
+	char.features = append(char.features, &stubFeature{actionType: coreCombat.ActionFree})
+	before := *char.GetActionEconomy()
+
+	out, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: stubFeatureRef})
+	s.Require().NoError(err)
+	s.Require().True(out.Success)
+
+	s.Equal(before.ActionsRemaining, char.GetActionEconomy().ActionsRemaining)
+	s.Equal(before.BonusActionsRemaining, char.GetActionEconomy().BonusActionsRemaining)
+	s.Equal(before.ReactionsRemaining, char.GetActionEconomy().ReactionsRemaining)
+	s.False(char.IsDirty(), "no slot moved, so there is nothing to write")
 }
 
 func (s *EconomyDirtyTestSuite) TestAnUnknownAbilityLeavesTheSheetClean() {

@@ -802,11 +802,14 @@ func (c *Character) IsDirty() bool {
 	return c.dirty
 }
 
-// poolChanged records that a write landed on a persisted resource pool.
+// poolChanged records that a write landed on the resource pools or on the state
+// that moves with them.
 //
 // GetResourceData feeds Data.Resources, so a spent ki point or a restored hit
 // die is state ToData writes — and, like the action economy, state that only
-// reaches storage if the sheet reports IsDirty() (#1087).
+// reaches storage if the sheet reports IsDirty() (#1087). The rests call it for
+// everything they touch at once, hit points and death saves included, because a
+// rest is one change to the sheet rather than three.
 //
 // The load paths deliberately do not call this: loadResources and
 // LoadResourceData rebuild pools at the values they were read from, so the

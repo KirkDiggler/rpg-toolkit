@@ -16,6 +16,12 @@ import (
 )
 
 // GetActionEconomy returns the current action economy data, or nil if not in combat.
+//
+// The economy comes back live, not copied — the same shape as GetResource, and
+// the same warning. Reading it is free; writing through it moves persisted
+// state without the sheet noticing, and the write is then dropped by the next
+// write-back. Spend through the methods on this file, which mark the sheet
+// dirty (#1087).
 func (c *Character) GetActionEconomy() *ActionEconomyData {
 	return c.actionEconomy
 }
@@ -747,8 +753,16 @@ func (c *Character) consumeActionType(actionType coreCombat.ActionType) {
 	case coreCombat.ActionReaction:
 		c.actionEconomy.ReactionsRemaining--
 	default:
-		// A free action costs no slot, so nothing was written and the sheet
-		// has nothing new to save.
+		// Nothing to spend, so nothing to save. A free action costs no slot by
+		// definition; any OTHER type never reaches here at all, because
+		// activateFeature gates on canUseAbilityByActionType, which recognises
+		// exactly the four types above and refuses the rest.
+		//
+		// The two free features that ship say the same thing from the other
+		// side: Reckless Attack's change to the sheet is a condition, and the
+		// condition site marks it, while Action Surge cannot reach its spend
+		// through this path at all — its CanActivate demands an ActionEconomy
+		// that activateFeature does not supply.
 		return
 	}
 
