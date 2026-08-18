@@ -74,9 +74,11 @@ type AttackOutput struct {
 // which is its caller, and it earns its shape then. The same discipline
 // [DissolveCause] uses for defeat.
 //
-// Main hand, one-handed, melee. Two-handed grips and the off-hand swing are
-// the compiler's own named gaps and arrive with the economy that decides when
-// a second swing is allowed at all.
+// Main hand, one-handed, melee. Two-handed grips and the off-hand swing are the
+// compiler's own named gaps, and they did NOT arrive with the economy the way
+// this paragraph used to predict: the economy decides how many swings a turn
+// buys, and what a two-handed grip does to one is a question for whoever
+// compiles the attack rather than for whoever prices it.
 //
 // # A swing costs something, in a fight
 //
