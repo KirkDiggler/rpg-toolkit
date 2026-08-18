@@ -183,11 +183,17 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 // cause-before-effect law (see refreshSight).
 //
 // An outcome is a CONSEQUENCE — of a walk, an arrival, whatever produced it —
-// so it lands after that verb's own beat. Record holds that for free by doing
-// nothing but record: no sight refresh, no trigger detection, no clock
-// movement, so there is nothing it could append first and nothing it could
-// reorder. This pins both halves: the order, and the "nothing else" that makes
-// the order structural rather than a habit.
+// so it lands after that verb's own beat. Record holds that by appending its own
+// beat FIRST and refreshing no sight, detecting no trigger and moving no clock,
+// so there is nothing it could append ahead of the outcome and nothing it could
+// reorder.
+//
+// Nobody is down in this scene, so the standing consult Record now runs
+// (rpg-toolkit#1083) finds nothing to say and the beat list is the same list it
+// always was. That is the point of leaving this pin exactly as it was written:
+// the news a consult has none of must cost the story nothing. killingblow_test.go
+// owns the scene where there IS news, and pins that it lands after the outcome
+// rather than before it.
 func (s *OutcomeTestSuite) TestTheOutcomeLandsAfterTheVerbThatCausedIt() {
 	enc := s.scene()
 

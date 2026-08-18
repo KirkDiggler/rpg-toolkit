@@ -3,7 +3,11 @@
 
 package encounter_test
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+import (
+	"errors"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+)
 
 // everyoneStanding is the Standing capability these tests install by default.
 //
@@ -59,6 +63,36 @@ func (s *strangerWhenTold) Standing([]encounter.MemberID) ([]encounter.MemberID,
 	if s.lying {
 		return []encounter.MemberID{"a-ghost"}, nil
 	}
+
+	return nil, nil
+}
+
+// errRulebookUnreachable is what a rulebook that cannot answer looks like from
+// the composition's side — a store that is down rather than a member at zero.
+var errRulebookUnreachable = errors.New("the rulebook cannot say who is standing")
+
+// brokenWhenTold is a rulebook that starts well-behaved and then stops
+// answering, so the R5 arm can be driven from a scene that was already running.
+type brokenWhenTold struct {
+	broken bool
+}
+
+func (b *brokenWhenTold) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
+	if b.broken {
+		return nil, errRulebookUnreachable
+	}
+
+	return nil, nil
+}
+
+// countingStanding is everyoneStanding that remembers being asked, which is how
+// a test tells "the consult did not fire" from "the consult found nobody".
+type countingStanding struct {
+	calls int
+}
+
+func (c *countingStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
+	c.calls++
 
 	return nil, nil
 }
