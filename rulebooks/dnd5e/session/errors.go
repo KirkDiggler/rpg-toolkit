@@ -176,8 +176,16 @@ var (
 	// inner sentinel never crosses the boundary (S2).
 	ErrNoConnection = errors.New("no such connection")
 
-	// ErrBadPosition is returned when a target cell is out of bounds, or is
-	// not a legal cell of its grid family.
+	// ErrBadPosition is returned when a target cell is out of bounds, is not a
+	// legal cell of its grid family, or is the cell the walker is already
+	// standing on.
+	//
+	// That last case shares the sentinel rather than earning its own because
+	// the remedy is the same one: the caller named a cell that cannot be
+	// stepped to, and must fix the cell. It is emphatically NOT ErrBrokenPath —
+	// a broken path has a gap in it, and whoever read "not a walk" about a
+	// zero-distance step would go hunting for arithmetic that is perfectly
+	// fine (rpg-toolkit#1060).
 	ErrBadPosition = errors.New("bad position")
 
 	// ErrNoSessionID is returned when a verb is given an empty session ID.

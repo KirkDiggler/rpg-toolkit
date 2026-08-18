@@ -22,6 +22,7 @@ type MoveTestSuite struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
+	stream     *fakeStream
 	mgr        *session.Manager
 }
 
@@ -29,9 +30,10 @@ func (s *MoveTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
+	s.stream = &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
+		Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -339,6 +341,90 @@ func (s *MoveTestSuite) TestAStepOntoNoCellUsesOurSentinelNotTheirs() {
 	// fractional hex cell.
 	s.Contains(err.Error(), "owned by no room",
 		"the composition's account of why survives, even though its sentinel does not")
+}
+
+// TestAZeroDistanceStepIsRefused pins rpg-toolkit#1060: the cell the walker
+// already stands on is not a step.
+//
+// A step's only check was adjacency, and every grid family reads adjacency as
+// Distance <= 1 — so distance ZERO sailed through. The composition's own
+// placement then permits the mover's own cell, and the phantom went the whole
+// way: a genuine `moved` beat recorded and persisted, sight refreshed, and
+// EventMoved fanned out to every client, for a movement that never happened.
+// Free-roam has no movement budget, so no accounting layer downstream would
+// ever have caught the no-op.
+//
+// The assertion is therefore not only that it errors. What the defect produced
+// was a RECORD, so the record is what has to be absent: no beat, no delivery.
+func (s *MoveTestSuite) TestAZeroDistanceStepIsRefused() {
+	s.startCorridor()
+	ctx := context.Background()
+
+	before, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.stream.published = nil // setup beats predate the walk
+
+	// Alice stands at (1,1). This asks her to step onto herself.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 1}},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadPosition)
+	s.NotErrorIs(err, session.ErrBrokenPath,
+		"a broken path has a GAP in it; this one has the opposite problem, and "+
+			"a caller told 'not a walk' would go looking for arithmetic that is fine")
+	s.Contains(err.Error(), "already standing on (1,1)",
+		"and the refusal names the cell, in the caller's own coordinates")
+
+	after, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Len(after, len(before), "no beat was recorded for a movement that did not happen")
+	s.Empty(s.stream.published, "and nothing reached a client")
+}
+
+// TestARepeatedCellMidPathIsRefused is the same phantom one cell along, and it
+// is what stops the fix from being a comparison against where the walk began.
+//
+// "Where the walker stands" ADVANCES as the path resolves. [A,B,B] is a real
+// step followed by a phantom one, so a check against A alone waves the second
+// B straight through — the defect intact, one cell further in.
+func (s *MoveTestSuite) TestARepeatedCellMidPathIsRefused() {
+	s.startCorridor()
+	ctx := context.Background()
+
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 1}},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadPosition)
+	s.Contains(err.Error(), "step 2 of 2", "and it names which step of the path")
+
+	// Refused WHOLE (R5). The legal first step is not taken either: validation
+	// finishes before the composition is touched, so alice never left (1,1).
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 1, Y: 1}, where.Position,
+		"a path refused whole leaves the walker exactly where she was")
+}
+
+// TestThereAndBackIsLegal is the negative control, and it is what keeps the
+// #1060 fix from turning into a rule about REPEATED CELLS.
+//
+// [B,A] visits A twice and moves genuinely at every step: out one cell and back
+// again is a walk, and a walker may retrace it as often as they like. Only a
+// step of zero DISTANCE is a phantom, so only that is refused.
+func (s *MoveTestSuite) TestThereAndBackIsLegal() {
+	s.startCorridor()
+
+	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 1, Y: 1}},
+	})
+	s.Require().NoError(err, "every step of a there-and-back is real movement")
+	s.Require().Len(out.Steps, 2, "both are walked, and both are recorded")
+	s.Equal(spatial.Position{X: 2, Y: 1}, out.Steps[0].Position)
+	s.Equal(spatial.Position{X: 1, Y: 1}, out.Steps[1].Position, "back where she started")
 }
 
 func TestMoveSuite(t *testing.T) {
