@@ -195,29 +195,40 @@ func (s *DefeatSuite) TestAFightWithBothSidesStandingNeverSelfDissolves() {
 	s.NotContains(s.beatKindsOf(enc, alice), "bubble-dissolved")
 }
 
-// TestAFightEmptiedByItsOwnMembersIsNotADefeat holds the check to its cause. A
-// bubble can go one-sided without anybody dying — a caller transfers the last
-// monster out — and calling that a defeat would put an ending in the story that
-// nothing in the fiction earned.
+// TestAFightEmptiedByItsOwnMembersIsNotADefeat holds the check to its CAUSE. A
+// bubble can go one-sided without anybody having fallen in it — a caller
+// transfers the last monster out — and calling that a defeat would put an ending
+// in the story that nothing in the fiction earned.
 //
-// The bubble is left running, which is D1's state and is deliberately not this
-// slice's business: ending a fight nobody is fighting is a different ruling with
-// a different cause.
+// Somebody IS down here, elsewhere on the map, and that is the whole point of
+// the fixture. Without a body anywhere the consult short-circuits before it ever
+// looks at a bubble, so a version of this rule that scanned the bubble list
+// instead of asking about the member who just fell would pass. With one, the
+// only thing keeping this fight alive is that the body is not in it.
+//
+// The one-sided bubble is left running, which is D1's state and deliberately not
+// this slice's business: ending a fight nobody is fighting is a different ruling
+// with a different cause.
 func (s *DefeatSuite) TestAFightEmptiedByItsOwnMembersIsNotADefeat() {
-	enc := s.trio(&downList{})
+	down := &downList{}
+	enc := s.trio(down)
 
 	_, err := enc.Transfer(&encounter.TransferInput{Member: goblin, To: encounter.ClockWorld})
 	s.Require().NoError(err)
 	_, err = enc.Transfer(&encounter.TransferInput{Member: wolf, To: encounter.ClockWorld})
 	s.Require().NoError(err)
 	s.Require().Equal([]encounter.MemberID{alice}, s.orderOf(enc, alice),
-		"one-sided, and nobody is down")
+		"one-sided, and it got that way by walking out")
 
+	// And now a body, outside the fight, so the world has something to notice.
+	down.down = []encounter.MemberID{goblin}
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 
-	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice))
+	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice),
+		"the goblin fell somewhere else; alice's fight is not the one that ended")
 	s.NotContains(s.beatKindsOf(enc, alice), "bubble-dissolved")
+	s.Contains(s.beatKindsOf(enc, alice), "down", "the world did notice, though")
 }
 
 // --- the husk edge, told honestly -----------------------------------------
