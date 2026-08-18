@@ -1,20 +1,22 @@
 # The economy gate: where an action's cost lives
 
 **Date:** 2026-08-18
-**Status:** open question space, now converged on a candidate. Kirk on the
-shape below: *"I can go along with this. I think it is a good foundation."* —
-**a foundation he can live with, not yet a formal ruling.** The open questions
-at the bottom are still open.
-**Where it converged:** shape **D**'s substance (the ledger travels with the
-cast, as data) + the **door** as the call site (paying a cost profile, not
-consulting a capability) + **doors debit, windows read** + casts assembled by
-**interested-by-declaration** + the **runner** owning both enforcement points so
-no machine ever spends + every answerer carrying an **ask/auto policy**, so
-**debits ride answers** whether they arrive synchronously or later.
-**Decides:** nothing formally. The evidence is the [#1035 census][census] and its
-[supplement][supp] and [movement addendum][move]; this doc does not re-derive
-any of it. What it does is lay four shapes side by side and walk each one
-through the same cases.
+**Status: DECIDED 2026-08-18.** Kirk: *"really happy with how this turned out I
+approve and am excited to get started on 1035."*
+**Decides:** the **foundation** — shape **D**'s substance (the ledger rides the
+cast as data; the gate is pure `CanPay`/`Pay` in `combat`) + casts assembled by
+**interested-by-declaration**, closed by construction + **machines yield, the
+runner spends**, the ledger denied to machines exactly as the bus is + **debits
+ride answers**, with *auto* a zero-latency window and *ask* a `Pose` plus an
+`Answer` door + **the door pays a compiled data profile** in v1, which is what
+keeps the whole thing ADR-free. Restated in full in *Decided* at the bottom.
+**Does not decide:** the eight open questions, each parked with the wave that
+owns it.
+The evidence is the [#1035 census][census] and its [supplement][supp] and
+[movement addendum][move]; this doc does not re-derive any of it. What it does is
+lay four shapes side by side and walk each one through the same cases — the
+argument is kept rather than collapsed, because a ruling is only as good as the
+reasoning that produced it.
 
 **Verified against** `main` at `b3287ae`.
 
@@ -579,6 +581,9 @@ C's would have to be written with `Pose` rather than before it.
 
 ## Open questions
 
+**All eight survive the ruling.** Each belongs to a wave that has not started —
+see *Decided* at the bottom.
+
 1. **~~Where is `Pay` called from?~~** Converged: the door, by the runner. What
    remains open underneath it is narrower — whether the runner's window
    enforcement rides `Pose` as its payload or needs its own shape, which is a
@@ -659,5 +664,62 @@ installed for any strike, so prone's advantage-within-five-feet predicate has no
 positions to read. The behaviour is documented as intentional ("a machine that
 needs positions then refuses"), but the *combination* with pass-everyone-in
 means the refusal is the common case rather than the rare one. Not fixed here.
+
+## Decided — 2026-08-18
+
+Kirk, ruling on the shape above:
+
+> really happy with how this turned out I approve and am excited to get started
+> on 1035.
+
+### The ruling — the foundation, in five parts
+
+1. **Shape D's substance.** The economy ledger rides the cast as data. The gate
+   is not a capability and not a callback: it is pure functions in `combat` —
+   `CanPay(sheet, profile)` / `Pay(sheet, profile)` — over sheets resolution
+   already holds. The ledger is the same species as hit points and reaches
+   storage the same way, through the dirty set.
+2. **Casts assembled by interested-by-declaration.** A reaction exists *only* by
+   declaring its trigger, so the feature is its own index entry and the filter is
+   **closed by construction** — because under-inclusion fails silent. This
+   arrives with the reaction wave that brings the first declarations; until then
+   **the whole-roster cast remains v1's honest behaviour**, over-inclusive and
+   safe.
+3. **Machines yield; the runner spends.** No machine touches the ledger. It is
+   denied to them by construction, exactly as ADR-0038 denies them the bus — keep
+   `Pay` where a machine cannot import it, and the denial is a compile error
+   rather than a review note.
+4. **Debits ride answers.** Every candidate surviving *interested ∩ affordable*
+   carries an answering policy. **auto ≡ decider**: a zero-latency window, posed
+   and answered in the same runner pass, debited inline. **ask**: a `Pose` window
+   debited at the `Answer` door. Nothing downstream needs to know which happened.
+5. **The door pays a compiled data profile.** In v1 the runner pays
+   `Input.Cost` before starting the machine — a *profile*, which is data, not a
+   capability it consults. That is what keeps R2 satisfied and the whole
+   foundation **ADR-free**.
+
+### What this ruling does not cover
+
+**The eight open questions above stay open.** Each is owned by the wave named
+beside it — the reaction wave, `Pose`'s design, spellcasting, the movement
+machine — and none of them is settled by this ruling. What is decided is the
+**foundation**: where the ledger lives, who may spend, and how a debit reaches
+storage. What is parked is everything that needs a caller which does not exist
+yet. A reader who takes this section as closing question 3 or question 7 has
+read it wrong.
+
+The falsifiers in *What would make this doc wrong* stand as written. A decided
+doc still names the observations that would overturn it, and if one of them
+lands, this section is what gets revisited.
+
+### Slice consequence
+
+> **E1** (the profile compiler and the gate functions, in `combat`) →
+> **E2** (the runner's door pays, in `resolution`) →
+> **E3** (`session` hands over the cost and flips `TestNothingSpendsYet`)
+
+E0 — economy and pool mutations marking the sheet dirty — is ruling-independent
+and already dispatched. It is also the slice everything else rests on: under this
+foundation, *every* debit reaches storage through exactly that path.
 
 — census-1035 agent, on behalf of KirkDiggler
