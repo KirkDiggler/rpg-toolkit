@@ -151,6 +151,12 @@ type trigger struct {
 // rather than FirstContact and will never trigger. A revived monster could
 // stand in plain sight of a player and start no fight until somebody moves.
 //
+// rpg-toolkit#1078 gives that hole a second face rather than a second cause: a
+// fight now ENDS when a side stops standing, so the monsters a party just
+// dropped are the ones whose awareness has already gone stale. Stand one of them
+// back up and the fight does not restart until somebody moves. Same hole, same
+// fix, one step more visible.
+//
 // Left open on purpose. Ruled fork (b) on rpg-toolkit#959 is that zero hit
 // points has no exit in v1 — death saves are deferred — so recovery is not a
 // path anything can currently take, and building against it would be untestable

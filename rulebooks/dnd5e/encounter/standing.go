@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -66,9 +67,10 @@ import (
 // wrong one. The session supplies the real capability in the death lane's D4
 // slice, which is where that call belongs.
 //
-// It also does not end a fight. A bubble whose whole living side is down keeps
-// running here; self-dissolution is D2's ruling (ByDefeat), and this slice
-// deliberately stops short of it.
+// It DOES end a fight, as of rpg-toolkit#1078: a bubble left with nobody
+// standing on one side of it dissolves itself with cause [ByDefeat], in the pass
+// that notices. Ruled fork (c) on rpg-toolkit#959, and only the bubble ends —
+// the encounter stays open and the bodies stay in it.
 type Standing interface {
 	// Standing reports which of the given members are down. Returning none is
 	// the ordinary answer.
@@ -125,9 +127,32 @@ func (e *Encounter) standingNow() (map[MemberID]bool, error) {
 //
 // # The order inside one pass
 //
-// Per member, sorted: the beat, then the transfer that beat explains. Cause
-// immediately before effect, which is the same law [Encounter.refreshSight]
+// Two passes over the fallen, sorted: ALL the news, then everything the news
+// does. Cause before effect, which is the same law [Encounter.refreshSight]
 // states for verbs, applied inside one.
+//
+// It is two passes rather than one interleaved loop because of what the second
+// pass can do. A bubble that has run out of a side ends (see
+// [Encounter.fightIsDecided]), and the beat saying so has to land after EVERY
+// down beat that explains it — including the ones for members this loop has not
+// reached yet. Interleaved, two monsters falling together would narrate the
+// first body, then the fight ending, then the second body: an ending that
+// arrives before half its own cause.
+//
+// # What the news does, per member
+//
+// A fight with somebody standing on both sides of it survives, and the body is
+// spliced out of the order — Transfer is the mid-round removal a straggler
+// leaving already used. A fight with nobody standing on one side ENDS instead,
+// and ending it re-homes everyone the fight held, bodies included, so no splice
+// is needed or wanted.
+//
+// The ending has to be decided BEFORE the splice rather than after it, which is
+// the one place this deviates from how rpg-toolkit#1078 describes itself. If
+// every member of a bubble is down, splicing first drains the bubble and
+// dropBubbleIfIdle deletes it from inside Transfer — leaving a check that runs
+// afterwards with no bubble to end and nobody to name in the beat. That husk
+// prune is exactly the accidental ending D2 replaces, so it must not be reached.
 //
 // # Why the STORY is the ledger
 //
@@ -167,21 +192,18 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 	}
 	sort.Slice(fallen, func(i, j int) bool { return fallen[i] < fallen[j] })
 
+	// The news, all of it, before anything acts on any of it.
 	for _, id := range fallen {
-		if !told[id] {
-			if berr := e.appendDownBeat(id); berr != nil {
-				return nil, berr
-			}
+		if told[id] {
+			continue
 		}
+		if berr := e.appendDownBeat(id); berr != nil {
+			return nil, berr
+		}
+	}
 
-		// Out of the fight. A body keeps no turn, and the order closes over
-		// the gap rather than holding it open — Transfer is the mid-round
-		// removal a straggler leaving already used, and it prunes the bubble
-		// if it empties.
-		//
-		// The world clock, not nowhere: R6 says every member is on exactly one
-		// clock, and ruled fork (a) on rpg-toolkit#959 says a body is still a
-		// member — on the map, in the roster, recordable, carried by Exit.
+	// Then what the news does.
+	for _, id := range fallen {
 		bubble, berr := e.bubbleFor(id)
 		if berr != nil {
 			return nil, fmt.Errorf("standing bubble %q: %w", id, berr)
@@ -189,12 +211,93 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 		if bubble == nil {
 			continue
 		}
+
+		// The fight this body was in may not be a fight any more. Ending it
+		// re-homes everybody it held — the survivors AND the bodies — so the
+		// splice below is not reached for anyone in it, and the members who
+		// fell alongside this one find no bubble to be spliced out of.
+		decided, derr := e.fightIsDecided(bubble, down)
+		if derr != nil {
+			return nil, fmt.Errorf("standing fight %q: %w", id, derr)
+		}
+		if decided {
+			if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
+				return nil, fmt.Errorf("standing dissolve %q: %w", id, xerr)
+			}
+			continue
+		}
+
+		// Out of the fight, which goes on without them. A body keeps no turn,
+		// and the order closes over the gap rather than holding it open —
+		// Transfer is the mid-round removal a straggler leaving already used.
+		//
+		// The world clock, not nowhere: R6 says every member is on exactly one
+		// clock, and ruled fork (a) on rpg-toolkit#959 says a body is still a
+		// member — on the map, in the roster, recordable, carried by Exit.
 		if _, terr := e.Transfer(&TransferInput{Member: id, To: ClockWorld}); terr != nil {
 			return nil, fmt.Errorf("standing transfer %q: %w", id, terr)
 		}
 	}
 
 	return down, nil
+}
+
+// fightIsDecided reports whether this bubble has run out of a side: whether the
+// members still standing in it are all players, or all monsters, or nobody at
+// all.
+//
+// # Why it is asked about a bubble a body is IN, never about the bubble list
+//
+// A one-sided bubble is not the same thing as a decided fight. A caller can
+// Transfer the last monster out of a fight with nobody down anywhere, and
+// calling that a defeat would write an ending into the story that nothing in the
+// fiction earned. So the question is reached through a member the world has just
+// noticed is down — the fight went one-sided BECAUSE somebody fell, which is the
+// only reading [ByDefeat] is entitled to.
+//
+// A fight nobody is left fighting for other reasons is a different ruling with a
+// different cause, and it is not this one.
+//
+// # The all-down case
+//
+// Both counts zero is decided, and deliberately so. That is the scene D1 ended
+// by accident: every member down, the order drained one splice at a time, and
+// dropBubbleIfIdle removing what was left. The fight ended correctly and
+// silently, because the pruner knows nothing about death. It now ends the way
+// every other defeat does, with the beat that says so.
+func (e *Encounter) fightIsDecided(bubble *clock.Turn, down map[MemberID]bool) (bool, error) {
+	order, err := bubble.Order()
+	if err != nil {
+		return false, err
+	}
+
+	var players, monsters int
+	for _, id := range order {
+		if down[id] {
+			continue
+		}
+		member, ok := e.members[id]
+		if !ok {
+			// Unreachable against a coherent encounter — the load boundary
+			// refuses a bubble holding a non-member, and every verb that can
+			// remove one leaves the clock before it leaves the roster. Refused
+			// rather than skipped anyway, because of the SHAPE of the wrong
+			// answer: a ghost this pass cannot classify is a standing member it
+			// does not count, so skipping makes the fight look MORE decided than
+			// it is, and the ending would be written into the story and saved.
+			// Loud, like ClockOf's on-no-clock check, for the same reason —
+			// the caller's obligation on error is to drop the encounter unsaved.
+			return false, fmt.Errorf("fight order holds %q, who is not a member: %w", id, ErrInvalidData)
+		}
+		switch member.Kind {
+		case KindPlayer:
+			players++
+		case KindMonster:
+			monsters++
+		}
+	}
+
+	return players == 0 || monsters == 0, nil
 }
 
 // storyToldDown reads back which members the RETAINED story already reports
