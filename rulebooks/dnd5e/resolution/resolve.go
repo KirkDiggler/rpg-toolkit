@@ -105,8 +105,14 @@ type Input struct {
 
 	// Roller is used to reconstitute effects that need one — a monster's Undead
 	// Fortitude, for instance, which rolls when it is triggered rather than
-	// when it is loaded. Nil takes the default roller. It is not the machine's
-	// roller: a machine that rolls carries its own.
+	// when it is loaded. REQUIRED. It is not the machine's roller: a machine
+	// that rolls carries its own.
+	//
+	// It used to say "nil takes the default roller", and that stopped being
+	// true when rpg-toolkit#1033 refused the default — a nil silently became
+	// real randomness, which put unreproducible rolls into results that looked
+	// fine. Validate has answered ErrNoRoller ever since; only this line had
+	// not caught up.
 	Roller dice.Roller
 }
 
