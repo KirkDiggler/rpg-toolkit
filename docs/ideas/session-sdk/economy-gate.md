@@ -726,8 +726,9 @@ Kirk, ruling on the shape above:
    rather than a review note. **Corrected 2026-08-18** — see the
    correction above the *runner already does this* section. The ledger's denial
    is a checkable discipline rather than a compile error, and stays one until
-   the read-only cast view of [#1095][gap] exists. The ruling — no machine spends — stands exactly
-   as written; only its claimed enforcement mechanism was wrong.
+   the read-only cast view of [#1095][gap] exists. The ruling — no machine
+   spends — stands exactly as written; only its claimed enforcement mechanism
+   was wrong.
 4. **Debits ride answers.** Every candidate surviving *interested ∩ affordable*
    carries an answering policy. **auto ≡ decider**: a zero-latency window, posed
    and answered in the same runner pass, debited inline. **ask**: a `Pose` window
