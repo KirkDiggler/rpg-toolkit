@@ -22,14 +22,15 @@ import (
 // the walk that started the fight before the fight — an engine whose product
 // IS the narration cannot narrate backwards.
 //
-// The law is stated at [refreshSight]; these are its five guards. Setup ruled
+// The law is stated at [refreshSight]; these are its six guards. Setup ruled
 // it first (a scene records that it opened before it records a fight starting
 // inside it), and trigger detection then arrived at Move, Traverse, Pump and
 // Join. Two of the four (Traverse via TestTraverseBeatPinned, Join via
 // TestTombWatch) inverted the moment trigger detection moved inside
 // refreshSight; the other two were latent only because nothing asserted them.
-// All five are asserted here so a future verb inherits a guarded law rather
-// than a remembered one.
+// Step joined them with rpg-toolkit#1059 and inherits the law by writing the
+// obvious call. All six are asserted here so a future verb inherits a guarded
+// law rather than a remembered one.
 //
 // Every scene below uses the same set: a 12x12 room split by a wall across
 // y=6, open at either end. Nobody is in contact until the verb under test puts
@@ -136,6 +137,24 @@ func (s *BeatOrderTestSuite) TestTraverseBeforeItFights() {
 	s.Greater(out.Formed.Seq, out.Seq, "she goes through the door, THEN the fight starts")
 
 	s.Equal([]string{"scene-opened", "traversed", "bubble-formed"}, s.beatKinds(enc, alice))
+}
+
+// TestStepBeforeItFights pins the step verb's half, and it is the one that
+// matters most going forward: the seam walks a party one Step at a time, so
+// every player movement in the game reaches trigger detection through here.
+//
+// Alice starts behind the wall and steps out past its end, exactly as
+// TestMoveBeforeItFights does — same set, same cause, and the beat it writes
+// must be the same "moved". A step is not a new kind of event in the story.
+func (s *BeatOrderTestSuite) TestStepBeforeItFights() {
+	enc := s.blockedScene()
+
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Formed, "stepping into the open puts her in contact")
+	s.Greater(out.Formed.Seq, out.Seq, "she steps, THEN the fight starts")
+
+	s.Equal([]string{"scene-opened", "moved", "bubble-formed"}, s.beatKinds(enc, alice))
 }
 
 // TestPumpBeforeItFights pins Pump's half, and Pump is the verb the whole

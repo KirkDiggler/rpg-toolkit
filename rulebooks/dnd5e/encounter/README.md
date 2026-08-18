@@ -194,7 +194,8 @@ other caller of the consult is a verb looking at a world something else changed.
 | `decider.go` | `Decider`, `Snapshot`, `Intent` and its three implementations |
 | `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
 | `standing.go` | `Standing`, and the world noticing who is down |
-| `atlas.go` | the coordinate queries — `Atlas`, `Absolute`, `Locate` |
+| `step.go` | one step on the map, and the one place that decides what one is |
+| `atlas.go` | the coordinate queries — `Atlas`, `Absolute`, `Locate`, `Grid` |
 | `field.go` | rooms, connections, and the per-verb output shapes |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 

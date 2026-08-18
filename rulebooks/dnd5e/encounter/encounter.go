@@ -1421,6 +1421,116 @@ func (e *Encounter) moveMember(member *memberRecord, to spatial.Position) (spati
 	return currentPos, nil
 }
 
+// rosterIDs is every member of this encounter, in stable ID order.
+//
+// The refresh scope for every verb that changes what can be seen, and the
+// audience for every beat those verbs append. Sorted because determinism is
+// module law (C8) and because a beat's audience is persisted: an unstable
+// order would rewrite the blob on a save that changed nothing.
+func (e *Encounter) rosterIDs() []MemberID {
+	ids := make([]MemberID, 0, len(e.members))
+	for id := range e.members {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+// appendMovementBeat records one executed step in the story and returns its
+// sequence number.
+//
+// ONE narration path for every movement this composition performs — the Move
+// verb, the Traverse verb, the Step verb, and every monster action inside a
+// Pump. A movement is reported TWICE, once as a typed output and once as a
+// beat, and a host reading both must be told the same cell; two copies of this
+// arithmetic is how those two answers drift apart.
+//
+// Cells are DUNGEON-ABSOLUTE (#1040). A room-local coordinate with no room
+// attached — which is exactly what the moved beat carried before — names
+// nowhere in a multi-room field: two members in different rooms could report
+// the same "position" and mean cells at opposite ends of the map. A crossing's
+// arrival cell is projected through the ARRIVAL room's anchor, which is a
+// different one from the room it left.
+//
+// CALL THIS BEFORE refreshSight. A verb's own beat precedes any beat its
+// consequences append — the law is stated at [Encounter.refreshSight].
+func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
+	payload := map[string]interface{}{
+		"beat":     "moved",
+		"member":   string(action.member.ID),
+		"position": e.absoluteOf(action.toRoom, action.to),
+	}
+	if action.kind == actionTraverse {
+		// A crossing says so, and says which doorway carried it. The room key
+		// is NOT here with it: rooms are this composition's own business, and
+		// a caller that wants one asks Locate.
+		payload["beat"] = "traversed"
+		payload["connection"] = action.connection
+	}
+
+	beatBytes, _ := json.Marshal(payload)
+
+	appendOut, err := e.appendBeat(&record.AppendInput{
+		At:       at,
+		Audience: audience,
+		Tags:     map[string]string{"tag": "movement"},
+		Payload:  beatBytes,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return appendOut.Seq, nil
+}
+
+// firedReachedPosition evaluates every declared ReachedPosition ending against
+// where a member has just come to rest, closing the encounter if one fires.
+//
+// The cell is ROOM-LOCAL and the room is the member's CURRENT one, which is
+// correct for all three ways to arrive somewhere: a move never changes room, a
+// crossing has already mutated it to the arrival room, and the pump's actions
+// are one or the other. An ending is declared against a room and a local cell
+// (construction data, authored), so this is the one comparison that stays in
+// the composition's own frame.
+//
+// The member filter carries a rule that reads backwards until you know it:
+// EMPTY means any PLAYER member, not any member at all. A monster wandering
+// onto the tomb's exit tile does not end the scene — the party leaving does.
+// Naming a member explicitly overrides that, and then kind does not matter.
+//
+// Returns a DEEP COPY (mutation-proof): a caller holding the returned outcome
+// cannot reach into this encounter's own.
+func (e *Encounter) firedReachedPosition(member *memberRecord, local spatial.Position, at uint64) *Outcome {
+	for _, de := range e.endings {
+		trigger, ok := de.trigger.(TriggerReachedPosition)
+		if !ok {
+			continue // Not a ReachedPosition trigger
+		}
+		if trigger.Room != member.Room {
+			continue // Different room
+		}
+		if trigger.Position.X != local.X || trigger.Position.Y != local.Y {
+			continue // Different position
+		}
+		if trigger.Member != "" && trigger.Member != member.ID {
+			continue // Member filter doesn't match
+		}
+		if trigger.Member == "" && member.Kind != KindPlayer {
+			continue // Empty filter means players only
+		}
+
+		e.outcome = &Outcome{
+			Ending:  de.key,
+			At:      at,
+			Members: e.buildMemberOutcomes(),
+		}
+
+		members := make([]MemberOutcome, len(e.outcome.Members))
+		copy(members, e.outcome.Members)
+		return &Outcome{Ending: e.outcome.Ending, At: e.outcome.At, Members: members}
+	}
+	return nil
+}
+
 // Move executes a continuous movement within the same room for ANY
 // member — players move themselves; Pump routes monster intents through
 // the same path. Unfiltered ReachedPosition endings fire only for
@@ -1430,8 +1540,16 @@ func (e *Encounter) moveMember(member *memberRecord, to spatial.Position) (spati
 // not a member → spatial move rejection. On success, refreshes sight for all members,
 // records beat, and evaluates ReachedPosition endings.
 //
+// PREFER [Encounter.Step] (rpg-toolkit#1059). Step takes a cell on the
+// map, works out for itself whether that cell is inside the member's
+// room or through a doorway, and carries it out either way. Move
+// survives as the same-room MECHANISM it always was — Step and Pump both
+// route through it — and as the verb for a caller that genuinely holds a
+// room-local cell. New callers hold a map cell, and for them this verb
+// is a trap:
+//
 // WARNING — the Locate→Move trap (#929 hardening round B): Move is
-// SAME-ROOM ONLY. It interprets MoveInput.Position as local coordinates
+// SAME-ROOM ONLY. It interprets MoveInput.To as local coordinates
 // within the member's OWN current room — never the room Locate resolved.
 // Composing Locate then Move (a natural host pattern: "where does this
 // absolute position land, then move the member there") silently
@@ -1440,13 +1558,14 @@ func (e *Encounter) moveMember(member *memberRecord, to spatial.Position) (spati
 // answer came from, so it applies LocateOutput.Position as-is inside the
 // member's own room instead — e.g. an intended absolute target of (8,2)
 // in the OTHER room actually landing the member at local (2,2) in their
-// OWN room, no error. Callers MUST compare LocateOutput.Room against the
-// member's current room before feeding LocateOutput.Position to Move
-// (or Absolute's input, symmetrically); when they differ, use Traverse
-// instead — it is the cross-room verb. This is a doc-only ruling for
-// v0.3: the real fix is a verb input that carries the intended room and
-// rejects a mismatch, an API change filed as a follow-up rather than
-// made at the end of this wave.
+// OWN room, no error.
+//
+// That warning said the real fix was "a verb input that carries the
+// intended room and rejects a mismatch, an API change filed as a
+// follow-up". [Encounter.Step] IS that fix, arrived at from the other
+// direction: its input carries an ABSOLUTE cell, which cannot be
+// mis-attributed to a room because it already names exactly one. A
+// caller composing Locate and Move by hand should stop doing both.
 func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	// Validation order
 	if in == nil {
@@ -1485,39 +1604,19 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	// Get all member IDs for the refresh scope (v1: refresh everyone)
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		memberIDs = append(memberIDs, id)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+	memberIDs := e.rosterIDs()
+	clockReadingForBeat := uint64(e.clock.ToData().HighWater)
 
 	// Record the movement beat BEFORE refreshing sight: the walk is the cause,
 	// anything trigger detection appends is its effect (see refreshSight).
-	clockReadingInt := e.clock.ToData().HighWater
-	clockReadingForBeat := uint64(clockReadingInt)
-	beatPayload := map[string]interface{}{
-		"beat":   "moved",
-		"member": string(in.Member),
-		// DUNGEON-ABSOLUTE (#1040). This beat carried the room-local cell and
-		// no room at all, which in a multi-room field named nowhere: two
-		// members in different rooms could report the same "position" and mean
-		// cells at opposite ends of the map.
-		"position": e.absoluteOf(member.Room, in.To),
-	}
-	beatBytes, _ := json.Marshal(beatPayload)
-
-	appendOut, err := e.appendBeat(&record.AppendInput{
-		At:       clockReadingForBeat,
-		Audience: memberIDs,
-		Tags:     map[string]string{"tag": "movement"},
-		Payload:  beatBytes,
-	})
+	seqNum, err := e.appendMovementBeat(executedAction{
+		member: member, kind: actionMove,
+		fromRoom: member.Room, from: currentPos,
+		toRoom: member.Room, to: in.To,
+	}, memberIDs, clockReadingForBeat)
 	if err != nil {
 		return nil, fmt.Errorf("move append beat: %w", err)
 	}
-
-	seqNum := appendOut.Seq
 
 	// Refresh sight for all members
 	intelDeltas, formed, err := e.refreshSight(memberIDs)
@@ -1526,57 +1625,7 @@ func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
 	}
 
 	// Evaluate ReachedPosition endings
-	var firedOutcome *Outcome
-	for _, de := range e.endings {
-		endingKey, trigger := de.key, de.trigger
-		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
-		if !ok {
-			continue // Not a ReachedPosition trigger
-		}
-
-		// Check if the ending fires
-		if reachedPosTrigger.Room != member.Room {
-			continue // Different room
-		}
-
-		if reachedPosTrigger.Position.X != in.To.X || reachedPosTrigger.Position.Y != in.To.Y {
-			continue // Different position
-		}
-
-		// Check member filter: empty = any player member; non-empty = specific member
-		if reachedPosTrigger.Member != "" && reachedPosTrigger.Member != in.Member {
-			continue // Member filter doesn't match
-		}
-
-		// Member filter passes (empty or matches) but we need to check kind
-		if reachedPosTrigger.Member == "" && member.Kind != KindPlayer {
-			continue // Empty filter means players only, but moved member is not player
-		}
-
-		// Ending fires! Build the outcome with all members' current positions
-		memberOutcomes := e.buildMemberOutcomes()
-
-		e.outcome = &Outcome{
-			Ending:  endingKey,
-			At:      clockReadingForBeat,
-			Members: memberOutcomes,
-		}
-		// Return a deep copy of the outcome (mutation-proof)
-		outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
-		for i, m := range e.outcome.Members {
-			outcomeMembers[i] = MemberOutcome{
-				ID:       m.ID,
-				Room:     m.Room,
-				Position: m.Position,
-			}
-		}
-		firedOutcome = &Outcome{
-			Ending:  e.outcome.Ending,
-			At:      e.outcome.At,
-			Members: outcomeMembers,
-		}
-		break
-	}
+	firedOutcome := e.firedReachedPosition(member, in.To, clockReadingForBeat)
 
 	return &MoveOutput{
 		Moved: struct {
@@ -1714,6 +1763,12 @@ func (e *Encounter) traverseMember(member *memberRecord, connectionID string) (t
 // checks (connection not found: ErrNoConnection; endpoint mismatch — wrong
 // room or wrong position, either rejects the same way: ErrBadPlacement).
 //
+// PREFER [Encounter.Step] for walking through a doorway (rpg-toolkit#1059):
+// a doorway's two endpoints are adjacent absolute cells (W3), so crossing one
+// is a step, and Step finds the doorway itself. Traverse survives as the
+// mechanism Step dispatches to, and as the verb for a caller that holds a
+// connection id rather than a cell.
+//
 // The clock is NOT advanced — traversal is an activity, not time (law T4).
 // Sight refreshes for ALL members in one refreshSight call: since
 // refreshSight scopes each observer's percept to members currently in
@@ -1762,96 +1817,29 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 		return nil, fmt.Errorf("traverse: %w", err)
 	}
 
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		memberIDs = append(memberIDs, id)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+	memberIDs := e.rosterIDs()
+	clockReadingForBeat := uint64(e.clock.ToData().HighWater)
 
 	// Record the traversal beat BEFORE refreshing sight: walking through the
 	// doorway is the cause, anything trigger detection appends is its effect
 	// (see refreshSight). The clock is NOT advanced (law T4).
-	clockReadingInt := e.clock.ToData().HighWater
-	clockReadingForBeat := uint64(clockReadingInt)
-	beatPayload := map[string]interface{}{
-		"beat":       "traversed",
-		"member":     string(in.Member),
-		"connection": in.Connection,
-		// The arrival cell, DUNGEON-ABSOLUTE (#1040). The room key is gone
-		// with it: rooms are this composition's own business, and a caller
-		// that wants the arrival room asks Locate.
-		"position": e.absoluteOf(result.toRoom, result.toPos),
-	}
-	beatBytes, _ := json.Marshal(beatPayload)
-
-	appendOut, err := e.appendBeat(&record.AppendInput{
-		At:       clockReadingForBeat,
-		Audience: memberIDs,
-		Tags:     map[string]string{"tag": "movement"},
-		Payload:  beatBytes,
-	})
+	seqNum, err := e.appendMovementBeat(executedAction{
+		member: member, kind: actionTraverse, connection: in.Connection,
+		fromRoom: result.fromRoom, from: result.fromPos,
+		toRoom: result.toRoom, to: result.toPos,
+	}, memberIDs, clockReadingForBeat)
 	if err != nil {
 		return nil, fmt.Errorf("traverse append beat: %w", err)
 	}
-
-	seqNum := appendOut.Seq
 
 	intelDeltas, formed, err := e.refreshSight(memberIDs)
 	if err != nil {
 		return nil, fmt.Errorf("traverse refresh sight: %w", err)
 	}
 
-	// Evaluate ReachedPosition endings against the ARRIVAL room/position.
-	var firedOutcome *Outcome
-	for _, de := range e.endings {
-		endingKey, trigger := de.key, de.trigger
-		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
-		if !ok {
-			continue // Not a ReachedPosition trigger
-		}
-
-		if reachedPosTrigger.Room != result.toRoom {
-			continue // Different room
-		}
-
-		if reachedPosTrigger.Position.X != result.toPos.X || reachedPosTrigger.Position.Y != result.toPos.Y {
-			continue // Different position
-		}
-
-		// Check member filter: empty = any player member; non-empty = specific member
-		if reachedPosTrigger.Member != "" && reachedPosTrigger.Member != in.Member {
-			continue // Member filter doesn't match
-		}
-
-		// Member filter passes (empty or matches) but we need to check kind
-		if reachedPosTrigger.Member == "" && member.Kind != KindPlayer {
-			continue // Empty filter means players only, but traversing member is not player
-		}
-
-		// Ending fires! Build the outcome with all members' current positions
-		memberOutcomes := e.buildMemberOutcomes()
-
-		e.outcome = &Outcome{
-			Ending:  endingKey,
-			At:      clockReadingForBeat,
-			Members: memberOutcomes,
-		}
-		// Return a deep copy of the outcome (mutation-proof)
-		outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
-		for i, m := range e.outcome.Members {
-			outcomeMembers[i] = MemberOutcome{
-				ID:       m.ID,
-				Room:     m.Room,
-				Position: m.Position,
-			}
-		}
-		firedOutcome = &Outcome{
-			Ending:  e.outcome.Ending,
-			At:      e.outcome.At,
-			Members: outcomeMembers,
-		}
-		break
-	}
+	// Evaluate ReachedPosition endings against the ARRIVAL room/position —
+	// traverseMember has already moved member.Room to the arrival side.
+	firedOutcome := e.firedReachedPosition(member, result.toPos, clockReadingForBeat)
 
 	return &TraverseOutput{
 		Formed: formed,
@@ -2061,7 +2049,14 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 	}
 
-	// Single refreshSight for all members after all monster actions
+	// Single refreshSight for all members after all monster actions.
+	//
+	// Derived from the roster snapshot taken BEFORE phase 1, not from live
+	// membership: a contract-violating decider that removed itself mid-Decide
+	// still belongs in this tick's beat audience, because an exited member
+	// keeps Story access to the beats they were present for. This is why Pump
+	// does not share rosterIDs with the other verbs — every one of those reads
+	// a roster nothing has had a chance to change.
 	memberIDs := make([]MemberID, 0, len(allMembers))
 	for _, m := range allMembers {
 		memberIDs = append(memberIDs, m.ID)
@@ -2093,35 +2088,11 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	// Then record a beat for each successful action, in decision order.
 	for _, action := range executed {
-		var beatPayload map[string]interface{}
-		switch action.kind {
-		case actionMove:
-			beatPayload = map[string]interface{}{
-				"beat":     "moved",
-				"member":   string(action.member.ID),
-				"position": e.absoluteOf(action.member.Room, action.to),
-			}
-		case actionTraverse:
-			beatPayload = map[string]interface{}{
-				"beat":       "traversed",
-				"member":     string(action.member.ID),
-				"connection": action.connection,
-				"position":   e.absoluteOf(action.toRoom, action.to),
-			}
-		}
-		beatBytes, _ := json.Marshal(beatPayload)
-
-		actionAppendOut, err := e.appendBeat(&record.AppendInput{
-			At:       newTickReading,
-			Audience: memberIDs,
-			Tags:     map[string]string{"tag": "movement"},
-			Payload:  beatBytes,
-		})
+		actionSeq, err := e.appendMovementBeat(action, memberIDs, newTickReading)
 		if err != nil {
 			return nil, fmt.Errorf("pump append %s beat: %w", action.kind, err)
 		}
-
-		seqs = append(seqs, actionAppendOut.Seq)
+		seqs = append(seqs, actionSeq)
 	}
 
 	intelDeltas, formed, err := e.refreshSight(memberIDs)
@@ -2131,60 +2102,15 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	// Evaluate ReachedPosition endings, in decision order. For a
 	// traverse, action.member.Room is already the ARRIVAL room
-	// (traverseMember mutated it); for a move it's unchanged — either
-	// way action.member.Room is correct to check against.
+	// (traverseMember mutated it); for a move it is unchanged — either
+	// way the shared evaluation reads the room the action landed in.
+	//
+	// A monster never fires an UNFILTERED ending: the empty filter means "any
+	// player member", which firedReachedPosition enforces by kind, so a
+	// wandering goblin cannot end the scene by standing on the exit.
 	var firedOutcome *Outcome
 	for _, action := range executed {
-		for _, de := range e.endings {
-			endingKey, trigger := de.key, de.trigger
-			reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
-			if !ok {
-				continue // Not a ReachedPosition trigger
-			}
-
-			if reachedPosTrigger.Room != action.member.Room {
-				continue // Different room
-			}
-
-			if reachedPosTrigger.Position.X != action.to.X || reachedPosTrigger.Position.Y != action.to.Y {
-				continue // Different position
-			}
-
-			// Check member filter: non-empty = specific member; empty = players only
-			// Monsters should never trigger an unfiltered (empty-filter) ending
-			if reachedPosTrigger.Member == "" {
-				continue // Empty filter means players only, but this member is a monster
-			}
-
-			if reachedPosTrigger.Member != action.member.ID {
-				continue // Member filter doesn't match
-			}
-
-			// Ending fires! Build the outcome with all members' current positions
-			memberOutcomes := e.buildMemberOutcomes()
-
-			e.outcome = &Outcome{
-				Ending:  endingKey,
-				At:      newTickReading,
-				Members: memberOutcomes,
-			}
-			// Return a deep copy of the outcome (mutation-proof)
-			outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
-			for i, m := range e.outcome.Members {
-				outcomeMembers[i] = MemberOutcome{
-					ID:       m.ID,
-					Room:     m.Room,
-					Position: m.Position,
-				}
-			}
-			firedOutcome = &Outcome{
-				Ending:  e.outcome.Ending,
-				At:      e.outcome.At,
-				Members: outcomeMembers,
-			}
-			break
-		}
-		if firedOutcome != nil {
+		if firedOutcome = e.firedReachedPosition(action.member, action.to, newTickReading); firedOutcome != nil {
 			break
 		}
 	}
@@ -2366,98 +2292,6 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 	}
 
 	return deltas, nil
-}
-
-// The two kinds of step the pump can carry out. Constants rather than
-// literals because they are matched in three places — built in stepTo, then
-// switched on for beats and for ending evaluation — and a typo in any one of
-// them silently drops a monster's action from a transcript.
-const (
-	actionMove     = "move"
-	actionTraverse = "traverse"
-)
-
-// executedAction is one monster action the pump actually carried out: a step
-// within a room, or a step through a doorway. Both come out of stepTo, which
-// is the only thing that builds one.
-type executedAction struct {
-	member     *memberRecord
-	kind       string // "move" or "traverse"
-	connection string // only meaningful for "traverse"
-	fromRoom   string // only meaningful for "traverse"; a move never changes room
-	from       spatial.Position
-	toRoom     string // only meaningful for "traverse"
-	to         spatial.Position
-}
-
-// stepTo executes one intended step to a DUNGEON-ABSOLUTE cell, which after
-// rpg-toolkit#1044 is the only kind of movement a decider can intend.
-//
-// The dispatch that used to be the decider's job lives here instead, and it is
-// the whole reason IntentTraverse could retire: W3 makes a doorway's two
-// endpoints ADJACENT ABSOLUTE CELLS, so "walk to the cell on the other side of
-// the doorway" and "walk to the cell next to me" are the same sentence. Which
-// of the two mechanisms carries it out is bookkeeping, and bookkeeping belongs
-// on this side of the seam.
-//
-// Every refusal is SILENT — reported as not-stepped, never as an error — which
-// is the contract a spatially-rejected move already had and the one
-// IntentTraverse documented for an illegal crossing. Three ways to be refused:
-// a cell no room owns (void is not floor), a cell in another room with no
-// doorway joining it to where the member stands, and the spatial rejections
-// the move or the crossing itself raises.
-func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedAction, bool) {
-	located, err := e.Locate(&LocateInput{Position: to})
-	if err != nil {
-		return executedAction{}, false
-	}
-
-	if located.Room == member.Room {
-		fromPos, moveErr := e.moveMember(member, located.Position)
-		if moveErr != nil {
-			return executedAction{}, false
-		}
-		return executedAction{
-			member: member, kind: actionMove, from: fromPos, to: located.Position,
-		}, true
-	}
-
-	connection, ok := e.doorwayFrom(member, to)
-	if !ok {
-		return executedAction{}, false
-	}
-	result, travErr := e.traverseMember(member, connection)
-	if travErr != nil {
-		return executedAction{}, false
-	}
-	return executedAction{
-		member: member, kind: actionTraverse, connection: connection,
-		fromRoom: result.fromRoom, from: result.fromPos,
-		toRoom: result.toRoom, to: result.toPos,
-	}, true
-}
-
-// doorwayFrom finds the connection joining where a member stands to the given
-// absolute cell, in either direction — a doorway is crossable both ways.
-//
-// Returns false when no connection joins the two, which is what makes a step
-// between rooms that merely TOUCH refuse: W2 lets two rooms share an edge
-// without a door, so absolute adjacency alone is not permission to cross.
-func (e *Encounter) doorwayFrom(member *memberRecord, to spatial.Position) (string, bool) {
-	local, err := e.cellOf(member)
-	if err != nil {
-		return "", false
-	}
-	from := e.absoluteOf(member.Room, local)
-
-	for _, c := range e.connectionsInput {
-		near := e.absoluteOf(c.From, c.FromPosition)
-		far := e.absoluteOf(c.To, c.ToPosition)
-		if (near == from && far == to) || (far == from && near == to) {
-			return c.ID, true
-		}
-	}
-	return "", false
 }
 
 // occluderEntity is an internal entity for blocking line of sight

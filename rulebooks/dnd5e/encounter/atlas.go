@@ -260,6 +260,40 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	return Atlas{Rooms: rooms, Doorways: doorways}, nil
 }
 
+// Grid reports the field's coordinate family — GridShapeSquare or
+// GridShapeHex — in O(1).
+//
+// A FIELD fact, not a room one: W1 gives every room in a field the same family,
+// checked identically at Setup and Load (validateGridFamilies), so there is one
+// answer and every room agrees with it.
+//
+// It exists because the answer was only reachable through [Encounter.Atlas],
+// which enumerates every cell of every room to get there — measured at ~128MB
+// and tens of milliseconds at the legal field budget, unmemoized (Atlas's own
+// doc). A caller that needs the family and nothing else was paying the whole
+// map for one enum, on a per-request path (rpg-toolkit#1059 finding 2).
+//
+// WHO NEEDS IT: anything doing grid arithmetic of its own, and the reason that
+// is not merely a convenience is that the two families disagree about what one
+// step means. Chebyshev distance on axial hex coordinates agrees with cube
+// distance everywhere except the diagonals, so substituting one formula for the
+// other passes almost every fixture — a real, previously-shipped defect class.
+// The cure is to ask spatial for a grid of the right family, and this is how a
+// caller learns which one to ask for. SPAN IS NOT REPORTED and is not needed
+// for that: adjacency is Distance <= 1 in both families and neither Distance
+// consults the grid's dimensions.
+//
+// Returns ErrNoField if the field holds no rooms, which construction forbids —
+// but the zero GridShape IS GridShapeSquare, so answering "square" for a field
+// that cannot have one would be a wrong answer rather than an absent one.
+func (e *Encounter) Grid() (spatial.GridShape, error) {
+	if len(e.fieldInput) == 0 {
+		var unknown spatial.GridShape
+		return unknown, fmt.Errorf("grid: %w", ErrNoField)
+	}
+	return e.fieldInput[0].Grid, nil
+}
+
 // Absolute projects a room-local position into dungeon-absolute space.
 // Legal for ANY in-bounds position, whether occupied, occluded, or
 // empty — hosts project percept ghosts at cells nobody stands on (#929
@@ -327,17 +361,17 @@ func (e *Encounter) Absolute(in *AbsoluteInput) (*AbsoluteOutput, error) {
 // walkability, not ownership, and this function never consults
 // occluders.
 //
-// WARNING — the Locate→Move trap (#929 hardening round B): composing
-// Locate then Move is a natural host pattern ("where does this absolute
-// position land, then move the member there"), but Move is SAME-ROOM
-// ONLY — it applies LocateOutput.Position inside the member's OWN
-// current room, never inside LocateOutput.Room. If the member's current
-// room differs from LocateOutput.Room, Move silently misplaces the
-// member instead of erroring (Move's own doc comment has the concrete
-// example). Callers MUST compare LocateOutput.Room against the member's
-// current room before calling Move with LocateOutput.Position; use
-// Traverse when they differ. Doc-only for v0.3 — see Move's doc comment
-// for why the real fix is a follow-up, not made here.
+// DO NOT COMPOSE THIS WITH Move to walk somewhere (rpg-toolkit#1059).
+// It is a natural host pattern — "where does this absolute position
+// land, then move the member there" — and it is the Locate→Move trap
+// (#929 hardening round B): Move is SAME-ROOM ONLY and applies
+// LocateOutput.Position inside the member's OWN current room, never
+// inside LocateOutput.Room, so a cell in another room silently misplaces
+// the member instead of erroring. [Encounter.Step] is the verb that
+// pattern was reaching for: it takes the absolute cell directly and
+// decides same-room-or-doorway itself, in the one place that decision
+// belongs. Locate stays what it always was — the reverse bridge, for
+// asking WHICH ROOM a cell belongs to.
 func (e *Encounter) Locate(in *LocateInput) (*LocateOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("locate: %w", ErrNilInput)
