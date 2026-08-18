@@ -104,7 +104,7 @@ func (s *StrikeTestSuite) wolfBite() monster.ActionData {
 // hero; otherwise it stands three cells away — the two sides of prone's range
 // split.
 func (s *StrikeTestSuite) world(secondWolfAt spatial.Position) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -194,7 +194,7 @@ func (s *StrikeTestSuite) strike(attacker string, roller *scriptedRoller) Machin
 func (s *StrikeTestSuite) resolve(
 	world encounter.EncounterData, hero *character.Data, machine Machine,
 ) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
@@ -328,7 +328,7 @@ func (s *StrikeTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 		return &scriptedRoller{single: hitRoll, pair: []int{hitRoll, hitRoll}}
 	}
 
-	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: s.hero(s.raging())},
@@ -339,7 +339,7 @@ func (s *StrikeTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 	})
 	s.Require().NoError(err)
 
-	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Monster: s.wolf(secondWolfID)},
@@ -423,7 +423,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 // strikeMachine.afterDamage: the topic is an instruction to one listener and a
 // notification to another, which is slice 2's classification to make.
 func (s *StrikeTestSuite) TestAMonsterTargetTakesItsDamageOnce() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: s.world(spatial.Position{X: 5, Y: 4}),
 		Participants: []Participant{
 			{Character: s.hero()},
@@ -514,7 +514,7 @@ func (s *StrikeTestSuite) resolveWith(
 		second = secondWolf[0]
 	}
 
-	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
@@ -650,7 +650,7 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	s.Require().NoError(err)
 	s.Require().Nil(attack.Gate, "a plain weapon declares no rider")
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -662,7 +662,7 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	})
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: enc.ToData(),
 		Participants: []Participant{
 			{Character: s.hero()},

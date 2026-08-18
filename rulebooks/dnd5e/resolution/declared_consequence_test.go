@@ -63,7 +63,7 @@ func (s *DeclaredConsequenceTestSuite) biteProfile() AttackProfile {
 // world places the hero and the wolf three cells apart — far enough that
 // prone's range predicate stays out of these cases.
 func (s *DeclaredConsequenceTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -106,7 +106,7 @@ func (s *DeclaredConsequenceTestSuite) hero() *character.Data {
 }
 
 func (s *DeclaredConsequenceTestSuite) resolve(machine Machine) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.hero()},
