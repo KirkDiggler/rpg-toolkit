@@ -518,8 +518,14 @@ func (s *StandingSuite) TestACorpseIsStillOnTheMapAndInTheRoster() {
 // TestNobodyCanPushADownBeatIn is the census's rejected shape, refused
 // structurally. Down arrives by the composition ASKING, at the choke point
 // where it already asks about sight; a caller that could push the beat in would
-// be a second system deciding the same thing, and Record's own doc is that it
-// records and does nothing else.
+// be a second system deciding the same thing, and the first one would always
+// win, because it reaches the fact first.
+//
+// Record itself now performs that ask (rpg-toolkit#1083), which is why the
+// refusal is worth re-reading rather than assuming: a caller gets the down beat
+// it would have pushed, in the same call it recorded the blow, and still cannot
+// write one. The beat says what the rulebook answered. It has never said what a
+// caller claimed.
 func (s *StandingSuite) TestNobodyCanPushADownBeatIn() {
 	enc := s.pair(&downList{})
 

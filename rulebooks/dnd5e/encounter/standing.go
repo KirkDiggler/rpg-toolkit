@@ -125,6 +125,14 @@ func (e *Encounter) standingNow() (map[MemberID]bool, error) {
 // light, which calls applyTrigger directly so its scene-opened beat can land
 // first. A scene can open with a body already on the floor.
 //
+// [Encounter.Record] reaches this function DIRECTLY rather than through
+// applyTrigger, and the difference is the point (rpg-toolkit#1083). Record
+// refreshes no sight, so it has no deltas to classify and no fight to start —
+// what it has is a beat that may have just changed the answer this function
+// pulls. Every other caller looks at a world something else changed; that one is
+// the change. Calling applyTrigger from it would mean synthesising an empty
+// delta map to satisfy a classification nobody asked for.
+//
 // # The order inside one pass
 //
 // Two passes over the fallen, sorted: ALL the news, then everything the news

@@ -43,11 +43,18 @@
 // It does NOT mean a verb's MUTATE phase is atomic. Join and Exit each perform
 // several fallible steps after their first mutation — refreshSight and
 // appendBeat both come after placement and member registration — so a failure
-// late in a verb can leave the in-memory encounter partially changed. The
-// clock verbs are the same: Form moves members off the world clock one at a
+// late in a verb can leave the in-memory encounter partially changed.
+//
+// The clock verbs are the same: Form moves members off the world clock one at a
 // time and Dissolve re-homes them one at a time, so a failure mid-verb can
 // leave a member between clocks — a state ClockOf reports as a defect rather
 // than guessing (see its on-no-clock check).
+//
+// Record is the same shape for a reason worth naming, since the verb looks
+// atomic: it consults Standing AFTER appending its outcome beat, because that
+// beat is the cause the consult reads (see [Encounter.Record]). A rulebook that
+// cannot answer therefore leaves an outcome recorded and its consequences
+// unworked.
 //
 // That is safe because of how this module is used, not by accident: every
 // caller loads, acts, and saves, so a verb returning an error means the

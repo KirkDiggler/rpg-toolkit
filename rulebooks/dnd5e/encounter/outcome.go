@@ -42,6 +42,13 @@ const (
 	// thing, and the first one would always win because it reaches the fact
 	// first. Record's switch is therefore the CALLER-WRITABLE subset of this
 	// enum rather than all of it — pushing this kind gets ErrInvalidData.
+	//
+	// [Encounter.Record] performing that ask itself (rpg-toolkit#1083) SHARPENS
+	// this refusal rather than softening it. The verb a caller uses to report a
+	// blow is now the verb that finds out what the blow did — so a caller gets
+	// the down beat it wanted, in the same call, and still cannot write one. The
+	// beat says what the rulebook answered; it has never said what a caller
+	// claimed, and a kind here would be the only way to change that.
 	OutcomeDown OutcomeKind = "down"
 )
 
@@ -112,22 +119,72 @@ type RecordOutput struct {
 // (rpg-toolkit#966). One transcript is the product; a rule that resolves
 // somewhere else still has to land in it.
 //
-// It records and does NOTHING ELSE. No sight refresh, no trigger detection, no
-// clock movement — the beat is the whole effect. That is what makes the
-// ordering law hold for free: the rule at [Encounter.refreshSight] is that a
-// verb's own beat precedes any beat its consequences append, and an outcome IS
-// a consequence, of whatever the caller did to produce it. Its beat therefore
-// lands after that verb's, because the caller records it after, and nothing
-// here can reorder them.
-//
 // The audience is every current member, at the current clock reading — the
 // same convention the clock beats use. An outcome is not secret: a fight is
 // localized but visible, and a client that learned about a strike only from
 // the striker's own response could not render the scene the party is in.
 //
+// # It records, and then the world notices what it recorded
+//
+// This verb used to record and do NOTHING ELSE, and that sentence was worth the
+// emphasis it carried. Two thirds of it still hold exactly: no sight refresh, no
+// trigger detection, no clock movement. What it now also does is run the
+// standing consult — [Encounter.noticeDown], the one place noticing happens —
+// after its own beat.
+//
+// THE REASON IS THE ONE THING THAT MAKES THIS VERB DIFFERENT from the others
+// that reach that consult. A walk cannot change who is standing; a recorded
+// outcome can, because the blow this beat describes is the blow that took
+// somebody to zero. Every other consult site is a verb LOOKING at a world
+// somebody else changed. This one is the change. Leaving it out meant a killing
+// blow landed, persisted, and left the world not knowing — no down beat, no
+// [ByDefeat] ending, the turn order still holding a body — until whatever verb
+// next happened to refresh sight. A party that cleared the room and stood still
+// was in a fight with a corpse (rpg-toolkit#1083).
+//
+// NOTICING IS NOT "SOMETHING ELSE", and that is an argument rather than an
+// exception carved for convenience. It is the same consult, at the same choke
+// point, under the same discipline: the composition ASKS and the rulebook
+// answers (C1), the answer is pulled and never remembered, and the story is the
+// ledger that keeps the news from being told twice. Record is not growing a
+// second mechanism for death — it is joining the list of verbs that reach the
+// first one, which is exactly what "one place" is for. The alternative on offer
+// was a caller pushing the beat in, and that is a different thing entirely: see
+// [OutcomeDown], which is still refused, for why.
+//
+// # The order in one pass
+//
+// The recorded outcome lands FIRST, then whatever the consult makes of it: the
+// strike, then the body, then the ending the body explains. That is
+// [Encounter.refreshSight]'s law — a verb's own beat precedes any beat its
+// consequences append — held inside one verb, the same way
+// [Encounter.noticeDown] holds it inside one pass. The caller's beat is still
+// the cause. What is new is that its effects can arrive in the same breath
+// instead of at whatever ran next.
+//
+// [RecordOutput.Seq] is therefore the OUTCOME beat and never the last one
+// written. A caller asked for one thing to be recorded and is told where that
+// thing landed.
+//
+// The consult runs for EVERY kind rather than only for [OutcomeStruck]. Which
+// outcomes can drop somebody is a rulebook fact and this module cannot import
+// the rulebook (C1) — a Record that decided for itself which of its beats were
+// worth looking after would be encoding that rule, and would miss the first
+// route to zero nobody has written yet.
+//
+// # On error
+//
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know).
+// know), and anything the [Standing] capability answers with — including
+// ErrNotMember for an answer naming a stranger.
+//
+// The input refusals all run before anything is appended, so a rejected input
+// costs the rulebook nothing. The consult does not: it runs after the beat, so a
+// Record that fails there leaves the in-memory encounter holding an outcome
+// whose consequences were never worked out. That is R5's documented limit rather
+// than a hole in it, and the caller's obligation is doc.go's whole answer to it
+// — drop the encounter unsaved.
 func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("record: %w", ErrNilInput)
@@ -205,6 +262,13 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("record: %w", err)
+	}
+
+	// And now the world finds out what that beat just changed. AFTER the append,
+	// never before: the outcome is the cause, and a down beat ahead of the strike
+	// that explains it would be a story told backwards. See the godoc.
+	if _, nerr := e.noticeDown(); nerr != nil {
+		return nil, fmt.Errorf("record: %w", nerr)
 	}
 
 	return &RecordOutput{Seq: appended.Seq}, nil
