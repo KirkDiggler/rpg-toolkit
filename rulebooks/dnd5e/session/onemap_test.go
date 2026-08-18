@@ -163,38 +163,6 @@ func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
 	s.Equal("beyond", out.Outcome.Ending)
 }
 
-// TestAWalkComesBackThroughTheSameDoorway pins the direction a fixture will
-// not reach by accident.
-//
-// A connection is declared with a From room and a To room, and every crossing
-// scene in this package walks it the declared way. The way BACK exercises the
-// other half of the doorway match, and after rpg-toolkit#1059 that match lives
-// in the composition — the same code a monster's pursuit runs through, so a
-// door that stopped working one way would stop working for everybody at once
-// rather than for one of them silently.
-func (s *OneMapSuite) TestAWalkComesBackThroughTheSameDoorway() {
-	ctx := context.Background()
-
-	// Out through the gate. The annex-side ending sits on (46,22), so the walk
-	// stops there — she is standing on the far side with the encounter closed
-	// for the party, which is not what this test is about. Take the route that
-	// crosses at (46,23) instead: same doorway is at (45,22)/(46,22), so step
-	// to the threshold, through, and back.
-	_, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 42, Y: 22}, {X: 43, Y: 22}, {X: 44, Y: 22}, {X: 45, Y: 22}},
-	})
-	s.Require().NoError(err)
-
-	back, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 46, Y: 22}},
-	})
-	s.Require().NoError(err, "through the gate")
-	s.Require().Len(back.Steps, 1)
-	s.Equal(spatial.Position{X: 46, Y: 22}, back.Steps[0].Position)
-}
-
 // TestACrossingReachesClientsAsACrossing: one map does not mean one narration.
 //
 // The step that changed rooms is still a distinguishable beat, so a client can

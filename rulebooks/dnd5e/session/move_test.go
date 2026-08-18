@@ -313,6 +313,54 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	s.NotErrorIs(err, session.ErrBadPosition, "and the cell exists; there is just no way through")
 }
 
+// TestAWalkComesBackThroughTheSameDoorway pins the direction a fixture will not
+// reach by accident: the way BACK.
+//
+// A connection is declared with a From room and a To room, and every crossing
+// scene in this package walks it the declared way. Match only that direction
+// and every crossing test still passes while every door in the game becomes
+// one-way — a surviving mutant found exactly that on the composition side
+// (rpg-toolkit#1102), and after #1059 this walk runs through the same code a
+// monster's pursuit does, so the two can no longer disagree about it.
+//
+// It runs on hexWorld rather than the offset world for a reason worth stating:
+// the offset world declares an ending ON the annex side of its doorway, so a
+// walk that crosses it closes the encounter on arrival and CANNOT step back.
+// A round trip needs a world with nothing underfoot at the far end.
+func (s *MoveTestSuite) TestAWalkComesBackThroughTheSameDoorway() {
+	ctx := context.Background()
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	// Out: the corridor is anchored at the origin, the vault at (6,0), and the
+	// gate joins corridor-local (2,0) to vault-local (-3,0) — absolute (2,0)
+	// and (3,0), one axial step apart.
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "hex", Member: "alice",
+		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 0}},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(out.Steps, 3, "the walk ran to the end: nothing here stops it")
+	s.Require().Nil(out.Outcome, "and nothing ended underfoot")
+	s.Equal(spatial.Position{X: 3, Y: 0}, out.Steps[2].Position, "the far side, in the vault")
+
+	// And back, against the direction the connection was declared in.
+	back, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "hex", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 0}},
+	})
+	s.Require().NoError(err, "a doorway is crossable both ways")
+	s.Require().Len(back.Steps, 1)
+	s.Equal(spatial.Position{X: 2, Y: 0}, back.Steps[0].Position)
+
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "hex", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 2, Y: 0}, where.Position,
+		"standing back on the corridor threshold, read cold")
+}
+
 // TestAStepOntoNoCellUsesOurSentinelNotTheirs is
 // TestTrimmedStoryUsesOurSentinelNotTheirs' walk-shaped twin, and it covers the
 // leak channel a routine caller mistake reaches (rpg-toolkit#1058).
