@@ -278,9 +278,9 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// load-bearing is that the error stops the verb, and that is pinned
 	// separately.
 	//
-	// The lesson holds where it is about persistence ALONE. It stops holding the
-	// moment something reads back what was written, which is the shape both
-	// exceptions below and in Attack turn out to be — see the next comment.
+	// The lesson holds where the ordering is about persistence ALONE. It stops
+	// holding the moment something READS BACK what was written inside the same
+	// verb — which is what the exception below is, and what Attack's is too.
 	//
 	// The order is still chosen: there is no reason to touch the world when
 	// the call is already doomed.
