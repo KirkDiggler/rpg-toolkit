@@ -163,12 +163,14 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 // of the two mechanisms carries it out is bookkeeping, and bookkeeping belongs
 // on this side of the seam.
 //
-// Three ways to be refused, and they are told apart because the remedies
+// Four ways to be refused, and they are told apart because the remedies
 // differ: a cell no room owns (void is not floor — ErrBadPlacement), a cell in
 // another room with no doorway joining it to where the member stands
-// (ErrNoCrossing — the cell is real and there is simply no way through), and
-// the spatial rejections the move or the crossing itself raises
-// (ErrBadPlacement).
+// (ErrNoCrossing — the cell is real and there is simply no way through), the
+// spatial rejections the move or the crossing itself raises (ErrBadPlacement),
+// and this composition being unable to say where the member is standing at all
+// (ErrNoField, from cellOf — an invariant break, not a caller mistake, and it
+// must not arrive wearing a doorway's name).
 func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (executedAction, error) {
 	located, err := e.Locate(&LocateInput{Position: to})
 	if err != nil {
