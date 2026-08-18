@@ -1,9 +1,16 @@
 # The economy gate: where an action's cost lives
 
 **Date:** 2026-08-18
-**Status:** open question space. Nothing here is ratified. This is the
-trade-off conversation that happens *before* E1 freezes the spend vocabulary.
-**Decides:** nothing. The evidence is the [#1035 census][census] and its
+**Status:** open question space, now converged on a candidate. Kirk on the
+shape below: *"I can go along with this. I think it is a good foundation."* —
+**a foundation he can live with, not yet a formal ruling.** The open questions
+at the bottom are still open.
+**Where it converged:** shape **D**'s substance (the ledger travels with the
+cast, as data) + the **door** as the call site (paying a cost profile, not
+consulting a capability) + **doors debit, windows read** + casts assembled by
+**interested-by-declaration** + the **runner** owning both enforcement points so
+no machine ever spends.
+**Decides:** nothing formally. The evidence is the [#1035 census][census] and its
 [supplement][supp] and [movement addendum][move]; this doc does not re-derive
 any of it. What it does is lay four shapes side by side and walk each one
 through the same cases.
@@ -244,6 +251,90 @@ a bubble, saying in-fight movement "arrives with the resolution work"
 movement machine, not before it** — the same conclusion the movement addendum
 reached from the other direction.
 
+## The keystone: machines never touch the ledger — the runner does
+
+Everything above left one thing uncomfortable, and Kirk named it: under shape D
+the *machine* was doing the checking. That is the wrong hand on the lever, and
+the correction is the doc's closing move.
+
+> **A machine never spends. The runner owns both enforcement points.**
+
+**Point 1 — the door.** Resolution's loop pays `Input.Cost` before it starts the
+machine: a pure `combat.Pay` over the actor's sheet, which the runner already
+holds. A free action is simply a nil cost. **The machine starts already-paid and
+knows nothing about it** — it cannot tell a swing that cost an action from one
+that cost nothing, which is exactly the ignorance we want, because "what did
+this cost" is a rulebook question that was already answered by the compiler.
+
+**Point 2 — the window.** A machine reaching a reaction moment does not go
+looking for wizards. It **yields a step describing the moment**, and the runner
+interprets it: applies *interested* (declared triggers matching this action) ∩
+*affordable* (`CanPay` on the held sheet), and opens a window only for the
+survivors. **The machine never learns the wizard exists.**
+
+### Why this is not a new idea — it is ADR-0038's law applied twice
+
+The symmetry is exact, and it is the argument:
+
+| | ADR-0038 (shipped) | This doc (proposed) |
+|---|---|---|
+| what machines are denied | **the bus** | **the ledger** |
+| what they do instead | yield a step naming what they want | yield a step naming the moment |
+| who acts | the surface folds the chain | the runner pays / opens the window |
+| enforcement | by construction | the same construction |
+
+R6 is the law: "**A machine never sees the bus.** It yields steps; this package
+folds chains on its own bus and hands back results" (`resolution/doc.go:47-50`).
+And it is enforced structurally rather than by discipline — "a machine yields
+sealed steps and *cannot* reach the bus — `Gather`'s workings are unexported,
+and the strike machine does not even import the packages that could hand it one"
+(`ARCHITECTURE.md:69-72`). A machine also cannot *build* a step: "A machine
+cannot construct one directly — it calls a constructor in this package naming
+what it wants" (`step.go:37-42`).
+
+**The ledger joins the bus as a thing machines are structurally denied**, by the
+identical technique: keep `Pay` where a machine does not import it, and the
+denial is a compile error rather than a code-review note.
+
+### The runner already does this — verified, not asserted
+
+The claim that "the runner interprets yielded steps" is not aspirational. It is
+`drive`, the whole of it (`resolution/step.go:103-158`), called once from
+`Resolve` (`resolve.go:274`). Its own doc states the shape:
+
+> The loop is the whole driver: a machine yields, resolution acts, the machine
+> yields again. Nothing accumulates on the Go stack between yields, which is
+> what makes a suspension expressible later — the machine's own state is the
+> only state there is.
+
+The body is a type switch over the sealed set — `Done`, `Request`, `Gather`
+(`step.go:110-156`) — and the `Request` arm is the exact precedent for point 2:
+the machine yields a step *naming another interaction*, and **the runner is what
+actually runs it** (`step.go:126`), then feeds the outcome back into the
+machine's continuation. A machine that yields "there is a reaction moment here"
+and gets resumed with what happened is the same move, one case over.
+
+**And that case already exists in the sealed vocabulary.** `Pose` is named in
+ADR-0038's `Gather | Pose | Request | Done` and is simply unbuilt — "Pose waits
+for the walk machine" (`doc.go:133-136`), with reactions now the honest producer.
+So **point 2 needs no new step kind and therefore no ADR for the vocabulary** —
+it is the fourth case landing with the caller that forces it, which is precisely
+how the other three arrived.
+
+### What this settles, and what it costs
+
+It settles the call-site question this doc opened with. `Pay` is called **from
+the door, by the runner** — shape B's site, carrying shape D's substance (a pure
+function over a sheet the runner holds, not a capability it consults). The
+combination is why the R2 problem evaporates: there is nothing new on `Input`
+except **data** (a cost profile), and data at the seam is what R2 asks for rather
+than what it forbids.
+
+The cost is honest and small: `Input` grows a `Cost` field, and the runner grows
+two enforcement points. Neither is a vocabulary change. What it buys is that
+**no machine, present or future, can spend anything** — including machines
+written later by somebody who never read this doc.
+
 ## Where this leaves the comparison
 
 Reading the cases rather than the intuition:
@@ -261,11 +352,13 @@ it does *not* solve the suspension door-cost — no shape does. Its advantage is
 concentrated in case (iii) and in the multiattack visibility problem, and it
 gets there by using two mechanisms that already ship rather than by adding one.
 
-**What that does not settle:** D leaves the A-versus-B question open rather than
-answering it — the debit still has to be *called* from somewhere. That may be
-D's most useful property: it makes the call-site choice smaller and later,
-because moving a pure function call is a refactor, while moving a capability is
-a seam change.
+**What settles the rest:** D on its own leaves the A-versus-B question open —
+the debit still has to be *called* from somewhere. The keystone above answers it:
+**the door, by the runner.** That is B's call site carrying D's substance, and
+the pairing is what makes the R2 objection evaporate — `Input` grows a cost
+**profile**, which is data, and data at the seam is what R2 asks for rather than
+what it forbids. A capability would have been the violation; a struct field is
+not.
 
 ### D's obligation, and Kirk's refinement of it — interested-by-declaration
 
@@ -398,9 +491,10 @@ C's would have to be written with `Pose` rather than before it.
 
 ## Open questions
 
-1. **Where is `Pay` called from — a wrapping machine (A's site) or the door
-   (B's site)?** Under D this is a smaller question than it looks, and it can be
-   answered later.
+1. **~~Where is `Pay` called from?~~** Converged: the door, by the runner. What
+   remains open underneath it is narrower — whether the runner's window
+   enforcement rides `Pose` as its payload or needs its own shape, which is a
+   question for whoever designs `Pose` rather than for this doc.
 2. **One ledger behind the gate, or several?** Per-turn slots, granted capacity,
    pools and slots have different cadences and, today, different homes. One debit
    surface, or several verbs to the caller?
