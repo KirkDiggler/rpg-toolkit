@@ -213,7 +213,7 @@ func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (
 			// The encounter ended underfoot. Every remaining step is abandoned:
 			// a closed encounter refuses movement anyway, and attempting them
 			// would turn a clean stop into a rejection the caller must interpret.
-			res.outcome = projectOutcome(scope.enc, moved.Outcome)
+			res.outcome = projectOutcome(moved.Outcome)
 			return res, nil
 		}
 

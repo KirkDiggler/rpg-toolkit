@@ -101,7 +101,7 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 		return nil, fmt.Errorf("status: %w", translate(err))
 	}
 
-	return projectStatus(enc, status), nil
+	return projectStatus(status), nil
 }
 
 // Where returns the cell a member stands on, in dungeon-absolute space.
