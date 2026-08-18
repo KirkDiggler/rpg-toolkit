@@ -204,6 +204,14 @@ type SetupInput struct {
 	// without it (ErrNoInitiative).
 	Initiative InitiativeRoller
 
+	// Standing reports which members are down (rpg-toolkit#1075). REQUIRED,
+	// for the same reason Initiative is: the consult runs from first light, so
+	// an encounter that cannot ask who is standing would start fights with
+	// bodies and walk them around the map. Setup refuses without it
+	// (ErrNoStanding). There is no default — a nil meaning "everyone is
+	// standing" would be this module deciding a rule it is not allowed to know.
+	Standing Standing
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.

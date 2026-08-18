@@ -1,0 +1,15 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package encounter
+
+// everyoneStanding is the Standing capability the internal tests install.
+//
+// Nobody is ever down: these tests are about clocks, not about hit points, and
+// the capability is required at construction so they have to say so. The
+// rulebook's real answer is the production consumer's business.
+type everyoneStanding struct{}
+
+func (everyoneStanding) Standing([]MemberID) ([]MemberID, error) {
+	return nil, nil
+}

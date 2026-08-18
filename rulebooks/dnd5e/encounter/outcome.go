@@ -31,6 +31,18 @@ const (
 
 	// OutcomeMissed is an attack that did not.
 	OutcomeMissed OutcomeKind = "missed"
+
+	// OutcomeDown is a member the rulebook reports out of the fight — the
+	// minimal death beat ruled on rpg-toolkit#959: this kind, and who.
+	//
+	// NOT ACCEPTABLE TO [Encounter.Record], deliberately, and it is the only
+	// kind that is not. Down is something the composition NOTICES, by asking
+	// [Standing] at the choke point where it already asks about sight; a caller
+	// that could push the beat in would be a second system deciding the same
+	// thing, and the first one would always win because it reaches the fact
+	// first. Record's switch is therefore the CALLER-WRITABLE subset of this
+	// enum rather than all of it — pushing this kind gets ErrInvalidData.
+	OutcomeDown OutcomeKind = "down"
 )
 
 // OutcomeValue names one number a rulebook outcome carries.

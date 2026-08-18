@@ -179,4 +179,10 @@ var (
 	// detection runs from first light, so every encounter needs one — refused
 	// at construction rather than at the moment a fight would have started.
 	ErrNoInitiative = errors.New("encounter: no initiative roller")
+
+	// ErrNoStanding indicates Setup or Load was given no Standing capability.
+	// The consult runs from first light, so every encounter needs one —
+	// refused at construction rather than at the moment a body would have
+	// started a fight.
+	ErrNoStanding = errors.New("encounter: no standing capability")
 )
