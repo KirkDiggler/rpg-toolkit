@@ -278,6 +278,10 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	// load-bearing is that the error stops the verb, and that is pinned
 	// separately.
 	//
+	// The lesson holds where the ordering is about persistence ALONE. It stops
+	// holding the moment something READS BACK what was written inside the same
+	// verb — which is what the exception below is, and what Attack's is too.
+	//
 	// The order is still chosen: there is no reason to touch the world when
 	// the call is already doomed.
 	sheet, err := instantiate(in.ID, in.Ref)
@@ -286,8 +290,8 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	}
 
 	// THE SHEET IS RECORDED BEFORE THE PLACEMENT, and here the ordering IS
-	// load-bearing — the one exception to the paragraph above, which is why it
-	// is stated separately rather than folded into it.
+	// load-bearing — an exception to the paragraph above, which is why it is
+	// stated separately rather than folded into it.
 	//
 	// Arriving refreshes sight, and every sight refresh asks who is standing
 	// (rpg-toolkit#1079). That consult reads the session's own sheets, so a
@@ -298,6 +302,15 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	//
 	// Nothing durable changes by moving it: a failed placement returns before
 	// the commit and the whole scope is dropped, sheet and all.
+	//
+	// It stopped being the ONLY exception at rpg-toolkit#1083, and the second one
+	// names what the two have in common. [Manager.Attack] must write its damaged
+	// sheets BEFORE it records the outcome, because recording now runs the same
+	// standing consult and it reads the same sheets — and there the write really
+	// is durable, so that ordering has a cost the paragraph above says cannot
+	// exist. The rule underneath both: ordering against persistence is free only
+	// while nothing READS BACK what was written inside the same verb. A consult
+	// is a read-back.
 	scope.data.NPCs = append(scope.data.NPCs, *sheet)
 	scope.touched = true
 
