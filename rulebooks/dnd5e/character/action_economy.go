@@ -26,10 +26,33 @@ func (c *Character) InCombat() bool {
 	return c.actionEconomy != nil
 }
 
+// economyChanged records that a write landed on c.actionEconomy.
+//
+// The economy is persisted — ToData writes it to Data.ActionEconomy and Load
+// restores it — but serializing is not saving: resolution keeps only the
+// sheets that report IsDirty() and session writes back only those. An economy
+// mutation that skips this is a spend that serializes perfectly and is then
+// discarded (#1087).
+//
+// Each writer calls this for itself rather than trusting a caller to, with two
+// exceptions documented where they live: checkPostStrikeGrants, whose only
+// caller marks after it returns, and restoreActionType, which undoes a spend
+// that already marked. The load path is a third: it seeds the economy from
+// stored data, so the sheet already matches storage.
+func (c *Character) economyChanged() {
+	c.dirty = true
+}
+
 // ExitCombat clears the action economy entirely, removing combat state.
 // Call this when the encounter ends, not between turns.
 func (c *Character) ExitCombat(_ context.Context, _ *ExitCombatInput) (*ExitCombatOutput, error) {
-	c.actionEconomy = nil
+	// Guarded so that leaving combat twice is not a second change: an economy
+	// that was already absent has nothing to write.
+	if c.actionEconomy != nil {
+		c.actionEconomy = nil
+		c.economyChanged()
+	}
+
 	return &ExitCombatOutput{}, nil
 }
 
@@ -45,6 +68,7 @@ func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartT
 		MovementRemaining:     input.Speed,
 		Granted:               make(map[GrantedActionKey]int),
 	}
+	c.economyChanged()
 
 	return &StartTurnOutput{
 		Abilities: c.buildAvailableAbilities(),
@@ -61,6 +85,7 @@ func (c *Character) EndTurn(_ context.Context, _ *EndTurnInput) (*EndTurnOutput,
 		c.actionEconomy.ReactionsRemaining = 0
 		c.actionEconomy.MovementRemaining = 0
 		c.actionEconomy.Granted = make(map[GrantedActionKey]int)
+		c.economyChanged()
 	}
 	return &EndTurnOutput{}, nil
 }
@@ -154,6 +179,7 @@ func (c *Character) GrantCapacity(key GrantedActionKey, amount int) {
 		c.actionEconomy.Granted = make(map[GrantedActionKey]int)
 	}
 	c.actionEconomy.Granted[key] += amount
+	c.economyChanged()
 }
 
 // HasGranted returns whether the character has any remaining capacity for the given key.
@@ -454,6 +480,7 @@ func (c *Character) executeStrike() (*ExecuteActionOutput, error) {
 
 	c.actionEconomy.Granted[GrantedAttacks]--
 	c.checkPostStrikeGrants()
+	c.economyChanged()
 
 	return &ExecuteActionOutput{
 		Success:   true,
@@ -474,6 +501,7 @@ func (c *Character) executeOffHandStrike() (*ExecuteActionOutput, error) {
 	}
 
 	c.actionEconomy.Granted[GrantedOffHandStrikes]--
+	c.economyChanged()
 
 	return &ExecuteActionOutput{
 		Success:   true,
@@ -494,6 +522,7 @@ func (c *Character) executeFlurryStrike() (*ExecuteActionOutput, error) {
 	}
 
 	c.actionEconomy.Granted[GrantedFlurryStrikes]--
+	c.economyChanged()
 
 	return &ExecuteActionOutput{
 		Success:   true,
@@ -533,6 +562,7 @@ func (c *Character) executeUnarmedStrike() (*ExecuteActionOutput, error) {
 
 	c.actionEconomy.Granted[GrantedMartialArtsBonus]--
 	c.actionEconomy.BonusActionsRemaining--
+	c.economyChanged()
 
 	return &ExecuteActionOutput{
 		Success:   true,
@@ -578,6 +608,7 @@ func (c *Character) executeMove(distance int) (*ExecuteActionOutput, error) {
 	}
 
 	c.actionEconomy.MovementRemaining -= distance
+	c.economyChanged()
 
 	return &ExecuteActionOutput{
 		Success:   true,
@@ -589,6 +620,10 @@ func (c *Character) executeMove(distance int) (*ExecuteActionOutput, error) {
 // checkPostStrikeGrants checks for post-main-hand-strike grants.
 // After a main-hand strike, monks get a martial arts bonus strike
 // and two-weapon fighters get an off-hand strike.
+//
+// It writes granted capacity but does not call economyChanged: its only caller,
+// executeStrike, marks once for the decrement and these grants together. A
+// second caller has to mark for itself.
 func (c *Character) checkPostStrikeGrants() {
 	// Monk: grant martial arts bonus if bonus action available and not already granted
 	if c.classID == classes.Monk &&
@@ -609,6 +644,10 @@ func (c *Character) checkPostStrikeGrants() {
 
 // toToolkitActionEconomy converts ActionEconomyData to the toolkit's combat.ActionEconomy.
 // This bridges our serializable data with the toolkit's combat ability system.
+//
+// It only reads: the value it returns is a detached copy that the ability
+// mutates, and fromToolkitActionEconomy is what puts the result back on the
+// sheet. Nothing here dirties anything.
 func (c *Character) toToolkitActionEconomy() *combat.ActionEconomy {
 	ae := &combat.ActionEconomy{
 		ActionsRemaining:      c.actionEconomy.ActionsRemaining,
@@ -633,6 +672,10 @@ func (c *Character) toToolkitActionEconomy() *combat.ActionEconomy {
 
 // fromToolkitActionEconomy syncs the toolkit's combat.ActionEconomy back to ActionEconomyData.
 // Called after a combat ability modifies the toolkit ActionEconomy.
+//
+// This is where a whole ability activation lands on the sheet at once — the
+// slot it spent and the capacity it granted — so it is where that activation
+// becomes something to save.
 func (c *Character) fromToolkitActionEconomy(ae *combat.ActionEconomy) {
 	c.actionEconomy.ActionsRemaining = ae.ActionsRemaining
 	c.actionEconomy.BonusActionsRemaining = ae.BonusActionsRemaining
@@ -649,6 +692,8 @@ func (c *Character) fromToolkitActionEconomy(ae *combat.ActionEconomy) {
 	if ae.FlurryStrikesRemaining > 0 {
 		c.actionEconomy.Granted[GrantedFlurryStrikes] = ae.FlurryStrikesRemaining
 	}
+
+	c.economyChanged()
 }
 
 // --- Helper methods ---
@@ -701,10 +746,21 @@ func (c *Character) consumeActionType(actionType coreCombat.ActionType) {
 		c.actionEconomy.BonusActionsRemaining--
 	case coreCombat.ActionReaction:
 		c.actionEconomy.ReactionsRemaining--
+	default:
+		// A free action costs no slot, so nothing was written and the sheet
+		// has nothing new to save.
+		return
 	}
+
+	c.economyChanged()
 }
 
 // restoreActionType increments the appropriate action economy counter (rollback).
+//
+// It does not need to mark the sheet dirty — the consumeActionType it undoes
+// already did — and deliberately does not mark it clean again. A feature whose
+// Activate failed may have moved its own persisted state before it errored, and
+// one redundant write costs less than one lost spend.
 func (c *Character) restoreActionType(actionType coreCombat.ActionType) {
 	switch actionType {
 	case coreCombat.ActionStandard:
