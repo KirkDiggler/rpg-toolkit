@@ -26,7 +26,9 @@
 // elsewhere. A fight is a turn bubble: Form pulls its members off the world
 // clock into a caller-rolled order (R7 — initiative arrives from outside),
 // Transfer moves a straggler in or out mid-round, EndTurn advances the fight,
-// and Dissolve re-homes everyone to the tick. Everyone not in the fight keeps
+// and Dissolve re-homes everyone to the tick. A fight also ENDS ITSELF when a
+// side runs out of members standing in it — [ByDefeat], with no caller, the
+// mirror of sight starting one. Everyone not in the fight keeps
 // free-roaming while it runs; everyone in it is the fight's alone — Move,
 // Traverse, and Pump are world-clock verbs and will not act for a fight
 // member. Which clock somebody is on is always askable, per member, via
