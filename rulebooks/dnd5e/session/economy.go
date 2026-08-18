@@ -111,6 +111,16 @@ func (m *Manager) priceSwing(
 		cost: &resolution.Cost{
 			PayerID: attacker,
 			Profile: profile,
+			// Handed over even though readyForTurn has already done it on the
+			// sheet below, and the redundancy is deliberate rather than
+			// forgotten. The door's refresh is the contract E2 built and this is
+			// its caller honouring it; finding the economy already filed under
+			// this turn, it does nothing. So a mutation that passes nil here
+			// changes no observable behaviour and no test can catch it — which
+			// is worth saying out loud, because the next reader to notice will
+			// otherwise conclude the field is dead and remove it. What it is is
+			// the backstop for the day this seam hands over a sheet it did not
+			// ready.
 			Turn: &resolution.Turn{
 				Number: clock.Round,
 				Speed:  sheet.GetSpeed(),
