@@ -408,6 +408,32 @@ func (s *OneMapSuite) TestAnOutcomeIsNotAnchoredTwice() {
 		"the cell she finished on — anchoring it a second time would say (9,9)")
 }
 
+// TestAWalkIsNotAnchoredTwice is the standing probe (#1072) aimed at the walk
+// itself rather than at what it ends in.
+//
+// Every OTHER fixture in this package anchors its rooms far enough out that an
+// absolute cell is never also a legal room-local one — which means a step
+// reported through one anchoring too many produces a cell no room owns, and
+// the projection refuses rather than answering wrongly. Anchor shallowly and
+// the overlap is real: (7,6) is both a cell on the map and a cell inside the
+// room, so a second anchoring SUCCEEDS and lands somewhere else entirely.
+//
+// The walk path is where that mattered longest: it was the last place a
+// room-local cell crossed this seam in either direction.
+func (s *OneMapSuite) TestAWalkIsNotAnchoredTwice() {
+	out, err := s.shallowSession().Move(context.Background(), &session.MoveInput{
+		Session: "shallow", Member: "alice",
+		Path: []spatial.Position{{X: 5, Y: 6}, {X: 6, Y: 6}},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(out.Steps, 2)
+
+	s.Equal(spatial.Position{X: 5, Y: 6}, out.Steps[0].Position,
+		"the cell asked for — anchoring it a second time would say (7,9)")
+	s.Equal(spatial.Position{X: 6, Y: 6}, out.Steps[1].Position,
+		"and the next one, which would say (8,9)")
+}
+
 // TestAnExitIsNotAnchoredTwice: the leaver's own report, which the composition
 // builds on its own path and which reaches a client through the same
 // converter. Two shapes carry an outcome across this seam, and a pin on one

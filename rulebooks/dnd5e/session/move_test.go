@@ -313,6 +313,54 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	s.NotErrorIs(err, session.ErrBadPosition, "and the cell exists; there is just no way through")
 }
 
+// TestAWalkComesBackThroughTheSameDoorway pins the direction a fixture will not
+// reach by accident: the way BACK.
+//
+// A connection is declared with a From room and a To room, and every crossing
+// scene in this package walks it the declared way. Match only that direction
+// and every crossing test still passes while every door in the game becomes
+// one-way — a surviving mutant found exactly that on the composition side
+// (rpg-toolkit#1102), and after #1059 this walk runs through the same code a
+// monster's pursuit does, so the two can no longer disagree about it.
+//
+// It runs on hexWorld rather than the offset world for a reason worth stating:
+// the offset world declares an ending ON the annex side of its doorway, so a
+// walk that crosses it closes the encounter on arrival and CANNOT step back.
+// A round trip needs a world with nothing underfoot at the far end.
+func (s *MoveTestSuite) TestAWalkComesBackThroughTheSameDoorway() {
+	ctx := context.Background()
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "hex", Encounter: "hexworld", World: hexWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	// Out: the corridor is anchored at the origin, the vault at (6,0), and the
+	// gate joins corridor-local (2,0) to vault-local (-3,0) — absolute (2,0)
+	// and (3,0), one axial step apart.
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "hex", Member: "alice",
+		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 0}},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(out.Steps, 3, "the walk ran to the end: nothing here stops it")
+	s.Require().Nil(out.Outcome, "and nothing ended underfoot")
+	s.Equal(spatial.Position{X: 3, Y: 0}, out.Steps[2].Position, "the far side, in the vault")
+
+	// And back, against the direction the connection was declared in.
+	back, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "hex", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 0}},
+	})
+	s.Require().NoError(err, "a doorway is crossable both ways")
+	s.Require().Len(back.Steps, 1)
+	s.Equal(spatial.Position{X: 2, Y: 0}, back.Steps[0].Position)
+
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "hex", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 2, Y: 0}, where.Position,
+		"standing back on the corridor threshold, read cold")
+}
+
 // TestAStepOntoNoCellUsesOurSentinelNotTheirs is
 // TestTrimmedStoryUsesOurSentinelNotTheirs' walk-shaped twin, and it covers the
 // leak channel a routine caller mistake reaches (rpg-toolkit#1058).
@@ -342,6 +390,46 @@ func (s *MoveTestSuite) TestAStepOntoNoCellUsesOurSentinelNotTheirs() {
 	// fractional hex cell.
 	s.Contains(err.Error(), "owned by no room",
 		"the composition's account of why survives, even though its sentinel does not")
+}
+
+// TestAMidWalkRefusalMovesNobody guards the one thing that narrowed when the
+// walk stopped resolving the map for itself (rpg-toolkit#1059).
+//
+// "A cell no room owns" used to be caught while the path was being resolved,
+// before anybody moved. It is now caught as that step is TAKEN, because
+// catching it earlier means the seam deciding what the composition decides.
+// The caller must not be able to tell: a refused walk still moves nobody and
+// tells nobody, because the encounter that moved in memory is discarded
+// unsaved.
+//
+// So the assertions are about the WORLD, not the error. Alice is asked to take
+// a legal step and then step off the map; the legal one really does execute
+// against the in-memory encounter, and none of it may survive.
+func (s *MoveTestSuite) TestAMidWalkRefusalMovesNobody() {
+	s.startCorridor()
+	ctx := context.Background()
+
+	before, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.stream.published = nil // setup beats predate the walk
+
+	// (1,1) → (0,0) is a real step. (-1,-1) is off the map.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 0, Y: 0}, {X: -1, Y: -1}},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadPosition)
+
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 1, Y: 1}, where.Position,
+		"she is where she started: the step that DID execute was discarded with the encounter")
+
+	after, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Len(after, len(before), "no beat survived a walk that failed")
+	s.Empty(s.stream.published, "and nothing reached a client")
 }
 
 // TestAZeroDistanceStepIsRefused pins rpg-toolkit#1060: the cell the walker

@@ -5,9 +5,8 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -101,7 +100,7 @@ type MoveOutput struct {
 // Move walks a member along a path, one cell at a time.
 //
 // This is the first verb that does something the composition cannot do alone:
-// the composition's own Move is a single hop, and walking is what makes the
+// the composition's own Step is a single hop, and walking is what makes the
 // cells in between real. That matters beyond tidiness — anything that fires
 // because a member *entered a particular cell* can only be noticed by something
 // that visits each of them.
@@ -112,10 +111,20 @@ type MoveOutput struct {
 // that happened, happened, and it is exactly what the caller asked for up to
 // the point the world changed.
 //
-// Validation is complete before the first cell is entered (R5): a path with a
-// gap in it is rejected whole rather than walked up to the gap, because a
-// caller who mis-computed a route wants none of it rather than an arbitrary
-// prefix of it.
+// WHAT IS VALIDATED WHOLE, AND WHAT IS NOT (R5, narrowed deliberately by
+// rpg-toolkit#1059). A path that is not a WALK is rejected entire, before a
+// single cell is entered: a gap in it, a step of no distance, a first cell
+// nowhere near the walker. A caller who mis-computed a route wants none of it
+// rather than an arbitrary prefix of it, and those are the mistakes a route
+// computation actually makes.
+//
+// The two refusals that need the MAP — a cell no room owns, and a cell in the
+// next room with no doorway joining it — are raised by the composition as each
+// step is taken, because checking them in advance means the seam re-deciding
+// what is crossable, which is the duplication this walk exists without. The
+// caller sees no difference: a refused walk returns an error, and nothing is
+// persisted or published, because the encounter that moved in memory is
+// discarded unsaved.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrEmptyPath,
 // ErrBrokenPath for a path with a gap in it, ErrNoSession, ErrNoEncounter,
@@ -138,12 +147,11 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	walk, err := resolveWalk(scope.enc, encounter.MemberID(in.Member), in.Path)
-	if err != nil {
+	if err = validateWalk(scope.enc, encounter.MemberID(in.Member), in.Path); err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	// A downed member does not walk. Asked after the walk RESOLVES and before a single
+	// A downed member does not walk. Asked after the path is VALIDATED and before a single
 	// cell is entered, which is where R5 puts every other refusal: the path is
 	// validated whole first, so naming a member who is not here or a route that
 	// is not a walk still answers what it always answered, and a walk this
@@ -156,7 +164,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	res, err := m.runWalk(scope, in.Member, walk)
+	res, err := m.runWalk(scope, in.Member, in.Path)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -187,51 +195,65 @@ type walkResult struct {
 // runWalk steps a member along a path, stopping at the first fight, the first
 // ending, or the last cell.
 //
-// IT DECIDES NONE OF THAT. Until rpg-toolkit#964 this loop held a game rule: it
-// read each step's perception delta, and a subject seen for the first time
-// stopped the walk and opened a window for the walker to answer. That was the
-// SDK deciding when an encounter begins — a rule, in the one package whose
-// charter is to hold none — and it was wrong twice over besides, because sight
-// is not the only way a fight starts and a walker is not the only one who can
-// see.
+// IT DECIDES NOTHING. It used to decide two things and both were wrong to hold
+// here. Until rpg-toolkit#964 it held a game rule: it read each step's
+// perception delta, and a subject seen for the first time stopped the walk and
+// opened a window for the walker to answer — the SDK deciding when an encounter
+// begins, in the one package whose charter is to hold no rules. Until
+// rpg-toolkit#1059 it held a mechanism: each step arrived pre-sorted into a
+// same-room move or a doorway crossing, resolved here off a projected map, and
+// executed through whichever of the composition's two verbs matched.
 //
-// The composition owns it now, at the one place all sight changes pass through,
-// and reports a formed bubble on the Move that caused it. This loop reads that
-// report exactly the way it already read Outcome: as news. The walk stops
-// because the walker is IN a fight and a fight member does not free-roam — the
-// composition would refuse the next step with ErrInBubble — so stopping is a
-// fact about the world rather than a policy about perception.
-func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (*walkResult, error) {
+// Both now belong to the composition, which owns the data each answer is made
+// of, and this loop reads what came back exactly the way it already read
+// Outcome: as news. The walk stops on a formed bubble because the walker is IN
+// a fight and a fight member does not free-roam — the composition would refuse
+// the next step with ErrInBubble — so stopping is a fact about the world rather
+// than a policy about perception.
+func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Position) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
-	for i, step := range walk.steps {
-		moved, err := m.takeStep(scope, member, step)
+	for i, cell := range path {
+		stepped, err := scope.enc.Step(&encounter.StepInput{
+			Member: encounter.MemberID(member),
+			To:     cell,
+		})
 		if err != nil {
 			// Nothing is saved on a mid-walk rejection. The member has really
 			// moved in memory for the steps already taken, but that encounter is
 			// discarded unsaved, so the persisted world is untouched.
-			return nil, fmt.Errorf("step %d of %d: %w", i+1, len(walk.steps), translate(err))
+			return nil, refusedStep(i, len(path), cell, err)
 		}
 
-		// Reported from what the composition says happened, projected back —
-		// not echoed from the input. A step that landed somewhere other than
-		// where it was aimed is a thing worth being able to see.
+		// Read off what the composition says happened rather than off the
+		// input, and there is no projection left in between to get wrong: the
+		// answer arrives on the map already.
+		//
+		// The two are the same value TODAY, and a mutation swapping this for
+		// `cell` survives the whole suite because of it — a step lands exactly
+		// where it was aimed or it is refused, so no fixture can tell them
+		// apart. That is a statement about the composition's current contract,
+		// not a guarantee this loop is entitled to assume: the day a step can
+		// land somewhere other than where it was aimed (a shove, a slide, a
+		// door that opens onto a different cell than the one named), echoing
+		// the input reports a movement that did not happen, and reading the
+		// answer keeps being right without anyone noticing it had to change.
 		res.steps = append(res.steps, Step{
-			Position: onMap(scope.enc, step.room, moved.to),
-			Seq:      moved.Seq,
+			Position: stepped.Stepped.To,
+			Seq:      stepped.Seq,
 		})
-		mergeDiscoveries(res.discovered, projectDiscoveries(moved.IntelDeltas))
+		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
 
-		if moved.Outcome != nil {
+		if stepped.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:
 			// a closed encounter refuses movement anyway, and attempting them
 			// would turn a clean stop into a rejection the caller must interpret.
-			res.outcome = projectOutcome(moved.Outcome)
+			res.outcome = projectOutcome(stepped.Outcome)
 			return res, nil
 		}
 
-		if moved.Formed != nil {
-			res.formed = projectFormed(moved.Formed)
+		if stepped.Formed != nil {
+			res.formed = projectFormed(stepped.Formed)
 			return res, nil
 		}
 	}
@@ -239,52 +261,25 @@ func (m *Manager) runWalk(scope *writeScope, member string, walk resolvedWalk) (
 	return res, nil
 }
 
-// stepResult is what one step produced, whichever mechanism carried it.
+// refusedStep says why a step the composition refused was refused, in this
+// package's vocabulary and the caller's own coordinates.
 //
-// The two composition verbs report the same news in different shapes, and this
-// is the small amount of translation that lets the walk loop treat a crossing
-// exactly like a step: same stop-on-ending, same stop-on-fight, same discovery
-// merge, same beat sequence.
-type stepResult struct {
-	to          spatial.Position
-	Seq         uint64
-	IntelDeltas map[encounter.MemberID]*intel.SurveilOutput
-	Outcome     *encounter.Outcome
-	Formed      *encounter.FormedBubble
-}
-
-// takeStep executes one resolved step: a move within the room, or a crossing
-// through the doorway the step named.
+// Our sentinel travels ALONE (S2, rpg-toolkit#1058): a host that could match on
+// encounter.ErrBadPlacement would be coupled to the module this seam exists to
+// keep replaceable, through the one channel the AST boundary test cannot see.
+// The composition's account of WHY survives as TEXT, because "owned by no room"
+// and "not an integral axial cell" are the difference between a typo and a
+// fractional coordinate for whoever has to debug it.
 //
-// Which of the two it is was decided during resolution, where the map was
-// already in hand; this only carries it out. Both are ONE step of a walk and
-// neither is time — the composition advances no clock for either.
-func (m *Manager) takeStep(scope *writeScope, member string, step walkStep) (stepResult, error) {
-	if step.connection == "" {
-		moved, err := scope.enc.Move(&encounter.MoveInput{
-			Member: encounter.MemberID(member),
-			To:     step.local,
-		})
-		if err != nil {
-			return stepResult{}, err
-		}
-		return stepResult{
-			to: moved.Moved.To, Seq: moved.Seq, IntelDeltas: moved.IntelDeltas,
-			Outcome: moved.Outcome, Formed: moved.Formed,
-		}, nil
+// An error the mapping does not recognise is wrapped once and not repeated.
+// Those are the HOST's own — a Standing or Initiative capability failing inside
+// the step — and a host matching on its own error must keep being able to.
+func refusedStep(i, n int, cell spatial.Position, err error) error {
+	ours := translate(err)
+	if errors.Is(ours, err) {
+		return fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, n, cell.X, cell.Y, err)
 	}
-
-	crossed, err := scope.enc.Traverse(&encounter.TraverseInput{
-		Member:     encounter.MemberID(member),
-		Connection: step.connection,
-	})
-	if err != nil {
-		return stepResult{}, err
-	}
-	return stepResult{
-		to: crossed.Traversed.To, Seq: crossed.Seq, IntelDeltas: crossed.IntelDeltas,
-		Outcome: crossed.Outcome, Formed: crossed.Formed,
-	}, nil
+	return fmt.Errorf("step %d of %d to (%v,%v): %w: %v", i+1, n, cell.X, cell.Y, ours, err)
 }
 
 // projectFormed turns the composition's report of a started fight into the
@@ -303,77 +298,49 @@ func projectFormed(f *encounter.FormedBubble) *Formed {
 	return out
 }
 
-// walkStep is one resolved step of a path: where it lands in the composition's
-// own terms, and — when the step crosses a doorway — which doorway carries it.
-type walkStep struct {
-	room       string
-	local      spatial.Position
-	connection string // empty for an ordinary step within a room
-}
-
-// resolvedWalk is a path as the composition takes it: each step resolved to
-// the room it lands in and the cell within it, in order.
-type resolvedWalk struct {
-	steps []walkStep
-}
-
-// resolveWalk validates a path whole and resolves it ONCE.
+// validateWalk checks that a path IS a walk, whole, before a single cell is
+// entered.
 //
-// Two jobs in one pass, and they belong together. Validation must finish
-// before the first cell is entered (R5): a caller who mis-computed a route
-// wants none of it rather than an arbitrary prefix. Resolution turns each
-// dungeon-absolute cell into the room-local one the composition's Move takes.
-// Doing them separately located every cell twice and read the roster twice per
-// walk — and, worse, left two places free to disagree about which room a cell
-// belongs to.
+// What is left here after rpg-toolkit#1059 is exactly the part that is a rule
+// about WALKING rather than a fact about the map. A walk is a run of adjacent
+// cells starting next to the walker, and that can be decided from two things
+// this seam is entitled to know: where the walker stands, and which coordinate
+// family the field uses. Everything else a step needs — which room owns a cell,
+// whether a doorway joins two of them — the composition decides as the step is
+// taken, in the one place it is decided for monsters too.
 //
-// Adjacency is checked with a grid of the field's own family rather than a
-// hand-rolled distance, because the two families disagree about what "one
-// step" means and substituting one for the other is a real, previously-shipped
-// defect class: Chebyshev distance on axial hex coordinates agrees with cube
-// distance everywhere except the diagonals, so a wrong formula passes almost
-// every fixture. One grid answers for the whole path, including the step that
-// changes rooms — a field has a single family by law (W1), and adjacency in
-// both families survives translation, so an absolute pair is adjacent or not
-// regardless of which room's grid is asked.
+// It used to decide all of it, and the cost was not only duplication. It
+// fetched a whole Atlas per Move (documented O(total cells), measured ~128MB
+// and ~50-65ms at the legal field budget, unmemoized) to read one room's grid
+// and the doorway list; it located every cell of the path a second time; and it
+// hard-coded "a doorway is exactly one adjacent cell pair" into the walk loop,
+// where the first door that behaved differently would have had to be taught
+// twice.
+//
+// Adjacency is delegated to spatial's own grid rather than hand-rolled, because
+// the two families disagree about what "one step" means and substituting one
+// for the other is a real, previously-shipped defect class: Chebyshev distance
+// on axial hex coordinates agrees with cube distance everywhere except the
+// diagonals, so a wrong formula passes almost every fixture. ONE grid answers
+// for the whole path, including the step that changes rooms — a field has a
+// single family by law (W1), and adjacency in both families survives
+// translation, so an absolute pair is adjacent or not regardless of which
+// room's grid is asked.
 //
 // Adjacency is also not sufficient, in the other direction: a cell is adjacent
 // to ITSELF under every family's Distance <= 1, so the zero-distance step needs
 // refusing by name rather than falling out of the distance check
 // (rpg-toolkit#1060).
-//
-// A step MAY leave the room the walker is in, and that is the only way it may
-// leave: through a doorway joining the cell they stand on to the one they are
-// stepping to (rpg-toolkit#1048). Adjacency alone is not permission — W2 lets
-// two rooms touch without a door — so a cross-room step with no doorway is
-// refused with ErrNoCrossing, distinctly from a path that is not a walk at all.
-func resolveWalk(
-	enc *encounter.Encounter, member encounter.MemberID, path []spatial.Position,
-) (resolvedWalk, error) {
-	room, from, err := whereIs(enc, member)
+func validateWalk(enc *encounter.Encounter, member encounter.MemberID, path []spatial.Position) error {
+	here, err := standsAt(enc, member)
 	if err != nil {
-		return resolvedWalk{}, err
+		return err
 	}
 
-	// The map, fetched ONCE for the whole walk and used for both things this
-	// function needs it for: the grid to test adjacency with, and the doorway
-	// list to recognise a crossing. Building it twice is what the first
-	// version of this did, by asking gridFor to fetch its own.
-	atlas, err := enc.Atlas()
+	grid, err := gridOf(enc)
 	if err != nil {
-		return resolvedWalk{}, translate(err)
+		return err
 	}
-
-	grid, err := gridFrom(atlas, room)
-	if err != nil {
-		return resolvedWalk{}, err
-	}
-
-	walk := resolvedWalk{steps: make([]walkStep, 0, len(path))}
-	// Both frames are tracked: absolute to test adjacency and to describe a
-	// refusal in the coordinates the caller actually wrote, room-local because
-	// that is what the composition's verbs take.
-	here, hereRoom := onMap(enc, room, from), room
 
 	for i, cell := range path {
 		if cell == here {
@@ -392,117 +359,95 @@ func resolveWalk(
 			// genuinely at every step, and a walker may retrace their route as
 			// often as they like. It is zero DISTANCE that is the phantom, not
 			// a repeated cell.
-			return resolvedWalk{}, fmt.Errorf("step %d of %d: already standing on (%v,%v): %w",
+			return fmt.Errorf("step %d of %d: already standing on (%v,%v): %w",
 				i+1, len(path), cell.X, cell.Y, ErrBadPosition)
 		}
 
 		if !grid.IsAdjacent(here, cell) {
-			return resolvedWalk{}, fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
+			return fmt.Errorf("step %d from (%v,%v) to (%v,%v): %w",
 				i+1, here.X, here.Y, cell.X, cell.Y, ErrBrokenPath)
 		}
 
-		located, lerr := enc.Locate(&encounter.LocateInput{Position: cell})
-		if lerr != nil {
-			// The composition's account of WHY is kept as text, not as a chain.
-			// Our sentinel is the one a caller matches on; wrapping theirs too
-			// would let a host match on encounter.ErrBadPlacement, which is the
-			// S2 leak the boundary test cannot see — and this is the refusal a
-			// routine pathing mistake actually reaches (rpg-toolkit#1058).
-			return resolvedWalk{}, fmt.Errorf("step %d of %d: no room owns (%v,%v): %w: %v",
-				i+1, len(path), cell.X, cell.Y, ErrBadPosition, lerr)
-		}
-
-		step := walkStep{room: located.Room, local: located.Position}
-		if located.Room != hereRoom {
-			// Another room: legal only through a doorway joining the cell the
-			// walker stands on to the one they are stepping to. Adjacency is
-			// not permission — W2 lets two rooms touch without a door between
-			// them, and that pair of cells is adjacent and unwalkable.
-			connection, ok := doorwayBetween(atlas, here, cell)
-			if !ok {
-				return resolvedWalk{}, fmt.Errorf(
-					"step %d from (%v,%v) to (%v,%v): %w",
-					i+1, here.X, here.Y, cell.X, cell.Y, ErrNoCrossing)
-			}
-			step.connection = connection
-		}
-
-		walk.steps = append(walk.steps, step)
-		here, hereRoom = cell, located.Room
+		here = cell
 	}
-	return walk, nil
+	return nil
 }
 
-// doorwayBetween finds the doorway joining two cells, in either direction — a
-// doorway is crossable both ways.
+// standsAt reports where a member is, on the map.
 //
-// Reads the Atlas, which is where doorways live in absolute space: a pair of
-// adjacent cells and the connection that joins them. The composition holds the
-// same fact in its own room-shaped terms, and this is the projection of it.
-func doorwayBetween(atlas encounter.Atlas, from, to spatial.Position) (string, bool) {
-	for _, doorway := range atlas.Doorways {
-		if (doorway.FromCell == from && doorway.ToCell == to) || (doorway.ToCell == from && doorway.FromCell == to) {
-			return doorway.Connection, true
-		}
-	}
-	return "", false
-}
-
-// whereIs locates a member: which room owns them, and which cell within it.
+// A ROSTER READ AND NOTHING ELSE. It used to serialize the whole aggregate —
+// clock, intel, log, field and endings — to read two floats, because the
+// composition's roster reported a room and no position; toolkit#933 fixed that,
+// and Members has carried each member's cell on the map ever since. What
+// remained until rpg-toolkit#1059 was the other half of the round trip: this
+// took the absolute cell the roster had just given it, Located it down to a
+// room and a room-local cell, and handed that to a caller who immediately
+// projected it back up to the identical absolute cell it started as — through a
+// helper whose error path silently returned the unprojected value.
 //
-// It used to serialize the whole aggregate — clock, intel, log, field and
-// endings — to read two floats, because the composition's roster reported a
-// room and no position. That was toolkit#933, and it has landed: Members now
-// carries each member's cell on the map, so this is a roster read and a
-// projection back down into the room-local terms the composition's own verbs
-// take.
-func whereIs(enc *encounter.Encounter, member encounter.MemberID) (string, spatial.Position, error) {
+// The answer was always right there in the row.
+func standsAt(enc *encounter.Encounter, member encounter.MemberID) (spatial.Position, error) {
 	members, err := enc.Members()
 	if err != nil {
-		return "", spatial.Position{}, translate(err)
+		return spatial.Position{}, translate(err)
 	}
 
 	for _, m := range members {
-		if m.ID != member {
-			continue
+		if m.ID == member {
+			return m.Position, nil
 		}
-		located, lerr := enc.Locate(&encounter.LocateInput{Position: m.Position})
-		if lerr != nil {
-			return "", spatial.Position{}, fmt.Errorf("%q stands at %v, which no room owns: %w",
-				member, m.Position, ErrBadPosition)
-		}
-		return located.Room, located.Position, nil
 	}
-	return "", spatial.Position{}, fmt.Errorf("%q: %w", member, ErrNoMember)
+	return spatial.Position{}, fmt.Errorf("%q: %w", member, ErrNoMember)
 }
 
-// gridFrom builds a grid matching a room's family and span, for adjacency
-// tests, from a map the caller already has.
+// adjacencySpan is the size the adjacency grid is built with, and it is
+// ARBITRARY on purpose.
 //
-// Takes the Atlas rather than fetching one: it is the caller that knows
-// whether it needs the map for anything else, and in resolveWalk's case it
-// does — the doorway list comes off the same fetch.
-func gridFrom(atlas encounter.Atlas, roomID string) (spatial.Grid, error) {
-	for _, room := range atlas.Rooms {
-		if room.ID != roomID {
-			continue
-		}
-		switch room.Grid {
-		case spatial.GridShapeHex:
-			return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
-				SpanWidth:  float64(room.Width),
-				SpanHeight: float64(room.Height),
-			}), nil
-		case spatial.GridShapeSquare:
-			return spatial.NewSquareGrid(spatial.SquareGridConfig{
-				Width:  float64(room.Width),
-				Height: float64(room.Height),
-			}), nil
-		default:
-			return nil, fmt.Errorf("room %q: %w", roomID, ErrInvalidWorld)
-		}
+// A spatial.Grid is two things at once: a distance metric and a set of bounds.
+// This seam wants only the metric — adjacency is Distance <= 1 in every family,
+// and no family's Distance consults the grid's dimensions, so any span answers
+// identically for cells anywhere on the map (pinned by
+// TestTheAdjacencyGridIsSpanIndependent).
+//
+// The bounds are deliberately NOT this seam's business. Whether a cell exists
+// is the composition's answer, given by the step itself: a cell no room owns is
+// refused with ErrBadPosition when it is stepped on. Building this grid with a
+// real room's width and height would have looked more careful while checking
+// nothing — the walk crosses rooms, so the walker's own room's bounds are the
+// wrong bounds for half the path anyway.
+const adjacencySpan = 1
+
+// gridOf builds a grid to test adjacency with, matching the field's own
+// coordinate family.
+//
+// Asks the composition for the FAMILY and nothing else — an O(1) read (W1: one
+// family per field). The Atlas this used to come from enumerates every cell of
+// every room to answer, which is the per-Move cost rpg-toolkit#1059 finding 2
+// measured.
+func gridOf(enc *encounter.Encounter) (spatial.Grid, error) {
+	family, err := enc.Grid()
+	if err != nil {
+		return nil, translate(err)
 	}
-	return nil, fmt.Errorf("room %q: %w", roomID, ErrInvalidWorld)
+
+	switch family {
+	case spatial.GridShapeSquare:
+		return spatial.NewSquareGrid(spatial.SquareGridConfig{
+			Width:  adjacencySpan,
+			Height: adjacencySpan,
+		}), nil
+	case spatial.GridShapeHex:
+		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
+			SpanWidth:  adjacencySpan,
+			SpanHeight: adjacencySpan,
+		}), nil
+	default:
+		// Unreachable: the composition rejects every other family at both
+		// Setup and Load. Refused rather than defaulted to square, because a
+		// family we do not understand answered with one we do is a wrong
+		// answer dressed as a working one.
+		return nil, fmt.Errorf("unknown grid family: %w", ErrInvalidWorld)
+	}
 }
 
 // mergeDiscoveries folds one step's perception deltas into the walk's running

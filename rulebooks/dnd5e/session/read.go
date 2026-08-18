@@ -144,22 +144,16 @@ func (m *Manager) Where(ctx context.Context, in *WhereInput) (*WhereOutput, erro
 		return nil, fmt.Errorf("where: %w", err)
 	}
 
-	members, err := enc.Members()
+	// The same roster read the walk uses to find its starting cell. Converted
+	// once, at the boundary, and compared as the newtype it is — the same
+	// direction View and Story take a member id. Comparing the other way, by
+	// stringifying the composition's ID, would work today and would stop being
+	// checked the moment MemberID means anything more than a string.
+	at, err := standsAt(enc, encounter.MemberID(in.Member))
 	if err != nil {
-		return nil, fmt.Errorf("where: %w", translate(err))
+		return nil, fmt.Errorf("where: %w", err)
 	}
-
-	// Converted once, at the boundary, and compared as the newtype it is —
-	// the same direction View and Story take a member id. Comparing the other
-	// way, by stringifying the composition's ID, would work today and would
-	// stop being checked the moment MemberID means anything more than a string.
-	want := encounter.MemberID(in.Member)
-	for _, member := range members {
-		if member.ID == want {
-			return &WhereOutput{Position: member.Position}, nil
-		}
-	}
-	return nil, fmt.Errorf("where: %q: %w", in.Member, ErrNoMember)
+	return &WhereOutput{Position: at}, nil
 }
 
 // View returns what one member currently perceives.
@@ -349,6 +343,13 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrNoEnding)
 	case errors.Is(err, encounter.ErrNoConnection), errors.Is(err, encounter.ErrBadConnection):
 		return fmt.Errorf("%w", ErrNoConnection)
+	case errors.Is(err, encounter.ErrNoCrossing):
+		// Checked BEFORE ErrBadPlacement below, though the two cannot both
+		// match: the ordering states the distinction rather than relying on it.
+		// A cell in the next room with no doorway is not a bad position — the
+		// cell is real, and a caller told "off the map" would go looking for
+		// arithmetic that is fine.
+		return fmt.Errorf("%w", ErrNoCrossing)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):

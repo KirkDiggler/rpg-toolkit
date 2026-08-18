@@ -186,27 +186,24 @@ func projectMember(in encounter.Member) Member {
 	}
 }
 
-// onMap projects a composition room-local cell into the one map this seam
-// speaks, by asking the composition rather than doing the arithmetic here.
+// onMap is gone (rpg-toolkit#1059), and its absence is the point.
 //
-// What is left for it to do keeps shrinking as the composition converges on
-// one map. Placement reads came back absolute at encounter v0.10.0, outcomes
-// at v0.13.0 (rpg-toolkit#1068); what remains is a walk — the room-local cells
-// the composition's own movement verbs take and report, which move.go
-// projects on the way out and on the way in. Asking Absolute means the seam
-// never learns what an origin is, which is the whole point of it living down
-// there.
-func onMap(enc *encounter.Encounter, room string, local spatial.Position) spatial.Position {
-	out, err := enc.Absolute(&encounter.AbsoluteInput{Room: room, Position: local})
-	if err != nil {
-		// Unreachable through any verb: an outcome names members the
-		// composition itself placed, in rooms it validated at construction.
-		// Returning the unprojected cell if that ever stops being true is
-		// wrong in a way a test can see, which a panic in a host would not be.
-		return local
-	}
-	return out.Position
-}
+// It projected a composition room-local cell onto the one map this seam
+// speaks, and what was left for it to do had been shrinking for three slices:
+// placement reads came back absolute at encounter v0.10.0, outcomes at v0.13.0
+// (rpg-toolkit#1068), and the last room-local cells anywhere near this package
+// were the ones the walk handed down to the composition's Move and read back
+// out of it. The step verb takes and reports absolute cells, so there is
+// nothing left to project.
+//
+// Its error path is why deleting it beats keeping it: an unprojectable cell
+// returned the cell UNPROJECTED, on the grounds that a wrong answer a test can
+// see beats a panic in a host. That fallback measurably masked a real bug —
+// after #1068, projectMemberOutcome would have anchored every outcome twice,
+// and every fixture hid it because their rooms sit far enough out that an
+// absolute cell is never also a legal local one, so the second projection was
+// refused and the refusal was swallowed (#1053, PR #1072's evidence). A helper
+// with no callers cannot swallow anything.
 
 // projectMemberOutcome carries the outcome's cell across unchanged.
 //
