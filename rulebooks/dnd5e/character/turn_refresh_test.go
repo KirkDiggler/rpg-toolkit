@@ -209,6 +209,21 @@ func (s *TurnRefreshTestSuite) TestRefreshWithoutInputIsRefused() {
 	s.False(char.IsDirty())
 }
 
+// The turn-start verb refuses an empty call the same way the freshness helper
+// does. Two verbs over the same state answering the same mistake differently —
+// one with an error, one with a panic — is a difference a caller has to learn
+// rather than reason about.
+func (s *TurnRefreshTestSuite) TestStartingATurnWithoutInputIsRefused() {
+	char, err := LoadFromData(s.ctx, s.sheet(), s.bus)
+	s.Require().NoError(err)
+	char.MarkClean()
+
+	_, err = char.StartTurn(s.ctx, nil)
+	s.Require().Error(err)
+	s.False(char.InCombat())
+	s.False(char.IsDirty())
+}
+
 // Nothing in this slice calls the helper in production: E2's door does. The
 // turn-start verb that exists today still works exactly as it did, and the two
 // agree about what a fresh turn looks like.

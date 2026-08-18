@@ -66,7 +66,15 @@ func (c *Character) ExitCombat(_ context.Context, _ *ExitCombatInput) (*ExitComb
 // StartTurn initializes the action economy for a new turn.
 // Sets 1 action, 1 bonus action, 1 reaction, and movement from input speed.
 // Returns the available abilities and actions for this turn.
+//
+// A call with no input is refused rather than dereferenced. The two turn verbs
+// answer the same way about the same mistake: [Character.RefreshForTurn] will
+// not reseed turn zero at zero speed either.
 func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartTurnOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no turn to start")
+	}
+
 	c.seedTurn(input.TurnNumber, input.Speed)
 
 	return &StartTurnOutput{

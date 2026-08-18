@@ -138,7 +138,18 @@ func (ae *ActionEconomy) PoolLeft(_ coreResources.ResourceKey) int {
 	return 0
 }
 
-// SpendPool cannot happen: the gate checks [ActionEconomy.PoolLeft] first and
-// every answer is zero, so every pool cost is refused before anything is spent.
+// SpendPool does nothing, because there is nothing here to take.
+//
+// Through the gate it is unreachable: [ActionEconomy.PoolLeft] answers zero for
+// everything, so a pool cost is refused before anything is spent. A caller
+// reaching past the gate to spend directly gets the honest result of spending
+// from a pool that does not exist — nothing moves, and PoolLeft still reports
+// zero, exactly as it did before. Nothing is quietly consumed and nothing
+// quietly succeeds; the read and the write agree.
+//
+// It cannot refuse out loud instead: [Ledger]'s debit methods take no error
+// return by design, because a debit that could fail after the check has passed
+// is a debit that could leave half a payment behind. An economy that wants
+// pools grows them here rather than growing an error path.
 func (ae *ActionEconomy) SpendPool(_ coreResources.ResourceKey, _ int) {
 }
