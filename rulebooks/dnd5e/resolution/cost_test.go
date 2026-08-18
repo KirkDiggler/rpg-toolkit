@@ -11,11 +11,14 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -254,6 +257,12 @@ func (s *CostTestSuite) TestAnActorWhoCannotPayNeverStartsTheMachine() {
 	s.Require().Nil(out, "a refused resolution hands back nothing to store")
 	s.Require().False(machine.started, "the machine never started")
 	s.Require().Zero(roller.rolls, "a strike that started would have rolled its attack")
+
+	// The sentinel is what E3 matches on; the gate's own message is what says
+	// WHICH currency ran out, and it has to survive being wrapped or the
+	// translation on the other side has nothing to say.
+	s.Require().Contains(err.Error(), heroID, "the refusal names who could not pay")
+	s.Require().Contains(err.Error(), string(combat.CapacityAttack), "and what they were short of")
 }
 
 // A paid swing that MISSES still costs what it cost. The attacker's sheet comes
@@ -453,6 +462,7 @@ func (s *CostTestSuite) TestACostKeyedToACurrencyNoLedgerHoldsIsRefused() {
 
 	s.Require().ErrorIs(err, ErrBadCost)
 	s.Require().NotErrorIs(err, ErrCannotPay)
+	s.Require().Contains(err.Error(), "sword-swings", "and it names the key nobody holds")
 	s.Require().Nil(out)
 	s.Require().False(machine.started)
 }
@@ -541,4 +551,55 @@ func (s *CostTestSuite) TestACostWithNoProfileRefreshesAndChargesNothing() {
 	refreshed := out.DirtyCharacters[0].ActionEconomy
 	s.Require().Equal(nextTurn, refreshed.TurnNumber)
 	s.Require().Equal(1, refreshed.ActionsRemaining, "refilled, and nothing taken back out")
+}
+
+// raging is a condition that subscribes on attach and can be heard afterwards,
+// which is what makes it a probe for whether anything survived.
+func (s *CostTestSuite) raging() json.RawMessage {
+	raw, err := (&conditions.RagingCondition{
+		CharacterID: heroID,
+		DamageBonus: 2,
+		Level:       1,
+		Source:      "rage",
+	}).ToJSON()
+	s.Require().NoError(err)
+
+	return raw
+}
+
+// R5 holds on the refusal path too: the payment is refused AFTER every sheet
+// attached, so every subscription those attachments granted has to come back
+// off. The hero's Raging joins the saving-throw chain on the way in, and after
+// the refusal that chain answers nobody.
+//
+// Asserted on the bus rather than on the teardown call, so the pin survives a
+// change to which mechanism does the work — the same shape
+// TestAFailedResolutionLeavesNothingOnTheBus uses for the attach path.
+func (s *CostTestSuite) TestARefusedPaymentLeavesNothingOnTheBus() {
+	inner := events.NewEventBus()
+
+	hero := s.hero(s.economy(firstTurn, 1, 0))
+	hero.Conditions = []json.RawMessage{s.raging()}
+
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+		World:        s.world(),
+		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine:      &captureMachine{},
+		Cost:         &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+	}, newSurface(inner))
+
+	s.Require().ErrorIs(err, ErrCannotPay)
+	s.Require().Nil(out)
+
+	event := &dnd5eEvents.SavingThrowChainEvent{SaverID: heroID, Ability: abilities.STR, DC: saveDifficulty}
+	chain := events.NewStagedChain[*dnd5eEvents.SavingThrowChainEvent](combat.ModifierStages)
+
+	modified, err := dnd5eEvents.SavingThrowChain.On(inner).PublishWithChain(s.ctx, event, chain)
+	s.Require().NoError(err)
+
+	folded, err := modified.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	s.Require().False(folded.HasAdvantage(),
+		"the hero's Raging attached before the refusal and does not answer this chain")
 }
