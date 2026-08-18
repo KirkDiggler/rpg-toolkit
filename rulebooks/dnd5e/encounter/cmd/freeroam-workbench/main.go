@@ -82,7 +82,7 @@ func goblinPatrol() *patrol {
 // someone launches the workbench by hand.
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Initiative: rollOrderAsGiven{},
+		Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{
@@ -507,7 +507,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Initiative: rollOrderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -556,4 +556,14 @@ type rollOrderAsGiven struct{}
 
 func (rollOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
 	return members, nil
+}
+
+// rollAllStanding is the workbench's Standing capability: nobody is ever down.
+// The workbench drives free roam and sight, not damage — nothing in it can take
+// a member to zero — so the honest answer is that everyone is on their feet,
+// said out loud because the capability is required.
+type rollAllStanding struct{}
+
+func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
+	return nil, nil
 }

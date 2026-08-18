@@ -389,6 +389,12 @@ type LoadEncounterInput struct {
 	// guarded where it is used — a nil roller is an error returned at the
 	// door, not a branch taken deep inside a verb.
 	Initiative InitiativeRoller
+
+	// Standing reports which members are down. REQUIRED, exactly as it is on
+	// SetupInput: a loaded encounter consults it on its first sight refresh,
+	// so a blob that comes back without one is as unusable as a Setup without
+	// one. Refused at the door, never guarded at the use site.
+	Standing Standing
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -405,6 +411,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Initiative == nil {
 		return fmt.Errorf("load encounter: Initiative is required: %w", ErrNoInitiative)
+	}
+	if in.Standing == nil {
+		return fmt.Errorf("load encounter: Standing is required: %w", ErrNoStanding)
 	}
 
 	return nil
@@ -750,6 +759,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		everMembers: make(map[MemberID]bool),
 		deciders:    make(map[MemberID]Decider),
 		initiative:  input.Initiative,
+		standing:    input.Standing,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),

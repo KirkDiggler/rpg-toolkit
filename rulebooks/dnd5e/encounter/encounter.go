@@ -64,6 +64,10 @@ type Encounter struct {
 	// one; trigger detection refuses to start a fight without it rather than
 	// dropping the fight silently.
 	initiative InitiativeRoller
+	// standing reports who is down. Required at both constructors — see
+	// [Standing] for why it is asked rather than remembered, and why there is
+	// no default answer.
+	standing Standing
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Move, Traverse, Join) declaration order is
@@ -903,6 +907,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoInitiative)
 	}
 
+	// Required for the same reason, one layer down: the standing consult runs
+	// from first light too — a scene can open with a body already on the floor
+	// — and an encounter that cannot ask would start fights with corpses and
+	// walk them around the map. Refused at the door; never guarded at the use
+	// site, and never defaulted (rpg-toolkit#1033).
+	if in.Standing == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoStanding)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -984,6 +997,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
 		initiative:       in.Initiative,
+		standing:         in.Standing,
 		endings:          nil,
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
@@ -1919,6 +1933,23 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		return nil, fmt.Errorf("pump members: %w", err)
 	}
 
+	// Who is down, asked before anything is planned: a body has no action to
+	// take, so its decider is not consulted at all rather than consulted and
+	// discarded (a decider is behaviour, and running a corpse's behaviour is
+	// the second census defect — Pump had no standing filter and dead monsters
+	// kept patrolling).
+	//
+	// This is the SECOND consult in a Pump — refreshSight runs another at the
+	// end, through noticeDown, which is what narrates and splices. Deliberate,
+	// both ways round: the answer is not carried forward because carrying it
+	// is a cache ([Standing]), and the narration cannot happen here because a
+	// down beat appended before Pump's own tick beat would break the ordering
+	// law refreshSight states.
+	down, err := e.standingNow()
+	if err != nil {
+		return nil, fmt.Errorf("pump standing: %w", err)
+	}
+
 	type plannedAction struct {
 		memberID MemberID
 		intent   Intent
@@ -1927,6 +1958,10 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	for _, m := range allMembers {
 		if m.Kind != KindMonster {
+			continue
+		}
+
+		if down[m.ID] {
 			continue
 		}
 

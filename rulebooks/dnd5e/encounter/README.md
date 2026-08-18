@@ -153,12 +153,42 @@ are wave-4 work (see `docs/ideas/session-sdk/plan.md`). Worth knowing before
 choosing a first task — behavior that decides *where to be* is buildable now,
 behavior that decides *what to do to someone* is not.
 
+## Capabilities you must supply
+
+Two, both **required at `NewEncounter` and `LoadEncounter`**, both refused at
+construction rather than guarded later:
+
+```go
+type InitiativeRoller interface {  // what order a fight goes in
+    RollInitiative(members []MemberID) ([]MemberID, error)
+}
+
+type Standing interface {          // who is down
+    Standing(members []MemberID) (down []MemberID, err error)
+}
+```
+
+They are the same move. This module cannot import the rulebook, so randomness
+and hit points are facts it **asks for**. Neither has a default: a nil meaning
+"unshuffled" or "everybody is fine" would be the composition deciding a rule it
+is not allowed to know.
+
+`Standing` is a **pull**. Nothing pushes a death in, and nothing here remembers
+one — the composition asks at the choke point where it already asks about sight,
+so every route to zero is noticed without that route knowing this interface
+exists. A member reported down is on no side of a contact, has no turn, and gets
+no `Pump` action, while staying on the map, in the roster, and recordable
+against. Answer only about the members you are asked about; a name that was not
+in the question is refused as a mis-wiring rather than ignored.
+
 ## Contents
 
 | File | Holds |
 |---|---|
 | `encounter.go` | the aggregate: setup, verbs, `Pump`, member management |
 | `decider.go` | `Decider`, `Snapshot`, `Intent` and its three implementations |
+| `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
+| `standing.go` | `Standing`, and the world noticing who is down |
 | `atlas.go` | the coordinate queries — `Atlas`, `Absolute`, `Locate` |
 | `field.go` | rooms, connections, and the per-verb output shapes |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |

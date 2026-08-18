@@ -52,7 +52,7 @@ var gate = encounter.ConnectionInput{
 
 func (s *PlacementSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 8, Height: 8, Origin: hallOrigin},
@@ -308,7 +308,7 @@ func (s *PlacementSuite) TestTheOutcomeSurvivesARoundTripStillAbsolute() {
 	s.Require().NoError(err)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: s.enc.ToData(), Initiative: orderAsGiven{},
+		Data: s.enc.ToData(), Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 	})
 	s.Require().NoError(err)
 

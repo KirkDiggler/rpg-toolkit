@@ -8,7 +8,18 @@
 // and tools/spatial: it surveils percepts into intel, lets deciders act on
 // their own intel, and appends the story to record.
 // Members exit, encounters close; player activity pumps the clock, the world
-// thinks on the tick.
+// thinks on the tick. A member the rulebook reports down keeps their place on
+// the map and in the roster, and stops acting: no turn, no side in a contact,
+// no tick action, and a beat in the story saying so.
+//
+// The composition holds no rules of its own that it could hold instead: two
+// capabilities are SUPPLIED at construction and consulted during play, never
+// defaulted (rpg-toolkit#1033). InitiativeRoller says what order a fight goes
+// in; Standing says who is down. Both are the same move — this module cannot
+// import the rulebook (C1), so randomness and hit points are facts it asks for
+// rather than facts it knows. Neither has a default answer, because a default
+// would be this module quietly deciding a rule it is not allowed to know, and
+// both are refused at Setup AND Load rather than guarded where they are used.
 //
 // Every member is on exactly one clock (R6). The world tick is the default —
 // free roam is not a mode, it is where you are when no fight has pulled you
