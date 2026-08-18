@@ -74,8 +74,8 @@
 // [character.Character] values the gate spends from, and the gate is an
 // ordinary exported function in a package anyone may import. Sealing it would
 // mean changing what a machine is handed rather than where the debit is called
-// from. Recorded here so nobody reads "the runner spends" as a compiler-checked
-// claim it is not.
+// from, which is rpg-toolkit#1095. Recorded here so nobody reads "the runner
+// spends" as a compiler-checked claim it is not.
 //
 // # Where this sits on the migration
 //

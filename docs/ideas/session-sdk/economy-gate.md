@@ -320,8 +320,8 @@ denial is a compile error rather than a code-review note.
 > package reads or writes an economy, and both are held by review and by test
 > rather than by the compiler. It becomes structural only behind a **read-only
 > cast view** — a change to *what a machine is handed*, not to where the debit
-> is called from — which is now a **named gap** rather than a property anyone
-> may rely on.
+> is called from — which is now a **named gap filed as [#1095][gap]** rather
+> than a property anyone may rely on.
 >
 > **No falsifier fired and the ruling is unaffected.** The door still pays, the
 > runner still spends, and nothing in E2 needed the structural denial to be
@@ -332,6 +332,7 @@ denial is a compile error rather than a code-review note.
 
 [e2]: https://github.com/KirkDiggler/rpg-toolkit/issues/1094
 [e2pr]: https://github.com/KirkDiggler/rpg-toolkit/pull/1096
+[gap]: https://github.com/KirkDiggler/rpg-toolkit/issues/1095
 
 ### The runner already does this — verified, not asserted
 
@@ -724,8 +725,8 @@ Kirk, ruling on the shape above:
    `Pay` where a machine cannot import it, and the denial is a compile error
    rather than a review note. **Corrected 2026-08-18** — see the
    correction above the *runner already does this* section. The ledger's denial
-   is a checkable discipline rather than a compile error, and stays one until a
-   read-only cast view exists. The ruling — no machine spends — stands exactly
+   is a checkable discipline rather than a compile error, and stays one until
+   the read-only cast view of [#1095][gap] exists. The ruling — no machine spends — stands exactly
    as written; only its claimed enforcement mechanism was wrong.
 4. **Debits ride answers.** Every candidate surviving *interested ∩ affordable*
    carries an answering policy. **auto ≡ decider**: a zero-latency window, posed
