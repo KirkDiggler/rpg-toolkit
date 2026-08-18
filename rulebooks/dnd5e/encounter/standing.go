@@ -50,6 +50,25 @@ import (
 // Errors abort whatever verb was running, atomically (R5), the same as
 // [InitiativeRoller]'s: a world that cannot find out who is standing does not
 // half-act on a guess.
+//
+// # What being down governs today, and what it does not
+//
+// It governs the three things the death census (rpg-toolkit#959) named: a down
+// member is on no side of a contact, so they neither start a fight nor join
+// one; they take no turn, because they are spliced out of the order; and they
+// take no [Encounter.Pump] action, because their decider is not consulted.
+//
+// It does NOT gate the caller-driven verbs. A down member can still be walked
+// by [Encounter.Move] and still be the actor on an [Encounter.Record]. Both are
+// the same gap seen twice: the swing stops because the TURN ORDER stops, and
+// free roam has no turn order. Deliberate for this slice — the alternative is a
+// refusal shape nobody has ruled on, and an unbuilt refusal beats a built-and-
+// wrong one. The session supplies the real capability in the death lane's D4
+// slice, which is where that call belongs.
+//
+// It also does not end a fight. A bubble whose whole living side is down keeps
+// running here; self-dissolution is D2's ruling (ByDefeat), and this slice
+// deliberately stops short of it.
 type Standing interface {
 	// Standing reports which of the given members are down. Returning none is
 	// the ordinary answer.
