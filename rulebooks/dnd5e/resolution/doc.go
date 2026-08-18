@@ -54,6 +54,29 @@
 //     conditions — silently. It buys nothing when the bus dies with the call
 //     anyway.
 //
+// # The door pays
+//
+// [Input.Cost] is what an interaction costs the actor who declared it, and this
+// package charges it before [Machine.Start] runs. A resolution nobody can pay
+// for never starts a machine and writes nothing; a nil cost is a free action,
+// which is what every Resolve was before the door existed.
+//
+// The runner spends and machines yield. That is the same move R6 makes about
+// the bus — a machine names what it wants and this package acts — so no machine
+// here reads or writes an economy, and a machine cannot tell a swing that cost
+// an action from one that cost nothing. What it cost was answered by whoever
+// compiled the profile.
+//
+// It is a discipline rather than R6's guarantee, and the difference is worth
+// being exact about. A machine cannot reach the bus BY CONSTRUCTION: [Gather]'s
+// workings are unexported and a machine cannot build a step at all. The ledger
+// has no such seal — [Participants] hands a machine the same
+// [character.Character] values the gate spends from, and the gate is an
+// ordinary exported function in a package anyone may import. Sealing it would
+// mean changing what a machine is handed rather than where the debit is called
+// from, which is rpg-toolkit#1095. Recorded here so nobody reads "the runner
+// spends" as a compiler-checked claim it is not.
+//
 // # Where this sits on the migration
 //
 // [ADR-0038]'s end state is one sentence of its Consequences: combat and

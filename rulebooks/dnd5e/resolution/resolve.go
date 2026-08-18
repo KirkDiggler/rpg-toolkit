@@ -81,6 +81,17 @@ type Input struct {
 	// Machine is the interaction to run.
 	Machine Machine
 
+	// Cost is what this interaction costs the actor who declared it. NIL IS A
+	// FREE ACTION and is the common case today — only a caller that compiled a
+	// price passes one.
+	//
+	// It is paid HERE, before the machine starts, and the machine is never told:
+	// it cannot tell a swing that cost an action from one that cost nothing,
+	// which is the ignorance the ruling asks for, because what an action costs
+	// was already answered by whoever compiled the profile. See [Cost], and
+	// "The door pays" in this package's doc.
+	Cost *Cost
+
 	// Initiative orders a fight that starts while this interaction runs.
 	// REQUIRED.
 	//
@@ -158,7 +169,10 @@ func (in *Input) Validate() error {
 		seen[p.ID()] = struct{}{}
 	}
 
-	return nil
+	// Last, because it is the only clause that talks about somebody in the cast
+	// above: a cost names a payer, and whether the cast is one-sheet-per-ID is
+	// the question that has to be settled before naming anybody in it.
+	return in.Cost.validate()
 }
 
 // Output is everything the interaction produced. All of it is data (R2).
@@ -269,6 +283,16 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		// error path's silence is how leaks become normal.
 		_ = surf.teardown(ctx)
 		return nil, err
+	}
+
+	// THE DOOR PAYS, AND IT PAYS BEFORE THE MACHINE RUNS. A resolution nobody
+	// can pay for never starts one, which is R5's clean case and is only true
+	// while there is still nothing to undo. The teardown is joined rather than
+	// swallowed the way the attach failure above swallows it: everything
+	// attached successfully here, so a subscription outliving a refused
+	// interaction is a leak rather than the tail of a half-finished attach.
+	if payErr := payAtTheDoor(ctx, in.Cost, cast); payErr != nil {
+		return nil, errors.Join(payErr, surf.teardown(ctx))
 	}
 
 	outcome, runErr := drive(ctx, surf, in.Machine, cast)
