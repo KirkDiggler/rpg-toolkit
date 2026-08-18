@@ -2179,7 +2179,8 @@ func (s *EncounterTestSuite) TestMoveEndingFires() {
 		s.Equal(spatial.Position{X: 19, Y: 19}, aliceOutcome.Position, "alice should be at ending position")
 
 		s.Equal(goblin, goblinOutcome.ID)
-		s.Equal(spatial.Position{X: 10, Y: 10}, goblinOutcome.Position, "goblin should remain at original position")
+		s.Equal(spatial.Position{X: 30, Y: 10}, goblinOutcome.Position,
+			"goblin should remain at original position — room2-local (10,10) anchored at (20,0)")
 
 		// Assert: encounter is now closed
 		status, err := enc.Status()
@@ -2788,7 +2789,8 @@ func (s *EncounterTestSuite) TestTraverseEndingFiresOnArrival() {
 	s.Require().Len(out.Outcome.Members, 1)
 	s.Equal(alice, out.Outcome.Members[0].ID)
 	s.Equal("room-b", out.Outcome.Members[0].Room)
-	s.Equal(spatial.Position{X: 0, Y: 5}, out.Outcome.Members[0].Position)
+	s.Equal(spatial.Position{X: 10, Y: 5}, out.Outcome.Members[0].Position,
+		"room-b-local (0,5) anchored at (10,0) — the outcome speaks the dungeon map (#1068)")
 
 	status, err := enc.Status()
 	s.Require().NoError(err)

@@ -59,8 +59,12 @@
 //   - W3 (doorways kiss) — a connection's two endpoints, once anchored to
 //     their rooms' origins, are adjacent absolute cells.
 //   - W4 (projection is a read) — rules and verbs stay room-local; absolute
-//     coordinates appear only in query outputs (Atlas, Absolute, Locate),
-//     never in a rule's own logic.
+//     coordinates appear only where this module REPORTS a cell, never in a
+//     rule's own logic. That set has grown as the seam converged on one map:
+//     the coordinate queries it started as (Atlas, Absolute, Locate), then
+//     placement reads and movement beats (#1040), sight payloads (#1044),
+//     the pump's monster moves (#1062), and finally the outcome (#1068).
+//     Everything a caller is told a cell for now speaks the same one.
 //   - W5 (anchors are construction data) — Origin's LEGALITY (bounds,
 //     integrality) is validated identically at Setup and Load, never
 //     derived or inferred; PRESENCE is structurally Load-only — Origin is

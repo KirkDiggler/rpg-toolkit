@@ -303,10 +303,14 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 					goblinOutcome = m
 				}
 			}
-			// The final ending position, projected too (#929 T4): it must
-			// agree with the live path's own last recorded entries.
-			outAlice := proj.project(string(alice), "outcome", aliceOutcome.Room, aliceOutcome.Position)
-			outGoblin := proj.project(string(goblin), "outcome", goblinOutcome.Room, goblinOutcome.Position)
+			// The final ending position (#929 T4): it must agree with the
+			// live path's own last recorded entries. Read back through
+			// Locate rather than projected, because the outcome now
+			// reports absolute cells itself (#1068) — and Locate is the
+			// stronger check anyway: a room-local cell here would resolve
+			// to the wrong room or to no room at all.
+			outAlice := proj.locate(string(alice), "outcome", aliceOutcome.Position)
+			outGoblin := proj.locate(string(goblin), "outcome", goblinOutcome.Position)
 			require.Equal(t, alicePath[len(alicePath)-1], outAlice, "the outcome's alice position matches her live projected path")
 			require.Equal(t, goblinPath[len(goblinPath)-1], outGoblin, "the outcome's goblin position matches its live projected path")
 		}

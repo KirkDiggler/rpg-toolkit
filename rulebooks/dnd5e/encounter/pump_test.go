@@ -1647,7 +1647,8 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 		}
 	}
 	s.Equal("room-b", aOutcome.Room)
-	s.Equal(spatial.Position{X: 0, Y: 5}, aOutcome.Position)
+	s.Equal(spatial.Position{X: 10, Y: 5}, aOutcome.Position,
+		"room-b-local (0,5) anchored at (10,0) — the outcome speaks the dungeon map (#1068)")
 	// The full-tick-then-evaluate law, made observable: zzz-goblin's
 	// ALREADY-APPLIED move is reflected in the outcome — its NEW
 	// position, not its pre-pump one. A revert-on-close implementation
