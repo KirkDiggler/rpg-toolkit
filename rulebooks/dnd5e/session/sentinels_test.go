@@ -422,7 +422,7 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
 }
 
-// TestADownActorIsRefusedInOurWords is the death lane's own refusal, and the
+// TestADownedActorIsRefusedInOurWords is the death lane's own refusal, and the
 // reason it belongs in this file is the two sentinels standing right behind it.
 //
 // The capability that answers "who is down" lives in this package, but the
@@ -435,8 +435,8 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 // this seam exists to keep replaceable.
 //
 // So the refusal is driven for real: bob puts alice at zero hit points, and
-// alice is then refused the verbs a body cannot drive.
-func (s *SentinelSuite) TestADownActorIsRefusedInOurWords() {
+// alice is then refused the verbs a downed member cannot drive.
+func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
 	mgr := s.armedDuel(newFakeCharacters(armedFighter("alice"), armedFighter("bob")))
 	ctx := context.Background()
 
@@ -450,12 +450,12 @@ func (s *SentinelSuite) TestADownActorIsRefusedInOurWords() {
 	_, moveErr := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
 	})
-	s.refusedInOurVocabulary(moveErr, session.ErrDown)
+	s.refusedInOurVocabulary(moveErr, session.ErrDowned)
 
 	_, swingErr := mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
 	})
-	s.refusedInOurVocabulary(swingErr, session.ErrDown)
+	s.refusedInOurVocabulary(swingErr, session.ErrDowned)
 	s.Contains(swingErr.Error(), "alice", "and the refusal still names who could not act")
 }
 

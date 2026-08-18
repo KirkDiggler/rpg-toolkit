@@ -21,6 +21,12 @@ import (
 
 // DeathTestSuite is the death lane arriving at the seam (rpg-toolkit#1079).
 //
+// DOWNED, not "down": at zero hit points and out of the fight, as distinct
+// from PRONE, which is a posture the rulebook tracks and this package never
+// gates on (Kirk's ruling, rpg-toolkit#1084). The opposite state is UP. The
+// composition underneath keeps saying "down" in its own beat kind, and the
+// scenes below assert on both sides of that translation deliberately.
+//
 // Everything here runs on REAL SHEETS. The composition holds no hit points and
 // never will (law C1), so the whole question of who is standing is one this
 // package answers, out of the sheets it already loads for a verb — and a suite
@@ -195,45 +201,51 @@ func (s *DeathTestSuite) dropTheSkeleton() {
 func (s *DeathTestSuite) TestTheSwingIsNotWhatNotices() {
 	s.dropTheSkeleton()
 
-	s.Empty(s.eventsOfKind(session.EventDown),
-		"the blow is recorded; the body is not yet noticed")
+	s.Empty(s.eventsOfKind(session.EventDowned),
+		"the blow is recorded; nobody has noticed it yet")
 	s.Empty(s.eventsOfKind(session.EventFightEnded),
 		"and a fight nobody has looked at has not ended")
 
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Equal(session.ClockTurn, turn.Clock, "alice is still in a fight with a corpse")
+	s.Equal(session.ClockTurn, turn.Clock, "alice is still in a fight with a downed skeleton")
 }
 
-// TestTheNextSightRefreshSaysDown is the headline: the world looks, and the
+// TestTheNextSightRefreshSaysDowned is the headline: the world looks, and the
 // stream carries the death.
 //
 // Bob is behind a solid wall and takes one step for reasons of his own. That is
-// enough — the consult is not scoped to whoever moved, so a body anywhere on the
-// map is noticed by anybody's refresh.
-func (s *DeathTestSuite) TestTheNextSightRefreshSaysDown() {
+// enough — the consult is not scoped to whoever moved, so a member downed
+// anywhere on the map is noticed by anybody's refresh.
+//
+// The event kind is EventDowned while the beat inside it still says "down":
+// that asymmetry is the ruling, and asserting both here is what would notice if
+// either half drifted.
+func (s *DeathTestSuite) TestTheNextSightRefreshSaysDowned() {
 	s.dropTheSkeleton()
 	s.stream.published = nil
 
 	s.bobSteps()
 
-	down := s.eventsOfKind(session.EventDown)
+	down := s.eventsOfKind(session.EventDowned)
 	s.Require().Len(down, 3, "every member hears it: alice, bob, and the skeleton's own audience")
 
 	heard := map[string]bool{}
 	for _, event := range down {
 		heard[event.Recipient] = true
-		s.Equal("skeleton", s.payloadOf(event)["member"], "the beat names who fell")
+		s.Equal(session.EventDowned, event.Kind, "the seam's word is downed")
+		s.Equal("down", s.payloadOf(event)["beat"], "while the composition's own beat kind is untouched")
+		s.Equal("skeleton", s.payloadOf(event)["member"], "and it names who fell")
 	}
 	s.Equal(map[string]bool{"alice": true, "bob": true, "skeleton": true}, heard)
 }
 
-// TestTheLastOneDownEndsTheFightByDefeat is the slice's own sentence.
+// TestTheLastOneDownedEndsTheFightByDefeat is the slice's own sentence.
 //
 // Nobody called Dissolve. The only verb in this scene is bob's step, and the
 // ending is delivered by that step's own fan-out — which is what the reset
 // before it makes assertable rather than merely true.
-func (s *DeathTestSuite) TestTheLastOneDownEndsTheFightByDefeat() {
+func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 	s.dropTheSkeleton()
 	s.stream.published = nil
 
@@ -258,8 +270,8 @@ func (s *DeathTestSuite) TestTheLastOneDownEndsTheFightByDefeat() {
 //
 // The old stack closed the whole encounter when the hostiles were defeated,
 // which in a multi-room dungeon means clearing room one ends the dungeon. Only
-// the BUBBLE ends here. And the body is still a member: on the map, answerable
-// by Where, and walkable past.
+// the BUBBLE ends here. And the downed member is still a member: on the map,
+// answerable by Where, and walkable past.
 func (s *DeathTestSuite) TestTheEncounterOutlivesTheFight() {
 	s.dropTheSkeleton()
 	s.bobSteps()
@@ -272,7 +284,7 @@ func (s *DeathTestSuite) TestTheEncounterOutlivesTheFight() {
 	s.Nil(status.Outcome)
 
 	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "skeleton"})
-	s.Require().NoError(err, "a body still has a position, and asking for it is not an error")
+	s.Require().NoError(err, "a downed member still has a position, and asking for it is not an error")
 	s.Equal(spatial.Position{X: 2, Y: 1}, where.Position, "it fell where it stood")
 }
 
@@ -337,41 +349,45 @@ func (s *DeathTestSuite) duelAtZero() {
 	s.Require().Zero(s.characters.byID["alice"].HitPoints, "alice is down")
 }
 
-// TestADownActorCannotSwing is rpg-toolkit#845 refused by name.
+// TestADownedActorCannotSwing is rpg-toolkit#845 refused by name.
+//
+// DOWNED is the word, and the distinction is not pedantry: a PRONE character
+// swings perfectly well (at disadvantage), so a gate that conflated the two
+// would silently disarm anybody knocked flat. Nothing here reads posture.
 //
 // D1 closed it inside a fight, structurally: a body is spliced out of the turn
 // order, so the seam above has nothing to offer it. Free roam has no turn
 // order, and this duel is free roam — nobody is in a bubble — so the defect
 // survives there until something refuses it, and this is that refusal.
-func (s *DeathTestSuite) TestADownActorCannotSwing() {
+func (s *DeathTestSuite) TestADownedActorCannotSwing() {
 	s.duelAtZero()
 
 	_, err := s.mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
 	})
-	s.Require().ErrorIs(err, session.ErrDown)
+	s.Require().ErrorIs(err, session.ErrDowned)
 	s.Contains(err.Error(), "alice", "and the refusal names who could not swing")
 	s.NotErrorIs(err, session.ErrNoMember, "she is still a member; she is down")
 }
 
-// TestADownActorCannotWalk is the same ruling on the other verb a body could
+// TestADownedActorCannotWalk is the same ruling on the other verb a body could
 // still drive.
-func (s *DeathTestSuite) TestADownActorCannotWalk() {
+func (s *DeathTestSuite) TestADownedActorCannotWalk() {
 	s.duelAtZero()
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
 	})
-	s.Require().ErrorIs(err, session.ErrDown)
+	s.Require().ErrorIs(err, session.ErrDowned)
 	s.Contains(err.Error(), "alice")
 }
 
-// TestTheStandingAreNotRefused is the negative control that makes the two
+// TestAMemberStillUpIsNotRefused is the negative control that makes the two
 // refusals above mean something.
 //
 // Bob is in the same world, on the same verbs, at full hit points. A gate that
 // refused everybody would pass both tests above and fail this one.
-func (s *DeathTestSuite) TestTheStandingAreNotRefused() {
+func (s *DeathTestSuite) TestAMemberStillUpIsNotRefused() {
 	s.duelAtZero()
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
@@ -380,14 +396,14 @@ func (s *DeathTestSuite) TestTheStandingAreNotRefused() {
 	s.Require().NoError(err, "the one still standing walks")
 }
 
-// TestAKillingBlowAboutADownMemberIsStillLegal is ruled fork (a) at the seam.
+// TestAKillingBlowAboutADownedMemberIsStillLegal is ruled fork (a) at the seam.
 //
-// Recording an outcome ABOUT a body must stay legal — the killing stroke is
-// itself a beat about somebody who is now down, and a gate that could not tell
-// the actor from the target would make the death un-narratable. Attacking a
-// body may be narratively silly; refusing it is a different ruling, and nobody
-// made it.
-func (s *DeathTestSuite) TestAKillingBlowAboutADownMemberIsStillLegal() {
+// Recording an outcome ABOUT a downed member must stay legal — the killing
+// stroke is itself a beat about somebody who is now down, and a gate that could
+// not tell the actor from the target would make the death un-narratable.
+// Swinging at a downed member may be narratively silly; refusing it is a
+// different ruling, and nobody made it.
+func (s *DeathTestSuite) TestAKillingBlowAboutADownedMemberIsStillLegal() {
 	s.duelAtZero()
 
 	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{
@@ -397,14 +413,18 @@ func (s *DeathTestSuite) TestAKillingBlowAboutADownMemberIsStillLegal() {
 	s.NotZero(out.Seq, "and the blow is recorded like any other")
 }
 
-// TestTheReadsStayOpenToTheDead is the rest of fork (a): a body is still a
-// member, and every question about one still has an answer.
-func (s *DeathTestSuite) TestTheReadsStayOpenToTheDead() {
+// TestTheReadsStayOpenToTheDowned is the rest of fork (a): a downed member is
+// still a member, and every question about one still has an answer.
+//
+// Downed, not dead — the distinction has teeth. Zero hit points has no exit in
+// v1, but the name does not claim the character is gone, and when death saves
+// arrive these reads are what a client renders them from.
+func (s *DeathTestSuite) TestTheReadsStayOpenToTheDowned() {
 	s.duelAtZero()
 	ctx := context.Background()
 
 	_, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
-	s.NoError(err, "a body has a position")
+	s.NoError(err, "a downed member has a position")
 
 	_, err = s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
 	s.NoError(err, "and holdings")
@@ -433,7 +453,7 @@ func (s *DeathTestSuite) TestTheAnswerIsAskedAgainNotRemembered() {
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
 	})
-	s.Require().ErrorIs(err, session.ErrDown)
+	s.Require().ErrorIs(err, session.ErrDowned)
 
 	s.characters.byID["alice"].HitPoints = 7
 
@@ -443,14 +463,15 @@ func (s *DeathTestSuite) TestTheAnswerIsAskedAgainNotRemembered() {
 	s.Require().NoError(err, "she is up, so she walks, and nothing had to be told")
 }
 
-// TestAMemberWithNoSheetIsStanding is the case every existing fixture is.
+// TestAMemberWithNoSheetIsUp is the case every existing fixture is.
 //
 // Authored content placed straight into a world has no sheet until something
 // spawns it — the ambush's ogre is exactly that — and there is nothing to read
-// hit points off. Reporting it DOWN would kill every monster ever authored into
-// a tomb; failing the verb would make every one of those worlds unplayable. So
-// no sheet means standing, and this is the fight that has to keep starting.
-func (s *DeathTestSuite) TestAMemberWithNoSheetIsStanding() {
+// hit points off. Reporting it DOWNED would kill every monster ever authored
+// into a tomb; failing the verb would make every one of those worlds
+// unplayable. So no sheet means UP, and this is the fight that has to keep
+// starting.
+func (s *DeathTestSuite) TestAMemberWithNoSheetIsUp() {
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
 	})
@@ -462,8 +483,8 @@ func (s *DeathTestSuite) TestAMemberWithNoSheetIsStanding() {
 		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}},
 	})
 	s.Require().NoError(err, "a sheetless monster is not a broken world")
-	s.Require().NotNil(out.Formed, "and it is an enemy, not a body")
-	s.Empty(s.eventsOfKind(session.EventDown), "nothing died")
+	s.Require().NotNil(out.Formed, "and it is an enemy, not a casualty")
+	s.Empty(s.eventsOfKind(session.EventDowned), "nothing died")
 }
 
 // TestTheAnswerNamesOnlyWhoWasAsked is D1's carry-forward, and it is reachable
@@ -487,7 +508,7 @@ func (s *DeathTestSuite) TestTheAnswerNamesOnlyWhoWasAsked() {
 
 	_, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "sess"})
 	s.Require().NoError(err)
-	s.Empty(s.eventsOfKind(session.EventDown),
+	s.Empty(s.eventsOfKind(session.EventDowned),
 		"a sheet for somebody who is not a member is not news about anybody")
 }
 

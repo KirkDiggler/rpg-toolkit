@@ -16,7 +16,8 @@ type DissolveKind string
 // DissolveByDecision is a fight the members chose to leave.
 const DissolveByDecision DissolveKind = "decision"
 
-// DissolveByDefeat is a fight one side stopped standing in.
+// DissolveByDefeat is a fight one side stopped standing in: everybody on it
+// is downed.
 const DissolveByDefeat DissolveKind = "defeat"
 
 // DissolveCause is why a fight ended: a closed set, sealed the way
@@ -63,7 +64,7 @@ func (byDecision) Kind() DissolveKind { return DissolveByDecision }
 func (byDecision) isDissolveCause()   {}
 
 // ByDefeat is a fight that ended because a side stopped standing: the last
-// skeleton drops and there is nothing left to fight.
+// skeleton is downed and there is nothing left to fight.
 //
 // THE CASE THIS TYPE WAS WAITING FOR, and it arrived the way its own doc said
 // it would — as another CALLER of this shape rather than as a second mechanism.
@@ -78,7 +79,7 @@ func (byDecision) isDissolveCause()   {}
 // extended at the layer its caller lives in, and causeOf is the seam between
 // them.
 //
-// Only the BUBBLE ends. The encounter stays open, the bodies stay on the map
+// Only the BUBBLE ends. The encounter stays open, the downed stay on the map
 // and in the roster, and Exit still carries them out. A defeat is not an
 // ending; it is a fight running out of a side.
 func ByDefeat() DissolveCause { return byDefeat{} }

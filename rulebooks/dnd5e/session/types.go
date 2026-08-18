@@ -324,22 +324,35 @@ const (
 	// EventMissed reports that an attack did not land. See EventStruck.
 	EventMissed EventKind = "missed"
 
-	// EventDown reports that a member is at zero hit points.
+	// EventDowned reports that a member is DOWNED: at zero hit points, out of
+	// the fight. The opposite state is UP.
 	//
-	// The world NOTICED it; nobody announced it. There is no down verb and no
-	// way to push this beat in — the composition asks the rulebook who is
+	// Downed rather than "down" because a bare "down" also reads as PRONE, and
+	// prone is a different thing entirely — a posture condition the rulebook
+	// tracks, still in the fight and still acting. A client narrating these two
+	// the same way would say somebody died every time they were knocked flat.
+	// Kirk's ruling, rpg-toolkit#1084.
+	//
+	// There is no event for coming back UP, and that absence is deliberate
+	// rather than an omission: nothing in v1 can revive a downed member, so an
+	// event for it would be vocabulary against a future nobody has built. It
+	// earns its own name when death saves arrive.
+	//
+	// The world NOTICED it; nobody announced it. There is no downing verb and
+	// no way to push this beat in — the composition asks the rulebook who is
 	// standing at every sight refresh and narrates what it learns
 	// (rpg-toolkit#1077), so this arrives on whatever verb happened to refresh
 	// sight, which is frequently not the verb that dealt the damage.
 	//
 	// Kind and who, and nothing else. Hit points are not on the wire here: what
-	// a client renders is a body, and how much damage produced it is a separate
-	// question with its own answer (ruled fork (d) on rpg-toolkit#959).
+	// a client renders is somebody down, and how much damage produced it is a
+	// separate question with its own answer (ruled fork (d) on
+	// rpg-toolkit#959).
 	//
 	// It is in the same family as EventStruck and EventMissed, tagged the same
 	// way and delivered to the same audience, because a client reads all three
 	// side by side while narrating one exchange.
-	EventDown EventKind = "down"
+	EventDowned EventKind = "downed"
 
 	// EventUnknown is a beat this version does not recognise.
 	//

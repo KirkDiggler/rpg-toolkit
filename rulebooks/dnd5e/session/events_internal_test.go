@@ -60,7 +60,7 @@ func TestTheOutcomeBeatsAreTheCompositionsOwnStrings(t *testing.T) {
 		// in — the composition writes it itself when it notices a body
 		// (rpg-toolkit#1077), which is why the beat carries a member rather
 		// than an actor and targets.
-		{encounter.OutcomeDown, EventDown},
+		{encounter.OutcomeDown, EventDowned},
 	}
 
 	for _, tc := range cases {

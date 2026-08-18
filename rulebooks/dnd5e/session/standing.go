@@ -16,6 +16,16 @@ import (
 
 // Who is standing, answered where the sheets are.
 //
+// TWO WORDS, ON PURPOSE. The composition's capability is called Standing and
+// asks who is DOWN; the vocabulary that leaves this seam says DOWNED, and its
+// opposite is UP. That is Kirk's ruling (rpg-toolkit#1084): a bare "down" also
+// reads as prone, and prone is a posture condition the rulebook tracks that
+// this package never gates on. The composition's names are left alone because
+// its beat kind is persisted in every stored world, so the translation happens
+// here — at [ErrDowned], at [EventDowned], and in kindOf. Inside this file the
+// composition's word is used, because inside this file we are answering the
+// composition's question.
+//
 // The composition asks and the rulebook answers, and this file is the wire
 // between them. It is the last piece of the death lane (rpg-toolkit#959): the
 // composition holds no hit points and cannot ever hold any (law C1), so it
@@ -69,7 +79,8 @@ func (m *Manager) standingFor(ctx context.Context, data *SessionData) encounter.
 	return standingSeam{ctx: ctx, chars: m.characters, data: data}
 }
 
-// Standing reports which of the given members are down.
+// Standing reports which of the given members are down — downed, in the
+// vocabulary this seam publishes. See the note at the top of this file.
 //
 // ONLY ABOUT WHO WAS ASKED, and that is structural rather than a filter applied
 // afterwards: the loop is over the question. It matters because the composition
@@ -81,9 +92,9 @@ func (m *Manager) standingFor(ctx context.Context, data *SessionData) encounter.
 //
 // An error aborts whatever verb was running, atomically (R5). A world that
 // cannot find out who is standing does not half-act on a guess, and neither
-// available guess is safe: reading an unreachable store as "standing" runs the
-// fight on against sheets nobody can read, and reading it as "down" kills a
-// character because a database blinked.
+// available guess is safe: reading an unreachable store as UP runs the fight on
+// against sheets nobody can read, and reading it as DOWNED kills a character
+// because a database blinked.
 func (s standingSeam) Standing(members []encounter.MemberID) ([]encounter.MemberID, error) {
 	var down []encounter.MemberID
 
@@ -125,7 +136,7 @@ func (s standingSeam) Standing(members []encounter.MemberID) ([]encounter.Member
 // authored content placed straight into a world has no sheet until something
 // spawns it, which is exactly what every tomb fixture's monsters are, and what
 // [Manager.Attack] already refuses BY NAME when somebody swings at one
-// (ErrNoSheet). Answering "down" instead would kill every authored monster in
+// (ErrNoSheet). Answering DOWNED instead would kill every authored monster in
 // the toolkit the moment anybody looked at one; answering with an error would
 // make those worlds unplayable. Neither is a rule this package gets to write.
 //
@@ -204,29 +215,30 @@ func npcSheet(data *SessionData, id string) (*monster.Data, bool) {
 	return nil, false
 }
 
-// refuseIfDown refuses a verb whose ACTOR is at zero hit points.
+// refuseIfDown refuses a verb whose ACTOR is DOWNED: at zero hit points, out
+// of the fight. It answers [ErrDowned], which is where the word is explained.
 //
 // # Which verbs, and why only those
 //
-// The two where a down member could still act: [Manager.Attack] and
+// The two where a downed member could still act: [Manager.Attack] and
 // [Manager.Move]. Inside a fight the swing already stops without a gate,
-// because the composition splices a body out of the turn order and the seam
-// above has nothing left to offer it (rpg-toolkit#1077). Free roam has no turn
-// order, so the same body can still walk, and can still initiate — which is
-// rpg-toolkit#845's shape reproduced on the new stack. The composition
+// because the composition splices them out of the turn order and the seam
+// above has nothing left to offer them (rpg-toolkit#1077). Free roam has no
+// turn order, so the same member can still walk, and can still initiate —
+// which is rpg-toolkit#845's shape reproduced on the new stack. The composition
 // deliberately did not invent this refusal; it is ruled here, where the sheets
 // are, and it is one refusal covering both clocks rather than a rule that only
 // works when somebody happens to be in a fight.
 //
 // # And which are deliberately left open
 //
-// Not the reads: Where, View, Story, Status and Turn all answer about a body,
-// because a body is still a member (ruled fork (a) on rpg-toolkit#959) and a
-// client that could not ask where its own corpse is could not render the moment
-// it fell. Not recording an outcome ABOUT a down member either — the killing
-// stroke is itself a beat about somebody who is now down. Not a down TARGET:
-// swinging at a body may be narratively silly, and refusing it is a different
-// ruling that nobody has made.
+// Not the reads: Where, View, Story, Status and Turn all answer about a downed
+// member, because a downed member is still a member (ruled fork (a) on
+// rpg-toolkit#959) and a client that could not ask where it fell could not
+// render the moment it happened. Not recording an outcome ABOUT a downed member
+// either — the killing stroke is itself a beat about somebody who is now down.
+// Not a downed TARGET: swinging at one may be narratively silly, and refusing
+// it is a different ruling that nobody has made.
 //
 // It asks about ONE member, which is the whole question. The capability is
 // roster-scoped by construction, so a single-ID question gets a single-ID
@@ -240,5 +252,5 @@ func refuseIfDown(scope *writeScope, role, id string) error {
 		return nil
 	}
 
-	return fmt.Errorf("%s %q: %w", role, id, ErrDown)
+	return fmt.Errorf("%s %q: %w", role, id, ErrDowned)
 }

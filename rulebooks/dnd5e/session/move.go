@@ -143,7 +143,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	// A body does not walk. Asked after the walk RESOLVES and before a single
+	// A downed member does not walk. Asked after the walk RESOLVES and before a single
 	// cell is entered, which is where R5 puts every other refusal: the path is
 	// validated whole first, so naming a member who is not here or a route that
 	// is not a walk still answers what it always answered, and a walk this

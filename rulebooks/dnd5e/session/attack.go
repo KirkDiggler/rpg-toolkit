@@ -135,7 +135,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
 	}
 
-	// A body does not swing. Asked AFTER the roster checks, so naming somebody
+	// A downed member does not swing. Asked AFTER the roster checks, so naming somebody
 	// who is not here is still ErrNoMember — being down is a fact about a
 	// member, and it means nothing about an ID that is not one. Asked about the
 	// ATTACKER alone: a down target is refused nowhere, deliberately (see

@@ -74,9 +74,16 @@
 // A capability implemented here is this package doing what it has always done —
 // wiring the pieces together — with the rule kept where the rules live.
 //
-// What it does DECIDE is which verbs a body may still drive, and that is not a
-// rules question but a seam question: Attack and Move refuse a down actor
-// (ErrDown), the reads and the recording of outcomes do not. See ErrDown.
+// What it does DECIDE is which verbs a DOWNED member may still drive, and that
+// is not a rules question but a seam question: Attack and Move refuse a downed
+// actor (ErrDowned), the reads and the recording of outcomes do not.
+//
+// Downed is this seam's word for zero hit points, and its opposite is up. It is
+// deliberately not "down", which also reads as PRONE — a posture condition the
+// rulebook tracks and this package never gates on (Kirk's ruling,
+// rpg-toolkit#1084). The composition underneath keeps its own "down", which is
+// persisted in every stored world; kindOf is where the two meet. See ErrDowned
+// and EventDowned.
 //
 // # The suspension spine, and where it went
 //
