@@ -44,6 +44,17 @@ import (
 // field the gate did not read would be a profile that could lie about what it
 // costs.
 //
+// # What Requires is, and what it is not
+//
+// [SpendProfile.Requires] is THE PRECONDITION SHAPE THE GATE CAN EVALUATE
+// TODAY: a keyed quantity the ledger must already hold. It is not a general
+// predicate language and must not be read as one. A precondition that needs to
+// ask something the ledger does not keep — a declared trigger, a condition on
+// the board, a fact about who is adjacent to whom — is a different shape, and
+// deciding whether that vocabulary should be sealed is rpg-toolkit#1035's open
+// question 8, deliberately left open. It arrives with the caller that forces
+// it, the way every other shape in this package did.
+//
 // A nil *SpendProfile is a free action. So is an empty one.
 type SpendProfile struct {
 	// Slots is the per-turn cost in action, bonus action or reaction — the
@@ -69,10 +80,17 @@ type SpendProfile struct {
 	Pools map[coreResources.ResourceKey]int
 
 	// Requires is keyed capacity that must be PRESENT and is never spent — a
-	// precondition rather than a price. The monk's bonus strike is the shape:
-	// it needs the Attack action to have happened, which the sheet already
-	// records by banking capacity for it, and it must still be there for the
-	// second strike. Expressible and unexercised in v1 — see the type doc.
+	// precondition rather than a price.
+	//
+	// It needs no new state, and that is the reason it is shaped this way. The
+	// monk's bonus strike wants to know whether the Attack action was taken
+	// this turn, and the sheet ALREADY RECORDS THAT as banked capacity: the
+	// post-strike grant files it the moment the swing lands. So a requirement
+	// reads evidence the ledger keeps for its own reasons, rather than asking
+	// the ledger to remember something extra on a precondition's behalf.
+	//
+	// What it is not is a predicate vocabulary — see the type doc.
+	// Expressible and unexercised in v1.
 	Requires map[CapacityType]int
 }
 
