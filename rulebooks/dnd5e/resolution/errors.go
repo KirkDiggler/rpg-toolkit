@@ -68,6 +68,25 @@ var (
 	// ErrNoCombatant indicates a strike naming somebody who was not passed in.
 	ErrNoCombatant = errors.New("resolution: combatant is not a participant")
 
+	// ErrBadCost indicates a cost that does not describe a price anybody could
+	// be charged — one that names no payer, or one whose profile is keyed to a
+	// currency no ledger holds. Refused at the door before the world is loaded,
+	// and kept distinct from ErrCannotPay on purpose: a malformed declaration is
+	// content or wiring being wrong, and translating it into "you are out of
+	// actions" would send a caller looking at the wrong sheet.
+	ErrBadCost = errors.New("resolution: invalid cost")
+
+	// ErrNoPayer indicates a cost naming somebody this cast cannot charge —
+	// an ID that was not passed in, or a monster, whose economy belongs to
+	// whoever runs its turn rather than to its sheet.
+	ErrNoPayer = errors.New("resolution: payer has no ledger in this cast")
+
+	// ErrCannotPay indicates an actor who cannot afford what they declared: no
+	// economy to spend from, not enough of a currency, or a precondition the
+	// ledger does not hold. The gate's own refusal is wrapped rather than
+	// replaced, so which currency ran out survives the crossing.
+	ErrCannotPay = errors.New("resolution: cost cannot be paid")
+
 	// ErrRecurrenceUnsupported indicates a gate asking for a repeat save this
 	// package cannot yet run. Refusing is the point: treating "save again at
 	// the end of each of your turns" as a single save would produce a
