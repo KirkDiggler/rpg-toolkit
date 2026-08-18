@@ -352,6 +352,41 @@ func (s *EconomySuite) TestANewTurnRefillsTheBank() {
 		"and the sheet is now filed under the turn it was refilled for")
 }
 
+// TestABankLeftOverFromLastTurnDoesNotMispriceThisOne is the ordering bug this
+// seam refreshes to avoid, and it is invisible from anywhere else.
+//
+// The door refreshes AFTER the caller has compiled the price: payAtTheDoor finds
+// the payer, then refreshes, then charges. So a price compiled against the bank
+// as STORED is a price for a bank that is about to be replaced.
+//
+// The scene is the one that makes it bite. A level-5 fighter takes one of her
+// two swings on turn one and stops, so the sheet is persisted with a banked
+// attack still on it. On turn two that bank is stale: the door is about to wipe
+// it and seed a fresh turn. A seam that priced from the stored bank would send
+// "spend one banked attack", the door would refresh the bank to empty, and the
+// swing would be refused — a fighter unable to attack on her own turn BECAUSE
+// she attacked on the last one, which is the worst-shaped bug in the file.
+//
+// So the refresh happens here, on the sheet this verb is about to hand over, and
+// the price is compiled from what it leaves. The assertion is deliberately plain
+// — the swing works — because the failure it guards is a refusal that would look
+// exactly like the economy working.
+func (s *EconomySuite) TestABankLeftOverFromLastTurnDoesNotMispriceThisOne() {
+	s.fightScene(5, 1, 1, 1, 1)
+
+	_, err := s.swing()
+	s.Require().NoError(err, "one swing of the two Extra Attack bought")
+	s.Require().Equal(1, s.storedEconomy().Granted["attacks"],
+		"and the other is still banked, which is the state that makes this case real")
+
+	s.nextTurn()
+
+	_, err = s.swing()
+	s.Require().NoError(err,
+		"a fresh turn buys a fresh swing — a bank left over from last turn must not "+
+			"price this one against capacity the door is about to wipe")
+}
+
 // TestTheTurnIsLitOnceAndSpentFromThereafter pins the ignition itself.
 //
 // Nothing in this stack put a character in combat before rpg-toolkit#1097:
