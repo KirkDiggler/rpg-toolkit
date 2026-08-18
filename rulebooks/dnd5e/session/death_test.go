@@ -632,11 +632,15 @@ func (f *failingCharacters) GetCharacter(ctx context.Context, id string) (*chara
 // TestAStoreThatCannotAnswerFailsTheVerb is the error arm, and it matters
 // because the alternative is worse than an error.
 //
-// A repository that is DOWN is not a repository saying "no such sheet". Reading
-// it as "standing" would let a fight run on against a sheet nobody can read;
-// reading it as "down" would kill a character because a database blinked. The
-// capability's contract is that an error aborts the verb, atomically, and this
-// is that contract reaching a host.
+// A store that is unreachable is not a store saying "no such sheet". Reading it
+// as UP would let a fight run on against a sheet nobody can read; reading it as
+// DOWNED would kill a character because a database blinked. The capability's
+// contract is that an error aborts the verb, atomically, and this is that
+// contract reaching a host.
+//
+// (The word for a broken server and the word for a member at zero hit points
+// were the same one until rpg-toolkit#1084, which is a small illustration of
+// why the ruling was worth making.)
 func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 	chars := &failingCharacters{
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
