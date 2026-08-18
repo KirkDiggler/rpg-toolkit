@@ -105,21 +105,14 @@ func (p *SpendProfile) Validate() error {
 		}
 	}
 
-	for name, costs := range map[string]map[CapacityType]int{
-		"capacity cost": p.Capacity,
-		"grant":         p.Grants,
-		"requirement":   p.Requires,
-	} {
-		for key, amount := range costs {
-			if !IsCapacity(key) {
-				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"%s keyed to %q, which no ledger holds", name, key)
-			}
-			if amount <= 0 {
-				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"%s of %d for %q is not a cost", name, amount, key)
-			}
-		}
+	if err := validateCapacities("capacity cost", p.Capacity); err != nil {
+		return err
+	}
+	if err := validateCapacities("grant", p.Grants); err != nil {
+		return err
+	}
+	if err := validateCapacities("requirement", p.Requires); err != nil {
+		return err
 	}
 
 	for key, amount := range p.Pools {
@@ -129,6 +122,24 @@ func (p *SpendProfile) Validate() error {
 		if amount <= 0 {
 			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
 				"pool cost of %d for %q is not a cost", amount, key)
+		}
+	}
+
+	return nil
+}
+
+// validateCapacities checks one of the three keyed-capacity maps. They have
+// identical rules and different names, and the name is what makes the error
+// say which map was wrong.
+func validateCapacities(name string, costs map[CapacityType]int) error {
+	for key, amount := range costs {
+		if !IsCapacity(key) {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"%s keyed to %q, which no ledger holds", name, key)
+		}
+		if amount <= 0 {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"%s of %d for %q is not a cost", name, amount, key)
 		}
 	}
 
