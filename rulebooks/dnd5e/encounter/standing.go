@@ -279,10 +279,15 @@ func (e *Encounter) fightIsDecided(bubble *clock.Turn, down map[MemberID]bool) (
 		member, ok := e.members[id]
 		if !ok {
 			// Unreachable against a coherent encounter — the load boundary
-			// refuses a bubble holding a non-member, and no verb can add one.
-			// Counting a ghost as a side would keep a fight alive on the
-			// strength of somebody who is not there.
-			continue
+			// refuses a bubble holding a non-member, and every verb that can
+			// remove one leaves the clock before it leaves the roster. Refused
+			// rather than skipped anyway, because of the SHAPE of the wrong
+			// answer: a ghost this pass cannot classify is a standing member it
+			// does not count, so skipping makes the fight look MORE decided than
+			// it is, and the ending would be written into the story and saved.
+			// Loud, like ClockOf's on-no-clock check, for the same reason —
+			// the caller's obligation on error is to drop the encounter unsaved.
+			return false, fmt.Errorf("fight order holds %q, who is not a member: %w", id, ErrInvalidData)
 		}
 		switch member.Kind {
 		case KindPlayer:
