@@ -435,8 +435,9 @@ func (in *LoadEncounterInput) Validate() error {
 // field, member position out of bounds or non-integral (hex), ending trigger validity
 // (unknown room or unreachable position on a TriggerReachedPosition — #929 T3 Opus round
 // F5, the SAME validateEndingTriggers Setup uses), an abandoned outcome with members
-// still present, outcome member room/bounds checks, everMembers missing a current
-// member.
+// still present, outcome member cell PRESENCE (a missing cell is the pre-#1068
+// room-local dialect announcing itself — MemberOutcomeData's doc comment) then that
+// member's room and bounds, everMembers missing a current member.
 //
 // One check runs OUTSIDE this up-front pass, later, during member re-placement and
 // decider re-attachment (construction has already begun by then): a player member
@@ -462,6 +463,9 @@ func (in *LoadEncounterInput) Validate() error {
 // errors with "newencounter:" instead, at its own call sites.
 //
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
+// Intel gets one check of its own first, because it cannot make it itself: a stored
+// sight payload naming a room is a pre-#1044 room-local frame, and intel holds
+// payloads as opaque bytes by contract — see refuseRoomLocalSightings.
 // On success, the field is rebuilt via the same path Setup uses (no re-surveil),
 // and members are re-placed at persisted positions.
 func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
