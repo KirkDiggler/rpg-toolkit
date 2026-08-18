@@ -989,20 +989,25 @@ func refuseRoomLocalSightings(data intel.Data) error {
 			if holding.Channel != intel.Sight || len(holding.Payload) == 0 {
 				continue
 			}
-			var peek struct {
-				Room *string `json:"room"`
-			}
-			// A payload this module cannot parse at all is somebody else's:
-			// intel carries testimony for any channel a composition invents,
-			// and only the room key THIS one used to write is ours to
-			// recognize. Unreadable bytes are left to whoever wrote them.
+			// A payload this module cannot read as an object at all is
+			// somebody else's: intel carries testimony for any channel a
+			// composition invents, and only the room key THIS one used to
+			// write is ours to recognize. Unreadable bytes are left to
+			// whoever wrote them.
+			var peek map[string]json.RawMessage
 			if err := json.Unmarshal(holding.Payload, &peek); err != nil {
 				continue
 			}
-			if peek.Room != nil {
+			// PRESENCE of the key, not its value. Decoding "room" into a
+			// typed field let a null through as absent and a non-string
+			// through as unparseable (raised by Copilot on #1072, and both
+			// loaded clean before this) — and since this composition is the
+			// only writer of sight payloads, a payload naming a room AT ALL
+			// is not one it wrote today, whatever the name decodes to.
+			if room, named := peek["room"]; named {
 				return fmt.Errorf(
-					"load encounter intel: %q's sighting of %q names room %q — a room-local sight payload from before rpg-toolkit#1044, recreate the save: %w",
-					observer, subject, *peek.Room, ErrInvalidData)
+					"load encounter intel: %q's sighting of %q names a room (%s) — a room-local sight payload from before rpg-toolkit#1044, recreate the save: %w",
+					observer, subject, room, ErrInvalidData)
 			}
 		}
 	}

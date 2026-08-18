@@ -100,20 +100,30 @@ func (s *DialectSuite) TestTodaysBlobLoads() {
 // hall-local (2,5) would render at absolute (2,5): a cell in a different room,
 // or no room at all.
 func (s *DialectSuite) TestARoomBearingSightPayloadIsRefused() {
-	data := s.closedBlob()
+	// The KEY is what marks the dialect, whatever it holds. Decoding "room"
+	// into a typed field would let a null through as absent and a non-string
+	// through as unparseable (raised by Copilot on #1072) — and this
+	// composition is the only writer of sight payloads, so a payload that
+	// names a room AT ALL is not one it wrote today.
+	for _, payload := range []string{
+		`{"room":"hall","x":2,"y":5}`,
+		`{"room":null,"x":32,"y":15}`,
+		`{"room":7,"x":32,"y":15}`,
+	} {
+		s.Run(payload, func() {
+			data := s.closedBlob()
+			holding := data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")]
+			holding.Payload = []byte(payload)
+			data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")] = holding
 
-	aged, err := json.Marshal(map[string]any{"room": "hall", "x": 2, "y": 5})
-	s.Require().NoError(err)
-	holding := data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")]
-	holding.Payload = aged
-	data.Intel.Holdings[core.EntityID("alice")][intel.Subject("bob")] = holding
-
-	err = s.load(data)
-	s.Require().Error(err, "a room-local sighting must not load")
-	s.ErrorIs(err, encounter.ErrInvalidData)
-	s.Contains(err.Error(), "alice", "the refusal names whose holding it is")
-	s.Contains(err.Error(), "bob", "and who it is about")
-	s.Contains(err.Error(), "room-local", "and says what is wrong with it")
+			err := s.load(data)
+			s.Require().Error(err, "a sighting that names a room must not load")
+			s.ErrorIs(err, encounter.ErrInvalidData)
+			s.Contains(err.Error(), "alice", "the refusal names whose holding it is")
+			s.Contains(err.Error(), "bob", "and who it is about")
+			s.Contains(err.Error(), "room-local", "and says what is wrong with it")
+		})
+	}
 }
 
 // TestARoomLocalOutcomeIsRefused.
