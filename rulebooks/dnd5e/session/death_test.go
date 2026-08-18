@@ -174,6 +174,24 @@ func (s *DeathTestSuite) payloadOf(event session.Event) map[string]any {
 	return beat
 }
 
+// swingUntilTheSkeletonFalls is alice hitting it until it stops standing.
+//
+// The bound is a runaway guard and nothing more — it is deliberately far above
+// the three swings this fixture's deterministic damage actually takes, so a
+// change to the weapon, the dice or the catalog's hit points moves the number of
+// iterations and moves no test. What holds the scene honest is the assertion
+// after the loop: if the skeleton is not at zero, this fails saying so rather
+// than letting a half-dead monster into a scene about death.
+func (s *DeathTestSuite) swingUntilTheSkeletonFalls() {
+	s.T().Helper()
+
+	const runaway = 25
+	for i := 0; i < runaway && s.storedHP("skeleton") > 0; i++ {
+		s.aliceSwings()
+	}
+	s.Require().Zero(s.storedHP("skeleton"), "the blows really landed on the stored sheet")
+}
+
 // dropTheSkeleton swings until the skeleton is at zero, and is the whole scene.
 //
 // It used to be "the scene up to the moment of death, with nobody having looked
@@ -183,11 +201,7 @@ func (s *DeathTestSuite) payloadOf(event session.Event) map[string]any {
 func (s *DeathTestSuite) dropTheSkeleton() {
 	s.startCrypt()
 	s.spawnSkeleton()
-
-	for i := 0; i < 3 && s.storedHP("skeleton") > 0; i++ {
-		s.aliceSwings()
-	}
-	s.Require().Zero(s.storedHP("skeleton"), "the blows really landed on the stored sheet")
+	s.swingUntilTheSkeletonFalls()
 }
 
 // TestTheSwingNoticesItsOwnKill is this suite's opening pin, FLIPPED.
@@ -348,10 +362,7 @@ func (s *DeathTestSuite) TestTheSurvivorWalksAgain() {
 	})
 	s.Require().ErrorIs(blocked, session.ErrInBubble, "control: mid-fight, she is not free to walk")
 
-	for i := 0; i < 3 && s.storedHP("skeleton") > 0; i++ {
-		s.aliceSwings()
-	}
-	s.Require().Zero(s.storedHP("skeleton"))
+	s.swingUntilTheSkeletonFalls()
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
