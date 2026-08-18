@@ -27,7 +27,7 @@ func Example_theDungeon() {
 		ToPosition:   spatial.Position{X: 0, Y: 4},
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 8, Height: 8},

@@ -45,7 +45,7 @@ func Example_theTombWatch() {
 	// The crypt: a wall across y=6 from x=5 to x=7; alice enters at (2,6); a goblin
 	// stands at (6,10). One way out: the stairs at (11,11).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: "crypt", Width: 12, Height: 12,
@@ -88,7 +88,7 @@ func Example_theTombWatch() {
 	fmt.Println("-- the table saves and comes back tomorrow --")
 	data := enc.ToData()
 	enc, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	if err != nil {
 		fmt.Println("load:", err)
 		return

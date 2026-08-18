@@ -26,7 +26,7 @@ type ClocksTestSuite struct {
 // monster in one room.
 func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			// The goblin waits in the NEXT ROOM, which is how real content is
 			// authored and is the only way to open a scene that is not
@@ -136,7 +136,7 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 	}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -188,7 +188,7 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 	}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	fighting, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -222,7 +222,7 @@ func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter(
 	data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -246,7 +246,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -262,7 +262,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -288,7 +288,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data.Clock.Budgets["ghost"] = 0
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -302,7 +302,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -315,7 +315,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -335,7 +335,7 @@ func (s *ClocksTestSuite) TestABlobFromBeforeClockMembershipLoadsEveryoneOntoThe
 	data.Bubbles = nil
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	for _, id := range []core.EntityID{alice, goblin} {
@@ -361,7 +361,7 @@ const (
 // monster in one room, plus an external ending so closure is reachable.
 func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: room1, Width: 10, Height: 10},
@@ -406,7 +406,7 @@ func (s *ClocksTestSuite) assertR6(enc *encounter.Encounter, members ...core.Ent
 		s.Require().NoError(err, "member %q must be on exactly one clock", id)
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: enc.ToData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: enc.ToData()})
 	s.Require().NoError(err, "the persisted shape must pass the trust boundary (R6)")
 }
 
@@ -690,7 +690,7 @@ func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	wanderer := &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 5}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
 		},
@@ -762,7 +762,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 	data.Bubbles = []clock.TurnData{{}}
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInvalidData)
 }
@@ -776,7 +776,7 @@ func (s *ClocksTestSuite) TestAMidFightBlobRoundTrips() {
 	s.Require().NoError(err)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: enc.ToData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	// Reached through a member of the fight — bob is exploring next door.

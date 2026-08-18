@@ -164,7 +164,7 @@ type trigger struct {
 // PLAYER has been watching the whole time and is plainly not surprised, while
 // FirstContact-only surprise would say they were, because the player's own
 // first contact happened long ago and is not in this delta.
-func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput) (*trigger, error) {
+func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput, down map[MemberID]bool) (*trigger, error) {
 	sawFirst := func(observer, subject MemberID) bool {
 		delta, ok := deltas[observer]
 		if !ok || delta == nil {
@@ -179,7 +179,7 @@ func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput) (*trigger
 		return false
 	}
 
-	players, monsters := e.sidesInContactOrder()
+	players, monsters := e.sidesInContactOrder(down)
 
 	var (
 		engaged = map[MemberID]bool{}
@@ -214,7 +214,7 @@ func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput) (*trigger
 	}
 
 	if len(engaged) > 0 {
-		return e.formation(engaged)
+		return e.formation(engaged, down)
 	}
 
 	// The drop arm classifies and then does nothing, because nothing can reach
@@ -232,7 +232,7 @@ func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput) (*trigger
 // other leave the world clock and everybody else keeps exploring. Stragglers
 // join later through the same classification, which is what makes a fight
 // grow rather than start twice.
-func (e *Encounter) formation(engaged map[MemberID]bool) (*trigger, error) {
+func (e *Encounter) formation(engaged map[MemberID]bool, down map[MemberID]bool) (*trigger, error) {
 	form := make([]MemberID, 0, len(engaged))
 	for id := range engaged {
 		form = append(form, id)
@@ -266,7 +266,7 @@ func (e *Encounter) formation(engaged map[MemberID]bool) (*trigger, error) {
 
 	surprised := make([]MemberID, 0, len(form))
 	for _, id := range form {
-		unaware, err := e.unawareOfOpposition(id)
+		unaware, err := e.unawareOfOpposition(id, down)
 		if err != nil {
 			return nil, err
 		}
@@ -281,7 +281,7 @@ func (e *Encounter) formation(engaged map[MemberID]bool) (*trigger, error) {
 // unawareOfOpposition reports whether this member's CURRENT view holds nobody
 // from the other side — which is exactly 5e's surprise condition, read at
 // formation rather than inferred from whatever triggered it.
-func (e *Encounter) unawareOfOpposition(id MemberID) (bool, error) {
+func (e *Encounter) unawareOfOpposition(id MemberID, down map[MemberID]bool) (bool, error) {
 	member, ok := e.members[id]
 	if !ok {
 		return false, nil
@@ -303,6 +303,11 @@ func (e *Encounter) unawareOfOpposition(id MemberID) (bool, error) {
 		if !ok {
 			continue
 		}
+		// A body in view is not opposition in view. Watching a corpse is not
+		// what stops you being surprised by the thing that is still standing.
+		if down[other.ID] {
+			continue
+		}
 		if other.Kind != member.Kind {
 			return false, nil
 		}
@@ -311,13 +316,24 @@ func (e *Encounter) unawareOfOpposition(id MemberID) (bool, error) {
 	return true, nil
 }
 
-// sidesInContactOrder returns the players and the monsters, each sorted.
+// sidesInContactOrder returns the STANDING players and the STANDING monsters,
+// each sorted.
+//
+// Down members are on neither side, which is the census defect this closes: the
+// partition used to be by Kind alone, so a dead monster was still a monster and
+// sight started a fight with it. A corpse can neither start a fight nor be
+// pulled into one already running, from either side of the roster — a member
+// who is not on a side is in no pair, and a pair is the only thing that forms
+// or joins a bubble.
 //
 // Sorted because e.members is a map and C8 requires that what a pass concludes
 // be a function of persisted data rather than of iteration order — the same
 // reason buildMemberOutcomes sorts.
-func (e *Encounter) sidesInContactOrder() (players, monsters []MemberID) {
+func (e *Encounter) sidesInContactOrder(down map[MemberID]bool) (players, monsters []MemberID) {
 	for id, member := range e.members {
+		if down[id] {
+			continue
+		}
 		switch member.Kind {
 		case KindPlayer:
 			players = append(players, id)
@@ -343,7 +359,16 @@ func (e *Encounter) sidesInContactOrder() (players, monsters []MemberID) {
 // checkCombatEntry, reached from Move AND AddMonster); this sits at the one
 // place all of them already pass through.
 func (e *Encounter) applyTrigger(deltas map[MemberID]*intel.SurveilOutput) (*FormedBubble, error) {
-	verdict, err := e.classify(deltas)
+	// The world notices who is down BEFORE it works out who is fighting whom.
+	// Both halves of that order matter: a body must not be classified as an
+	// enemy, and the beat saying so must not land after a bubble-formed beat
+	// it contradicts (rpg-toolkit#1075).
+	down, err := e.noticeDown()
+	if err != nil {
+		return nil, err
+	}
+
+	verdict, err := e.classify(deltas, down)
 	if err != nil {
 		return nil, err
 	}

@@ -412,6 +412,9 @@ func (in *LoadEncounterInput) Validate() error {
 	if in.Initiative == nil {
 		return fmt.Errorf("load encounter: Initiative is required: %w", ErrNoInitiative)
 	}
+	if in.Standing == nil {
+		return fmt.Errorf("load encounter: Standing is required: %w", ErrNoStanding)
+	}
 
 	return nil
 }
@@ -756,6 +759,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		everMembers: make(map[MemberID]bool),
 		deciders:    make(map[MemberID]Decider),
 		initiative:  input.Initiative,
+		standing:    input.Standing,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),

@@ -76,8 +76,8 @@ func (s *BeatOrderTestSuite) beatKinds(enc *encounter.Encounter, audience encoun
 // that has not opened yet.
 func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
 		Members: []encounter.MemberInput{
 			// Both clear of the wall's span: they see each other at first light.
 			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 0, Y: 2}},
@@ -110,7 +110,7 @@ func (s *BeatOrderTestSuite) TestMoveBeforeItFights() {
 // room: the traversed beat is the cause, the fight is the effect.
 func (s *BeatOrderTestSuite) TestTraverseBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: room1, Width: 10, Height: 10},
@@ -186,8 +186,8 @@ func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encount
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 6, Y: 2}},
 			monster,

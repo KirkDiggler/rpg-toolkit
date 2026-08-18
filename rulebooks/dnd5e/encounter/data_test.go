@@ -71,7 +71,7 @@ type DataTestSuite struct {
 // of the shift vector's own shape.
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
@@ -114,8 +114,8 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 // ending order changes which outcome the campaign receives.
 func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	setup := &encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -127,7 +127,7 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: enc1.ToData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: enc1.ToData()})
 	s.Require().NoError(err)
 
 	out, err := enc2.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: 3, Y: 3}})
@@ -157,7 +157,7 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 // origin simultaneously.
 func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	setup := &encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5},
@@ -188,7 +188,7 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	s.Equal(expected, data1.Field.Connections, "connections persist sorted by ID with endpoints intact")
 
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data1})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1})
 	s.Require().NoError(err)
 
 	data2 := enc2.ToData()
@@ -231,7 +231,7 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 	}
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	got := enc.ToData().Field.Connections
@@ -257,7 +257,7 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 	s.Run("square", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "square-room", Width: 5, Height: 5},
@@ -277,7 +277,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		s.Equal("", data1.Field.Rooms[0].Grid, "square is the zero value — omitted, not the literal \"square\"")
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1})
 		s.Require().NoError(err)
 
 		data2 := enc2.ToData()
@@ -286,7 +286,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 
 	s.Run("hex", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
@@ -306,7 +306,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		s.Equal(spatial.GridTypeHex, data1.Field.Rooms[0].Grid)
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1})
 		s.Require().NoError(err)
 
 		data2 := enc2.ToData()
@@ -330,7 +330,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 // so they stay disjoint (W2) regardless of y.
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
@@ -371,7 +371,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 }
 
@@ -385,7 +385,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 	s.Run("post-setup open encounter survives round-trip", func() {
 		// Create a simple encounter
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -436,7 +436,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 
 		// Load from data (without decider for goblin)
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Convert to data again
@@ -457,7 +457,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 	s.Run("mid-fade ghost survives reload still Held", func() {
 		// Create encounter with a wall that will cause a ghost to form
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -527,7 +527,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 
 		// Load and verify ghost is still there
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Get holdings - ghost should still be Held (not Current)
@@ -552,7 +552,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 func (s *DataTestSuite) TestRoundTripPostExit() {
 	s.Run("exited member persists in everMembers and can Story", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -598,7 +598,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 
 		// Load and verify everMembers includes the exited player
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Story should work for the exited member
@@ -613,7 +613,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 func (s *DataTestSuite) TestRoundTripClosed() {
 	s.Run("closed encounter with ending outcome round-trips", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -667,7 +667,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 
 		// Load and verify outcome matches
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		status2, _ := enc2.Status()
@@ -683,7 +683,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 func (s *DataTestSuite) TestPumpContinuesTick() {
 	s.Run("Pump continues tick sequence post-reload", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -732,7 +732,7 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 		s.Require().Equal(2, data1.Clock.HighWater, "precondition: two ticks persisted")
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1})
 		s.Require().NoError(err)
 
 		out, err := enc2.Pump(&encounter.PumpInput{})
@@ -745,7 +745,7 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 func (s *DataTestSuite) TestMoveWorksPostReload() {
 	s.Run("Move works on reloaded encounter", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -787,7 +787,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 
 		// Load
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Move should work
@@ -806,7 +806,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 func (s *DataTestSuite) TestGoldenJSONOpen() {
 	s.Run("small open encounter golden JSON", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -856,7 +856,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 func (s *DataTestSuite) TestGoldenJSONClosed() {
 	s.Run("small closed encounter golden JSON", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -929,7 +929,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 func (s *DataTestSuite) TestAliasImmunityToData() {
 	s.Run("mutating ToData result doesn't affect aggregate", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -997,7 +997,7 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 	s.Run("mutating caller's Data after LoadEncounter doesn't affect loaded aggregate", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -1034,7 +1034,7 @@ func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 		// Load FIRST, then vandalize the caller's Data: the loaded
 		// aggregate must be untouched (load-side deep copy).
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().NoError(err)
 
 		data.Members[0].ID = "mutated"
@@ -1062,8 +1062,8 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		// persisted holding says Held (a ghost). A load that re-runs
 		// first-light surveil would resurrect it to Current.
 		enc1, err := encounter.NewEncounter(&encounter.SetupInput{
-			Initiative: orderAsGiven{},
-			Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}}},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}}},
 			Members: []encounter.MemberInput{
 				{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
 				{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 5, Y: 5}},
@@ -1083,7 +1083,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		data.Intel.Holdings["playerA"]["goblin"] = holding
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().NoError(err)
 
 		view, err := enc2.View(&encounter.ViewInput{Member: "playerA"})
@@ -1096,7 +1096,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 func (s *DataTestSuite) TestDeciderReattachment() {
 	s.Run("reload with decider resumes monster decision", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -1150,7 +1150,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 			},
 		}
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 				encounter.MemberID("goblin"): decider,
 			}})
 		s.Require().NoError(err)
@@ -1170,7 +1170,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 	s.Run("reload without decider makes monster hold", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -1219,7 +1219,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 
 		// Load WITHOUT goblin's decider
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Pump should succeed (goblin holds)
@@ -1239,7 +1239,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 // nil entry is equivalent to an absent one: the monster simply holds.
 func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	setup := &encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
 		},
@@ -1256,7 +1256,7 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	data1 := enc1.ToData()
 
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 			"goblin": nil,
 		}})
 	s.Require().NoError(err, "a present-but-nil reattachment entry must load, not reject")
@@ -1273,7 +1273,7 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 // same reattachment map: the real one decides normally, the nil one holds.
 func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	setup := &encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 10, Height: 10},
@@ -1300,7 +1300,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 
 	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: spatial.Position{X: 3, Y: 8}}}
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 			"goblin": nil,
 			"rat":    ratDecider,
 		}})
@@ -1389,7 +1389,7 @@ func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
 	data := validEncounterDataWithConnection()
 	data.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1428,8 +1428,8 @@ func (s *DataTestSuite) TestLoadNilInputRejected() {
 // call sites, so it is stated once rather than left implied by them.
 func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{},
-		Data:       validEncounterData(),
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data: validEncounterData(),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(enc)
@@ -1450,7 +1450,7 @@ func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
@@ -1470,7 +1470,7 @@ func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide at Load either`)
 }
 
@@ -1488,7 +1488,7 @@ func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1509,7 +1509,7 @@ func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 		},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -1631,7 +1631,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 			data := validEncounterData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Initiative: orderAsGiven{}, Data: data})
+				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().Contains(err.Error(), tc.fragment,
@@ -1645,7 +1645,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// The valid base itself must load — the one-defect discipline only
 	// means something if zero defects pass.
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: validEncounterData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validEncounterData()})
 	s.Require().NoError(err, "the valid base fixture must load")
 
 	// The valid CONNECTION base must also load. Since FromPosition{9,1} is
@@ -1657,7 +1657,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// it would silently swap the values — so the values are re-inspected,
 	// not just the absence of an error).
 	connEnc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: validEncounterDataWithConnection()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validEncounterDataWithConnection()})
 	s.Require().NoError(err, "the valid connection base fixture must load")
 	connData := connEnc.ToData()
 	s.Require().Len(connData.Field.Connections, 1)
@@ -1708,7 +1708,7 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 4, Y: 0}
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1717,7 +1717,7 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 0, Y: 3}
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1726,7 +1726,7 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: -1, Y: 0}
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1735,7 +1735,7 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 0, Y: -1}
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().ErrorIs(err, encounter.ErrBadConnection)
 		s.Require().Contains(err.Error(), "from-position out of bounds")
 	})
@@ -1744,7 +1744,7 @@ func (s *DataTestSuite) TestConnectionEndpointBoundsBoundariesLoad() {
 		data := connBoundsData()
 		data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 3, Y: 2}
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 		s.Require().NoError(err, "the last valid cell must be accepted")
 	})
 }
@@ -1774,7 +1774,7 @@ func (s *DataTestSuite) TestLoadRoomValidation() {
 			data := validEncounterData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Initiative: orderAsGiven{}, Data: data})
+				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
@@ -1801,7 +1801,7 @@ func (s *DataTestSuite) TestLoadRoomEmptyIDReportsIDDefectNotOrigin() {
 	data.Field.Rooms[0].Origin = nil
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1834,19 +1834,19 @@ func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 	s.Run("positive Q, positive R within span accepted", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 1, Y: 1})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 1, Y: 1})})
 		s.Require().NoError(err)
 	})
 
 	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -1, Y: 0})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -1, Y: 0})})
 		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
 	})
 
 	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "out of bounds")
@@ -1854,13 +1854,13 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 
 	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -2, Y: 0})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -2, Y: 0})})
 		s.Require().NoError(err)
 	})
 
 	s.Run("Q beyond -Width/2 rejected", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "out of bounds")
@@ -1894,7 +1894,7 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
 }
 
@@ -1955,7 +1955,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 			data := validHexAxialData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Initiative: orderAsGiven{}, Data: data})
+				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			if tc.alsoErr != nil {
@@ -1967,7 +1967,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 	}
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: validHexAxialData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validHexAxialData()})
 	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
 }
 
@@ -2092,7 +2092,7 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 			data := validAnchoredHexData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Initiative: orderAsGiven{}, Data: data})
+				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
@@ -2104,7 +2104,7 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 	// The valid base itself must load — the one-defect discipline only
 	// means something if zero defects pass.
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: validAnchoredHexData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validAnchoredHexData()})
 	s.Require().NoError(err, "the valid anchored base fixture must load")
 }
 
@@ -2130,7 +2130,7 @@ func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2159,7 +2159,7 @@ func (s *DataTestSuite) TestLoadAnchoringSquareOriginRejected() {
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2192,7 +2192,7 @@ func (s *DataTestSuite) TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2233,7 +2233,7 @@ func (s *DataTestSuite) TestLoadAnchoringFractionalSquareEndpointSubUnitDistance
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrBadConnection)
@@ -2259,7 +2259,7 @@ func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint()
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2283,7 +2283,7 @@ func (s *DataTestSuite) TestLoadRoomCellBudgetRejectsPanicReproduction() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "a 2^30 x 2^30 room from a persisted blob must REJECT, not panic")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2304,7 +2304,7 @@ func (s *DataTestSuite) TestLoadOversizedRoomHeightRejected() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2331,7 +2331,7 @@ func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2374,7 +2374,7 @@ func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
 			data := validEndingTriggerData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Initiative: orderAsGiven{}, Data: data})
+				Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrNoEnding, tc.name)
@@ -2384,7 +2384,7 @@ func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
 	}
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: validEndingTriggerData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validEndingTriggerData()})
 	s.Require().NoError(err, "a trigger naming a real room and in-bounds position must validate")
 }
 
@@ -2400,7 +2400,7 @@ func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 		},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -2415,14 +2415,14 @@ func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 // would not.
 func (s *DataTestSuite) TestOriginRoundTripByteIdentical() {
 	enc1, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: validAnchoredHexData()})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validAnchoredHexData()})
 	s.Require().NoError(err)
 	data1 := enc1.ToData()
 	bs1, err := json.Marshal(data1.Field)
 	s.Require().NoError(err)
 
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data1})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1})
 	s.Require().NoError(err)
 	data2 := enc2.ToData()
 	bs2, err := json.Marshal(data2.Field)
@@ -2442,7 +2442,7 @@ func (s *DataTestSuite) TestOriginRoundTripByteIdentical() {
 // Origins it didn't in v0.2.
 func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	setup := &encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
@@ -2481,7 +2481,7 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 		}
 	}
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: dataPreTraverse})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: dataPreTraverse})
 	s.Require().NoError(err)
 
 	out2, err := enc2.Traverse(&encounter.TraverseInput{Member: "p1", Connection: "gate"})
@@ -2516,7 +2516,7 @@ func (s *DataTestSuite) TestLoadAnchoringSquareEndpointNotAdjacentDistance2() {
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrBadConnection)
@@ -2547,7 +2547,7 @@ func (s *DataTestSuite) TestLoadRejectsHostileNonKissingBlob() {
 	s.Require().NoError(json.Unmarshal(hostile, &data))
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err, "a hand-edited blob with a non-kissing doorway must reject")
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrBadConnection)
@@ -2581,7 +2581,7 @@ func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
 func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
 	s.Run("gridless grid string rejected regardless of member position", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connGridlessRoomData(encounter.PositionData{X: 4, Y: 0})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connGridlessRoomData(encounter.PositionData{X: 4, Y: 0})})
 		s.Require().Error(err, `a stored "gridless" grid string no longer loads`)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -2591,7 +2591,7 @@ func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
 
 	s.Run("still rejected for a position that would also be out of bounds", func() {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: connGridlessRoomData(encounter.PositionData{X: -1, Y: 0})})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connGridlessRoomData(encounter.PositionData{X: -1, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().ErrorIs(err, encounter.ErrNoField,
@@ -2604,7 +2604,7 @@ func (s *DataTestSuite) TestGridlessRoomInclusiveBoundsLoad() {
 func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
 	data := validEncounterData()
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 			"p1": &spyDecider{},
 		}})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -2614,7 +2614,7 @@ func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
 func (s *DataTestSuite) TestMutation1ToDataAliases() {
 	s.Run("mutation 1: ToData aliases slices", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2654,7 +2654,7 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 	s.Run("mutation 2: wire tag renamed", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2685,7 +2685,7 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 func (s *DataTestSuite) TestMutation3StowawayField() {
 	s.Run("mutation 3: stowaway field in EncounterData", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2718,7 +2718,7 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 	s.Run("mutation 4: leaf data substitution (Intel/Log swapped)", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2751,7 +2751,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 
 		// Control: loading dataA verbatim, p1 holds p2.
 		ctrl, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: dataA})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: dataA})
 		s.Require().NoError(err)
 		ctrlView, err := ctrl.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -2762,7 +2762,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		// is genuinely consumed, never re-derived from the field.
 		dataA.Intel = dataB.Intel
 		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: dataA})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: dataA})
 		s.Require().NoError(err)
 		swappedView, err := swapped.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -2793,7 +2793,7 @@ func (s *DataTestSuite) TestMutation5MissingRoomCheck() {
 		}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().Error(err)
 		s.True(errors.Is(err, encounter.ErrInvalidData), "must validate member rooms exist")
 	})
@@ -2803,7 +2803,7 @@ func (s *DataTestSuite) TestMutation5MissingRoomCheck() {
 func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 	s.Run("mutation 6: no re-surveil on load (ghost stays ghost)", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -2856,7 +2856,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 
 		data := enc1.ToData()
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
 
 		holdings2, _ := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		var goblinStatusAfter intel.Status
@@ -2877,7 +2877,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 	s.Run("mutation 7: tick continuation (clock not reset)", func() {
 		setup := &encounter.SetupInput{
-			Initiative: orderAsGiven{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 10, Height: 10, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
@@ -2897,7 +2897,7 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		tick1 := data1.Clock.HighWater
 
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		data2 := enc2.ToData()
 		tick2 := data2.Clock.HighWater
 
