@@ -273,9 +273,10 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	//
 	// This is the second time the same shape has appeared here — the join's
 	// load-versus-placement ordering had it too — which is the general lesson
-	// rather than a coincidence: in a load-act-save verb, ordering BEFORE the
-	// commit is never load-bearing. What is load-bearing is that the error
-	// stops the verb, and that is pinned separately.
+	// rather than a coincidence: in a load-act-save verb, ordering with respect
+	// to PERSISTENCE is never load-bearing before the commit. What is
+	// load-bearing is that the error stops the verb, and that is pinned
+	// separately.
 	//
 	// The order is still chosen: there is no reason to touch the world when
 	// the call is already doomed.
@@ -284,13 +285,26 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 
+	// THE SHEET IS RECORDED BEFORE THE PLACEMENT, and here the ordering IS
+	// load-bearing — the one exception to the paragraph above, which is why it
+	// is stated separately rather than folded into it.
+	//
+	// Arriving refreshes sight, and every sight refresh asks who is standing
+	// (rpg-toolkit#1079). That consult reads the session's own sheets, so a
+	// monster placed before its sheet was recorded is asked about while the
+	// record still has nothing to say — answered "standing" for the right
+	// reason by accident, and paying a pointless character-repository miss on
+	// the way past. A member the world can see is a member the world can read.
+	//
+	// Nothing durable changes by moving it: a failed placement returns before
+	// the commit and the whole scope is dropped, sheet and all.
+	scope.data.NPCs = append(scope.data.NPCs, *sheet)
+	scope.touched = true
+
 	placed, err := place(scope, in.ID, KindMonster, in.Position)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
-
-	scope.data.NPCs = append(scope.data.NPCs, *sheet)
-	scope.touched = true
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
@@ -440,7 +454,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	if err != nil {
 		return nil, err
 	}
-	enc, baseline, err := m.loadWorldWithBaseline(ctx, data.Encounter)
+	enc, baseline, standing, err := m.loadWorldWithBaseline(ctx, data)
 	if err != nil {
 		return nil, err
 	}
@@ -450,6 +464,7 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		data:      data,
 		enc:       enc,
 		baseline:  baseline,
+		standing:  standing,
 	}, nil
 }
 
@@ -463,6 +478,15 @@ type writeScope struct {
 	data      *SessionData
 	enc       *encounter.Encounter
 	baseline  uint64
+
+	// standing is who-is-down, answered from the sheets this call holds.
+	//
+	// Kept on the scope because it is needed twice after the load: to rebuild
+	// the world a resolution handed back (adopt), and to refuse a verb whose
+	// actor has fallen (refuseIfDown). Rebuilding it at each use would compile
+	// and would quietly allow two capabilities reading different sheets within
+	// one verb.
+	standing encounter.Standing
 
 	// touched marks the session record as changed by this verb — a spawned
 	// sheet, today — so a verb that changed only the world writes only the
@@ -506,6 +530,7 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       world,
 		Initiative: m.initiative,
+		Standing:   scope.standing,
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)

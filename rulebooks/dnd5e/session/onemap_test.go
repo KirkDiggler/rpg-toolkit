@@ -43,6 +43,7 @@ func TestOneMapSuite(t *testing.T) {
 // — absolute (46,22).
 func offsetWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 40, Y: 20}},
@@ -356,6 +357,7 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
+		Standing:   encEveryoneStanding{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 10, Height: 10, Origin: spatial.Position{X: 2, Y: 3}},
 		}},

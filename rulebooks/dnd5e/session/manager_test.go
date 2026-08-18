@@ -89,10 +89,17 @@ type fakeCharacters struct {
 	// loads counts GetCharacter calls, so a test can assert that loading
 	// happens per call rather than being cached between them.
 	loads int
+
+	// asked counts them per ID, because a count alone stopped being able to
+	// answer the question two tests ask. Every sight refresh now consults the
+	// standing capability, which reads the players' sheets — so "was the
+	// repository touched" and "was THIS member looked up" are different
+	// questions, and only the second one is a claim about the entry verbs.
+	asked map[string]int
 }
 
 func newFakeCharacters(chars ...*character.Data) *fakeCharacters {
-	f := &fakeCharacters{byID: map[string]*character.Data{}}
+	f := &fakeCharacters{byID: map[string]*character.Data{}, asked: map[string]int{}}
 	for _, c := range chars {
 		f.byID[c.ID] = c
 	}
@@ -101,6 +108,7 @@ func newFakeCharacters(chars ...*character.Data) *fakeCharacters {
 
 func (f *fakeCharacters) GetCharacter(_ context.Context, id string) (*character.Data, error) {
 	f.loads++
+	f.asked[id]++
 	data, ok := f.byID[id]
 	if !ok {
 		return nil, session.ErrNotFound

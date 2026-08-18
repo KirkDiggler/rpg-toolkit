@@ -66,3 +66,21 @@ type encOrderAsGiven struct{}
 func (encOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
 	return members, nil
 }
+
+// encEveryoneStanding is the standing capability the authored-world fixtures
+// build with: nobody is ever down.
+//
+// It answers for CONSTRUCTION only. These fixtures use the composition directly
+// to author a blob, and Setup consults the capability at first light — a scene
+// can open with a body already on the floor. Every one of them opens with
+// everybody upright, which is what they were all assuming before death existed.
+//
+// The session under test never uses this. It supplies its own capability,
+// backed by the sheets it holds, at each of its own load sites — which is the
+// thing rpg-toolkit#1079 is about, and the reason this fake must stay dumb
+// enough that no test can accidentally lean on it for an answer.
+type encEveryoneStanding struct{}
+
+func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
+	return nil, nil
+}

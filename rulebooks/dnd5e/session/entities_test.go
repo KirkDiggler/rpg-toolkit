@@ -146,8 +146,7 @@ func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 	s.ErrorIs(err, session.ErrNoMember, "a rejected join must not leave a member placed")
 }
 
-// TestSpawnedContentNeverConsultsTheCharacterRepository is the over-tightening
-// defense.
+// TestSpawnedContentIsNeverLookedUpAsACharacter is the over-tightening defense.
 //
 // The rejection above proves the character check refuses. Only this proves it
 // does not over-reach: content that lives in code has no sheet to look up, and
@@ -156,7 +155,21 @@ func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 //
 // It also pins the seam's real claim. A monster no longer JOINS — Join is
 // players only — so the two paths cannot share a lookup by accident.
-func (s *EntitiesTestSuite) TestSpawnedContentNeverConsultsTheCharacterRepository() {
+//
+// # Why this is no longer a count
+//
+// It used to assert the repository was not touched AT ALL, and that assertion
+// stopped being true for a reason worth reading rather than worth suppressing.
+// Every sight refresh now consults the standing capability, and that capability
+// reads the PLAYERS' sheets to answer — so a spawn does touch the store, on
+// behalf of everybody already in the room (rpg-toolkit#1079).
+//
+// The claim this test was always making survives the change intact, and is now
+// stated as itself: the spawned ID is never looked up. The second assertion is
+// the new cost, pinned rather than merely tolerated — if it ever goes back to
+// zero, something has started answering the standing question without reading
+// a sheet, which is the cache this design refuses.
+func (s *EntitiesTestSuite) TestSpawnedContentIsNeverLookedUpAsACharacter() {
 	before := s.characters.loads
 
 	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
@@ -166,7 +179,11 @@ func (s *EntitiesTestSuite) TestSpawnedContentNeverConsultsTheCharacterRepositor
 	s.Require().NoError(err, "content that lives in code needs no stored sheet")
 	s.Require().NotNil(out.NPC)
 	s.Equal("Skeleton", out.NPC.Name, "and it was really built, not echoed")
-	s.Equal(before, s.characters.loads, "the character repository must not be consulted at all")
+
+	s.Zero(s.characters.asked["ogre-7"],
+		"content that lives in code is never looked up as a character")
+	s.Greater(s.characters.loads, before,
+		"while the players' sheets are read, because the world now asks who is standing")
 }
 
 // TestAMonsterCannotJoin pins that the split is enforced, not merely offered.

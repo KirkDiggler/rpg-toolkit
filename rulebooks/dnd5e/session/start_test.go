@@ -85,7 +85,8 @@ func (s *StartSessionTestSuite) SetupTest() {
 // from an authoring pipeline.
 func authoredWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 		},

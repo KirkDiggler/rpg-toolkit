@@ -199,6 +199,27 @@ func kindOf(payload []byte) EventKind {
 		return EventStruck
 	case "missed":
 		return EventMissed
+	// The third outcome beat, and the one nobody pushed. "down" is an
+	// OutcomeKind like the two above, but no caller can hand it to Record —
+	// the composition refuses that deliberately (rpg-toolkit#1077) and writes
+	// the beat itself when it notices somebody at zero. It is in this family
+	// rather than beside the clock beats because it carries the same tag, has
+	// the same audience, and is read by a client in the same breath as the
+	// strike that caused it.
+	//
+	// THE WORD CHANGES HERE, ON PURPOSE. The composition says "down" and this
+	// seam says "downed", and that asymmetry is Kirk's ruling
+	// (rpg-toolkit#1084): a bare "down" also reads as PRONE, so the vocabulary
+	// that LEAVES the session is the unambiguous one, while the composition's
+	// own kind — which is persisted in every stored world — is left alone. A
+	// rename there would be a migration; a translation here is a line.
+	//
+	// This is therefore the one case in this function where the two strings
+	// deliberately differ, which is also why its pin is built from
+	// encounter.OutcomeDown rather than from a literal: the composition's
+	// string is the half that must not drift, and nothing else would notice.
+	case "down":
+		return EventDowned
 	default:
 		return EventUnknown
 	}
