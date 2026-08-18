@@ -70,3 +70,31 @@ func TestTheOutcomeBeatsAreTheCompositionsOwnStrings(t *testing.T) {
 		})
 	}
 }
+
+// TestTheSeamSaysDownedWhereTheCompositionSaysDown makes Kirk's ruling
+// mechanical (rpg-toolkit#1084).
+//
+// The two strings are DIFFERENT ON PURPOSE and neither may drift toward the
+// other, which is why both halves and the gap between them are asserted rather
+// than just the one this package owns.
+//
+//   - The seam publishes "downed", because a bare "down" also reads as PRONE —
+//     a posture the rulebook tracks and this package never gates on. This is
+//     the wire value rpg-api adopts, so it is contract, not cosmetics, and
+//     asserting the CONSTANT alone would not have noticed it changing.
+//   - The composition keeps "down", because that kind is persisted in every
+//     stored world. Renaming it there is a migration; translating here is a
+//     line in kindOf.
+//
+// The third assertion is the one that earns its keep. Both single-value rows
+// pass happily if somebody aligns the two — that is the tidy-looking change
+// this asymmetry invites, and it silently either breaks every stored world or
+// hands clients back the ambiguous word.
+func TestTheSeamSaysDownedWhereTheCompositionSaysDown(t *testing.T) {
+	require.Equal(t, EventKind("downed"), EventDowned,
+		"the wire value a client branches on, and rpg-api's vocabulary")
+	require.Equal(t, encounter.OutcomeKind("down"), encounter.OutcomeDown,
+		"the composition's persisted kind, deliberately left alone")
+	require.NotEqual(t, string(EventDowned), string(encounter.OutcomeDown),
+		"these two must not be aligned: see kindOf, and rpg-toolkit#1084")
+}
