@@ -52,10 +52,10 @@ func TestDeathSuite(t *testing.T) { suite.Run(t, new(DeathTestSuite)) }
 // each side of it.
 //
 // The wall is the fixture's whole reason for existing. Bob has to be able to
-// take an ordinary step WITHOUT joining the fight on the other side — his walk
-// is what refreshes sight, and a refresh is the only thing that notices a body
-// (see TestTheSwingIsNotWhatNotices). A gap anywhere in the column and he sees
-// the skeleton, contact forms, and the scene stops being the one under test.
+// take an ordinary step WITHOUT joining the fight on the other side, so the
+// scenes that ask what a SECOND player's walk does can ask it. A gap anywhere in
+// the column and he sees the skeleton, contact forms, and the scene stops being
+// the one under test.
 //
 // Unbounded retention because the story is the ledger the composition reads
 // back to decide whether a death is news (rpg-toolkit#1077). A window that
@@ -174,8 +174,12 @@ func (s *DeathTestSuite) payloadOf(event session.Event) map[string]any {
 	return beat
 }
 
-// dropTheSkeleton is the scene up to the moment of death, with nobody having
-// looked yet.
+// dropTheSkeleton swings until the skeleton is at zero, and is the whole scene.
+//
+// It used to be "the scene up to the moment of death, with nobody having looked
+// yet", and the change of description is the change of behavior: the killing
+// blow is now the moment the world looks (rpg-toolkit#1083). Nothing after this
+// helper has to walk, tick, or ask.
 func (s *DeathTestSuite) dropTheSkeleton() {
 	s.startCrypt()
 	s.spawnSkeleton()
@@ -186,46 +190,46 @@ func (s *DeathTestSuite) dropTheSkeleton() {
 	s.Require().Zero(s.storedHP("skeleton"), "the blows really landed on the stored sheet")
 }
 
-// TestTheSwingIsNotWhatNotices is the honest shape of this slice, pinned first
-// because it is the part that surprises.
+// TestTheSwingNoticesItsOwnKill is this suite's opening pin, FLIPPED.
 //
-// The skeleton is at zero and NOTHING has said so. Recording an outcome is not
-// a sight refresh — the composition consults who is standing from refreshSight,
-// which Move, Traverse, Join, Exit and Pump reach and Record does not — so a
-// killing blow lands, persists, and leaves the world not yet knowing.
+// It used to say the opposite and said so by name: recording an outcome was not
+// a sight refresh, so a killing blow landed, persisted, and left the world not
+// knowing — no downed event, no ending, the turn order still holding a body —
+// until somebody walked. A party that cleared the room and stood still was in a
+// fight with a corpse.
 //
-// It is pinned rather than hidden because the fix is not here: it would be a
-// consult inside the composition's own Record, which is a change to a module
-// this slice only consumes. What this seam owes is that the news arrives the
-// moment anything looks, which is the next test.
-func (s *DeathTestSuite) TestTheSwingIsNotWhatNotices() {
+// rpg-toolkit#1083 put the standing consult inside the composition's own Record,
+// and this seam moved to meet it: the sheets the swing changed are written back
+// BEFORE the outcome is recorded, because the capability answering the
+// composition's question reads those sheets (see Manager.Attack).
+//
+// So the whole scene is one verb. Nobody walks, nobody ticks, nobody asks.
+func (s *DeathTestSuite) TestTheSwingNoticesItsOwnKill() {
 	s.dropTheSkeleton()
 
-	s.Empty(s.eventsOfKind(session.EventDowned),
-		"the blow is recorded; nobody has noticed it yet")
-	s.Empty(s.eventsOfKind(session.EventFightEnded),
-		"and a fight nobody has looked at has not ended")
+	s.NotEmpty(s.eventsOfKind(session.EventDowned),
+		"the blow is recorded, and the same call notices what the blow did")
+	s.NotEmpty(s.eventsOfKind(session.EventFightEnded),
+		"and the fight it ended is over")
 
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Equal(session.ClockTurn, turn.Clock, "alice is still in a fight with a downed skeleton")
+	s.Equal(session.ClockWorld, turn.Clock,
+		"alice is free-roaming, and the party never had to move to find out")
 }
 
-// TestTheNextSightRefreshSaysDowned is the headline: the world looks, and the
-// stream carries the death.
+// TestEveryMemberHearsTheDeath is the headline: the stream carries the death, on
+// the swing that caused it.
 //
-// Bob is behind a solid wall and takes one step for reasons of his own. That is
-// enough — the consult is not scoped to whoever moved, so a member downed
-// anywhere on the map is noticed by anybody's refresh.
+// The audience is not scoped to whoever swung — a member downed anywhere on the
+// map is news to everybody, including bob, who is behind a solid wall and did
+// nothing at all.
 //
 // The event kind is EventDowned while the beat inside it still says "down":
 // that asymmetry is the ruling, and asserting both here is what would notice if
 // either half drifted.
-func (s *DeathTestSuite) TestTheNextSightRefreshSaysDowned() {
+func (s *DeathTestSuite) TestEveryMemberHearsTheDeath() {
 	s.dropTheSkeleton()
-	s.stream.published = nil
-
-	s.bobSteps()
 
 	down := s.eventsOfKind(session.EventDowned)
 	s.Require().Len(down, 3, "every member hears it: alice, bob, and the skeleton's own audience")
@@ -240,16 +244,27 @@ func (s *DeathTestSuite) TestTheNextSightRefreshSaysDowned() {
 	s.Equal(map[string]bool{"alice": true, "bob": true, "skeleton": true}, heard)
 }
 
-// TestTheLastOneDownedEndsTheFightByDefeat is the slice's own sentence.
+// TestTheDeathIsNotAnnouncedTwice is the story-ledger dedup surviving the trip
+// to a client, which is the thing that makes a second consult site SAFE.
 //
-// Nobody called Dissolve. The only verb in this scene is bob's step, and the
-// ending is delivered by that step's own fan-out — which is what the reset
-// before it makes assertable rather than merely true.
-func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
+// The swing notices, and then bob takes an ordinary step that consults again. A
+// table that heard the skeleton fall twice would render it twice.
+func (s *DeathTestSuite) TestTheDeathIsNotAnnouncedTwice() {
 	s.dropTheSkeleton()
-	s.stream.published = nil
+	s.Require().Len(s.eventsOfKind(session.EventDowned), 3)
 
 	s.bobSteps()
+
+	s.Len(s.eventsOfKind(session.EventDowned), 3, "one body, announced once")
+	s.Len(s.eventsOfKind(session.EventFightEnded), 3, "and one ending")
+}
+
+// TestTheLastOneDownedEndsTheFightByDefeat is the slice's own sentence.
+//
+// Nobody called Dissolve, and nobody walked either. The only verb in this scene
+// is alice's swing, and the ending rides out on that swing's own fan-out.
+func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
+	s.dropTheSkeleton()
 
 	ended := s.eventsOfKind(session.EventFightEnded)
 	s.Require().NotEmpty(ended, "the last one down ends the fight")
@@ -265,6 +280,33 @@ func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 	s.Equal(session.ClockWorld, turn.Clock, "alice is free-roaming again, and nobody asked for that")
 }
 
+// TestTheBeatOrderReachesTheClientAsCauseThenEffect is the composition's
+// ordering law arriving where a table actually reads it.
+//
+// The strike, the body, the ending — in that order, in one response's worth of
+// events. A client renders in sequence order, so an ending delivered ahead of
+// the death that caused it would narrate the fight as won before anybody fell.
+func (s *DeathTestSuite) TestTheBeatOrderReachesTheClientAsCauseThenEffect() {
+	s.dropTheSkeleton()
+
+	var kinds []session.EventKind
+	for _, event := range s.stream.published {
+		if event.Recipient != "alice" {
+			continue
+		}
+		switch event.Kind {
+		case session.EventStruck, session.EventDowned, session.EventFightEnded:
+			kinds = append(kinds, event.Kind)
+		default:
+		}
+	}
+
+	s.Require().GreaterOrEqual(len(kinds), 3)
+	s.Equal([]session.EventKind{session.EventDowned, session.EventFightEnded}, kinds[len(kinds)-2:],
+		"the last strike, then the body, then the ending the body explains")
+	s.Equal(session.EventStruck, kinds[len(kinds)-3])
+}
+
 // TestTheEncounterOutlivesTheFight is ruled fork (c) surviving the seam, and
 // ruled fork (a) with it.
 //
@@ -274,7 +316,6 @@ func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 // answerable by Where, and walkable past.
 func (s *DeathTestSuite) TestTheEncounterOutlivesTheFight() {
 	s.dropTheSkeleton()
-	s.bobSteps()
 
 	ctx := context.Background()
 
@@ -290,19 +331,27 @@ func (s *DeathTestSuite) TestTheEncounterOutlivesTheFight() {
 
 // TestTheSurvivorWalksAgain is the consequence a player actually feels.
 //
-// Alice was refused every free-roam verb with ErrInBubble while the fight ran
-// (rpg-toolkit#1024). The fight is over, so the walk is hers again — and this
-// is the assertion that would fail if the ending were narrated without
-// actually re-homing anyone.
+// Alice is refused every free-roam verb with ErrInBubble while the fight runs
+// (rpg-toolkit#1024). Her own killing blow ends it, so the walk is hers on the
+// very next call — and this is the assertion that would fail if the ending were
+// narrated without actually re-homing anyone.
+//
+// The control moved. It used to sit AFTER the killing blow, because the fight
+// outlived it; it now has to sit before, which is the whole change stated as a
+// scene rather than as a claim.
 func (s *DeathTestSuite) TestTheSurvivorWalksAgain() {
-	s.dropTheSkeleton()
+	s.startCrypt()
+	s.spawnSkeleton()
 
 	_, blocked := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
 	})
-	s.Require().ErrorIs(blocked, session.ErrInBubble, "the world has not looked yet")
+	s.Require().ErrorIs(blocked, session.ErrInBubble, "control: mid-fight, she is not free to walk")
 
-	s.bobSteps()
+	for i := 0; i < 3 && s.storedHP("skeleton") > 0; i++ {
+		s.aliceSwings()
+	}
+	s.Require().Zero(s.storedHP("skeleton"))
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
@@ -312,14 +361,15 @@ func (s *DeathTestSuite) TestTheSurvivorWalksAgain() {
 
 // TestNothingReachesAClientUnnamed is the whole scene's guard rail.
 //
-// Two new beats arrive on this path — the death and the ending — and either one
-// reaching a client as EventUnknown would leave a table unable to narrate the
-// moment the fight was won.
+// Three beats now leave one Attack — the strike, the death, and the ending — and
+// any of them reaching a client as EventUnknown would leave a table unable to
+// narrate the moment the fight was won.
+//
+// It is also the answer to the question rpg-toolkit#1083 asked of this seam:
+// whether the new call site needs new vocabulary. It does not. The beats are the
+// same kinds kindOf already names; only the verb they arrive on changed.
 func (s *DeathTestSuite) TestNothingReachesAClientUnnamed() {
 	s.dropTheSkeleton()
-	s.stream.published = nil
-
-	s.bobSteps()
 
 	s.Require().NotEmpty(s.stream.published)
 	for _, event := range s.stream.published {
@@ -347,6 +397,97 @@ func (s *DeathTestSuite) duelAtZero() {
 		s.Require().NoError(err)
 	}
 	s.Require().Zero(s.characters.byID["alice"].HitPoints, "alice is down")
+}
+
+// TestTheKillingBlowNoticesACHARACTERToo is the other store's half of the same
+// ordering, and it is the half that could rot silently.
+//
+// The seam answers about monsters out of the session record — aliased, so a
+// sheet this verb folded in is what the next consult reads — and about players
+// out of the HOST'S REPOSITORY, which is only current once SaveCharacter has run.
+// A version of Attack that folded the NPC sheets early and left the character
+// write where it was would pass every skeleton scene above and fail here.
+//
+// Two characters, because Attack compiles character attackers only: bob is the
+// only thing in this package that can drive alice to zero.
+func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
+	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+	s.stream.published = nil
+
+	for i := 0; i < 4 && s.characters.byID["alice"].HitPoints > 0; i++ {
+		_, aerr := s.mgr.Attack(context.Background(), &session.AttackInput{
+			Session: "sess", Attacker: "bob", Target: "alice",
+		})
+		s.Require().NoError(aerr)
+	}
+	s.Require().Zero(s.characters.byID["alice"].HitPoints)
+
+	down := s.eventsOfKind(session.EventDowned)
+	s.Require().NotEmpty(down, "the blow that dropped her is the blow that says so")
+	s.Equal("alice", s.payloadOf(down[0])["member"])
+}
+
+// brokenAfterWriting is a repository that answers reads until something is
+// written to it, and then stops — the shape of a store that goes away
+// mid-verb, at the one moment this verb now has something durable to lose.
+type brokenAfterWriting struct {
+	*fakeCharacters
+	wrote bool
+}
+
+var errStoreWentAway = errors.New("the character store went away")
+
+func (b *brokenAfterWriting) SaveCharacter(ctx context.Context, data *character.Data) error {
+	b.wrote = true
+
+	return b.fakeCharacters.SaveCharacter(ctx, data)
+}
+
+func (b *brokenAfterWriting) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+	if b.wrote {
+		return nil, errStoreWentAway
+	}
+
+	return b.fakeCharacters.GetCharacter(ctx, id)
+}
+
+// TestASwingThatCannotRecordStillNamesTheSheetItWrote is rpg-toolkit#1056's
+// lesson held against the new ordering, and it is why that ordering needed a
+// guard rather than just a comment.
+//
+// The sheets are now written BEFORE the outcome is recorded, so a Record that
+// fails has damage already on disk. A caller told only "it failed" would retry a
+// swing whose damage landed — which is the difference between repair and retry
+// that the report exists to carry.
+func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
+	chars := &brokenAfterWriting{
+		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
+	}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: chars, Events: s.stream,
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "bob", Target: "alice",
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, errStoreWentAway, "the host's own failure is not flattened into ours")
+
+	var reported *session.SaveError
+	s.Require().ErrorAs(err, &reported,
+		"a swing that wrote a sheet and then failed reports what it wrote")
+	s.NotEmpty(reported.Report.Written, "and names it, so the caller repairs rather than retries")
+	s.Contains(reported.Report.Failed, "encounter:world", "while the world it describes did not land")
 }
 
 // TestADownedActorCannotSwing is rpg-toolkit#845 refused by name.

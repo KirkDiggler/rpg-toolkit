@@ -86,13 +86,30 @@ type AttackOutput struct {
 // the one place it will go — see the comment at the resolution call below —
 // and pinned by TestNothingSpendsYet so it cannot be mistaken for a decision.
 //
-// # How it runs
+// # How it runs, and why the order is not a style choice
 //
 // The world goes into resolution as data and a different world comes back, so
 // the scope adopts the returned one before anything else touches it
-// ([Manager.adopt] carries that invariant). The outcome is then recorded on the
-// world the interaction produced — a consequence lands after its cause — and
-// every dirty sheet is written back.
+// ([Manager.adopt] carries that invariant). Every dirty sheet is then written
+// back, and only THEN is the outcome recorded on the world the interaction
+// produced — a consequence landing after its cause.
+//
+// THE SHEETS GO FIRST, and that is the whole of this seam's half of
+// rpg-toolkit#1083. The composition's Record now consults who is standing, which
+// it does by asking [standingSeam] — and that seam answers out of the two stores
+// this verb writes: the session record for NPCs, the host's repository for
+// characters. Neither is current until [Manager.saveDirty] has run.
+// [resolution] does not mutate what it is handed (its dirtyMonsters builds a
+// fresh sheet), so recording first would ask the world about PRE-SWING hit
+// points and the killing blow would be invisible to its own beat — which is the
+// exact defect #1083 exists to close, reproduced one layer up.
+//
+// The cost is stated rather than hidden: a Record that fails now fails with the
+// damage already durable. That is rpg-toolkit#1056's shape, so it is answered
+// the way #1056 was — the refusal carries a [SaveError] naming the sheets that
+// landed and the world that did not, and TestASwingThatCannotRecordStillNamesTheSheetItWrote
+// is what keeps that true. A caller told only "it failed" would retry a swing
+// whose damage is on disk.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet, ErrNoCharacter,
@@ -207,13 +224,15 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
-	recorded, err := scope.enc.Record(recordFor(in, struck))
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", translate(err))
-	}
-
 	if err := m.saveDirty(ctx, scope, out); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
+	}
+
+	// And now the beat, on a world whose sheets say what the swing did — see the
+	// godoc for why this is not the other way round.
+	recorded, err := scope.enc.Record(recordFor(in, struck))
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -232,6 +251,38 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
+}
+
+// reportUnrecorded turns a failure AFTER the sheets landed into one a caller can
+// repair from, and leaves every other failure exactly as it was.
+//
+// This is rpg-toolkit#1056's rule reaching one more call site. Recording is the
+// last fallible step before the commit, and since the sheets are now written
+// ahead of it (see [Manager.Attack]), a bare error would say "nothing happened"
+// about a swing whose damage is durable. The host reads that as safe to retry,
+// retries, and applies the damage twice.
+//
+// The world is named as FAILED because that is what a caller has to act on: the
+// sheets describe a blow the persisted world has no beat for. It was never
+// attempted rather than attempted and refused, and the repair is the same either
+// way — which is why it is reported the same way persist reports its own
+// world-save failure rather than given a vocabulary of its own.
+//
+// Nothing written means nothing to report, and the plain error is the better
+// answer: a report of an empty ledger is noise, and wrapping would hand a host
+// ErrSaveFailed for a verb that saved nothing.
+func reportUnrecorded(scope *writeScope, err error) error {
+	if len(scope.written) == 0 {
+		return err
+	}
+
+	return &SaveError{
+		Report: SaveReport{
+			Written: append([]string(nil), scope.written...),
+			Failed:  []string{"encounter:" + scope.encounter},
+		},
+		Err: err,
+	}
 }
 
 // translateResolution maps the resolution module's sentinels onto this
@@ -384,6 +435,12 @@ func (m *Manager) castFor(
 // they are folded into it and the record is marked touched. This is the first
 // verb in the package that writes a character at all — damage has to persist —
 // and the no-clobber pin gained a row for it rather than losing its guard.
+//
+// IT RUNS BEFORE THE OUTCOME IS RECORDED, and that is a correctness ordering
+// rather than a convenience: the composition's Record consults who is standing,
+// [standingSeam] answers out of exactly these two stores, and a consult run
+// against sheets this verb has not written back yet is a consult about a world
+// that no longer exists. See [Manager.Attack].
 func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolution.Output) error {
 	// The report names what LANDED as well as what did not (S6). A sheet
 	// written before the failure is durable, and a caller told only about the
