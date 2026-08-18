@@ -190,6 +190,32 @@ func (s *StepSuite) TestAStepThroughADoorwayIsACrossing() {
 	s.Equal(farSide, s.beatCell(beat))
 }
 
+// TestADoorwayIsCrossableBothWays pins the half a fixture will not reach by
+// accident: the way BACK.
+//
+// A connection is declared with a From room and a To room, and every scene in
+// this package walks it the declared way. Match only that direction and every
+// crossing test still passes while every door in the game becomes one-way —
+// caught here by a surviving mutant, which is exactly the "locked, one-way, or
+// wide doorway" rule #1059 says must land in one place rather than two.
+func (s *StepSuite) TestADoorwayIsCrossableBothWays() {
+	threshold := stepAbs(stepWestOrigin, stepDoorWestLocal)
+	farSide := stepAbs(stepEastOrigin, stepDoorEastLocal)
+
+	_, err := s.enc.Step(&encounter.StepInput{Member: alice, To: threshold})
+	s.Require().NoError(err)
+	_, err = s.enc.Step(&encounter.StepInput{Member: alice, To: farSide})
+	s.Require().NoError(err)
+
+	// And back through the same door, against the direction it was declared in.
+	out, err := s.enc.Step(&encounter.StepInput{Member: alice, To: threshold})
+	s.Require().NoError(err)
+	s.Equal(stepDoor, out.Crossing, "the same doorway carried her home")
+	s.Equal(farSide, out.Stepped.From)
+	s.Equal(threshold, out.Stepped.To)
+	s.Equal(threshold, s.standsAt(alice))
+}
+
 // TestAStepSpeaksTheMapAtBothEnds is the frame pin.
 //
 // Both chambers are anchored well away from the origin, so every cell has a
