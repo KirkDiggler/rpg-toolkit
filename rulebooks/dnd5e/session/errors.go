@@ -264,6 +264,35 @@ var (
 	// session itself never recorded.
 	ErrNoSheet = errors.New("member has no stored sheet")
 
+	// ErrDown is returned when a verb asks a member at zero hit points to ACT.
+	//
+	// A body is still a member — on the map, in the roster, recordable against,
+	// readable by Where and View (ruled fork (a) on rpg-toolkit#959) — so this
+	// is not "no such member" and must never be mistaken for it. It is narrower
+	// than that and narrower than ErrClosed: the world is fine, the member is
+	// there, and this particular member cannot do this particular thing.
+	//
+	// It reaches Attack and Move, which are the two verbs where a down member
+	// could still act. Inside a fight the swing already stops because the TURN
+	// ORDER stops (the composition splices a body out of it), but free roam has
+	// no turn order — so a downed character could walk, and could initiate,
+	// which is rpg-toolkit#845's shape reproduced on the new stack. The
+	// composition deliberately did not invent this refusal
+	// (rpg-toolkit#1077); it is ruled here, where the sheets are.
+	//
+	// NOT returned by the reads, and not by recording a blow ABOUT a down
+	// member. Reading a body's position and writing down the killing stroke are
+	// both things that must stay legal, and gating them would be a different
+	// ruling that nobody made.
+	//
+	// WHAT A PLAYER EXPERIENCES. Zero hit points has no exit in v1 — there are
+	// no death saves yet (ruled fork (b) on rpg-toolkit#959) — so a character
+	// who drops is refused these verbs for the rest of the session. That is the
+	// honest state of the game rather than an oversight, and it stops being
+	// permanent when saves arrive, additively, without this sentinel changing
+	// meaning.
+	ErrDown = errors.New("member is down")
+
 	// ErrBadAttack is returned when an attack cannot be compiled from the
 	// attacker's sheet — an empty hand, or a weapon the strike has no
 	// semantics for.

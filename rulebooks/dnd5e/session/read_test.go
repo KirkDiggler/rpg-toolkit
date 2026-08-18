@@ -50,6 +50,7 @@ func (s *ReadTestSuite) startWith(world *encounter.EncounterData) {
 // enough that a projection dropping any one field is visible.
 func hexWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{
@@ -290,7 +291,8 @@ func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
 // retention window, so a resume from sequence 1 can no longer be honoured.
 func trimmedWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 		},

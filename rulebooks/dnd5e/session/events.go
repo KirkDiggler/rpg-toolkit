@@ -199,6 +199,15 @@ func kindOf(payload []byte) EventKind {
 		return EventStruck
 	case "missed":
 		return EventMissed
+	// The third outcome beat, and the one nobody pushed. "down" is an
+	// OutcomeKind like the two above, but no caller can hand it to Record —
+	// the composition refuses that deliberately (rpg-toolkit#1077) and writes
+	// the beat itself when it notices a body. It is in this family rather than
+	// beside the clock beats because it carries the same tag, has the same
+	// audience, and is read by a client in the same breath as the strike that
+	// caused it.
+	case "down":
+		return EventDown
 	default:
 		return EventUnknown
 	}

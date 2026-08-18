@@ -231,7 +231,7 @@ func (m *Manager) open(ctx context.Context, sessionID string) (*encounter.Encoun
 	if err != nil {
 		return nil, err
 	}
-	return m.loadWorld(ctx, data.Encounter)
+	return m.loadWorld(ctx, data)
 }
 
 // loadSessionData fetches session state, translating the repository's
@@ -256,9 +256,9 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 	return data, nil
 }
 
-// loadWorld fetches and reconstitutes an encounter by ID.
-func (m *Manager) loadWorld(ctx context.Context, encID string) (*encounter.Encounter, error) {
-	enc, _, err := m.loadWorldWithBaseline(ctx, encID)
+// loadWorld fetches and reconstitutes the encounter a session points at.
+func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
+	enc, _, _, err := m.loadWorldWithBaseline(ctx, data)
 	return enc, err
 }
 
@@ -269,24 +269,35 @@ func (m *Manager) loadWorld(ctx context.Context, encID string) (*encounter.Encou
 // Read out of the blob that was loaded anyway, so it costs nothing. Anything
 // with a sequence at or above the baseline is news, which is how a verb knows
 // which beats to fan out without the composition having to report them.
+//
+// It also returns the standing capability it built, because a verb needs the
+// SAME one afterwards — to re-load a world that came back from a resolution
+// ([Manager.adopt]), and to ask about one member before letting them act
+// ([refuseIfDown]). Built once per verb and handed back rather than rebuilt at
+// each use, so there is exactly one answer to "which sheets is this call
+// reading" for the whole call.
 func (m *Manager) loadWorldWithBaseline(
-	ctx context.Context, encID string,
-) (*encounter.Encounter, uint64, error) {
+	ctx context.Context, data *SessionData,
+) (*encounter.Encounter, uint64, encounter.Standing, error) {
+	encID := data.Encounter
+
 	world, err := m.encounters.GetEncounter(ctx, encID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, 0, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
+			return nil, 0, nil, fmt.Errorf("%q: %w", encID, ErrNoEncounter)
 		}
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	if world == nil {
-		return nil, 0, fmt.Errorf(
+		return nil, 0, nil, fmt.Errorf(
 			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
+	standing := m.standingFor(ctx, data)
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
+		Standing:   standing,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot
@@ -295,9 +306,9 @@ func (m *Manager) loadWorldWithBaseline(
 		// every one of those is a module we intend to keep replaceable. %v
 		// hands whoever debugs it the whole account and hands a host nothing to
 		// match on but ours (S2).
-		return nil, 0, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
+		return nil, 0, nil, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
 	}
-	return enc, world.Log.NextSeq, nil
+	return enc, world.Log.NextSeq, standing, nil
 }
 
 // translate maps the composition's sentinels onto this package's own.
@@ -353,5 +364,39 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrNotInFight)
 	default:
 		return err
+	}
+}
+
+// causeOf translates the composition's account of why a fight ended into this
+// package's own sealed set.
+//
+// It exists because the answer must be DERIVED. A fight ends two ways now — a
+// party breaking off, and a side running out of people standing — so the cause
+// on a response has to come from what the world did rather than from what the
+// caller said it was doing. Echoing the input back is indistinguishable from
+// deriving it right up until the two can disagree, and as of rpg-toolkit#1078
+// they can.
+//
+// Being TOTAL is the point, and it is what earns [ByDefeat] its case here. The
+// composition keeps its own sealed set (it cannot import this one; this one
+// imports it), so the two are extended at the layer their callers live in, and
+// this is the seam between them. A translation that could not name defeat would
+// have to report it as something else.
+//
+// The default arm is a composition NEWER than this build, carrying a cause this
+// one has no name for. It is refused rather than flattened onto a cause we do
+// know, which is the mistake kindOf's doc warns about one file over: a silent
+// mapping onto the wrong value narrates the wrong thing forever, while a
+// refusal is noticed the first time it happens. ErrInvalidWorld is the sentinel
+// because the remedy is the host's and it is upstream of anything a caller can
+// retry — this build cannot read that world.
+func causeOf(cause encounter.DissolveCause) (DissolveCause, error) {
+	switch cause.Kind() {
+	case encounter.DissolveByDecision:
+		return ByDecision(), nil
+	case encounter.DissolveByDefeat:
+		return ByDefeat(), nil
+	default:
+		return nil, fmt.Errorf("unknown dissolve cause %q: %w", cause.Kind(), ErrInvalidWorld)
 	}
 }

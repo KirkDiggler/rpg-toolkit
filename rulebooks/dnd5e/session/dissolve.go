@@ -16,6 +16,9 @@ type DissolveKind string
 // DissolveByDecision is a fight the members chose to leave.
 const DissolveByDecision DissolveKind = "decision"
 
+// DissolveByDefeat is a fight one side stopped standing in.
+const DissolveByDefeat DissolveKind = "defeat"
+
 // DissolveCause is why a fight ended: a closed set, sealed the way
 // [saves.DCSource] is and for the same reason.
 //
@@ -59,6 +62,32 @@ type byDecision struct{}
 func (byDecision) Kind() DissolveKind { return DissolveByDecision }
 func (byDecision) isDissolveCause()   {}
 
+// ByDefeat is a fight that ended because a side stopped standing: the last
+// skeleton drops and there is nothing left to fight.
+//
+// THE CASE THIS TYPE WAS WAITING FOR, and it arrived the way its own doc said
+// it would — as another CALLER of this shape rather than as a second mechanism.
+// Nobody declares it. The composition consults the rulebook about who is
+// standing at every sight refresh, and a bubble left with nobody upright on one
+// side of it dissolves itself in that pass, with this cause (ruled fork (c) on
+// rpg-toolkit#959, built as rpg-toolkit#1078).
+//
+// It is the translation of the composition's own [encounter.ByDefeat]. Two
+// sealed sets rather than one shared type is unavoidable — the composition
+// cannot import this package, because this package imports it — so each is
+// extended at the layer its caller lives in, and causeOf is the seam between
+// them.
+//
+// Only the BUBBLE ends. The encounter stays open, the bodies stay on the map
+// and in the roster, and Exit still carries them out. A defeat is not an
+// ending; it is a fight running out of a side.
+func ByDefeat() DissolveCause { return byDefeat{} }
+
+type byDefeat struct{}
+
+func (byDefeat) Kind() DissolveKind { return DissolveByDefeat }
+func (byDefeat) isDissolveCause()   {}
+
 // DissolveInput ends the fight a member is in.
 type DissolveInput struct {
 	// Session is the session to act in.
@@ -73,6 +102,13 @@ type DissolveInput struct {
 	Member string
 
 	// Cause is why it is ending. Required.
+	//
+	// [ByDecision] is the only cause a caller can honestly declare, because
+	// this verb IS the decision. Defeat is something the world notices, and a
+	// caller who hands it in here is not believed: the answer reports what the
+	// world actually did, and a fight a caller ended is a fight the party chose
+	// to leave. Handing in the wrong cause does not fail the call and does not
+	// change the outcome — it simply does not survive contact with it.
 	Cause DissolveCause
 }
 
@@ -81,7 +117,8 @@ type DissolveOutput struct {
 	// Members are everyone who was in it, now back on the world clock.
 	Members []string `json:"members"`
 
-	// Cause is why it ended, echoed for a caller handling the response.
+	// Cause is why it ended, read off what the world did rather than off what
+	// the caller asked for. See [DissolveInput.Cause].
 	Cause DissolveKind `json:"cause"`
 
 	// Seq is the story sequence of the recorded beat.
@@ -139,6 +176,11 @@ func (m *Manager) Dissolve(ctx context.Context, in *DissolveInput) (*DissolveOut
 		return nil, fmt.Errorf("dissolve: %w", translate(err))
 	}
 
+	cause, err := causeOf(dissolved.Cause)
+	if err != nil {
+		return nil, fmt.Errorf("dissolve: %w", err)
+	}
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("dissolve: %w", err)
@@ -151,7 +193,7 @@ func (m *Manager) Dissolve(ctx context.Context, in *DissolveInput) (*DissolveOut
 
 	return &DissolveOutput{
 		Members:  members,
-		Cause:    in.Cause.Kind(),
+		Cause:    cause.Kind(),
 		Seq:      dissolved.Seq,
 		Saved:    report,
 		Delivery: delivery,

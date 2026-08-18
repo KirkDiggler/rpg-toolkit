@@ -50,6 +50,34 @@
 // RULEBOOK supplies the rule that turns it into an order. Neither the host nor
 // this package writes initiative.
 //
+// # The one question this package answers for the world
+//
+// The composition asks who is standing, and this package is what answers
+// (rpg-toolkit#1079). That looks at first like the charter breaking, and it is
+// worth reading closely, because it is the shape every future capability will
+// have.
+//
+// The composition cannot hold hit points — its go.mod cannot import the
+// rulebook, by law — so defeat is a fact it can only be TOLD. It takes a
+// capability: member IDs in, member IDs out. Something has to implement that,
+// and the only layer that both knows what a sheet is and holds every sheet for
+// the call in progress is this one.
+//
+// WHAT THIS PACKAGE CONTRIBUTES IS THE LOOKUP, NOT THE RULE. standing.go finds
+// sheets — a monster's in the session record, a character's behind the host's
+// repository — and hands each one to combat.IsDown, which is the rulebook's
+// answer and the only place a hit point is ever compared to anything. When a
+// monster's Undead Fortitude makes zero hit points survivable
+// (rpg-toolkit#977), that function changes and nothing here moves.
+//
+// Read the file and the charter still holds: no die, no modifier, no threshold.
+// A capability implemented here is this package doing what it has always done —
+// wiring the pieces together — with the rule kept where the rules live.
+//
+// What it does DECIDE is which verbs a body may still drive, and that is not a
+// rules question but a seam question: Attack and Move refuse a down actor
+// (ErrDown), the reads and the recording of outcomes do not. See ErrDown.
+//
 // # The suspension spine, and where it went
 //
 // S5 and S7 were laws here through v0.2.0: Pending was the one suspension

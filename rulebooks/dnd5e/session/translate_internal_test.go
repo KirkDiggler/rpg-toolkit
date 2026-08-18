@@ -109,3 +109,69 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		})
 	}
 }
+
+// unknownCause is a cause from a composition NEWER than this build.
+//
+// It is built by embedding a real one, and that is not a trick to get around
+// the seal — it is the only honest way to model the case, because the seal
+// really works. This package cannot declare a third cause: isDissolveCause is
+// unexported in the composition, so a hand-rolled struct does not satisfy the
+// interface and does not compile. Embedding borrows a genuine case's seal and
+// overrides only the answer, which is exactly the shape of the thing this arm
+// guards against: a value that satisfies the interface because the composition
+// made it, reporting a kind this build has no name for.
+//
+// That is not hypothetical. It is what THIS slice was: the composition grew
+// ByDefeat (rpg-toolkit#1078) and this package had to grow its twin. Had it not,
+// every defeat would have arrived here as an unrecognised kind.
+type unknownCause struct {
+	encounter.DissolveCause
+}
+
+func (unknownCause) Kind() encounter.DissolveKind { return "surrendered" }
+
+// TestCauseOfIsTotalOverTheCompositionsCauses is the cause translation's twin
+// of the two tables above, and it is asserting something they are not.
+//
+// Those tables are about what a host must NOT be able to reach. This one is
+// about completeness: a fight ends two ways, both of them arrive through this
+// one function, and a mapping that quietly answered "decision" for a fight lost
+// by defeat would narrate the wrong thing forever with nothing failing. That is
+// kindOf's documented hazard — silent degradation — and the difference here is
+// that this function can refuse instead.
+//
+// The defeat row cannot be driven through Manager.Dissolve, and that is not a
+// gap. The composition's Dissolve VERB is the decision, so it only ever reports
+// one cause; defeat reaches a client through the story, where the end-to-end
+// scene in death_test.go pins it. This is where the other half of the sealed
+// set is checked to exist and to map.
+func TestCauseOfIsTotalOverTheCompositionsCauses(t *testing.T) {
+	cases := []struct {
+		name string
+		in   encounter.DissolveCause
+		want DissolveKind
+	}{
+		{"the party broke off", encounter.ByDecision(), DissolveByDecision},
+		{"a side stopped standing", encounter.ByDefeat(), DissolveByDefeat},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := causeOf(tc.in)
+
+			require.NoError(t, err)
+			require.Equal(t, tc.want, out.Kind(),
+				"the composition's account, said in this package's own words")
+		})
+	}
+
+	t.Run("a cause this build has no name for", func(t *testing.T) {
+		out, err := causeOf(unknownCause{DissolveCause: encounter.ByDecision()})
+
+		require.Nil(t, out)
+		require.ErrorIs(t, err, ErrInvalidWorld,
+			"refused rather than flattened onto a cause we happen to know")
+		require.Contains(t, err.Error(), "surrendered",
+			"and the unrecognised cause is named, so the gap is findable")
+	})
+}

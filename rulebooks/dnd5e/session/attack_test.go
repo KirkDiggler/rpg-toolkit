@@ -89,6 +89,7 @@ const duelAC = 12
 func duelWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
+		Standing:   encEveryoneStanding{},
 		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
@@ -330,6 +331,7 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
+		Standing:   encEveryoneStanding{},
 		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
@@ -395,6 +397,7 @@ func (s *AttackTestSuite) TestAnEmptyHandIsRefused() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
+		Standing:   encEveryoneStanding{},
 		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
@@ -433,6 +436,7 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
+		Standing:   encEveryoneStanding{},
 		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
@@ -478,6 +482,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: encOrderAsGiven{},
+		Standing:   encEveryoneStanding{},
 		Field:      encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members:    placed,
 		Endings:    []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},

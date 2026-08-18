@@ -143,6 +143,19 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
+	// A body does not walk. Asked after the walk RESOLVES and before a single
+	// cell is entered, which is where R5 puts every other refusal: the path is
+	// validated whole first, so naming a member who is not here or a route that
+	// is not a walk still answers what it always answered, and a walk this
+	// refuses has moved nobody.
+	//
+	// Inside a fight this never fires, because a member in a bubble is refused
+	// the verb outright. It is free roam that needed it — there is no turn
+	// order there to have already taken the walker out.
+	if err = refuseIfDown(scope, "member", in.Member); err != nil {
+		return nil, fmt.Errorf("move: %w", err)
+	}
+
 	res, err := m.runWalk(scope, in.Member, walk)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)

@@ -72,6 +72,18 @@ func (loadedDice) Roll(_ context.Context, _ int) (int, error) { return 10, nil }
 
 // encOrderAsGiven is the same for the authored world this workbench builds
 // with the composition directly, before any session exists to own it.
+// encEveryoneStanding is the standing capability the authored world is BUILT
+// with: nobody is down when the scene is written.
+//
+// Construction only, like encOrderAsGiven beside it. Once the workbench hands
+// the blob to a session, the session supplies the real capability from the
+// sheets it holds (rpg-toolkit#1079) and this one is never consulted again.
+type encEveryoneStanding struct{}
+
+func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
+	return nil, nil
+}
+
 type encOrderAsGiven struct{}
 
 func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.MemberID, error) {
@@ -345,6 +357,7 @@ func drive(out *bytes.Buffer) error {
 // absolute space.
 func authoredCrypt() (*encounter.EncounterData, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "antechamber", Width: 6, Height: 6},

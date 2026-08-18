@@ -40,6 +40,7 @@ func TestAtlasMapSuite(t *testing.T) {
 // exactly what the first version of this file did.
 func backwardsWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "alpha", Width: 4, Height: 4, Origin: spatial.Position{X: 4, Y: 0}},

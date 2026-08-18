@@ -70,6 +70,7 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrInvalidData":   encounter.ErrInvalidData,
 	"encounter.ErrTrimmed":       encounter.ErrTrimmed,
 	"encounter.ErrNoInitiative":  encounter.ErrNoInitiative,
+	"encounter.ErrNoStanding":    encounter.ErrNoStanding,
 }
 
 // resolutionSentinels is every error value the resolution module exports.
@@ -87,6 +88,7 @@ var compositionSentinels = map[string]error{
 var resolutionSentinels = map[string]error{
 	"resolution.ErrNilInput":              resolution.ErrNilInput,
 	"resolution.ErrNoInitiative":          resolution.ErrNoInitiative,
+	"resolution.ErrNoStanding":            resolution.ErrNoStanding,
 	"resolution.ErrNoRoller":              resolution.ErrNoRoller,
 	"resolution.ErrNoMachine":             resolution.ErrNoMachine,
 	"resolution.ErrBadParticipant":        resolution.ErrBadParticipant,
@@ -418,6 +420,43 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 
 	err := s.swing(mgr)
 	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+}
+
+// TestADownActorIsRefusedInOurWords is the death lane's own refusal, and the
+// reason it belongs in this file is the two sentinels standing right behind it.
+//
+// The capability that answers "who is down" lives in this package, but the
+// question is the composition's, and the composition has two ways to complain
+// about the answer: encounter.ErrNoStanding if none was supplied, and
+// encounter.ErrNotMember if one names somebody who is not in the roster. Both
+// are reachable through a mis-wired seam rather than through a caller mistake —
+// which is exactly the kind of leak that arrives wearing a working feature's
+// clothes. A host that came to match on either would be coupled to the module
+// this seam exists to keep replaceable.
+//
+// So the refusal is driven for real: bob puts alice at zero hit points, and
+// alice is then refused the verbs a body cannot drive.
+func (s *SentinelSuite) TestADownActorIsRefusedInOurWords() {
+	mgr := s.armedDuel(newFakeCharacters(armedFighter("alice"), armedFighter("bob")))
+	ctx := context.Background()
+
+	for i := 0; i < 4; i++ {
+		_, err := mgr.Attack(ctx, &session.AttackInput{
+			Session: "sess", Attacker: "bob", Target: "alice",
+		})
+		s.Require().NoError(err)
+	}
+
+	_, moveErr := mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+	})
+	s.refusedInOurVocabulary(moveErr, session.ErrDown)
+
+	_, swingErr := mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob",
+	})
+	s.refusedInOurVocabulary(swingErr, session.ErrDown)
+	s.Contains(swingErr.Error(), "alice", "and the refusal still names who could not act")
 }
 
 // TestASpawnNamingAMalformedRef is the third module and the second door.

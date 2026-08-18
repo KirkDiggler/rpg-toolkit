@@ -47,6 +47,7 @@ func (s *EventsTestSuite) SetupTest() {
 // vault, so one member is genuinely unable to perceive what the others do.
 func twoRoomParty(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "corridor", Width: 8, Height: 8},

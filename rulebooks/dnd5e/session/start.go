@@ -76,9 +76,16 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	// The loaded encounter is deliberately discarded. This is a validation
 	// call, and the manager holds no domain state between verbs (S1); the next
 	// verb loads its own.
+	// The capability is supplied over NO session record, which is the honest
+	// answer at this moment rather than a shortcut: no session exists yet, so
+	// nothing has been spawned and there are no session-scoped sheets to read.
+	// A real one is built anyway — capabilities are supplied, never defaulted,
+	// and handing over a stand-in here would be a second answer to a question
+	// that has one.
 	if _, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *in.World,
 		Initiative: m.initiative,
+		Standing:   m.standingFor(ctx, nil),
 	}); err != nil {
 		// The reason as TEXT, our sentinel as the only thing to match on. A
 		// blob that will not load fails several modules deep, and every one of

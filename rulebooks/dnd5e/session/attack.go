@@ -135,13 +135,22 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
 	}
 
+	// A body does not swing. Asked AFTER the roster checks, so naming somebody
+	// who is not here is still ErrNoMember — being down is a fact about a
+	// member, and it means nothing about an ID that is not one. Asked about the
+	// ATTACKER alone: a down target is refused nowhere, deliberately (see
+	// refuseIfDown).
+	if err := refuseIfDown(scope, "attacker", in.Attacker); err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+
 	// A member with no stored sheet cannot be swung at: there is nothing to
 	// read an armour class off and nothing for damage to land on. Authored
 	// content placed straight into a world has no sheet until something spawns
 	// it, so this is reachable and worth naming here — the alternative is the
 	// strike failing later, further from the cause.
 	if kinds[in.Target] == encounter.MemberKind(KindMonster) {
-		if _, ok := m.storedNPC(scope, in.Target); !ok {
+		if _, ok := npcSheet(scope.data, in.Target); !ok {
 			return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrNoSheet)
 		}
 	}
@@ -168,6 +177,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		World:        scope.enc.ToData(),
 		Participants: cast,
 		Initiative:   m.initiative,
+		Standing:     scope.standing,
 		Machine: resolution.NewStrike(&resolution.StrikeInput{
 			AttackerID: in.Attacker,
 			TargetID:   in.Target,
@@ -338,15 +348,6 @@ func (m *Manager) compileAttack(ctx context.Context, attacker string) (resolutio
 // is the effect's own predicate (ADR-0038). A bard three cells away whose
 // Bless is running has to be in the room for their subscription to fire, and
 // deciding they are irrelevant here would be this package deciding a rule.
-// storedNPC finds an NPC's sheet in the session record.
-func (m *Manager) storedNPC(scope *writeScope, id string) (*monster.Data, bool) {
-	for i := range scope.data.NPCs {
-		if scope.data.NPCs[i].ID == id {
-			return &scope.data.NPCs[i], true
-		}
-	}
-	return nil, false
-}
 
 func (m *Manager) castFor(
 	ctx context.Context, scope *writeScope, roster []encounter.Member,

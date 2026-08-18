@@ -324,6 +324,23 @@ const (
 	// EventMissed reports that an attack did not land. See EventStruck.
 	EventMissed EventKind = "missed"
 
+	// EventDown reports that a member is at zero hit points.
+	//
+	// The world NOTICED it; nobody announced it. There is no down verb and no
+	// way to push this beat in — the composition asks the rulebook who is
+	// standing at every sight refresh and narrates what it learns
+	// (rpg-toolkit#1077), so this arrives on whatever verb happened to refresh
+	// sight, which is frequently not the verb that dealt the damage.
+	//
+	// Kind and who, and nothing else. Hit points are not on the wire here: what
+	// a client renders is a body, and how much damage produced it is a separate
+	// question with its own answer (ruled fork (d) on rpg-toolkit#959).
+	//
+	// It is in the same family as EventStruck and EventMissed, tagged the same
+	// way and delivered to the same audience, because a client reads all three
+	// side by side while narrating one exchange.
+	EventDown EventKind = "down"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
