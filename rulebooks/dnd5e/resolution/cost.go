@@ -98,9 +98,10 @@ type Turn struct {
 // content defect rather than an actor who ran out — and the two must not reach
 // a client as the same refusal.
 //
-// What it deliberately does not require is a price at all. A nil cost never
-// reaches here, and a nil profile is a free action: that is the gate's shipped
-// semantics one layer down, not a default invented at this seam.
+// What it deliberately does not require is a price at all. A nil cost reaches
+// this method and leaves it legal, and so does a nil profile: both are free
+// actions, which is the gate's shipped semantics one layer down rather than a
+// default invented at this seam.
 func (c *Cost) validate() error {
 	if c == nil {
 		return nil
