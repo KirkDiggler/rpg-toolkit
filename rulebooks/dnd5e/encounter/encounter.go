@@ -1468,7 +1468,18 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		payload["connection"] = action.connection
 	}
 
-	beatBytes, _ := json.Marshal(payload)
+	// PROPAGATED, not discarded. Every movement beat in this module used to
+	// build its own payload and drop this error on the floor, which writes a
+	// nil payload into the story and calls it a success — a beat a host reads
+	// as an empty object rather than as a movement. It is unreachable in
+	// practice (the payload is two strings and a position of finite float64s,
+	// and construction refuses NaN and ±Inf), and it is one line here because
+	// the four verbs now share one writer. clocks.go and outcome.go already
+	// propagate theirs; this is the movement half catching up.
+	beatBytes, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshal %s beat: %w", action.kind, err)
+	}
 
 	appendOut, err := e.appendBeat(&record.AppendInput{
 		At:       at,

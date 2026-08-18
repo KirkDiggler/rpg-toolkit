@@ -187,7 +187,18 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		}, nil
 	}
 
-	connection, ok := e.doorwayFrom(member, to)
+	// Where the member stands, resolved BEFORE the doorway lookup so that a
+	// failure to answer that question is reported as itself. Folding it into
+	// the lookup let "this member is not placed in any room I know" come back
+	// as ErrNoCrossing — a refusal that names a door, for a member who has no
+	// position at all, sending whoever reads it to the map instead of to the
+	// roster.
+	local, cerr := e.cellOf(member)
+	if cerr != nil {
+		return executedAction{}, cerr
+	}
+
+	connection, ok := e.doorwayFrom(e.absoluteOf(member.Room, local), to)
 	if !ok {
 		return executedAction{}, fmt.Errorf(
 			"member %s: no doorway joins where they stand to %v: %w", member.ID, to, ErrNoCrossing)
@@ -223,19 +234,19 @@ func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedA
 	return action, true
 }
 
-// doorwayFrom finds the connection joining where a member stands to the given
-// absolute cell, in either direction — a doorway is crossable both ways.
+// doorwayFrom finds the connection joining two absolute cells, in either
+// direction — a doorway is crossable both ways.
 //
-// Returns false when no connection joins the two, which is what makes a step
-// between rooms that merely TOUCH refuse: W2 lets two rooms share an edge
-// without a door, so absolute adjacency alone is not permission to cross.
-func (e *Encounter) doorwayFrom(member *memberRecord, to spatial.Position) (string, bool) {
-	local, err := e.cellOf(member)
-	if err != nil {
-		return "", false
-	}
-	from := e.absoluteOf(member.Room, local)
-
+// Returns false when no connection joins the two, and that is the ONLY thing
+// it can mean. It used to take the member and read their cell itself, which
+// gave it a second way to answer false — the roster and the field disagreeing
+// about where somebody is — indistinguishable from the first at the call site.
+// A lookup with nothing to fail at cannot conflate anything.
+//
+// False is what makes a step between rooms that merely TOUCH refuse: W2 lets
+// two rooms share an edge without a door, so absolute adjacency alone is not
+// permission to cross.
+func (e *Encounter) doorwayFrom(from, to spatial.Position) (string, bool) {
 	for _, c := range e.connectionsInput {
 		near := e.absoluteOf(c.From, c.FromPosition)
 		far := e.absoluteOf(c.To, c.ToPosition)
