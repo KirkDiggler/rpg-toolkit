@@ -144,6 +144,21 @@ type trigger struct {
 // watching" without anything forming — cannot arise: the step that created the
 // watching was itself classified, and either formed a bubble or was a drop.
 //
+// STANDING IS THE ONE HOLE IN THAT INDUCTION, and it is worth stating rather
+// than discovering. A down member is on no side (see sidesInContactOrder), so
+// awareness created while they were down was classified as nothing — and if
+// they were later reported standing again, that awareness is already Refreshed
+// rather than FirstContact and will never trigger. A revived monster could
+// stand in plain sight of a player and start no fight until somebody moves.
+//
+// Left open on purpose. Ruled fork (b) on rpg-toolkit#959 is that zero hit
+// points has no exit in v1 — death saves are deferred — so recovery is not a
+// path anything can currently take, and building against it would be untestable
+// behaviour shipped on faith. It is the same call contactDrop above documents
+// for the same reason. When recovery becomes real, the fix belongs where the
+// invariant says it does: in how percepts are PRODUCED, not in how they are
+// consumed here.
+//
 // # Precedence
 //
 // Within one pass, any spotted or mutual pair forms the bubble, and the drop's
