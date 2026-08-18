@@ -1,0 +1,131 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package session
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
+
+// move_internal_test.go pins the two claims that let the walk stop resolving
+// rooms for itself (rpg-toolkit#1059).
+//
+// Both are about what the seam NO LONGER needs to know, which is exactly the
+// kind of claim that is invisible from outside: the verb's behaviour is
+// identical either way, and only a test aimed at the reasoning can say why the
+// deletion was safe rather than lucky.
+
+// walkOrderAsGiven and walkEveryoneStanding are the two capabilities every
+// encounter needs, in their most boring form. The external test package has its
+// own; these tests are internal and cannot see them.
+type walkOrderAsGiven struct{}
+
+func (walkOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+	return members, nil
+}
+
+type walkEveryoneStanding struct{}
+
+func (walkEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
+	return nil, nil
+}
+
+// walkWorld is two rooms of DIFFERENT sizes, anchored away from the origin.
+// Different sizes on purpose: the grid this seam builds used to take the
+// walker's own room's span, so a fixture whose rooms agree could not tell a
+// span that mattered from one that never did.
+func walkWorld(t *testing.T, family spatial.GridShape) *encounter.Encounter {
+	t.Helper()
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: walkOrderAsGiven{}, Standing: walkEveryoneStanding{},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+			{ID: "hall", Width: 4, Height: 4, Grid: family, Origin: spatial.Position{X: 30, Y: 40}},
+			{ID: "annex", Width: 12, Height: 12, Grid: family, Origin: spatial.Position{X: 60, Y: 40}},
+		}},
+		Members: []encounter.MemberInput{{
+			ID: "alice", Kind: encounter.KindPlayer, Room: "hall",
+			Position: spatial.Position{X: 1, Y: 1},
+		}},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	return enc
+}
+
+// TestTheAdjacencyGridIsSpanIndependent is the claim that lets gridOf ask the
+// composition for a FAMILY and nothing else.
+//
+// The seam used to fetch a whole Atlas per Move — documented O(total cells),
+// measured at ~128MB and tens of milliseconds at the legal field budget — and
+// the only thing it wanted from all that was one room's grid family and its
+// width and height. The width and height were never load-bearing: adjacency is
+// Distance <= 1 in every family, and no family's Distance consults the grid's
+// dimensions. Cells hundreds of units outside the span the grid was built with
+// therefore answer exactly as cells inside it do.
+//
+// If that ever stops being true, this test fails and gridOf has to start
+// carrying a real span again — which is the point of asserting it here rather
+// than trusting a comment.
+func TestTheAdjacencyGridIsSpanIndependent(t *testing.T) {
+	grid, err := gridOf(walkWorld(t, spatial.GridShapeSquare))
+	require.NoError(t, err)
+
+	// Far outside adjacencySpan, in both rooms and in the void between them.
+	require.True(t, grid.IsAdjacent(spatial.Position{X: 31, Y: 41}, spatial.Position{X: 32, Y: 42}),
+		"a diagonal step deep inside the hall")
+	require.True(t, grid.IsAdjacent(spatial.Position{X: 64, Y: 47}, spatial.Position{X: 65, Y: 47}),
+		"and one deep inside the annex, whose span is three times the hall's")
+	require.False(t, grid.IsAdjacent(spatial.Position{X: 31, Y: 41}, spatial.Position{X: 33, Y: 41}),
+		"two cells apart is still two cells apart")
+}
+
+// TestTheAdjacencyGridUsesCubeDistanceOnHex is the discriminating half, and it
+// is the reason gridOf asks for the family at all rather than hard-coding one
+// distance formula.
+//
+// Axial (1,1) is cube distance 2 from the origin — two steps, not one — while
+// Chebyshev distance calls it 1. Substituting the square formula for the hex
+// one passes almost every hex fixture and fails only on the diagonals, which is
+// a previously-shipped defect class in this codebase.
+func TestTheAdjacencyGridUsesCubeDistanceOnHex(t *testing.T) {
+	grid, err := gridOf(walkWorld(t, spatial.GridShapeHex))
+	require.NoError(t, err)
+
+	require.True(t, grid.IsAdjacent(spatial.Position{X: 30, Y: 40}, spatial.Position{X: 31, Y: 40}),
+		"one step east")
+	require.False(t, grid.IsAdjacent(spatial.Position{X: 30, Y: 40}, spatial.Position{X: 31, Y: 41}),
+		"axial (1,1) away is TWO hex steps, whatever Chebyshev says")
+}
+
+// TestStandsAtReadsTheRosterRow pins the round trip that finding 3 deleted.
+//
+// Asking where somebody is used to mean: read the roster (which already
+// carries a dungeon-absolute cell), Locate that cell down to a room and a
+// room-local one, then project it straight back up again through onMap. Two
+// composition queries and a silent-fallback helper to return the number the
+// first query already had.
+func TestStandsAtReadsTheRosterRow(t *testing.T) {
+	enc := walkWorld(t, spatial.GridShapeSquare)
+
+	at, err := standsAt(enc, "alice")
+	require.NoError(t, err)
+	require.Equal(t, spatial.Position{X: 31, Y: 41}, at,
+		"hall-local (1,1) through the hall's (30,40) anchor, as the roster already reported it")
+
+	members, err := enc.Members()
+	require.NoError(t, err)
+	require.Equal(t, members[0].Position, at, "which is the roster row itself, unmodified")
+}
+
+// TestStandsAtRefusesSomebodyWhoIsNotHere keeps the verb's own sentinel on the
+// path a caller can actually drive.
+func TestStandsAtRefusesSomebodyWhoIsNotHere(t *testing.T) {
+	_, err := standsAt(walkWorld(t, spatial.GridShapeSquare), "nobody")
+	require.ErrorIs(t, err, ErrNoMember)
+}

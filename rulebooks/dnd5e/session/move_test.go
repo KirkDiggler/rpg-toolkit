@@ -344,6 +344,46 @@ func (s *MoveTestSuite) TestAStepOntoNoCellUsesOurSentinelNotTheirs() {
 		"the composition's account of why survives, even though its sentinel does not")
 }
 
+// TestAMidWalkRefusalMovesNobody guards the one thing that narrowed when the
+// walk stopped resolving the map for itself (rpg-toolkit#1059).
+//
+// "A cell no room owns" used to be caught while the path was being resolved,
+// before anybody moved. It is now caught as that step is TAKEN, because
+// catching it earlier means the seam deciding what the composition decides.
+// The caller must not be able to tell: a refused walk still moves nobody and
+// tells nobody, because the encounter that moved in memory is discarded
+// unsaved.
+//
+// So the assertions are about the WORLD, not the error. Alice is asked to take
+// a legal step and then step off the map; the legal one really does execute
+// against the in-memory encounter, and none of it may survive.
+func (s *MoveTestSuite) TestAMidWalkRefusalMovesNobody() {
+	s.startCorridor()
+	ctx := context.Background()
+
+	before, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.stream.published = nil // setup beats predate the walk
+
+	// (1,1) → (0,0) is a real step. (-1,-1) is off the map.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 0, Y: 0}, {X: -1, Y: -1}},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrBadPosition)
+
+	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 1, Y: 1}, where.Position,
+		"she is where she started: the step that DID execute was discarded with the encounter")
+
+	after, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Len(after, len(before), "no beat survived a walk that failed")
+	s.Empty(s.stream.published, "and nothing reached a client")
+}
+
 // TestAZeroDistanceStepIsRefused pins rpg-toolkit#1060: the cell the walker
 // already stands on is not a step.
 //

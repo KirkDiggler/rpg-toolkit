@@ -38,6 +38,12 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
 		{"unknown connection", encounter.ErrNoConnection, ErrNoConnection},
+		// The step verb's own refusal (rpg-toolkit#1059): the destination cell
+		// is real, in the next room, and nothing joins it to where the walker
+		// stands. It arrives through Move and MUST NOT arrive as ErrBadPosition
+		// — "off the map" and "no way through" send a caller to different
+		// places, and the walk's own test drives exactly this one.
+		{"no doorway", encounter.ErrNoCrossing, ErrNoCrossing},
 		{"malformed connection", encounter.ErrBadConnection, ErrNoConnection},
 		{"bad placement", encounter.ErrBadPlacement, ErrBadPosition},
 		{"already in a fight", encounter.ErrInBubble, ErrInBubble},
