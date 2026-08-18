@@ -14,6 +14,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -261,4 +262,160 @@ func (s *OneMapSuite) TestNothingOnThePlaySurfaceNamesARoom() {
 	// half that is about rooms specifically.
 	s.NotContains(fieldsOf(session.Member{}), "Room")
 	s.Contains(fieldsOf(session.Member{}), "Position")
+}
+
+// TestASightingIsReportedOnTheMap is #1053's own case, and the last frame this
+// seam had left to converge.
+//
+// A sighting's payload is opaque bytes here — the session hands them through
+// without reading them, because intel's testimony is the composition's
+// encoding, not this package's — so the pin decodes them the way a client
+// does. Two halves, and both matter: the cell is the one the Atlas names for
+// that spot, and there is no room key to reinterpret it by. A payload carrying
+// hall-local (2,1) would put bob at a cell no room in this world contains,
+// while looking exactly as plausible.
+func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
+	ctx := context.Background()
+	bobsCell := spatial.Position{X: 42, Y: 21} // hall-local (2,1)
+
+	_, err := s.mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "bob", Position: bobsCell,
+	})
+	s.Require().NoError(err)
+
+	seen, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+
+	var payload map[string]any
+	for _, sighting := range seen {
+		if sighting.Subject != "bob" {
+			continue
+		}
+		s.Require().NoError(json.Unmarshal(sighting.Payload, &payload))
+	}
+	s.Require().NotNil(payload, "alice and bob share an open hall in plain sight")
+
+	s.Equal(map[string]any{"x": float64(42), "y": float64(21)}, payload,
+		"bob's cell on the dungeon map — hall-local (2,1) anchored at (40,20)")
+	s.NotContains(payload, "room", "a sighting names no room; there is one map")
+
+	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
+	s.Require().NoError(err)
+	s.Contains(atlas.Cells, bobsCell,
+		"the sighted cell is a cell of the map the same client renders")
+}
+
+// TestASightingAndAPlacementAgree crosses the two reads a client puts on
+// screen together. Where bob IS and where alice SEES bob are answered by
+// different paths — a join's own report and an intel payload — and a client
+// draws them on one canvas.
+func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
+	ctx := context.Background()
+	joined, err := s.mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "bob", Position: spatial.Position{X: 43, Y: 22},
+	})
+	s.Require().NoError(err)
+
+	seen, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+
+	var sighted spatial.Position
+	found := false
+	for _, sighting := range seen {
+		if sighting.Subject != "bob" {
+			continue
+		}
+		var payload struct {
+			X float64 `json:"x"`
+			Y float64 `json:"y"`
+		}
+		s.Require().NoError(json.Unmarshal(sighting.Payload, &payload))
+		sighted, found = spatial.Position{X: payload.X, Y: payload.Y}, true
+	}
+	s.Require().True(found)
+
+	s.Equal(joined.Member.Position, sighted,
+		"the cell bob joined at is the cell alice sees him on")
+}
+
+// The two tests below are the pins the rest of this file cannot carry, and
+// they exist because the mistake they guard against is INVISIBLE in every
+// other world here.
+//
+// The hall above is six cells wide and anchored at (40,20), so an absolute
+// cell there is never also a legal room-local one. Anchor a cell twice in that
+// world and the composition refuses the second projection as out of bounds,
+// the seam's fallback hands the cell back untouched, and a wrong calculation
+// produces a right answer. Anchor the room near the origin instead and the
+// overlap is real — (7,6) is both a cell on the map and a cell inside the room
+// — so the second anchoring succeeds and lands somewhere else entirely, in the
+// one report a host reads after the encounter is over.
+
+// shallowAnchoredWorld is one 10x10 room anchored at (2,3) — close enough to
+// the origin that its ABSOLUTE cells overlap its own room-local ones.
+func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: encOrderAsGiven{},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+			{ID: "hall", Width: 10, Height: 10, Origin: spatial.Position{X: 2, Y: 3}},
+		}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 3}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
+				Room: "hall", Position: spatial.Position{X: 5, Y: 3}}},
+		},
+		Retention: encounter.RetentionUnbounded,
+	})
+	if err != nil {
+		t.Fatalf("building the shallow-anchored world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// shallowSession starts a session on that world. Alice stands at absolute
+// (4,6) — hall-local (2,3) — and the stairs are at absolute (7,6).
+func (s *OneMapSuite) shallowSession() *session.Manager {
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, Sessions: sessions, Encounters: encounters,
+		Characters: testCharacters(), Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "shallow", Encounter: "shallow-world", World: shallowAnchoredWorld(s.T()),
+	})
+	s.Require().NoError(err)
+	return mgr
+}
+
+// TestAnOutcomeIsNotAnchoredTwice: the ending's own member list.
+func (s *OneMapSuite) TestAnOutcomeIsNotAnchoredTwice() {
+	out, err := s.shallowSession().Move(context.Background(), &session.MoveInput{
+		Session: "shallow", Member: "alice",
+		Path: []spatial.Position{{X: 5, Y: 6}, {X: 6, Y: 6}, {X: 7, Y: 6}},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Outcome, "the stairs are underfoot")
+	s.Require().Len(out.Outcome.Members, 1)
+
+	s.Equal(spatial.Position{X: 7, Y: 6}, out.Outcome.Members[0].Position,
+		"the cell she finished on — anchoring it a second time would say (9,9)")
+}
+
+// TestAnExitIsNotAnchoredTwice: the leaver's own report, which the composition
+// builds on its own path and which reaches a client through the same
+// converter. Two shapes carry an outcome across this seam, and a pin on one
+// says nothing about the other.
+func (s *OneMapSuite) TestAnExitIsNotAnchoredTwice() {
+	left, err := s.shallowSession().Exit(context.Background(), &session.ExitInput{
+		Session: "shallow", Member: "alice",
+	})
+	s.Require().NoError(err)
+
+	s.Equal(spatial.Position{X: 4, Y: 6}, left.Outcome.Position,
+		"the cell she left from — anchoring it a second time would say (6,9)")
 }

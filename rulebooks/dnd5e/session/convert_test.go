@@ -84,7 +84,7 @@ var omitted = map[string]string{
 	// the composition's own decomposition, and a caller that wanted it would
 	// be reconstructing the frame the reshape removed.
 	"encounter.Member.Room":        "a room id; the seam reports the cell instead",
-	"encounter.MemberOutcome.Room": "a room id; Position is projected onto the map instead",
+	"encounter.MemberOutcome.Room": "a room id; the composition's own bookkeeping — Position already names the cell on the map",
 
 	// A doorway's endpoints kept their meaning and lost their qualifier: on one
 	// map there is no second pair of From/To fields naming rooms to

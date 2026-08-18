@@ -221,7 +221,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Character:  projectCharacter(ch),
 		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
-		Outcome:    projectOutcome(scope.enc, placed.Outcome),
+		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -302,7 +302,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		NPC:        projectMonster(sheet),
 		Discovered: projectDiscoveries(placed.IntelDeltas),
 		Seq:        placed.Seq,
-		Outcome:    projectOutcome(scope.enc, placed.Outcome),
+		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -382,10 +382,10 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	}
 
 	return &ExitOutput{
-		Outcome:  projectMemberOutcome(scope.enc, left.Outcome),
+		Outcome:  projectMemberOutcome(left.Outcome),
 		Carry:    projectSightings(left.Carry),
 		Seq:      left.Seq,
-		Closed:   projectOutcome(scope.enc, left.Closed),
+		Closed:   projectOutcome(left.Closed),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
@@ -416,7 +416,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: %w", err)
 	}
 
-	outcome := projectOutcome(scope.enc, &ended.Outcome)
+	outcome := projectOutcome(&ended.Outcome)
 	return &EndOutput{Outcome: *outcome, Saved: report, Delivery: delivery}, nil
 }
 

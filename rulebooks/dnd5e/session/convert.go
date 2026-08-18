@@ -109,7 +109,7 @@ func before(a, b spatial.Position) bool {
 	return a.Y < b.Y
 }
 
-func projectStatus(enc *encounter.Encounter, in *encounter.Status) *Status {
+func projectStatus(in *encounter.Status) *Status {
 	if in == nil {
 		return nil
 	}
@@ -124,7 +124,7 @@ func projectStatus(enc *encounter.Encounter, in *encounter.Status) *Status {
 		Members: make([]MemberOutcome, 0, len(in.Outcome.Members)),
 	}
 	for _, m := range in.Outcome.Members {
-		outcome.Members = append(outcome.Members, projectMemberOutcome(enc, m))
+		outcome.Members = append(outcome.Members, projectMemberOutcome(m))
 	}
 	out.Outcome = outcome
 	return out
@@ -189,9 +189,11 @@ func projectMember(in encounter.Member) Member {
 // onMap projects a composition room-local cell into the one map this seam
 // speaks, by asking the composition rather than doing the arithmetic here.
 //
-// Placement reads already come back absolute (encounter v0.10.0), and this is
-// for the two shapes that do not: an outcome's member list, which the
-// composition still reports in its own terms. Asking Absolute means the seam
+// What is left for it to do keeps shrinking as the composition converges on
+// one map. Placement reads came back absolute at encounter v0.10.0, outcomes
+// at v0.13.0 (rpg-toolkit#1068); what remains is a walk — the room-local cells
+// the composition's own movement verbs take and report, which move.go
+// projects on the way out and on the way in. Asking Absolute means the seam
 // never learns what an origin is, which is the whole point of it living down
 // there.
 func onMap(enc *encounter.Encounter, room string, local spatial.Position) spatial.Position {
@@ -206,17 +208,25 @@ func onMap(enc *encounter.Encounter, room string, local spatial.Position) spatia
 	return out.Position
 }
 
-func projectMemberOutcome(enc *encounter.Encounter, in encounter.MemberOutcome) MemberOutcome {
+// projectMemberOutcome carries the outcome's cell across unchanged.
+//
+// It used to project one: an outcome was the last shape the composition still
+// reported room-local, so the seam re-asked for an absolute cell through
+// Absolute. Encounter v0.13.0 reports the outcome on the dungeon map itself
+// (rpg-toolkit#1068), and the same anchoring applied twice would put every
+// member off by their room's origin — in the one report a host reads after
+// there is nothing left to check it against.
+func projectMemberOutcome(in encounter.MemberOutcome) MemberOutcome {
 	return MemberOutcome{
 		ID:       string(in.ID),
-		Position: onMap(enc, in.Room, in.Position),
+		Position: in.Position,
 	}
 }
 
 // projectOutcome converts a bare outcome. projectStatus has its own inline
 // copy of this walk because it must also handle the nil-Status case; this one
 // serves the verbs that return an outcome directly.
-func projectOutcome(enc *encounter.Encounter, in *encounter.Outcome) *Outcome {
+func projectOutcome(in *encounter.Outcome) *Outcome {
 	if in == nil {
 		return nil
 	}
@@ -226,7 +236,7 @@ func projectOutcome(enc *encounter.Encounter, in *encounter.Outcome) *Outcome {
 		Members: make([]MemberOutcome, 0, len(in.Members)),
 	}
 	for _, m := range in.Members {
-		out.Members = append(out.Members, projectMemberOutcome(enc, m))
+		out.Members = append(out.Members, projectMemberOutcome(m))
 	}
 	return out
 }
