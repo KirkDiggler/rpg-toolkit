@@ -371,3 +371,95 @@ func TestAHexFieldNeedsNoSuchLaw(t *testing.T) {
 	})
 	require.NoError(t, err, "a hex field anchored deep in the negative quadrant is ordinary")
 }
+
+// TestOccludersAreCompiledThroughTheirRoomsAnchor is the occluder half of the
+// compile, pinned where it is observable: a sightline.
+//
+// The Atlas reports occluders absolute too, but it computes that projection
+// itself, from the same construction data — so an Atlas assertion cannot tell
+// whether the CANVAS got them right. This one can: the blocking column sits in
+// a chamber anchored well away from the origin, and the two members are placed
+// so that an unprojected occluder would land in a different chamber entirely
+// and block nothing.
+func TestOccludersAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
+	// A pillar wall three cells tall at hall-local x=5, y=2..4 — absolute
+	// x=14, y=6..8 through the hall's (9,4) anchor. Unprojected it would sit
+	// at (5,2..4), which is entrance floor and nowhere near the pair below.
+	field := tombField()
+	for i := range field.Rooms {
+		if field.Rooms[i].ID == tombHall {
+			field.Rooms[i].Occluders = wallColumn(5, 2, 4)
+		}
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: field,
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
+				Position: spatial.Position{X: 3, Y: 3}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: tombHall,
+				Position: spatial.Position{X: 7, Y: 3}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	view, err := enc.View(&encounter.ViewInput{Member: alice})
+	require.NoError(t, err)
+	require.Empty(t, view, "the pillars stand between them, at the cells their room's anchor puts them")
+}
+
+// TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction.
+//
+// A wall's endpoints have to be two adjacent cells the canvas holds. When they
+// are not, spatial says so and construction stops there — R5, and the reason
+// this is worth a test of its own: compileCanvas is the one place a boundary is
+// registered for BOTH construction seams, so an error swallowed here would be
+// a wall the author declared and the encounter silently does not have.
+func TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
+	setup := func(b spatial.Boundary) *encounter.SetupInput {
+		return &encounter.SetupInput{
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Field: encounter.FieldInput{
+				Rooms: []encounter.RoomInput{
+					{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 4, Y: 4},
+						Boundaries: []spatial.Boundary{b}},
+				},
+			},
+			Members: []encounter.MemberInput{
+				{ID: alice, Kind: encounter.KindPlayer, Room: "hall",
+					Position: spatial.Position{X: 0, Y: 0}},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		}
+	}
+
+	t.Run("endpoints that are not adjacent", func(t *testing.T) {
+		_, err := encounter.NewEncounter(setup(spatial.Boundary{
+			From: spatial.Position{X: 0, Y: 0}, To: spatial.Position{X: 3, Y: 0},
+			BlocksMovement: true, BlocksLineOfSight: true,
+		}))
+		require.Error(t, err)
+		require.ErrorIs(t, err, encounter.ErrBadPlacement)
+		require.Contains(t, err.Error(), "adjacent")
+	})
+
+	t.Run("an endpoint off the canvas entirely", func(t *testing.T) {
+		// The hall's own (-5,0) projects to (-1,4), off the canvas: the field
+		// is anchored at (4,4) and a square canvas starts at (0,0), so there
+		// is no such cell to draw a wall to.
+		//
+		// A wall to a cell that is on the canvas but is NOT floor — the space
+		// between chambers — registers fine and is simply inert, since nothing
+		// can stand there anyway. That is the canvas spanning a bounding box
+		// rather than a footprint, said out loud.
+		_, err := encounter.NewEncounter(setup(spatial.Boundary{
+			From: spatial.Position{X: 0, Y: 0}, To: spatial.Position{X: -5, Y: 0},
+			BlocksMovement: true, BlocksLineOfSight: true,
+		}))
+		require.Error(t, err)
+		require.ErrorIs(t, err, encounter.ErrBadPlacement)
+		require.Contains(t, err.Error(), "valid positions")
+	})
+}

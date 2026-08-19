@@ -769,6 +769,9 @@ func compileCanvas(rooms []RoomInput) (*spatial.BasicRoom, error) {
 			}
 		}
 
+		// Endpoint ORDER is not carried: spatial normalizes an undirected pair
+		// on registration (normalizedBoundary), so From and To describe the
+		// same edge either way round and a wall has no side.
 		for _, b := range ri.Boundaries {
 			if berr := canvas.RegisterBoundary(spatial.Boundary{
 				From:              b.From.Add(ri.Origin),
@@ -1381,8 +1384,15 @@ func (e *Encounter) cellOf(record *memberRecord) (spatial.Position, error) {
 // W2 (rooms never overlap) plus integral origins make ownership unique, so
 // iteration order never matters — at most one room's bounds check can pass.
 // Each room is asked with its OWN constructed grid, kept from construction, so
-// this answers exactly what the room itself would (fractional square positions
-// included; hex forbids fractional cells outright).
+// this answers exactly what the room itself would.
+//
+// NO INTEGRALITY CHECK HERE, deliberately. Hex forbids fractional cells
+// (isIntegralAxialPosition) and every way a cell reaches this function has
+// already asked: [Encounter.stepMember] and [Encounter.Join] check before they
+// ask, construction places from a room-local cell its own grid validated, and
+// the load seam has its own copy (ownedByAnyRoom) because it runs before an
+// Encounter exists. A check here would be a branch no input can take, which is
+// a branch no test can pin.
 //
 // False means no chamber owns the cell: void is not floor. Callers that place
 // or move somebody must treat that as a refusal; callers merely REPORTING a
@@ -1396,9 +1406,6 @@ func (e *Encounter) roomAt(cell spatial.Position) (string, bool) {
 			continue
 		}
 		if !grid.IsValidPosition(local) {
-			continue
-		}
-		if !isIntegralAxialPosition(grid, local) {
 			continue
 		}
 		return ri.ID, true
