@@ -345,6 +345,42 @@ func (s *RegionSuite) TestRegionAtAnswersExactlyWhatTheAuthoredGridWould() {
 	})
 }
 
+// TestAFractionalHexPositionIsNotACell pins the answer to the question a public
+// predicate can be asked that an internal one could not.
+//
+// A hex grid's IsValidPosition bounds-checks and nothing else, so while this
+// lookup was internal the integrality rule lived at the verbs — every caller
+// asked first, and a check inside would have been unreachable. Making the
+// question public made it reachable: a host can hand RegionAt any position at
+// all. Before this was fixed, RegionAt answered ("only", true) for the axial
+// position below while Join refused the very same one as not a cell — two
+// answers to "is this floor", which is what region.go exists to prevent.
+//
+// Square is deliberately NOT covered by that rule: it is fractional-tolerant by
+// design, and a member standing between its cells really is in the region whose
+// span holds them.
+func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
+	hexOrigin := spatial.Position{X: 3, Y: -2}
+	hex := s.oneRoom(spatial.GridShapeHex, 6, 6, hexOrigin)
+
+	frac := spatial.Position{X: 3.5, Y: -1.5}
+	_, ok := hex.RegionAt(frac)
+	s.False(ok, "a fractional axial position is not a cell, so no region holds it")
+
+	_, err := hex.Join(&encounter.JoinInput{Member: bob, Kind: encounter.KindPlayer, Cell: frac})
+	s.Require().Error(err, "and the verbs agree — which is the whole point")
+	s.ErrorIs(err, encounter.ErrBadPlacement)
+
+	_, ok = hex.RegionAt(spatial.Position{X: 4, Y: -1})
+	s.True(ok, "the integral cell beside it is ordinary floor")
+
+	squareOrigin := spatial.Position{X: 4, Y: 6}
+	square := s.oneRoom(spatial.GridShapeSquare, 5, 3, squareOrigin)
+	got, ok := square.RegionAt(spatial.Position{X: 5.5, Y: 7.5})
+	s.True(ok, "square is fractional-tolerant by design")
+	s.Equal(encounter.RegionID("only"), got)
+}
+
 // oneRoom opens a single-region encounter of the given family, anchored away
 // from the origin so a local coordinate cannot pass as an absolute one.
 func (s *RegionSuite) oneRoom(shape spatial.GridShape, w, h int, origin spatial.Position) *encounter.Encounter {

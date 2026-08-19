@@ -45,11 +45,11 @@ type RegionID = string
 // ownership unique, so iteration order never matters: at most one region's
 // bounds check can pass.
 //
-// It takes a POSITION, not only a cell, and answers for both. A square grid
-// tolerates a fractional position and a member may legitimately stand on one
-// (Atlas's doc comment on that asymmetry); such a member is in the region whose
-// span contains them, which is the same answer by the same rule. Hex forbids
-// fractional positions outright.
+// A SQUARE region is fractional-tolerant and a member may legitimately stand
+// between its cells (RoomInput.Grid's doc comment, and Atlas's on that
+// asymmetry); such a member is in the region whose span contains them, by the
+// same rule. A HEX region is not: a fractional axial position is not a cell at
+// all, and no region holds it — see regionAt.
 //
 // A DOORWAY DOES NOT GET ITS OWN ANSWER, and that is a decision rather than an
 // omission. The old stack made a door's cell belong to no region on purpose —
@@ -64,8 +64,7 @@ type RegionID = string
 // is under their feet, and the member facing them one cell away is in the
 // other. Pinned by TestAMemberInTheDoorwayStandsInTheRegionTheyStandOn.
 //
-// NO INTEGRALITY CHECK, deliberately — the same rule regionAt states, one
-// layer down.
+// The integrality rule is regionAt's, one layer down.
 func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
 	return regionAt(e.fieldInput, e.roomGrids, cell)
 }
@@ -107,29 +106,46 @@ func (e *Encounter) MembersIn(region RegionID) ([]Member, error) {
 // A free function rather than a method because the load seam needs the same
 // answer before an Encounter exists (R5: a blob is validated in full before
 // anything is constructed). That used to be three implementations of one
-// question — [Encounter.roomAt], a load-time twin that said so in its own doc
-// comment, and an inline third inside outcome validation — which is the
-// dual-dispatch defect #1059 spent two PRs deleting for movement, grown back
-// around ownership. TestRegionOwnershipIsAskedInOneFunction is what keeps it
+// question — Encounter.roomAt (gone with this slice), a load-time twin that
+// said so in its own doc comment, and an inline third inside outcome
+// validation — which is the dual-dispatch defect #1059 spent two PRs deleting
+// for movement, grown back around ownership. TestRegionOwnershipIsAskedInOneFunction is what keeps it
 // at one: spatial.Position.Subtract appears in exactly one function body in
 // this package, and a second lookup cannot exist without subtracting an origin.
 //
 // Each region is asked with its OWN constructed grid, kept from construction,
 // so this answers exactly what the authored room itself would.
 //
-// NO INTEGRALITY CHECK HERE, deliberately. Hex forbids fractional cells
-// (isIntegralAxialPosition) and every way a cell reaches this function has
-// already asked: [Encounter.stepMember] and [Encounter.Join] check before they
-// ask, construction places from a room-local cell its own grid validated, and
-// LoadEncounter checks the blob's cells before it gets here. A check here would
-// be a branch no input can take, which is a branch no test can pin.
+// THE INTEGRALITY CHECK IS HERE, and it did not used to be. While this was
+// Encounter.roomAt the check lived only at the verbs — every way a cell
+// reached it had already asked (Step, Join, and Load each name a fractional
+// axial cell as itself, which is a better error than "not floor"), so a check
+// here was a branch no input could take, which is a branch no test could pin.
+//
+// Making the question PUBLIC made that branch reachable. A hex grid's
+// IsValidPosition bounds-checks and nothing more (isIntegralAxialPosition's doc
+// comment says so, and tools/spatial's AxialHexGrid is where it is true), so
+// without this, RegionAt answered "yes, the hall holds it" for an axial
+// position Join refuses as not a cell — measured, before the fix:
+//
+//	RegionAt((3.5, -1.5)) on a hex field = ("only", true)
+//	Join at the same position: not an integral axial cell: bad placement
+//
+// Two answers to "is this floor" is exactly what this file exists to prevent,
+// so the predicate answers the question it claims to. HEX ONLY: square is
+// fractional-tolerant by design, and a square member standing between cells is
+// really in the region whose span holds them. (Found by Copilot on PR #1109.)
 func regionAt(rooms []RoomInput, grids map[string]spatial.Grid, cell spatial.Position) (RegionID, bool) {
 	for _, ri := range rooms {
 		grid, ok := grids[ri.ID]
 		if !ok {
 			continue
 		}
-		if !grid.IsValidPosition(cell.Subtract(ri.Origin)) {
+		local := cell.Subtract(ri.Origin)
+		if !isIntegralAxialPosition(grid, local) {
+			continue
+		}
+		if !grid.IsValidPosition(local) {
 			continue
 		}
 		return ri.ID, true
