@@ -20,6 +20,7 @@ import (
 func budgetField() encounter.FieldInput {
 	const dim = 1024
 	return encounter.FieldInput{
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: "a", Width: dim, Height: dim, Origin: spatial.Position{X: 0, Y: 0}},
 			{ID: "b", Width: dim, Height: dim, Origin: spatial.Position{X: dim, Y: 0}},

@@ -28,6 +28,7 @@ func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			// The goblin waits in the NEXT ROOM, which is how real content is
 			// authored and is the only way to open a scene that is not
 			// already a fight: sight is symmetric and unlimited within a room,
@@ -367,6 +368,7 @@ func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -697,7 +699,8 @@ func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
 		},
 		// Same room, so they see each other at first light and the fight
 		// forms — which is the state this test is about. The goblin's decider

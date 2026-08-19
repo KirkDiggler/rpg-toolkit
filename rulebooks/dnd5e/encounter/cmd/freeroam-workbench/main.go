@@ -90,6 +90,13 @@ func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		Field: encounter.FieldInput{
+			// You cannot see across the space the crypt's two chambers do not
+			// cover — the fiction is the mountain they were cut from, and the
+			// declaration is the effect (rpg-toolkit#1116). There IS such
+			// space:
+			// the ossuary is half the crypt's height, so the canvas's
+			// north-east corner — x 12..19, y 6..11 — belongs to no chamber.
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{
 					ID: cryptID, Width: cryptSize, Height: cryptSize,

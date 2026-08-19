@@ -49,6 +49,7 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -128,6 +129,7 @@ func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:        room1,
@@ -189,7 +191,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Rooms: []encounter.RoomInput{},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+				Rooms:  []encounter.RoomInput{},
 			},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{
@@ -204,6 +207,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room-1", Width: 10, Height: 10},
 				},
@@ -219,6 +223,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room-1", Width: 10, Height: 10},
 				},
@@ -236,6 +241,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room-1", Width: 10, Height: 10},
 				},
@@ -253,6 +259,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room-1", Width: 10, Height: 10},
 				},
@@ -273,6 +280,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room-1", Width: 10, Height: 10},
 				},
@@ -295,7 +303,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		// First attempt: fails validation
 		setup1 := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field:   encounter.FieldInput{Rooms: []encounter.RoomInput{}},
+			Field:   encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{}},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -308,6 +316,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup2 := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room-1", Width: 10, Height: 10},
 				},
@@ -348,6 +357,7 @@ func validConnSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 10, Height: 4, Occluders: []spatial.Position{{X: 2, Y: 2}}},
 				{ID: "r2", Width: 3, Height: 9, Origin: spatial.Position{X: 10, Y: 0}, Occluders: []spatial.Position{{X: 1, Y: 3}}},
@@ -393,6 +403,7 @@ func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{
 					{X: 0, Y: 2}, // left edge
@@ -421,6 +432,7 @@ func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
 					Occluders: []spatial.Position{{X: -5, Y: 4}}},
@@ -446,6 +458,7 @@ func (s *EncounterTestSuite) TestSetupDuplicateOccluderRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}, {X: 3, Y: 3}}},
 			},
@@ -468,7 +481,8 @@ func (s *EncounterTestSuite) TestSetupDuplicateEndingKeyRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "dup", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 4}}},
@@ -561,6 +575,7 @@ func connBoundsSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 4, Height: 3},
 				{ID: "r2", Width: 4, Height: 3, Origin: spatial.Position{X: 4, Y: 3}},
@@ -630,6 +645,7 @@ func validRoomSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5},
 			},
@@ -715,6 +731,7 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
 				},
@@ -773,6 +790,7 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
 				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 7}},
@@ -811,6 +829,7 @@ func validHexAxialSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
 					Occluders: []spatial.Position{{X: 2, Y: 2}}},
@@ -884,7 +903,8 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
@@ -911,7 +931,8 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
@@ -957,6 +978,7 @@ func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeGridless},
 				},
@@ -1016,6 +1038,7 @@ func validAnchoredHexSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
@@ -1135,6 +1158,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringSquareDiagonalKiss() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "sq-a", Width: 5, Height: 5},
 				{ID: "sq-b", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 5}},
@@ -1169,6 +1193,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringSquareEndpointNotAdjacentDistance
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 3, Height: 3},
 				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 4, Y: 0}},
@@ -1204,6 +1229,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringSquareOriginRejected() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0.5, Y: 1.5}},
 			},
@@ -1236,7 +1262,8 @@ func (s *EncounterTestSuite) TestSetupAnchoringNaNOriginRejected() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.NaN(), Y: 0}}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.NaN(), Y: 0}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1256,7 +1283,8 @@ func (s *EncounterTestSuite) TestSetupAnchoringNegativeInfinityOriginRejected() 
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.Inf(-1), Y: 0}}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.Inf(-1), Y: 0}}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1277,6 +1305,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringW1BothDirections() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "square-first", Width: 5, Height: 5},
 				{ID: "hex-second", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
@@ -1312,6 +1341,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringOverlapNonAdjacentPair() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r-a", Width: 5, Height: 5},
 				{ID: "r-b", Width: 5, Height: 5, Origin: spatial.Position{X: 20, Y: 20}},
@@ -1344,6 +1374,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringRSpanSeparation() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-r-a", Width: 4, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-r-b", Width: 4, Height: 4, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 0, Y: 4}},
@@ -1378,6 +1409,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringFractionalSquareEndpointSubUnitDi
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 3, Height: 3},
 				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0}},
@@ -1414,6 +1446,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 1e19, Y: 0}},
 				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 2e19, Y: 0}},
@@ -1452,6 +1485,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringOversizedRoomRejectedNotFalseDisj
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 1000, Height: 5},
 				{ID: "r2", Width: math.MaxInt, Height: 5, Origin: spatial.Position{X: 999, Y: 0}},
@@ -1480,7 +1514,8 @@ func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproduction() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "huge", Width: 1 << 30, Height: 1 << 30}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "huge", Width: 1 << 30, Height: 1 << 30}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1502,7 +1537,8 @@ func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproductionHex(
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1532,7 +1568,8 @@ func (s *EncounterTestSuite) TestSetupOversizedRoomHeightRejected() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "tall", Width: 5, Height: (1 << 30) + 1}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "tall", Width: 5, Height: (1 << 30) + 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1566,7 +1603,7 @@ func (s *EncounterTestSuite) TestSetupFieldCellBudgetRejectsIndividuallyLegalRoo
 	}
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field:   encounter.FieldInput{Rooms: rooms},
+		Field:   encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: rooms},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
@@ -1584,7 +1621,8 @@ func validEndingTriggerSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 3, Y: 3}}},
@@ -1635,7 +1673,8 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 0}}},
@@ -1658,6 +1697,7 @@ func validTriggerAcceptanceFieldSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
 				{ID: "vault", Width: 4, Height: 4, Origin: spatial.Position{X: 5, Y: 0}},
@@ -1721,7 +1761,8 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() 
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: -2, Y: -2}}},
@@ -1742,6 +1783,7 @@ func (s *EncounterTestSuite) TestSetupOpeningBeat() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 					{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1796,6 +1838,7 @@ func (s *EncounterTestSuite) TestSetupBadPlacementSentinel() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 10, Height: 10},
 				},
@@ -1824,6 +1867,7 @@ func (s *EncounterTestSuite) TestSetupCompletePercept() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 20, Height: 20},
 				},
@@ -1880,6 +1924,7 @@ func (s *EncounterTestSuite) TestMembers() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 10, Height: 10},
 				},
@@ -1908,6 +1953,7 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -1997,6 +2043,7 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:        room1,
@@ -2061,6 +2108,7 @@ func (s *EncounterTestSuite) TestMoveSequentialConsistency() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -2117,6 +2165,7 @@ func (s *EncounterTestSuite) TestMoveEndingFires() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:         room1,
@@ -2210,6 +2259,7 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 				Field: encounter.FieldInput{
+					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 					Rooms: []encounter.RoomInput{
 						{ID: room1, Width: 10, Height: 10},
 					},
@@ -2232,6 +2282,7 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 				Field: encounter.FieldInput{
+					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 					Rooms: []encounter.RoomInput{
 						{ID: room1, Width: 10, Height: 10},
 					},
@@ -2257,6 +2308,7 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 				Field: encounter.FieldInput{
+					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 					Rooms: []encounter.RoomInput{
 						{ID: room1, Width: 10, Height: 10},
 					},
@@ -2293,6 +2345,7 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 				Field: encounter.FieldInput{
+					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 					Rooms: []encounter.RoomInput{
 						{ID: room1, Width: 10, Height: 10},
 					},
@@ -2318,6 +2371,7 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 				Field: encounter.FieldInput{
+					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 					Rooms: []encounter.RoomInput{
 						{ID: room1, Width: 10, Height: 10},
 					},
@@ -2361,6 +2415,7 @@ func (s *EncounterTestSuite) TestMoveOutcomeCopyOut() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 20, Height: 20},
 				},
@@ -2415,7 +2470,7 @@ func (s *EncounterTestSuite) TestMoveOutcomeCopyOut() {
 func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
@@ -2434,7 +2489,7 @@ func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
 func (s *EncounterTestSuite) newBasicEncounterWithExternalEnding() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
@@ -2506,6 +2561,7 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				// room-a WALLS its east edge, leaving the doorway's row open.
 				// With one canvas and no wall the two chambers share an open
@@ -2683,6 +2739,7 @@ func (s *EncounterTestSuite) TestACrossingFiresAnEndingOnArrival() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -2725,6 +2782,7 @@ func (s *EncounterTestSuite) TestAMonsterCrossingOntoAnUnfilteredEndingDoesNotCl
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -2839,6 +2897,7 @@ func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -2996,6 +3055,7 @@ func (s *EncounterTestSuite) TestJoinOnStairsFiresEnding() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -3049,6 +3109,7 @@ func (s *EncounterTestSuite) TestExitCarryForward() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -3145,6 +3206,7 @@ func (s *EncounterTestSuite) TestExitLastMemberClosesWithAbandoned() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -3198,6 +3260,7 @@ func (s *EncounterTestSuite) TestExitDepartedGhostFades() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -3271,6 +3334,7 @@ func (s *EncounterTestSuite) TestEndExternalOnly() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 10, Height: 10},
 				},
@@ -3409,6 +3473,7 @@ func (s *EncounterTestSuite) TestStoryForExitedMembers() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: room1, Width: 10, Height: 10},
 				},

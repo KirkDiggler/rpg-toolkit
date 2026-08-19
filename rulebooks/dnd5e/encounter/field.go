@@ -150,8 +150,14 @@ type ConnectionInput struct {
 	ToPosition spatial.Position
 }
 
-// FieldInput describes the layout of rooms and connections.
+// FieldInput describes the layout of rooms and connections, and what the
+// canvas they compile onto is made of.
 type FieldInput struct {
+	// Canvas is what this field DECLARES about the map its rooms compile
+	// onto — today, what the space between them is made of. REQUIRED: see
+	// [Void] for why this module is not allowed to pick (rpg-toolkit#1116).
+	Canvas CanvasInput
+
 	// Rooms is the list of rooms in this field.
 	Rooms []RoomInput
 

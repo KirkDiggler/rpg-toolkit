@@ -68,6 +68,7 @@ func pursuitSeamWall() []spatial.Boundary { return squareSeamWall(5, 6, 3) }
 
 func (s *PursuitSuite) SetupTest() {
 	field := encounter.FieldInput{
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: westID, Width: 6, Height: 6, Origin: westOrigin,
 				Boundaries: pursuitSeamWall()},

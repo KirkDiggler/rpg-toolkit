@@ -81,12 +81,19 @@ type Encounter struct {
 	// compiles into. The orchestrator that used to hold the rooms went with
 	// them: with one room there is nothing to orchestrate, and its connection
 	// registry described a crossing mechanism this composition no longer has.
-	canvas *spatial.BasicRoom
+	canvas *canvasRoom
 
 	// roomGrids is each authored room's own grid, kept from construction so
 	// the field can answer which chamber owns an absolute cell without
 	// rebuilding one per call — see regionAt.
 	roomGrids map[string]spatial.Grid
+
+	// void is what the field declared the space between its chambers is made
+	// of (rpg-toolkit#1116). Kept here because it is construction truth that
+	// has to persist; what READS it is the canvas, which was handed the same
+	// value at compile time. The canvas is the only thing that acts on it, so
+	// there is no second answer to keep in step — see [canvasRoom].
+	void Void
 
 	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
@@ -746,7 +753,12 @@ func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, hei
 // compileCanvas turns the authored rooms into the one spatial room the
 // encounter runs on: a grid spanning the field's whole absolute footprint, with
 // every room's occluders and walls projected through its Origin and registered
-// there.
+// there, and the field's own declaration of what the space between them is made
+// of (rpg-toolkit#1116).
+//
+// The grids come in rather than being rebuilt because the canvas needs to know
+// which cells are FLOOR, and that is [regionAt]'s question — asked with each
+// room's own constructed grid, exactly as [Encounter.RegionAt] asks it.
 //
 // THIS IS WHERE A WALL BETWEEN TWO ROOMS BECOMES POSSIBLE. Registered on a
 // room's own grid, a boundary's endpoints both had to be cells of that room
@@ -762,7 +774,7 @@ func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, hei
 // Both seams run buildValidRoomGrids first, which is what lets this read the
 // family off rooms[0] alone: W1 gives every room in a field the same one, and a
 // mixed field never reaches here.
-func compileCanvas(rooms []RoomInput) (*spatial.BasicRoom, error) {
+func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void) (*canvasRoom, error) {
 	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
 	width, height, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax)
 	if err != nil {
@@ -802,7 +814,13 @@ func compileCanvas(rooms []RoomInput) (*spatial.BasicRoom, error) {
 		}
 	}
 
-	return canvas, nil
+	return &canvasRoom{
+		BasicRoom: canvas,
+		void:      void,
+		rooms:     rooms,
+		grids:     grids,
+		hasVoid:   fieldHasVoid(rooms, width, height),
+	}, nil
 }
 
 // gridShapeName renders a GridShape for W1's mixed-family defect message.
@@ -1139,6 +1157,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
+	// The field must say what its void is. Construction DATA rather than a
+	// capability, so it earns ErrNoField rather than a sentinel of its own —
+	// but the reason it is required is rpg-toolkit#1033's, unchanged: a
+	// default would be this module deciding what a dungeon is made of, in a
+	// field the author never wrote (rpg-toolkit#1116).
+	if in.Field.Canvas.Void == nil {
+		return nil, fmt.Errorf("newencounter: field does not say what its void is (FieldInput.Canvas.Void): %w", ErrNoField)
+	}
+
 	// Check rooms: unique non-empty IDs, recognized grid shape. roomGrids
 	// holds each room's constructed Grid, reused below for connection
 	// bounds validation and again in the room-construction loop so a
@@ -1190,6 +1217,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
 		connectionsInput: connectionsInput,
+		void:             in.Field.Canvas.Void,
 	}
 
 	// Build clock and intel
@@ -1209,7 +1237,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	// Compile the authored rooms into the one canvas this encounter runs on.
-	e.canvas, err = compileCanvas(in.Field.Rooms)
+	//
+	// Fed e.fieldInput — the DEEP COPY made above — rather than the caller's
+	// own slice, because the canvas keeps it: it asks regionAt which cells are
+	// floor (rpg-toolkit#1116), and a canvas holding the caller's slice while
+	// [Encounter.RegionAt] holds the copy would be two answers to one question,
+	// diverging the moment a caller reused its RoomInputs. Load needs no such
+	// care — its roomInputs are freshly converted from the blob and alias
+	// nothing (LoadEncounter's own note, and TestAliasImmunityLoadEncounter).
+	e.canvas, err = compileCanvas(e.fieldInput, roomGrids, in.Field.Canvas.Void)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}

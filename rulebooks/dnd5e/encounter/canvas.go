@@ -98,6 +98,14 @@ import (
 // interface to withhold half of it would be offering a door in order to lock
 // it.
 //
+// # It answers about the void too
+//
+// IsLineOfSightBlocked here is the CANVAS's answer, which since
+// rpg-toolkit#1116 counts the field's declared void: on a field whose void is
+// opaque, a sightline crossing the space between two chambers is blocked, and a
+// caller reading this map is told so. That is the whole reason the declaration
+// lives on the map rather than in the sight loop — see [canvasRoom].
+//
 // Returns ErrNoField when there is no canvas to hand out. Construction forbids
 // that — both seams compile one or fail — so it is reachable only through the
 // zero value, and a nil [spatial.Room] is not an absent answer but a wrong one
@@ -130,7 +138,7 @@ func (e *Encounter) Canvas() (spatial.Room, error) {
 // the room it stands in front of. The mutators are the only place this type
 // decides anything, and they are the only place it guards anything.
 type readOnlyRoom struct {
-	canvas *spatial.BasicRoom
+	canvas *canvasRoom
 }
 
 // readOnlyRoom must be a full spatial.Room: gamectx.WithRoom takes one.

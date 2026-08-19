@@ -91,8 +91,28 @@ type MemberOutcomeData struct {
 // derived thing that is also stored is a second truth waiting to disagree.
 // Rooms hold the composition's own descriptions (mirroring RoomInput exactly).
 type FieldData struct {
+	// Canvas is what the field declared about its map — today, what the space
+	// between the authored chambers is made of (rpg-toolkit#1116). REQUIRED
+	// at load, and written by ToData without omitempty, for RoomData.Origin's
+	// reason: a declaration that persisted as absence could not be told apart
+	// from a blob written before there was one.
+	Canvas      CanvasData       `json:"canvas"`
 	Rooms       []RoomData       `json:"rooms"`
 	Connections []ConnectionData `json:"connections,omitempty"`
+}
+
+// CanvasData is the persistent representation of [CanvasInput].
+//
+// Void carries the declaration's own word ([VoidKind]), not an index into a
+// set: a wire form that meant "the second kind" would silently reinterpret
+// every old blob the day a third kind is added, which is RoomData.Grid's
+// reasoning applied to a younger sealed set. An absent or unknown word is
+// refused by name at load rather than defaulted — see voidFromData.
+//
+// Ambient light will land HERE when rpg-toolkit#1113 arrives, beside the void
+// it is a fact of the same species as.
+type CanvasData struct {
+	Void string `json:"void"`
 }
 
 // RoomData mirrors RoomInput exactly to persist construction inputs — true
@@ -251,6 +271,7 @@ func (e *Encounter) ToData() EncounterData {
 
 	// Deep-copy field from stored inputs
 	fieldData := FieldData{
+		Canvas:      CanvasData{Void: string(e.void.Kind())},
 		Rooms:       make([]RoomData, len(e.fieldInput)),
 		Connections: make([]ConnectionData, len(e.connectionsInput)),
 	}
@@ -581,6 +602,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// (shape legality, W1, room legality, origin legality, W2, W3, and the
 	// existing bounds/occluder/self-connection checks) is enforced by
 	// buildValidRoomGrids/validateConnectionInputs, not duplicated here.
+
+	// What the space between the chambers is made of, resolved from the word
+	// the blob carries. Refused by name when absent or unknown — a guess here
+	// would load a party into a dungeon whose walls the host never authored
+	// (rpg-toolkit#1116; the standing no-migration precedent, #1053/#1068).
+	void, err := voidFromData(data.Field.Canvas.Void)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
 	roomInputs, err := convertRoomDataToRoomInput(data.Field.Rooms)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
@@ -810,6 +841,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),
+		void:        void,
 	}
 
 	// Compile the authored rooms into the canvas — the SAME compileCanvas
@@ -817,7 +849,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// reloaded encounter's map is built by one implementation rather than a
 	// mirrored second one (#929 T2's shared-validator lesson, applied to
 	// construction).
-	e.canvas, err = compileCanvas(roomInputs)
+	e.canvas, err = compileCanvas(roomInputs, roomGrids, void)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}

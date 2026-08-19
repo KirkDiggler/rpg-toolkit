@@ -58,6 +58,7 @@ func TestTombWatch(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
 				Occluders: wallRow(6, 5, 7),
@@ -269,6 +270,7 @@ func TestTombWatch(t *testing.T) {
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
 				Occluders: wallRow(6, 5, 7),
