@@ -4,7 +4,7 @@
 
 **Goal:** Compile weapons and monster actions into ordered typed damage pools, then resolve them through one strike, one damage fold, and one damage application with SRD 5.1 critical-hit behavior.
 
-**Architecture:** `rulebooks/dnd5e` owns declared and resolved damage shapes, persisted action migration, weapon declarations, and damage-chain feature semantics. `rulebooks/dnd5e/resolution` compiles character or monster content into `AttackProfile`, validates the profile before randomness, rolls every pool, folds once, applies once, and returns typed evidence. The top-level `encounter` module projects canonical action damage into its legacy readiness snapshot; `session` continues recording aggregate damage.
+**Architecture:** `rulebooks/dnd5e` owns canonical declared/resolved damage shapes, weapon and monster-action declarations, and damage-chain feature semantics. `rulebooks/dnd5e/resolution` compiles character or monster content into `AttackProfile`, validates before randomness, rolls every pool, folds once, applies once, and returns typed evidence. The top-level `encounter` module projects canonical action damage into its flat readiness snapshot; `session` records aggregate damage. The old combat resolution stack, persisted field shapes, standalone scimitar, compatibility mirrors, and obsolete callers are deleted rather than adapted.
 
 **Tech Stack:** Go 1.25, multi-module Go workspace, testify suites, typed staged event chains, JSON persistence, GitHub Actions.
 
@@ -16,8 +16,8 @@
 - Every damage pool is critical-eligible unless it explicitly carries `damage.DoesNotCrit`; flat bonuses never double.
 - Sneak Attack dice double on a critical hit; Brutal Critical's granted die rolls once and has component `IsCritical == false`.
 - Great Weapon Fighting rerolls only the marked primary weapon component; Martial Arts replaces that component; Rage and Sneak Attack inherit its type; Dueling and Two-Weapon Fighting consume the new primary metadata.
-- New persisted action writers emit only `damage`; readers accept canonical data first and fall back to a complete valid legacy `damage_dice`/`damage_type` pair.
-- Canonical data never falls back to stale legacy fields when canonical validation fails.
+- Persisted monster actions contain only a required canonical `damage` array; old `damage_dice`, `damage_type`, and `damage_bonus` data is rejected, not translated.
+- Do not retain adapters, aliases, deprecated fields, compatibility mirrors, or tests for replaced APIs.
 - Typed evidence is guaranteed through `StrikeOutcome`; encounter/session records remain aggregate-only.
 - Do not add production Lifedrinker, ranged strike semantics, save-gated damage changes, multiattack orchestration, or a new event lifecycle.
 - Do not commit `go.work`, local `replace` directives, or unpublished pseudo-versions.
@@ -170,13 +170,11 @@ git commit -m "feat(dnd5e): migrate weapons to damage pools"
 
 ---
 
-## Checkpoint 2: Persisted monster-action migration
+## Checkpoint 2: Canonical monster actions and legacy removal
 
-### Task 3: Canonicalize melee, bite, and ranged action damage
+### Task 3: Cut melee, bite, and ranged actions over to canonical damage
 
 **Files:**
-- Create: `rulebooks/dnd5e/monster/actions/damage_config.go`
-- Create: `rulebooks/dnd5e/monster/actions/damage_config_test.go`
 - Modify: `rulebooks/dnd5e/monster/actions/melee.go`
 - Modify: `rulebooks/dnd5e/monster/actions/melee_test.go`
 - Modify: `rulebooks/dnd5e/monster/actions/bite.go`
@@ -188,44 +186,48 @@ git commit -m "feat(dnd5e): migrate weapons to damage pools"
 
 **Interfaces:**
 - Consumes: `damage.Validate` and canonical `damage.Damage`.
-- Produces: action config `Damage []damage.Damage`, deprecated input-only `DamageDice`/`DamageType`, and `canonicalDamage(new, legacyDice, legacyType) ([]damage.Damage, error)`.
+- Produces: action config `Damage []damage.Damage` as its only damage declaration.
 
-- [ ] **Step 1: Write table-driven RED tests for migration precedence**
+- [ ] **Step 1: Write RED tests for canonical-only action data**
 
 ```go
-func (s *DamageConfigTestSuite) TestCanonicalDamagePrecedence() {
-	newPools := []damage.Damage{{Dice: "1d8", Type: damage.Acid}}
-	got, err := canonicalDamage(newPools, "not-dice", damage.None)
+func (s *MeleeActionTestSuite) TestRoundTripUsesOnlyCanonicalDamage() {
+	want := []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: -1}}
+	action, err := NewMeleeAction(MeleeConfig{Name: "bite", AttackBonus: 4, Reach: 1, Damage: want})
 	s.Require().NoError(err)
-	s.Equal(newPools, got)
+	var written map[string]any
+	s.Require().NoError(json.Unmarshal(action.ToData().Config, &written))
+	s.Contains(written, "damage")
+	s.NotContains(written, "damage_dice")
+	s.NotContains(written, "damage_type")
 }
 
-func (s *DamageConfigTestSuite) TestLegacyModifierIsSplit() {
-	got, err := canonicalDamage(nil, "2d4-1", damage.Piercing)
-	s.Require().NoError(err)
-	s.Equal([]damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: -1}}, got)
+func (s *MeleeActionTestSuite) TestMissingCanonicalDamageIsRejected() {
+	_, err := NewMeleeAction(MeleeConfig{Name: "empty", AttackBonus: 4, Reach: 1})
+	s.Error(err)
 }
 ```
 
-Add cases for `+2`, zero, partial legacy input, malformed notation, unknown type, empty declarations, and invalid canonical data beside valid legacy data.
+Add positive/zero/negative `FlatBonus`, multiple pools, malformed dice, unknown type, empty array, Bite `SaveGate`, and ranged persistence cases.
 
 - [ ] **Step 2: Run focused action tests and confirm RED**
 
 Run: `cd rulebooks/dnd5e && go test ./monster/actions -run 'DamageConfig|Melee|Bite|Ranged' -count=1`
 
-Expected: FAIL because canonical action damage is absent.
+Expected: FAIL because constructors still accept singular legacy fields and cannot return validation errors.
 
-- [ ] **Step 3: Implement one shared migration helper and update action structs**
+- [ ] **Step 3: Replace every action config and constructor with canonical-only damage**
 
 ```go
-type damageConfig struct {
-	Damage     []damage.Damage `json:"damage,omitempty"`
-	DamageDice string          `json:"damage_dice,omitempty"`
-	DamageType damage.Type     `json:"damage_type,omitempty"`
+type MeleeConfig struct {
+	Name        string          `json:"name"`
+	AttackBonus int             `json:"attack_bonus"`
+	Damage      []damage.Damage `json:"damage"`
+	Reach       int             `json:"reach"`
 }
 ```
 
-Embed or repeat these JSON fields in `MeleeConfig`, `BiteConfig`, and `RangedConfig`. Constructors/loaders canonicalize immediately and retain only the canonical slice internally. `ToData` writes `damage` only. Keep Bite's `SaveGate`/`KnockdownDC` new-first behavior unchanged. Keep ranged compilation disabled; this task changes persistence only.
+Apply the same required `Damage` field to `BiteConfig` and `RangedConfig`. Constructors return `(*Action, error)`, validate and defensively copy the slice, and store no singular damage fields. Loaders propagate validation errors. `ToData` writes only `damage`. Keep Bite's current `SaveGate`; remove `KnockdownDC` compatibility in this cutover. Keep ranged Strike compilation disabled.
 
 - [ ] **Step 4: Convert in-repository monster fixtures and verify canonical-only output**
 
@@ -237,7 +239,7 @@ Damage: []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
 
 Run: `cd rulebooks/dnd5e && go test ./monster/... -count=1`
 
-Expected: PASS; JSON assertions show `damage` and no `damage_dice`/`damage_type` on new writes.
+Expected: PASS; repository JSON assertions show `damage` and no legacy damage or knockdown keys.
 
 - [ ] **Step 5: Commit**
 
@@ -246,59 +248,56 @@ git add rulebooks/dnd5e/monster
 git commit -m "feat(dnd5e): canonicalize monster action damage"
 ```
 
-### Task 4: Convert the legacy scimitar without double-counting
+### Task 4: Delete the standalone scimitar and use generic melee content
 
 **Files:**
-- Modify: `rulebooks/dnd5e/monster/scimitar_action.go`
-- Modify: `rulebooks/dnd5e/monster/scimitar_action_test.go`
+- Delete: `rulebooks/dnd5e/monster/scimitar_action.go`
+- Delete: `rulebooks/dnd5e/monster/scimitar_action_test.go`
 - Modify: `rulebooks/dnd5e/monster/actions/loader.go`
 - Modify: `rulebooks/dnd5e/monster/actions/integration_test.go`
+- Modify: goblin/scimitar content under `rulebooks/dnd5e/monster/monsters/`
 
 **Interfaces:**
-- Produces: `ScimitarConfig.Damage []damage.Damage`; legacy reads convert fused `DamageDice` to slashing and do not add `DamageBonus` again.
+- Produces: goblin attacks represented by generic `actions.MeleeAction`; no `ScimitarConfig`, `ScimitarAction`, or scimitar loader branch.
 
-- [ ] **Step 1: Write a persisted-fixture regression test**
+- [ ] **Step 1: Write a RED generic-melee goblin test**
 
 ```go
-func (s *ScimitarActionTestSuite) TestLegacyFusedBonusIsNotCountedTwice() {
-	raw := json.RawMessage(`{"id":"scimitar","attack_bonus":4,"damage_dice":"1d6+2","damage_bonus":2}`)
-	action, err := actions.LoadAction(monster.ActionData{Ref: *refs.MonsterActions.Scimitar(), Config: raw})
-	s.Require().NoError(err)
-	var written map[string]any
-	s.Require().NoError(json.Unmarshal(action.ToData().Config, &written))
-	s.Equal(float64(2), written["damage"].([]any)[0].(map[string]any)["flat_bonus"])
-	s.NotContains(written, "damage_dice")
+func (s *IntegrationTestSuite) TestGoblinScimitarUsesGenericMeleeDamage() {
+	action := goblinActionByName("scimitar")
+	s.Equal(refs.MonsterActions.Melee().ID, action.ToData().Ref.ID)
+	s.Equal([]damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}}, decodeMelee(action).Damage)
 }
 ```
 
 - [ ] **Step 2: Run and confirm RED**
 
-Run: `cd rulebooks/dnd5e && go test ./monster ./monster/actions -run 'Scimitar.*Legacy|LegacyFused' -count=1`
+Run: `cd rulebooks/dnd5e && go test ./monster/... -run 'GoblinScimitar|GenericMelee' -count=1`
 
-Expected: FAIL because scimitar still writes legacy fields.
+Expected: FAIL because goblin content still constructs `ScimitarAction`.
 
-- [ ] **Step 3: Implement the dedicated scimitar converter**
+- [ ] **Step 3: Replace the content and remove the obsolete implementation**
 
-Parse `DamageDice` into pure dice plus its modifier, force `damage.Slashing`, ignore the separate historical `DamageBonus` for arithmetic, store canonical damage internally, and write only `damage`.
+Construct the goblin's named scimitar using `NewMeleeAction(MeleeConfig{Name: "scimitar", AttackBonus: 4, Reach: 1, Damage: []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}}})`. Remove the scimitar config/action files, loader case, refs that exist solely for the standalone implementation, and obsolete tests.
 
 - [ ] **Step 4: Run monster tests and confirm GREEN**
 
 Run: `cd rulebooks/dnd5e && go test ./monster/... -count=1`
 
-Expected: PASS with exactly one `+2` in the fixture.
+Expected: PASS with no standalone scimitar implementation.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rulebooks/dnd5e/monster/scimitar_action.go rulebooks/dnd5e/monster/scimitar_action_test.go rulebooks/dnd5e/monster/actions
-git commit -m "fix(dnd5e): migrate legacy scimitar damage once"
+git add -A rulebooks/dnd5e/monster rulebooks/dnd5e/refs
+git commit -m "refactor(dnd5e): replace standalone scimitar action"
 ```
 
 ---
 
 ## Checkpoint 3: Damage-chain carrier and feature semantics
 
-### Task 5: Add typed primary metadata and compatibility mirrors
+### Task 5: Replace singular damage-chain metadata
 
 **Files:**
 - Modify: `rulebooks/dnd5e/events/events.go`
@@ -307,18 +306,18 @@ git commit -m "fix(dnd5e): migrate legacy scimitar damage once"
 - Modify: `rulebooks/dnd5e/combat/damage_test.go`
 
 **Interfaces:**
-- Produces: `DamageChainEvent.WeaponDamageDice`, `DamageChainEvent.WeaponDamageType`, and constructor/helper `NewDamageChainEvent` that derives deprecated `WeaponDamage` and `DamageType` mirrors.
+- Produces: `DamageChainEvent.WeaponDamageDice`, `DamageChainEvent.WeaponDamageType`, and constructor/helper `NewDamageChainEvent`; removes singular `WeaponDamage` and `DamageType`.
 - Preserves: `Components` as authoritative typed damage and `combat.FinalDamage` as the only multiplier arithmetic.
 
-- [ ] **Step 1: Write RED tests for derived mirrors**
+- [ ] **Step 1: Write RED tests for canonical primary metadata**
 
 ```go
-func (s *EventsTestSuite) TestPrimaryMetadataDerivesLegacyMirrors() {
+func (s *EventsTestSuite) TestPrimaryMetadataIsExplicit() {
 	evt := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
 		WeaponDamageDice: "1d8", WeaponDamageType: damage.Slashing,
 	})
-	s.Equal("1d8", evt.WeaponDamage)
-	s.Equal(damage.Slashing, evt.DamageType)
+	s.Equal("1d8", evt.WeaponDamageDice)
+	s.Equal(damage.Slashing, evt.WeaponDamageType)
 }
 ```
 
@@ -335,14 +334,11 @@ type DamageChainEvent struct {
 	Components       []DamageComponent
 	WeaponDamageDice string
 	WeaponDamageType damage.Type
-	// Deprecated derived mirrors; never mutate in subscribers.
-	WeaponDamage string
-	DamageType   damage.Type
 	// existing fields remain
 }
 ```
 
-Update `ResolveDamageInput` with the new names. Keep old input fields only where the legacy combat API requires source compatibility, and translate them once at construction.
+Remove the old fields outright. Route `Strike` and surviving non-attack damage construction through the canonical event shape. Do not update `ResolveDamageInput`; the replaced attack-specific legacy API is deleted in Task 12.
 
 - [ ] **Step 4: Run event and combat tests and confirm GREEN**
 
@@ -370,7 +366,7 @@ git commit -m "feat(dnd5e): add typed damage-chain primary metadata"
 
 **Interfaces:**
 - Consumes: authoritative typed components plus `WeaponDamageDice`/`WeaponDamageType` from Task 5.
-- Produces: critical-aware Sneak Attack feature components, single-roll Brutal Critical components, and no authoritative reads from legacy mirrors.
+- Produces: critical-aware Sneak Attack feature components, single-roll Brutal Critical components, and subscribers using only canonical primary metadata or typed components.
 
 - [ ] **Step 1: Write RED tests for each subscriber contract**
 
@@ -403,7 +399,7 @@ Expected: FAIL on new metadata and critical feature semantics.
 
 - [ ] **Step 3: Migrate subscribers**
 
-For Sneak Attack, roll `1 + boolToInt(event.IsCritical)` times and append both roll sets to one `DamageSourceFeature` component. Set component `IsCritical` only when doubled. For Brutal Critical, roll one die parsed from `WeaponDamageDice` and keep `IsCritical` false. Replace all reads of legacy mirrors with new primary metadata or component-local type/dice.
+For Sneak Attack, roll `1 + boolToInt(event.IsCritical)` times and append both roll sets to one `DamageSourceFeature` component. Set component `IsCritical` only when doubled. For Brutal Critical, roll one die parsed from `WeaponDamageDice` and keep `IsCritical` false. Replace every singular metadata read with new primary metadata or component-local type/dice.
 
 - [ ] **Step 4: Run the complete D&D module suite and confirm GREEN**
 
@@ -499,7 +495,7 @@ func (s *StrictnessTestSuite) TestMonsterProfileRejectsAbilityMarker() {
 }
 ```
 
-Add compiler cases for ordinary/finesse/versatile character attacks, positive/zero/negative intrinsic monster bonuses, canonical-first precedence, bite gate preservation, scimitar, and ranged refusal.
+Add compiler cases for ordinary/finesse/versatile character attacks, positive/zero/negative intrinsic monster bonuses, required canonical arrays, bite gate preservation, generic melee scimitar content, and ranged refusal.
 
 - [ ] **Step 2: Run resolution compiler tests and confirm RED**
 
@@ -619,7 +615,7 @@ git commit -m "feat(resolution): fold composable strike damage once"
 - Modify: `encounter/monster_fixture_test.go`
 
 **Interfaces:**
-- Consumes: persisted canonical `damage` arrays and the complete legacy pair.
+- Consumes: persisted canonical `damage` arrays only.
 - Produces: deterministic singular `(attackBonus, damageDice, damageType)` projection for OA readiness only.
 
 - [ ] **Step 1: Write RED projection tests**
@@ -634,17 +630,17 @@ func (s *SeedMonstersTestSuite) TestCanonicalDamageSeedsOAReadiness() {
 }
 ```
 
-Add cases for `+2`, zero, no marker (first pool), canonical-invalid beside valid legacy (skip, no fallback), partial legacy (skip), and first eligible action wins.
+Add cases for `+2`, zero, no marker (first pool), empty/invalid canonical arrays (skip), and first eligible action wins.
 
 - [ ] **Step 2: Run and confirm RED**
 
 Run: `cd encounter && go test ./... -run 'CanonicalDamage|PrimaryAttackSnapshot|OAReadiness' -count=1`
 
-Expected: FAIL because the private decoder reads only `damage_dice`.
+Expected: FAIL because the private decoder still reads `damage_dice`.
 
-- [ ] **Step 3: Implement new-first private decoding and projection**
+- [ ] **Step 3: Replace private decoding with canonical-only projection**
 
-Extend `attackSnapshot` with `Damage []damage.Damage`. Validate canonical pools. Choose the marked pool or first pool; format `Dice`, `Dice+N`, or `Dice-N`. With no canonical pools, accept only a complete valid legacy pair. Invalid data makes that action ineligible. Do not change real resolution or add multi-pool fields to `MonsterInput`.
+Replace the private snapshot damage fields with `Damage []damage.Damage`. Validate the non-empty array. Choose the marked pool or first pool; format `Dice`, `Dice+N`, or `Dice-N`. Invalid data makes that action ineligible. Do not add fallback decoding or multi-pool fields to `MonsterInput`.
 
 - [ ] **Step 4: Run the encounter suite and confirm GREEN**
 
@@ -715,9 +711,70 @@ git commit -m "test(session): pin aggregate strike recording"
 
 ---
 
-## Checkpoint 6: Cross-module integration, compatibility, and release
+## Checkpoint 6: Legacy deletion, integration, and release
 
-### Task 12: Verify the complete repository and publish in dependency order
+### Task 12: Delete the replaced combat resolution stack
+
+**Files:**
+- Delete: `rulebooks/dnd5e/combat/attack.go`
+- Delete: `rulebooks/dnd5e/combat/attack_test.go`
+- Delete: `rulebooks/dnd5e/combat/attack_phases.go`
+- Delete: `rulebooks/dnd5e/combat/attack_phases_test.go`
+- Delete or trim: attack-specific portions of `rulebooks/dnd5e/combat/damage.go` and `damage_test.go`
+- Modify/Delete: obsolete callers in `rulebooks/dnd5e/combat/movement.go` and `turn_manager_actions.go`
+- Modify/Delete: legacy resolver adapters and tests in top-level `encounter`
+- Modify: `rulebooks/dnd5e/combat/architecture-overview.md`
+
+**Interfaces:**
+- Consumes: the working `AttackProfile` → `Strike` → `StrikeOutcome` path from Tasks 8–11.
+- Produces: no `combat.ResolveAttack`, `ResolveAttackHit`, `ApplyAttackOutcome`, attack-specific `ResolveDamage`, compatibility mirrors, or production callers.
+
+- [ ] **Step 1: Add a repository architecture check that fails while legacy symbols remain**
+
+Create `scripts/check-no-legacy-attack.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+if rg -n 'func (ResolveAttack|ResolveAttackHit|ApplyAttackOutcome)|type (AttackInput|ResolveAttackHitInput|ApplyAttackOutcomeInput)' rulebooks/dnd5e/combat encounter; then
+  echo 'legacy attack resolution symbols remain' >&2
+  exit 1
+fi
+if rg -n 'damage_dice|damage_type|damage_bonus|KnockdownDC|Scimitar(Config|Action)|^[[:space:]]*WeaponDamage[[:space:]]|^[[:space:]]*DamageType[[:space:]]+damage.Type' rulebooks/dnd5e/monster rulebooks/dnd5e/events encounter/seed_monsters.go; then
+  echo 'legacy damage fields remain' >&2
+  exit 1
+fi
+```
+
+- [ ] **Step 2: Run the architecture check and confirm RED**
+
+Run: `bash scripts/check-no-legacy-attack.sh`
+
+Expected: FAIL and list the current legacy APIs and persisted fields.
+
+- [ ] **Step 3: Delete the old stack and obsolete callers**
+
+Remove the listed APIs, compatibility-only structs, adapters, tests, and dead callers. Preserve `combat.FinalDamage`, generic non-attack `DealDamage` behavior still used by spells/conditions, `ApplyDamage` combatant contracts, and shared multiplier tests. Update the living overview to describe only the compiler/Strike path.
+
+- [ ] **Step 4: Run the architecture check and affected suites**
+
+```bash
+bash scripts/check-no-legacy-attack.sh
+(cd rulebooks/dnd5e && go test ./combat ./conditions ./monster/... -count=1)
+(cd rulebooks/dnd5e/resolution && go test ./... -count=1)
+(cd encounter && go test ./... -count=1)
+```
+
+Expected: all PASS with no legacy symbols or fields.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A rulebooks/dnd5e/combat encounter scripts/check-no-legacy-attack.sh
+git commit -m "refactor: remove replaced combat resolution stack"
+```
+
+### Task 13: Verify the complete repository and publish in dependency order
 
 **Files:**
 - Modify only when version bumps are ready: `rulebooks/dnd5e/resolution/go.mod`, `encounter/go.mod`, `rulebooks/dnd5e/session/go.mod`
@@ -757,20 +814,21 @@ git diff --check
 
 Expected: every command exits 0; all ADRs are summarized; no formatting errors.
 
-- [ ] **Step 4: Prove no compatibility artifacts can be committed**
+- [ ] **Step 4: Prove no workspace or legacy artifacts can be committed**
 
 ```bash
 rm go.work go.work.sum
 ! find . -name go.work -o -name go.work.sum | grep .
 ! rg '^replace .*=> \.\.' --glob 'go.mod'
+bash scripts/check-no-legacy-attack.sh
 git status --short
 ```
 
-Expected: no `go.work`, `go.work.sum`, or local sibling `replace`; only intended source/test/doc changes remain.
+Expected: no `go.work`, `go.work.sum`, local sibling `replace`, legacy attack API, legacy persisted damage field, standalone scimitar, or compatibility mirror; only intended changes remain.
 
 - [ ] **Step 5: Request final code review before release commits**
 
-Review against the approved spec for: one fold/application, critical eligibility, Sneak Attack/Brutal Critical distinction, canonical-first persistence, encounter OA readiness, typed outcome boundary, versatile weapons, and canceled advantage.
+Review against the approved spec for: one fold/application, critical eligibility, Sneak Attack/Brutal Critical distinction, canonical-only persistence, deletion completeness, encounter OA readiness, typed outcome boundary, versatile weapons, and canceled advantage.
 
 - [ ] **Step 6: Publish and bump modules in exact order**
 
