@@ -375,8 +375,8 @@ const commands = `  step <name> <x> <y>   walk one cell (dungeon-absolute; the w
   exit <name>           a player heads back to town (carry-forward prints)
   end withdrew          the party calls the delve off (External ending)
   save <file> / load <file>   the ONE aggregate blob, round-tripped
-  atlas                 the dungeon in absolute space — rooms placed by
-                        origin, every doorway's kissing pair made visible
+  atlas                 the dungeon in absolute space — each region's anchor
+                        and span, every doorway's kissing pair made visible
   status | help | quit`
 
 func main() {
