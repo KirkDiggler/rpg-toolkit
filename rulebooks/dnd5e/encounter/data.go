@@ -32,13 +32,21 @@ type EncounterData struct {
 	// A list rather than a single optional bubble because a list grows to N
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
-	Bubbles     []clock.TurnData `json:"bubbles,omitempty"`
-	Intel       intel.Data       `json:"intel"`
-	Log         record.LogData   `json:"log"`
-	Field       FieldData        `json:"field"`
-	Members     []MemberData     `json:"members"`
-	Endings     []EndingData     `json:"endings"`
-	EverMembers []MemberID       `json:"ever_members"`
+	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
+	Intel   intel.Data       `json:"intel"`
+	Log     record.LogData   `json:"log"`
+	Field   FieldData        `json:"field"`
+	Members []MemberData     `json:"members"`
+	// Doors are the field's doors and the state each is in RIGHT NOW
+	// (rpg-toolkit#1123). Top level rather than inside Field, beside Members
+	// and for the same reason: a door's edges are construction truth but its
+	// STATE is world state, and Field is the authored half. Absent in blobs
+	// from before doors existed, which load as a field with none — an
+	// ordinary field where every opening is a gap nobody can shut, which is
+	// exactly what those encounters meant.
+	Doors       []DoorData   `json:"doors,omitempty"`
+	Endings     []EndingData `json:"endings"`
+	EverMembers []MemberID   `json:"ever_members"`
 	// Retention is the story-beat window this encounter was built with (see
 	// SetupInput.Retention). Persisted so a reloaded encounter keeps the policy
 	// it was constructed with rather than silently adopting the package default.
@@ -167,6 +175,115 @@ type ConnectionData struct {
 	To           string        `json:"to"`
 	FromPosition *PositionData `json:"from_position"`
 	ToPosition   *PositionData `json:"to_position"`
+}
+
+// DoorData is the persistent representation of a door: what it is called,
+// where it stands, and the state it is in right now.
+//
+// State carries the declaration's own word ([DoorStateKind]) rather than an
+// index, for CanvasData.Void's reason: a wire form meaning "the third kind"
+// would silently reinterpret every old blob the day a fourth is added. Absent
+// or unknown is refused by name at load, never defaulted — see doorFromData.
+//
+// Lock is present exactly when State is "locked", and its absence there is a
+// defect rather than a lock with no DC. Both halves are checked: a lock on an
+// unlocked door is as wrong as a locked door with none.
+type DoorData struct {
+	ID    string     `json:"id"`
+	Edges []EdgeData `json:"edges"`
+	State string     `json:"state"`
+	Lock  *LockData  `json:"lock,omitempty"`
+}
+
+// EdgeData is the persistent representation of a [DoorEdge]: one crossing,
+// both cells dungeon-absolute.
+type EdgeData struct {
+	From PositionData `json:"from"`
+	To   PositionData `json:"to"`
+}
+
+// LockData is the persistent representation of a [Lock]. Ability and Tool are
+// opaque host/rulebook refs this module never looks inside, so they persist
+// verbatim and omit when empty.
+type LockData struct {
+	DC      int    `json:"dc"`
+	Ability string `json:"ability,omitempty"`
+	Tool    string `json:"tool,omitempty"`
+}
+
+// doorDataFrom renders a door record for the blob.
+func doorDataFrom(d *doorRecord) DoorData {
+	out := DoorData{
+		ID:    d.id,
+		Edges: make([]EdgeData, 0, len(d.edges)),
+		State: string(d.state.Kind()),
+	}
+	for _, e := range d.edges {
+		out.Edges = append(out.Edges, EdgeData{
+			From: PositionData{X: e.From.X, Y: e.From.Y},
+			To:   PositionData{X: e.To.X, Y: e.To.Y},
+		})
+	}
+	if lock, locked := d.state.Lock(); locked {
+		out.Lock = &LockData{DC: lock.DC, Ability: lock.Ability, Tool: lock.Tool}
+	}
+
+	return out
+}
+
+// doorStateFromData resolves the persisted word and lock back to the state they
+// name.
+//
+// Loud on every mismatch, per the standing precedent (rpg-toolkit#1053/#1068:
+// fail loudly, no migration). An absent word is a door that never said; an
+// unknown one is a blob from a dialect this build does not speak; a locked door
+// with no lock, or an unlocked one carrying a lock, is a blob whose two halves
+// disagree — and guessing which half is right is exactly what this module is
+// not allowed to do.
+func doorStateFromData(id string, name string, lock *LockData) (DoorState, error) {
+	switch DoorStateKind(name) {
+	case DoorOpen, DoorClosed:
+		if lock != nil {
+			return nil, fmt.Errorf("door %q is %s and carries a lock: %w", id, name, ErrBadDoor)
+		}
+		if DoorStateKind(name) == DoorOpen {
+			return DoorIsOpen(), nil
+		}
+		return DoorIsClosed(), nil
+	case DoorLocked:
+		if lock == nil {
+			return nil, fmt.Errorf("door %q is locked and says nothing about the lock: %w", id, ErrBadDoor)
+		}
+		return DoorIsLocked(Lock{DC: lock.DC, Ability: lock.Ability, Tool: lock.Tool}), nil
+	case "":
+		return nil, fmt.Errorf("door %q does not say what state it is in (doors[].state): %w", id, ErrBadDoor)
+	default:
+		return nil, fmt.Errorf("door %q is in state %q, which this build does not know (doors[].state): %w", id, name, ErrBadDoor)
+	}
+}
+
+// convertDoorDataToDoorInput converts persisted doors back to construction
+// inputs, so Load hands validateDoorInputs exactly what Setup does — the same
+// shared-validator discipline #929 T2 established for rooms and connections,
+// rather than a mirrored second implementation.
+func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
+	out := make([]DoorInput, 0, len(doors))
+	for _, dd := range doors {
+		state, err := doorStateFromData(dd.ID, dd.State, dd.Lock)
+		if err != nil {
+			return nil, err
+		}
+		edges := make([]DoorEdge, 0, len(dd.Edges))
+		for _, e := range dd.Edges {
+			edges = append(edges, DoorEdge{
+				From: spatial.Position{X: e.From.X, Y: e.From.Y},
+				To:   spatial.Position{X: e.To.X, Y: e.To.Y},
+			})
+		}
+		out = append(out, DoorInput{ID: dd.ID, Edges: edges, State: state})
+	}
+
+	return out, nil
 }
 
 // MemberData is the persistent representation of a member's current placement.
@@ -317,6 +434,16 @@ func (e *Encounter) ToData() EncounterData {
 		}
 	}
 
+	// Doors, in the records' own stable ID order (C8) — the state each is in
+	// right now, not the one it was authored in.
+	var doorData []DoorData
+	if len(e.doors) > 0 {
+		doorData = make([]DoorData, 0, len(e.doors))
+		for _, d := range e.doors {
+			doorData = append(doorData, doorDataFrom(d))
+		}
+	}
+
 	// Build outcome if present
 	var outcomeData *OutcomeData
 	if e.outcome != nil {
@@ -352,6 +479,7 @@ func (e *Encounter) ToData() EncounterData {
 		Log:         e.story.ToData(),
 		Field:       fieldData,
 		Members:     membersData,
+		Doors:       doorData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
@@ -629,6 +757,18 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
+	// Doors, through the SAME validator Setup runs (rpg-toolkit#1123). The
+	// load-only part is resolving the persisted word and lock back into a
+	// state; everything else a door can get wrong is checked once, in one
+	// place, for both seams.
+	doorInputs, err := convertDoorDataToDoorInput(data.Doors)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err = validateDoorInputs(roomInputs, roomGrids, doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
 	// Validate members: no duplicates, rooms exist, positions in bounds
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range data.Members {
@@ -849,7 +989,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// reloaded encounter's map is built by one implementation rather than a
 	// mirrored second one (#929 T2's shared-validator lesson, applied to
 	// construction).
-	e.canvas, err = compileCanvas(roomInputs, roomGrids, void)
+	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
+
+	e.canvas, err = compileCanvas(roomInputs, roomGrids, void, e.doors)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}

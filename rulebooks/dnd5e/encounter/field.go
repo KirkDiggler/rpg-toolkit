@@ -163,6 +163,12 @@ type FieldInput struct {
 
 	// Connections is the list of connections between rooms.
 	Connections []ConnectionInput
+
+	// Doors are the doors standing in this field's walls — each a set of
+	// edges sharing one state (rpg-toolkit#1123). Optional: a field with no
+	// doors is an ordinary field, and every opening in it is simply a gap
+	// nobody can shut.
+	Doors []DoorInput
 }
 
 // MemberInput describes a member being placed into the encounter AT
@@ -462,6 +468,22 @@ type StepOutput struct {
 		From   spatial.Position
 		To     spatial.Position
 	}
+
+	// Door names the door this step went through, or is empty when it did not
+	// go through one (rpg-toolkit#1123).
+	//
+	// A NAME, and only a name, for the same reason Crossing is one. A state
+	// beside it would read "open" and could read nothing else — a step through
+	// a shut door is refused, and that refusal is where a caller needs the
+	// state, so that is where it is: in the error, which names the door and
+	// says what state stopped the step. What a door is in right now, at leisure,
+	// is [Encounter.Doors].
+	//
+	// Separate from Crossing rather than folded into it because they are
+	// different facts. A crossing is an authored OPENING somebody narrates; a
+	// door is a thing with state that may or may not stand in one. A step can
+	// go through both, one, or neither.
+	Door DoorID
 
 	// Crossing names the doorway this step went through, or is empty when it
 	// did not go through one.

@@ -40,8 +40,12 @@ type executedAction struct {
 	// connection names the doorway this step went through, or is empty. A
 	// NAME, for narration — it grants nothing and refuses nothing.
 	connection string
-	from       spatial.Position
-	to         spatial.Position
+	// door names the door this step went through, or is empty. Unlike
+	// connection this one COULD have refused the step — it just did not,
+	// because it was open (rpg-toolkit#1123).
+	door DoorID
+	from spatial.Position
+	to   spatial.Position
 }
 
 // Step moves a member ONE STEP to a dungeon-absolute cell and says what
@@ -119,6 +123,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	}
 
 	out := &StepOutput{
+		Door:        action.door,
 		Crossing:    action.connection,
 		IntelDeltas: intelDeltas,
 		Seq:         seq,
@@ -161,17 +166,39 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		return executedAction{}, fmt.Errorf("cell %v is not floor: %w", to, ErrBadPlacement)
 	}
 
+	// A SHUT DOOR REFUSES BY NAME (rpg-toolkit#1123). The canvas would refuse
+	// this step anyway — a closed door's edges are movement-blocking
+	// boundaries and spatial stops on them like any wall — and "cannot cross
+	// movement-blocking boundary" is the wrong sentence for a door. A wall is
+	// a fact about the dungeon; a shut door is a thing with a state, and the
+	// state is what a caller does something about. So the door is named, and
+	// so is what state it is in.
+	//
+	// Asked BEFORE the move rather than mapped from its error, because the
+	// member's cell is only knowable while they are still standing on it and
+	// spatial's refusal does not say which crossing it stopped at.
+	if here, placed := e.canvas.GetEntityPosition(string(member.ID)); placed {
+		if door := e.doorAcross(here, to); door != nil && door.state.blocks() {
+			return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
+		}
+	}
+
 	from, err := e.moveMember(member, to)
 	if err != nil {
 		return executedAction{}, err
 	}
 
-	return executedAction{
+	action := executedAction{
 		member:     member,
 		connection: e.crossingOf(from, to),
 		from:       from,
 		to:         to,
-	}, nil
+	}
+	if door := e.doorAcross(from, to); door != nil {
+		action.door = door.id
+	}
+
+	return action, nil
 }
 
 // stepTo is the pump's way in: the same step, refused SILENTLY.

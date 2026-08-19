@@ -88,6 +88,16 @@ type Encounter struct {
 	// rebuilding one per call — see regionAt.
 	roomGrids map[string]spatial.Grid
 
+	// doors are every door in the field, sorted by ID (C8). A door's edges are
+	// construction truth; its STATE is the one thing here a verb changes
+	// mid-scene, and it is held once for however many edges the door has
+	// (rpg-toolkit#1123).
+	doors []*doorRecord
+
+	// doorsByID indexes doors by name. The SAME pointers, not a second copy —
+	// a door's state has one home however it is reached.
+	doorsByID map[DoorID]*doorRecord
+
 	// void is what the field declared the space between its chambers is made
 	// of (rpg-toolkit#1116). Kept here because it is construction truth that
 	// has to persist; what READS it is the canvas, which was handed the same
@@ -774,7 +784,7 @@ func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, hei
 // Both seams run buildValidRoomGrids first, which is what lets this read the
 // family off rooms[0] alone: W1 gives every room in a field the same one, and a
 // mixed field never reaches here.
-func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void) (*canvasRoom, error) {
+func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void, doors []*doorRecord) (*canvasRoom, error) {
 	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
 	width, height, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax)
 	if err != nil {
@@ -811,6 +821,17 @@ func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void) 
 			}); berr != nil {
 				return nil, fmt.Errorf("boundary: %w: %w", ErrBadPlacement, berr)
 			}
+		}
+	}
+
+	// Doors LAST, after the rooms' own walls, so a field that somehow reached
+	// here with a door on a walled crossing would end with the door's answer
+	// rather than the wall's. Validation refuses that field outright
+	// (validateDoorInputs), which makes this ordering unreachable rather than
+	// load-bearing — stated so the next editor knows which it is.
+	for _, d := range doors {
+		if derr := registerDoor(canvas, d); derr != nil {
+			return nil, derr
 		}
 	}
 
@@ -1182,6 +1203,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
+	// Check doors: names, states, and edges that are real crossings on real
+	// floor and belong to exactly one door (rpg-toolkit#1123).
+	if err = validateDoorInputs(in.Field.Rooms, roomGrids, in.Field.Doors); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
 	// Hex rooms require integral axial member positions (interim
 	// tools/spatial#926 enforcement — see isIntegralAxialPosition). Runs as
 	// its own pass over the grid this member's declared room resolved to — a
@@ -1219,6 +1246,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		connectionsInput: connectionsInput,
 		void:             in.Field.Canvas.Void,
 	}
+	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
 	// Build clock and intel
 	e.clock, err = clock.NewTick()
@@ -1245,7 +1273,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// diverging the moment a caller reused its RoomInputs. Load needs no such
 	// care — its roomInputs are freshly converted from the blob and alias
 	// nothing (LoadEncounter's own note, and TestAliasImmunityLoadEncounter).
-	e.canvas, err = compileCanvas(e.fieldInput, roomGrids, in.Field.Canvas.Void)
+	e.canvas, err = compileCanvas(e.fieldInput, roomGrids, in.Field.Canvas.Void, e.doors)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
