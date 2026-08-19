@@ -26,6 +26,20 @@ import (
 // and registering an edge that already exists already replaces its flags. This
 // file adds the noun and the verbs; it adds no geometry.
 //
+// # One boundary primitive, which is rpg-toolkit#880's framing
+//
+// #880 asked that movement, pathfinding and line of sight all consult the SAME
+// dungeon-owned boundary, that edges be undirected and normalized, that both
+// endpoints be in the floor footprint, and that an inner edge never be encoded
+// as a blocked CELL. All four hold, and three of them hold because nothing was
+// built for them: a door's edges are [spatial.Boundary] registrations on the
+// one canvas, so movement and sight already read the same thing and there is no
+// cell to block. The two this file enforces are normalization
+// (normalizeDoorEdge, so a crossing named backwards is the same crossing) and
+// floor (validateDoorInputs — a door hanging in the void is a wall drawn across
+// nothing, which is only askable at all because rpg-toolkit#1116 made the
+// canvas say what void is).
+//
 // # One state, N edges — which is the whole point
 //
 // Kirk's ruling, 2026-08-19: A DOOR IS A SET OF EDGES SHARING ONE STATE. The
