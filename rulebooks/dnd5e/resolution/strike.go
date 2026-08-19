@@ -395,21 +395,21 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		IsCritical:        m.outcome.Critical,
 	}
 
-	return foldDamage(&dnd5eEvents.DamageChainEvent{
-		AttackerID:   m.in.AttackerID,
-		TargetID:     m.in.TargetID,
-		Components:   []dnd5eEvents.DamageComponent{component},
-		DamageType:   m.in.Attack.DamageType,
-		IsCritical:   m.outcome.Critical,
-		HasAdvantage: len(m.outcome.Folded.AdvantageSources) > 0,
-		WeaponDamage: m.in.Attack.DamageDice,
-		IsMelee:      true,
+	return foldDamage(dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+		AttackerID:       m.in.AttackerID,
+		TargetID:         m.in.TargetID,
+		Components:       []dnd5eEvents.DamageComponent{component},
+		WeaponDamageDice: m.in.Attack.DamageDice,
+		WeaponDamageType: m.in.Attack.DamageType,
+		IsCritical:       m.outcome.Critical,
+		HasAdvantage:     len(m.outcome.Folded.AdvantageSources) > 0,
+		IsMelee:          true,
 		// Which ability swung, for the effects that predicate on it — Rage
 		// only pays out on a melee Strength attack. Empty when the compiler
 		// named none, which is a stat block's honest answer.
 		AbilityUsed: m.in.Attack.AbilityUsed,
 		WeaponRef:   m.in.Attack.Ref,
-	}, m.afterDamageChain), nil
+	}), m.afterDamageChain), nil
 }
 
 // afterDamageChain applies what the fold settled on — bus-free, straight onto

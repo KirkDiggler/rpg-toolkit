@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -329,7 +330,7 @@ func (r *RagingCondition) onDamageChain(
 				FinalDiceRolls:    nil,
 				Rerolls:           nil,
 				FlatBonus:         r.DamageBonus,
-				DamageType:        e.DamageType, // Same as weapon damage type
+				DamageType:        e.WeaponDamageType, // Same as marked primary weapon type
 				IsCritical:        e.IsCritical,
 			})
 			return e, nil
@@ -341,15 +342,23 @@ func (r *RagingCondition) onDamageChain(
 	}
 
 	// Handle defender side: apply resistance to B/P/S damage
-	if event.TargetID == r.CharacterID && event.DamageType.IsPhysical() {
+	if event.TargetID == r.CharacterID {
 		// Add resistance multiplier in the StageFinal stage
 		applyResistance := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-			e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-				Source:     dnd5eEvents.DamageSourceCondition,
-				SourceRef:  refs.Conditions.Raging(),
-				DamageType: e.DamageType,
-				Multiplier: dnd5eEvents.Multiply(0.5), // Resistance halves damage
-			})
+			physicalTypes := make(map[damage.Type]struct{})
+			for _, component := range e.Components {
+				if component.Multiplier == nil && component.DamageType.IsPhysical() {
+					physicalTypes[component.DamageType] = struct{}{}
+				}
+			}
+			for damageType := range physicalTypes {
+				e.Components = append(e.Components, dnd5eEvents.DamageComponent{
+					Source:     dnd5eEvents.DamageSourceCondition,
+					SourceRef:  refs.Conditions.Raging(),
+					DamageType: damageType,
+					Multiplier: dnd5eEvents.Multiply(0.5), // Resistance halves damage
+				})
+			}
 			return e, nil
 		}
 		err := c.Add(combat.StageFinal, "rage_resistance", applyResistance)

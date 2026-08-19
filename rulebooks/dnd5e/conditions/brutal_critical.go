@@ -161,9 +161,9 @@ func (b *BrutalCriticalCondition) onDamageChain(
 	}
 
 	// Parse weapon damage notation to get die size (e.g., "1d8" -> 8)
-	dieSize, err := parseDieSize(event.WeaponDamage)
+	dieSize, err := parseDieSize(event.WeaponDamageDice)
 	if err != nil {
-		return c, rpgerr.Wrapf(err, "failed to parse weapon damage notation: %s", event.WeaponDamage)
+		return c, rpgerr.Wrapf(err, "failed to parse weapon damage notation: %s", event.WeaponDamageDice)
 	}
 
 	if dieSize == 0 {
@@ -191,7 +191,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 			FinalDiceRolls:    extraRolls,
 			Rerolls:           nil,
 			FlatBonus:         0,
-			DamageType:        e.DamageType,
+			DamageType:        e.WeaponDamageType,
 			IsCritical:        true,
 		})
 		return e, nil

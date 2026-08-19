@@ -153,9 +153,9 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 			}
 
 			// Parse die size from weapon damage notation
-			dieSize, err := parseGWFWeaponDieSize(e.WeaponDamage)
+			dieSize, err := parseGWFWeaponDieSize(e.WeaponDamageDice)
 			if err != nil {
-				return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", e.WeaponDamage)
+				return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", e.WeaponDamageDice)
 			}
 
 			// Reroll 1s and 2s

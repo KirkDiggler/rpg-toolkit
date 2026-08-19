@@ -293,24 +293,22 @@ func ResolveDamage(ctx context.Context, input *ResolveDamageInput) (*ResolveDama
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "EventBus is required")
 	}
 
-	primaryType := input.Components[0].DamageType
-
 	// Publish through DamageChain for modifiers
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:      input.AttackerID,
-		TargetID:        input.TargetID,
-		Components:      input.Components,
-		DamageType:      primaryType,
-		IsCritical:      input.IsCritical,
-		HasAdvantage:    input.HasAdvantage,
-		IsOffHandAttack: input.IsOffHandAttack,
-		AbilityModifier: input.AbilityModifier,
+	damageEvent := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+		AttackerID:       input.AttackerID,
+		TargetID:         input.TargetID,
+		Components:       input.Components,
+		WeaponDamageDice: input.WeaponDamage,
+		WeaponDamageType: input.Components[0].DamageType,
+		IsCritical:       input.IsCritical,
+		HasAdvantage:     input.HasAdvantage,
+		IsOffHandAttack:  input.IsOffHandAttack,
+		AbilityModifier:  input.AbilityModifier,
 		// Attack-specific fields (for modifiers like GWF that need weapon info)
-		WeaponDamage: input.WeaponDamage,
-		AbilityUsed:  input.AbilityUsed,
-		WeaponRef:    input.WeaponRef,
-		IsMelee:      input.IsMelee,
-	}
+		AbilityUsed: input.AbilityUsed,
+		WeaponRef:   input.WeaponRef,
+		IsMelee:     input.IsMelee,
+	})
 
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(input.EventBus)

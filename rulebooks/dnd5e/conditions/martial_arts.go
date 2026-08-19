@@ -209,7 +209,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 			}
 
 			// Update the weapon damage notation in the event for reference
-			e.WeaponDamage = martialArtsDice
+			e.WeaponDamageDice = martialArtsDice
 		}
 
 		// If DEX is higher than STR, replace ability modifier for monk weapons and unarmed strikes

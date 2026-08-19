@@ -162,7 +162,7 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 			FinalDiceRolls:    nil,
 			Rerolls:           nil,
 			FlatBonus:         2,
-			DamageType:        e.DamageType,
+			DamageType:        e.WeaponDamageType,
 			IsCritical:        e.IsCritical,
 		})
 		return e, nil
