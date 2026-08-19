@@ -64,6 +64,11 @@ type RegionID = string
 // could stand in. A member in a doorway is therefore in the region whose cell
 // is under their feet, and the member facing them one cell away is in the
 // other. Pinned by TestAMemberInTheDoorwayStandsInTheRegionTheyStandOn.
+//
+// A host that wants "is this cell an opening" is asking a different question,
+// and [Encounter.Atlas] answers it: every doorway reports both endpoint cells
+// in absolute space. Standing in one is a fact about the doorway, not about
+// which region holds you.
 func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
 	return regionAt(e.fieldInput, e.roomGrids, cell)
 }
