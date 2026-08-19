@@ -459,6 +459,15 @@ type StepInput struct {
 	To spatial.Position
 }
 
+// CrossedDoor is one door a step went through, and the state it was in.
+type CrossedDoor struct {
+	// ID is the door's identifier.
+	ID DoorID
+
+	// State is the state it was in when the step passed through it.
+	State DoorStateKind
+}
+
 // StepOutput reports what the step actually did.
 type StepOutput struct {
 	// Stepped is the movement, in dungeon-absolute cells at both ends —
@@ -469,21 +478,29 @@ type StepOutput struct {
 		To     spatial.Position
 	}
 
-	// Door names the door this step went through, or is empty when it did not
-	// go through one (rpg-toolkit#1123).
+	// Doors are the doors this step went through, IN TRAVEL ORDER, or empty
+	// when it went through none (rpg-toolkit#1123).
 	//
-	// A NAME, and only a name, for the same reason Crossing is one. A state
-	// beside it would read "open" and could read nothing else — a step through
-	// a shut door is refused, and that refusal is where a caller needs the
-	// state, so that is where it is: in the error, which names the door and
-	// says what state stopped the step. What a door is in right now, at leisure,
-	// is [Encounter.Doors].
+	// A LIST, because a step is not necessarily one cell. [Encounter.Step]
+	// deliberately does not check adjacency — that is a rule about walking and
+	// it lives with the walk — so a move can legitimately cross several
+	// crossings, and a singular field would have picked one of them by
+	// accident. The seam that walks a path visits each cell in turn, so in
+	// practice this is empty or one long. (Found by Copilot on PR #1125.)
+	//
+	// EACH CARRIES ITS STATE rather than leaving it implied. Every door here is
+	// one the step got through, so today the state reads "open" and could read
+	// nothing else — but "the step succeeded, therefore the door was open" is
+	// an inference that stops being true the moment a third state arrives
+	// (ajar, broken, one-way), and a contract a caller has to re-derive from an
+	// implication is one nobody can rely on. #1123 asks for the door's identity
+	// AND state; this is both.
 	//
 	// Separate from Crossing rather than folded into it because they are
 	// different facts. A crossing is an authored OPENING somebody narrates; a
 	// door is a thing with state that may or may not stand in one. A step can
 	// go through both, one, or neither.
-	Door DoorID
+	Doors []CrossedDoor
 
 	// Crossing names the doorway this step went through, or is empty when it
 	// did not go through one.

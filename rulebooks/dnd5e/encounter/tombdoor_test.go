@@ -95,6 +95,21 @@ func (s *TombDoorSuite) SetupTest() {
 	s.enc = enc
 }
 
+// picksTheLock is where the RULE lives, and it lives here on purpose.
+//
+// "A check that meets the DC succeeds" is D&D 5e — a tie goes to the roller —
+// and [Encounter.Unlock] is not allowed to know it. It is told whether the lock
+// was beaten and does as it is told (Kirk: "I agree on rules leaking in we need
+// to be diligent"). So the comparison sits in this fixture, standing in for the
+// rulebook seam that will make it for real, and the scene below still reads as
+// dice against a difficulty because that is what is happening — just not inside
+// the composition.
+//
+// A system where ties fail, or where a natural 1 fails regardless, changes this
+// function and nothing in the module. That is the whole test of whether the
+// seam is in the right place.
+func picksTheLock(total, dc int) bool { return total >= dc }
+
 func (s *TombDoorSuite) sees(observer, subject core.EntityID) bool {
 	view, err := s.enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
@@ -130,16 +145,20 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 
 	// A FAILED ATTEMPT LEAVES IT RECOVERABLE — the half the old stack's
 	// locked_connector_test pins, and the half a state machine gets wrong.
-	failed, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Total: cryptDC - 1})
+	const missed, met = cryptDC - 1, cryptDC
+
+	failed, err := s.enc.Unlock(&encounter.UnlockInput{
+		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC)})
 	s.Require().NoError(err, "a failed check is an outcome, not an error")
 	s.False(failed.Beaten)
-	s.Equal(cryptDC, failed.DC)
+	s.Equal(cryptDC, failed.DC, "and it reports the DC it carries, for whoever narrates the near miss")
 	s.Equal(encounter.DoorLocked, failed.State, "still locked")
 	s.False(s.sees(delve, wight), "and still blind")
 
-	beaten, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Total: cryptDC})
+	beaten, err := s.enc.Unlock(&encounter.UnlockInput{
+		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC)})
 	s.Require().NoError(err)
-	s.True(beaten.Beaten, "meeting the DC exactly beats it — a check that ties succeeds")
+	s.True(beaten.Beaten, "meeting the DC exactly beats it — a tie goes to the roller, per picksTheLock")
 	s.Equal(encounter.DoorOpen, beaten.State, "beaten means open, not merely unlocked")
 
 	s.True(s.sees(delve, wight), "THE BOSS CHAMBER IS REVEALED")
@@ -159,7 +178,7 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 func (s *TombDoorSuite) TestTheOpenDoorwayAtTheOtherSeamIsUnaffected() {
 	out, err := s.enc.Step(&encounter.StepInput{Member: delve, To: spatial.Position{X: 5, Y: tombdoorRow}})
 	s.Require().NoError(err, "the gap at the first seam is a step like any other")
-	s.Empty(out.Door, "and no door stands in it")
+	s.Empty(out.Doors, "and no door stands in it")
 
 	_, err = s.enc.OpenDoor(&encounter.OpenDoorInput{Door: "entrance-door"})
 	s.Require().ErrorIs(err, encounter.ErrNoDoor, "there is nothing there to open")
@@ -184,7 +203,7 @@ func (s *TombDoorSuite) TestTheDoorSurvivesASave() {
 	})
 
 	s.Run("and open, once it has been beaten", func() {
-		_, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Total: 30})
+		_, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Beaten: picksTheLock(30, cryptDC)})
 		s.Require().NoError(err)
 
 		data := s.enc.ToData()

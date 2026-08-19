@@ -78,20 +78,29 @@ const (
 	DoorLocked DoorStateKind = "locked"
 )
 
-// Lock is what it takes to beat a locked door: a number this module compares
-// against, and two identifiers it never looks inside.
+// Lock is what it takes to beat a locked door: three facts this module carries
+// from authoring to the caller, and never acts on.
 //
-// DC IS CARRIED, NOT INTERPRETED. This module cannot import the rulebook (law
-// C1), so it does not know what a difficulty class IS — [Encounter.Unlock] is
-// TOLD a total and compares it, exactly as [InitiativeRoller] is told an order
-// rather than rolling one. Ability and Tool are opaque host/rulebook-owned
-// refs (the old stack's canonical values are lowercase "dex" and a toolkit item
-// ref like "dnd5e:item:thieves-tools"); this module carries them from authoring
-// to the caller that knows what they mean and does nothing else with them.
+// DC IS CARRIED, NOT INTERPRETED, AND NOT COMPARED. This module cannot import
+// the rulebook (law C1), so it does not know what a difficulty class IS — and it
+// deliberately does not find out by measuring anything against one.
+// [Encounter.Unlock] is TOLD whether the lock was beaten; deciding that is 5e's
+// job, and "a total that meets the DC succeeds" is a 5e rule that briefly lived
+// here and was taken out (Kirk: "I agree on rules leaking in we need to be
+// diligent"). What the DC is FOR is content: a client shows "DC 12", and the
+// rulebook rolling against it knows the number because this reports it. The
+// precedent is the save gate's — it is data; content carries it, nothing here
+// executes it.
+//
+// Ability and Tool are opaque host/rulebook-owned refs (the old stack's
+// canonical values are lowercase "dex" and a toolkit item ref like
+// "dnd5e:item:thieves-tools"); this module carries them and does nothing else
+// with them.
 type Lock struct {
-	// DC is the total a check must reach to beat this lock. Must be at least
-	// 1 — a lock nothing has to beat is not a lock, and zero is what an
-	// undeclared one would look like.
+	// DC is the lock's authored difficulty, reported to whoever does the
+	// deciding. Must be at least 1 — a lock with nothing to beat is not a
+	// lock, and zero is what an undeclared one would look like. That check is
+	// a well-formedness rule about the DATA, not a judgement about a roll.
 	DC int
 
 	// Ability is the opaque ability identifier the check is made with, or
@@ -163,7 +172,8 @@ func (doorClosed) blocks() bool        { return true }
 //
 // Blocks exactly as [DoorIsClosed] does — a lock is not a stronger wall, it is
 // a fact about who may open one. [Encounter.OpenDoor] refuses it by name and
-// [Encounter.Unlock] is the way through.
+// [Encounter.Unlock] is the way through, taking the caller's verdict on whether
+// the lock was beaten rather than reaching a verdict of its own.
 func DoorIsLocked(lock Lock) DoorState { return doorLocked{lock: lock} }
 
 type doorLocked struct{ lock Lock }
@@ -237,12 +247,28 @@ type doorRecord struct {
 // Doors reports every door, in stable ID order, with the state each is in now.
 //
 // Copy-out: the returned edge slices are freshly allocated per call, so a
-// caller cannot move a door by editing what it was handed. Not on
-// [Encounter.Atlas] deliberately — an Atlas is a CONSTRUCTION-TIME snapshot and
-// says so in its own doc, and a door's state is the one thing here that a verb
-// changes mid-scene. Putting mutable state inside a snapshot that promises to
-// be construction data would make the promise false for every other field on
-// it.
+// caller cannot move a door by editing what it was handed.
+//
+// # Why this is not on the Atlas
+//
+// An [Encounter.Atlas] is a CONSTRUCTION-TIME snapshot and says so in its own
+// doc, and a door's state is the one thing here a verb changes mid-scene.
+// Putting mutable state inside a snapshot that promises to be construction data
+// would make the promise false for every other field on it.
+//
+// Kirk ruled it, and his reasoning is sharper than that, because it says how
+// long the two reads can disagree: "atlas keeps what it had when it loads, the
+// door opening changes that and los is given back. next load will have the door
+// opened so this is only for the turn where the door was opened."
+//
+// So this is NOT a permanent duality between two views of the field. The Atlas
+// is the field as it was authored and loaded; opening a door changes what the
+// map does, and the line of sight that comes back is the live answer. The
+// divergence lasts exactly as long as the session that caused it — the state
+// persists (see doorDataFrom), so the next load builds an Atlas with the door
+// already open and the two agree again. Reading door state here rather than
+// there is what keeps that window honest instead of hiding it inside a snapshot
+// that would then be lying for one turn.
 func (e *Encounter) Doors() []Door {
 	out := make([]Door, 0, len(e.doors))
 	for _, d := range e.doors {
@@ -432,15 +458,10 @@ func registerDoor(canvas *spatial.BasicRoom, d *doorRecord) error {
 	return nil
 }
 
-// doorAcross reports the door standing in the crossing between two adjacent
-// cells, or nil.
-//
-// Adjacent cells only, which is what a crossing IS. A multi-cell step's ray can
-// pass several crossings and spatial refuses it on any of them; naming WHICH
-// door stopped a long step is a question this does not try to answer, because
-// [Encounter.Step] is one step by contract and the seam that walks a path
-// visits each cell in turn.
-func (e *Encounter) doorAcross(from, to spatial.Position) *doorRecord {
+// doorOnEdge reports the door standing in the crossing between two ADJACENT
+// cells, or nil. One edge, one door — validateDoorInputs refuses a crossing
+// claimed by two, which is what makes the singular answer sound.
+func (e *Encounter) doorOnEdge(from, to spatial.Position) *doorRecord {
 	want := normalizeDoorEdge(DoorEdge{From: from, To: to})
 	for _, d := range e.doors {
 		for _, edge := range d.edges {
@@ -451,4 +472,46 @@ func (e *Encounter) doorAcross(from, to spatial.Position) *doorRecord {
 	}
 
 	return nil
+}
+
+// doorsAlong reports every door a move from one cell to another passes
+// through, IN TRAVEL ORDER.
+//
+// A STEP IS NOT NECESSARILY ONE CELL, which is the whole reason this walks a
+// ray instead of looking at the two ends. [Encounter.Step] deliberately does
+// not check adjacency — that is a rule about WALKING and it lives with the walk
+// (Step's own doc, and rpg-toolkit#1059: a decider's IntentMoveTo never carried
+// an adjacency contract) — so a caller can legitimately name a destination
+// several cells away. tools/spatial refuses such a move on ANY
+// movement-blocking crossing along the way, so a door in the middle of the path
+// is as real as one at the end. Looking only at the endpoints was the first
+// version of this and it was wrong twice over: a long step through an open door
+// reported no door at all, and a long step into a shut one got spatial's
+// generic "cannot cross movement-blocking boundary" instead of the door's name
+// and state — which is the answer this slice exists to give. Found by Copilot
+// on PR #1125.
+//
+// THE SAME RAY SPATIAL USES, deliberately: [spatial.CanonicalBoundaryRay] is
+// what MoveEntity walks to decide the refusal
+// (isDirectMovementBoundaryBlockedUnsafe), so asking a different one would be a
+// second answer to "what is crossable" — the defect the BlocksMovement mutant
+// already made this file delete once. The canonical ray is also ORDERED from
+// `from` to `to` whichever way round the endpoints sort, so "travel order" here
+// is the mover's order rather than an artifact of the rasterization.
+//
+// Returns them ALL rather than the first, so a multi-door move has a defined
+// answer instead of one a singular field would have picked by accident. In
+// practice the seam that walks a path visits each cell in turn, and this is
+// empty or one long.
+func (e *Encounter) doorsAlong(from, to spatial.Position) []*doorRecord {
+	ray := spatial.CanonicalBoundaryRay(e.canvas.GetGrid(), from, to)
+
+	var out []*doorRecord
+	for i := 1; i < len(ray); i++ {
+		if d := e.doorOnEdge(ray[i-1], ray[i]); d != nil {
+			out = append(out, d)
+		}
+	}
+
+	return out
 }

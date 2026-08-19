@@ -209,7 +209,8 @@ func (s *DoorSuite) TestAClosedDoorStopsBothAndOpeningRestoresBoth() {
 
 	stepped, err := enc.Step(&encounter.StepInput{Member: nessa, To: orinCell})
 	s.Require().NoError(err, "and restores the way through")
-	s.Equal(encounter.DoorID(theDoor), stepped.Door, "a step through a door names it")
+	s.Equal([]encounter.CrossedDoor{{ID: theDoor, State: encounter.DoorOpen}}, stepped.Doors,
+		"a step through a door names it, and the state it was in")
 }
 
 // TestClosingItAgainStopsBothAgain is the other direction, which is not
@@ -481,7 +482,7 @@ func (s *DoorSuite) TestAskingADoorForWhatItHasAlreadyDoneIsRefused() {
 	s.Require().ErrorIs(err, encounter.ErrBadDoor)
 	s.Contains(err.Error(), "already closed")
 
-	_, err = shut.Unlock(&encounter.UnlockInput{Door: theDoor, Total: 99})
+	_, err = shut.Unlock(&encounter.UnlockInput{Door: theDoor, Beaten: true})
 	s.Require().ErrorIs(err, encounter.ErrBadDoor)
 	s.Contains(err.Error(), "not locked", "there is nothing to beat on an unlocked door")
 }
@@ -591,4 +592,110 @@ func (s *DoorSuite) TestTheHandedOutCanvasCannotBeUsedToOpenADoor() {
 	s.False(writable, "the read-only canvas must not hand out RegisterBoundary/RemoveBoundary")
 
 	s.True(canvas.IsLineOfSightBlocked(nessaCell, orinCell), "and the door is still shut")
+}
+
+// TestAStepSeveralCellsLongStillMeetsTheDoorInItsPath is Copilot's finding on
+// PR #1125, and it was a real gap rather than a polish item.
+//
+// [Encounter.Step] does NOT check adjacency, deliberately: what "one step"
+// means for a walk is a rule about walking and it lives with the walk, and a
+// decider's IntentMoveTo never carried an adjacency contract. So a caller can
+// legitimately name a cell several away — and tools/spatial refuses such a move
+// on ANY movement-blocking crossing along the way, not just at the ends.
+//
+// The first version of the door lookup inspected only the two endpoints. A long
+// step through an open door therefore reported no door at all, and a long step
+// into a shut one got spatial's "cannot cross movement-blocking boundary"
+// instead of the door's name and state — the exact answer this slice exists to
+// give. Both halves are pinned here.
+func (s *DoorSuite) TestAStepSeveralCellsLongStillMeetsTheDoorInItsPath() {
+	far := spatial.Position{X: 5, Y: 1} // three cells past the door, in the east chamber
+
+	s.Run("shut, and refused by the door's name from four cells away", func() {
+		enc := s.doorway(encounter.DoorIsClosed())
+		_, err := enc.Step(&encounter.StepInput{Member: nessa, To: far})
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Contains(err.Error(), theDoor, "the door in the middle of the path is what stopped her")
+		s.Contains(err.Error(), string(encounter.DoorClosed), "and the refusal says what state it is in")
+	})
+
+	s.Run("open, and reported even though it is at neither end", func() {
+		enc := s.doorway(encounter.DoorIsOpen())
+		out, err := enc.Step(&encounter.StepInput{Member: nessa, To: far})
+		s.Require().NoError(err)
+		s.Equal([]encounter.CrossedDoor{{ID: theDoor, State: encounter.DoorOpen}}, out.Doors,
+			"she went through it on the way, so the step says so")
+	})
+}
+
+// threeChambers is a row of three chambers with a door at each seam, so a
+// single step can cross two of them.
+func threeChambers(first, second encounter.DoorState, gate1, gate2 encounter.DoorID) encounter.FieldInput {
+	return encounter.FieldInput{
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+		Rooms: []encounter.RoomInput{
+			{ID: "west", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0},
+				Boundaries: seamWallExcept(2, 3, 1)},
+			{ID: "middle", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0},
+				Boundaries: seamWallExcept(2, 3, 1)},
+			{ID: "east", Width: 3, Height: 3, Origin: spatial.Position{X: 6, Y: 0}},
+		},
+		Doors: []encounter.DoorInput{
+			{ID: gate1, Edges: doorEdgesAcross(2, 1), State: first},
+			{ID: gate2, Edges: doorEdgesAcross(5, 1), State: second},
+		},
+	}
+}
+
+func (s *DoorSuite) walkerIn(field encounter.FieldInput) *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: field,
+		Members: []encounter.MemberInput{
+			{ID: nessa, Kind: encounter.KindPlayer, Room: "west", Position: spatial.Position{X: 0, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc
+}
+
+// TestAStepThroughTwoDoorsNamesBothInTravelOrder defines the multi-door case
+// explicitly, rather than leaving a singular field to pick one by accident.
+//
+// A long step crosses both gates, and the answer is both, in the order she met
+// them — the MOVER's order, not the rasterization's:
+// [spatial.CanonicalBoundaryRay] is ordered from the start cell whichever way
+// round the endpoints happen to sort, and walking back proves it.
+func (s *DoorSuite) TestAStepThroughTwoDoorsNamesBothInTravelOrder() {
+	const gate1, gate2 = "gate-one", "gate-two"
+	enc := s.walkerIn(threeChambers(encounter.DoorIsOpen(), encounter.DoorIsOpen(), gate1, gate2))
+
+	out, err := enc.Step(&encounter.StepInput{Member: nessa, To: spatial.Position{X: 8, Y: 1}})
+	s.Require().NoError(err)
+	s.Equal([]encounter.CrossedDoor{
+		{ID: gate1, State: encounter.DoorOpen},
+		{ID: gate2, State: encounter.DoorOpen},
+	}, out.Doors, "both gates, west to east, in the order she went through them")
+
+	back, err := enc.Step(&encounter.StepInput{Member: nessa, To: spatial.Position{X: 0, Y: 1}})
+	s.Require().NoError(err)
+	s.Equal([]encounter.CrossedDoor{
+		{ID: gate2, State: encounter.DoorOpen},
+		{ID: gate1, State: encounter.DoorOpen},
+	}, back.Doors, "and the other way round coming back — travel order is hers, not the ray's")
+}
+
+// TestTheDoorThatRefusesIsTheOneThatStoppedHer pins that a refusal names the
+// door that actually blocked, not merely the first door on the path — the same
+// first-blocking-crossing rule spatial applies.
+func (s *DoorSuite) TestTheDoorThatRefusesIsTheOneThatStoppedHer() {
+	const gate1, gate2 = "gate-one", "gate-two"
+	enc := s.walkerIn(threeChambers(encounter.DoorIsOpen(), encounter.DoorIsClosed(), gate1, gate2))
+
+	_, err := enc.Step(&encounter.StepInput{Member: nessa, To: spatial.Position{X: 8, Y: 1}})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Contains(err.Error(), gate2, "the SHUT one stopped her")
+	s.NotContains(err.Error(), gate1, "not the open one she walked through first")
 }

@@ -40,12 +40,12 @@ type executedAction struct {
 	// connection names the doorway this step went through, or is empty. A
 	// NAME, for narration — it grants nothing and refuses nothing.
 	connection string
-	// door names the door this step went through, or is empty. Unlike
-	// connection this one COULD have refused the step — it just did not,
-	// because it was open (rpg-toolkit#1123).
-	door DoorID
-	from spatial.Position
-	to   spatial.Position
+	// doors are the doors this step went through, in travel order. Unlike
+	// connection these COULD have refused the step — they just did not
+	// (rpg-toolkit#1123).
+	doors []CrossedDoor
+	from  spatial.Position
+	to    spatial.Position
 }
 
 // Step moves a member ONE STEP to a dungeon-absolute cell and says what
@@ -123,7 +123,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	}
 
 	out := &StepOutput{
-		Door:        action.door,
+		Doors:       action.doors,
 		Crossing:    action.connection,
 		IntelDeltas: intelDeltas,
 		Seq:         seq,
@@ -188,9 +188,15 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		// a caller can do something about. Spatial's refusal cannot say which
 		// crossing it stopped at, so the door is found here, from the cell they
 		// were standing on.
+		// The FIRST blocking door in travel order, which is the one spatial
+		// stopped at: it refuses on the first blocking crossing along the same
+		// ray doorsAlong walks. A step several cells long can pass more than
+		// one door, and only the first shut one is what stopped this step.
 		if placed {
-			if door := e.doorAcross(here, to); door != nil && door.state.blocks() {
-				return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
+			for _, door := range e.doorsAlong(here, to) {
+				if door.state.blocks() {
+					return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
+				}
 			}
 		}
 
@@ -203,8 +209,8 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		from:       from,
 		to:         to,
 	}
-	if door := e.doorAcross(from, to); door != nil {
-		action.door = door.id
+	for _, door := range e.doorsAlong(from, to) {
+		action.doors = append(action.doors, CrossedDoor{ID: door.id, State: door.state.Kind()})
 	}
 
 	return action, nil

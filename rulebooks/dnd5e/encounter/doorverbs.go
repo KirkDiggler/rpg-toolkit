@@ -37,9 +37,27 @@ import (
 // (encounter/data.go's DoorData doc comment says so outright). #1123 says to
 // port that stack's open/locked/DC MODEL, and the model is what is ported — the
 // non-gating is not part of it, and a verb that opens a locked door is a
-// silent-success shape. What the caller keeps is the freedom that mattered:
-// this module still does not decide WHO may try or what they roll. It is told a
-// total (see [Encounter.Unlock]) exactly as it is told an initiative order.
+// silent-success shape.
+//
+// # NOTHING HERE COMPARES ANYTHING
+//
+// Kirk, on this file: "I agree on rules leaking in we need to be diligent." The
+// first version of [Encounter.Unlock] took a check total and measured it against
+// the authored DC — and "a total that MEETS the DC succeeds" is a 5e rule, sat
+// inside the module whose whole charter is that it holds none. It is the same
+// overreach as naming a void case for a material, caught in the same wave.
+//
+// So the outcome ARRIVES AS DATA. The caller rolled; the caller knows whether
+// the lock was beaten; it says so, and this changes the door's state. Ties,
+// advantage, tool proficiency, a natural 1 that fails regardless, a system where
+// meeting the DC is not enough: every one of those is a rulebook's business and
+// none of them is expressible here — which is the point. The DC itself stays,
+// carried and reported, because that is CONTENT ([Lock] says why).
+//
+// Data on the input rather than a capability this asks, which is the economy
+// gate's ruling applied again: a capability is for what the composition must ASK
+// mid-flight, and this is something the caller already holds by the time it
+// calls.
 
 // OpenDoorInput names the door to open.
 type OpenDoorInput struct {
@@ -185,21 +203,24 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	}, nil
 }
 
-// UnlockInput names the door and the total a check came up with.
+// UnlockInput names the door and says whether the attempt on it succeeded.
 type UnlockInput struct {
 	// Door is the door's identifier.
 	Door DoorID
 
-	// Total is what the attempt came to — the finished number, after every
-	// modifier the rulebook applies.
+	// Beaten is whether the attempt beat the lock. The CALLER decides it;
+	// nothing here recomputes or second-guesses it.
 	//
-	// THIS MODULE IS TOLD, IT DOES NOT ROLL, exactly as [InitiativeRoller] is
-	// told an order and [Sight] is told a distance. What a lockpicking check
-	// IS — which ability, which proficiency, whether advantage applied — is 5e,
-	// and law C1 forbids this module from knowing any of it. What it does with
-	// the number is one comparison against the authored DC, which is arithmetic
-	// rather than a rule.
-	Total int
+	// THIS MODULE IS TOLD, AND IT DOES NOT COMPARE. An earlier version took the
+	// check's total and measured it against the authored DC, which put "a total
+	// that meets the DC succeeds" — a 5e rule — inside a module not allowed to
+	// know one. Whether a tie succeeds, whether advantage applied, whether a
+	// natural 1 fails regardless: all of that is the rulebook's, and none of it
+	// can leak in through a boolean.
+	//
+	// False is a real answer rather than an absent one: it means somebody tried
+	// and failed, which is a thing that happened and gets a beat.
+	Beaten bool
 }
 
 // UnlockOutput reports whether the lock was beaten, and what that revealed.
@@ -207,7 +228,9 @@ type UnlockOutput struct {
 	// Door is the door's identifier.
 	Door DoorID
 
-	// Beaten reports whether Total reached the DC.
+	// Beaten echoes what the caller said, so a caller reads the result off the
+	// answer rather than off the fact that it called — [DissolveOutput.Cause]'s
+	// reasoning.
 	//
 	// A FAILED ATTEMPT IS NOT AN ERROR. It is an outcome — the door is still
 	// locked, still there, and still worth another try — and reporting it as an
@@ -215,8 +238,9 @@ type UnlockOutput struct {
 	// no such door".
 	Beaten bool
 
-	// DC is the total that had to be reached, reported either way so a caller
-	// narrating a near miss does not have to go looking for it.
+	// DC is the lock's authored difficulty, echoed either way so a caller
+	// narrating a near miss does not have to go looking for it. CARRIED, never
+	// compared — see [Lock].
 	DC int
 
 	// State is what state the door is in now: [DoorOpen] when beaten,
@@ -236,11 +260,13 @@ type UnlockOutput struct {
 	Formed *FormedBubble
 }
 
-// Unlock attempts a locked door with a finished check total, and OPENS it when
-// the lock is beaten.
+// Unlock reports an attempt on a locked door, and OPENS it when the caller says
+// the lock was beaten.
 //
-// Beaten means Total >= the authored DC. On success the door ends OPEN and
-// unlocked, not merely unlocked — which is the old stack's behaviour and the
+// IT COMPARES NOTHING. What counts as beating a lock is 5e, and 5e lives on the
+// other side of this seam — see this file's doc comment for why that matters
+// more than the one line of arithmetic it saves. On success the door ends OPEN
+// and unlocked, not merely unlocked, which is the old stack's behaviour and the
 // right one: a party that just picked a lock is going through, and a separate
 // OpenDoor call afterwards would be ceremony with a window in the middle where
 // the door is a state nobody authored.
@@ -271,20 +297,17 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		return nil, fmt.Errorf("unlock %q: it is %s, not locked: %w", door.id, door.state.Kind(), ErrBadDoor)
 	}
 
-	beaten := in.Total >= lock.DC
-
 	// The state to land in, and it is the same call either way: a failed
 	// attempt re-states the door as exactly what it already was, so there is
 	// one path through setDoorState rather than a beat written in two places.
 	next := door.state
-	if beaten {
+	if in.Beaten {
 		next = DoorIsOpen()
 	}
 
 	changed, err := e.setDoorState(door, next, map[string]interface{}{
-		"attempt": in.Total,
-		"dc":      lock.DC,
-		"beaten":  beaten,
+		"dc":     lock.DC,
+		"beaten": in.Beaten,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
@@ -292,7 +315,7 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 
 	return &UnlockOutput{
 		Door:        door.id,
-		Beaten:      beaten,
+		Beaten:      in.Beaten,
 		DC:          lock.DC,
 		State:       door.state.Kind(),
 		IntelDeltas: changed.deltas,
