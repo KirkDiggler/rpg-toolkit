@@ -128,6 +128,35 @@ func (s *DamageConfigTestSuite) TestActionDamageConfigRejectsLegacyFieldsAlongsi
 	}
 }
 
+func (s *DamageConfigTestSuite) TestActionDamageConfigRejectsTrailingJSONValues() {
+	_, err := LoadAction(monster.ActionData{
+		Ref:    *refs.MonsterActions.Melee(),
+		Config: []byte(`{"name":"claw","attack_bonus":4,"reach":1,"damage":[{"dice":"1d6","type":"slashing"}]} {}`),
+	})
+	s.Error(err)
+}
+
+func (s *DamageConfigTestSuite) TestMeleeActionDefensivelyCopiesDamageAndProperties() {
+	pools := []damage.Damage{{
+		Dice:       "1d8",
+		Type:       damage.Slashing,
+		Properties: []damage.Property{damage.DoesNotCrit},
+	}}
+	action, err := NewMeleeAction(MeleeConfig{Name: "sword", AttackBonus: 4, Reach: 1, Damage: pools})
+	s.Require().NoError(err)
+
+	pools[0].Dice = "1d10"
+	pools[0].Properties[0] = damage.AddsAttackAbilityModifier
+
+	written := s.written(action)
+	persisted := written["damage"].([]any)[0]
+	s.Equal(map[string]any{
+		"dice":       "1d8",
+		"type":       "slashing",
+		"properties": []any{"does-not-crit"},
+	}, persisted)
+}
+
 func (s *DamageConfigTestSuite) TestBiteDamageConfigPreservesSaveGateWithoutKnockdownCompatibility() {
 	gate := saves.NewSaveGate(abilities.STR, 11)
 	action, err := s.load(refs.MonsterActions.Bite(), map[string]any{

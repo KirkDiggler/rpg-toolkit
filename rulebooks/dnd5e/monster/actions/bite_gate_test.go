@@ -22,7 +22,12 @@ func TestBiteSaveGateSuite(t *testing.T) {
 }
 
 func (s *BiteSaveGateSuite) TestSaveGateRoundTripsWithCanonicalDamage() {
-	gate := saves.NewSaveGate(abilities.STR, 11)
+	gate := &saves.SaveGate{
+		Abilities:  []abilities.Ability{abilities.CON},
+		DC:         saves.DCFivePlusDamageTaken(),
+		OnSuccess:  saves.Half,
+		Recurrence: saves.RecurrenceEndOfTurn,
+	}
 	bite, err := NewBiteAction(BiteConfig{
 		AttackBonus: 4,
 		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
@@ -34,4 +39,5 @@ func (s *BiteSaveGateSuite) TestSaveGateRoundTripsWithCanonicalDamage() {
 	loaded, err := LoadAction(bite.ToData())
 	s.Require().NoError(err)
 	s.Equal(gate, loaded.(*BiteAction).SaveGate())
+	s.Equal(12, loaded.(*BiteAction).SaveGate().DC.DC(saves.DCInput{DamageTaken: 7}))
 }

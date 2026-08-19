@@ -6,6 +6,8 @@ package actions
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -14,7 +16,19 @@ import (
 func unmarshalActionConfig(raw json.RawMessage, config any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(config)
+	if err := decoder.Decode(config); err != nil {
+		return err
+	}
+
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("unexpected trailing JSON value")
+		}
+		return err
+	}
+
+	return nil
 }
 
 const (
