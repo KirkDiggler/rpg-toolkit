@@ -53,10 +53,13 @@ type RegionID = string
 // regionAt's.
 //
 // A DOORWAY DOES NOT GET ITS OWN ANSWER, and that is a decision rather than an
-// omission. The old stack made a door's cell belong to no region on purpose —
-// its compiler puts a one-cell wall column between chambers and carves a floor
-// door cell into it, so there is a real cell between two regions to leave
-// unnamed. This composition has no such cell: a connection's two endpoints are
+// omission. The old top-level encounter module made a door's cell belong to no
+// region on purpose, and says so in its own words (encounter/knowledge.go's
+// doorPassageNeighbor: "the door's own cell belongs to NEITHER region ... doors
+// sit between two regions' tagged hex sets, never inside either"). That is a
+// fact about a compiler this composition does not have: it puts a one-cell wall
+// column between chambers and carves a floor door cell into it, so over there
+// a real cell sits between two regions with nothing to name it. This composition has no such cell: a connection's two endpoints are
 // room-local cells OF THEIR OWN ROOMS (ConnectionInput's doc comment) and W3
 // makes them adjacent, so nothing sits between them. And a cell no region owns
 // is not floor here, so "belongs to no region" and "you cannot stand there"

@@ -30,6 +30,12 @@ import (
 // So these two tests read. Each names one syntactic move a second
 // implementation of its rule cannot avoid making, and asserts that move happens
 // in exactly one function body. Neither checks style, and neither counts lines.
+//
+// The technique is the house's, not a new one: rulebooks/dnd5e/session's
+// boundary_test.go parses its own package to prove no inner type crosses the
+// seam, on the same reasoning — "the guarantee is mechanical rather than
+// aspirational ... instead of trusting that reviewers will spot a leaked type in
+// a diff two years from now".
 
 // TestRegionOwnershipIsAskedInOneFunction.
 //
