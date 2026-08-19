@@ -361,3 +361,65 @@ func (s *VoidSuite) TestNobodySeesOutOfSolidRock() {
 	s.False(open.IsLineOfSightBlocked(theGapCell, brennaCell), "open air is nothing to see through")
 	s.False(open.IsLineOfSightBlocked(brennaCell, theGapCell))
 }
+
+// blocked keeps the compiler from optimizing away the calls the allocation
+// measurement below is counting.
+var blocked bool
+
+// contiguousField is two chambers that TOUCH: their footprints tile the canvas
+// exactly, so the field has no void at all and neither declaration has anything
+// to be about.
+func contiguousField(void encounter.Void) encounter.FieldInput {
+	return encounter.FieldInput{
+		Canvas: encounter.CanvasInput{Void: void},
+		Rooms: []encounter.RoomInput{
+			{ID: voidWest, Width: 4, Height: 4, Origin: spatial.Position{X: 0, Y: 0}},
+			{ID: voidEast, Width: 4, Height: 4, Origin: spatial.Position{X: 4, Y: 0}},
+		},
+	}
+}
+
+// canvasOf opens a field with nobody in it and hands back its map.
+func (s *VoidSuite) canvasOf(field encounter.FieldInput) spatial.Room {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field:   field,
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+
+	return canvas
+}
+
+// TestRockCostsNothingWhereThereIsNoVoid pins the short-circuit, and pins it as
+// ALLOCATIONS rather than as a stopwatch, so it says something true on a busy
+// machine (atlascost_test.go's rule: pin an order of growth, loosely).
+//
+// A field whose chambers tile their canvas exactly has no void, so rock and
+// open are the same world described two ways — and a rock declaration must not
+// buy a per-ray scan for a thing that cannot be there. Where there IS void the
+// scan is real work and shows up here as real allocation, which is what gives
+// this test teeth: without that half it would pass on a version that never
+// scanned at all.
+func (s *VoidSuite) TestRockCostsNothingWhereThereIsNoVoid() {
+	const from, to = 0, 3
+
+	measure := func(canvas spatial.Room) float64 {
+		a := spatial.Position{X: from, Y: 1}
+		b := spatial.Position{X: to, Y: 1}
+		return testing.AllocsPerRun(200, func() { blocked = canvas.IsLineOfSightBlocked(a, b) })
+	}
+
+	tiled := measure(s.canvasOf(contiguousField(encounter.VoidIsRock())))
+	s.Equal(measure(s.canvasOf(contiguousField(encounter.VoidIsOpen()))), tiled,
+		"no void to look for, so rock allocates exactly what open does")
+
+	gappedOpen := measure(s.canvasOf(gappedField(encounter.VoidIsOpen())))
+	gappedRock := measure(s.canvasOf(gappedField(encounter.VoidIsRock())))
+	s.Greater(gappedRock, gappedOpen,
+		"and where there IS void, the scan is real work on a ray that never finds any — "+
+			"which is what makes the line above a measurement rather than a tautology")
+}

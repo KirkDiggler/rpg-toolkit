@@ -814,7 +814,13 @@ func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void) 
 		}
 	}
 
-	return &canvasRoom{BasicRoom: canvas, void: void, rooms: rooms, grids: grids}, nil
+	return &canvasRoom{
+		BasicRoom: canvas,
+		void:      void,
+		rooms:     rooms,
+		grids:     grids,
+		hasVoid:   fieldHasVoid(rooms, width, height),
+	}, nil
 }
 
 // gridShapeName renders a GridShape for W1's mixed-family defect message.

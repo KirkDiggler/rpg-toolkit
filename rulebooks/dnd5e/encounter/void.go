@@ -205,6 +205,39 @@ type canvasRoom struct {
 	// question — see IsLineOfSightBlocked.
 	rooms []RoomInput
 	grids map[string]spatial.Grid
+
+	// hasVoid is whether this field has any cell no chamber owns — see
+	// fieldHasVoid. Purely a cost decision: where there is no void, rock and
+	// open MEAN THE SAME THING, and the scan below can only ever run to the
+	// end of the ray and find nothing.
+	hasVoid bool
+}
+
+// fieldHasVoid reports whether any cell of the canvas belongs to no chamber.
+//
+// ARITHMETIC, NOT ENUMERATION, and that distinction is the whole reason this is
+// allowed to exist. W2 makes the chambers disjoint and W6 makes them fit, so
+// the union of their footprints has exactly the cell count their sum does, and
+// the canvas is void-free precisely when that sum fills it. Both grid families
+// count the same way: an AxialHexGrid of Width x Height holds Width*Height
+// integer (Q,R) pairs, exactly as a square grid holds Width*Height cells.
+//
+// THIS IS NOT THE FLOOR MASK, which Kirk's ruling (4) on rpg-toolkit#1105
+// deferred until a caller forces one. A mask is a per-cell structure with two
+// unanswered questions riding on it — computed per load or persisted, and
+// whether it belongs in tools/spatial — and this is one derived bit, computed
+// from numbers already in hand, never stored and never persisted. The measured
+// case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
+// a sight refresh under rock cost 109 ms against open's 26 ms, all of it spent
+// proving there was no void to find. With this it is open's number, because
+// there is nothing to look for.
+func fieldHasVoid(rooms []RoomInput, width, height int) bool {
+	var floor int64
+	for _, r := range rooms {
+		floor += int64(r.Width) * int64(r.Height)
+	}
+
+	return int64(width)*int64(height) != floor
 }
 
 // IsLineOfSightBlocked reports whether sight between two cells is blocked,
@@ -242,9 +275,25 @@ type canvasRoom struct {
 //
 // Under [VoidOpen] this is spatial's answer unchanged, which is the honest
 // shape of "the declaration decides": there is nothing to add to a sightline
-// crossing open sky.
+// crossing open sky. Under rock on a field with NO void it is spatial's answer
+// unchanged too, and for a better reason than speed: a field whose chambers
+// tile their canvas exactly has nothing for either declaration to be about, so
+// the two mean the same thing and cost the same (fieldHasVoid, pinned by
+// TestRockCostsNothingWhereThereIsNoVoid).
+//
+// WHERE THERE IS VOID, THIS IS USUALLY CHEAPER THAN NOT DOING IT — measured,
+// because the shape of the cost is not the shape it looks like. Scanning the
+// ray is arithmetic, and the spatial call it can skip rasterizes, walks
+// boundaries, walks blocking entities and then walks a lean lane per neighbour.
+// So finding rock EARLY returns before any of that: on a twenty-chamber field
+// with gaps, a refresh cost 17 ms under rock against 28 ms under open, and the
+// reference tomb's shape 46 us against 77 us. The price is paid by rays that
+// never leave the floor, which run the scan in full and then delegate anyway:
+// one forty-by-forty chamber with a void margin and forty members measured
+// 3.7 ms against 2.7 ms. That is the honest worst case, and it is the one to
+// beat if a caller ever forces the floor mask.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
-	if c.void.blocksSight() {
+	if c.hasVoid && c.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
 			if _, floor := regionAt(c.rooms, c.grids, cell); !floor {
 				return true
