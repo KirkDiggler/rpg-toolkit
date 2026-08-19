@@ -30,7 +30,8 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: FieldInput{
-			Rooms: []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: CanvasInput{Void: VoidIsRock()},
+			Rooms:  []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []MemberInput{
 			{ID: "alice", Kind: KindPlayer, Room: "room-1", Position: spatial.Position{X: 2, Y: 2}},
@@ -72,7 +73,7 @@ func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field: FieldInput{Rooms: []RoomInput{
+			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsRock()}, Rooms: []RoomInput{
 				{ID: "r1", Width: 8, Height: 8, Boundaries: sealedSeam(7, 8)},
 				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
 			}},

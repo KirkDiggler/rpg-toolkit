@@ -61,7 +61,7 @@ var dialectOrigin = spatial.Position{X: 30, Y: 10}
 func (s *DialectSuite) closedBlob() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 8, Height: 8, Origin: dialectOrigin},
 		}},
 		Members: []encounter.MemberInput{

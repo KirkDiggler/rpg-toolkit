@@ -54,6 +54,7 @@ func (s *PlacementSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 			Rooms: []encounter.RoomInput{
 				// The hall walls its own east edge, leaving the gate's row
 				// open: with one canvas the two chambers would otherwise share

@@ -94,6 +94,15 @@ var (
 	// single grid of its family (W6, rpg-toolkit#1106): the canvas the rooms
 	// compile into is one grid, and a square field reaching a negative cell
 	// has no such grid — see canvasSpan, whose message names the remedy.
+	//
+	// And when the field does not say what its VOID is (rpg-toolkit#1116) —
+	// at Setup, a nil [CanvasInput.Void]; at Load, a blob whose canvas.void is
+	// absent or carries a word this build does not know. Field construction
+	// DATA, which is what this sentinel is for; the capability sentinels
+	// (ErrNoSight, ErrNoStanding) are for injected behaviour, not world facts.
+	// Both messages name the declaration and the two are worded apart, because
+	// "never declared" and "declared something I do not know" send whoever
+	// reads them to different places — see [Void] and voidFromData.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement or position is bad in

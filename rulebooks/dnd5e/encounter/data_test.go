@@ -73,6 +73,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
 					Occluders:  []spatial.Position{{X: 1, Y: 2}},
@@ -115,7 +116,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// because sight stopped at a room boundary. That makes the golden strictly
 	// richer: it is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMywieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-3,"y":7}},{"id":"p1","kind":"player","cell":{"x":-10,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMywieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"rock"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-3,"y":7}},{"id":"p1","kind":"player","cell":{"x":-10,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -126,7 +127,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -170,6 +171,7 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5},
 				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 0}},
@@ -223,6 +225,7 @@ func (s *DataTestSuite) TestConnectionsSurviveReload() {
 func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "r2", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 5, Y: 0}},
@@ -270,6 +273,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "square-room", Width: 5, Height: 5},
 				},
@@ -299,6 +303,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
 				},
@@ -346,6 +351,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0, Y: 1},
 					Occluders: []spatial.Position{{X: 3, Y: 3}}},
@@ -402,6 +408,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:        "crypt",
@@ -474,6 +481,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -569,6 +577,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -630,6 +639,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -700,6 +710,7 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -762,6 +773,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -823,6 +835,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:         "room1",
@@ -862,7 +875,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		// renamed tag fails this where a decoded comparison would not.
 		// (log carries the opening beat: a fresh encounter is born with
 		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"rock"},"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -873,6 +886,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:         "room1",
@@ -935,7 +949,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// blob written before the flip lands nowhere on today's shape and is
 		// refused by name rather than read in the wrong frame (see
 		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"canvas":{"void":"rock"},"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -946,6 +960,7 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:         "room1",
@@ -1014,6 +1029,7 @@ func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:         "room1",
@@ -1078,7 +1094,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		// first-light surveil would resurrect it to Current.
 		enc1, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}}},
+			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}}},
 			Members: []encounter.MemberInput{
 				{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
 				{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 5, Y: 5}},
@@ -1113,6 +1129,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -1187,6 +1204,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -1256,7 +1274,8 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Rooms:  []encounter.RoomInput{{ID: "crypt", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: "playerA", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
@@ -1290,6 +1309,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				// playerA watches from the antechamber. Two monsters sharing
@@ -1351,7 +1371,7 @@ func (d *testDecider) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 
 func validEncounterData() encounter.EncounterData {
 	return encounter.EncounterData{
-		Field: encounter.FieldData{Rooms: []encounter.RoomData{
+		Field: encounter.FieldData{Canvas: encounter.CanvasData{Void: "rock"}, Rooms: []encounter.RoomData{
 			{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
 		}},
 		Members: []encounter.MemberData{
@@ -1456,6 +1476,7 @@ func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}, Occluders: []encounter.PositionData{
 					{X: 0, Y: 2}, {X: 4, Y: 2}, {X: 2, Y: 0}, {X: 2, Y: 4}, {X: 0, Y: 0}, {X: 4, Y: 4},
@@ -1475,6 +1496,7 @@ func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
 func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridTypeHex,
 					Origin: &encounter.PositionData{X: 0, Y: 0}, Occluders: []encounter.PositionData{{X: -5, Y: 4}}},
@@ -1495,6 +1517,7 @@ func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
 func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0},
 					Occluders: []encounter.PositionData{{X: 3, Y: 3}, {X: 3, Y: 3}}},
@@ -1516,7 +1539,8 @@ func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
 func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
-			Rooms: []encounter.RoomData{{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}}},
+			Canvas: encounter.CanvasData{Void: "rock"},
+			Rooms:  []encounter.RoomData{{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}}},
 		},
 		Endings: []encounter.EndingData{
 			{Key: "dup", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 4, Y: 4}},
@@ -1697,6 +1721,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 func connBoundsData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 4, Height: 3, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "r2", Width: 4, Height: 3, Origin: &encounter.PositionData{X: 4, Y: 3}},
@@ -1834,6 +1859,7 @@ func (s *DataTestSuite) TestLoadRoomEmptyIDReportsIDDefectNotOrigin() {
 func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
@@ -1894,6 +1920,7 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 7}},
@@ -1923,6 +1950,7 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 func validHexAxialData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0},
 					Occluders: []encounter.PositionData{{X: 2, Y: 2}}},
@@ -2002,6 +2030,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 func validAnchoredHexData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 6, Y: -5}},
@@ -2134,6 +2163,7 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r-a", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "r-b", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 20, Y: 20}},
@@ -2165,6 +2195,7 @@ func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 func (s *DataTestSuite) TestLoadAnchoringSquareOriginRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0.5, Y: 1.5}},
 			},
@@ -2197,6 +2228,7 @@ func (s *DataTestSuite) TestLoadAnchoringSquareOriginRejected() {
 func (s *DataTestSuite) TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 1e19, Y: 0}},
 				{ID: "r2", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 2e19, Y: 0}},
@@ -2233,6 +2265,7 @@ func (s *DataTestSuite) TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap
 func (s *DataTestSuite) TestLoadAnchoringFractionalSquareEndpointSubUnitDistance() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "r2", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 3, Y: 0}},
@@ -2264,6 +2297,7 @@ func (s *DataTestSuite) TestLoadAnchoringFractionalSquareEndpointSubUnitDistance
 func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 1000, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "r2", Width: math.MaxInt, Height: 5, Origin: &encounter.PositionData{X: 999, Y: 0}},
@@ -2293,6 +2327,7 @@ func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint()
 func (s *DataTestSuite) TestLoadRoomCellBudgetRejectsPanicReproduction() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "huge", Width: 1 << 30, Height: 1 << 30, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
@@ -2314,6 +2349,7 @@ func (s *DataTestSuite) TestLoadRoomCellBudgetRejectsPanicReproduction() {
 func (s *DataTestSuite) TestLoadOversizedRoomHeightRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "tall", Width: 5, Height: (1 << 30) + 1, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
@@ -2344,7 +2380,7 @@ func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
 		}
 	}
 	data := encounter.EncounterData{
-		Field:   encounter.FieldData{Rooms: rooms},
+		Field:   encounter.FieldData{Canvas: encounter.CanvasData{Void: "rock"}, Rooms: rooms},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -2362,7 +2398,8 @@ func (s *DataTestSuite) TestLoadFieldCellBudgetRejectsIndividuallyLegalRooms() {
 func validEndingTriggerData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
-			Rooms: []encounter.RoomData{{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}}},
+			Canvas: encounter.CanvasData{Void: "rock"},
+			Rooms:  []encounter.RoomData{{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}}},
 		},
 		Endings: []encounter.EndingData{
 			{Key: "reach", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 3, Y: 3}},
@@ -2410,7 +2447,8 @@ func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
 func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
-			Rooms: []encounter.RoomData{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}}},
+			Canvas: encounter.CanvasData{Void: "rock"},
+			Rooms:  []encounter.RoomData{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}}},
 		},
 		Endings: []encounter.EndingData{
 			{Key: "reach", Kind: "reached_position", Room: "hall", Position: &encounter.PositionData{X: 1.5, Y: 0}},
@@ -2461,6 +2499,7 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
@@ -2521,6 +2560,7 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 func (s *DataTestSuite) TestLoadAnchoringSquareEndpointNotAdjacentDistance2() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "r2", Width: 3, Height: 3, Origin: &encounter.PositionData{X: 4, Y: 0}},
@@ -2582,6 +2622,7 @@ func (s *DataTestSuite) TestLoadRejectsHostileNonKissingBlob() {
 func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
+			Canvas: encounter.CanvasData{Void: "rock"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeGridless, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
@@ -2638,6 +2679,7 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
 				},
@@ -2678,6 +2720,7 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
 				},
@@ -2709,6 +2752,7 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
 				},
@@ -2742,6 +2786,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
 				},
@@ -2797,6 +2842,7 @@ func (s *DataTestSuite) TestMutation5MissingRoomCheck() {
 	s.Run("mutation 5: missing member-room validation", func() {
 		data := encounter.EncounterData{
 			Field: encounter.FieldData{
+				Canvas: encounter.CanvasData{Void: "rock"},
 				Rooms: []encounter.RoomData{
 					{ID: "room1", Width: 10, Height: 10},
 				},
@@ -2826,6 +2872,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     "crypt",
@@ -2900,6 +2947,7 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
 				Rooms: []encounter.RoomInput{
 					{ID: "room1", Width: 10, Height: 10, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
 				},

@@ -67,7 +67,7 @@ func (s *KillingBlowSuite) apart(standing encounter.Standing) *encounter.Encount
 		Initiative: orderAsGiven{},
 		Sight:      everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12, Occluders: wallRow(6, 0, 11)},
 		}},
 		Members: []encounter.MemberInput{
