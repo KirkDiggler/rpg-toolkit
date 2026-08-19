@@ -151,10 +151,11 @@ type ConnectionInput struct {
 }
 
 // FieldInput describes the layout of rooms and connections, and what the
-// canvas they compile onto is made of.
+// canvas they compile onto does to a sightline.
 type FieldInput struct {
 	// Canvas is what this field DECLARES about the map its rooms compile
-	// onto — today, what the space between them is made of. REQUIRED: see
+	// onto — today, what the space between them does to a sightline.
+	// REQUIRED: see
 	// [Void] for why this module is not allowed to pick (rpg-toolkit#1116).
 	Canvas CanvasInput
 

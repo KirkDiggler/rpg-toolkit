@@ -100,7 +100,8 @@ type MemberOutcomeData struct {
 // Rooms hold the composition's own descriptions (mirroring RoomInput exactly).
 type FieldData struct {
 	// Canvas is what the field declared about its map — today, what the space
-	// between the authored chambers is made of (rpg-toolkit#1116). REQUIRED
+	// between the authored chambers does to a sightline (rpg-toolkit#1116).
+	// REQUIRED
 	// at load, and written by ToData without omitempty, for RoomData.Origin's
 	// reason: a declaration that persisted as absence could not be told apart
 	// from a blob written before there was one.
@@ -731,8 +732,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// existing bounds/occluder/self-connection checks) is enforced by
 	// buildValidRoomGrids/validateConnectionInputs, not duplicated here.
 
-	// What the space between the chambers is made of, resolved from the word
-	// the blob carries. Refused by name when absent or unknown — a guess here
+	// What the space between the chambers does to a sightline, resolved from
+	// the word the blob carries. Refused by name when absent or unknown — a guess here
 	// would load a party into a dungeon whose walls the host never authored
 	// (rpg-toolkit#1116; the standing no-migration precedent, #1053/#1068).
 	void, err := voidFromData(data.Field.Canvas.Void)
