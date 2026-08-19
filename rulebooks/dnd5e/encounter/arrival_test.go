@@ -182,6 +182,40 @@ func (s *ArrivalSuite) TestAJoinDecidesTheEndingByTheSameRules() {
 	}
 }
 
+// TestAnEndingIsOneCellNotOneColumn pins that the comparison is a CELL, both
+// axes, in both directions.
+//
+// The ending is compiled to a single absolute cell and an arrival is an
+// equality against it (compileEndings, firedReachedPosition). An equality that
+// dropped either axis would still pass every scene above, because each of them
+// arrives exactly on the tile — so the cells that matter here are the ones that
+// share ONE coordinate with it and miss on the other.
+func (s *ArrivalSuite) TestAnEndingIsOneCellNotOneColumn() {
+	near := []struct {
+		name string
+		cell spatial.Position
+	}{
+		{"same column, one row up", spatial.Position{X: arrivalTarget.X, Y: arrivalTarget.Y - 1}},
+		{"same row, one column back", spatial.Position{X: arrivalTarget.X - 1, Y: arrivalTarget.Y}},
+	}
+	for _, tc := range near {
+		s.Run(tc.name, func() {
+			enc := s.arrivalEncounter("", encounter.KindPlayer)
+			out, err := enc.Step(&encounter.StepInput{
+				Member: alice, To: tc.cell.Add(arrivalVaultOrigin)})
+			s.Require().NoError(err)
+			s.assertFired(false, out.Outcome != nil, enc)
+
+			// And from there, the tile itself still closes it — so the miss
+			// above was the cell, not the walk.
+			out, err = enc.Step(&encounter.StepInput{
+				Member: alice, To: arrivalTarget.Add(arrivalVaultOrigin)})
+			s.Require().NoError(err)
+			s.assertFired(true, out.Outcome != nil, enc)
+		})
+	}
+}
+
 // assertFired checks the ending and the encounter's own state agree: a fired
 // ending closes the encounter, and a closed encounter fired one.
 func (s *ArrivalSuite) assertFired(want, got bool, enc *encounter.Encounter) {

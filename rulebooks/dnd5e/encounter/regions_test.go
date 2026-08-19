@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -217,6 +218,44 @@ func (s *RegionSuite) TestAStepChangesTheRegionAMemberIsIn() {
 	s.Equal(encounter.RegionID(tombHall), s.regionOf(alice))
 	s.Equal([]encounter.MemberID{carol}, s.idsIn(tombEntrance))
 	s.Equal([]encounter.MemberID{alice, bob, dave}, s.idsIn(tombHall))
+}
+
+// TestTheRegionIsDerivedAcrossPersistenceToo is the persistence half of the
+// same claim: nothing about a region is stored, at any point.
+//
+// An outcome used to carry a "room" key beside every member's cell — the last
+// derived spatial fact this module persisted, and load validation had a branch
+// whose whole job was policing the two against each other. The blob no longer
+// says it and the reloaded outcome still names it, because the cell and the
+// authored field say it between them (rpg-toolkit#1108).
+func (s *RegionSuite) TestTheRegionIsDerivedAcrossPersistenceToo() {
+	ended, err := s.enc.End(&encounter.EndInput{Ending: "withdrawn"})
+	s.Require().NoError(err)
+	s.Require().Len(ended.Outcome.Members, 4)
+
+	data := s.enc.ToData()
+
+	blob, err := json.Marshal(data.Outcome)
+	s.Require().NoError(err)
+	s.NotContains(string(blob), `"room"`, "an outcome member's region is derived, so it is not in the blob")
+	s.NotContains(string(blob), `"region"`, "and it did not come back under a new name either")
+
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+	s.Require().NoError(err)
+
+	status, err := reloaded.Status()
+	s.Require().NoError(err)
+	s.Require().NotNil(status.Outcome)
+
+	want := map[encounter.MemberID]encounter.RegionID{
+		alice: tombEntrance, carol: tombEntrance, bob: tombHall, dave: tombHall,
+	}
+	for _, mo := range status.Outcome.Members {
+		s.Equal(want[mo.ID], mo.Region, "%s finished in %q", mo.ID, want[mo.ID])
+	}
+	s.Require().Equal(ended.Outcome.Members, status.Outcome.Members,
+		"a reloaded outcome must be the outcome the host already saw")
 }
 
 // TestRegionAtAnswersExactlyWhatTheAuthoredGridWould, in both families. The

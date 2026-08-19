@@ -222,6 +222,8 @@ func (s *EncounterTestSuite) TestAtlasRegionOccludersAndBoundariesAreAbsolute() 
 	s.Require().True(found, "atlas-r1 must be present")
 
 	s.Require().Equal(spatial.Position{X: 0, Y: 7}, r1.Origin, "the region's anchor is where its local (0,0) landed")
+	s.Require().Equal(4, r1.Width, "the span is the region's cell set, so the axes must not be swapped")
+	s.Require().Equal(3, r1.Height)
 	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders, "occluder must be offset by Origin too")
 
 	// The span means cells: local (0,0) and the far corner local (3,2) are
