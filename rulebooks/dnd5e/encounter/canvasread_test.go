@@ -128,6 +128,16 @@ func (s *CanvasReadSuite) TestTheCanvasRefusesEveryWrite() {
 		s.False(placed, "and nothing was placed")
 	})
 
+	s.Run("a nil entity is refused, not dereferenced", func() {
+		// spatial.BasicRoom answers a nil entity with "entity cannot be nil".
+		// A view in front of it that panicked instead would be harder to call
+		// than the thing it protects, which is backwards for a read-only view.
+		var err error
+		s.Require().NotPanics(func() { err = canvas.PlaceEntity(nil, empty) })
+		s.Require().ErrorIs(err, encounter.ErrReadOnly)
+		s.Require().ErrorContains(err, "PlaceEntity")
+	})
+
 	s.Run("move", func() {
 		was, ok := canvas.GetEntityPosition(string(alice))
 		s.Require().True(ok)
@@ -233,8 +243,9 @@ func TestACanvaslessEncounterSaysSo(t *testing.T) {
 }
 
 // readOnlyProbe is something to try to place. It is deliberately not a
-// spatial.Placeable: what is under test is the refusal, which happens before
-// anything about the entity is consulted.
+// spatial.Placeable: the refusal never reaches spatial's placement rules, so
+// nothing about whether this entity COULD be placed is ever consulted. Its ID
+// is read, to name it in the refusal.
 type readOnlyProbe struct {
 	id string
 }

@@ -113,8 +113,20 @@ var _ spatial.Room = readOnlyRoom{}
 
 // PlaceEntity refuses. Use [Encounter.Join], which also refreshes sight and
 // writes the beat.
+//
+// A NIL ENTITY IS REFUSED RATHER THAN DEREFERENCED. [spatial.BasicRoom] answers
+// a nil entity with "entity cannot be nil", so a view that panicked on one
+// would be strictly worse than the room it stands in front of — and a view of a
+// read-only thing has no business being the harder of the two to call. What is
+// refused here does not depend on the entity, so the answer is the same
+// refusal, with the nil named rather than dereferenced.
 func (r readOnlyRoom) PlaceEntity(entity core.Entity, pos spatial.Position) error {
-	return fmt.Errorf("canvas: PlaceEntity(%q, (%g,%g)): %w", entity.GetID(), pos.X, pos.Y, ErrReadOnly)
+	id := "<nil>"
+	if entity != nil {
+		id = entity.GetID()
+	}
+
+	return fmt.Errorf("canvas: PlaceEntity(%q, (%g,%g)): %w", id, pos.X, pos.Y, ErrReadOnly)
 }
 
 // MoveEntity refuses. Use [Encounter.Step], which decides what a step is
