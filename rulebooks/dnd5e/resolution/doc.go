@@ -175,12 +175,24 @@
 //
 // One installer is now populated, by the machine that forced it. The strike
 // folds the attack chain, and prone's predicate reads positions off that chain —
-// advantage from within five feet, disadvantage beyond — so [Resolve] builds a
-// spatial room out of [Input.World] and installs it for the interaction. The
-// world it builds from is the persisted one the caller already handed over:
-// members carry their room and position, rooms carry their grid and size. See
-// interactionRoom for why one room rather than all of them, and why a
-// participant list spanning rooms installs none.
+// advantage from within five feet, disadvantage beyond — so [Resolve] installs
+// the world the interaction happens on.
+//
+// ONE world, installed EVERY time, and it is THE world rather than a copy of
+// it. The composition compiles the authored chambers into a single canvas in a
+// single absolute frame and hands that room over to be read
+// (rpg-toolkit#1105, rpg-toolkit#1114), so "which room describes this
+// interaction" stopped being a question anybody has to answer. It used to be
+// one, and the answer this package gave when the cast spanned two rooms —
+// install nothing — silently switched off every predicate that reads positions
+// the moment a party member wandered off, which in a dungeon is most of the
+// time (rpg-toolkit#1090).
+//
+// This package builds no geometry of its own. It held a room it assembled out
+// of the encounter's persisted description, carrying a second copy of grid
+// construction and no walls whatsoever; what the rules read and what the
+// composition enforces are now the same object, which is a stronger guarantee
+// than any test over two of them could be.
 //
 // Nothing else is installed. The other four registries stay empty until a
 // predicate that reads one arrives with its own consumer.

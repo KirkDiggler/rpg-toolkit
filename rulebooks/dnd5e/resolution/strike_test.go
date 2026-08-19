@@ -104,7 +104,7 @@ func (s *StrikeTestSuite) wolfBite() monster.ActionData {
 // hero; otherwise it stands three cells away — the two sides of prone's range
 // split.
 func (s *StrikeTestSuite) world(secondWolfAt spatial.Position) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -194,7 +194,7 @@ func (s *StrikeTestSuite) strike(attacker string, roller *scriptedRoller) Machin
 func (s *StrikeTestSuite) resolve(
 	world encounter.EncounterData, hero *character.Data, machine Machine,
 ) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
@@ -328,7 +328,7 @@ func (s *StrikeTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 		return &scriptedRoller{single: hitRoll, pair: []int{hitRoll, hitRoll}}
 	}
 
-	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: s.hero(s.raging())},
@@ -339,7 +339,7 @@ func (s *StrikeTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 	})
 	s.Require().NoError(err)
 
-	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Monster: s.wolf(secondWolfID)},
@@ -364,9 +364,15 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	world := s.world(spatial.Position{X: 8, Y: 5})
 	surf := newSurface(events.NewEventBus())
 
-	room, err := interactionRoom(world, []Participant{{Character: s.hero()}, {Monster: s.wolf(wolfID)}})
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: world, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{},
+	})
 	s.Require().NoError(err)
-	s.Require().NotNil(room, "the participants share a room, so one is installed")
+
+	room, err := enc.Canvas()
+	s.Require().NoError(err)
+	s.Require().NotNil(room, "there is one world, and it is installed every time")
 
 	ctx := gamectx.WithRoom(s.ctx, room)
 	cast, err := attachAll(ctx, surf, []Participant{
@@ -423,7 +429,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 // strikeMachine.afterDamage: the topic is an instruction to one listener and a
 // notification to another, which is slice 2's classification to make.
 func (s *StrikeTestSuite) TestAMonsterTargetTakesItsDamageOnce() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: s.world(spatial.Position{X: 5, Y: 4}),
 		Participants: []Participant{
 			{Character: s.hero()},
@@ -514,7 +520,7 @@ func (s *StrikeTestSuite) resolveWith(
 		second = secondWolf[0]
 	}
 
-	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
@@ -650,7 +656,7 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	s.Require().NoError(err)
 	s.Require().Nil(attack.Gate, "a plain weapon declares no rider")
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -662,7 +668,7 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	})
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: enc.ToData(),
 		Participants: []Participant{
 			{Character: s.hero()},
@@ -685,4 +691,222 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	s.Require().Len(out.DirtyCharacters, 1)
 	s.Require().Equal(14-5, out.DirtyCharacters[0].HitPoints)
 	s.Require().Empty(out.DirtyCharacters[0].Conditions)
+}
+
+// scoutID is the party member who is somewhere else. She never swings and is
+// never swung at; her whole job is to be a participant standing in another
+// region, which is the reference tomb's normal state and was enough to switch
+// off every range predicate in the game (rpg-toolkit#1090).
+const scoutID = "scout-1"
+
+// spreadWorld is the tomb's normal state in miniature: the fight is in one
+// chamber and a third party member is exploring another.
+//
+// Two rooms, disjoint (W2), the second anchored twelve cells east — so the
+// scout's cell is nowhere near the fight and every question the fight asks is
+// about room-1. The hero, both wolves and the scout are one roster, because
+// that is what a cast is: session.castFor passes the WHOLE encounter roster,
+// deliberately, since "deciding they are irrelevant would be this package
+// deciding a rule" (ADR-0038).
+func (s *StrikeTestSuite) spreadWorld(secondWolfRoom string, secondWolfAt spatial.Position) encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-1", Width: 10, Height: 10},
+				{ID: "room-2", Width: 10, Height: 10, Origin: spatial.Position{X: 12}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
+			{ID: secondWolfID, Kind: encounter.KindMonster, Room: secondWolfRoom, Position: secondWolfAt},
+			{ID: scoutID, Kind: encounter.KindPlayer, Room: "room-2", Position: spatial.Position{X: 5, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc.ToData()
+}
+
+// scout is the sheet of the party member in the other room. Deliberately plain:
+// nothing about her is meant to influence the fight, and the point of the test
+// is that her mere presence in the cast used to.
+func (s *StrikeTestSuite) scout() *character.Data {
+	return &character.Data{
+		ID:       scoutID,
+		PlayerID: "player-2",
+		Name:     "Nyx",
+		Level:    1,
+		ClassID:  classes.Barbarian,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 12,
+			abilities.DEX: 14,
+			abilities.CON: 12,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 10,
+		},
+		HitPoints:        11,
+		MaxHitPoints:     11,
+		ProficiencyBonus: 2,
+	}
+}
+
+// resolveSpread is resolve with the scout in the cast — the whole roster, the
+// way a session hands one over.
+func (s *StrikeTestSuite) resolveSpread(
+	world encounter.EncounterData, hero *character.Data, machine Machine,
+) (*Output, error) {
+	return Resolve(s.ctx, &Input{
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight:  everyoneSeesTheWholeMap{},
+		Roller: dice.NewRoller(),
+		World:  world,
+		Participants: []Participant{
+			{Character: hero},
+			{Character: s.scout()},
+			{Monster: s.wolf(wolfID)},
+			{Monster: s.wolf(secondWolfID)},
+		},
+		Machine: machine,
+	})
+}
+
+// #1090, THE HEADLINE. A prone hero with a wolf in the next cell, and one party
+// member exploring the room next door.
+//
+// This is the same scene as TestASecondBiteFromAdjacentHasAdvantage — same
+// prone hero, same wolf one cell away, same roller — with one thing changed
+// that nothing in it is about: a fourth member of the cast standing somewhere
+// else entirely. The rule must not notice her.
+//
+// It used to. The cast spanned two rooms, so no room was installed at all
+// ("no single room describes this interaction"), prone's within-five-feet
+// predicate had no positions to read, and the bite rolled flat. In the
+// reference tomb that is not an edge case — a party spread across a dungeon is
+// its NORMAL state, so every range predicate in the game was off whenever
+// anybody wandered off.
+func (s *StrikeTestSuite) TestProneConfersAdvantageWhileTheRestOfThePartyIsElsewhere() {
+	out, err := s.resolveSpread(
+		s.spreadWorld("room-1", spatial.Position{X: 5, Y: 4}), // one cell from the hero at (5,5)
+		s.hero(s.proneBlob()),
+		s.strike(secondWolfID, &scriptedRoller{single: missRoll, pair: []int{missRoll, hitRoll}}),
+	)
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().Equal(hitRoll, outcome.Roll, "only a rolled-twice-take-higher can produce this die")
+	s.Require().Len(outcome.Folded.AdvantageSources, 1)
+	s.Require().Equal(refs.Conditions.Prone(), outcome.Folded.AdvantageSources[0].SourceRef)
+	s.Require().Empty(outcome.Folded.DisadvantageSources)
+}
+
+// The far half of the same split, with the party equally spread — because a
+// world that is installed but measured wrong answers "within five feet"
+// everywhere, and a test that only pinned the near half would call that a pass.
+func (s *StrikeTestSuite) TestProneStillCostsAtRangeWhileThePartyIsSpread() {
+	out, err := s.resolveSpread(
+		s.spreadWorld("room-1", spatial.Position{X: 8, Y: 5}), // three cells from the hero
+		s.hero(s.proneBlob()),
+		s.strike(secondWolfID, &scriptedRoller{single: hitRoll, pair: []int{missRoll, hitRoll}}),
+	)
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().Equal(missRoll, outcome.Roll, "only a rolled-twice-take-lower can produce this die")
+	s.Require().Len(outcome.Folded.DisadvantageSources, 1)
+	s.Require().Equal(refs.Conditions.Prone(), outcome.Folded.DisadvantageSources[0].SourceRef)
+	s.Require().Empty(outcome.Folded.AdvantageSources)
+}
+
+// The distance the predicate reads is DUNGEON-ABSOLUTE, and this is the case
+// that tells the two frames apart.
+//
+// The second wolf stands at room-2's local (5,4). The hero lies at room-1's
+// local (5,5). Read ROOM-LOCALLY those are adjacent cells — one square, five
+// feet, squarely inside prone's advantage half. Read absolutely the wolf is at
+// (17,4) and the hero at (5,5): twelve cells, sixty feet, a different chamber.
+//
+// So a world built from unprojected coordinates does not merely measure
+// oddly — it hands a wolf in the next room the advantage it would have if it
+// were standing over him. Disadvantage is the right answer, and only the
+// absolute frame produces it.
+func (s *StrikeTestSuite) TestAWolfInTheNextChamberIsSixtyFeetAwayNotOneCell() {
+	out, err := s.resolveSpread(
+		s.spreadWorld("room-2", spatial.Position{X: 5, Y: 4}),
+		s.hero(s.proneBlob()),
+		s.strike(secondWolfID, &scriptedRoller{single: hitRoll, pair: []int{missRoll, hitRoll}}),
+	)
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().Equal(missRoll, outcome.Roll, "only a rolled-twice-take-lower can produce this die")
+	s.Require().Len(outcome.Folded.DisadvantageSources, 1,
+		"a chamber away is sixty feet, which is beyond prone's five")
+	s.Require().Equal(refs.Conditions.Prone(), outcome.Folded.DisadvantageSources[0].SourceRef)
+	s.Require().Empty(outcome.Folded.AdvantageSources)
+}
+
+// hexWorld is the same fight on a HEX field, and the two members' cells are
+// chosen so that the two families disagree about them.
+//
+// The hero lies at axial (0,0) and the second wolf stands at axial (1,1). On a
+// hex grid that is a distance of TWO — cube (0,0,0) to (1,1,-2), so
+// (|1|+|1|+|2|)/2 — ten feet, outside prone's five. Read as a square grid the
+// same two cells are Chebyshev ONE, adjacent, five feet, inside it.
+//
+// So the field's grid family is not decoration here: it decides the rule.
+//
+// The first wolf stands at axial (-5,-5) for a second reason. A hex grid is
+// origin-CENTERED — a span of ten reaches [-5,4] on each axis — where a square
+// grid of the same width reaches [0,9]. So the two families need different span
+// arithmetic to hold the same field, and a member at the hex field's own corner
+// is the only thing that can tell a correct hex span from a square one applied
+// to a hex grid. (Mutation M8; nobody stood out there until it survived.)
+func (s *StrikeTestSuite) hexWorld() encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10, Grid: spatial.GridShapeHex}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: -5, Y: -5}},
+			{ID: secondWolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc.ToData()
+}
+
+// A HEX FIELD IS MEASURED IN HEXES. The wolf two hexes from a prone hero rolls
+// at disadvantage — and it is the same pair of coordinates that would be
+// adjacent, and would confer advantage, if the world this package installs had
+// quietly built a square grid instead.
+//
+// The whole suite was square until this test, so nothing anywhere in it could
+// tell a hex field from a square one. That is exactly the shape of defect the
+// family read exists to prevent, and it went unnoticed until a mutation that
+// deleted the hex branch outright survived (M6).
+func (s *StrikeTestSuite) TestAHexFieldIsMeasuredInHexes() {
+	out, err := s.resolve(
+		s.hexWorld(),
+		s.hero(s.proneBlob()),
+		s.strike(secondWolfID, &scriptedRoller{single: hitRoll, pair: []int{missRoll, hitRoll}}),
+	)
+	s.Require().NoError(err)
+
+	outcome := s.strikeOutcome(out)
+	s.Require().Equal(missRoll, outcome.Roll, "only a rolled-twice-take-lower can produce this die")
+	s.Require().Len(outcome.Folded.DisadvantageSources, 1,
+		"axial (0,0) to (1,1) is two hexes, which is ten feet")
+	s.Require().Equal(refs.Conditions.Prone(), outcome.Folded.DisadvantageSources[0].SourceRef)
+	s.Require().Empty(outcome.Folded.AdvantageSources, "and ten feet is beyond prone's five")
 }
