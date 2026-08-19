@@ -100,6 +100,16 @@ func (s *VersatileTestSuite) TestVersatileWeaponRequiresExactlyOnePrimaryPool() 
 	s.Require().Error(err)
 }
 
+func (s *VersatileTestSuite) TestVersatileWeaponRejectsDuplicatePrimaryPools() {
+	w := weapons.Weapon{Properties: []weapons.WeaponProperty{weapons.PropertyVersatile}, Damage: []damage.Damage{
+		{Dice: "1d8", Type: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier}},
+		{Dice: "1d6", Type: damage.Fire, Properties: []damage.Property{damage.AddsAttackAbilityModifier}},
+	}}
+
+	_, err := w.DamageForGrip(true)
+	s.Require().Error(err)
+}
+
 // Notation that is not "NdM" passes through. Weapon declarations themselves
 // are canonical pure-NdM pools, but this helper remains total for callers that
 // have not yet validated input.

@@ -368,16 +368,6 @@ var MartialRangedWeapons = map[WeaponID]Weapon{
 		Range:          &Range{Normal: 30, Long: 120},
 		AmmunitionType: ammunition.TypeBolts,
 	},
-	Net: {
-		ID:         Net,
-		Name:       "Net",
-		Category:   CategoryMartialRanged,
-		Cost:       "1 gp",
-		Damage:     []damage.Damage{}, // Special: restrains target without dealing damage
-		Weight:     3,
-		Properties: []WeaponProperty{PropertyThrown}, // Special: single attack at 5/15 range
-		Range:      &Range{Normal: 5, Long: 15},
-	},
 }
 
 // SpecialWeapons contains special weapon types like unarmed strike
@@ -436,7 +426,7 @@ var weaponOrder = []WeaponID{
 	Greatsword, Longsword, Rapier, Shortsword, Battleaxe, Flail, Glaive, Greataxe, Halberd, Lance,
 	Maul, Morningstar, Pike, Scimitar, Trident, WarPick, Warhammer, Whip,
 	LightCrossbow, Shortbow, Dart, Sling,
-	HeavyCrossbow, Longbow, Blowgun, HandCrossbow, Net,
+	HeavyCrossbow, Longbow, Blowgun, HandCrossbow,
 	UnarmedStrike,
 }
 

@@ -48,7 +48,6 @@ var (
 	weaponHandCrossbow  = &core.Ref{Module: Module, Type: TypeWeapons, ID: "hand-crossbow"}
 	weaponHeavyCrossbow = &core.Ref{Module: Module, Type: TypeWeapons, ID: "heavy-crossbow"}
 	weaponLongbow       = &core.Ref{Module: Module, Type: TypeWeapons, ID: "longbow"}
-	weaponNet           = &core.Ref{Module: Module, Type: TypeWeapons, ID: "net"}
 
 	// Category placeholders
 	weaponAnySimple  = &core.Ref{Module: Module, Type: TypeWeapons, ID: "simple-weapon"}
@@ -109,7 +108,6 @@ func (n weaponsNS) Blowgun() *core.Ref       { return weaponBlowgun }
 func (n weaponsNS) HandCrossbow() *core.Ref  { return weaponHandCrossbow }
 func (n weaponsNS) HeavyCrossbow() *core.Ref { return weaponHeavyCrossbow }
 func (n weaponsNS) Longbow() *core.Ref       { return weaponLongbow }
-func (n weaponsNS) Net() *core.Ref           { return weaponNet }
 
 // Category placeholders
 func (n weaponsNS) AnySimpleWeapon() *core.Ref  { return weaponAnySimple }
@@ -161,7 +159,6 @@ var weaponByID = map[string]*core.Ref{
 	"hand-crossbow":  weaponHandCrossbow,
 	"heavy-crossbow": weaponHeavyCrossbow,
 	"longbow":        weaponLongbow,
-	"net":            weaponNet,
 	// Category placeholders
 	"simple-weapon":  weaponAnySimple,
 	"martial-weapon": weaponAnyMartial,

@@ -93,15 +93,16 @@ func TestWeaponLookup(t *testing.T) {
 
 func TestEveryCatalogWeaponHasOneMarkedPrimaryDamagePool(t *testing.T) {
 	for id, weapon := range weapons.All {
-		if id == weapons.Net {
-			assert.Empty(t, weapon.Damage, "net restrains without dealing damage")
-			continue
-		}
 		primary, ok := weapon.PrimaryDamage()
 		require.Truef(t, ok, "%s must have one marked primary damage pool", id)
 		assert.Truef(t, primary.HasProperty(damage.AddsAttackAbilityModifier), "%s primary damage must carry the ability marker", id)
 		assert.NoErrorf(t, damage.Validate(weapon.Damage), "%s damage pools must be valid", id)
 	}
+}
+
+func TestNetIsNotInDamageWeaponCatalog(t *testing.T) {
+	_, err := weapons.GetByID("net")
+	require.Error(t, err)
 }
 
 func TestWeaponCategories(t *testing.T) {
