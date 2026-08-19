@@ -166,25 +166,34 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		return executedAction{}, fmt.Errorf("cell %v is not floor: %w", to, ErrBadPlacement)
 	}
 
-	// A SHUT DOOR REFUSES BY NAME (rpg-toolkit#1123). The canvas would refuse
-	// this step anyway — a closed door's edges are movement-blocking
-	// boundaries and spatial stops on them like any wall — and "cannot cross
-	// movement-blocking boundary" is the wrong sentence for a door. A wall is
-	// a fact about the dungeon; a shut door is a thing with a state, and the
-	// state is what a caller does something about. So the door is named, and
-	// so is what state it is in.
-	//
-	// Asked BEFORE the move rather than mapped from its error, because the
-	// member's cell is only knowable while they are still standing on it and
-	// spatial's refusal does not say which crossing it stopped at.
-	if here, placed := e.canvas.GetEntityPosition(string(member.ID)); placed {
-		if door := e.doorAcross(here, to); door != nil && door.state.blocks() {
-			return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
-		}
-	}
+	// Where they are standing, read before the move because it is only knowable
+	// while they are still standing there — and needed only to say what
+	// stopped them if something does.
+	here, placed := e.canvas.GetEntityPosition(string(member.ID))
 
 	from, err := e.moveMember(member, to)
 	if err != nil {
+		// A SHUT DOOR REFUSES BY NAME (rpg-toolkit#1123). THE CANVAS STILL
+		// DECIDES: a closed door's edges are movement-blocking boundaries and
+		// spatial stops on them like any wall, so this runs only after that
+		// refusal and never instead of it. Deciding here would have been the
+		// worse shape twice over — a second answer to "what is crossable", and
+		// a door's BlocksMovement flag that nothing on the map ever consulted,
+		// which is a mutant no test could kill (measured: it survived until
+		// this was turned around).
+		//
+		// What it adds is the sentence. "Cannot cross movement-blocking
+		// boundary" is true and useless: a wall is a fact about the dungeon,
+		// while a shut door is a thing with a state, and the state is the part
+		// a caller can do something about. Spatial's refusal cannot say which
+		// crossing it stopped at, so the door is found here, from the cell they
+		// were standing on.
+		if placed {
+			if door := e.doorAcross(here, to); door != nil && door.state.blocks() {
+				return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
+			}
+		}
+
 		return executedAction{}, err
 	}
 
