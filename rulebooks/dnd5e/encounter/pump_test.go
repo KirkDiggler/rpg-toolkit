@@ -204,7 +204,7 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 // cleanup: an exited monster's decider must never be consulted again.
 func (s *PumpTestSuite) TestPumpDoesNotConsultExitedMonsterDecider() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
@@ -239,7 +239,7 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 		}
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -338,7 +338,7 @@ func (s *PumpTestSuite) TestPumpDeciderIsolation() {
 		// asymmetric perception (#1020) or a faction model, at which point
 		// this test should grow the positive case again.
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{{
 					ID: room1, Width: 10, Height: 10,
@@ -388,7 +388,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		errDecider := &errorDecider{err: deciderErr}
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -468,7 +468,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 // NEXT (successful) pump reports reading 1, not 2.
 func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
@@ -493,7 +493,7 @@ func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 // have moved — no partial mutation (R5).
 func (s *PumpTestSuite) TestPumpPartialAbort() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
@@ -538,7 +538,7 @@ func (s *PumpTestSuite) TestPumpPartialAbort() {
 func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	vandal := &vandalDecider{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
@@ -585,7 +585,7 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 		}
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -651,7 +651,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 		aliceID := core.EntityID("alice")
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -722,7 +722,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 // this seam.
 func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
@@ -759,7 +759,7 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 		}
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -838,7 +838,7 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 		}
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -923,7 +923,7 @@ func (s *PumpTestSuite) TestPumpClockAdvanceByOne() {
 		goblinID := core.EntityID("goblin")
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -1003,7 +1003,7 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 		aliceID := core.EntityID("alice")
 
 		setup := &encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
 				Rooms: []encounter.RoomInput{
 					{
@@ -1095,7 +1095,7 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 	spyB := &snapshotSpyDecider{}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
@@ -1146,7 +1146,7 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	decider := &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1219,7 +1219,7 @@ func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
 	}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: cellar, Width: 10, Height: 10, Origin: spatial.Position{X: 40, Y: 20}},
@@ -1329,7 +1329,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenAWallIsInTheWay() {
 	decider := &onceStepDecider{to: spatial.Position{X: 10, Y: 2}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1386,7 +1386,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 	decider := &onceStepDecider{to: spatial.Position{X: 500, Y: 500}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1438,7 +1438,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 	deciderErr := errors.New("test decider error")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1483,7 +1483,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	goblinID := core.EntityID("goblin")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1592,7 +1592,7 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 	bID := core.EntityID("zzz-goblin")
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1695,7 +1695,7 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 
 	s.Run("control: decision order and declaration order agree", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				{ID: aID, Kind: encounter.KindMonster, Room: room1,
@@ -1720,7 +1720,7 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 
 	s.Run("cross: decision order dominates — the SECOND-declared ending wins", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				// Same decision order (aaa first, zzz second), but now each
@@ -1779,7 +1779,7 @@ func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
 	decider := &reentrantSelfExitDecider{self: goblinID}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
@@ -1828,7 +1828,7 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -1920,7 +1920,7 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 	hidden := spatial.Position{X: 4, Y: 5}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{
 				ID: room1, Width: 10, Height: 10,

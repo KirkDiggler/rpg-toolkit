@@ -40,7 +40,7 @@ func TestRegionSuite(t *testing.T) {
 // same opening, carol and dave one row up with the seam wall between them.
 func (s *RegionSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -232,7 +232,7 @@ func (s *RegionSuite) TestAStepChangesTheRegionAMemberIsIn() {
 // reports every member's region, derived from where they each stand.
 func (s *RegionSuite) TestReachingTheTombChamberClosesTheDelve() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
@@ -288,7 +288,7 @@ func (s *RegionSuite) TestTheRegionIsDerivedAcrossPersistenceToo() {
 	s.NotContains(string(blob), `"region"`, "and it did not come back under a new name either")
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err)
 
 	status, err := reloaded.Status()
@@ -347,7 +347,7 @@ func (s *RegionSuite) TestAStaleRegionLabelInABlobCannotChangeTheAnswer() {
 	s.Require().NoError(json.Unmarshal(tampered, &data))
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().NoError(err, "an unknown key is ignored, not a defect to refuse")
 
 	status, err := loaded.Status()
@@ -438,7 +438,7 @@ func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
 // from the origin so a local coordinate cannot pass as an absolute one.
 func (s *RegionSuite) oneRoom(shape spatial.GridShape, w, h int, origin spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
 			{ID: "only", Width: w, Height: h, Grid: shape, Origin: origin},
 		}},

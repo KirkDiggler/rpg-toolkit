@@ -62,8 +62,8 @@ func (s *deathScene) scene(standing encounter.Standing, members ...encounter.Mem
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
-		Standing:   standing,
-		Retention:  encounter.RetentionUnbounded,
+		Sight:      everyoneSeesTheWholeMap{}, Standing: standing,
+		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
 		}},
@@ -214,7 +214,7 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       saved,
 		Initiative: orderAsGiven{},
-		Standing:   down,
+		Sight:      everyoneSeesTheWholeMap{}, Standing: down,
 	})
 	s.Require().NoError(err)
 	s.Require().Equal([]encounter.MemberID{alice, goblin, wolf}, s.orderOf(enc, alice),
@@ -415,8 +415,8 @@ func (s *StandingSuite) TestTheStorySaysItOnce() {
 func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
-		Standing:   &downList{down: []encounter.MemberID{goblin}},
-		Retention:  4,
+		Sight:      everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
+		Retention: 4,
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
 		}},

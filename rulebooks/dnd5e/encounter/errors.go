@@ -197,4 +197,12 @@ var (
 	// refused at construction rather than at the moment a body would have
 	// started a fight.
 	ErrNoStanding = errors.New("encounter: no standing capability")
+
+	// ErrNoSight indicates this module was not told, usably, how far somebody
+	// can see. Three ways to earn it: Setup or Load was given no Sight
+	// capability; the capability answered without covering a member it was
+	// asked about; or it answered with a negative distance. All three are the
+	// same defect seen from different sides — a sight range this module would
+	// have to invent, which rpg-toolkit#1033 forbids it to do.
+	ErrNoSight = errors.New("encounter: no sight capability")
 )
