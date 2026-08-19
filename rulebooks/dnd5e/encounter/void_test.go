@@ -15,7 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// void_test.go is WHAT THE SPACE BETWEEN THE CHAMBERS IS MADE OF
+// void_test.go is WHAT THE SPACE BETWEEN THE CHAMBERS DOES TO A SIGHTLINE
 // (rpg-toolkit#1116).
 //
 // The canvas spans the field's whole bounding box, so a field of two chambers
@@ -63,7 +63,7 @@ var (
 )
 
 // gappedField is two chambers with a column of void between them, declaring
-// what that column is made of.
+// what that column does to a sightline.
 func gappedField(void encounter.Void) encounter.FieldInput {
 	return encounter.FieldInput{
 		Canvas: encounter.CanvasInput{Void: void},
@@ -242,7 +242,7 @@ func (s *VoidSuite) TestTheDeclarationSurvivesASave() {
 			canvas, err := back.Canvas()
 			s.Require().NoError(err)
 			s.Equal(tc.blocked, canvas.IsLineOfSightBlocked(brennaCell, kadeCell),
-				"the reloaded map is made of what the saved one was")
+				"the reloaded map behaves as the saved one did")
 		})
 	}
 }

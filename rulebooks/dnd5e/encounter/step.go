@@ -40,8 +40,12 @@ type executedAction struct {
 	// connection names the doorway this step went through, or is empty. A
 	// NAME, for narration — it grants nothing and refuses nothing.
 	connection string
-	from       spatial.Position
-	to         spatial.Position
+	// doors are the doors this step went through, in travel order. Unlike
+	// connection these COULD have refused the step — they just did not
+	// (rpg-toolkit#1123).
+	doors []CrossedDoor
+	from  spatial.Position
+	to    spatial.Position
 }
 
 // Step moves a member ONE STEP to a dungeon-absolute cell and says what
@@ -119,6 +123,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	}
 
 	out := &StepOutput{
+		Doors:       action.doors,
 		Crossing:    action.connection,
 		IntelDeltas: intelDeltas,
 		Seq:         seq,
@@ -161,17 +166,54 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		return executedAction{}, fmt.Errorf("cell %v is not floor: %w", to, ErrBadPlacement)
 	}
 
+	// Where they are standing, read before the move because it is only knowable
+	// while they are still standing there — and needed only to say what
+	// stopped them if something does.
+	here, placed := e.canvas.GetEntityPosition(string(member.ID))
+
 	from, err := e.moveMember(member, to)
 	if err != nil {
+		// A SHUT DOOR REFUSES BY NAME (rpg-toolkit#1123). THE CANVAS STILL
+		// DECIDES: a closed door's edges are movement-blocking boundaries and
+		// spatial stops on them like any wall, so this runs only after that
+		// refusal and never instead of it. Deciding here would have been the
+		// worse shape twice over — a second answer to "what is crossable", and
+		// a door's BlocksMovement flag that nothing on the map ever consulted,
+		// which is a mutant no test could kill (measured: it survived until
+		// this was turned around).
+		//
+		// What it adds is the sentence. "Cannot cross movement-blocking
+		// boundary" is true and useless: a wall is a fact about the dungeon,
+		// while a shut door is a thing with a state, and the state is the part
+		// a caller can do something about. Spatial's refusal cannot say which
+		// crossing it stopped at, so the door is found here, from the cell they
+		// were standing on.
+		// The FIRST blocking door in travel order, which is the one spatial
+		// stopped at: it refuses on the first blocking crossing along the same
+		// ray doorsAlong walks. A step several cells long can pass more than
+		// one door, and only the first shut one is what stopped this step.
+		if placed {
+			for _, door := range e.doorsAlong(here, to) {
+				if door.state.blocks() {
+					return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
+				}
+			}
+		}
+
 		return executedAction{}, err
 	}
 
-	return executedAction{
+	action := executedAction{
 		member:     member,
 		connection: e.crossingOf(from, to),
 		from:       from,
 		to:         to,
-	}, nil
+	}
+	for _, door := range e.doorsAlong(from, to) {
+		action.doors = append(action.doors, CrossedDoor{ID: door.id, State: door.state.Kind()})
+	}
+
+	return action, nil
 }
 
 // stepTo is the pump's way in: the same step, refused SILENTLY.

@@ -218,4 +218,40 @@ var (
 	// ErrReadOnly indicates an attempt to write to the map through the
 	// read-only view [Encounter.Canvas] hands out.
 	ErrReadOnly = errors.New("encounter: the canvas is read-only")
+
+	// ErrNoDoor is returned when a verb names a door the field does not have,
+	// or names none at all (rpg-toolkit#1123).
+	//
+	// Separate from ErrBadDoor the way ErrNoRegion is separate from
+	// ErrNoField: this is a caller asking about something that is not there,
+	// where ErrBadDoor is a field that could not be built.
+	ErrNoDoor = errors.New("no such door")
+
+	// ErrBadDoor is returned when a door cannot be part of a field
+	// (rpg-toolkit#1123): an empty or duplicated ID, no edges at all, a
+	// missing state (required, never defaulted — see [DoorState]), a lock
+	// nothing has to beat, an edge whose cells are the same or not adjacent or
+	// not integral, an edge endpoint that is not floor (#880: a door hanging
+	// in the void is a wall drawn across nothing), the same crossing named
+	// twice by one door, one crossing claimed by two doors — which could not
+	// then have one state, which is the whole design — or a crossing where a
+	// room already drew a wall.
+	//
+	// Also what a verb answers when a door is asked to do something its state
+	// has already done: opening an open door, closing a shut one, or unlocking
+	// one that is not locked. The honest answer to asking for something that
+	// has happened is not silent success — [Encounter.Dissolve]'s ErrNoBubble
+	// makes the same call.
+	ErrBadDoor = errors.New("bad door")
+
+	// ErrLocked is returned when [Encounter.OpenDoor] is asked to open a
+	// locked door. The message names the door and the DC that has to be
+	// beaten; [Encounter.Unlock] is the way through.
+	//
+	// A refusal rather than the old stack's silent success. Over there
+	// OpenDoor deliberately does NOT gate on Locked, leaving the gate to the
+	// orchestrator (encounter/data.go's DoorData doc) — which is the
+	// looks-like-it-worked shape this composition has spent several slices
+	// deleting.
+	ErrLocked = errors.New("door is locked")
 )

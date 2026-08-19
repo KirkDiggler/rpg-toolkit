@@ -22,14 +22,17 @@ import (
 // the walk that started the fight before the fight — an engine whose product
 // IS the narration cannot narrate backwards.
 //
-// The law is stated at [refreshSight]; these are its six guards. Setup ruled
+// The law is stated at [refreshSight]; these are its seven guards. Setup ruled
 // it first (a scene records that it opened before it records a fight starting
 // inside it), and trigger detection then arrived at Move, Traverse, Pump and
 // Join. Two of the four (Traverse via TestTraverseBeatPinned, Join via
 // TestTombWatch) inverted the moment trigger detection moved inside
 // refreshSight; the other two were latent only because nothing asserted them.
 // Step joined them with rpg-toolkit#1059 and inherits the law by writing the
-// obvious call. All six are asserted here so a future verb inherits a guarded
+// obvious call. OpenDoor joined them with rpg-toolkit#1123 — a door swinging
+// open is a new way for two sides to come into contact, and a new verb is
+// exactly the moment a law like this goes unnoticed (found by Copilot on
+// PR #1125). All seven are asserted here so a future verb inherits a guarded
 // law rather than a remembered one.
 //
 // Every scene below uses the same set: a 12x12 room split by a wall across
@@ -183,6 +186,44 @@ func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 	s.Greater(out.Formed.Seq, out.Seq, "he arrives, THEN the fight starts")
 
 	s.Equal([]string{"scene-opened", "joined", "bubble-formed"}, s.beatKinds(enc, alice))
+}
+
+// TestOpenDoorOpensBeforeItFights pins the door's half, and doors are the first
+// verb in this suite where NOBODY MOVES: the world changes shape underneath two
+// members who are standing still, and the fight is what the changed shape
+// caused. The door beat is that cause and belongs first.
+func (s *BeatOrderTestSuite) TestOpenDoorOpensBeforeItFights() {
+	const shutDoor = "shut-door"
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms: []encounter.RoomInput{
+				{ID: "near", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0},
+					Boundaries: seamWallExcept(2, 3, 1)},
+				{ID: "far", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0}},
+			},
+			Doors: []encounter.DoorInput{{
+				ID: shutDoor, Edges: doorEdgesAcross(2, 1), State: encounter.DoorIsClosed(),
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: "near", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: "far", Position: spatial.Position{X: 0, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"scene-opened"}, s.beatKinds(enc, alice),
+		"the shut door keeps them apart: no fight before the verb under test")
+
+	out, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: shutDoor})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Formed, "the door opens onto the goblin")
+	s.Greater(out.Formed.Seq, out.Seq, "the door opens, THEN the fight starts")
+
+	s.Equal([]string{"scene-opened", "door", "bubble-formed"}, s.beatKinds(enc, alice))
 }
 
 // blockedScene opens the shared set with alice at (6,2) and the goblin at
