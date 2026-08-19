@@ -38,10 +38,25 @@ import (
 // the material would have been this file holding a fact about a world — the
 // same overreach as deciding the default in the first place, one layer up.
 //
-// So the cases are [VoidOpaque] and [VoidClear], for what a sightline does when
-// it crosses. The fiction stays in these comments, where it is an ILLUSTRATION
-// of a mechanic rather than a definition of one, and in the content that
-// authors the field.
+// So the cases are [VoidOpaque] and [VoidTransparent], for what a sightline does
+// when it crosses. The fiction stays in these comments, where it is an
+// ILLUSTRATION of a mechanic rather than a definition of one, and in the content
+// that authors the field.
+//
+// He corrected the second name too, and the correction is worth keeping because
+// it is a finer point than the first: the pair was briefly VoidOpaque and
+// VoidClear, and he said "transparant i think matches opaque better". Both words
+// name an effect, so the first rule was already satisfied — what was wrong was
+// that "clear" is colloquial where "opaque" is precise, and a sealed set whose
+// members are drawn from two registers reads as two separate decisions rather
+// than one axis with two ends. Opaque and transparent are the same word's two
+// directions.
+//
+// TWO NAME CORRECTIONS IN ONE REVIEW IS THE PATTERN, not an accident of taste.
+// A composition that may not hold fiction has to be read for fiction, and the
+// place it hides is in names that feel merely descriptive — which is why both
+// of these survived writing, testing and a full mutation battery before anybody
+// noticed them.
 
 // CanvasInput is what the field DECLARES about its own canvas — the world facts
 // no rule can derive and this module is not allowed to pick.
@@ -77,9 +92,9 @@ const (
 	// mechanic.
 	VoidOpaque VoidKind = "opaque"
 
-	// VoidClear does not: you can see straight across, and still not walk it.
+	// VoidTransparent does not: you can see straight across, and still not walk it.
 	// An open-air ruin, a ship's deck, a rooftop, the gap over a chasm.
-	VoidClear VoidKind = "clear"
+	VoidTransparent VoidKind = "transparent"
 )
 
 // Void is what the space between the authored chambers does to a sightline: a
@@ -89,7 +104,7 @@ const (
 //
 // "Can you see across the space between two rooms" is not a 5e rule this
 // composition could derive. It is a fact about THIS world — a tomb's void is
-// opaque, an open-air ruin's or a ship's deck is clear — and a fact about the
+// opaque, an open-air ruin's or a ship's deck is transparent — and a fact about
 // world arrives as construction data. There is no correct default, which is exactly
 // what rpg-toolkit#1033's capabilities-supplied-never-defaulted law is about:
 // a default here would be this module quietly deciding what a dungeon is made
@@ -130,8 +145,8 @@ const (
 //
 // A bool would answer today's question and could never be grown into the next
 // one. A chasm you can see across and FALL INTO is a third case, and it is not
-// [VoidClear] with a footnote — it is a different thing that happens to share
-// one of clear's two answers while differing on a third nobody has asked for
+// [VoidTransparent] with a footnote — it is a different thing that happens to share
+// one of transparent's two answers while differing on a third nobody has asked
 // yet. Sealing the set the way [DissolveCause] is
 // sealed makes that structural: the unexported method means a third case cannot
 // be declared outside this package, so adding one means editing this file, and
@@ -171,15 +186,15 @@ type voidOpaque struct{}
 func (voidOpaque) Kind() VoidKind    { return VoidOpaque }
 func (voidOpaque) blocksSight() bool { return true }
 
-// VoidIsClear declares that you can see straight across the space between the
+// VoidIsTransparent declares that you can see straight across the space between the
 // authored chambers, and still cannot walk it. An open-air ruin, a ship's deck,
 // a rooftop — somewhere the gap is a drop rather than a barrier.
-func VoidIsClear() Void { return voidClear{} }
+func VoidIsTransparent() Void { return voidTransparent{} }
 
-type voidClear struct{}
+type voidTransparent struct{}
 
-func (voidClear) Kind() VoidKind    { return VoidClear }
-func (voidClear) blocksSight() bool { return false }
+func (voidTransparent) Kind() VoidKind    { return VoidTransparent }
+func (voidTransparent) blocksSight() bool { return false }
 
 // voidFromData resolves the persisted word back to the declaration it names.
 //
@@ -194,8 +209,8 @@ func voidFromData(name string) (Void, error) {
 	switch VoidKind(name) {
 	case VoidOpaque:
 		return VoidIsOpaque(), nil
-	case VoidClear:
-		return VoidIsClear(), nil
+	case VoidTransparent:
+		return VoidIsTransparent(), nil
 	case "":
 		return nil, fmt.Errorf("field does not say what its void is (canvas.void): %w", ErrNoField)
 	default:
@@ -230,7 +245,7 @@ type canvasRoom struct {
 
 	// hasVoid is whether this field has any cell no chamber owns — see
 	// fieldHasVoid. Purely a cost decision: where there is no void, opaque and
-	// clear MEAN THE SAME THING, and the scan below can only ever run to the
+	// transparent MEAN THE SAME THING, and the scan below can only ever run to
 	// end of the ray and find nothing.
 	hasVoid bool
 }
@@ -250,7 +265,7 @@ type canvasRoom struct {
 // whether it belongs in tools/spatial — and this is one derived bit, computed
 // from numbers already in hand, never stored and never persisted. The measured
 // case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
-// deleting this check costs a sight refresh 121 ms against clear's 30 ms — 4.0x,
+// deleting this check costs a sight refresh 121 ms against transparent's 30 ms —
 // and 46.7 MB of allocation against 24.2 MB — every byte of it spent proving
 // there was no void to find. With it, parity. Re-runnable: see
 // voidcost_internal_test.go.
@@ -296,9 +311,9 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // until a caller forces it — this one does not, because the question already
 // has an implementation.
 //
-// Under [VoidClear] this is spatial's answer unchanged, which is the honest
+// Under [VoidTransparent] this is spatial's answer unchanged, which is the honest
 // shape of "the declaration decides": there is nothing to add to a sightline
-// crossing a clear gap. Under opaque on a field with NO void it is spatial's
+// crossing a transparent gap. Under opaque on a field with NO void it is spatial's
 // answer unchanged too, and for a better reason than speed: a field whose chambers
 // tile their canvas exactly has nothing for either declaration to be about, so
 // the two mean the same thing and cost the same (fieldHasVoid, pinned by
@@ -309,7 +324,7 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // ray is arithmetic, and the spatial call it can skip rasterizes, walks
 // boundaries, walks blocking entities and then walks a lean lane per neighbour.
 // So finding void EARLY returns before any of that: a twenty-chamber field with
-// gaps refreshed sight 1.6-1.7x FASTER under opaque than under clear, and the
+// gaps refreshed sight 1.6-1.7x FASTER under opaque than under transparent, and
 // reference tomb's shape 1.4-1.6x faster. The price is paid by rays that never
 // leave the floor, which run the scan in full and then delegate anyway: one
 // forty-by-forty chamber with a void margin and forty members measured 1.34x
