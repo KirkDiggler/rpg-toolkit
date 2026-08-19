@@ -2,58 +2,87 @@
 
 ## Purpose
 
-Represent every attack as an ordered collection of typed damage pools so one
-attack roll can produce multiple damage types. Each pool is rolled and modified
-independently, while the attack remains a single hit and a single damage
-application.
+Represent one attack as an ordered collection of typed damage pools. One attack
+roll may produce several damage types, but resolution still performs one strike,
+one damage-chain fold, and one damage application.
 
-This design replaces the single-pool declarations used by weapons and monster
-actions. It preserves existing one-pool behavior and gives mixed attacks, such
-as a gray ooze pseudopod, correct per-type resistance, vulnerability, immunity,
-and critical-hit handling.
+The shipped path is authoritative:
+
+```text
+persisted content
+  -> AttackFromCharacter / AttackFromMonsterAction
+  -> AttackProfile
+  -> Strike
+  -> Gather(damage) once
+  -> combat.FinalDamage
+  -> ApplyDamage once
+  -> StrikeOutcome
+  -> session adopts the returned world and records the beat
+```
+
+The legacy `combat.ResolveAttack` path is compatibility work. It does not define
+the design.
+
+## Rules Decisions
+
+- A damage pool is crit-eligible by default.
+- A critical hit rolls every eligible attack damage die twice. This follows SRD
+  5.1, including additional dice on the same attack. A gray ooze pseudopod
+  therefore doubles both its bludgeoning and acid dice.
+- `DoesNotCrit` represents an explicit exception; it is not the default for an
+  elemental or secondary pool.
+- Flat modifiers never double on a critical hit.
+- Lifedrinker-shaped damage is a runtime feature contribution: flat necrotic
+  damage equal to the Charisma modifier, minimum 1. It is neither weapon content
+  nor the ordinary attack ability modifier and does not double on a critical.
+- Resistance, vulnerability, and immunity apply independently to each damage
+  type through the existing `combat.FinalDamage` arithmetic.
+
+ADR-0036 is still proposed and describes a conflicting variant in which the
+ooze's acid dice do not crit. Implementation must update that proposed ADR to
+the decisions above before code adopts the new model.
 
 ## Scope
 
 This change covers:
 
-- A shared `damage.Damage` declaration in the leaf `rulebooks/dnd5e/damage`
-  package.
-- Weapon damage declarations.
-- Legacy `monster.ScimitarAction` damage declarations.
-- Generic melee, ranged, and bite monster action declarations and their
-  serialized configs.
-- Attack damage rolling and conversion into damage-chain components.
-- Explicit placement of the attacker's ability modifier.
-- Per-pool critical-hit eligibility.
-- Mixed-type results and notification events without presenting one type as the
-  type of the whole attack.
-- Tests for migration compatibility, critical hits, and per-type defenses.
+- Shared declared and resolved damage types in `rulebooks/dnd5e/damage`.
+- Weapon declarations and character attack compilation.
+- Legacy scimitar and generic melee, ranged, and bite monster action damage.
+- Backward-compatible loading of persisted monster action JSON.
+- `AttackProfile`, `Strike` damage rolling, the damage-chain carrier, and
+  `StrikeOutcome`.
+- Conditions that currently assume one weapon pool: Great Weapon Fighting,
+  Brutal Critical, Martial Arts, Rage, and Sneak Attack.
+- The top-level encounter package's direct monster-action snapshot reader.
+- The legacy combat path to the extent required to compile and preserve its
+  existing behavior.
+- The effective-advantage propagation defect in `Strike`, because the modified
+  damage-event construction currently grants canceled advantage to Sneak Attack.
 
-This change does not cover save-gated outcomes, multiattack orchestration,
-changes to damage-chain staging, spell migration, or the ownership and lifecycle
-of the event bus. It proves support for Lifedrinker-shaped damage but does not
-add the Lifedrinker feature, its prerequisites, or pact-weapon state.
+This change does not add production Lifedrinker, pact-weapon state, ranged
+strike semantics, save-gated damage, multiattack orchestration, new damage-chain
+stages, or a new event-bus lifecycle.
 
-## Damage Declaration
+## Shared Damage Types
 
-The `damage` package gains these exported declarations:
+The leaf `damage` package gains:
 
 ```go
 // Property identifies behavior attached to one declared damage pool.
 type Property string
 
 const (
-	// AddsAttackAbilityModifier adds the ability modifier selected for the
-	// attack's ordinary damage roll to this pool. An attack declaration must
-	// contain at most one pool with this property.
+	// AddsAttackAbilityModifier marks the ordinary weapon pool that receives
+	// the ability modifier selected by the attack compiler.
 	AddsAttackAbilityModifier Property = "adds-attack-ability-modifier"
 
-	// DoesNotCrit prevents this pool's dice from being rolled a second time on a
-	// critical hit. Pools without this property are critical-hit eligible.
+	// DoesNotCrit prevents this pool's dice from being rolled a second time on
+	// a critical hit. Pools without it are crit-eligible.
 	DoesNotCrit Property = "does-not-crit"
 )
 
-// Damage declares one dice pool with one damage type.
+// Damage declares one dice pool of one damage type.
 type Damage struct {
 	Dice       string     `json:"dice"`
 	Type       Type       `json:"type"`
@@ -61,163 +90,272 @@ type Damage struct {
 	Properties []Property `json:"properties,omitempty"`
 }
 
-// HasProperty reports whether the pool contains property.
+// HasProperty reports whether this pool contains property.
 func (d Damage) HasProperty(property Property) bool
+
+// Instance is one resolved amount of one damage type.
+type Instance struct {
+	Amount int  `json:"amount"`
+	Type   Type `json:"type"`
+}
 ```
 
-`Dice` contains pure dice notation such as `"1d8"`; it never contains a flat
-modifier. `FlatBonus` contains only a bonus intrinsic to that pool. An attacker
-ability modifier is not declaration data and is added during attack resolution.
+`Dice` is pure notation such as `"2d4"`, never `"2d4+2"`. `FlatBonus` is
+intrinsic to the declared pool. The ordinary character attack ability modifier
+travels separately in the compiled profile so breakdowns and features can still
+identify or replace it.
 
-Crit eligibility defaults to true. This preserves the behavior of zero-value
-`Properties` and keeps ordinary weapons concise. `DoesNotCrit` is reserved for
-rules that explicitly exempt a pool's dice from critical-hit doubling. The gray
-ooze is not such an exception: both its bludgeoning and acid dice are attack
-damage dice and both double on a critical hit.
+`Damage` is the one declaration shape used by weapons, monster actions, and
+compiled profiles. `Instance` is the one resolved typed-amount shape used after
+the damage fold.
 
-## Consumer Shapes and Validation
+## Validation
 
-`weapons.Weapon` replaces `Damage string` and `DamageType damage.Type` with:
+A damage slice is invalid when:
+
+- it is empty;
+- any pool has empty or malformed dice notation;
+- notation contains a baked-in modifier;
+- a type is `damage.None` or is not a recognized damage type;
+- more than one pool has `AddsAttackAbilityModifier`; or
+- a property is unknown.
+
+All pools are validated before `Strike` yields the attack chain or consumes any
+randomness. Compiler constructors return invalid content as `ErrBadAttack` (or
+the package-equivalent invalid-argument error) with the pool index and notation.
+No partial rolling or partial application is allowed.
+
+## Persisted Monster Action Migration
+
+`damage_dice` and `damage_type` are persisted fields inside
+`monster.ActionData.Config`; they are not merely constructor aliases. Existing
+monster blobs must remain readable.
+
+New configs use:
+
+```go
+Damage []damage.Damage `json:"damage,omitempty"`
+```
+
+During the migration window they also retain deprecated input-only fields:
+
+```go
+DamageDice string      `json:"damage_dice,omitempty"`
+DamageType damage.Type `json:"damage_type,omitempty"`
+```
+
+Load precedence is exact:
+
+1. A non-empty `Damage` slice is authoritative and is validated as-is.
+2. Otherwise, legacy dice and type must either both be present or both absent.
+3. A legacy pair is parsed into pure dice, numeric `FlatBonus`, and its type.
+4. Missing, partial, malformed, or unknown legacy damage is rejected.
+
+Legacy data such as `"2d4+2"` becomes `{Dice: "2d4", FlatBonus: 2}`.
+Negative bonuses are preserved. Monster legacy bonuses remain intrinsic flat
+bonuses: the compiler must not infer `AddsAttackAbilityModifier` or guess an
+ability from a stat block.
+
+Loaded actions store only the canonical slice internally. New-first precedence
+matches the bite's `SaveGate` migration: explicit new data wins; stale legacy
+fields are not merged with it.
+
+Writers emit only `damage` after every in-repository reader is migrated. This
+change must update the top-level encounter package's `primaryAttackSnapshot`,
+which currently decodes `damage_dice` directly to seed opportunity-attack
+readiness. If an external consumer is discovered that cannot migrate in the
+same release, writers dual-write for one explicitly bounded compatibility
+release and removal is tracked before merge.
+
+The legacy scimitar receives a dedicated converter: its type is slashing, its
+fused notation supplies the flat bonus, and its separate historical
+`DamageBonus` must not be added again without a persisted fixture proving that
+field represented independent arithmetic.
+
+Ranged action data migrates to the canonical shape, but
+`AttackFromMonsterAction` continues to refuse ranged attacks until ranged strike
+semantics ship.
+
+## Compilation
+
+`weapons.Weapon` replaces its singular `Damage` string and `DamageType` with:
 
 ```go
 Damage []damage.Damage
 ```
 
-The scimitar, generic melee, ranged, and bite monster action configs make the
-same replacement and persist the slice directly in JSON. Their internal action
-state also stores the slice rather than parallel dice/type fields.
+Ordinary player weapons mark exactly one pool with
+`AddsAttackAbilityModifier`. `AttackFromCharacter` selects STR or DEX using the
+existing finesse and weapon rules and compiles:
 
-Attack resolution requires at least one damage pool. It rejects a declaration
-when:
+```go
+type AttackProfile struct {
+	Ref             *core.Ref
+	AttackBonus     int
+	Damage          []damage.Damage
+	AbilityUsed     abilities.Ability
+	AbilityModifier int
+	Gate            *saves.SaveGate
+	Imposes         Consequence
+}
+```
 
-- the slice is empty;
-- a pool has empty or invalid dice notation;
-- a pool has `damage.None` or an unrecognized damage type; or
-- more than one pool has `AddsAttackAbilityModifier`.
+The ability modifier remains outside `Damage.FlatBonus`. `Strike` creates the
+ability-source component on the pool marked `AddsAttackAbilityModifier`, which
+preserves Martial Arts replacement, two-weapon behavior, and transparent combat
+breakdowns.
 
-For compatibility, every migrated ordinary weapon and monster attack has one
-pool with `AddsAttackAbilityModifier`. A declaration may intentionally have no
-such pool when the attack does not add an ability modifier. The name is narrow
-by design: it does not represent separately typed feature damage whose amount
-happens to derive from an ability score.
+Monster compilers copy authoritative canonical pools and leave `AbilityUsed`
+empty and `AbilityModifier` zero. Static compilation occurs before the bus
+exists. Situational effects never become profile fields merely because they add
+damage.
 
-No compatibility fields or alternate representations remain after migration.
-Serialized monster action data adopts the new `damage` array shape directly;
-support for loading the old JSON shape is outside this issue.
+## Strike Resolution
 
-## Resolution Flow
+The machine's yield shape does not change:
 
-Attack resolution still performs one attack roll. On a hit, it processes every
-declared pool uniformly:
+```text
+Gather(attack)
+  -> roll versus folded AC
+  -> on hit, roll every damage pool
+  -> Gather(damage) once
+  -> FinalDamage
+  -> ApplyDamage once
+  -> optional Request(contest)
+  -> Done
+```
 
-1. Parse the pool's pure dice notation.
-2. Roll it once, or twice when the attack is critical and the pool does not have
+For each pool, `Strike`:
+
+1. Rolls its dice once.
+2. Rolls them a second time when the strike is critical and the pool lacks
    `DoesNotCrit`.
-3. Create one weapon damage component containing the pool's dice, intrinsic flat
-   bonus, type, source reference, and whether its dice were doubled.
-4. If the pool has `AddsAttackAbilityModifier`, create the existing
-   ability-source component using that pool's damage type and expose that type
-   as the damage chain's `WeaponDamageType`.
-5. Pass all components together through the existing damage chain once.
-6. Let existing per-type multipliers group and resolve the components.
-7. Apply all final typed instances to the target in one `ApplyDamage` call.
+3. Creates a weapon component containing dice notation, per-die rolls,
+   intrinsic flat bonus, type, properties, source ref, and whether that
+   component's dice doubled.
+4. Creates one ability-source component for the pool marked
+   `AddsAttackAbilityModifier`, using the compiled `AbilityModifier` and that
+   pool's type.
 
-`DamageComponent.IsCritical` continues to mean that the component's dice were
-doubled. Flat-only components, including the ability modifier, are not marked
-critical because their value is not doubled.
+All components enter one `DamageChainEvent`. The machine never receives or
+touches the bus; it yields `Gather` and the resolution driver performs the fold.
 
-`ResolveDamageInput.IsCritical` and the chain-level critical flag continue to
-describe the attack outcome for features that react to a critical hit. Pool
-eligibility controls only dice rolling and component-level `IsCritical`.
+`DamageComponent.IsCritical` means that component's dice were actually doubled.
+Flat-only ability and feature components use false. The chain-level
+`IsCritical` continues to describe the strike outcome for rules that react to a
+critical hit.
 
-Features may append new components at `StageFeatures`. Such components are not
-part of the weapon declaration: they can depend on the attacker, target, or
-other runtime state. A feature explicitly chooses whether its damage inherits
-`WeaponDamageType` or supplies another type.
+## Damage-Chain Semantics
 
-Lifedrinker is the representative flat, separately typed feature. On a hit with
-a qualifying pact weapon, its modifier appends a `DamageSourceFeature`
-component whose `FlatBonus` is `max(1, Charisma modifier)`, whose type is
-`damage.Necrotic`, and whose `IsCritical` is false. It does not modify the
-declared weapon pools and its flat damage is not doubled on a critical hit.
+Every weapon component carries its own dice notation and properties. This
+removes the current dependence on one `DamageChainEvent.WeaponDamage` string.
 
-## Results and Events
+The event retains narrowly named primary metadata derived from the pool marked
+`AddsAttackAbilityModifier`:
 
-An attack with multiple damage types must not be mislabeled as dealing only its
-first type.
+```go
+WeaponDamageDice string
+WeaponDamageType damage.Type
+```
 
-- `AttackResult` exposes the resolved typed instances and retains the complete
-  component breakdown. Its singular `DamageType` field is removed.
-- `DamageReceivedEvent` exposes all final typed instances instead of a singular
-  `DamageType`. `Amount` remains the aggregate damage applied.
-- `DamageChainEvent.DamageType` is replaced by `WeaponDamageType`. This narrowly
-  names the type of the pool marked `AddsAttackAbilityModifier`; it is not a
-  claim that the entire attack has one type. Features such as Rage and Sneak
-  Attack that inherit weapon damage use this field. Features such as
-  Lifedrinker provide their own type.
-- Resistance, vulnerability, and immunity inspect every component's type rather
-  than `WeaponDamageType`.
-- Any consumer that needs a display summary derives it from instances or
-  components; `WeaponDamageType` must not be presented as an aggregate type for
-  the attack.
+These fields do not describe the whole attack. They exist for rules that
+explicitly inherit the ordinary weapon die or type:
 
-This is an intentional compile-time migration within the D&D 5e module. All
-producers and consumers of these fields must be updated in the same change.
+- Rage and Sneak Attack inherit `WeaponDamageType`.
+- Brutal Critical uses `WeaponDamageDice`.
+- Martial Arts replaces the marked primary component.
+- Great Weapon Fighting rerolls the marked primary weapon component using that
+  component's own notation; it does not apply one primary die size to every
+  intrinsic pool.
+- Resistance, vulnerability, and immunity inspect component types only.
+- A Lifedrinker-shaped feature appends a flat `damage.Necrotic`
+  `DamageSourceFeature` component at `StageFeatures`; it does not inherit either
+  primary field.
 
-## Error Handling
+Effective advantage is computed as advantage present and disadvantage absent.
+The damage event must not set `HasAdvantage` merely because an advantage source
+survived alongside a canceling disadvantage source.
 
-Invalid damage declarations return `rpgerr.CodeInvalidArgument` before any
-damage dice are rolled or chain events are published. Dice parser failures are
-wrapped with the pool index and notation so malformed multi-pool declarations
-are diagnosable. A failure in any pool aborts the attack damage phase; partial
-damage is never applied.
+## Outcomes and Notification Boundary
 
-Existing chain and event publication errors retain their wrapping and behavior.
+`StrikeOutcome` preserves both the convenient aggregate and the typed evidence:
+
+```go
+type StrikeOutcome struct {
+	// existing attack and contest fields...
+	Damage           int
+	DamageInstances  []damage.Instance
+	DamageComponents []dnd5eEvents.DamageComponent
+}
+```
+
+`combat.FinalDamage` remains the sole multiplier arithmetic. `Strike` stores its
+typed result, converts it once for `ApplyDamage`, and applies every instance in
+one call.
+
+`Strike` does not publish or redesign the legacy `DamageReceivedEvent`. That
+topic currently has conflicting instruction and notification subscribers and
+can double-apply monster damage. Session adopts the returned world, records the
+beat, and emits its stream event from `StrikeOutcome`.
+
+## Lifedrinker Proof
+
+Production Lifedrinker is out of scope, but a synthetic chain subscriber proves
+the extension seam. A critical pact-longsword-shaped strike with STR +3 and CHA
++5 resolves as:
+
+```text
+2d8 + 3 slashing
+       5 necrotic
+```
+
+The test proves that the necrotic flat component does not double, the minimum-1
+rule can be expressed by the feature, and slashing and necrotic defenses affect
+only their respective components.
 
 ## Testing
 
 Tests follow the repository's testify suite pattern and cover:
 
-1. `damage.Damage.HasProperty` and default crit eligibility.
-2. Existing one-pool weapon attacks with unchanged hit, damage, modifier, and
-   critical-hit results.
-3. A two-pool attack using one attack roll and producing both typed pools.
-4. A critical hit doubling both ordinary pools, including the gray-ooze-shaped
-   bludgeoning-plus-acid case.
-5. A critical hit doubling an ordinary pool while leaving a pool marked
-   `DoesNotCrit` at one roll.
-6. An ability modifier applied only to the pool marked
-   `AddsAttackAbilityModifier`.
-7. An intrinsic `FlatBonus` applied once and not doubled on a critical hit.
-8. A mixed bludgeoning-and-poison hit against a target vulnerable to
-   bludgeoning and immune to poison, proving independent per-type resolution.
-9. Validation failures for empty damage, malformed dice, invalid types, and
-   multiple ability-modifier pools.
-10. Updated result and event assertions proving all final typed instances are
-    visible downstream.
-11. Round-trip serialization tests for every migrated monster action config.
-12. A synthetic Lifedrinker-shaped feature modifier in which a critical
-    pact-longsword-shaped hit produces doubled slashing dice plus its ordinary
-    attack ability modifier and a non-doubled, minimum-one Charisma-derived
-    necrotic component. This test does not introduce a production Lifedrinker
-    feature.
-13. Separate slashing and necrotic resistance assertions for that feature case,
-    proving that declared damage and runtime feature damage remain independently
-    typed through resolution.
+1. Damage property lookup and validation.
+2. Legacy positive, zero, and negative monster modifiers.
+3. Partial, malformed, missing, and unknown-type legacy declarations.
+4. New-first precedence when old and new fields coexist.
+5. Legacy load followed by canonical-only write.
+6. Scimitar conversion without double-counting.
+7. Bite damage migration preserving `SaveGate` and its legacy gate translation.
+8. Ranged data migration without enabling ranged Strike compilation.
+9. Existing single-pool player and monster results unchanged.
+10. Two pools using one attack roll, one damage gather, and one application.
+11. Both gray ooze pools doubling on an SRD critical hit.
+12. An explicit `DoesNotCrit` pool rolling only once.
+13. Intrinsic and ability flat bonuses applied once and never doubled.
+14. Ability modifier attached only to the marked pool.
+15. Bludgeoning vulnerability plus poison immunity on one strike.
+16. Great Weapon Fighting rerolling only the marked primary component with its
+    own notation.
+17. Primary-pool Martial Arts and Brutal Critical behavior.
+18. Rage and Sneak Attack inheriting the primary weapon type.
+19. Advantage plus disadvantage rolling straight and not granting Sneak Attack
+    solely through canceled advantage.
+20. Typed instances and components surviving into `StrikeOutcome` and the
+    session beat.
+21. A synthetic Lifedrinker-shaped flat necrotic feature contribution.
+22. Encounter opportunity-attack readiness from canonical action damage.
 
-The complete D&D 5e module test suite and linter must pass. The committed module
-must not contain a `replace` directive or `go.work` file.
+## Module and Release Order
 
-## Migration Order
+The repository's Go modules consume published sibling versions unless local
+overrides are installed. Development and release proceed inside-out:
 
-The implementation proceeds inside-out:
+1. Modify and test `rulebooks/dnd5e`.
+2. Use an uncommitted `go.work` or temporary `replace` while resolution consumes
+   the local D&D module.
+3. Modify and test `rulebooks/dnd5e/resolution`.
+4. Modify and test `rulebooks/dnd5e/session` and affected encounter modules
+   against local dependencies.
+5. Run targeted and full module suites plus lint.
+6. Remove every `go.work` and `replace` before committing or merging.
+7. Publish and update versions in dependency order.
 
-1. Add the shared declaration and its unit tests.
-2. Migrate weapons and weapon catalog entries.
-3. Migrate monster action configs, loaders, assets, and round-trip tests.
-4. Generalize attack damage rolling and validation.
-5. Replace singular result and event damage types with typed instances.
-6. Add mixed-type acceptance tests and run full verification.
-
-Each intermediate commit should compile and pass the tests for the packages it
-changes; the final commit must pass the full module checks.
+No committed module may contain a local `replace` directive or `go.work` file.
