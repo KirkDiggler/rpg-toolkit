@@ -740,8 +740,12 @@ if rg -n 'func (ResolveAttack|ResolveAttackHit|ApplyAttackOutcome)|type (AttackI
   echo 'legacy attack resolution symbols remain' >&2
   exit 1
 fi
-if rg -n 'damage_dice|damage_type|damage_bonus|KnockdownDC|Scimitar(Config|Action)|^[[:space:]]*WeaponDamage[[:space:]]|^[[:space:]]*DamageType[[:space:]]+damage.Type' rulebooks/dnd5e/monster rulebooks/dnd5e/events encounter/seed_monsters.go; then
+if rg -n 'damage_dice|damage_type|damage_bonus|KnockdownDC|Scimitar(Config|Action)' rulebooks/dnd5e/monster encounter/seed_monsters.go; then
   echo 'legacy damage fields remain' >&2
+  exit 1
+fi
+if sed -n '/^type DamageChainEvent struct {/,/^}/p' rulebooks/dnd5e/events/events.go | rg -n '^[[:space:]]*(WeaponDamage|DamageType)[[:space:]]'; then
+  echo 'legacy event-wide damage metadata remains' >&2
   exit 1
 fi
 ```
