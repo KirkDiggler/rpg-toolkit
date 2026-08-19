@@ -143,7 +143,7 @@ func (s *DeclaredConsequenceTestSuite) TestAnUngatedAttackNamesNoConsequence() {
 		}
 	}
 
-	s.Require().NotEmpty(melee.DamageDice, "the skeleton has a generic melee action")
+	s.Require().NotEmpty(melee.Damage, "the skeleton has a generic melee action")
 	s.Require().Nil(melee.Gate, "a plain weapon just hits")
 	s.Require().Nil(melee.Imposes, "so there is nothing riding on it")
 }
@@ -155,8 +155,7 @@ func (s *DeclaredConsequenceTestSuite) TestAnUngatedAttackNamesNoConsequence() {
 func (s *DeclaredConsequenceTestSuite) TestAGatelessBiteNamesNoConsequence() {
 	config, err := json.Marshal(monsterActions.BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
 		// No SaveGate, no KnockdownDC: a bite that just bites.
 	})
 	s.Require().NoError(err)
@@ -169,7 +168,8 @@ func (s *DeclaredConsequenceTestSuite) TestAGatelessBiteNamesNoConsequence() {
 
 	s.Require().Nil(profile.Gate, "nothing to contest")
 	s.Require().Nil(profile.Imposes, "so nothing rides on it")
-	s.Require().Equal("2d4+2", profile.DamageDice, "and it is still a bite")
+	s.Require().Equal([]damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}}, profile.Damage,
+		"and it is still a bite")
 }
 
 // A gate that names no consequence is refused BY NAME, before anything rolls.

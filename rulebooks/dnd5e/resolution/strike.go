@@ -63,16 +63,14 @@ type AttackProfile struct {
 	// AttackBonus is added to the d20.
 	AttackBonus int
 
-	// DamageDice is the weapon pool's notation ("2d4+2").
-	DamageDice string
-
-	// DamageType is what kind of harm lands.
-	DamageType damage.Type
+	// Damage is the ordered set of canonical damage pools declared by the
+	// weapon or monster action. Dice notation remains pure NdM; intrinsic
+	// arithmetic stays in each pool's FlatBonus.
+	Damage []damage.Damage
 
 	// AbilityUsed is the ability the compiler swung with, when it chose one.
 	//
-	// It carries no arithmetic — the modifier is already inside DamageDice —
-	// and exists because effects predicate on it. Rage's damage bonus applies
+	// Effects predicate on this field. Rage's damage bonus applies
 	// only to melee attacks made with Strength, so it reads this off the
 	// folded damage event; with the field empty its predicate never matches
 	// and a raging character silently loses the bonus. Measured, not assumed:
@@ -86,6 +84,12 @@ type AttackProfile struct {
 	// This is the field the attack-profile seam named as additive when a
 	// predicate finally needed it (docs/ideas/session-sdk/attack-profile-seam.md).
 	AbilityUsed abilities.Ability
+
+	// AbilityModifier is the arithmetic selected by a character compiler. It
+	// stays separate from canonical dice and intrinsic monster flat bonuses so
+	// resolution can attribute it to the one marked pool. Monster profiles keep
+	// this at zero.
+	AbilityModifier int
 
 	// Gate is the rider's contest, if the attack declares one (ADR-0039).
 	// Nil means the attack just hits.
@@ -120,8 +124,34 @@ func (p *AttackProfile) validate() error {
 	if p.Ref == nil {
 		return fmt.Errorf("%w: the attack names no ref", ErrBadAttack)
 	}
-	if p.DamageDice == "" {
-		return fmt.Errorf("%w: the attack declares no damage dice", ErrBadAttack)
+	if err := damage.Validate(p.Damage); err != nil {
+		return fmt.Errorf("%w: invalid attack damage: %w", ErrBadAttack, err)
+	}
+
+	abilityMarkers := 0
+	for _, pool := range p.Damage {
+		for _, property := range pool.Properties {
+			if property == damage.AddsAttackAbilityModifier {
+				abilityMarkers++
+			}
+		}
+	}
+
+	if p.AbilityUsed != "" {
+		if abilityMarkers != 1 {
+			return fmt.Errorf(
+				"%w: ability %q requires exactly one %q damage pool",
+				ErrBadAttack, p.AbilityUsed, damage.AddsAttackAbilityModifier)
+		}
+	} else {
+		if p.AbilityModifier != 0 {
+			return fmt.Errorf("%w: an attack with no ability cannot carry ability modifier %+d", ErrBadAttack, p.AbilityModifier)
+		}
+		if abilityMarkers != 0 {
+			return fmt.Errorf(
+				"%w: an attack with no ability cannot mark a %q damage pool",
+				ErrBadAttack, damage.AddsAttackAbilityModifier)
+		}
 	}
 
 	// A gate with nothing riding on it is refused rather than run. The
@@ -357,9 +387,10 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 // rollDamage rolls the action's damage dice and yields the fold that lets
 // effects modify it (ADR-0026's Resolve).
 func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Step, error) {
-	pool, err := dice.ParseNotation(m.in.Attack.DamageDice)
+	declared := m.in.Attack.strikeDamage()
+	pool, err := dice.ParseNotation(declared.Dice)
 	if err != nil {
-		return nil, fmt.Errorf("%w: damage dice %q: %w", ErrBadAttack, m.in.Attack.DamageDice, err)
+		return nil, fmt.Errorf("%w: damage dice %q: %w", ErrBadAttack, declared.Dice, err)
 	}
 
 	result := pool.RollContext(ctx, roller)
@@ -369,8 +400,8 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 
 	// Per-die, not summed: OriginalDiceRolls/FinalDiceRolls are a per-die
 	// contract — downstream rerolls address dice by index — and the
-	// notation's static modifier is not a die, so it rides FlatBonus and is
-	// never doubled.
+	// canonical notation has no static modifier; declared intrinsic arithmetic
+	// rides FlatBonus below and is never doubled.
 	rolls := flattenDice(result.Rolls())
 
 	// A critical hit doubles the weapon pool's DICE and nothing else
@@ -390,17 +421,20 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		SourceRef:         m.in.Attack.Ref,
 		OriginalDiceRolls: rolls,
 		FinalDiceRolls:    append([]int(nil), rolls...),
-		FlatBonus:         result.Modifier(),
-		DamageType:        m.in.Attack.DamageType,
+		FlatBonus:         declared.FlatBonus,
+		DamageType:        declared.Type,
 		IsCritical:        m.outcome.Critical,
+	}
+	if declared.HasProperty(damage.AddsAttackAbilityModifier) {
+		component.FlatBonus += m.in.Attack.AbilityModifier
 	}
 
 	return foldDamage(dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
 		AttackerID:       m.in.AttackerID,
 		TargetID:         m.in.TargetID,
 		Components:       []dnd5eEvents.DamageComponent{component},
-		WeaponDamageDice: m.in.Attack.DamageDice,
-		WeaponDamageType: m.in.Attack.DamageType,
+		WeaponDamageDice: declared.Dice,
+		WeaponDamageType: declared.Type,
 		IsCritical:       m.outcome.Critical,
 		HasAdvantage:     len(m.outcome.Folded.AdvantageSources) > 0,
 		IsMelee:          true,
@@ -410,6 +444,20 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		AbilityUsed: m.in.Attack.AbilityUsed,
 		WeaponRef:   m.in.Attack.Ref,
 	}), m.afterDamageChain), nil
+}
+
+// strikeDamage identifies the one pool consumed by the pre-composable Strike
+// implementation. Character profiles mark it explicitly; monster profiles use
+// their first canonical pool. Task 9 replaces this singular resolution step
+// with one component per pool while keeping the profile contract unchanged.
+func (p AttackProfile) strikeDamage() damage.Damage {
+	for _, pool := range p.Damage {
+		if pool.HasProperty(damage.AddsAttackAbilityModifier) {
+			return pool
+		}
+	}
+
+	return p.Damage[0]
 }
 
 // afterDamageChain applies what the fold settled on — bus-free, straight onto
@@ -540,55 +588,44 @@ func AttackFromMonsterAction(action monster.ActionData) (AttackProfile, error) {
 // attackFromMelee compiles a stat-block weapon — MeleeConfig is the profile's
 // shape already, and a plain weapon declares no gate: the blow just lands.
 func attackFromMelee(action monster.ActionData) (AttackProfile, error) {
+	if _, err := monsterActions.LoadAction(action); err != nil {
+		return AttackProfile{}, fmt.Errorf("%w: invalid melee action: %w", ErrBadAttack, err)
+	}
+
 	var config monsterActions.MeleeConfig
-	if len(action.Config) > 0 {
-		if err := json.Unmarshal(action.Config, &config); err != nil {
-			return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
-		}
-	}
-
-	if config.DamageDice == "" {
-		return AttackProfile{}, fmt.Errorf("%w: the action declares no damage dice", ErrBadAttack)
-	}
-
-	ref := action.Ref
-
-	return AttackProfile{
-		Ref:         &ref,
-		AttackBonus: config.AttackBonus,
-		DamageDice:  config.DamageDice,
-		DamageType:  config.DamageType,
-	}, nil
-}
-
-func attackFromBite(action monster.ActionData) (AttackProfile, error) {
-	var config monsterActions.BiteConfig
-	if len(action.Config) > 0 {
-		if err := json.Unmarshal(action.Config, &config); err != nil {
-			return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
-		}
-	}
-
-	if config.DamageDice == "" {
-		return AttackProfile{}, fmt.Errorf("%w: the action declares no damage dice", ErrBadAttack)
+	if err := json.Unmarshal(action.Config, &config); err != nil {
+		return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
 	}
 
 	ref := action.Ref
 	profile := AttackProfile{
 		Ref:         &ref,
 		AttackBonus: config.AttackBonus,
-		DamageDice:  config.DamageDice,
-		DamageType:  config.DamageType,
-		Gate:        config.SaveGate,
+		Damage:      copyDamagePools(config.Damage),
+	}
+	if err := profile.validate(); err != nil {
+		return AttackProfile{}, err
 	}
 
-	// A bite persisted by an older build carries a bare knockdown DC rather
-	// than a gate; NewBiteAction is what translates it, so the profile comes
-	// through the action rather than the config when the gate is absent.
-	if profile.Gate == nil {
-		if bite, ok := mustLoadBite(action); ok {
-			profile.Gate = bite.SaveGate()
-		}
+	return profile, nil
+}
+
+func attackFromBite(action monster.ActionData) (AttackProfile, error) {
+	if _, err := monsterActions.LoadAction(action); err != nil {
+		return AttackProfile{}, fmt.Errorf("%w: invalid bite action: %w", ErrBadAttack, err)
+	}
+
+	var config monsterActions.BiteConfig
+	if err := json.Unmarshal(action.Config, &config); err != nil {
+		return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
+	}
+
+	ref := action.Ref
+	profile := AttackProfile{
+		Ref:         &ref,
+		AttackBonus: config.AttackBonus,
+		Damage:      copyDamagePools(config.Damage),
+		Gate:        config.SaveGate,
 	}
 
 	// A bite's gate is a KNOCKDOWN — that is what the stat block's
@@ -603,22 +640,21 @@ func attackFromBite(action monster.ActionData) (AttackProfile, error) {
 	if profile.Gate != nil {
 		profile.Imposes = ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne)
 	}
+	if err := profile.validate(); err != nil {
+		return AttackProfile{}, err
+	}
 
 	return profile, nil
 }
 
-// mustLoadBite reconstitutes the action so its own loader can apply whatever
-// translation the content needs. Failure is not fatal: the numbers are already
-// decoded, and only the gate would be missing.
-func mustLoadBite(action monster.ActionData) (*monsterActions.BiteAction, bool) {
-	loaded, err := monsterActions.LoadAction(action)
-	if err != nil {
-		return nil, false
+func copyDamagePools(pools []damage.Damage) []damage.Damage {
+	copy := make([]damage.Damage, len(pools))
+	for i, pool := range pools {
+		copy[i] = pool
+		copy[i].Properties = append([]damage.Property(nil), pool.Properties...)
 	}
 
-	bite, ok := loaded.(*monsterActions.BiteAction)
-
-	return bite, ok
+	return copy
 }
 
 // combatantFor finds a participant's sheet as something that can be hit.

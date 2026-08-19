@@ -134,13 +134,15 @@ func (s *ResolveTestSuite) dodging() json.RawMessage {
 // through the action's own ToData so the fixture is the real serialized shape
 // rather than a hand-copied guess at it.
 func (s *ResolveTestSuite) shortsword() monster.ActionData {
-	return monsterActions.NewMeleeAction(monsterActions.MeleeConfig{
+	action, err := monsterActions.NewMeleeAction(monsterActions.MeleeConfig{
 		Name:        "shortsword",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		Reach:       5,
-		DamageType:  damage.Piercing,
-	}).ToData()
+	})
+	s.Require().NoError(err)
+
+	return action.ToData()
 }
 
 // skeleton carries a trait that has nothing to do with saving throws, which is
