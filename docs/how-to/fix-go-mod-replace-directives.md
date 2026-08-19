@@ -1,20 +1,22 @@
 ---
 name: how to fix go.mod replace directives
 description: Step-by-step guide for removing local replace directives; status of the remaining cases
-updated: 2026-05-04
+updated: 2026-08-20
 ---
 
 # How to fix go.mod replace directives
 
-**Status (2026-05-04):**
+**Status (2026-08-20): resolved — main carries no `replace github.com/KirkDiggler/rpg-toolkit/...` directives.**
 - ✅ `items/go.mod` — directive removed (per issue #613)
 - ✅ `mechanics/proficiency/go.mod` — directive removed (per issue #613)
-- ⏳ `mechanics/conditions/go.mod` — directives retained; source uses old-API events symbols that no published events version exposes (tracked in #617)
-- ⏳ `mechanics/spells/go.mod` — directives retained; same reason (tracked in #617)
+- ✅ `mechanics/conditions/go.mod` — module deleted (per issue #973)
+- ✅ `mechanics/spells/go.mod` — module deleted (per issue #973)
 
-The two cleanups that landed had no source drift — the replace directives were leftover cruft. The two that remain have real source drift: their main-branch source uses old-shape events symbols (`events.Event`, `events.HandlerFunc`, `event.Context().GetString` / `.AddModifier()`) that the current events module does not expose (events has been rewritten to a typed-topic API: `TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`). The replace directives mask that mismatch by pointing at local source. Resolving them requires **rewriting** conditions and spells against the new typed-topic API — a real refactor, not a version bump. Deferred because the 4-class playtest doesn't exercise either module.
+The two cleanups that landed had no source drift — the replace directives were leftover cruft. The two that remained had real source drift: their main-branch source used old-shape events symbols (`events.Event`, `events.HandlerFunc`, `event.Context().GetString` / `.AddModifier()`) that the current events module does not expose (events has been rewritten to a typed-topic API: `TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`). The replace directives masked that mismatch by pointing at local source — and, because they pointed year-old source at the redesigned package, they were also what stopped both modules from loading at all.
 
-The workspace rule (CLAUDE.md) is explicit: no replace directives on main, full stop. The two remaining cases are an active rule violation — not an "exception" — tracked in issue #617 and visible in the doc snapshot above so they don't get forgotten. Issue #613's items+proficiency portion landed; its conditions/spells portion and the CI grep guard are explicitly deferred to #617.
+That drift was never repaid, because there was nothing to repay it for: #617 asked for a migration, then closed as a stale premise once a sweep confirmed neither module had a source commit in about a year and nothing outside their own directories imported them. Deletion (#973) was the successor, and it is what landed — so the fix pattern below never had to be applied to them.
+
+The workspace rule (CLAUDE.md) is explicit: no replace directives on main, full stop. That rule now holds with zero exceptions, which also makes the CI grep guard deferred from #613 cheap to add — it would pass on a clean tree today. The guard is still unbuilt.
 
 ## The fix pattern
 

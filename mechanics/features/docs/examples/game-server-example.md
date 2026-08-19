@@ -2,6 +2,24 @@
 
 This shows the complete flow of loading a character with features and conditions, playing, and saving back.
 
+> **Note (rpg-toolkit#1121): this example no longer compiles, and its `conditions` half no longer resolves.**
+>
+> The `mechanics/conditions` module this example imports was **deleted** — orphaned by
+> the events redesign for a year, compiling against an API no tagged release contains
+> (see #973). The live successor for the condition half is
+> [`rulebooks/dnd5e/conditions`](../../../../rulebooks/dnd5e/conditions), whose
+> `Condition` type plays this role; its API is **not** a drop-in for the one shown here,
+> so treat the `conditions.` lines below as illustrative rather than copyable.
+>
+> The rest of the sample is stale from the same era: `events.EventBus` predates the
+> typed-topic events redesign, and the struct references `spatial.Room` and
+> `resources.Resource` that its own import block never listed. This was written to
+> illustrate a shape, not to be compiled — that was true before the deletion too.
+>
+> It is kept, rather than quietly trimmed, because the pattern it teaches survives: load
+> a character's durable state from stored data, let each subsystem own its own JSON
+> deserialization, track dirty state per item, play, and write back only what changed.
+
 ## The Character Structure
 
 ```go
