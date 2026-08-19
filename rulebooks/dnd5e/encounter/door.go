@@ -139,7 +139,7 @@ type DoorState interface {
 // nor sight, which is exactly the doorway this composition already had.
 //
 // A function rather than a package-level variable so nothing can reassign what
-// it means at runtime — [ByDecision]'s reasoning, and [VoidIsRock]'s.
+// it means at runtime — [ByDecision]'s reasoning, and [VoidIsOpaque]'s.
 func DoorIsOpen() DoorState { return doorOpen{} }
 
 type doorOpen struct{}

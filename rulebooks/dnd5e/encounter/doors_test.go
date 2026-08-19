@@ -115,7 +115,7 @@ func doorEdgesAcross(atX int, rows ...int) []encounter.DoorEdge {
 // named, in the state given.
 func doorField(height int, state encounter.DoorState, id encounter.DoorID, rows ...int) encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: doorWest, Width: 3, Height: height, Origin: spatial.Position{X: 0, Y: 0},
 				Boundaries: seamWallExcept(2, height, rows...)},

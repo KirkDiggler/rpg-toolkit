@@ -69,7 +69,7 @@ func (s *TombDoorSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: tombdoorEntrance, Width: 6, Height: 8, Origin: spatial.Position{X: 0, Y: 0},
 					Boundaries: seamWallExcept(5, 8, tombdoorRow)},
