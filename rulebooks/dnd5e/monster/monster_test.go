@@ -84,8 +84,8 @@ func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 
 // TestMeleeWeapon_GoblinResolvesScimitar is the regression guard for
 // rpg-toolkit#722: a goblin's OA must swing its real scimitar, not fall
-// back to unarmed. NewGoblin's default action ID ("scimitar") must resolve
-// against the weapons catalog.
+// back to unarmed. monsters.NewGoblin's default action ID ("scimitar") must
+// resolve against the weapons catalog.
 func (s *MonsterTestSuite) TestMeleeWeapon_GoblinResolvesScimitar() {
 	goblin := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
 	goblin.AddAction(&testMeleeAction{id: "scimitar"})
