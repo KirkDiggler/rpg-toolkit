@@ -75,10 +75,10 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 				OriginalDiceRolls: []int{4},
 				FinalDiceRolls:    []int{4},
 				FlatBonus:         0, // No ability modifier added yet
-				DamageType:        damage.Slashing,
+				DamageType:        damage.Fire,
 			},
 		},
-		WeaponDamageType: damage.Slashing,
+		WeaponDamageType: damage.Piercing,
 		IsCritical:       true,
 	}
 
@@ -94,7 +94,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	// Should have 2 components: weapon + TWF ability modifier
 	s.Len(finalEvent.Components, 2)
 	s.Equal(3, finalEvent.Components[1].FlatBonus) // Ability modifier added
-	s.Equal(damage.Slashing, finalEvent.Components[1].DamageType)
+	s.Equal(damage.Piercing, finalEvent.Components[1].DamageType)
 	s.False(finalEvent.Components[1].IsCritical, "flat two-weapon fighting damage is not doubled")
 }
 

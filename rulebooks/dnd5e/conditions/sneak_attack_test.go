@@ -69,20 +69,31 @@ func TestSneakAttackTestSuite(t *testing.T) {
 
 // damageChainInput holds parameters for executeDamageChain
 type damageChainInput struct {
-	attackerID   string
-	targetID     string
-	abilityUsed  abilities.Ability
-	hasAdvantage bool
-	isCritical   bool
+	attackerID       string
+	targetID         string
+	abilityUsed      abilities.Ability
+	hasAdvantage     bool
+	isCritical       bool
+	componentType    damage.Type
+	weaponDamageType damage.Type
 }
 
 // executeDamageChain creates a damage chain event and executes it.
 func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5eEvents.DamageChainEvent, error) {
+	componentType := input.componentType
+	if componentType == damage.None {
+		componentType = damage.Piercing
+	}
+	weaponDamageType := input.weaponDamageType
+	if weaponDamageType == damage.None {
+		weaponDamageType = damage.Piercing
+	}
+
 	weaponComp := dnd5eEvents.DamageComponent{
 		Source:            dnd5eEvents.DamageSourceWeapon,
 		OriginalDiceRolls: []int{5},
 		FinalDiceRolls:    []int{5},
-		DamageType:        damage.Piercing,
+		DamageType:        componentType,
 		IsCritical:        false,
 	}
 
@@ -98,7 +109,7 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 		IsCritical:       input.isCritical,
 		HasAdvantage:     input.hasAdvantage,
 		WeaponDamageDice: "1d6",
-		WeaponDamageType: damage.Piercing,
+		WeaponDamageType: weaponDamageType,
 		AbilityUsed:      input.abilityUsed,
 	}
 
@@ -169,10 +180,12 @@ func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
 	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
 
 	finalEvent, err := s.executeDamageChain(damageChainInput{
-		attackerID:   "rogue-1",
-		abilityUsed:  abilities.DEX,
-		hasAdvantage: true,
-		isCritical:   true,
+		attackerID:       "rogue-1",
+		abilityUsed:      abilities.DEX,
+		hasAdvantage:     true,
+		isCritical:       true,
+		componentType:    damage.Fire,
+		weaponDamageType: damage.Piercing,
 	})
 	s.Require().NoError(err)
 	s.Require().Len(finalEvent.Components, 2)

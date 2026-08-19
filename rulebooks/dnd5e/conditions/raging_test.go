@@ -360,7 +360,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		FinalDiceRolls:    []int{baseDamage},
 		Rerolls:           nil,
 		FlatBonus:         0,
-		DamageType:        damage.Slashing,
+		DamageType:        damage.Fire,
 		IsCritical:        false,
 	}
 
@@ -371,7 +371,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		FinalDiceRolls:    nil,
 		Rerolls:           nil,
 		FlatBonus:         damageBonus,
-		DamageType:        damage.Slashing,
+		DamageType:        damage.Fire,
 		IsCritical:        false,
 	}
 
@@ -381,7 +381,7 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
 		IsCritical:       true,
 		WeaponDamageDice: "1d8",
-		WeaponDamageType: damage.Slashing,
+		WeaponDamageType: damage.Piercing,
 		AbilityUsed:      abilities.STR,
 		IsMelee:          true, // Simulates a STR-based melee attack (rage bonus applies)
 	}
@@ -520,7 +520,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
 	s.Equal(2, finalEvent.Components[2].FlatBonus, "Rage should add +2 damage")
 	s.Equal(2, finalEvent.Components[2].Total())
-	s.Equal(damage.Slashing, finalEvent.Components[2].DamageType)
+	s.Equal(damage.Piercing, finalEvent.Components[2].DamageType)
 	s.False(finalEvent.Components[2].IsCritical, "flat rage damage is not doubled")
 
 	// Verify total damage
@@ -822,6 +822,51 @@ func (s *RagingConditionTestSuite) TestRagingConditionAppliesResistanceToPhysica
 			s.Equal(0.5, *finalEvent.Components[1].Multiplier, "Resistance should halve damage")
 		})
 	}
+}
+
+func (s *RagingConditionTestSuite) TestRagingConditionResistanceUsesComponentTypes() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:       "goblin-1",
+		TargetID:         "barbarian-1",
+		WeaponDamageDice: "1d6",
+		WeaponDamageType: damage.Fire,
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				OriginalDiceRolls: []int{8},
+				FinalDiceRolls:    []int{8},
+				DamageType:        damage.Slashing,
+			},
+			{
+				Source:            dnd5eEvents.DamageSourceFeature,
+				OriginalDiceRolls: []int{7},
+				FinalDiceRolls:    []int{7},
+				DamageType:        damage.Fire,
+			},
+		},
+	}
+
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	s.Require().Len(finalEvent.Components, 3)
+	resistance := finalEvent.Components[2]
+	s.Equal(dnd5eEvents.DamageSourceCondition, resistance.Source)
+	s.Equal(damage.Slashing, resistance.DamageType)
+	s.Require().NotNil(resistance.Multiplier)
+	s.Equal(0.5, *resistance.Multiplier)
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionDoesNotResistNonPhysicalDamage() {

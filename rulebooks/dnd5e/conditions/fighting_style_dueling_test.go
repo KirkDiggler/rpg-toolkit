@@ -90,10 +90,10 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 				FlatBonus:         3,
-				DamageType:        damage.Slashing,
+				DamageType:        damage.Fire,
 			},
 		},
-		WeaponDamageType: damage.Slashing,
+		WeaponDamageType: damage.Piercing,
 		IsCritical:       true,
 	}
 
@@ -109,7 +109,7 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	// Should have 2 components: weapon + dueling bonus
 	s.Len(finalEvent.Components, 2)
 	s.Equal(2, finalEvent.Components[1].FlatBonus)
-	s.Equal(damage.Slashing, finalEvent.Components[1].DamageType)
+	s.Equal(damage.Piercing, finalEvent.Components[1].DamageType)
 	s.False(finalEvent.Components[1].IsCritical, "flat dueling damage is not doubled")
 }
 
