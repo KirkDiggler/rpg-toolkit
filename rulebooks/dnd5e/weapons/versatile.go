@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 )
 
 // versatileStepUp is the standard 5e versatile-weapon die progression: a
@@ -24,9 +26,8 @@ var versatileStepUp = map[int]int{4: 6, 6: 8, 8: 10, 10: 12}
 // notch per versatileStepUp, e.g. "1d8" -> "1d10".
 //
 // Returns notation unchanged when it does not parse as "NdM" or the die size
-// is not on the table. That passthrough is not defensive padding: the catalog
-// holds weapons whose damage is not dice at all (a blowgun's "1", a net's
-// "0"), and stepping them would invent a die the weapon does not have.
+// is not on the table. Weapon declarations are validated separately as pure
+// NdM pools; passthrough keeps this notation helper total for other callers.
 func VersatileTwoHandedDamage(notation string) string {
 	parts := strings.SplitN(notation, "d", 2)
 	if len(parts) != 2 {
@@ -48,18 +49,23 @@ func VersatileTwoHandedDamage(notation string) string {
 	return fmt.Sprintf("%dd%d", count, next)
 }
 
-// VersatileDamage returns the damage notation this weapon deals gripped in
-// two hands: the stepped-up die for a versatile weapon, and its one-handed
-// Damage for everything else.
-//
-// The property check lives here so callers that already know the grip ask for
-// the notation they want rather than re-deriving "is this versatile" at every
-// site — the attack-profile compiler (rpg-toolkit#1003) and the equipment
-// display each needed it, and each would have written the same two lines.
-func (w Weapon) VersatileDamage() string {
+// DamageForGrip returns a copy of the weapon's declared damage pools. For a
+// versatile weapon wielded in two hands, it steps only the marked primary
+// pool's dice. The declaration remains unchanged for later attacks.
+func (w Weapon) DamageForGrip(twoHanded bool) ([]damage.Damage, error) {
+	pools := make([]damage.Damage, len(w.Damage))
+	copy(pools, w.Damage)
+
 	if !w.HasProperty(PropertyVersatile) {
-		return w.Damage
+		return pools, nil
 	}
 
-	return VersatileTwoHandedDamage(w.Damage)
+	primaryIndex, ok := w.primaryDamageIndex()
+	if !ok {
+		return nil, fmt.Errorf("versatile weapon %q requires exactly one primary damage pool", w.Name)
+	}
+	if twoHanded {
+		pools[primaryIndex].Dice = VersatileTwoHandedDamage(pools[primaryIndex].Dice)
+	}
+	return pools, nil
 }

@@ -426,6 +426,10 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	if roller == nil {
 		roller = dice.NewRoller()
 	}
+	primaryDamage, ok := ac.Weapon.PrimaryDamage()
+	if !ok {
+		return nil, fmt.Errorf("weapon %q has no primary damage pool", ac.Weapon.Name)
+	}
 
 	// Recompute effective AC with any reaction modifiers
 	effectiveAC := ac.OriginalAC
@@ -463,7 +467,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		HasDisadvantage:     ac.HasDisadvantage,
 		AdvantageSources:    ac.AdvantageSources,
 		DisadvantageSources: ac.DisadvantageSources,
-		DamageType:          ac.Weapon.DamageType,
+		DamageType:          primaryDamage.Type,
 	}
 
 	if !hit {
@@ -471,9 +475,9 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	}
 
 	// Phase 2: Roll and apply damage
-	damagePool, err := dice.ParseNotation(ac.Weapon.Damage)
+	damagePool, err := dice.ParseNotation(primaryDamage.Dice)
 	if err != nil {
-		return nil, rpgerr.Wrap(err, fmt.Sprintf("invalid weapon damage %s", ac.Weapon.Damage))
+		return nil, rpgerr.Wrap(err, fmt.Sprintf("invalid weapon damage %s", primaryDamage.Dice))
 	}
 
 	var damageRolls []int
@@ -492,7 +496,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		SourceRef:         weaponToRef(ac.Weapon),
 		OriginalDiceRolls: damageRolls,
 		FinalDiceRolls:    damageRolls,
-		DamageType:        ac.Weapon.DamageType,
+		DamageType:        primaryDamage.Type,
 		IsCritical:        isCritical,
 	}
 
@@ -500,7 +504,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		Source:     dnd5eEvents.DamageSourceAbility,
 		SourceRef:  abilityToRef(ac.AbilityUsed),
 		FlatBonus:  ac.AbilityMod,
-		DamageType: ac.Weapon.DamageType,
+		DamageType: primaryDamage.Type,
 		IsCritical: isCritical,
 	}
 
@@ -513,7 +517,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		IsOffHandAttack: ac.IsOffHandAttack,
 		AbilityModifier: ac.AbilityMod,
 		EventBus:        input.EventBus,
-		WeaponDamage:    ac.Weapon.Damage,
+		WeaponDamage:    primaryDamage.Dice,
 		AbilityUsed:     ac.AbilityUsed,
 		WeaponRef:       weaponToRef(ac.Weapon),
 		IsMelee:         ac.IsMelee,
@@ -552,7 +556,7 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 		SourceID:   ac.AttackerID,
 		SourceRef:  weaponToRef(ac.Weapon),
 		Amount:     result.TotalDamage,
-		DamageType: ac.Weapon.DamageType,
+		DamageType: primaryDamage.Type,
 	}); err != nil {
 		return nil, rpgerr.Wrap(err, "failed to publish damage received event")
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -46,10 +47,10 @@ func (s *EquipmentDisplayTestSuite) TestStatLine() {
 		id       shared.EquipmentID
 		expected string
 	}{
-		{"versatile weapon", weapons.Longsword, "1d8 slashing · versatile"},
-		{"two-handed weapon", weapons.Greatsword, "2d6 slashing · heavy, two-handed"},
-		{"thrown weapon with range", weapons.Handaxe, "1d6 slashing · light, thrown 20/60"},
-		{"finesse light thrown weapon", weapons.Dagger, "1d4 piercing · finesse, light, thrown 20/60"},
+		{"versatile weapon", weapons.Longsword, "1d8 slashing damage · versatile"},
+		{"two-handed weapon", weapons.Greatsword, "2d6 slashing damage · heavy, two-handed"},
+		{"thrown weapon with range", weapons.Handaxe, "1d6 slashing damage · light, thrown 20/60"},
+		{"finesse light thrown weapon", weapons.Dagger, "1d4 piercing damage · finesse, light, thrown 20/60"},
 		{"heavy armor, no dex bonus", armor.ChainMail, "AC 16 · heavy"},
 		{"light armor", armor.Leather, "AC 11 · light"},
 		{"shield", armor.Shield, "+2 AC"},
@@ -62,6 +63,17 @@ func (s *EquipmentDisplayTestSuite) TestStatLine() {
 			s.Assert().Equal(tc.expected, StatLine(detail))
 		})
 	}
+}
+
+func (s *EquipmentDisplayTestSuite) TestWeaponStatLineIncludesEveryDamagePool() {
+	detail := &equipment.EquipmentDetail{Weapon: &equipment.WeaponDetail{
+		Damage: []damage.Damage{
+			{Dice: "1d8", Type: damage.Slashing},
+			{Dice: "1d6", Type: damage.Fire},
+		},
+	}}
+
+	s.Assert().Equal("1d8 slashing damage, 1d6 fire damage", StatLine(detail))
 }
 
 func (s *EquipmentDisplayTestSuite) TestStatLine_Nil() {
@@ -180,7 +192,7 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 	s.Assert().Equal("16 chain mail + 2 shield", view.ACNote)
 	// shield occupies off hand, so the versatile longsword is gripped
 	// one-handed: its base die, not the versatile two-handed upgrade.
-	s.Assert().Equal("1d8 slashing", view.MainHandDamage)
+	s.Assert().Equal("1d8 slashing damage", view.MainHandDamage)
 	s.Require().Len(view.Items, 3)
 
 	byID := make(map[string]EquippedItemView, len(view.Items))
@@ -201,7 +213,7 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 	s.Assert().Equal([]string{"off_hand"}, byID[armor.Shield].SlotKeys)
 
 	s.Assert().Equal(InventorySlot(SlotMainHand), byID["longsword"].Slot)
-	s.Assert().Equal("1d8 slashing · versatile", byID["longsword"].StatLine)
+	s.Assert().Equal("1d8 slashing damage · versatile", byID["longsword"].StatLine)
 	s.Assert().Equal("Longsword", byID["longsword"].Name)
 	s.Assert().Equal("weapon", byID["longsword"].Kind)
 	s.Assert().Equal([]string{"main_hand", "off_hand"}, byID["longsword"].SlotKeys)
@@ -258,7 +270,7 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
 	view := char.EquipmentView(s.ctx)
 	s.Require().Len(view.Items, 1)
 	s.Assert().Equal(InventorySlot(""), view.Items[0].Slot)
-	s.Assert().Equal("1d6 slashing · light, thrown 20/60", view.Items[0].StatLine)
+	s.Assert().Equal("1d6 slashing damage · light, thrown 20/60", view.Items[0].StatLine)
 	s.Assert().Equal("Handaxe", view.Items[0].Name)
 	s.Assert().Equal("weapon", view.Items[0].Kind)
 	s.Assert().Equal([]string{"main_hand", "off_hand"}, view.Items[0].SlotKeys)
@@ -301,11 +313,11 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_VersatileFreeOffHand() {
 	}
 
 	view := char.EquipmentView(s.ctx)
-	s.Assert().Equal("1d10 slashing", view.MainHandDamage)
+	s.Assert().Equal("1d10 slashing damage", view.MainHandDamage)
 }
 
 // TestEquipmentView_DualWield proves dual-wielding folds the off-hand
-// weapon's die into the display, e.g. "1d4 piercing · off-hand 1d4".
+// weapon's pool into the display, e.g. "1d4 piercing damage · off-hand 1d4 piercing damage".
 func (s *EquipmentDisplayTestSuite) TestEquipmentView_DualWield() {
 	// Two distinct inventory entries of the same weapon type need distinct
 	// IDs (EquipmentID() would otherwise collide and both slots would
@@ -331,7 +343,7 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_DualWield() {
 	}
 
 	view := char.EquipmentView(s.ctx)
-	s.Assert().Equal("1d4 piercing · off-hand 1d4", view.MainHandDamage)
+	s.Assert().Equal("1d4 piercing damage · off-hand 1d4 piercing damage", view.MainHandDamage)
 }
 
 func (s *EquipmentDisplayTestSuite) TestMainHandDamage() {
@@ -347,10 +359,10 @@ func (s *EquipmentDisplayTestSuite) TestMainHandDamage() {
 		expected   string
 	}{
 		{"no main-hand weapon", nil, nil, ""},
-		{"versatile, off hand free", &longsword, nil, "1d10 slashing"},
-		{"versatile, shield in off hand", &longsword, &EquippedItem{Item: &shield}, "1d8 slashing"},
-		{"two-handed weapon, off hand free", &greatsword, nil, "2d6 slashing"},
-		{"dual-wield, non-versatile", &dagger, &EquippedItem{Item: &dagger}, "1d4 piercing · off-hand 1d4"},
+		{"versatile, off hand free", &longsword, nil, "1d10 slashing damage"},
+		{"versatile, shield in off hand", &longsword, &EquippedItem{Item: &shield}, "1d8 slashing damage"},
+		{"two-handed weapon, off hand free", &greatsword, nil, "2d6 slashing damage"},
+		{"dual-wield, non-versatile", &dagger, &EquippedItem{Item: &dagger}, "1d4 piercing damage · off-hand 1d4 piercing damage"},
 	}
 
 	for _, tc := range testCases {

@@ -25,8 +25,7 @@ type EquipmentDetail struct {
 // WeaponDetail contains weapon-specific stats.
 type WeaponDetail struct {
 	Category   weapons.WeaponCategory   `json:"category"`
-	Damage     string                   `json:"damage"`
-	DamageType damage.Type              `json:"damage_type"`
+	Damage     []damage.Damage          `json:"damage"`
 	Properties []weapons.WeaponProperty `json:"properties"`
 	Range      *weapons.Range           `json:"range,omitempty"`
 }
@@ -100,7 +99,6 @@ func resolveWeaponDetail(wep *weapons.Weapon) *EquipmentDetail {
 		Weapon: &WeaponDetail{
 			Category:   wep.Category,
 			Damage:     wep.Damage,
-			DamageType: wep.DamageType,
 			Properties: wep.Properties,
 			Range:      wep.Range,
 		},

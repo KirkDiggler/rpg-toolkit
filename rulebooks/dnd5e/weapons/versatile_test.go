@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -37,7 +38,16 @@ func (s *VersatileTestSuite) TestEveryCatalogVersatileWeaponStepsToItsPrintedDie
 		s.Require().NoError(err)
 		s.Require().True(weapon.HasProperty(weapons.PropertyVersatile), "%s is versatile", id)
 
-		s.Assert().Equal(want, weapon.VersatileDamage(), "%s two-handed", id)
+		pools, err := weapon.DamageForGrip(true)
+		s.Require().NoError(err)
+		primary, ok := weapon.PrimaryDamage()
+		s.Require().True(ok)
+		for _, pool := range pools {
+			if pool.Type == primary.Type && pool.HasProperty(damage.AddsAttackAbilityModifier) {
+				s.Assert().Equal(want, pool.Dice, "%s two-handed", id)
+				break
+			}
+		}
 	}
 }
 
@@ -64,19 +74,38 @@ func (s *VersatileTestSuite) TestTheDieCountIsPreserved() {
 	s.Assert().Equal("3d12", weapons.VersatileTwoHandedDamage("3d10"))
 }
 
-// Notation that is not "NdM" passes through, and the catalog is where that
-// case comes from rather than a hypothetical: a blowgun deals "1" and a net
-// deals "0". Stepping either would invent a die the weapon has not got.
-func (s *VersatileTestSuite) TestNonDiceNotationPassesThrough() {
-	blowgun, err := weapons.GetByID(weapons.Blowgun)
-	s.Require().NoError(err)
-	s.Assert().Equal("1", blowgun.Damage)
-	s.Assert().Equal("1", weapons.VersatileTwoHandedDamage(blowgun.Damage))
+// TestTwoHandsReplaceOnlyMarkedPrimaryPool protects the compiler boundary:
+// versatile grip changes the base weapon pool only, never a separately
+// declared rider, and never the catalog declaration itself.
+func (s *VersatileTestSuite) TestTwoHandsReplaceOnlyMarkedPrimaryPool() {
+	w := weapons.Weapon{Properties: []weapons.WeaponProperty{weapons.PropertyVersatile}, Damage: []damage.Damage{
+		{Dice: "1d8", Type: damage.Slashing, Properties: []damage.Property{damage.AddsAttackAbilityModifier}},
+		{Dice: "1d6", Type: damage.Fire},
+	}}
 
-	net, err := weapons.GetByID(weapons.Net)
+	got, err := w.DamageForGrip(true)
 	s.Require().NoError(err)
-	s.Assert().Equal("0", net.Damage)
-	s.Assert().Equal("0", weapons.VersatileTwoHandedDamage(net.Damage))
+	s.Require().Len(got, 2)
+	s.Assert().Equal("1d10", got[0].Dice)
+	s.Assert().Equal("1d6", got[1].Dice)
+	s.Assert().Equal("1d8", w.Damage[0].Dice, "compiler helpers must not mutate catalog content")
+}
+
+func (s *VersatileTestSuite) TestVersatileWeaponRequiresExactlyOnePrimaryPool() {
+	w := weapons.Weapon{Properties: []weapons.WeaponProperty{weapons.PropertyVersatile}, Damage: []damage.Damage{
+		{Dice: "1d8", Type: damage.Slashing},
+	}}
+
+	_, err := w.DamageForGrip(true)
+	s.Require().Error(err)
+}
+
+// Notation that is not "NdM" passes through. Weapon declarations themselves
+// are canonical pure-NdM pools, but this helper remains total for callers that
+// have not yet validated input.
+func (s *VersatileTestSuite) TestNonDiceNotationPassesThrough() {
+	s.Assert().Equal("1", weapons.VersatileTwoHandedDamage("1"))
+	s.Assert().Equal("0", weapons.VersatileTwoHandedDamage("0"))
 }
 
 func (s *VersatileTestSuite) TestUnparseableNotationPassesThrough() {
@@ -92,7 +121,9 @@ func (s *VersatileTestSuite) TestANonVersatileWeaponNeverSteps() {
 	greatsword, err := weapons.GetByID(weapons.Greatsword)
 	s.Require().NoError(err)
 	s.Require().False(greatsword.HasProperty(weapons.PropertyVersatile))
-	s.Assert().Equal("2d6", greatsword.VersatileDamage())
+	greatswordDamage, err := greatsword.DamageForGrip(true)
+	s.Require().NoError(err)
+	s.Assert().Equal("2d6", greatswordDamage[0].Dice)
 
 	// A rapier's die IS on the step-up table — the property, not the die, is
 	// what decides. This is the case a check-the-table-not-the-property
@@ -100,17 +131,21 @@ func (s *VersatileTestSuite) TestANonVersatileWeaponNeverSteps() {
 	rapier, err := weapons.GetByID(weapons.Rapier)
 	s.Require().NoError(err)
 	s.Require().False(rapier.HasProperty(weapons.PropertyVersatile))
-	s.Assert().Equal("1d8", rapier.VersatileDamage())
+	rapierDamage, err := rapier.DamageForGrip(true)
+	s.Require().NoError(err)
+	s.Assert().Equal("1d8", rapierDamage[0].Dice)
 }
 
-// Every non-versatile weapon in the catalog reports Damage verbatim.
-func (s *VersatileTestSuite) TestVersatileDamageMatchesDamageForEveryNonVersatileWeapon() {
+// Every non-versatile weapon returns its declared pools verbatim.
+func (s *VersatileTestSuite) TestDamageForGripMatchesDamageForEveryNonVersatileWeapon() {
 	checked := 0
 	for id, weapon := range weapons.All {
 		if weapon.HasProperty(weapons.PropertyVersatile) {
 			continue
 		}
-		s.Assert().Equal(weapon.Damage, weapon.VersatileDamage(), "%s is not versatile", id)
+		got, err := weapon.DamageForGrip(true)
+		s.Require().NoError(err)
+		s.Assert().Equal(weapon.Damage, got, "%s is not versatile", id)
 		checked++
 	}
 	s.Require().Positive(checked, "the catalog holds non-versatile weapons")

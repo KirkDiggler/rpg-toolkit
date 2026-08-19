@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -127,24 +128,23 @@ func slotKeys(slots []InventorySlot) []string {
 // notch (e.g. "1d8" -> "1d10") — only when offHand is nil (the off hand
 // is completely empty, not merely holding a shield). Whenever offHand
 // holds a weapon, its damage folds in as a dual-wield fragment, e.g.
-// "1d4 piercing · off-hand 1d4". Returns "" if mainWeapon is nil.
+// "1d4 piercing damage · off-hand 1d4 piercing damage". Returns "" if
+// mainWeapon is nil.
 func MainHandDamage(mainWeapon *weapons.Weapon, offHand *EquippedItem) string {
 	if mainWeapon == nil {
 		return ""
 	}
 
-	// An empty off hand is the whole of this function's contribution: it means
-	// the weapon is gripped two-handed. Whether that changes the die is the
-	// weapon's own business, which is what VersatileDamage answers — a
-	// property check here would ask the same question twice.
-	damage := mainWeapon.Damage
-	if offHand == nil {
-		damage = mainWeapon.VersatileDamage()
+	pools, err := mainWeapon.DamageForGrip(offHand == nil)
+	if err != nil {
+		return ""
 	}
-
-	line := fmt.Sprintf("%s %s", damage, mainWeapon.DamageType)
+	line := damagePoolLine(pools)
 	if offWeapon := offHand.AsWeapon(); offWeapon != nil {
-		line += fmt.Sprintf(" · off-hand %s", offWeapon.Damage)
+		offHandPools, err := offWeapon.DamageForGrip(false)
+		if err == nil {
+			line += fmt.Sprintf(" · off-hand %s", damagePoolLine(offHandPools))
+		}
 	}
 	return line
 }
@@ -161,7 +161,7 @@ func (e EquipmentSlots) slotFor(itemID string) InventorySlot {
 }
 
 // StatLine composes the display line rpg-api passes through and the web
-// renders verbatim (rpg-toolkit#811), e.g. "1d8 slashing · versatile" or
+// renders verbatim (rpg-toolkit#811), e.g. "1d8 slashing damage · versatile" or
 // "AC 16 · heavy". detail is typically equipment.ResolveEquipmentDetail's
 // output. Returns "" for nil detail or gear with no combat stats (tools,
 // packs, ammunition, misc items) — those have no wire-relevant line today.
@@ -178,13 +178,13 @@ func StatLine(detail *equipment.EquipmentDetail) string {
 	}
 }
 
-// weaponStatLine composes "{damage} {damage type} · {properties}", e.g.
-// "1d8 slashing · versatile". Thrown weapons carry their range inline
+// weaponStatLine composes "{dice} {damage type} damage · {properties}", e.g.
+// "1d8 slashing damage · versatile". Thrown weapons carry their range inline
 // ("thrown 20/60"); every other property already reads as its display
 // word (weapons.WeaponProperty values are lowercase, hyphenated where
 // needed — "two-handed", "finesse", etc).
 func weaponStatLine(w *equipment.WeaponDetail) string {
-	line := fmt.Sprintf("%s %s", w.Damage, w.DamageType)
+	line := damagePoolLine(w.Damage)
 	if len(w.Properties) == 0 {
 		return line
 	}
@@ -198,6 +198,14 @@ func weaponStatLine(w *equipment.WeaponDetail) string {
 		fragments[i] = string(prop)
 	}
 	return line + " · " + strings.Join(fragments, ", ")
+}
+
+func damagePoolLine(pools []damage.Damage) string {
+	parts := make([]string, len(pools))
+	for i, pool := range pools {
+		parts[i] = fmt.Sprintf("%s %s damage", pool.Dice, pool.Type)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // armorStatLine composes "AC {value} · {category}" for worn armor, or
