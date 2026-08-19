@@ -4,6 +4,7 @@
 package resolution
 
 import (
+	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -11,29 +12,54 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// walledField is two chambers side by side with a real wall on the seam and a
-// pillar in the eastern one.
+// world_test.go is ONE WORLD, ALWAYS INSTALLED (rpg-toolkit#1114, #1090).
 //
-// room-1 owns absolute columns 0-9, room-2 owns 10-19, and the wall is the
-// edges between them. It is built the way a wall has to be built on a square
-// grid — every edge, diagonals included, because spatial registers a boundary
-// between ANY two adjacent cells and a same-row-only wall has a hole at each
-// corner (rpg-toolkit#1106's testwalls lesson).
+// There is nothing here about how the world is BUILT, because this package no
+// longer builds one. It used to: a room assembled out of the encounter's
+// persisted description, with its own copy of grid construction and no walls in
+// it at all, and the tests that went with it were a differential suite whose
+// whole job was keeping that copy honest. The copy is gone
+// (encounter v0.21.0's Encounter.Canvas hands out the map itself), and a test
+// that two things agree has no subject when there is only one of them.
 //
-// Room-2 is then divided again by a column of OCCLUDER cells at absolute x=14,
-// which is a different primitive: a wall is an edge, an occluder is a cell that
-// is in the way. A FULL column rather than a single pillar, and that is a
-// measured requirement rather than caution — spatial v0.9.1 lets a viewer lean
-// around a one-cell obstruction, so a lone pillar blocks nothing and a fixture
-// built on one would pass whether or not this file placed occluders at all.
-// (It did, and mutation M3 caught it.)
-func walledField() encounter.FieldInput {
+// What is left is what this package still decides: that the world is installed,
+// that it is installed for EVERY interaction, and that what gets installed is
+// the composition's map rather than something assembled here.
+
+// worldProbe is a machine that does nothing except report the world it was run
+// in. It is how these tests see what Resolve actually installed, rather than
+// what a helper would have returned if asked.
+type worldProbe struct {
+	room  spatial.Room
+	found bool
+}
+
+func (p *worldProbe) Start(ctx context.Context, _ *Participants) (Step, error) {
+	p.room, p.found = gamectx.Room(ctx)
+
+	return Done{Outcome: probeOutcome{}}, nil
+}
+
+type probeOutcome struct{}
+
+func (probeOutcome) isOutcome() {}
+
+// walledWorld is two chambers side by side with a real wall on the seam.
+//
+// room-1 owns absolute columns 0-9 and room-2 owns 10-19, with boundary edges
+// between them — every edge, diagonals included, because spatial registers a
+// boundary between ANY two adjacent cells and a same-row wall has a hole at
+// each corner (rpg-toolkit#1106's lesson).
+func walledWorld(t *testing.T) encounter.EncounterData {
+	t.Helper()
+
 	var seam []spatial.Boundary
 	for y := 0; y < 8; y++ {
 		for _, dy := range []int{-1, 0, 1} {
@@ -50,256 +76,162 @@ func walledField() encounter.FieldInput {
 		}
 	}
 
-	return encounter.FieldInput{
-		Rooms: []encounter.RoomInput{
-			{ID: "room-1", Width: 10, Height: 8, Boundaries: seam},
-			{
-				ID: "room-2", Width: 10, Height: 8,
-				Origin:    spatial.Position{X: 10},
-				Occluders: column(4, 8),
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{},
+		Field: encounter.FieldInput{
+			Rooms: []encounter.RoomInput{
+				{ID: "room-1", Width: 10, Height: 8, Boundaries: seam},
+				{ID: "room-2", Width: 10, Height: 8, Origin: spatial.Position{X: 10}},
 			},
 		},
-	}
-}
-
-// loadWalledWorld sets a walled field up, persists it, and loads it back the
-// way Resolve does — so what the test measures is the world a resolution
-// actually holds, not a construction-time one.
-func loadWalledWorld(t *testing.T, members []encounter.MemberInput) *encounter.Encounter {
-	t.Helper()
-
-	built, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight:   everyoneSeesTheWholeMap{},
-		Field:   walledField(),
-		Members: members,
+		Members: []encounter.MemberInput{
+			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 9, Y: 4}},
+		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
 	require.NoError(t, err)
 
-	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: built.ToData(), Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{},
-	})
-	require.NoError(t, err)
-
-	return loaded
+	return enc.ToData()
 }
 
-// column is a room-local column of cells, the shape an occluding wall has to
-// have to actually occlude.
-func column(x, height int) []spatial.Position {
-	out := make([]spatial.Position, 0, height)
-	for y := 0; y < height; y++ {
-		out = append(out, spatial.Position{X: float64(x), Y: float64(y)})
-	}
-
-	return out
-}
-
-// walledCast is a member in every interesting place: two either side of the
-// seam wall on the same row, two more with the occluder column between them,
-// and one far corner.
-//
-// east-behind and west-far sit on the field's LAST column and LAST row —
-// absolute (19,4) and (0,7) — deliberately. The canvas has to span the whole
-// field for line of sight to be traced the way the encounter traces it, and a
-// canvas one cell short is a defect nobody standing in the middle can feel.
-// Somebody has to be standing at the edge. (Mutation M4; the fixture did not
-// have anybody there until it caught that.)
-func walledCast() []encounter.MemberInput {
-	return []encounter.MemberInput{
-		{ID: "west-near", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 9, Y: 4}},
-		{ID: "east-near", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 0, Y: 4}},
-		{ID: "east-behind", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 9, Y: 4}},
-		{ID: "east-beside", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 6, Y: 0}},
-		{ID: "west-far", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 7}},
-
-		// A CREATURE IS NOT COVER, and west-near and west-end are looking at
-		// each other straight through five of them.
-		//
-		// Encounter's member entities say so outright (BlocksLineOfSight
-		// false); the members this package places say it by not implementing
-		// spatial's blocking interface at all. Same answer, arrived at two
-		// different ways, which is precisely the sort of agreement that can
-		// quietly stop being one.
-		//
-		// FIVE, in a column, rather than one in the way — measured, not
-		// cautious. Spatial lets a viewer lean around a one-cell obstruction,
-		// so a single body between two people blocks nothing whatever it
-		// claims about itself, and a fixture built on one agrees with a version
-		// of this package that turns every creature into a wall. (Mutation M9,
-		// which survived exactly that fixture.)
-		{ID: "west-mid-a", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 2}},
-		{ID: "west-mid-b", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 3}},
-		{ID: "west-mid-c", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 4}},
-		{ID: "west-mid-d", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
-		{ID: "west-mid-e", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
-		{ID: "west-end", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 4}},
-
-		// AND SOMEBODY IS STANDING ON AN OCCLUDER. An occluded cell is still a
-		// cell of its region and the encounter puts members on one without
-		// complaint, so the world this package installs has to accept the same
-		// placement — and spatial refuses to place anybody on a cell held by a
-		// MOVEMENT blocker. An occluder that blocked movement would therefore
-		// refuse a world the encounter loaded happily, which is a failure mode
-		// with no member standing anywhere near an occluder to reveal it.
-		{ID: "east-on-the-pillar", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 4, Y: 6}},
+// probeSheet is the smallest legal participant. These tests are about the
+// world, and the only thing read off a sheet here is that it can be loaded.
+func probeSheet(id string) *character.Data {
+	return &character.Data{
+		ID: id, PlayerID: "player-1", Name: "Probe", Level: 1,
+		ClassID: "barbarian", RaceID: "human",
+		HitPoints: 10, MaxHitPoints: 10, ProficiencyBonus: 2,
 	}
 }
 
-// TestTheInstalledWorldAgreesWithTheEncounter is the anti-divergence device,
-// and it exists because the thing it checks used to be a PROMISE.
-//
-// This file carried its own copy of the encounter's grid construction with a
-// comment saying it "tracks encounter.buildRoomGrid rather than choosing for
-// itself" — and nothing whatsoever kept that true. What is left of the copy
-// after rpg-toolkit#1114 is the span and the family; everything else is read
-// off the encounter's own absolute reports. This checks the remainder against
-// the encounter rather than asserting it, on the two questions a predicate can
-// actually ask a room:
-//
-//   - WHERE somebody is — every member's cell, compared against
-//     [encounter.Encounter.Members];
-//   - WHAT can be seen — every ordered pair, compared against the sightings the
-//     encounter itself computed on its own canvas, through its own walls.
-//
-// The second is the sharp one. A sighting exists in the encounter exactly when
-// the subject is within reach AND the ray is unblocked (rebuildPercepts), and
-// the fixtures give everybody unlimited reach, so a sighting IS "the geometry
-// admits it". A canvas of the wrong span, the wrong family, or with a wall
-// missing answers differently on some pair of these five, and this fails.
-func TestTheInstalledWorldAgreesWithTheEncounter(t *testing.T) {
-	cast := walledCast()
-	enc := loadWalledWorld(t, cast)
-
-	room, err := interactionRoom(enc, castOf(cast))
-	require.NoError(t, err)
-	require.NotNil(t, room)
-
-	members, err := enc.Members()
-	require.NoError(t, err)
-	require.Len(t, members, len(cast))
-
-	// WHERE: the installed world puts everybody exactly where the encounter
-	// says they are, in the encounter's own absolute frame.
-	for _, m := range members {
-		at, placed := room.GetEntityPosition(string(m.ID))
-		require.True(t, placed, "%s is on the installed world", m.ID)
-		require.Equal(t, m.Position, at, "%s stands where the encounter says", m.ID)
-	}
-
-	// WHAT CAN BE SEEN: pair by pair, against the encounter's own answer.
-	blockedPairs, clearPairs := 0, 0
-	for _, observer := range members {
-		seen := sightedBy(t, enc, observer.ID)
-
-		for _, subject := range members {
-			if subject.ID == observer.ID {
-				continue
-			}
-
-			blocked := room.IsLineOfSightBlocked(observer.Position, subject.Position)
-			require.Equal(t, !blocked, seen[subject.ID],
-				"the installed world and the encounter disagree about whether %s can see %s",
-				observer.ID, subject.ID)
-
-			if blocked {
-				blockedPairs++
-			} else {
-				clearPairs++
-			}
-		}
-	}
-
-	// A fixture where everything is visible would agree with anything. Both
-	// answers have to be represented for the agreement above to mean something.
-	require.Positive(t, blockedPairs, "the wall and the pillar block somebody")
-	require.Positive(t, clearPairs, "and somebody can still see somebody")
-}
-
-// sightedBy is who this observer currently holds a sighting of.
-func sightedBy(t *testing.T, enc *encounter.Encounter, observer encounter.MemberID) map[encounter.MemberID]bool {
+func runProbe(t *testing.T, world encounter.EncounterData, participants []Participant) *worldProbe {
 	t.Helper()
 
-	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
+	probe := &worldProbe{}
+	out, err := Resolve(context.Background(), &Input{
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Sight:        everyoneSeesTheWholeMap{},
+		Roller:       dice.NewRoller(),
+		World:        world,
+		Participants: participants,
+		Machine:      probe,
+	})
 	require.NoError(t, err)
+	require.NotNil(t, out)
 
-	out := map[encounter.MemberID]bool{}
-	for _, h := range holdings {
-		if h.Status == intel.Current {
-			out[encounter.MemberID(h.Subject)] = true
-		}
-	}
-
-	return out
+	return probe
 }
 
-// TestAWorldIsInstalledEvenWhenNobodyIsOnIt is the unconditional half of
-// rpg-toolkit#1114, at the one seam where "unconditional" can be observed.
+// THE INSTALLED WORLD KNOWS ABOUT A WALL THIS PACKAGE NEVER REGISTERED, which
+// is how a test can tell "the composition's map" from "a room built here".
 //
-// A saving throw needs no geometry, and this used to be one of two reasons the
-// package installed nothing. The other was the bug. Collapsing them cost the
-// game every range predicate whenever the party split up, so the two are told
-// apart here instead: the world is installed, and it is simply empty — which
-// is what makes a predicate answer "nobody knows where these two are standing"
-// rather than "there is no world".
-func TestAWorldIsInstalledEvenWhenNobodyIsOnIt(t *testing.T) {
-	enc := loadWalledWorld(t, walledCast())
+// The wall is authored on the encounter's field and compiled onto its canvas.
+// Nothing in this package places an occluder, registers a boundary, or knows
+// that walls exist — so if the world an interaction runs in were assembled
+// here, it would be a bare grid and this sightline would be clear. It is
+// blocked, and the only way it can be is that what was installed IS the map.
+//
+// That is not a hypothetical regression. The room this package used to build
+// had no walls in it, for as long as it existed, and nothing noticed because
+// the rules reading it ask about distance rather than about line of sight. The
+// first one to ask would have been told nothing blocks.
+func TestTheInstalledWorldKnowsAboutWallsThisPackageNeverBuilt(t *testing.T) {
+	probe := runProbe(t, walledWorld(t), []Participant{{Character: probeSheet(heroID)}})
+	require.True(t, probe.found, "a world was installed")
 
-	room, err := interactionRoom(enc, []Participant{{Monster: &monster.Data{ID: "a-stranger"}}})
-	require.NoError(t, err)
-	require.NotNil(t, room, "a world is installed for every interaction")
+	west := spatial.Position{X: 9, Y: 4}
+	east := spatial.Position{X: 10, Y: 4}
 
-	_, placed := room.GetEntityPosition("a-stranger")
-	require.False(t, placed, "and a stranger to this world is simply not on it")
+	require.Equal(t, float64(1), probe.room.GetGrid().Distance(west, east),
+		"the two cells are adjacent, so nothing but a wall can separate them")
+	require.True(t, probe.room.IsLineOfSightBlocked(west, east),
+		"the seam wall is on the installed world")
+}
 
-	for _, m := range walledCast() {
-		_, onIt := room.GetEntityPosition(string(m.ID))
-		require.False(t, onIt, "%s is not in the cast, so is not placed", m.ID)
-	}
+// A WORLD FOR EVERY INTERACTION, including the ones that do not want one.
+//
+// A saving throw needs no geometry, and that used to be one of two reasons this
+// package installed nothing. The other was rpg-toolkit#1090. Collapsing them
+// cost the game every range predicate whenever the party split up, so they are
+// told apart here: the world is installed even when the cast has nothing to do
+// with it, and a rule that cannot find somebody on it answers "nobody knows
+// where these two are standing" rather than "there is no world".
+func TestAWorldIsInstalledForEveryInteraction(t *testing.T) {
+	probe := runProbe(t, walledWorld(t), []Participant{{Character: probeSheet("a-stranger")}})
+
+	require.True(t, probe.found, "a world is installed for every interaction")
+	require.NotNil(t, probe.room)
+
+	_, placed := probe.room.GetEntityPosition("a-stranger")
+	require.False(t, placed, "and somebody who is not in this world is simply not on it")
+}
+
+// THE INSTALLED WORLD IS READ-ONLY, and this package hands it over as it was
+// given rather than unwrapping it.
+//
+// The composition refuses a write through the view it hands out, by name. What
+// this pins is that the refusal survives the trip: an effect running inside an
+// interaction cannot move a member behind the encounter's back, because the
+// thing in its context is the same guarded view the composition produced.
+func TestTheInstalledWorldRefusesToBeWrittenTo(t *testing.T) {
+	probe := runProbe(t, walledWorld(t), []Participant{{Character: probeSheet(heroID)}})
+
+	err := probe.room.MoveEntity(heroID, spatial.Position{X: 1, Y: 1})
+	require.ErrorIs(t, err, encounter.ErrReadOnly)
+
+	at, ok := probe.room.GetEntityPosition(heroID)
+	require.True(t, ok)
+	require.Equal(t, spatial.Position{X: 9, Y: 4}, at, "and the hero did not move")
 }
 
 // TestNoCodePathProducesARoomlessInteraction is the STRUCTURAL half, and it is
 // deliberately not a behavioural one.
 //
-// A test can only demonstrate that the worlds it happened to ask for were
-// installed. The claim rpg-toolkit#1090 needs is stronger — that no input CAN
-// produce a roomless interaction — and the shape of the old defect is exactly
-// what a behavioural suite misses: `return nil, nil` was reachable only when
-// the cast spanned rooms, which no test in this package did, for two releases.
+// A test can only demonstrate that the interactions it happened to run got a
+// world. The claim rpg-toolkit#1090 needs is stronger — that no input CAN
+// produce one without — and the shape of the old defect is exactly what a
+// behavioural suite misses: the roomless path was reachable only when the cast
+// spanned two rooms, which no test in this package did, for two releases.
 //
-// So the source itself is the assertion. Every return from interactionRoom
-// either carries a world or carries an error; a bare `return nil, nil` is the
-// defect, by name, and putting one back fails here whether or not anybody
-// writes a scene that reaches it.
+// So the source is the assertion. The install is one statement at the top level
+// of resolveOn's body, and a condition wrapped around it is the defect, by
+// construction: whatever the condition said, there would be inputs it answered
+// no for. Reintroducing one fails here whether or not anybody writes a scene
+// that reaches it.
 func TestNoCodePathProducesARoomlessInteraction(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "world.go", nil, 0)
+	file, err := parser.ParseFile(fset, "resolve.go", nil, 0)
 	require.NoError(t, err)
 
-	fn := funcDecl(t, file, "interactionRoom")
+	fn := funcDecl(t, file, "resolveOn")
 
-	returns := 0
+	var installs []token.Pos
 	ast.Inspect(fn, func(n ast.Node) bool {
-		ret, ok := n.(*ast.ReturnStmt)
+		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-
-		returns++
-		require.Len(t, ret.Results, 2, "interactionRoom returns a world and an error")
-
-		roomIsNil := isNilIdent(ret.Results[0])
-		errIsNil := isNilIdent(ret.Results[1])
-		require.False(t, roomIsNil && errIsNil,
-			"world.go:%d returns no world and no error — that is rpg-toolkit#1090",
-			fset.Position(ret.Pos()).Line)
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "WithRoom" {
+			installs = append(installs, call.Pos())
+		}
 
 		return true
 	})
+	require.Len(t, installs, 1, "the world is installed in exactly one place")
 
-	require.Positive(t, returns, "interactionRoom was found and has returns")
+	ast.Inspect(fn, func(n ast.Node) bool {
+		branch, ok := n.(*ast.IfStmt)
+		if !ok {
+			return true
+		}
+		require.False(t, branch.Pos() <= installs[0] && installs[0] < branch.End(),
+			"resolve.go:%d installs the world inside a condition — some input answers no, "+
+				"and that is rpg-toolkit#1090",
+			fset.Position(installs[0]).Line)
+
+		return true
+	})
 }
 
 // funcDecl finds a top-level function by name, and says so if it has been
@@ -314,24 +246,7 @@ func funcDecl(t *testing.T, file *ast.File, name string) *ast.FuncDecl {
 		}
 	}
 
-	t.Fatalf("world.go has no function %q — if it was renamed, this pin must follow it", name)
+	t.Fatalf("resolve.go has no function %q — if it was renamed, this pin must follow it", name)
 
 	return nil
-}
-
-func isNilIdent(expr ast.Expr) bool {
-	ident, ok := expr.(*ast.Ident)
-
-	return ok && ident.Name == "nil"
-}
-
-// castOf turns member IDs into participants. interactionRoom reads nothing off
-// a sheet but its ID — this file tests geometry — so the sheets are bare.
-func castOf(members []encounter.MemberInput) []Participant {
-	out := make([]Participant, 0, len(members))
-	for _, m := range members {
-		out = append(out, Participant{Monster: &monster.Data{ID: string(m.ID)}})
-	}
-
-	return out
 }

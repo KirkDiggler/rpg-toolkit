@@ -282,15 +282,30 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
 	}
 
-	// Install the world this interaction happens in, so that a predicate which
-	// reads positions — prone's advantage-within-five-feet, first of them —
-	// has them. ONE world, and it is installed every time: there is exactly one
-	// map, so "which room describes this interaction" is not a question any
-	// more, and the answer this package used to give when it could not decide —
-	// none at all — was rpg-toolkit#1090. See interactionRoom.
-	room, err := interactionRoom(enc, in.Participants)
+	// INSTALL THE WORLD. One world, and it is installed every time.
+	//
+	// This is the map the encounter itself runs on — its own room, handed over
+	// to be read (rpg-toolkit#1114). Not a reconstruction of it: this package
+	// used to build a room out of the encounter's persisted description, with
+	// its own copy of grid construction and a comment promising the two would
+	// be kept in step, and no walls in it at all. What the rules read now is
+	// what the composition enforces, because they are the same object.
+	//
+	// EVERY TIME, which is the other half. "Which room describes this
+	// interaction" used to be a question, and the answer this package gave
+	// when it could not decide — install nothing — silently switched off every
+	// predicate that reads positions the moment one party member wandered off,
+	// which in a dungeon is most of the time (rpg-toolkit#1090). There is one
+	// map, so there is nothing to choose between, and no input can produce an
+	// interaction without a world. TestNoCodePathProducesARoomlessInteraction
+	// holds that structurally rather than by example.
+	//
+	// It is READ-ONLY: the composition refuses a write through it by name, and
+	// this package has no business making one. Moving somebody is a verb of the
+	// encounter's, and it is a different interaction.
+	room, err := enc.Canvas()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrBadWorld, err)
 	}
 	ctx = gamectx.WithRoom(ctx, room)
 

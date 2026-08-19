@@ -370,7 +370,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	})
 	s.Require().NoError(err)
 
-	room, err := interactionRoom(enc, []Participant{{Character: s.hero()}, {Monster: s.wolf(wolfID)}})
+	room, err := enc.Canvas()
 	s.Require().NoError(err)
 	s.Require().NotNil(room, "there is one world, and it is installed every time")
 
