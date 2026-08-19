@@ -24,10 +24,10 @@ import (
 // One run on an AMD 7945HX. Absolute times move with whatever else the machine
 // is doing; the RATIOS held across repeats, and they are the finding:
 //
-//	tomb-shaped, 3 chambers, 8 members   clear   84us  opaque   53us  1.4-1.6x FASTER
-//	20 chambers with gaps, 60 members    clear 31.7ms  opaque 18.9ms  1.6-1.7x FASTER
-//	one 40x40 chamber, void margin, 40   clear  3.1ms  opaque  4.1ms  1.34x slower
-//	20 chambers, canvas tiled, NO void   clear 29.7ms  opaque 29.6ms  parity
+//	tomb-shaped, 3 chambers, 8 members   transparent   84us  opaque   53us  1.4-1.6x FASTER
+//	20 chambers with gaps, 60 members    transparent 31.7ms  opaque 18.9ms  1.6-1.7x FASTER
+//	one 40x40 chamber, void margin, 40   transparent  3.1ms  opaque  4.1ms  1.34x slower
+//	20 chambers, canvas tiled, NO void   transparent 29.7ms  opaque 29.6ms  parity
 //
 // Where there IS void, opaque is FASTER, which is not the intuition: the scan is
 // arithmetic, and the spatial call it returns before rasterizes, walks
@@ -39,9 +39,9 @@ import (
 //
 // The fourth row is the one that was bad, and is the reason fieldHasVoid
 // exists. Deleting its check from IsLineOfSightBlocked and re-running that pair
-// measures opaque at 121ms against clear's 30ms — 4.0x, and 46.7 MB of allocation
+// measures opaque at 121ms against transparent's 30ms — 4.0x, and 46.7 MB of
 // against 24.2 MB — every byte of it spent proving there was no void to find on
-// a field where opaque and clear mean the same thing.
+// a field where opaque and transparent mean the same thing.
 // TestOpaqueCostsNothingWhereThereIsNoVoid pins the fix as allocations, so it
 // holds without a stopwatch.
 
@@ -110,22 +110,30 @@ func benchSightRefresh(b *testing.B, rooms, dim, stride, anchor, members int, vo
 }
 
 // The reference tomb's shape: three chambers in a chain, a party of eight.
-func BenchmarkSightTombClear(b *testing.B)  { benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsClear()) }
+func BenchmarkSightTombTransparent(b *testing.B) {
+	benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsTransparent())
+}
 func BenchmarkSightTombOpaque(b *testing.B) { benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsOpaque()) }
 
 // Chambers with gaps between them — the case an opaque declaration exists for.
-func BenchmarkSightGappedClear(b *testing.B) { benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsClear()) }
+func BenchmarkSightGappedTransparent(b *testing.B) {
+	benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsTransparent())
+}
 func BenchmarkSightGappedOpaque(b *testing.B) {
 	benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsOpaque())
 }
 
 // One chamber with a void margin and nobody ever looking across it: the scan
 // runs in full, finds nothing, and delegates anyway. The worst case.
-func BenchmarkSightMarginClear(b *testing.B)  { benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsClear()) }
+func BenchmarkSightMarginTransparent(b *testing.B) {
+	benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsTransparent())
+}
 func BenchmarkSightMarginOpaque(b *testing.B) { benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsOpaque()) }
 
 // Chambers that tile their canvas exactly: no void, so nothing to look for.
-func BenchmarkSightNoVoidClear(b *testing.B) { benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsClear()) }
+func BenchmarkSightNoVoidTransparent(b *testing.B) {
+	benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsTransparent())
+}
 func BenchmarkSightNoVoidOpaque(b *testing.B) {
 	benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsOpaque())
 }

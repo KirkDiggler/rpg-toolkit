@@ -120,30 +120,30 @@ func (s *VoidSuite) TestOpaqueVoidBlocksSightBetweenChambers() {
 	s.False(s.sees(enc, kade, brenna), "from either side — geometry is mutual")
 }
 
-// TestClearVoidDoesNotBlockSightBetweenChambers is the same slice from the
+// TestTransparentVoidDoesNotBlockSightBetweenChambers is the same slice from the
 // ruined-courtyard side, and it is the half that shows the declaration is a
 // CHOICE rather than a new rule.
 //
 // Identical geometry, identical members, identical distance. The only thing
 // that changed is the word the field says about that column, and the answer
 // inverts.
-func (s *VoidSuite) TestClearVoidDoesNotBlockSightBetweenChambers() {
-	enc := s.gapped(encounter.VoidIsClear())
+func (s *VoidSuite) TestTransparentVoidDoesNotBlockSightBetweenChambers() {
+	enc := s.gapped(encounter.VoidIsTransparent())
 
-	s.True(s.sees(enc, brenna, kade), "the gap is clear; they are two cells apart in plain view")
+	s.True(s.sees(enc, brenna, kade), "the gap is transparent; they are two cells apart in plain view")
 	s.True(s.sees(enc, kade, brenna), "from either side")
 }
 
-// TestClearVoidIsStillNotFloor pins the half of the ruling that does NOT vary:
+// TestTransparentVoidIsStillNotFloor pins the half of the ruling that does NOT vary:
 // both declarations are unwalkable. Open means you can SEE across the gap, not
 // that you can walk out over it.
-func (s *VoidSuite) TestClearVoidIsStillNotFloor() {
+func (s *VoidSuite) TestTransparentVoidIsStillNotFloor() {
 	for _, tc := range []struct {
 		name string
 		void encounter.Void
 	}{
 		{"opaque", encounter.VoidIsOpaque()},
-		{"clear", encounter.VoidIsClear()},
+		{"transparent", encounter.VoidIsTransparent()},
 	} {
 		s.Run(tc.name, func() {
 			enc := s.gapped(tc.void)
@@ -191,15 +191,15 @@ func (s *VoidSuite) TestTheHandedOutCanvasAnswersTheSameWay() {
 	s.Require().NoError(err)
 	s.True(opaque.IsLineOfSightBlocked(brennaCell, kadeCell), "the map itself says something is in the way")
 
-	clear, err := s.gapped(encounter.VoidIsClear()).Canvas()
+	transparent, err := s.gapped(encounter.VoidIsTransparent()).Canvas()
 	s.Require().NoError(err)
-	s.False(clear.IsLineOfSightBlocked(brennaCell, kadeCell), "and that a clear gap is not")
+	s.False(transparent.IsLineOfSightBlocked(brennaCell, kadeCell), "and that a transparent gap is not")
 }
 
 // TestAFieldMustSayWhatItsVoidIs is the ruling's "required, never defaulted".
 //
 // There is no answer this module is allowed to pick. A tomb's void is opaque
-// and an open-air ruin's is clear, and which one THIS world is is not a 5e
+// and an open-air ruin's is transparent, and which one THIS world is is not a 5e
 // rule the composition could derive — it is a fact about the world, which makes
 // it construction data (rpg-toolkit#1033's law, applied to the map).
 func (s *VoidSuite) TestAFieldMustSayWhatItsVoidIs() {
@@ -227,7 +227,7 @@ func (s *VoidSuite) TestTheDeclarationSurvivesASave() {
 		blocked bool
 	}{
 		{"opaque", encounter.VoidIsOpaque(), encounter.VoidOpaque, true},
-		{"clear", encounter.VoidIsClear(), encounter.VoidClear, false},
+		{"transparent", encounter.VoidIsTransparent(), encounter.VoidTransparent, false},
 	} {
 		s.Run(tc.name, func() {
 			data := s.gapped(tc.void).ToData()
@@ -348,7 +348,7 @@ func (s *VoidSuite) TestTheCanvasKeepsItsOwnCopyOfTheChambers() {
 // A member is never on a void cell — [Encounter.Step] and [Encounter.Join]
 // refuse one — but the canvas rpg-toolkit#1118 hands out takes any two cells a
 // caller cares to name, and the honest answer for a cell inside opaque void is
-// that nothing sees out of it. Under a clear declaration the same cell is just
+// that nothing sees out of it. Under a transparent declaration the same cell is
 // a place nobody can stand, and the sightline across it is unobstructed.
 func (s *VoidSuite) TestNobodySeesOutOfOpaqueVoid() {
 	opaque, err := s.gapped(encounter.VoidIsOpaque()).Canvas()
@@ -356,10 +356,10 @@ func (s *VoidSuite) TestNobodySeesOutOfOpaqueVoid() {
 	s.True(opaque.IsLineOfSightBlocked(theGapCell, brennaCell), "the gap cell IS the thing in the way")
 	s.True(opaque.IsLineOfSightBlocked(brennaCell, theGapCell), "from either end")
 
-	clear, err := s.gapped(encounter.VoidIsClear()).Canvas()
+	transparent, err := s.gapped(encounter.VoidIsTransparent()).Canvas()
 	s.Require().NoError(err)
-	s.False(clear.IsLineOfSightBlocked(theGapCell, brennaCell), "a clear gap is nothing to see through")
-	s.False(clear.IsLineOfSightBlocked(brennaCell, theGapCell))
+	s.False(transparent.IsLineOfSightBlocked(theGapCell, brennaCell), "a transparent gap is nothing to see through")
+	s.False(transparent.IsLineOfSightBlocked(brennaCell, theGapCell))
 }
 
 // blocked keeps the compiler from optimizing away the calls the allocation
@@ -399,7 +399,8 @@ func (s *VoidSuite) canvasOf(field encounter.FieldInput) spatial.Room {
 // machine (atlascost_test.go's rule: pin an order of growth, loosely).
 //
 // A field whose chambers tile their canvas exactly has no void, so opaque and
-// clear are the same world described two ways — and an opaque declaration must
+// transparent are the same world described two ways — and an opaque declaration
+// must
 // not buy a per-ray scan for a thing that cannot be there. Where there IS void the
 // scan is real work and shows up here as real allocation, which is what gives
 // this test teeth: without that half it would pass on a version that never
@@ -414,12 +415,12 @@ func (s *VoidSuite) TestOpaqueCostsNothingWhereThereIsNoVoid() {
 	}
 
 	tiled := measure(s.canvasOf(contiguousField(encounter.VoidIsOpaque())))
-	s.Equal(measure(s.canvasOf(contiguousField(encounter.VoidIsClear()))), tiled,
-		"no void to look for, so opaque allocates exactly what clear does")
+	s.Equal(measure(s.canvasOf(contiguousField(encounter.VoidIsTransparent()))), tiled,
+		"no void to look for, so opaque allocates exactly what transparent does")
 
-	gappedClear := measure(s.canvasOf(gappedField(encounter.VoidIsClear())))
+	gappedTransparent := measure(s.canvasOf(gappedField(encounter.VoidIsTransparent())))
 	gappedOpaque := measure(s.canvasOf(gappedField(encounter.VoidIsOpaque())))
-	s.Greater(gappedOpaque, gappedClear,
+	s.Greater(gappedOpaque, gappedTransparent,
 		"and where there IS void, the scan is real work on a ray that never finds any — "+
 			"which is what makes the line above a measurement rather than a tautology")
 }
