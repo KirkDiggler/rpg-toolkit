@@ -49,7 +49,8 @@ type RegionID = string
 // between its cells (RoomInput.Grid's doc comment, and Atlas's on that
 // asymmetry); such a member is in the region whose span contains them, by the
 // same rule. A HEX region is not: a fractional axial position is not a cell at
-// all, and no region holds it — see regionAt.
+// all, and no region holds it — the rule, and why it lives one layer down, are
+// regionAt's.
 //
 // A DOORWAY DOES NOT GET ITS OWN ANSWER, and that is a decision rather than an
 // omission. The old stack made a door's cell belong to no region on purpose —
@@ -63,8 +64,6 @@ type RegionID = string
 // could stand in. A member in a doorway is therefore in the region whose cell
 // is under their feet, and the member facing them one cell away is in the
 // other. Pinned by TestAMemberInTheDoorwayStandsInTheRegionTheyStandOn.
-//
-// The integrality rule is regionAt's, one layer down.
 func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
 	return regionAt(e.fieldInput, e.roomGrids, cell)
 }
