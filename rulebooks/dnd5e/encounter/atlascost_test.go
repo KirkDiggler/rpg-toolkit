@@ -14,9 +14,9 @@ import (
 )
 
 // budgetField is the LARGEST LEGAL field: four 1024x1024 rooms, exactly
-// maxFieldCells (1<<22) cells between them, in a blob measured at 573 bytes.
-// The gap between what a field COSTS TO SAY and what it used to cost to READ is
-// the whole subject of the test below.
+// maxFieldCells (1<<22) cells between them — which the encounter below persists
+// in 601 bytes, measured. The gap between what a field COSTS TO SAY and what it
+// used to cost to READ is the whole subject of the test.
 func budgetField() encounter.FieldInput {
 	const dim = 1024
 	return encounter.FieldInput{
