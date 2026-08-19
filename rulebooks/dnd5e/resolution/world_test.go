@@ -114,6 +114,28 @@ func walledCast() []encounter.MemberInput {
 		{ID: "east-behind", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 9, Y: 4}},
 		{ID: "east-beside", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 6, Y: 0}},
 		{ID: "west-far", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 7}},
+
+		// A CREATURE IS NOT COVER, and west-near and west-end are looking at
+		// each other straight through five of them.
+		//
+		// Encounter's member entities say so outright (BlocksLineOfSight
+		// false); the members this package places say it by not implementing
+		// spatial's blocking interface at all. Same answer, arrived at two
+		// different ways, which is precisely the sort of agreement that can
+		// quietly stop being one.
+		//
+		// FIVE, in a column, rather than one in the way — measured, not
+		// cautious. Spatial lets a viewer lean around a one-cell obstruction,
+		// so a single body between two people blocks nothing whatever it
+		// claims about itself, and a fixture built on one agrees with a version
+		// of this package that turns every creature into a wall. (Mutation M9,
+		// which survived exactly that fixture.)
+		{ID: "west-mid-a", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 2}},
+		{ID: "west-mid-b", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 3}},
+		{ID: "west-mid-c", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 4}},
+		{ID: "west-mid-d", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
+		{ID: "west-mid-e", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
+		{ID: "west-end", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 4}},
 	}
 }
 
