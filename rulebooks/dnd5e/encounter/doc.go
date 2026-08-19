@@ -112,6 +112,12 @@
 // its cells. Membership is DERIVED from a member's cell wherever it is
 // reported, never stored beside it.
 //
+// AND THE CANVAS ITSELF IS READABLE (#1114). Everything above DESCRIBES the
+// map; [Encounter.Canvas] hands out the map, to read. It is the live room
+// rather than a snapshot, so it goes out behind a view that refuses every
+// write by name — see its own doc for why a copy is not an option and why a
+// silent no-op would be worse than a refusal.
+//
 // Room and field size are bounded (maxRoomCells/maxFieldCells): two individually
 // legal dimensions multiply into a cell count nothing could walk. The bound
 // guarded an Atlas allocation until #1108 stopped it enumerating; it now
