@@ -205,4 +205,8 @@ var (
 	// same defect seen from different sides — a sight range this module would
 	// have to invent, which rpg-toolkit#1033 forbids it to do.
 	ErrNoSight = errors.New("encounter: no sight capability")
+
+	// ErrReadOnly indicates an attempt to write to the map through the
+	// read-only view [Encounter.Canvas] hands out.
+	ErrReadOnly = errors.New("encounter: the canvas is read-only")
 )
