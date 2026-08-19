@@ -1,5 +1,25 @@
 # Complete Game Server Example: LoadFromGameContext
 
+> **Status: illustrative only — this example does not compile, and the `conditions` half of it no longer resolves.**
+>
+> `mechanics/conditions`, which supplies `conditions.Condition` throughout the flow
+> below, has been **deleted** (issue #973): it had gone a year without a source commit,
+> nothing outside its own directory imported it, and it no longer built against the
+> redesigned events package. The live substrate for conditions is
+> [`rulebooks/dnd5e/conditions`](../../../../rulebooks/dnd5e/conditions), which has a
+> different shape from the one shown here — this is not a rename you can apply
+> mechanically.
+>
+> The rest of the example is stale in the same era: `events.EventBus` predates the
+> typed-topic events redesign, and the struct references `spatial.Room` and
+> `resources.Resource` that the import block above never included. It was written to
+> illustrate a shape, not to be compiled.
+>
+> It is kept, rather than quietly trimmed, because that shape is still the point: each
+> subsystem owns its own JSON deserialization, the character holds opaque
+> `json.RawMessage` per subsystem, dirty state is tracked per item, and only what
+> changed is written back. Read it for that flow. Do not copy the imports.
+
 This shows the complete flow of loading a character with features and conditions, playing, and saving back.
 
 > **Note (rpg-toolkit#1121):** the `mechanics/conditions` module this example imports was **deleted** — it had been orphaned by the events redesign for a year and compiled against an API no tagged release contains (see #973). The sample is kept because the *pattern* it teaches — load a character's durable state from stored data, play, write it back — is still the shape the stack uses. The live successor for the condition half is `rulebooks/dnd5e/conditions`, whose `Condition` type plays this role; its API is not a drop-in for the one shown here, so treat the `conditions.` lines below as illustrative rather than copyable.
