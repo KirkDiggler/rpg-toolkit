@@ -42,6 +42,11 @@ import (
 //
 // So: one Subtract, one region lookup. A second implementation has to subtract
 // an origin in order to exist, and this is the test it fails.
+//
+// If a legitimate second use ever appears — a delta between two cells for a
+// beat, say — the honest fix is to name it in the expected list, not to delete
+// the test. The point is that a second one becomes a decision somebody makes on
+// purpose rather than a copy that arrives unnoticed.
 func TestRegionOwnershipIsAskedInOneFunction(t *testing.T) {
 	callers := functionsWhoseBodyReads(t, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)

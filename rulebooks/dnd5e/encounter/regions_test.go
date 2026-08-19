@@ -220,6 +220,53 @@ func (s *RegionSuite) TestAStepChangesTheRegionAMemberIsIn() {
 	s.Equal([]encounter.MemberID{alice, bob, dave}, s.idsIn(tombHall))
 }
 
+// TestReachingTheTombChamberClosesTheDelve is the issue's own done-when, in the
+// dungeon it names: an ending declared on a tile in the tomb chamber fires when
+// a player walks into that chamber.
+//
+// Worth having in the tomb's terms rather than only on a purpose-built fixture,
+// because the two seams are what make it a real walk: alice starts on the
+// hall's side of the tomb doorway and crosses into the chamber, which is one
+// ordinary step through a gap in a wall, and the ending is one cell equality
+// (arrival_test.go holds the rules that equality carries). The outcome then
+// reports every member's region, derived from where they each stand.
+func (s *RegionSuite) TestReachingTheTombChamberClosesTheDelve() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: tombField(),
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
+				Position: spatial.Position{X: 9, Y: float64(tombDoorRow)}},
+			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
+				Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{
+			{Key: "the-tomb", Trigger: encounter.TriggerReachedPosition{
+				Room: tombChamber, Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}}},
+		},
+	})
+	s.Require().NoError(err)
+
+	theTomb := tombAt(tombChamberOrigin, 0, tombDoorRow)
+	got, ok := enc.RegionAt(theTomb)
+	s.Require().True(ok)
+	s.Require().Equal(encounter.RegionID(tombChamber), got, "the ending's tile is in the tomb chamber")
+
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: theTomb})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Outcome, "walking into the tomb chamber closes the delve")
+	s.Equal("the-tomb", out.Outcome.Ending)
+	s.Equal(tombDoor, out.Crossing, "and it was an ordinary step through the doorway")
+
+	finished := map[encounter.MemberID]encounter.RegionID{}
+	for _, mo := range out.Outcome.Members {
+		finished[mo.ID] = mo.Region
+	}
+	s.Equal(map[encounter.MemberID]encounter.RegionID{
+		alice: tombChamber, carol: tombEntrance,
+	}, finished, "the outcome names where each of them finished")
+}
+
 // TestTheRegionIsDerivedAcrossPersistenceToo is the persistence half of the
 // same claim: nothing about a region is stored, at any point.
 //
