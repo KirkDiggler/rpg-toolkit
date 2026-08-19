@@ -133,10 +133,9 @@ the contract rather than being coded defensively.
 - **Deterministic order.** Monsters act in stable `Members()` order.
 - **A decider error aborts the pump atomically.** No clock advance, no moves, no
   record beats. Return an error only when you genuinely cannot decide.
-- **A rejected step does not abort.** A cell no room owns, a cell in another
-  room with no doorway joining it to where you stand, or a step the spatial
-  rules refuse: each just means that monster fails to act this tick. Everything
-  else proceeds.
+- **A rejected step does not abort.** A cell no region owns, a wall between you
+  and it, or a step the spatial rules refuse: each just means that monster fails
+  to act this tick. Everything else proceeds.
 - **Sight refreshes once**, after all actions — then one tick beat, then the
   movement beats in decision order.
 - **A monster in a fight is not consulted.** `Pump` is the world thinking, and
@@ -195,14 +194,15 @@ other caller of the consult is a verb looking at a world something else changed.
 | `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
 | `standing.go` | `Standing`, and the world noticing who is down |
 | `step.go` | one step on the map, and the one place that decides what one is |
-| `atlas.go` | the map reads — `Atlas` (the authored rooms in absolute space) and `Grid` |
+| `atlas.go` | the map reads — `Atlas` (every region's anchor and span, in absolute space) and `Grid` |
+| `region.go` | a room is a region: `RegionAt`, `MembersIn`, and the one ownership lookup |
 | `field.go` | rooms, connections, and the per-verb output shapes |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 
 ## Reading it
 
 Start with `doc.go` — it names the laws that bind this module (**C1–C8**, plus
-anchoring **W1–W5**) and points at the design contract in
+anchoring **W1–W6**) and points at the design contract in
 `docs/ideas/encounter/design.md`. Comments cite those laws by number, so `(C2)`
 in the source is pointing at a specific sentence.
 

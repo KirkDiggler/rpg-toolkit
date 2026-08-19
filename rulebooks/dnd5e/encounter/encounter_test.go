@@ -2595,7 +2595,7 @@ func (s *EncounterTestSuite) roomOf(enc *encounter.Encounter, id encounter.Membe
 	s.Require().NoError(err)
 	for _, m := range members {
 		if m.ID == id {
-			return m.Room
+			return m.Region
 		}
 	}
 	s.Require().Fail("no such member", string(id))
@@ -2709,7 +2709,7 @@ func (s *EncounterTestSuite) TestACrossingFiresAnEndingOnArrival() {
 	s.Equal("escaped", out.Outcome.Ending)
 	s.Require().Len(out.Outcome.Members, 1)
 	s.Equal(alice, out.Outcome.Members[0].ID)
-	s.Equal("room-b", out.Outcome.Members[0].Room)
+	s.Equal(encounter.RegionID("room-b"), out.Outcome.Members[0].Region)
 	s.Equal(spatial.Position{X: 10, Y: 5}, out.Outcome.Members[0].Position,
 		"room-b-local (0,5) anchored at (10,0) — the outcome speaks the dungeon map (#1068)")
 
@@ -2890,7 +2890,7 @@ func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
 		// Assert: charlie joined
 		s.Equal(charlie, joinOut.Member.ID)
 		s.Equal(encounter.KindPlayer, joinOut.Member.Kind)
-		s.Equal(room1, joinOut.Member.Room)
+		s.Equal(encounter.RegionID(room1), joinOut.Member.Region)
 
 		// Assert: join beat recorded
 		s.Require().Greater(joinOut.Seq, uint64(0), "join should produce sequence number")
@@ -3091,7 +3091,7 @@ func (s *EncounterTestSuite) TestExitCarryForward() {
 
 		// Assert: exit outcome has alice's position
 		s.Equal(alice, exitOut.Outcome.ID)
-		s.Equal(room1, exitOut.Outcome.Room)
+		s.Equal(encounter.RegionID(room1), exitOut.Outcome.Region)
 		s.Equal(2.0, exitOut.Outcome.Position.X)
 		s.Equal(2.0, exitOut.Outcome.Position.Y)
 

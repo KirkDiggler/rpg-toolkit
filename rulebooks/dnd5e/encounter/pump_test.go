@@ -1176,7 +1176,7 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
-	s.Equal("room-b", members[0].Room)
+	s.Equal(encounter.RegionID("room-b"), members[0].Region)
 }
 
 // TestPumpReportsMovementOnTheMap is the discriminating probe for
@@ -1266,7 +1266,7 @@ func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
-	s.Equal(shrine, members[0].Room)
+	s.Equal(encounter.RegionID(shrine), members[0].Region)
 	s.Equal(out2.MonsterMoves[0].To, members[0].Position,
 		"where the pump says it went is where the field says it stands")
 }
@@ -1368,7 +1368,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenAWallIsInTheWay() {
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
-	s.Equal("room-a", members[0].Room, "the monster never left its chamber")
+	s.Equal(encounter.RegionID("room-a"), members[0].Region, "the monster never left its chamber")
 	s.Equal(spatial.Position{X: 3, Y: 2}, members[0].Position, "the monster's cell is unchanged")
 }
 
@@ -1423,7 +1423,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
-	s.Equal("room-a", members[0].Room, "the monster never left its chamber")
+	s.Equal(encounter.RegionID("room-a"), members[0].Region, "the monster never left its chamber")
 	s.Equal(spatial.Position{X: 9, Y: 5}, members[0].Position, "the monster's cell is unchanged")
 }
 
@@ -1465,7 +1465,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
-	s.Equal("room-a", members[0].Room, "the monster never moved — R5 atomicity")
+	s.Equal(encounter.RegionID("room-a"), members[0].Region, "the monster never moved — R5 atomicity")
 }
 
 // TestPumpPursuitAcrossConnection is the wave's integration pin: a
@@ -1641,14 +1641,14 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 			bOutcome = m
 		}
 	}
-	s.Equal("room-b", aOutcome.Room)
+	s.Equal(encounter.RegionID("room-b"), aOutcome.Region)
 	s.Equal(spatial.Position{X: 10, Y: 5}, aOutcome.Position,
 		"room-b-local (0,5) anchored at (10,0) — the outcome speaks the dungeon map (#1068)")
 	// The full-tick-then-evaluate law, made observable: zzz-goblin's
 	// ALREADY-APPLIED move is reflected in the outcome — its NEW
 	// position, not its pre-pump one. A revert-on-close implementation
 	// would show (3,3) here instead.
-	s.Equal("room-a", bOutcome.Room)
+	s.Equal(encounter.RegionID("room-a"), bOutcome.Region)
 	s.Equal(spatial.Position{X: 4, Y: 4}, bOutcome.Position,
 		"the outcome must reflect zzz-goblin's post-tick position, not its pre-tick one")
 

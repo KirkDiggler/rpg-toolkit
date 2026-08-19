@@ -149,14 +149,14 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (executedAction, error) {
 	// Hex fields require integral axial cells (interim tools/spatial#926
 	// enforcement — see isIntegralAxialPosition). Asked BEFORE the floor
-	// question so a fractional cell is named as itself: roomAt refuses one too,
+	// question so a fractional cell is named as itself: regionAt refuses one too,
 	// but it would report it as "not floor", sending a caller to the map
 	// instead of to its arithmetic.
 	if !isIntegralAxialPosition(e.canvas.GetGrid(), to) {
 		return executedAction{}, fmt.Errorf("target is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
-	if _, owned := e.roomAt(to); !owned {
+	if _, owned := e.RegionAt(to); !owned {
 		return executedAction{}, fmt.Errorf("cell %v is not floor: %w", to, ErrBadPlacement)
 	}
 

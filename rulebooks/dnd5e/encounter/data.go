@@ -71,11 +71,17 @@ type OutcomeData struct {
 // anchor, and this is Kirk's fail-loudly ruling (2026-08-17) for the one
 // persisted shape in this family that could be given a detectable one.
 //
-// Room stays: MemberOutcome still carries it. The composition keeps rooms, it
-// only stops speaking them in coordinates.
+// THE REGION IS NOT STORED (rpg-toolkit#1108). It used to be, as "room", and it
+// was the last derived spatial fact this module persisted: which region holds a
+// member is a function of their cell and the authored field, both of which are
+// in the blob already. A stored copy could only ever agree with them or lie, so
+// load validation had to check it — a whole branch existing to police a second
+// truth. It is re-derived at load through the same [regionAt] every live read
+// uses, which is why a reloaded outcome cannot disagree with the one the host
+// already saw. Blobs written with the old key still load: the key is ignored
+// and the value recomputed, which is the same answer unless it was wrong.
 type MemberOutcomeData struct {
 	ID   MemberID      `json:"id"`
-	Room string        `json:"room"`
 	Cell *PositionData `json:"cell"`
 }
 
@@ -300,8 +306,7 @@ func (e *Encounter) ToData() EncounterData {
 		}
 		for i, mo := range e.outcome.Members {
 			outcomeData.Members[i] = MemberOutcomeData{
-				ID:   mo.ID,
-				Room: mo.Room,
+				ID: mo.ID,
 				// Always a fresh pointer, always written — RoomData.Origin's
 				// precedent — so presence itself is meaningful at load and two
 				// ToData calls never alias the same PositionData.
@@ -626,8 +631,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// chamber's footprint must hold it. One check, two defects — a cell
 		// outside the field entirely, and a cell in the space BETWEEN chambers,
 		// which the canvas spans but which is not floor.
-		if !ownedByAnyRoom(roomInputs, roomGrids, cell) {
-			return nil, fmt.Errorf("load encounter: member %q cell is owned by no room: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
+		if _, owned := regionAt(roomInputs, roomGrids, cell); !owned {
+			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 	}
 
@@ -653,10 +658,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if data.Outcome.Ending == "abandoned" && len(data.Members) > 0 {
 			return nil, fmt.Errorf("load encounter: abandoned outcome with members present: %w: %w", ErrInvalidData, ErrNoMember)
 		}
-		origins := make(map[string]spatial.Position, len(roomInputs))
-		for _, ri := range roomInputs {
-			origins[ri.ID] = ri.Origin
-		}
 		for _, om := range data.Outcome.Members {
 			// A missing cell is how the pre-#1068 dialect announces itself:
 			// that blob's "position" key lands nowhere on today's shape, so
@@ -666,17 +667,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			if om.Cell == nil {
 				return nil, fmt.Errorf("load encounter: outcome member %q has no cell — a room-local outcome from before rpg-toolkit#1068, recreate the save: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
-			_, ok := roomGrids[om.Room]
-			if !ok {
-				return nil, fmt.Errorf("load encounter: outcome member %q room %q not in field: %w: %w", om.ID, om.Room, ErrInvalidData, ErrBadPlacement)
-			}
-			// The cell is absolute and the room's grid speaks local, so the
-			// bounds check is the projection run backwards. One check, two
-			// defects: a cell outside the field at all, and a cell that
-			// belongs to a room other than the one named beside it.
-			local := spatial.Position{X: om.Cell.X, Y: om.Cell.Y}.Subtract(origins[om.Room])
-			if !roomGrids[om.Room].IsValidPosition(local) {
-				return nil, fmt.Errorf("load encounter: outcome member %q position out of bounds: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
+			// Where they finished has to be floor — the SAME question, asked
+			// the SAME way, as for a live member above. This used to be an
+			// inline third implementation of region ownership, checking the
+			// cell against the region NAMED BESIDE IT in the blob; with the
+			// region derived rather than stored there is nothing to
+			// cross-check, only somewhere to be (rpg-toolkit#1108).
+			if _, owned := regionAt(roomInputs, roomGrids, spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); !owned {
+				return nil, fmt.Errorf("load encounter: outcome member %q cell is owned by no region: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
 		}
 	}
@@ -891,14 +889,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Members: make([]MemberOutcome, len(data.Outcome.Members)),
 		}
 		for i, m := range data.Outcome.Members {
+			cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
+			region, _ := regionAt(roomInputs, roomGrids, cell)
 			outcome.Members[i] = MemberOutcome{
-				ID:   m.ID,
-				Room: m.Room,
-				// Stored and returned in the frame it was reported in — no
-				// re-derivation, so a reloaded outcome and the one the host
-				// already saw cannot disagree. Non-nil by R5: every cell was
-				// checked before construction began.
-				Position: spatial.Position{X: m.Cell.X, Y: m.Cell.Y},
+				ID: m.ID,
+				// The region is DERIVED from the cell, through the same
+				// lookup every live read uses (rpg-toolkit#1108). Ownership
+				// was checked for every outcome cell before construction
+				// began (R5), so this cannot come back empty.
+				Region: region,
+				// The cell is stored and returned in the frame it was
+				// reported in — no re-derivation, so a reloaded outcome and
+				// the one the host already saw cannot disagree. Non-nil by
+				// R5: every cell was checked before construction began.
+				Position: cell,
 			}
 		}
 		e.outcome = outcome
@@ -917,27 +921,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
 
 	return e, nil
-}
-
-// ownedByAnyRoom reports whether some authored chamber's footprint holds an
-// absolute cell — the load-time twin of [Encounter.roomAt], which cannot be used
-// here because it is a method on an Encounter that does not exist yet (R5: the
-// blob is validated in full before anything is constructed).
-//
-// No integrality check, for roomAt's reason: the caller asks first, and names
-// that defect as itself.
-func ownedByAnyRoom(rooms []RoomInput, grids map[string]spatial.Grid, cell spatial.Position) bool {
-	for _, ri := range rooms {
-		local := cell.Subtract(ri.Origin)
-		grid, ok := grids[ri.ID]
-		if !ok {
-			continue
-		}
-		if grid.IsValidPosition(local) {
-			return true
-		}
-	}
-	return false
 }
 
 // endingTriggerFromData converts one persisted ending's Kind/Room/Position/

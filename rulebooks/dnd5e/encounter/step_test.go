@@ -252,7 +252,7 @@ func (s *StepSuite) roomOf(id encounter.MemberID) string {
 	s.Require().NoError(err)
 	for _, m := range members {
 		if m.ID == id {
-			return m.Room
+			return m.Region
 		}
 	}
 	s.Require().Fail("no such member", string(id))
@@ -283,7 +283,7 @@ func (s *StepSuite) TestAStepIntoTheWallBetweenTwoChambersIsRefused() {
 
 	// The premise: that cell is real floor, in the chamber next door — the
 	// refusal is about the wall, not about the destination.
-	s.Require().Equal(stepEast, s.roomAtCell(acrossTheSeam))
+	s.Require().Equal(encounter.RegionID(stepEast), s.regionAtCell(acrossTheSeam))
 
 	_, err := s.enc.Step(&encounter.StepInput{Member: alice, To: acrossTheSeam})
 	s.Require().Error(err)
@@ -291,19 +291,13 @@ func (s *StepSuite) TestAStepIntoTheWallBetweenTwoChambersIsRefused() {
 	s.Equal(before, s.standsAt(alice))
 }
 
-// roomAtCell names the authored chamber whose absolute footprint holds a cell,
-// read off the Atlas — construction truth, which is where rooms live now.
-func (s *StepSuite) roomAtCell(cell spatial.Position) string {
-	atlas, err := s.enc.Atlas()
-	s.Require().NoError(err)
-	for _, room := range atlas.Rooms {
-		for _, c := range room.Cells {
-			if c == cell {
-				return room.ID
-			}
-		}
-	}
-	return ""
+// regionAtCell names the region whose cell set holds a cell. It used to walk
+// the Atlas's enumerated cells to get there; the field answers it directly now
+// (rpg-toolkit#1108), which is the same question asked of the thing that owns
+// it rather than of a list.
+func (s *StepSuite) regionAtCell(cell spatial.Position) encounter.RegionID {
+	region, _ := s.enc.RegionAt(cell)
+	return region
 }
 
 // TestAStepAndAMonsterStepAgreeOnWhatIsCrossable is why this issue was filed.

@@ -85,7 +85,7 @@ type Encounter struct {
 
 	// roomGrids is each authored room's own grid, kept from construction so
 	// the field can answer which chamber owns an absolute cell without
-	// rebuilding one per call — see roomAt.
+	// rebuilding one per call — see regionAt.
 	roomGrids map[string]spatial.Grid
 
 	clock *clock.Tick
@@ -293,20 +293,26 @@ const (
 // EQUAL for both grid families: axisBounds' span always equals the
 // dimension itself, every parity, hex included — see axisBounds' doc
 // comment), and maxFieldCells bounds the SUM of every room's cell count
-// across one field. ALLOCATION-SAFETY bounds for Atlas, distinct in
-// PURPOSE from maxRoomSpan/maxAnchorCoord above (coordinate-OVERFLOW
-// defense): Atlas materializes every cell of every room by contract
-// (Atlas's doc comment), via a make() sized exactly Width*Height per
-// room. Two individually-legal integers under maxRoomSpan (up to 1<<30
-// each) multiply to up to 1<<60 — the amplification is exactly what
-// makes a SEPARATE bound necessary: a 2^30 x 2^30 room passes
-// maxRoomSpan's per-axis check cleanly but PANICS atlasCells' make()
-// (a 2^60-capacity argument), reachable from a persisted blob a few
-// hundred bytes long — two integers, no bulk data (#929 T3 Opus round
-// F1). Enforced HERE, in room legality — the shared path both
-// NewEncounter and LoadEncounter route through — not inside Atlas
-// itself: see the comment at atlasCells' allocation site (atlas.go) for
-// why no redundant check lives there.
+// across one field. Distinct in PURPOSE from maxRoomSpan/maxAnchorCoord
+// above (coordinate-OVERFLOW defense): this is the AMPLIFICATION bound.
+// Two individually-legal integers under maxRoomSpan (up to 1<<30 each)
+// multiply to up to 1<<60, so a 2^30 x 2^30 room passes maxRoomSpan's
+// per-axis check cleanly while describing a quintillion cells —
+// reachable from a persisted blob a few hundred bytes long, two
+// integers and no bulk data (#929 T3 Opus round F1).
+//
+// IT NO LONGER GUARDS AN ALLOCATION OF OURS, and that is worth saying
+// plainly rather than leaving the old reason standing. It was written
+// because Atlas materialized every cell of every room through a make()
+// sized Width*Height; rpg-toolkit#1108 stopped it enumerating, and
+// nothing in this module allocates per cell any more (both grid
+// families hold bounds only). What it guards now is the INSTRUCTION the
+// region report gives: an AtlasRegion states an anchor and a span and
+// leaves a host that genuinely wants the cells to walk that rectangle
+// itself, so the module must not hand out a legal region no caller can
+// walk. Enforced HERE, in room legality — the shared path both
+// NewEncounter and LoadEncounter route through — so a field is refused
+// before an Encounter exists to describe it.
 const (
 	maxRoomCells  = 1 << 20
 	maxFieldCells = 1 << 22
@@ -542,12 +548,15 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		// Occluders must be integral in EVERY family, not just hex (#929 T3
 		// Opus round F2 — the identical square-vs-hex asymmetry T1 already
 		// fixed for Origin: see isIntegralPosition's doc comment):
-		// AtlasRoom.Occluders must be a subset of AtlasRoom.Cells (Cells
-		// only enumerates INTEGER cells — atlasCells' doc comment), so a
-		// fractional occluder would appear in Occluders while absent from
-		// Cells, breaking the host contract "floor from Cells, blockage
-		// from Occluders". isIntegralPosition, not isIntegralAxialPosition
-		// — universal, not hex-only.
+		// an occluder is a CELL of its region, and a region's cells are
+		// the integer lattice points inside its anchor-plus-span
+		// (AtlasRegion's doc comment). A fractional occluder would be
+		// blockage reported at a point that is not one of the region's
+		// cells at all — undrawable under the host contract "floor from
+		// the span, blockage from Occluders", and indistinguishable from
+		// a member's position, which alone may be fractional on a square
+		// grid. isIntegralPosition, not isIntegralAxialPosition —
+		// universal, not hex-only.
 		//
 		// This is the ONLY reason left, as of #929 hardening round C: an
 		// earlier version of this comment ALSO cited the occluder entity
@@ -1309,8 +1318,8 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 		if !ok {
 			continue
 		}
-		room, _ := e.roomAt(cell)
-		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Room: room, Position: cell})
+		region, _ := e.RegionAt(cell)
+		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Region: region, Position: cell})
 	}
 	return outcomes
 }
@@ -1360,11 +1369,11 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		return Member{}, err
 	}
 
-	room, _ := e.roomAt(cell)
+	region, _ := e.RegionAt(cell)
 	return Member{
 		ID:       record.ID,
 		Kind:     record.Kind,
-		Room:     room,
+		Region:   region,
 		Position: cell,
 	}, nil
 }
@@ -1377,44 +1386,6 @@ func (e *Encounter) cellOf(record *memberRecord) (spatial.Position, error) {
 		return spatial.Position{}, fmt.Errorf("member %q: not placed on the map: %w", record.ID, ErrNoField)
 	}
 	return cell, nil
-}
-
-// roomAt reports which authored chamber's footprint holds an absolute cell.
-//
-// The one question rooms still answer at runtime, and the reason they can be
-// deleted from every record that used to carry one: a member's chamber is a
-// fact about where they stand, so it is derived from where they stand.
-//
-// W2 (rooms never overlap) plus integral origins make ownership unique, so
-// iteration order never matters — at most one room's bounds check can pass.
-// Each room is asked with its OWN constructed grid, kept from construction, so
-// this answers exactly what the room itself would.
-//
-// NO INTEGRALITY CHECK HERE, deliberately. Hex forbids fractional cells
-// (isIntegralAxialPosition) and every way a cell reaches this function has
-// already asked: [Encounter.stepMember] and [Encounter.Join] check before they
-// ask, construction places from a room-local cell its own grid validated, and
-// the load seam has its own copy (ownedByAnyRoom) because it runs before an
-// Encounter exists. A check here would be a branch no input can take, which is
-// a branch no test can pin.
-//
-// False means no chamber owns the cell: void is not floor. Callers that place
-// or move somebody must treat that as a refusal; callers merely REPORTING a
-// member's chamber take the empty string, which cannot arise for a placed
-// member and is not worth an error return on a read path.
-func (e *Encounter) roomAt(cell spatial.Position) (string, bool) {
-	for _, ri := range e.fieldInput {
-		local := cell.Subtract(ri.Origin)
-		grid, ok := e.roomGrids[ri.ID]
-		if !ok {
-			continue
-		}
-		if !grid.IsValidPosition(local) {
-			continue
-		}
-		return ri.ID, true
-	}
-	return "", false
 }
 
 // roomOrigin is the construction-time anchor lookup compileCanvas and member
@@ -1439,7 +1410,7 @@ func (e *Encounter) Status() (*Status, error) {
 		for i, m := range e.outcome.Members {
 			members[i] = MemberOutcome{
 				ID:       m.ID,
-				Room:     m.Room,
+				Region:   m.Region,
 				Position: m.Position,
 			}
 		}
@@ -2126,7 +2097,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// map" and "somewhere a member can stand" are different questions, and
 	// this is the one that matters (the same check [Encounter.stepMember]
 	// makes for a step).
-	if _, owned := e.roomAt(in.Cell); !owned {
+	if _, owned := e.RegionAt(in.Cell); !owned {
 		return nil, fmt.Errorf("join: cell %v is not floor: %w", in.Cell, ErrBadPlacement)
 	}
 
@@ -2243,12 +2214,12 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit: %w", ErrNotMember)
 	}
 
-	// Get the exiting member's final cell, and the chamber it falls in.
+	// Get the exiting member's final cell, and the region it falls in.
 	finalCell, ok := e.canvas.GetEntityPosition(string(in.Member))
 	if !ok {
 		return nil, fmt.Errorf("exit: %w", ErrBadPlacement)
 	}
-	finalRoom, _ := e.roomAt(finalCell)
+	finalRegion, _ := e.RegionAt(finalCell)
 
 	// Capture the exiting member's holdings (carry-forward)
 	carry, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: in.Member})
@@ -2333,7 +2304,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	return &ExitOutput{
 		Outcome: MemberOutcome{
 			ID:       in.Member,
-			Room:     finalRoom,
+			Region:   finalRegion,
 			Position: finalCell,
 		},
 		Carry:  carry,
@@ -2417,7 +2388,7 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 	for i, m := range e.outcome.Members {
 		outcomeMembers[i] = MemberOutcome{
 			ID:       m.ID,
-			Room:     m.Room,
+			Region:   m.Region,
 			Position: m.Position,
 		}
 	}

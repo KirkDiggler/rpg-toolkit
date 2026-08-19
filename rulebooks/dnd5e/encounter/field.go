@@ -320,13 +320,18 @@ type Member struct {
 	ID   MemberID
 	Kind MemberKind
 
-	// Room is the authored chamber whose footprint holds Position — DERIVED,
-	// not stored. A member's cell is the canvas's to know and the authored
-	// footprints decide which chamber that cell falls in, so keeping a room
-	// label on the record would be a second truth every verb had to move in
-	// step with it (rpg-toolkit#1106; the dual state [memberRecord] already
-	// warns about, one field over).
-	Room string
+	// Region is the named cell set that holds Position — DERIVED, not stored.
+	// A member's cell is the canvas's to know and the authored footprints
+	// decide which region that cell falls in, so keeping a region label on the
+	// record would be a second truth every verb had to move in step with it
+	// (rpg-toolkit#1106; the dual state [memberRecord] already warns about, one
+	// field over).
+	//
+	// A member standing in a doorway is in the region whose cell is under their
+	// feet, and the member facing them one cell away is in the other — see
+	// [Encounter.RegionAt] for why this composition has no unnamed doorway cell
+	// to report instead (rpg-toolkit#1108).
+	Region RegionID
 
 	// Position is where the member stands, in DUNGEON-ABSOLUTE space —
 	// already projected through their room's origin, so it can be compared
@@ -388,8 +393,10 @@ type MemberOutcome struct {
 	// ID is the member's identifier.
 	ID MemberID
 
-	// Room is their room ID when the encounter closed.
-	Room string
+	// Region is the region they finished in — DERIVED from Position at the
+	// moment the encounter closed, exactly as [Member.Region] is, and for the
+	// same reason (rpg-toolkit#1108).
+	Region RegionID
 
 	// Position is the DUNGEON-ABSOLUTE cell they finished on
 	// (rpg-toolkit#1068) — the same frame Member.Position and every beat

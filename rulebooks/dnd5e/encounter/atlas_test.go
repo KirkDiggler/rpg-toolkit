@@ -122,13 +122,19 @@ func bruteForceLocalCells(shape spatial.GridShape, width, height int) []spatial.
 	return cells
 }
 
-// TestAtlasCellsMatchIsValidPosition is the ruling-4 property test: for a
-// spread of dimension parities (odd, even, and 1xN thin rooms) across
-// both grid families, Atlas's room Cells (Origin zero, so absolute ==
-// local) must be EXACTLY the set spatial's own IsValidPosition accepts —
-// not a subset, not a superset. A one-cell span drift in the enumerator
-// fails this for some parity in the spread.
-func (s *EncounterTestSuite) TestAtlasCellsMatchIsValidPosition() {
+// TestRegionMembershipMatchesIsValidPosition is the ruling-4 property test,
+// asked of the thing that answers membership now (rpg-toolkit#1108). For a
+// spread of dimension parities (odd, even, and 1xN thin rooms) across both grid
+// families, the cells RegionAt claims for a region (Origin zero, so absolute ==
+// local) must be EXACTLY the set spatial's own IsValidPosition accepts — not a
+// subset, not a superset. A one-cell span drift fails this for some parity in
+// the spread.
+//
+// It used to compare Atlas's enumerated Cells against the same brute-force set.
+// The Atlas no longer enumerates, and this is the stronger question anyway: it
+// pins the lookup every verb in the module actually consults, rather than a
+// parallel enumerator that agreed with it.
+func (s *EncounterTestSuite) TestRegionMembershipMatchesIsValidPosition() {
 	dims := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	shapes := map[string]spatial.GridShape{"square": spatial.GridShapeSquare, "hex": spatial.GridShapeHex}
 
@@ -139,13 +145,15 @@ func (s *EncounterTestSuite) TestAtlasCellsMatchIsValidPosition() {
 					enc, err := encounter.NewEncounter(singleRoomSetup(shape, w, h))
 					s.Require().NoError(err)
 
-					atlas, err := enc.Atlas()
-					s.Require().NoError(err)
-					s.Require().Len(atlas.Rooms, 1)
-
-					got := make(map[spatial.Position]bool, len(atlas.Rooms[0].Cells))
-					for _, c := range atlas.Rooms[0].Cells {
-						got[c] = true
+					pad := w + h + 4 // generous — bigger than any valid span in either family
+					got := make(map[spatial.Position]bool)
+					for x := -pad; x <= pad; x++ {
+						for y := -pad; y <= pad; y++ {
+							cell := spatial.Position{X: float64(x), Y: float64(y)}
+							if _, owned := enc.RegionAt(cell); owned {
+								got[cell] = true
+							}
+						}
 					}
 
 					want := make(map[spatial.Position]bool)
@@ -154,14 +162,14 @@ func (s *EncounterTestSuite) TestAtlasCellsMatchIsValidPosition() {
 					}
 
 					s.Require().Equal(want, got,
-						"atlasCells must agree exactly with spatial's own IsValidPosition")
+						"RegionAt must agree exactly with spatial's own IsValidPosition")
 				})
 			}
 		}
 	}
 }
 
-// TestAtlasDeterministicOrdering pins C8: Rooms sorted by room ID and
+// TestAtlasDeterministicOrdering pins C8: Regions sorted by region ID and
 // Doorways sorted by connection ID, regardless of declaration order —
 // validAtlasOrderingSetup declares both scrambled.
 func (s *EncounterTestSuite) TestAtlasDeterministicOrdering() {
@@ -171,12 +179,12 @@ func (s *EncounterTestSuite) TestAtlasDeterministicOrdering() {
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
 
-	gotRoomIDs := make([]string, len(atlas.Rooms))
-	for i, r := range atlas.Rooms {
-		gotRoomIDs[i] = r.ID
+	gotRegionIDs := make([]encounter.RegionID, len(atlas.Regions))
+	for i, r := range atlas.Regions {
+		gotRegionIDs[i] = r.ID
 	}
-	s.Require().Equal([]string{"atlas-r1", "atlas-r2", "atlas-r3", "atlas-r4"}, gotRoomIDs,
-		"Rooms must be sorted by ID regardless of declaration order")
+	s.Require().Equal([]encounter.RegionID{"atlas-r1", "atlas-r2", "atlas-r3", "atlas-r4"}, gotRegionIDs,
+		"Regions must be sorted by ID regardless of declaration order")
 
 	gotConnIDs := make([]string, len(atlas.Doorways))
 	for i, d := range atlas.Doorways {
@@ -186,23 +194,26 @@ func (s *EncounterTestSuite) TestAtlasDeterministicOrdering() {
 		"Doorways must be sorted by connection ID regardless of declaration order")
 }
 
-// TestAtlasRoomCellsAndOccludersAreAbsolute pins exact absolute values —
+// TestAtlasRegionOccludersAndBoundariesAreAbsolute pins exact absolute values —
 // local cell + Origin, element-wise — and would die under a sign-flipped
-// Add-vs-Subtract mutant inside Atlas itself (distinct from the same
-// mutant inside Absolute/Locate, pinned separately). Also pins
-// AtlasBoundary's absolute projection (#929 hardening round A): both
-// endpoints offset by Origin, independently — a mutant that projects only
-// From, or swaps From/To, changes one or both expected values here.
-func (s *EncounterTestSuite) TestAtlasRoomCellsAndOccludersAreAbsolute() {
+// Add-vs-Subtract mutant inside Atlas itself. Also pins AtlasBoundary's
+// absolute projection (#929 hardening round A): both endpoints offset by
+// Origin, independently — a mutant that projects only From, or swaps From/To,
+// changes one or both expected values here.
+//
+// The region's own footprint is pinned beside it through RegionAt rather than
+// through an enumerated cell list (rpg-toolkit#1108): the anchor and span the
+// region reports have to mean the cells it actually holds.
+func (s *EncounterTestSuite) TestAtlasRegionOccludersAndBoundariesAreAbsolute() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
 
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
 
-	var r1 encounter.AtlasRoom
+	var r1 encounter.AtlasRegion
 	found := false
-	for _, r := range atlas.Rooms {
+	for _, r := range atlas.Regions {
 		if r.ID == "atlas-r1" {
 			r1 = r
 			found = true
@@ -210,15 +221,24 @@ func (s *EncounterTestSuite) TestAtlasRoomCellsAndOccludersAreAbsolute() {
 	}
 	s.Require().True(found, "atlas-r1 must be present")
 
-	s.Require().Contains(r1.Cells, spatial.Position{X: 0, Y: 7}, "local (0,0) projected through Origin")
-	s.Require().Contains(r1.Cells, spatial.Position{X: 3, Y: 9}, "local (3,2), the far corner, projected through Origin")
+	s.Require().Equal(spatial.Position{X: 0, Y: 7}, r1.Origin, "the region's anchor is where its local (0,0) landed")
 	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders, "occluder must be offset by Origin too")
 
-	// #929 T3 fix round item 3: an occluder's cell is floor AND blockage —
-	// it must appear in BOTH Cells and Occluders (ruling 1: occlusion is
-	// walkability, not ownership). This is the property hosts actually
-	// render by: floor from Cells, blockage layered from Occluders.
-	s.Require().Contains(r1.Cells, spatial.Position{X: 1, Y: 8}, "an occluded cell is still floor — it must appear in Cells too")
+	// The span means cells: local (0,0) and the far corner local (3,2) are
+	// both this region's, in absolute space, and RegionAt is what says so.
+	for _, cell := range []spatial.Position{{X: 0, Y: 7}, {X: 3, Y: 9}} {
+		got, owned := enc.RegionAt(cell)
+		s.Require().True(owned, "cell %v is floor", cell)
+		s.Require().Equal(encounter.RegionID("atlas-r1"), got, "cell %v", cell)
+	}
+
+	// #929 T3 fix round item 3: an occluder's cell is floor AND blockage
+	// (ruling 1: occlusion is walkability, not ownership). This is the
+	// property hosts render by — floor from the region's span, blockage
+	// layered from Occluders — and RegionAt is where it is now visible.
+	got, owned := enc.RegionAt(spatial.Position{X: 1, Y: 8})
+	s.Require().True(owned, "an occluded cell is still floor")
+	s.Require().Equal(encounter.RegionID("atlas-r1"), got)
 
 	// #929 hardening round A: local (0,0)-(1,0) projected through Origin
 	// (0,7) — BOTH endpoints offset, flags carried through unchanged.
@@ -283,15 +303,12 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 	atlas1, err := enc.Atlas()
 	s.Require().NoError(err)
 
-	for i := range atlas1.Rooms {
-		for j := range atlas1.Rooms[i].Cells {
-			atlas1.Rooms[i].Cells[j] = spatial.Position{X: -999, Y: -999}
+	for i := range atlas1.Regions {
+		for j := range atlas1.Regions[i].Occluders {
+			atlas1.Regions[i].Occluders[j] = spatial.Position{X: -999, Y: -999}
 		}
-		for j := range atlas1.Rooms[i].Occluders {
-			atlas1.Rooms[i].Occluders[j] = spatial.Position{X: -999, Y: -999}
-		}
-		for j := range atlas1.Rooms[i].Boundaries {
-			atlas1.Rooms[i].Boundaries[j] = encounter.AtlasBoundary{
+		for j := range atlas1.Regions[i].Boundaries {
+			atlas1.Regions[i].Boundaries[j] = encounter.AtlasBoundary{
 				From: spatial.Position{X: -999, Y: -999}, To: spatial.Position{X: -999, Y: -999},
 			}
 		}
@@ -304,16 +321,14 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 	atlas2, err := enc.Atlas()
 	s.Require().NoError(err)
 
-	var r1 encounter.AtlasRoom
-	for _, r := range atlas2.Rooms {
+	var r1 encounter.AtlasRegion
+	for _, r := range atlas2.Regions {
 		if r.ID == "atlas-r1" {
 			r1 = r
 		}
 	}
 	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders,
 		"mutating the first snapshot's Occluders must not corrupt internal state")
-	s.Require().Contains(r1.Cells, spatial.Position{X: 0, Y: 7},
-		"mutating the first snapshot's Cells must not corrupt internal state")
 	s.Require().Equal(spatial.Position{X: 3, Y: 8}, atlas2.Doorways[0].FromCell,
 		"mutating the first snapshot's Doorways must not corrupt internal state")
 	s.Require().Equal([]encounter.AtlasBoundary{
@@ -327,17 +342,13 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 // encounter's Atlas, captured before ToData/LoadEncounter and again after,
 // must be deep-equal (#929 T3 fix round item 2).
 //
-// This proves Cells ordering is DETERMINISTIC across a reload — not that
-// the order is any PARTICULAR order (#929 hardening round, test-gap
-// closure item 2 — corrects this comment's earlier "including Cells
-// ordering" claim, which overclaimed what a same-enumerator comparison
-// can show): both atlas1 and atlas2 are produced by calling the exact
-// SAME atlasCells enumerator, so a mutant that reordered atlasCells
-// itself (e.g. swapping its Q-outer/R-inner nesting to R-outer/Q-inner)
-// would reorder BOTH calls identically and still pass here. The exact,
-// intended order is pinned separately, against a hand-computed fixture
-// independent of atlasCells' own implementation, by
-// TestAtlasCellsExactOrder.
+// What it can show is that a reload changes NOTHING the Atlas reports — every
+// region's anchor, span, occluders and walls, and every doorway's endpoints,
+// come back identical. It cannot show that any of them is the INTENDED value,
+// since both sides are produced by the same code from the same construction
+// data; the intended values are pinned against hand-computed fixtures by
+// TestAtlasRegionOccludersAndBoundariesAreAbsolute and
+// TestAtlasDoorwaysAreAbsolute.
 func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 	enc1, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
@@ -353,44 +364,20 @@ func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 	atlas2, err := enc2.Atlas()
 	s.Require().NoError(err)
 
-	s.Require().Equal(atlas1, atlas2, "Atlas must be identical after a ToData/LoadEncounter round trip — deterministic, though this alone cannot prove the order is the INTENDED one (see TestAtlasCellsExactOrder)")
+	s.Require().Equal(atlas1, atlas2, "Atlas must be identical after a ToData/LoadEncounter round trip")
 }
 
-// TestAtlasCellsExactOrder pins atlasCells' Q-outer/R-inner nesting order
-// exactly, against a fixture independent of atlasCells' own
-// implementation (#929 hardening round, test-gap closure item 2):
-// TestAtlasCellsMatchIsValidPosition only proves SET membership (both
-// sides are compared as maps), and TestAtlasIdenticalAfterReload only
-// proves the SAME enumerator is deterministic across two calls — neither
-// can catch a reordering that both calls agree on, such as swapping
-// atlasCells' outer/inner loop nesting. A small, hand-computed 2x3
-// square room (Origin zero, so absolute == local) makes the full
-// expected order easy to verify by inspection: Q outer over X∈[0,1], R
-// inner over Y∈[0,2].
-func (s *EncounterTestSuite) TestAtlasCellsExactOrder() {
-	enc, err := encounter.NewEncounter(singleRoomSetup(spatial.GridShapeSquare, 2, 3))
-	s.Require().NoError(err)
-
-	atlas, err := enc.Atlas()
-	s.Require().NoError(err)
-	s.Require().Len(atlas.Rooms, 1)
-
-	s.Require().Equal([]spatial.Position{
-		{X: 0, Y: 0}, {X: 0, Y: 1}, {X: 0, Y: 2},
-		{X: 1, Y: 0}, {X: 1, Y: 1}, {X: 1, Y: 2},
-	}, atlas.Rooms[0].Cells, "atlasCells must iterate Q (X) outer, R (Y) inner, in exactly this order")
-}
-
-// TestChamberOwnershipAtKissingDoorway pins the case that makes W2's
+// TestRegionOwnershipAtKissingDoorway pins the case that makes W2's
 // uniqueness meaningful: each doorway cell — immediately adjacent to a cell in
-// the OTHER chamber — belongs to its OWN chamber, not its neighbour's.
+// the OTHER region — belongs to its OWN region, not its neighbour's.
 //
 // It used to ask the Locate bridge, which is gone. The question survives it,
 // and it is asked the way it is asked now: a member standing on a cell is
-// reported in the chamber whose authored footprint holds it (rpg-toolkit#1106).
+// reported in the region whose cell set holds it (rpg-toolkit#1106, #1108).
 // The two members here stand one cell apart, on opposite sides of a doorway —
-// exactly the pair a room-membership answer has to get right.
-func (s *EncounterTestSuite) TestChamberOwnershipAtKissingDoorway() {
+// exactly the pair a membership answer has to get right, and the doorway
+// decision [Encounter.RegionAt] documents, seen from the roster.
+func (s *EncounterTestSuite) TestRegionOwnershipAtKissingDoorway() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
 
@@ -402,21 +389,21 @@ func (s *EncounterTestSuite) TestChamberOwnershipAtKissingDoorway() {
 		Member: "far", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 4, Y: 8}})
 	s.Require().NoError(err)
 
-	rooms := map[encounter.MemberID]string{}
+	regions := map[encounter.MemberID]encounter.RegionID{}
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	for _, m := range members {
-		rooms[m.ID] = m.Room
+		regions[m.ID] = m.Region
 	}
-	s.Require().Equal("atlas-r1", rooms["near"], "the doorway cell in atlas-r1 belongs to atlas-r1, not atlas-r2")
-	s.Require().Equal("atlas-r2", rooms["far"], "the doorway cell in atlas-r2 belongs to atlas-r2, not atlas-r1")
+	s.Require().Equal(encounter.RegionID("atlas-r1"), regions["near"], "the doorway cell in atlas-r1 belongs to atlas-r1, not atlas-r2")
+	s.Require().Equal(encounter.RegionID("atlas-r2"), regions["far"], "the doorway cell in atlas-r2 belongs to atlas-r2, not atlas-r1")
 }
 
 // TestAnOccludedCellIsStillFloor pins ruling 1 in the terms that survive the
 // bridges: occlusion is walkability, not ownership. A member standing on an
-// occluder's own cell is reported in the chamber that owns it, exactly as one
-// on an empty cell is — the Atlas already reports occluders as a SUBSET of
-// Cells (TestAtlasRoomCellsAndOccludersAreAbsolute), and this is the runtime
+// occluder's own cell is reported in the region that owns it, exactly as one on
+// an empty cell is — RegionAt names an occluded cell like any other
+// (TestAtlasRegionOccludersAndBoundariesAreAbsolute), and this is the runtime
 // half of the same claim.
 func (s *EncounterTestSuite) TestAnOccludedCellIsStillFloor() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
@@ -431,7 +418,7 @@ func (s *EncounterTestSuite) TestAnOccludedCellIsStillFloor() {
 	s.Require().NoError(err)
 	for _, m := range members {
 		if m.ID == "onTheRubble" {
-			s.Require().Equal("atlas-r1", m.Room)
+			s.Require().Equal(encounter.RegionID("atlas-r1"), m.Region)
 			s.Require().Equal(spatial.Position{X: 1, Y: 8}, m.Position)
 			return
 		}
