@@ -56,7 +56,7 @@ func TestAtlasReportsRegionsWithoutEnumeratingThem(t *testing.T) {
 
 	t.Run("and reporting them costs O(regions), not O(cells)", func(t *testing.T) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: budgetField(),
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Room: "a", Position: spatial.Position{X: 1, Y: 1}},

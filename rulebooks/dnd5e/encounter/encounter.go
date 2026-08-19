@@ -114,6 +114,11 @@ type Encounter struct {
 	// [Standing] for why it is asked rather than remembered, and why there is
 	// no default answer.
 	standing Standing
+
+	// sight reports how far each member can see. Required at both constructors
+	// — see [Sight] for why it is asked at every refresh rather than held, and
+	// why there is no default.
+	sight Sight
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Step, Join) declaration order is
@@ -1089,6 +1094,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoStanding)
 	}
 
+	// Required for the third time, at the same door and by the same law: the
+	// sight consult runs at every refresh including first light, so an
+	// encounter that cannot ask how far its members can see cannot build a
+	// percept at all. Never defaulted — a number meaning "everyone sees this
+	// far" is a rule 5e does not have, since sight is per-creature and
+	// per-light-source (rpg-toolkit#1033, rpg-toolkit#1111).
+	if in.Sight == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoSight)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -1170,6 +1185,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		roomGrids:        roomGrids,
 		initiative:       in.Initiative,
 		standing:         in.Standing,
+		sight:            in.Sight,
 		endings:          nil,
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
@@ -1621,16 +1637,19 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 // no clock advance, no moves, no record entries.
 //
 // WHAT PUMP DRIVES IN v1, stated plainly because the answer narrowed: members
-// on the WORLD clock. Under v1's sight model (rpg-toolkit#964) any monster a
-// player can see is in a bubble, and a bubble member is deliberately not
-// pumped — so in practice this verb moves the monsters NOBODY HAS SEEN YET.
+// on the WORLD clock. A bubble member is deliberately not pumped, and under
+// v1's sight model (rpg-toolkit#964) any monster a player could see was in a
+// bubble — so in practice this verb moved the monsters NOBODY HAD SEEN YET.
 // Free-roam monster behaviour is offscreen behaviour.
 //
-// That is a narrowing rather than the intent. It widens back when percept
-// production grows: asymmetric perception (#1020) lets a monster be watched
-// without a fight starting, and a faction model lets a visible creature be
-// non-hostile. Both change what forms a bubble, not what Pump does — see
-// classify's doc for the invariant. Pinned by
+// That was a narrowing rather than the intent, and it has started widening
+// back exactly where classify's doc said it would: in how percepts are
+// PRODUCED. rpg-toolkit#1111's per-member sight range makes the drop real, so
+// a monster CAN now be watched by a player it cannot see back without a fight
+// starting — and it keeps being pumped while that is true. #1020 widens it
+// further, and a faction model lets a visible creature be non-hostile. All of
+// them change what forms a bubble, not what Pump does — see classify's doc for
+// the invariant. Pinned by
 // TestPumpStopsMovingAMonsterOnceSeen.
 //
 // Semantics:
@@ -1945,6 +1964,17 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 	clockReading := uint64(clockReadingInt)
 	deltas := make(map[MemberID]*intel.SurveilOutput)
 
+	// Asked ONCE per refresh and never carried between them — see [Sight] for
+	// why remembering the answer would be the smallest possible version of the
+	// dual state the capability exists to avoid. Asked BEFORE the loop rather
+	// than inside it so that every observer in one refresh is bounded by the
+	// same reading of the world (C8), and so that a rulebook is consulted once
+	// per pass rather than once per member.
+	reach, err := e.sightNow()
+	if err != nil {
+		return nil, err
+	}
+
 	for _, observerID := range observers {
 		if _, ok := e.members[observerID]; !ok {
 			continue // Skip if not found
@@ -1965,28 +1995,27 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 		// express (rpg-toolkit#1105/#1106). With one canvas and real walls it
 		// has nothing left to say, so it is gone and the geometry answers.
 		//
-		// NOTHING BOUNDS SIGHT BY DISTANCE YET, and that is a known gap rather
-		// than an oversight — measured, not guessed. The reference tomb ships
-		// with every doorway on one row (dungeonspec puts them at
-		// height/2), so its longest unobstructed sightline runs 29 cells,
-		// 145 feet, from the entrance to the far wall of the tomb; the
-		// skeleton-captain can see six of the entrance's forty-eight cells,
-		// from 100 to 125 feet away. Sight forms a bubble, so that is a FIGHT
-		// at 125 feet, in which neither side can move — there is no in-fight
-		// movement verb yet.
+		// AND BOUNDED BY A DISTANCE THIS MODULE WAS TOLD (rpg-toolkit#1111).
+		// The room label was quietly doing that job too: with it gone, the
+		// reference tomb's longest unobstructed run — three doorways on one
+		// row, 27 cells, 135 feet — was a sighting, and a sighting forms a
+		// fight. What was missing there was never a number this module could
+		// pick. It was a LIGHT model, and light is per-creature and
+		// per-light-source: the dwarf with darkvision and the human holding
+		// her torch answer differently on the same cell.
 		//
-		// What is missing there is a LIGHT model, not a range term. That
-		// sightline is a genuinely unobstructed run down three aligned
-		// doorways, and seeing along it is correct; what a crypt denies you is
-		// illumination, which this composition has never modelled. A distance
-		// cutoff would paper over that with a number instead of naming it.
+		// So the term is SUPPLIED, and supplied per member. [Sight] is asked
+		// how far each of them can see, this refresh, and the answer bounds
+		// what lands in the percept. The light model 5e states arrives later
+		// as a better ANSWER — with nothing here moving — which is exactly the
+		// promise [Standing] makes about hit points.
 		//
-		// So the range term is rpg-toolkit#1105's remaining half, and it lands
-		// with the caller that supplies it rather than as a default this module
-		// would be inventing (the argument [Standing] makes about answers this
-		// module is not allowed to decide for itself). Sight the other way is
-		// already better than it was: a member 35 feet down the hall is
-		// visible now, and was invisible under the room label.
+		// Two members can answer differently, so A may see B without B seeing
+		// A. That asymmetry is real and it is NOT rpg-toolkit#1020: geometry
+		// stays mutual (spatial v0.9.1 pins it), and what differs is reach.
+		// What it does do is give [Encounter.classify]'s spotted and drop arms
+		// their first producible input, and 5e surprise with them, without
+		// changing a line of how percepts are CONSUMED.
 		var percept []intel.Report
 		for _, otherMember := range e.members {
 			if otherMember.ID == observerID {
@@ -1996,6 +2025,15 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 			otherCell, ok := e.canvas.GetEntityPosition(string(otherMember.ID))
 			if !ok {
 				continue // Not placed
+			}
+
+			// Too far BEFORE blocked: both filters are geometric, and this
+			// one is arithmetic while the next one walks a ray. Order is a
+			// cost decision, not a correctness one — either filter alone
+			// drops the subject. Strictly greater, because a member exactly
+			// at the edge of your sight is inside it.
+			if e.canvas.GetGrid().Distance(observerCell, otherCell) > float64(reach[observerID]) {
+				continue // Beyond how far this observer can see
 			}
 
 			if e.canvas.IsLineOfSightBlocked(observerCell, otherCell) {
@@ -2011,14 +2049,14 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 		}
 
 		// Surveil with the complete percept and current clock reading
-		out, err := e.intelLog.Surveil(&intel.SurveilInput{
+		out, serr := e.intelLog.Surveil(&intel.SurveilInput{
 			Observer: observerID,
 			Channel:  intel.Sight,
 			Percept:  percept,
 			At:       clockReading,
 		})
-		if err != nil {
-			return nil, fmt.Errorf("refreshsight surveil: %w", err)
+		if serr != nil {
+			return nil, fmt.Errorf("refreshsight surveil: %w", serr)
 		}
 		deltas[observerID] = out
 	}

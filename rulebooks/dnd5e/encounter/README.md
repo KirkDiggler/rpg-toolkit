@@ -154,7 +154,7 @@ behavior that decides *what to do to someone* is not.
 
 ## Capabilities you must supply
 
-Two, both **required at `NewEncounter` and `LoadEncounter`**, both refused at
+Three, all **required at `NewEncounter` and `LoadEncounter`**, all refused at
 construction rather than guarded later:
 
 ```go
@@ -165,12 +165,34 @@ type InitiativeRoller interface {  // what order a fight goes in
 type Standing interface {          // who is down
     Standing(members []MemberID) (down []MemberID, err error)
 }
+
+type Sight interface {             // how far each member can see, in cells
+    Sight(members []MemberID) (map[MemberID]int, error)
+}
 ```
 
-They are the same move. This module cannot import the rulebook, so randomness
-and hit points are facts it **asks for**. Neither has a default: a nil meaning
-"unshuffled" or "everybody is fine" would be the composition deciding a rule it
-is not allowed to know.
+They are the same move. This module cannot import the rulebook, so randomness,
+hit points and light are facts it **asks for**. None has a default: a nil
+meaning "unshuffled", "everybody is fine" or "everyone sees this far" would be
+the composition deciding a rule it is not allowed to know — and the last of
+those three is a rule 5e does not even have, since sight is per-creature and
+per-light-source.
+
+`Sight` answers in **cells**, not feet. Cells are the only distance this module
+has; "a square is five feet" is a 5e rule, so 60-foot darkvision is `12` and the
+division is yours. Today an implementation may answer the same number for
+everybody — what is load-bearing is that the SHAPE is per member, so the real
+light model (bright, dim, dark, darkvision, blindness) lands later as a better
+**answer** rather than as a new mechanism.
+
+Two members answering differently is the point, and it means **A can see B
+without B seeing A**. Geometry stays mutual — `spatial` pins line of sight as a
+law — and what differs is reach. That is what makes 5e surprise producible: a
+monster with darkvision spots a player whose torch does not reach it, the bubble
+forms, and the player is in it unaware. This is not stealth
+([#1020](https://github.com/KirkDiggler/rpg-toolkit/issues/1020)), which
+contests whether an observer's percept holds a subject in plain view; it rides
+the same seam and neither has to know the other exists.
 
 `Standing` is a **pull**. Nothing pushes a death in, and nothing here remembers
 one — the composition asks at the choke point where it already asks about sight,
@@ -193,6 +215,7 @@ other caller of the consult is a verb looking at a world something else changed.
 | `decider.go` | `Decider`, `Snapshot`, `Intent` and its three implementations |
 | `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
 | `standing.go` | `Standing`, and the world noticing who is down |
+| `sight.go` | `Sight`, and how far each member can see this refresh |
 | `step.go` | one step on the map, and the one place that decides what one is |
 | `atlas.go` | the map reads — `Atlas` (every region's anchor and span, in absolute space) and `Grid` |
 | `region.go` | a room is a region: `RegionAt`, `MembersIn`, and the one ownership lookup |

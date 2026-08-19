@@ -416,6 +416,12 @@ type LoadEncounterInput struct {
 	// so a blob that comes back without one is as unusable as a Setup without
 	// one. Refused at the door, never guarded at the use site.
 	Standing Standing
+
+	// Sight reports how far each member can see, in cells. REQUIRED, exactly as
+	// it is on SetupInput: a loaded encounter consults it on its first sight
+	// refresh, so a blob that comes back without one is as unusable as a Setup
+	// without one. Refused at the door, never guarded at the use site.
+	Sight Sight
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -435,6 +441,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Standing == nil {
 		return fmt.Errorf("load encounter: Standing is required: %w", ErrNoStanding)
+	}
+	if in.Sight == nil {
+		return fmt.Errorf("load encounter: Sight is required: %w", ErrNoSight)
 	}
 
 	return nil
@@ -797,6 +806,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		deciders:    make(map[MemberID]Decider),
 		initiative:  input.Initiative,
 		standing:    input.Standing,
+		sight:       input.Sight,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),

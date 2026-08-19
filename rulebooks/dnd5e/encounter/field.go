@@ -261,6 +261,15 @@ type SetupInput struct {
 	// standing" would be this module deciding a rule it is not allowed to know.
 	Standing Standing
 
+	// Sight reports how far each member can see, in cells (rpg-toolkit#1111).
+	// REQUIRED, for the same reason Standing is: the consult runs at every
+	// sight refresh including first light, so an encounter that cannot ask
+	// cannot build a percept. Refused at construction (ErrNoSight). There is no
+	// default — a number meaning "everyone sees this far" would be this module
+	// inventing a rule 5e does not have, since sight is per-creature and
+	// per-light-source.
+	Sight Sight
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.

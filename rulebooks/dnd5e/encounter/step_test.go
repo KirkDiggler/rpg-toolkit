@@ -101,7 +101,7 @@ func stepField() encounter.FieldInput {
 // the only thing that happens.
 func (s *StepSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -357,7 +357,7 @@ func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
 // "nobody has seen anybody".
 func (s *StepSuite) sceneWithMonster(at spatial.Position, decider encounter.Decider) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
@@ -388,7 +388,7 @@ func (s *StepSuite) whereIn(enc *encounter.Encounter, id encounter.MemberID) spa
 func (s *StepSuite) TestAStepFiresAReachedPositionEnding() {
 	target := spatial.Position{X: 4, Y: 2}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -412,7 +412,7 @@ func (s *StepSuite) TestAStepFiresAReachedPositionEnding() {
 // against where the member landed, not where they left.
 func (s *StepSuite) TestACrossingFiresAReachedPositionEndingOnTheFarSide() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -476,7 +476,7 @@ func (s *StepSuite) TestAStepRefusesAClosedEncounter() {
 func (s *StepSuite) TestAStepRefusesAFightMember() {
 	// In sight of each other from first light, which starts the fight.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -512,7 +512,7 @@ func (s *StepSuite) TestGridReportsTheFieldsFamily() {
 // square case.
 func (s *StepSuite) TestGridReportsAHexFieldAsHex() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
 			{ID: stepWest, Width: 6, Height: 6, Grid: spatial.GridShapeHex,
 				Origin: stepWestOrigin},

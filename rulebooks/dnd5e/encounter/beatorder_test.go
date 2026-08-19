@@ -77,7 +77,7 @@ func (s *BeatOrderTestSuite) beatKinds(enc *encounter.Encounter, audience encoun
 // that has not opened yet.
 func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
 		Members: []encounter.MemberInput{
 			// Both clear of the wall's span: they see each other at first light.
@@ -99,7 +99,7 @@ func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 // and the story cannot tell this step apart from any other (rpg-toolkit#1106).
 func (s *BeatOrderTestSuite) TestAStepThroughADoorwayBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
@@ -198,7 +198,7 @@ func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encount
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{wallRoom()}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 6, Y: 2}},

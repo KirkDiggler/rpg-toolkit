@@ -28,7 +28,7 @@ import (
 // save. With it, the defect is loud: ErrInvalidData, never a guess.
 func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: FieldInput{
 			Rooms: []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -71,7 +71,7 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: FieldInput{Rooms: []RoomInput{
 				{ID: "r1", Width: 8, Height: 8, Boundaries: sealedSeam(7, 8)},
 				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},

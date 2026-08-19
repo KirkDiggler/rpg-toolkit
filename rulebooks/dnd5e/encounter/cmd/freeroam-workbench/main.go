@@ -88,7 +88,7 @@ func goblinPatrol() *patrol {
 // someone launches the workbench by hand.
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
+		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{
@@ -524,7 +524,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -588,4 +588,34 @@ type rollAllStanding struct{}
 
 func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
 	return nil, nil
+}
+
+// torchAndDarkvision is the workbench's Sight capability, and it is the one
+// place in this module where the capability answers something a rulebook would
+// actually say (rpg-toolkit#1111).
+//
+// The party carries a torch: 40 feet of light, bright then dim, which is 8
+// cells. The goblin has darkvision: 60 feet, which is 12. Nothing about the
+// composition knows either of those sentences — it asks, and gets two numbers
+// — which is exactly the promise the capability makes. Swap this type for one
+// that reads a character sheet and the workbench gets a real light model with
+// no other line changing.
+//
+// The asymmetry is the demo. Walk the party far enough down the crypt and the
+// goblin sees them from a distance they cannot see back from: the bubble forms
+// spotted, and they enter it surprised.
+type torchAndDarkvision struct{}
+
+func (torchAndDarkvision) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	reach := make(map[encounter.MemberID]int, len(members))
+	for _, id := range members {
+		if id == "goblin" {
+			reach[id] = 12 // 60 feet of darkvision
+
+			continue
+		}
+		reach[id] = 8 // 40 feet of torchlight
+	}
+
+	return reach, nil
 }

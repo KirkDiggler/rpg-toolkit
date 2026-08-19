@@ -88,7 +88,7 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field:   arrivalField(),
 		Members: members,
 		Endings: []encounter.EndingInput{

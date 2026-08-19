@@ -45,25 +45,37 @@ const (
 	// decides in free roam — back away, sneak, or approach — with attacking
 	// from here counting as initiation.
 	//
-	// UNREACHABLE TODAY, and deliberately kept. Sight is symmetric: every
-	// percept is built from IsLineOfSightBlocked with no facing, stealth or
-	// perception input, and that predicate is symmetric BY LAW as of
-	// rpg-toolkit#1022 — spatial pins it as a property over fuzzed rooms in
-	// every grid family. So if the player sees the wolf, the wolf sees the
-	// player, and this case has no producible input.
+	// REACHABLE AS OF rpg-toolkit#1111, and it was not before — this comment
+	// said UNREACHABLE for three waves and had earned it.
 	//
-	// It was briefly reachable and nobody meant it to be, which is why the law
-	// exists: sight used to be one rasterized line, and Bresenham chose
-	// different cells by direction on square grids, so a wall corner could
-	// hide a player from a monster it did not hide the monster from. A
-	// one-sided ambush earned by ray-rounding rather than by anything in the
-	// fiction. Fixed in spatial v0.9.1, and asymmetry now arrives only where
-	// it is designed to.
+	// A percept is built from TWO filters, and only one of them is mutual.
+	// The geometric one is: IsLineOfSightBlocked takes no facing, stealth or
+	// perception input, and spatial pins it as mutual over fuzzed rooms in
+	// every grid family (rpg-toolkit#1022). It still is, and this slice did
+	// not touch it. The other is REACH, and it is per observer as of
+	// rpg-toolkit#1111 — see [Sight].
 	//
-	// rpg-toolkit#1020 is that design and the prerequisite that makes this arm
-	// real. It stays because it is the documented shape rather than dead
-	// ceremony — what is NOT here is any behavior hanging off it, because
-	// unbuilt beats built-and-dead.
+	// While reach was the same for everybody, both filters were mutual, so
+	// "the player sees the wolf" and "the wolf sees the player" were one
+	// sentence and this arm had no producible input. They are two sentences
+	// now: the player with the lantern sees the wolf that cannot see her back,
+	// through geometry that is as mutual as it ever was.
+	//
+	// It was briefly reachable BY ACCIDENT before that, and nobody meant it to
+	// be, which is why the geometric law exists: sight used to be one
+	// rasterized line, and Bresenham chose different cells by direction on
+	// square grids, so a wall corner could hide a player from a monster it did
+	// not hide the monster from. A one-sided ambush earned by ray-rounding
+	// rather than by anything in the fiction. Fixed in spatial v0.9.1, and
+	// asymmetry now arrives only where it is designed to — which is what
+	// rpg-toolkit#1111 is, and rpg-toolkit#1020 after it.
+	//
+	// WHAT IS STILL NOT HERE is any behaviour hanging off it. The
+	// classification is correct and nothing acts on it: no bubble forms, which
+	// is the right answer by itself — a creature that did not notice you starts
+	// no fight. The walk-stop and the choice it offers stay unbuilt, because
+	// the SHAPE of that offer is rpg-toolkit#1020's design and guessing it here
+	// would be the built-and-wrong this comment has always preferred to avoid.
 	contactDrop
 
 	// contactSpotted: the monster saw the player and the player did not see
@@ -99,12 +111,20 @@ type trigger struct {
 // written against asymmetric sight and does not move again. That is what makes
 // the next two versions cheap.
 //
-// v1, WHICH IS WHAT THIS IS: sight is symmetric line-of-sight, so any first
-// contact forms the bubble and the drop case has no producible input. Surprise
-// is computed correctly and is always empty, for the same reason — everyone
-// sees everyone, so nobody is unaware. Honest option C under B-prime's design,
-// not a compromise: the machinery is the permanent part and the percepts are
-// the part that grows.
+// v1 WAS symmetric line-of-sight, so any first contact formed the bubble, the
+// drop case had no producible input, and surprise — computed correctly the
+// whole time — was always empty, because everyone saw everyone and nobody could
+// be unaware. Honest option C under B-prime's design, not a compromise: the
+// machinery is the permanent part and the percepts are the part that grows.
+//
+// v1.5 IS WHAT THIS IS, and it is the invariant collecting. rpg-toolkit#1111
+// gave sight a distance term supplied PER MEMBER, so two observers can answer
+// differently: a monster with darkvision sees a player whose torch does not
+// reach it. Spotted and drop have inputs, and 5e surprise is producible and
+// real. NOT ONE LINE BELOW MOVED — the four-case table, the precedence law,
+// transition-only induction and awareness-based surprise were all written
+// against asymmetric sight, and they simply started firing. Pinned by
+// TestTheFarSightedSpotTheShortSightedAndSurpriseThem.
 //
 // THAT CLAIM WAS FALSE WHEN IT WAS FIRST WRITTEN, and the correction is worth
 // keeping rather than quietly editing away. Sight was symmetric by intent and
@@ -238,10 +258,12 @@ func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput, down map[
 		return e.formation(engaged, down)
 	}
 
-	// The drop arm classifies and then does nothing, because nothing can reach
-	// it (rpg-toolkit#1020) and a walk-stop built against an unreachable case
-	// would be untestable behavior shipped on faith. When #1020 lands, this is
-	// where the early stop attaches.
+	// The drop arm classifies and then does nothing. It is reachable now
+	// (rpg-toolkit#1111 — see contactDrop), and doing nothing is still the
+	// right amount: no bubble forms, which is correct on its own, and the
+	// walk-stop's shape — where the walk ends and what the player is offered —
+	// is rpg-toolkit#1020's design rather than something to guess here. When
+	// #1020 lands, this is where the early stop attaches.
 	_, _ = drops, dropBy
 
 	return &trigger{}, nil
