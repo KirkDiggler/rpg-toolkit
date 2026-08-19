@@ -1993,11 +1993,27 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 		// has nothing left to say, so it is gone and the geometry answers.
 		//
 		// NOTHING BOUNDS SIGHT BY DISTANCE YET, and that is a known gap rather
-		// than an oversight: the room label was doing that job too, badly. A
-		// real range term is rpg-toolkit#1105's remaining half, and it lands
+		// than an oversight — measured, not guessed. The reference tomb ships
+		// with every doorway on one row (dungeonspec puts them at
+		// height/2), so its longest unobstructed sightline runs 29 cells,
+		// 145 feet, from the entrance to the far wall of the tomb; the
+		// skeleton-captain can see six of the entrance's forty-eight cells,
+		// from 100 to 125 feet away. Sight forms a bubble, so that is a FIGHT
+		// at 125 feet, in which neither side can move — there is no in-fight
+		// movement verb yet.
+		//
+		// What is missing there is a LIGHT model, not a range term. That
+		// sightline is a genuinely unobstructed run down three aligned
+		// doorways, and seeing along it is correct; what a crypt denies you is
+		// illumination, which this composition has never modelled. A distance
+		// cutoff would paper over that with a number instead of naming it.
+		//
+		// So the range term is rpg-toolkit#1105's remaining half, and it lands
 		// with the caller that supplies it rather than as a default this module
 		// would be inventing (the argument [Standing] makes about answers this
-		// module is not allowed to decide for itself).
+		// module is not allowed to decide for itself). Sight the other way is
+		// already better than it was: a member 35 feet down the hall is
+		// visible now, and was invisible under the room label.
 		var percept []intel.Report
 		for _, otherMember := range e.members {
 			if otherMember.ID == observerID {
