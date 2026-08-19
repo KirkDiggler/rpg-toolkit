@@ -263,7 +263,7 @@ func TestTombWatch(t *testing.T) {
 			kind = encounter.KindMonster
 		}
 		sequelMembers = append(sequelMembers, encounter.MemberInput{
-			ID: mo.ID, Kind: kind, Room: mo.Room, Position: mo.Position,
+			ID: mo.ID, Kind: kind, Room: mo.Region, Position: mo.Position,
 		})
 	}
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{

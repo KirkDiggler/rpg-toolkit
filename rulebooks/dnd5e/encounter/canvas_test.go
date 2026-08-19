@@ -200,8 +200,8 @@ func (s *CanvasSuite) TestTheWallIsAnAbsoluteEdgeNotARoomsBusiness() {
 	s.Equal(tombAt(tombHallOrigin, 0, tombDoorRow-1), want.to, "the far endpoint is the HALL's cell")
 
 	var found bool
-	for _, room := range atlas.Rooms {
-		for _, b := range room.Boundaries {
+	for _, region := range atlas.Regions {
+		for _, b := range region.Boundaries {
 			if b.From == want.from && b.To == want.to {
 				found = true
 				s.True(b.BlocksLineOfSight)

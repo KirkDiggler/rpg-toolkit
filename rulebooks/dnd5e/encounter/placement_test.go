@@ -107,29 +107,21 @@ func (s *PlacementSuite) TestTheRosterSaysWhereEverybodyStands() {
 		"and for the other room's anchor too")
 }
 
-// TestTheRosterAgreesWithTheMap crosses the roster against the static map, the
-// two reads a client renders together. A member reported at a cell the Atlas
-// does not contain is a member drawn outside the room they are standing in.
+// TestTheRosterAgreesWithTheMap crosses the roster against the map, the two
+// reads a client renders together. A member reported at a cell no region holds
+// is a member drawn outside the chamber they are standing in, and a member
+// whose reported region disagrees with the cell under them is the dual state
+// deriving it was supposed to end.
 func (s *PlacementSuite) TestTheRosterAgreesWithTheMap() {
 	members, err := s.enc.Members()
 	s.Require().NoError(err)
 
-	atlas, err := s.enc.Atlas()
-	s.Require().NoError(err)
-
-	cells := map[spatial.Position]string{}
-	for _, room := range atlas.Rooms {
-		for _, cell := range room.Cells {
-			cells[cell] = room.ID
-		}
-	}
-
 	for _, member := range members {
-		owner, ok := cells[member.Position]
-		s.Require().True(ok, "%s stands at %v, which is not a cell of any room on the map",
+		owner, ok := s.enc.RegionAt(member.Position)
+		s.Require().True(ok, "%s stands at %v, which is not a cell of any region on the map",
 			member.ID, member.Position)
-		s.Equal(member.Room, owner, "%s is reported in %q but their cell belongs to %q",
-			member.ID, member.Room, owner)
+		s.Equal(member.Region, owner, "%s is reported in %q but their cell belongs to %q",
+			member.ID, member.Region, owner)
 	}
 }
 

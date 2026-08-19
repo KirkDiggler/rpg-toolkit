@@ -163,7 +163,7 @@ func worldGrid(data encounter.EncounterData, members []encounter.Member, room st
 	}
 	origin := roomOrigin(r)
 	for _, m := range members {
-		if m.Room != room {
+		if m.Region != room {
 			continue
 		}
 		local := m.Position.Subtract(origin)
@@ -308,6 +308,21 @@ func printStatus(enc *encounter.Encounter) {
 // own bounds (SquareGrid.Distance and AxialHexGrid.Distance's own
 // implementations), so any instance of the right family computes the
 // correct distance between two dungeon-absolute doorway cells (#929 T5).
+// regionExtent is the absolute rectangle a region covers, from the anchor and
+// span it reports — the arithmetic AtlasRegion's doc comment describes, which
+// is all the Atlas hands out now that it no longer enumerates cells
+// (rpg-toolkit#1108). Square regions start at their origin; hex spans are
+// origin-centred.
+func regionExtent(r encounter.AtlasRegion) (qMin, qMax, rMin, rMax float64) {
+	if r.Grid == spatial.GridShapeHex {
+		qMin = r.Origin.X - float64(r.Width/2)
+		rMin = r.Origin.Y - float64(r.Height/2)
+	} else {
+		qMin, rMin = r.Origin.X, r.Origin.Y
+	}
+	return qMin, qMin + float64(r.Width) - 1, rMin, rMin + float64(r.Height) - 1
+}
+
 func atlasDistanceGrid(family spatial.GridShape) spatial.Grid {
 	if family == spatial.GridShapeHex {
 		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 100000, SpanHeight: 100000})
@@ -328,18 +343,14 @@ func printAtlas(enc *encounter.Encounter) {
 		return
 	}
 	fmt.Println("  ATLAS — the dungeon in absolute space")
-	for _, r := range atlas.Rooms {
-		qMin, qMax, rMin, rMax := r.Cells[0].X, r.Cells[0].X, r.Cells[0].Y, r.Cells[0].Y
-		for _, c := range r.Cells {
-			qMin, qMax = min(qMin, c.X), max(qMax, c.X)
-			rMin, rMax = min(rMin, c.Y), max(rMax, c.Y)
-		}
-		fmt.Printf("    room %-10s origin (%g,%g)  %dx%d  absolute x:[%g,%g] y:[%g,%g]\n",
+	for _, r := range atlas.Regions {
+		qMin, qMax, rMin, rMax := regionExtent(r)
+		fmt.Printf("    region %-10s origin (%g,%g)  %dx%d  absolute x:[%g,%g] y:[%g,%g]\n",
 			r.ID, r.Origin.X, r.Origin.Y, r.Width, r.Height, qMin, qMax, rMin, rMax)
 	}
 	for _, d := range atlas.Doorways {
 		var family spatial.GridShape
-		for _, r := range atlas.Rooms {
+		for _, r := range atlas.Regions {
 			if r.ID == d.From {
 				family = r.Grid
 			}
@@ -364,8 +375,8 @@ const commands = `  step <name> <x> <y>   walk one cell (dungeon-absolute; the w
   exit <name>           a player heads back to town (carry-forward prints)
   end withdrew          the party calls the delve off (External ending)
   save <file> / load <file>   the ONE aggregate blob, round-tripped
-  atlas                 the dungeon in absolute space — rooms placed by
-                        origin, every doorway's kissing pair made visible
+  atlas                 the dungeon in absolute space — each region's anchor
+                        and span, every doorway's kissing pair made visible
   status | help | quit`
 
 func main() {
@@ -539,7 +550,7 @@ func showView(enc *encounter.Encounter, who core.EntityID) {
 	room := ""
 	for _, m := range members {
 		if m.ID == who {
-			room = m.Room
+			room = m.Region
 		}
 	}
 	if room == "" {

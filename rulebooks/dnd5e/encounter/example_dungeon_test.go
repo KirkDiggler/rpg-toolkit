@@ -55,18 +55,20 @@ func Example_theDungeon() {
 		return
 	}
 
-	// The static map, as construction truth: which cells each authored chamber
-	// claimed once it was placed, and where the doorway between them sits.
+	// The static map, as construction truth: where each authored chamber landed
+	// as a region, and where the doorway between them sits. A region says what
+	// it IS — anchor and span — rather than listing its cells; asking which
+	// region holds a particular cell is a question, not a list
+	// (rpg-toolkit#1108).
 	atlas, err := enc.Atlas()
 	if err != nil {
 		fmt.Println("atlas:", err)
 		return
 	}
 	fmt.Println("-- the map --")
-	for _, room := range atlas.Rooms {
-		first, last := room.Cells[0], room.Cells[len(room.Cells)-1]
-		fmt.Printf("%s: %d cells, (%g,%g) through (%g,%g)\n",
-			room.ID, len(room.Cells), first.X, first.Y, last.X, last.Y)
+	for _, region := range atlas.Regions {
+		fmt.Printf("%s: %dx%d, anchored at (%g,%g)\n",
+			region.ID, region.Width, region.Height, region.Origin.X, region.Origin.Y)
 	}
 	for _, d := range atlas.Doorways {
 		fmt.Printf("doorway %s: (%g,%g) -- (%g,%g), one cell apart\n",
@@ -82,7 +84,7 @@ func Example_theDungeon() {
 			return
 		}
 		for _, m := range members {
-			fmt.Printf("alice stands at (%g,%g), in the %s\n", m.Position.X, m.Position.Y, m.Room)
+			fmt.Printf("alice stands at (%g,%g), in the %s\n", m.Position.X, m.Position.Y, m.Region)
 		}
 	}
 
@@ -98,8 +100,8 @@ func Example_theDungeon() {
 
 	// Output:
 	// -- the map --
-	// hall: 64 cells, (0,0) through (7,7)
-	// vault: 64 cells, (8,0) through (15,7)
+	// hall: 8x8, anchored at (0,0)
+	// vault: 8x8, anchored at (8,0)
 	// doorway gate: (7,4) -- (8,4), one cell apart
 	// -- alice, at the threshold --
 	// alice stands at (7,4), in the hall

@@ -27,6 +27,12 @@ var (
 	// ErrNotMember is returned when an entity is not a member of this encounter.
 	ErrNotMember = errors.New("not a member")
 
+	// ErrNoRegion is returned when [Encounter.MembersIn] is asked about a
+	// region the field does not have. An EMPTY region is an ordinary answer —
+	// "nobody has reached the tomb yet" is a fact worth reporting — so a
+	// mistyped region name must not be able to say it (rpg-toolkit#1108).
+	ErrNoRegion = errors.New("no such region")
+
 	// ErrNoEnding is returned when Setup or Load is called with zero
 	// endings, a declared ending's key is empty or the reserved
 	// "abandoned", a declared ending's key duplicates an earlier one in

@@ -102,7 +102,18 @@
 //     the same vector — since a field's absolute frame only ever means
 //     "relative to the other rooms".
 //
-// Room and field size are allocation-bounded (a legal-but-absurd room or
-// field could otherwise demand an allocation Atlas cannot safely make);
-// see maxRoomCells/maxFieldCells for the exact figures and why.
+// A ROOM IS A REGION at runtime (#1108). Rooms remain how a dungeon is
+// AUTHORED — RoomInput, MemberInput.Room and TriggerReachedPosition.Room are
+// construction data and stay room-shaped — but what survives the compile onto
+// the canvas is a named set of cells: [Encounter.RegionAt] says which region
+// holds a cell, [Encounter.MembersIn] says who is standing in one, and
+// [Encounter.Atlas] reports each region's anchor and span instead of listing
+// its cells. Membership is DERIVED from a member's cell wherever it is
+// reported, never stored beside it.
+//
+// Room and field size are bounded (maxRoomCells/maxFieldCells): two individually
+// legal dimensions multiply into a cell count nothing could walk. The bound
+// guarded an Atlas allocation until #1108 stopped it enumerating; it now
+// guards the instruction a region report gives a host that wants the cells
+// itself. See maxRoomCells/maxFieldCells for the figures and the history.
 package encounter

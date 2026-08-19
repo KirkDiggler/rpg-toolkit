@@ -935,7 +935,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// blob written before the flip lands nowhere on today's shape and is
 		// refused by name rather than read in the wrong frame (see
 		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","room":"room1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -1559,9 +1559,9 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"member cell absent — the pre-#1106 room-local dialect", func(d *encounter.EncounterData) {
 			d.Members[0].Cell = nil
 		}, "before rpg-toolkit#1106", encounter.ErrBadPlacement},
-		{"member cell owned by no room", func(d *encounter.EncounterData) {
+		{"member cell owned by no region", func(d *encounter.EncounterData) {
 			d.Members[0].Cell = &encounter.PositionData{X: 99, Y: 99}
-		}, "owned by no room", encounter.ErrBadPlacement},
+		}, "owned by no region", encounter.ErrBadPlacement},
 		{"connection missing room", func(d *encounter.EncounterData) {
 			// FromPosition/ToPosition present (any value) so the ONLY
 			// defect this fixture carries is the unknown "to" room — #929
@@ -1624,20 +1624,20 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
 		}, "abandoned outcome with members", encounter.ErrNoMember},
-		{"outcome member room missing", func(d *encounter.EncounterData) {
+		// The "outcome member names a room the field does not have" case went
+		// with the field that carried it (rpg-toolkit#1108): the region is
+		// derived from the cell now, so the only way an outcome member can be
+		// somewhere impossible is by CELL, which is this case.
+		{"outcome member cell owned by no region", func(d *encounter.EncounterData) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
-				{ID: "ghost", Room: "nowhere", Cell: &encounter.PositionData{X: 1, Y: 1}}}}
-		}, "outcome member", encounter.ErrBadPlacement},
-		{"outcome member out of bounds", func(d *encounter.EncounterData) {
-			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
-				{ID: "p1", Room: "r1", Cell: &encounter.PositionData{X: 999, Y: 999}}}}
-		}, "out of bounds", encounter.ErrBadPlacement},
+				{ID: "p1", Cell: &encounter.PositionData{X: 999, Y: 999}}}}
+		}, "owned by no region", encounter.ErrBadPlacement},
 		{"outcome member missing cell", func(d *encounter.EncounterData) {
 			// Deletes the field from the wire path (nil), which is exactly what
 			// a pre-#1068 blob's room-local "position" key does on arrival —
 			// see dialect_test.go for that whole blob read end to end.
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
-				{ID: "p1", Room: "r1"}}}
+				{ID: "p1"}}}
 		}, "has no cell", encounter.ErrBadPlacement},
 		{"ever_members missing current member", func(d *encounter.EncounterData) {
 			d.EverMembers = nil
@@ -1866,7 +1866,7 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
-		s.Require().Contains(err.Error(), "owned by no room")
+		s.Require().Contains(err.Error(), "owned by no region")
 	})
 
 	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
@@ -1880,7 +1880,7 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
-		s.Require().Contains(err.Error(), "owned by no room")
+		s.Require().Contains(err.Error(), "owned by no region")
 	})
 }
 
