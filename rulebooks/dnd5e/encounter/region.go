@@ -41,8 +41,15 @@ type RegionID = string
 // or beside the authored chambers — which Step and Join refuse to place anybody
 // on.
 //
-// W2 (regions never overlap) plus integral origins make ownership unique, so
-// iteration order never matters: at most one region's bounds check can pass.
+// W2 (rooms never overlap, so regions do not either) plus integral origins make
+// ownership unique, so iteration order never matters: at most one region's
+// bounds check can pass.
+//
+// It takes a POSITION, not only a cell, and answers for both. A square grid
+// tolerates a fractional position and a member may legitimately stand on one
+// (Atlas's doc comment on that asymmetry); such a member is in the region whose
+// span contains them, which is the same answer by the same rule. Hex forbids
+// fractional positions outright.
 //
 // A DOORWAY DOES NOT GET ITS OWN ANSWER, and that is a decision rather than an
 // omission. The old stack made a door's cell belong to no region on purpose —

@@ -305,11 +305,15 @@ func (s *RegionSuite) TestTheRegionIsDerivedAcrossPersistenceToo() {
 		"a reloaded outcome must be the outcome the host already saw")
 }
 
-// TestRegionAtAnswersExactlyWhatTheAuthoredGridWould, in both families. The
-// region report no longer enumerates cells, so nothing else proves that what a
-// region CLAIMS to hold is what its own grid would accept — this does, by
-// sweeping a window wider than the field in each family and comparing against
-// the room's own bounds rule.
+// TestRegionAtAnswersExactlyWhatTheAuthoredGridWould, in both families, ANCHORED
+// AWAY FROM THE ORIGIN — which is the whole of what it adds.
+//
+// atlas_test.go's TestRegionMembershipMatchesIsValidPosition sweeps every
+// dimension parity against spatial's own IsValidPosition, and is the stronger
+// test of the bounds rule; its rooms sit at Origin zero, where a lookup that
+// forgot to project would pass anyway because local and absolute coincide.
+// This one sweeps a window wider than the field around a region anchored
+// somewhere else, in each family, so the projection is load-bearing.
 func (s *RegionSuite) TestRegionAtAnswersExactlyWhatTheAuthoredGridWould() {
 	s.Run("square", func() {
 		origin := spatial.Position{X: 4, Y: 6}
