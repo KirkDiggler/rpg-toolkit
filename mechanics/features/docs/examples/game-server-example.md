@@ -2,6 +2,8 @@
 
 This shows the complete flow of loading a character with features and conditions, playing, and saving back.
 
+> **Note (rpg-toolkit#1121):** the `mechanics/conditions` module this example imports was **deleted** — it had been orphaned by the events redesign for a year and compiled against an API no tagged release contains (see #973). The sample is kept because the *pattern* it teaches — load a character's durable state from stored data, play, write it back — is still the shape the stack uses. The live successor for the condition half is `rulebooks/dnd5e/conditions`, whose `Condition` type plays this role; its API is not a drop-in for the one shown here, so treat the `conditions.` lines below as illustrative rather than copyable.
+
 ## The Character Structure
 
 ```go
