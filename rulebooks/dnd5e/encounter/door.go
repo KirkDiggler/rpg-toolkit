@@ -277,6 +277,10 @@ func normalizeDoorEdge(e DoorEdge) DoorEdge {
 // Every check here is about the door as DATA — a name, some edges, a state.
 // What the edges DO is spatial's, and this deliberately does not re-decide it.
 //
+// Requires at least one room and a grid per room, which both seams guarantee:
+// each rejects an empty room list at its door (NewEncounter's own first checks,
+// LoadEncounter's "no rooms") and each runs buildValidRoomGrids before this.
+//
 // The floor check is the one worth naming: a door's endpoints must both be
 // cells some chamber owns. A door hanging in the void is not a door, it is a
 // wall drawn across nothing — #880's rule ("both endpoints must be in the floor
