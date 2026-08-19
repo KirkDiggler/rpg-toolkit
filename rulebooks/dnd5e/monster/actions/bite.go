@@ -11,7 +11,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -24,14 +23,8 @@ const monsterActionEntityType core.EntityType = "monster-action"
 // BiteConfig holds configuration for creating a bite action. The knockdown is
 // optional and lives in SaveGate.
 type BiteConfig struct {
-	AttackBonus int    `json:"attack_bonus"` // e.g., +4
-	DamageDice  string `json:"damage_dice"`  // e.g., "2d4+2"
-	// Deprecated: read on the way in, never written on the way out. A bite
-	// persisted by an older build carries this instead of a SaveGate, and
-	// NewBiteAction translates it; new content declares SaveGate directly.
-	// See gateFromKnockdownDC for why the translation is exact.
-	KnockdownDC int         `json:"knockdown_dc,omitempty"`
-	DamageType  damage.Type `json:"damage_type"` // typically piercing
+	AttackBonus int             `json:"attack_bonus"` // e.g., +4
+	Damage      []damage.Damage `json:"damage"`
 
 	// SaveGate is what the bite's consequence can be contested with, if
 	// anything: the wolf declares a STR save against DC 11 or be knocked prone
@@ -53,8 +46,7 @@ type BiteConfig struct {
 // answerable from the stat block before anything runs.
 type BiteAction struct {
 	attackBonus int
-	damageDice  string
-	damageType  damage.Type
+	damage      []damage.Damage
 	saveGate    *saves.SaveGate
 }
 
@@ -62,42 +54,16 @@ type BiteAction struct {
 var _ monster.MonsterAction = (*BiteAction)(nil)
 
 // NewBiteAction creates a bite action with the given config.
-//
-// A config carrying only the deprecated KnockdownDC gets the gate that field
-// always meant — see [BiteConfig.KnockdownDC]. A config carrying both keeps its
-// SaveGate, because the explicit declaration is the one someone wrote on
-// purpose.
-func NewBiteAction(config BiteConfig) *BiteAction {
-	gate := config.SaveGate
-	if gate == nil {
-		gate = gateFromKnockdownDC(config.KnockdownDC)
+func NewBiteAction(config BiteConfig) (*BiteAction, error) {
+	if err := damage.Validate(config.Damage); err != nil {
+		return nil, rpgerr.Wrap(err, "invalid bite action damage")
 	}
 
 	return &BiteAction{
 		attackBonus: config.AttackBonus,
-		damageDice:  config.DamageDice,
-		damageType:  config.DamageType,
-		saveGate:    gate,
-	}
-}
-
-// gateFromKnockdownDC translates the field this action used to carry into the
-// declaration it always described.
-//
-// The translation is exact rather than approximate: KnockdownDC only ever meant
-// "the DC of the STR save that avoids being knocked prone", so its gate is
-// [STR], a static DC, negated on a success, no recurrence — every axis pinned by
-// what the old field could express.
-//
-// A DC of zero means no knockdown, which is the only reading that does not
-// invent a rule: a bite with no knockdown is not a bite whose knockdown save is
-// automatically failed (rpg-toolkit#962).
-func gateFromKnockdownDC(dc int) *saves.SaveGate {
-	if dc <= 0 {
-		return nil
-	}
-
-	return saves.NewSaveGate(abilities.STR, dc)
+		damage:      copyDamage(config.Damage),
+		saveGate:    config.SaveGate,
+	}, nil
 }
 
 // SaveGate returns what this bite's consequence can be contested with, or nil
@@ -207,17 +173,10 @@ func (b *BiteAction) Activate(ctx context.Context, owner core.Entity, input mons
 }
 
 // ToData converts the action to its serializable form.
-//
-// It writes the gate and never the deprecated KnockdownDC, so there is one
-// place a bite's knockdown is described rather than two that can disagree. A
-// blob written by an older build still loads (see [BiteConfig.KnockdownDC]);
-// it comes back expressed as a gate, which is a migration rather than a loss —
-// nothing the old field said is missing from the new one.
 func (b *BiteAction) ToData() monster.ActionData {
 	config := BiteConfig{
 		AttackBonus: b.attackBonus,
-		DamageDice:  b.damageDice,
-		DamageType:  b.damageType,
+		Damage:      copyDamage(b.damage),
 		SaveGate:    b.saveGate,
 	}
 	configJSON, _ := json.Marshal(config)

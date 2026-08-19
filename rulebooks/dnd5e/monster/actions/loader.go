@@ -4,11 +4,18 @@
 package actions
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
+
+func unmarshalActionConfig(raw json.RawMessage, config any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(config)
+}
 
 const (
 	scimitarActionID = "scimitar"
@@ -61,22 +68,22 @@ func loadShortbowAction(_ monster.ActionData) (monster.MonsterAction, error) {
 func loadMeleeAction(data monster.ActionData) (monster.MonsterAction, error) {
 	var config MeleeConfig
 	if len(data.Config) > 0 {
-		if err := json.Unmarshal(data.Config, &config); err != nil {
+		if err := unmarshalActionConfig(data.Config, &config); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to unmarshal melee config")
 		}
 	}
-	return NewMeleeAction(config), nil
+	return NewMeleeAction(config)
 }
 
 // loadRangedAction creates a RangedAction from config
 func loadRangedAction(data monster.ActionData) (monster.MonsterAction, error) {
 	var config RangedConfig
 	if len(data.Config) > 0 {
-		if err := json.Unmarshal(data.Config, &config); err != nil {
+		if err := unmarshalActionConfig(data.Config, &config); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to unmarshal ranged config")
 		}
 	}
-	return NewRangedAction(config), nil
+	return NewRangedAction(config)
 }
 
 // loadMultiattackAction creates a MultiattackAction from config
@@ -94,11 +101,11 @@ func loadMultiattackAction(data monster.ActionData) (monster.MonsterAction, erro
 func loadBiteAction(data monster.ActionData) (monster.MonsterAction, error) {
 	var config BiteConfig
 	if len(data.Config) > 0 {
-		if err := json.Unmarshal(data.Config, &config); err != nil {
+		if err := unmarshalActionConfig(data.Config, &config); err != nil {
 			return nil, rpgerr.Wrap(err, "failed to unmarshal bite config")
 		}
 	}
-	return NewBiteAction(config), nil
+	return NewBiteAction(config)
 }
 
 // LoadMonsterActions is a helper function that loads actions from ActionData

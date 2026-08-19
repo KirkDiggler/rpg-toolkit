@@ -31,22 +31,20 @@ func NewGhoul(id string) *monster.Monster {
 	})
 
 	// Bite attack (part of multiattack)
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "bite",
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "2d6+2", // 2d6 + DEX
+		AttackBonus: 4, // +2 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "2d6", Type: damage.Piercing, FlatBonus: 2}},
 		Reach:       5,
-		DamageType:  damage.Piercing,
-	}))
+	})))
 
 	// Claw attack (part of multiattack, has paralyzing touch)
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "claw",
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "2d4+2", // 2d4 + DEX
+		AttackBonus: 4, // +2 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Slashing, FlatBonus: 2}},
 		Reach:       5,
-		DamageType:  damage.Slashing,
-	}))
+	})))
 
 	// Multiattack - bite + claws
 	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{

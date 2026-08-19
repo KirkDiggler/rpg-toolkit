@@ -35,12 +35,12 @@ func NewWolf(id string) *monster.Monster {
 	// Strength saving throw or be knocked prone" — declared as a gate rather
 	// than as a bare DC, so the stat block says what can be contested and how
 	// (ADR-0039).
-	m.AddAction(actions.NewBiteAction(actions.BiteConfig{
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "2d4+2", // 2d4 + STR
-		DamageType:  damage.Piercing,
-		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
-	}))
+	m.AddAction(mustAction(actions.NewBiteAction(actions.BiteConfig{
+		AttackBonus: 4, // +2 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+
+		SaveGate: saves.NewSaveGate(abilities.STR, 11),
+	})))
 
 	// Set movement speed (wolves are fast)
 	m.SetSpeed(monster.SpeedData{Walk: 40})

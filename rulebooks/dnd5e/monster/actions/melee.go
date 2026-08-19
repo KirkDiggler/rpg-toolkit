@@ -17,11 +17,10 @@ import (
 
 // MeleeConfig holds configuration for creating a melee action
 type MeleeConfig struct {
-	Name        string      `json:"name"`         // e.g., "shortsword", "greataxe"
-	AttackBonus int         `json:"attack_bonus"` // e.g., +4
-	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
-	Reach       int         `json:"reach"`        // in hexes, typically 1 (5ft) or 2 (10ft reach)
-	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing, slashing
+	Name        string          `json:"name"`         // e.g., "shortsword", "greataxe"
+	AttackBonus int             `json:"attack_bonus"` // e.g., +4
+	Damage      []damage.Damage `json:"damage"`
+	Reach       int             `json:"reach"` // in hexes, typically 1 (5ft) or 2 (10ft reach)
 }
 
 // MeleeAction implements a generic melee weapon attack.
@@ -29,23 +28,34 @@ type MeleeConfig struct {
 type MeleeAction struct {
 	name        string
 	attackBonus int
-	damageDice  string
+	damage      []damage.Damage
 	reach       int
-	damageType  damage.Type
 }
 
 // Ensure MeleeAction implements MonsterAction
 var _ monster.MonsterAction = (*MeleeAction)(nil)
 
 // NewMeleeAction creates a melee action with the given config
-func NewMeleeAction(config MeleeConfig) *MeleeAction {
+func NewMeleeAction(config MeleeConfig) (*MeleeAction, error) {
+	if err := damage.Validate(config.Damage); err != nil {
+		return nil, rpgerr.Wrap(err, "invalid melee action damage")
+	}
+
 	return &MeleeAction{
 		name:        config.Name,
 		attackBonus: config.AttackBonus,
-		damageDice:  config.DamageDice,
+		damage:      copyDamage(config.Damage),
 		reach:       config.Reach,
-		damageType:  config.DamageType,
+	}, nil
+}
+
+func copyDamage(pools []damage.Damage) []damage.Damage {
+	copy := make([]damage.Damage, len(pools))
+	for i, pool := range pools {
+		copy[i] = pool
+		copy[i].Properties = append([]damage.Property(nil), pool.Properties...)
 	}
+	return copy
 }
 
 // GetID implements core.Entity
@@ -138,9 +148,8 @@ func (m *MeleeAction) ToData() monster.ActionData {
 	config := MeleeConfig{
 		Name:        m.name,
 		AttackBonus: m.attackBonus,
-		DamageDice:  m.damageDice,
+		Damage:      copyDamage(m.damage),
 		Reach:       m.reach,
-		DamageType:  m.damageType,
 	}
 	configJSON, _ := json.Marshal(config)
 

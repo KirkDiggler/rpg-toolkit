@@ -31,22 +31,20 @@ func NewBrownBear(id string) *monster.Monster {
 	})
 
 	// Bite attack (part of multiattack)
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "bite",
-		AttackBonus: 6,       // +4 STR + 2 proficiency
-		DamageDice:  "1d8+4", // 1d8 + STR
+		AttackBonus: 6, // +4 STR + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 4}},
 		Reach:       5,
-		DamageType:  damage.Piercing,
-	}))
+	})))
 
 	// Claw attack (part of multiattack)
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "claw",
-		AttackBonus: 6,       // +4 STR + 2 proficiency
-		DamageDice:  "2d4+4", // 2d4 + STR
+		AttackBonus: 6, // +4 STR + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Slashing, FlatBonus: 4}},
 		Reach:       5,
-		DamageType:  damage.Slashing,
-	}))
+	})))
 
 	// Multiattack - bite + claws
 	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{

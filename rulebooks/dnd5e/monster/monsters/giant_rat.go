@@ -31,13 +31,12 @@ func NewGiantRat(id string) *monster.Monster {
 	})
 
 	// Bite attack
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "bite",
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "1d4+2", // 1d4 + DEX
+		AttackBonus: 4, // +2 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d4", Type: damage.Piercing, FlatBonus: 2}},
 		Reach:       5,
-		DamageType:  damage.Piercing,
-	}))
+	})))
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

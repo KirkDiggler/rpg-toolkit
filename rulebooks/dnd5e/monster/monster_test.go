@@ -117,7 +117,9 @@ func (s *MonsterTestSuite) TestMeleeWeapon_GoblinResolvesScimitar() {
 
 	s.Require().NotNil(w, "goblin's scimitar action must resolve to a catalog weapon")
 	s.Equal(weapons.Scimitar, w.ID)
-	s.Equal(damage.Slashing, w.DamageType)
+	primary, ok := w.PrimaryDamage()
+	s.Require().True(ok)
+	s.Equal(damage.Slashing, primary.Type)
 }
 
 // TestMeleeWeapon_NoMeleeAction_ReturnsNil proves a monster with no melee
