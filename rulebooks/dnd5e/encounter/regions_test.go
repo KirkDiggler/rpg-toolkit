@@ -305,6 +305,59 @@ func (s *RegionSuite) TestTheRegionIsDerivedAcrossPersistenceToo() {
 		"a reloaded outcome must be the outcome the host already saw")
 }
 
+// TestAStaleRegionLabelInABlobCannotChangeTheAnswer is why dropping the
+// persisted "room" key is a quiet change rather than a dialect break.
+//
+// #1068 renamed a persisted field so old blobs would FAIL LOUDLY, and it was
+// right to: the coordinate FRAME had changed, so a blob written before the flip
+// meant something different from what it said, and silence would have been a
+// lie. Nothing like that is true here. The region was never information — it is
+// a function of the cell and the authored field, both still in the blob — so a
+// reader that ignores the old key cannot lose anything.
+//
+// This proves it rather than arguing it. The blob below is handed to
+// LoadEncounter with every outcome member labelled "tomb", which is wrong for
+// all four of them, and the encounter that comes back says where they actually
+// stood. A field whose value cannot change the answer was never load-bearing —
+// and a future reader tempted to "restore" it has to get past this test.
+func (s *RegionSuite) TestAStaleRegionLabelInABlobCannotChangeTheAnswer() {
+	ended, err := s.enc.End(&encounter.EndInput{Ending: "withdrawn"})
+	s.Require().NoError(err)
+
+	raw, err := json.Marshal(s.enc.ToData())
+	s.Require().NoError(err)
+
+	// Write the old key back in, with a value that is wrong for everybody.
+	var generic map[string]any
+	s.Require().NoError(json.Unmarshal(raw, &generic))
+	outcome, ok := generic["outcome"].(map[string]any)
+	s.Require().True(ok, "the fixture must have closed")
+	members, ok := outcome["members"].([]any)
+	s.Require().True(ok)
+	s.Require().Len(members, 4)
+	for _, m := range members {
+		m.(map[string]any)["room"] = tombChamber
+	}
+	tampered, err := json.Marshal(generic)
+	s.Require().NoError(err)
+	s.Require().Contains(string(tampered), `"room":"`+tombChamber+`"`,
+		"the stale label must actually be in the blob, or this test pins nothing")
+
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(tampered, &data))
+
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+	s.Require().NoError(err, "an unknown key is ignored, not a defect to refuse")
+
+	status, err := loaded.Status()
+	s.Require().NoError(err)
+	s.Require().NotNil(status.Outcome)
+	s.Equal(ended.Outcome.Members, status.Outcome.Members,
+		"the cells decide, so the reloaded outcome is the one the host already saw — "+
+			"nobody is in the tomb chamber, whatever the blob claimed")
+}
+
 // TestRegionAtAnswersExactlyWhatTheAuthoredGridWould, in both families, ANCHORED
 // AWAY FROM THE ORIGIN — which is the whole of what it adds.
 //
