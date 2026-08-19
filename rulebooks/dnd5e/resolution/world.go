@@ -42,6 +42,14 @@ func (m placedMember) GetType() core.EntityType { return "member" }
 // blocker is an occluder as the spatial room needs it: a cell that stops a
 // sightline. It carries no identity a rule can read — [placedMember] is what a
 // predicate looks somebody up by, and these are map furniture.
+//
+// IT STOPS SIGHT AND NOT MOVEMENT, which is encounter's occluderEntity exactly
+// and is not the obvious pair of answers. Spatial refuses to place an entity on
+// a cell held by a movement blocker, so an occluder that blocked movement here
+// would make this package REFUSE a world the encounter loaded happily — the
+// moment somebody stood on one, which the encounter permits and which
+// [encounter.Encounter.RegionAt] treats as an ordinary cell of its region.
+// Occlusion is about sightlines, not walkability (#929 T3 ruling 1).
 type blocker struct {
 	id string
 }
@@ -50,7 +58,7 @@ func (b blocker) GetID() string            { return b.id }
 func (b blocker) GetType() core.EntityType { return "occluder" }
 func (b blocker) GetSize() int             { return 1 }
 func (b blocker) BlocksLineOfSight() bool  { return true }
-func (b blocker) BlocksMovement() bool     { return true }
+func (b blocker) BlocksMovement() bool     { return false }
 
 // interactionRoom builds THE CANVAS — the one map this interaction happens on —
 // and places the cast on it.

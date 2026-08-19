@@ -136,6 +136,15 @@ func walledCast() []encounter.MemberInput {
 		{ID: "west-mid-d", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
 		{ID: "west-mid-e", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
 		{ID: "west-end", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 4}},
+
+		// AND SOMEBODY IS STANDING ON AN OCCLUDER. An occluded cell is still a
+		// cell of its region and the encounter puts members on one without
+		// complaint, so the world this package installs has to accept the same
+		// placement — and spatial refuses to place anybody on a cell held by a
+		// MOVEMENT blocker. An occluder that blocked movement would therefore
+		// refuse a world the encounter loaded happily, which is a failure mode
+		// with no member standing anywhere near an occluder to reveal it.
+		{ID: "east-on-the-pillar", Kind: encounter.KindMonster, Room: "room-2", Position: spatial.Position{X: 4, Y: 6}},
 	}
 }
 
