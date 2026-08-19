@@ -1332,10 +1332,11 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 // endings to read two floats per member, once per frame in the worst case
 // (rpg-toolkit#933). A roster read should cost a roster read.
 //
-// Returns ErrNoField if a member's room or cell cannot be resolved, which
-// would mean the roster and the spatial field disagree about who is placed —
-// a defect worth surfacing rather than papering over with a zero position
-// that reads like the map's origin.
+// Returns ErrNoField if a member's cell cannot be resolved, which would mean
+// the roster and the canvas disagree about who is placed — a defect worth
+// surfacing rather than papering over with a zero position that reads like the
+// map's origin. Their REGION cannot fail separately: it is derived from the
+// cell (rpg-toolkit#1108), and a placed member's cell is always floor.
 func (e *Encounter) Members() ([]Member, error) {
 	// Sort by ID for stability
 	ids := make([]MemberID, 0, len(e.members))
@@ -1357,12 +1358,13 @@ func (e *Encounter) Members() ([]Member, error) {
 	return members, nil
 }
 
-// placementOf builds a member's read shape: the stored record plus where they
-// actually stand, projected into dungeon-absolute space.
+// placementOf builds a member's read shape: the stored record, the cell they
+// actually stand on, and the region that holds it.
 //
-// ONE projection path, used by every read that reports a member. Join and
-// Members answering the same question differently is the kind of drift that
-// stays invisible until two clients disagree about where somebody is.
+// ONE path, used by every read that reports a member — Members, MembersIn and
+// Join alike. Two of them answering the same question differently is the kind
+// of drift that stays invisible until two clients disagree about where
+// somebody is.
 func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 	cell, err := e.cellOf(record)
 	if err != nil {

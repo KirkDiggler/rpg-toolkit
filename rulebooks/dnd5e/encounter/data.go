@@ -627,10 +627,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 
 		// The cell is absolute and every room's grid speaks its own local
-		// frame, so the bounds check runs the compile backwards: some authored
-		// chamber's footprint must hold it. One check, two defects — a cell
-		// outside the field entirely, and a cell in the space BETWEEN chambers,
-		// which the canvas spans but which is not floor.
+		// frame, so the bounds check runs the compile backwards: some region
+		// must hold it. One check, two defects — a cell outside the field
+		// entirely, and a cell in the space BETWEEN regions, which the canvas
+		// spans but which is not floor. The SAME lookup the live verbs use
+		// (rpg-toolkit#1108); it used to be a twin that had to be kept in step
+		// by hand.
 		if _, owned := regionAt(roomInputs, roomGrids, cell); !owned {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
