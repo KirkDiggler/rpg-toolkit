@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -145,9 +146,9 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 			roller = dice.NewRoller()
 		}
 
-		dieSize, err := parseGWFWeaponDieSize(e.WeaponDamageDice)
+		dieSize, err := parseGWFWeaponDieSize(component.Dice)
 		if err != nil {
-			return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", e.WeaponDamageDice)
+			return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", component.Dice)
 		}
 
 		newRolls := make([]int, len(component.OriginalDiceRolls))
@@ -183,13 +184,14 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	return c, nil
 }
 
-// primaryWeaponComponentIndex finds the primary weapon component identified by
-// the event's explicit primary weapon type. DamageChainEvent does not carry an
-// event-wide type, so secondary pools cannot be selected by position alone.
+// primaryWeaponComponentIndex finds the weapon component carrying the exact
+// canonical ability marker. Type and position cannot identify the primary
+// component when one attack carries multiple same-type weapon pools.
 func primaryWeaponComponentIndex(event *dnd5eEvents.DamageChainEvent) int {
 	for i := range event.Components {
 		component := &event.Components[i]
-		if component.Source == dnd5eEvents.DamageSourceWeapon && component.DamageType == event.WeaponDamageType {
+		if component.Source == dnd5eEvents.DamageSourceWeapon &&
+			component.HasProperty(damage.AddsAttackAbilityModifier) {
 			return i
 		}
 	}

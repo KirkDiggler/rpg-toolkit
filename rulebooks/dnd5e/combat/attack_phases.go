@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -494,9 +495,11 @@ func ApplyAttackOutcome(ctx context.Context, input *ApplyAttackOutcomeInput) (*A
 	weaponComponent := dnd5eEvents.DamageComponent{
 		Source:            dnd5eEvents.DamageSourceWeapon,
 		SourceRef:         weaponToRef(ac.Weapon),
+		Dice:              primaryDamage.Dice,
 		OriginalDiceRolls: damageRolls,
 		FinalDiceRolls:    damageRolls,
 		DamageType:        primaryDamage.Type,
+		Properties:        append([]damage.Property(nil), primaryDamage.Properties...),
 		IsCritical:        isCritical,
 	}
 

@@ -210,6 +210,14 @@ type StrikeOutcome struct {
 	// Damage is what was dealt. Zero on a miss.
 	Damage int
 
+	// DamageInstances are the typed amounts that landed after the damage fold
+	// and multiplier arithmetic. Empty on a miss.
+	DamageInstances []damage.Instance
+
+	// DamageComponents are the folded source-attributed components from which
+	// DamageInstances were calculated. Empty on a miss.
+	DamageComponents []dnd5eEvents.DamageComponent
+
 	// Contest is the interaction that gated the blow's rider, when the action
 	// declared one and the blow landed. Nil when the action carries no gate,
 	// and nil on a miss — a strike that misses rolls no save.
@@ -387,77 +395,113 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 // rollDamage rolls the action's damage dice and yields the fold that lets
 // effects modify it (ADR-0026's Resolve).
 func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Step, error) {
-	declared := m.in.Attack.strikeDamage()
-	pool, err := dice.ParseNotation(declared.Dice)
-	if err != nil {
-		return nil, fmt.Errorf("%w: damage dice %q: %w", ErrBadAttack, declared.Dice, err)
-	}
-
-	result := pool.RollContext(ctx, roller)
-	if result.Error() != nil {
-		return nil, fmt.Errorf("roll damage: %w", result.Error())
-	}
-
-	// Per-die, not summed: OriginalDiceRolls/FinalDiceRolls are a per-die
-	// contract — downstream rerolls address dice by index — and the
-	// canonical notation has no static modifier; declared intrinsic arithmetic
-	// rides FlatBonus below and is never doubled.
-	rolls := flattenDice(result.Rolls())
-
-	// A critical hit doubles the weapon pool's DICE and nothing else
-	// (ADR-0036: only the weapon pool doubles, and a flat modifier is not a
-	// die). Combat's fold records IsCritical but rolls nothing, so the
-	// doubling happens here, where the dice are.
-	if m.outcome.Critical {
-		again := pool.RollContext(ctx, roller)
-		if again.Error() != nil {
-			return nil, fmt.Errorf("roll critical damage: %w", again.Error())
+	components := make([]dnd5eEvents.DamageComponent, 0, len(m.in.Attack.Damage)+1)
+	var primary *damage.Damage
+	for i := range m.in.Attack.Damage {
+		declared := &m.in.Attack.Damage[i]
+		component, err := m.rollDamageComponent(ctx, roller, *declared)
+		if err != nil {
+			return nil, err
 		}
-		rolls = append(rolls, flattenDice(again.Rolls())...)
+		components = append(components, component)
+
+		if declared.HasProperty(damage.AddsAttackAbilityModifier) {
+			primary = declared
+		}
 	}
 
-	component := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		SourceRef:         m.in.Attack.Ref,
-		OriginalDiceRolls: rolls,
-		FinalDiceRolls:    append([]int(nil), rolls...),
-		FlatBonus:         declared.FlatBonus,
-		DamageType:        declared.Type,
-		IsCritical:        m.outcome.Critical,
+	var primaryDice string
+	var primaryType damage.Type
+	if primary != nil {
+		primaryDice = primary.Dice
+		primaryType = primary.Type
+		components = append(components, dnd5eEvents.DamageComponent{
+			Source:     dnd5eEvents.DamageSourceAbility,
+			SourceRef:  attackAbilityRef(m.in.Attack.AbilityUsed),
+			FlatBonus:  m.in.Attack.AbilityModifier,
+			DamageType: primary.Type,
+			IsCritical: false,
+		})
 	}
-	if declared.HasProperty(damage.AddsAttackAbilityModifier) {
-		component.FlatBonus += m.in.Attack.AbilityModifier
-	}
+
+	effectiveAdvantage := len(m.outcome.Folded.AdvantageSources) > 0 &&
+		len(m.outcome.Folded.DisadvantageSources) == 0
 
 	return foldDamage(dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
 		AttackerID:       m.in.AttackerID,
 		TargetID:         m.in.TargetID,
-		Components:       []dnd5eEvents.DamageComponent{component},
-		WeaponDamageDice: declared.Dice,
-		WeaponDamageType: declared.Type,
+		Components:       components,
+		WeaponDamageDice: primaryDice,
+		WeaponDamageType: primaryType,
 		IsCritical:       m.outcome.Critical,
-		HasAdvantage:     len(m.outcome.Folded.AdvantageSources) > 0,
+		HasAdvantage:     effectiveAdvantage,
 		IsMelee:          true,
 		// Which ability swung, for the effects that predicate on it — Rage
 		// only pays out on a melee Strength attack. Empty when the compiler
 		// named none, which is a stat block's honest answer.
-		AbilityUsed: m.in.Attack.AbilityUsed,
-		WeaponRef:   m.in.Attack.Ref,
+		AbilityUsed:     m.in.Attack.AbilityUsed,
+		AbilityModifier: m.in.Attack.AbilityModifier,
+		WeaponRef:       m.in.Attack.Ref,
 	}), m.afterDamageChain), nil
 }
 
-// strikeDamage identifies the one pool consumed by the pre-composable Strike
-// implementation. Character profiles mark it explicitly; monster profiles use
-// their first canonical pool. Task 9 replaces this singular resolution step
-// with one component per pool while keeping the profile contract unchanged.
-func (p AttackProfile) strikeDamage() damage.Damage {
-	for _, pool := range p.Damage {
-		if pool.HasProperty(damage.AddsAttackAbilityModifier) {
-			return pool
-		}
+func (m *strikeMachine) rollDamageComponent(
+	ctx context.Context, roller dice.Roller, declared damage.Damage,
+) (dnd5eEvents.DamageComponent, error) {
+	pool, err := dice.ParseNotation(declared.Dice)
+	if err != nil {
+		return dnd5eEvents.DamageComponent{}, fmt.Errorf(
+			"%w: damage dice %q: %w", ErrBadAttack, declared.Dice, err)
 	}
 
-	return p.Damage[0]
+	result := pool.RollContext(ctx, roller)
+	if result.Error() != nil {
+		return dnd5eEvents.DamageComponent{}, fmt.Errorf("roll damage: %w", result.Error())
+	}
+
+	// Per-die, not summed: downstream rerolls address dice by index. Intrinsic
+	// arithmetic stays in FlatBonus and is therefore never part of a critical
+	// hit's second roll.
+	rolls := flattenDice(result.Rolls())
+	isCritical := m.outcome.Critical && !declared.HasProperty(damage.DoesNotCrit)
+	if isCritical {
+		again := pool.RollContext(ctx, roller)
+		if again.Error() != nil {
+			return dnd5eEvents.DamageComponent{}, fmt.Errorf("roll critical damage: %w", again.Error())
+		}
+		rolls = append(rolls, flattenDice(again.Rolls())...)
+	}
+
+	return dnd5eEvents.DamageComponent{
+		Source:            dnd5eEvents.DamageSourceWeapon,
+		SourceRef:         m.in.Attack.Ref,
+		Dice:              declared.Dice,
+		OriginalDiceRolls: rolls,
+		FinalDiceRolls:    append([]int(nil), rolls...),
+		FlatBonus:         declared.FlatBonus,
+		DamageType:        declared.Type,
+		Properties:        append([]damage.Property(nil), declared.Properties...),
+		IsCritical:        isCritical,
+	}, nil
+}
+
+func attackAbilityRef(ability abilities.Ability) *core.Ref {
+	switch ability {
+	case abilities.STR:
+		return refs.Abilities.Strength()
+	case abilities.DEX:
+		return refs.Abilities.Dexterity()
+	case abilities.CON:
+		return refs.Abilities.Constitution()
+	case abilities.INT:
+		return refs.Abilities.Intelligence()
+	case abilities.WIS:
+		return refs.Abilities.Wisdom()
+	case abilities.CHA:
+		return refs.Abilities.Charisma()
+	default:
+		return nil
+	}
 }
 
 // afterDamageChain applies what the fold settled on — bus-free, straight onto
@@ -480,13 +524,19 @@ func (m *strikeMachine) afterDamageChain(
 	// than a copy that can drift.
 	final, _ := combat.FinalDamage(folded.Components)
 
+	m.outcome.DamageInstances = make([]damage.Instance, 0, len(final))
 	instances := make([]combat.DamageInstance, 0, len(final))
 	for _, instance := range final {
+		m.outcome.DamageInstances = append(m.outcome.DamageInstances, damage.Instance{
+			Amount: instance.Amount,
+			Type:   instance.Type,
+		})
 		instances = append(instances, combat.DamageInstance{
 			Amount: instance.Amount,
 			Type:   string(instance.Type),
 		})
 	}
+	m.outcome.DamageComponents = append([]dnd5eEvents.DamageComponent(nil), folded.Components...)
 
 	// Bus-free, and the only phase that is: applying damage is the sheet's own
 	// business and takes no bus on either a character or a monster.

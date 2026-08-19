@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -165,10 +166,12 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 				Components: []dnd5eEvents.DamageComponent{
 					{
 						Source:            dnd5eEvents.DamageSourceWeapon,
+						Dice:              "1d1",
 						OriginalDiceRolls: []int{1}, // Will be replaced
 						FinalDiceRolls:    []int{1},
 						FlatBonus:         0,
 						DamageType:        "bludgeoning",
+						Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 						IsCritical:        false,
 					},
 					{
@@ -240,10 +243,12 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Dice:              "1d1",
 				OriginalDiceRolls: []int{1}, // Will be replaced
 				FinalDiceRolls:    []int{1},
 				FlatBonus:         0,
 				DamageType:        "bludgeoning",
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				IsCritical:        true,
 			},
 			{
@@ -275,7 +280,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 	s.Equal([]int{4, 4}, weaponComponent.FinalDiceRolls)
 }
 
-func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesOnlyPrimaryWeaponComponent() {
+func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsShareType() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
 		CharacterID: s.characterID,
 		MonkLevel:   1,
@@ -298,13 +303,16 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesOnlyPrimaryWeaponCompone
 				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{9},
 				FinalDiceRolls:    []int{9},
-				DamageType:        "fire",
+				Dice:              "1d10",
+				DamageType:        damage.Bludgeoning,
 			},
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1},
 				FinalDiceRolls:    []int{1},
-				DamageType:        "bludgeoning",
+				Dice:              "1d1",
+				DamageType:        damage.Bludgeoning,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 			},
 			{
 				Source:     dnd5eEvents.DamageSourceAbility,
@@ -322,7 +330,53 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesOnlyPrimaryWeaponCompone
 
 	s.Equal([]int{9}, finalEvent.Components[0].FinalDiceRolls)
 	s.Equal([]int{3}, finalEvent.Components[1].FinalDiceRolls)
+	s.Equal("1d4", finalEvent.Components[1].Dice)
 	s.Equal("1d4", finalEvent.WeaponDamageDice)
+}
+
+func (s *MartialArtsTestSuite) TestUnarmedStrikeDoesNotDoubleMarkedDoesNotCritPool() {
+	condition := NewMartialArtsCondition(MartialArtsInput{
+		CharacterID: s.characterID,
+		MonkLevel:   1,
+		Roller:      s.mockRoller,
+	})
+	s.Require().NoError(condition.Apply(s.ctx, s.bus))
+	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 4).Return([]int{3}, nil).Times(1)
+
+	event := &dnd5eEvents.DamageChainEvent{
+		AttackerID:       s.characterID,
+		TargetID:         "target-1",
+		IsCritical:       true,
+		WeaponDamageDice: "1d1",
+		WeaponDamageType: damage.Bludgeoning,
+		AbilityUsed:      abilities.STR,
+		WeaponRef:        refs.Weapons.UnarmedStrike(),
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				OriginalDiceRolls: []int{1},
+				FinalDiceRolls:    []int{1},
+				Dice:              "1d1",
+				DamageType:        damage.Bludgeoning,
+				Properties: []damage.Property{
+					damage.AddsAttackAbilityModifier,
+					damage.DoesNotCrit,
+				},
+			},
+		},
+	}
+
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	s.Equal([]int{3}, finalEvent.Components[0].FinalDiceRolls)
+	s.False(finalEvent.Components[0].IsCritical)
 }
 
 // TestDEXModifierReplacement tests that DEX replaces STR when DEX > STR
@@ -348,8 +402,10 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Dice:              "1d1",
 					OriginalDiceRolls: []int{3},
 					FinalDiceRolls:    []int{3},
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
 					Source:    dnd5eEvents.DamageSourceAbility,
@@ -404,8 +460,10 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Dice:              "1d1",
 					OriginalDiceRolls: []int{3},
 					FinalDiceRolls:    []int{3},
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
 					Source:    dnd5eEvents.DamageSourceAbility,
@@ -455,8 +513,10 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
 					SourceRef:         refs.Weapons.UnarmedStrike(),
+					Dice:              "1d1",
 					OriginalDiceRolls: []int{3},
 					FinalDiceRolls:    []int{3},
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
 					Source:    dnd5eEvents.DamageSourceAbility,
@@ -517,8 +577,10 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
 					SourceRef:         refs.Weapons.UnarmedStrike(),
+					Dice:              "1d1",
 					OriginalDiceRolls: []int{3},
 					FinalDiceRolls:    []int{3},
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				},
 				{
 					Source:    dnd5eEvents.DamageSourceAbility,

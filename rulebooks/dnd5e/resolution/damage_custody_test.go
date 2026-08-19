@@ -156,6 +156,36 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 	s.Require().Equal(4+6, outcome.Damage, "each type resolves on its own")
 }
 
+func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndImmunity() {
+	bus := events.NewEventBus()
+	s.multiplyOnBus(bus, damage.Bludgeoning, 2)
+	s.multiplyOnBus(bus, damage.Acid, 0)
+
+	profile := oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2},
+		damage.Damage{Dice: "1d6", Type: damage.Acid},
+	)
+	target := monsters.NewWolf(secondWolfID).ToData()
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   target.ID,
+			Attack:     profile,
+			Roller:     scripted(15, 4, 5),
+		}),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	struck, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Equal(12, struck.Damage, "bludgeoning 6 doubles while acid 5 is immune")
+	s.Equal([]damage.Instance{{Amount: 12, Type: damage.Bludgeoning}}, struck.DamageInstances)
+	s.Require().Len(struck.DamageComponents, 4,
+		"the outcome retains both rolled pools and both typed defense components")
+}
+
 // The event's own DamageType is load-bearing, not decoration: Rage's
 // resistance predicates on it twice — event.DamageType.IsPhysical() decides
 // whether to resist at all, and the multiplier component it appends carries

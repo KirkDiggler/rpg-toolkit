@@ -163,14 +163,16 @@ type RerollEvent struct {
 
 // DamageComponent represents damage from one source
 type DamageComponent struct {
-	Source            DamageSourceType // Category: weapon, ability, condition, etc.
-	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
-	OriginalDiceRolls []int            // As first rolled
-	FinalDiceRolls    []int            // After all rerolls
-	Rerolls           []RerollEvent    // History of rerolls
-	FlatBonus         int              // Flat modifier (0 if none)
-	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
-	IsCritical        bool             // Was this doubled for crit?
+	Source            DamageSourceType  // Category: weapon, ability, condition, etc.
+	SourceRef         *core.Ref         // Specific reference (e.g., refs.Weapons.Longsword())
+	Dice              string            // Pure notation for this component's declared dice pool.
+	OriginalDiceRolls []int             // As first rolled
+	FinalDiceRolls    []int             // After all rerolls
+	Rerolls           []RerollEvent     // History of rerolls
+	FlatBonus         int               // Flat modifier (0 if none)
+	DamageType        damage.Type       // damage.Slashing, damage.Fire, etc.
+	Properties        []damage.Property // Behavior belonging to this component's declared pool.
+	IsCritical        bool              // Was this doubled for crit?
 	// Multiplier scales the other components of the same damage type rather
 	// than adding damage of its own: vulnerability (2.0), resistance (0.5),
 	// immunity (0.0).
@@ -185,6 +187,18 @@ type DamageComponent struct {
 	//
 	// Build one with [Multiply]; &0.0 is not expressible inline.
 	Multiplier *float64
+}
+
+// HasProperty reports whether this component carries a declared damage-pool
+// property.
+func (dc DamageComponent) HasProperty(property damage.Property) bool {
+	for _, got := range dc.Properties {
+		if got == property {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Multiply returns a factor for [DamageComponent.Multiplier].

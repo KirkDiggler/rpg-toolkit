@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -166,6 +167,11 @@ func (ma *MartialArtsCondition) onDamageChain(
 
 		// For unarmed strikes, we need to replace the weapon damage dice with martial arts dice
 		if isUnarmed {
+			componentIndex := primaryWeaponComponentIndex(e)
+			if componentIndex < 0 {
+				return e, nil
+			}
+			component := &e.Components[componentIndex]
 			martialArtsDice := ma.getMartialArtsDice()
 
 			// Re-roll weapon damage with martial arts dice
@@ -182,7 +188,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 
 			// Roll the dice (double for crits)
 			times := 1
-			if e.IsCritical {
+			if e.IsCritical && !component.HasProperty(damage.DoesNotCrit) {
 				times = 2
 			}
 
@@ -198,12 +204,11 @@ func (ma *MartialArtsCondition) onDamageChain(
 				}
 			}
 
-			// Replace only the component carrying the marked primary weapon type.
-			if componentIndex := primaryWeaponComponentIndex(e); componentIndex >= 0 {
-				component := &e.Components[componentIndex]
-				component.OriginalDiceRolls = newRolls
-				component.FinalDiceRolls = newRolls
-			}
+			// Replace only the component carrying the canonical primary marker.
+			component.Dice = martialArtsDice
+			component.OriginalDiceRolls = append([]int(nil), newRolls...)
+			component.FinalDiceRolls = append([]int(nil), newRolls...)
+			component.IsCritical = times == 2
 
 			// Update the weapon damage notation in the event for reference
 			e.WeaponDamageDice = martialArtsDice

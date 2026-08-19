@@ -84,10 +84,12 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Dice:              "2d6",
 				OriginalDiceRolls: []int{1, 2, 6}, // 1 and 2 need rerolling, 6 stays
 				FinalDiceRolls:    []int{1, 2, 6},
 				FlatBonus:         4,
 				DamageType:        damage.Slashing,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 			},
 		},
 	}
@@ -123,10 +125,12 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Dice:              "2d6",
 				OriginalDiceRolls: []int{3, 4, 6}, // All above 2
 				FinalDiceRolls:    []int{3, 4, 6},
 				FlatBonus:         4,
 				DamageType:        damage.Slashing,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 			},
 		},
 	}
@@ -145,7 +149,7 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 	s.Empty(finalEvent.Components[0].Rerolls)
 }
 
-func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsOnlyPrimaryWeaponComponent() {
+func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhenWeaponPoolsShareType() {
 	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
 	s.Require().NoError(gwf.Apply(s.ctx, s.bus))
 	defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
@@ -155,20 +159,23 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsOnlyPrimaryWeapon
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
-		WeaponDamageDice: "1d6",
+		WeaponDamageDice: "1d12",
 		WeaponDamageType: damage.Slashing,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1},
 				FinalDiceRolls:    []int{1},
-				DamageType:        damage.Fire,
+				Dice:              "1d4",
+				DamageType:        damage.Slashing,
 			},
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
 				OriginalDiceRolls: []int{1},
 				FinalDiceRolls:    []int{1},
+				Dice:              "1d6",
 				DamageType:        damage.Slashing,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 			},
 		},
 	}
