@@ -228,9 +228,10 @@ type canvasRoom struct {
 // whether it belongs in tools/spatial — and this is one derived bit, computed
 // from numbers already in hand, never stored and never persisted. The measured
 // case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
-// a sight refresh under rock cost 109 ms against open's 26 ms, all of it spent
-// proving there was no void to find. With this it is open's number, because
-// there is nothing to look for.
+// deleting this check costs a sight refresh 121 ms against open's 30 ms — 4.0x,
+// and 46.7 MB of allocation against 24.2 MB — every byte of it spent proving
+// there was no void to find. With it, parity. Re-runnable: see
+// voidcost_internal_test.go.
 func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 	var floor int64
 	for _, r := range rooms {
@@ -285,13 +286,15 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // because the shape of the cost is not the shape it looks like. Scanning the
 // ray is arithmetic, and the spatial call it can skip rasterizes, walks
 // boundaries, walks blocking entities and then walks a lean lane per neighbour.
-// So finding rock EARLY returns before any of that: on a twenty-chamber field
-// with gaps, a refresh cost 17 ms under rock against 28 ms under open, and the
-// reference tomb's shape 46 us against 77 us. The price is paid by rays that
-// never leave the floor, which run the scan in full and then delegate anyway:
-// one forty-by-forty chamber with a void margin and forty members measured
-// 3.7 ms against 2.7 ms. That is the honest worst case, and it is the one to
-// beat if a caller ever forces the floor mask.
+// So finding rock EARLY returns before any of that: a twenty-chamber field with
+// gaps refreshed sight 1.6-1.7x FASTER under rock than under open, and the
+// reference tomb's shape 1.4-1.6x faster. The price is paid by rays that never
+// leave the floor, which run the scan in full and then delegate anyway: one
+// forty-by-forty chamber with a void margin and forty members measured 1.34x
+// SLOWER. That is the honest worst case, and it is the one to beat if a caller
+// ever forces the floor mask. Ratios rather than times because the times move
+// with the machine and the ratios did not; both are in
+// voidcost_internal_test.go, which is where they are re-runnable.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	if c.hasVoid && c.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
