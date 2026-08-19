@@ -207,11 +207,13 @@ func (s *PlacementSuite) TestTheCrossingBeatSpeaksAbsoluteAndNamesNoRoom() {
 		s.Require().NoError(err)
 	}
 
-	// Standing in the opening she can see the ogre, and that is a fight; she
-	// breaks off before slipping through (rpg-toolkit#964).
-	if _, derr := s.enc.Dissolve(&encounter.DissolveInput{Member: "alice"}); derr == nil {
-		_ = derr
-	}
+	// Standing in the opening she can see the ogre, and that IS a fight — the
+	// doorway is a window now (rpg-toolkit#1106). She breaks off before
+	// slipping through, and the break-off must succeed: if no bubble had
+	// formed, the premise of this walk changed and the test should say so
+	// rather than tolerate it.
+	_, err = s.enc.Dissolve(&encounter.DissolveInput{Member: "alice"})
+	s.Require().NoError(err, "the walk to the threshold puts her in the ogre's sight")
 
 	crossed, err := s.enc.Step(&encounter.StepInput{
 		Member: "alice", To: absoluteIn(vaultOrigin, spatial.Position{X: 0, Y: 4})})

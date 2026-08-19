@@ -458,8 +458,8 @@ func (in *LoadEncounterInput) Validate() error {
 // self-referencing room, endpoint out of bounds, non-integral (hex), or on an occluder,
 // W3 (non-kissing doorway); THEN empty or duplicate member IDs, member's room not in
 // field, member cell presence (a missing cell is the pre-#1106 room-local dialect
-// announcing itself — MemberData's doc comment) then that cell being owned by some
-// authored room, ending trigger validity
+// announcing itself — MemberData's doc comment) then integrality (hex) then that
+// cell being owned by some authored room, ending trigger validity
 // (unknown room or unreachable position on a TriggerReachedPosition — #929 T3 Opus round
 // F5, the SAME validateEndingTriggers Setup uses), an abandoned outcome with members
 // still present, outcome member cell PRESENCE (a missing cell is the pre-#1068
@@ -607,12 +607,25 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 
+		cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
+
+		// Hex fields require integral axial cells, asked FIRST and named as
+		// itself — the same order and the same words Step and Join use
+		// (isIntegralAxialPosition). Ownership refuses a fractional hex cell
+		// too, but it would report it as "owned by no room", which sends
+		// whoever reads it to the map instead of to their arithmetic; three
+		// seams answering one defect three ways is exactly the drift #929 T2
+		// made Setup and Load share validators to avoid. W1 gives the whole
+		// field one grid family, so any room's grid answers for all of them.
+		if !isIntegralAxialPosition(roomGrids[roomInputs[0].ID], cell) {
+			return nil, fmt.Errorf("load encounter: member %q cell is not an integral axial cell: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
+		}
+
 		// The cell is absolute and every room's grid speaks its own local
 		// frame, so the bounds check runs the compile backwards: some authored
 		// chamber's footprint must hold it. One check, two defects — a cell
 		// outside the field entirely, and a cell in the space BETWEEN chambers,
 		// which the canvas spans but which is not floor.
-		cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
 		if !ownedByAnyRoom(roomInputs, roomGrids, cell) {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no room: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
@@ -910,6 +923,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 // absolute cell — the load-time twin of [Encounter.roomAt], which cannot be used
 // here because it is a method on an Encounter that does not exist yet (R5: the
 // blob is validated in full before anything is constructed).
+//
+// No integrality check, for roomAt's reason: the caller asks first, and names
+// that defect as itself.
 func ownedByAnyRoom(rooms []RoomInput, grids map[string]spatial.Grid, cell spatial.Position) bool {
 	for _, ri := range rooms {
 		local := cell.Subtract(ri.Origin)
@@ -917,7 +933,7 @@ func ownedByAnyRoom(rooms []RoomInput, grids map[string]spatial.Grid, cell spati
 		if !ok {
 			continue
 		}
-		if grid.IsValidPosition(local) && isIntegralAxialPosition(grid, local) {
+		if grid.IsValidPosition(local) {
 			return true
 		}
 	}

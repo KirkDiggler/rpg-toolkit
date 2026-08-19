@@ -1953,7 +1953,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 	}{
 		{"member cell fractional", func(d *encounter.EncounterData) {
 			d.Members[0].Cell = &encounter.PositionData{X: 0.5, Y: 0}
-		}, nil, "owned by no room"},
+		}, nil, "not an integral axial cell"},
 		{"connection from-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
