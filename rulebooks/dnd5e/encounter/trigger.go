@@ -48,14 +48,18 @@ const (
 	// REACHABLE AS OF rpg-toolkit#1111, and it was not before — this comment
 	// said UNREACHABLE for three waves and had earned it.
 	//
-	// Sight's GEOMETRY is symmetric by law, and still is: every percept is
-	// built from IsLineOfSightBlocked with no facing, stealth or perception
-	// input, and spatial pins that predicate as mutual over fuzzed rooms in
-	// every grid family (rpg-toolkit#1022). While every observer ALSO saw
-	// exactly as far as every other, "the player sees the wolf" and "the wolf
-	// sees the player" were the same sentence and this arm had no producible
-	// input. [Sight] made the range per member, so they are two sentences now:
-	// the player with the lantern sees the wolf that cannot see her back.
+	// A percept is built from TWO filters, and only one of them is mutual.
+	// The geometric one is: IsLineOfSightBlocked takes no facing, stealth or
+	// perception input, and spatial pins it as mutual over fuzzed rooms in
+	// every grid family (rpg-toolkit#1022). It still is, and this slice did
+	// not touch it. The other is REACH, and it is per observer as of
+	// rpg-toolkit#1111 — see [Sight].
+	//
+	// While reach was the same for everybody, both filters were mutual, so
+	// "the player sees the wolf" and "the wolf sees the player" were one
+	// sentence and this arm had no producible input. They are two sentences
+	// now: the player with the lantern sees the wolf that cannot see her back,
+	// through geometry that is as mutual as it ever was.
 	//
 	// It was briefly reachable BY ACCIDENT before that, and nobody meant it to
 	// be, which is why the geometric law exists: sight used to be one

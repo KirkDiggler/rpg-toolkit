@@ -2027,9 +2027,11 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 				continue // Not placed
 			}
 
-			// Too far BEFORE too dark: the ray is the expensive question, and
-			// it is the second one 5e asks too. Strictly greater, because a
-			// member exactly at the edge of your sight is inside it.
+			// Too far BEFORE blocked: both filters are geometric, and this
+			// one is arithmetic while the next one walks a ray. Order is a
+			// cost decision, not a correctness one — either filter alone
+			// drops the subject. Strictly greater, because a member exactly
+			// at the edge of your sight is inside it.
 			if e.canvas.GetGrid().Distance(observerCell, otherCell) > float64(reach[observerID]) {
 				continue // Beyond how far this observer can see
 			}
