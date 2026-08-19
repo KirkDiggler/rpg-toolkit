@@ -10,20 +10,26 @@
 // hands you the verbs. Every action renders the WORLD TRUTH beside each
 // asked-for player's BELIEFS, scoped to whichever room that player
 // currently stands in — capitals are current sightings, lowercase are
-// ghosts at last-seen — which is the intel model made visible: move
-// behind the pillar and watch yourself become a memory, or step through
-// the passage and watch the crypt itself fade to nothing (T3 — sight
-// never crosses a connection). The atlas command makes the OTHER half
-// visible: the two rooms placed in one continuous absolute space, the
-// passage's kissing pair made concrete (#929 T5).
+// ghosts at last-seen — which is the intel model made visible: step
+// behind the pillar and watch yourself become a memory.
+//
+// SIGHT NOW CROSSES THE PASSAGE, and watching it is the point of running
+// this after rpg-toolkit#1106: the two chambers compile into one canvas, so
+// standing at the passage's mouth shows you the ossuary rather than nothing.
+// Neither chamber walls its shared edge in this fixture, so the seam is open
+// along its whole length — author a boundary on the crypt's east column to
+// see a wall behave like a wall.
 //
 // Run from the module directory:
 //
 //	go run ./cmd/freeroam-workbench
 //
-// Commands: move <name> <x> <y> | traverse <name> <connection> | pump |
-// view <name> | story <name> | join <name> <x> <y> | exit <name> |
-// end withdrew | save <file> | load <file> | atlas | status | help | quit
+// Commands: step <name> <x> <y> | pump | view <name> | story <name> |
+// join <name> <x> <y> | exit <name> | end withdrew | save <file> |
+// load <file> | atlas | status | help | quit
+//
+// Every coordinate is DUNGEON-ABSOLUTE — the crypt is anchored at (0,0) so its
+// cells read the same either way, but the ossuary's start at x=12.
 package main
 
 import (
@@ -142,11 +148,11 @@ func roomByID(data encounter.EncounterData, room string) *encounter.RoomData {
 	return nil
 }
 
-// worldGrid renders ground truth for ONE room from the aggregate
-// snapshot — the HOST's view, which is exactly what a game server
-// holds. Sight is room-scoped (T3), so belief grids are room-scoped
-// too; world truth follows the same shape for a fair side-by-side.
-func worldGrid(data encounter.EncounterData, room string) []string {
+// worldGrid renders ground truth for ONE room — the HOST's view, which is
+// exactly what a game server holds. The panes stay room-scoped because a
+// terminal is small, not because sight is: since rpg-toolkit#1106 a belief
+// grid may hold sightings in the chamber next door, which this pane drops.
+func worldGrid(data encounter.EncounterData, members []encounter.Member, room string) []string {
 	r := roomByID(data, room)
 	if r == nil {
 		return nil
@@ -155,11 +161,13 @@ func worldGrid(data encounter.EncounterData, room string) []string {
 	for _, o := range r.Occluders {
 		set(grid, o.X, o.Y, '#')
 	}
-	for _, m := range data.Members {
+	origin := roomOrigin(r)
+	for _, m := range members {
 		if m.Room != room {
 			continue
 		}
-		set(grid, m.Position.X, m.Position.Y, initialOf(string(m.ID), true))
+		local := m.Position.Subtract(origin)
+		set(grid, local.X, local.Y, initialOf(string(m.ID), true))
 	}
 	if room == cryptID {
 		set(grid, 11, 11, '>')
@@ -173,7 +181,10 @@ func worldGrid(data encounter.EncounterData, room string) []string {
 // member has since left renders nowhere — this grid only shows their
 // present room). Their own position comes from world truth (you
 // always know where you stand).
-func beliefGrid(enc *encounter.Encounter, data encounter.EncounterData, who core.EntityID, room string) ([]string, error) {
+func beliefGrid(
+	enc *encounter.Encounter, data encounter.EncounterData, members []encounter.Member,
+	who core.EntityID, room string,
+) ([]string, error) {
 	view, err := enc.View(&encounter.ViewInput{Member: who})
 	if err != nil {
 		return nil, err
@@ -182,12 +193,10 @@ func beliefGrid(enc *encounter.Encounter, data encounter.EncounterData, who core
 	if r == nil {
 		return nil, nil
 	}
-	// The room's anchor, needed because sight payloads are dungeon-absolute
-	// while this pane draws a single room in its own local frame.
-	var origin spatial.Position
-	if r.Origin != nil {
-		origin = spatial.Position{X: r.Origin.X, Y: r.Origin.Y}
-	}
+	// The room's anchor, needed because everything the encounter reports is
+	// dungeon-absolute while this pane draws a single chamber in its own local
+	// frame.
+	origin := roomOrigin(r)
 
 	grid := blankGrid(r.Width, r.Height)
 	for _, o := range r.Occluders {
@@ -206,12 +215,22 @@ func beliefGrid(enc *encounter.Encounter, data encounter.EncounterData, who core
 		}
 		set(grid, local.X, local.Y, initialOf(string(h.Subject), h.Status == intel.Current))
 	}
-	for _, m := range data.Members {
+	for _, m := range members {
 		if m.ID == who {
-			set(grid, m.Position.X, m.Position.Y, '@')
+			local := m.Position.Subtract(origin)
+			set(grid, local.X, local.Y, '@')
 		}
 	}
 	return grid, nil
+}
+
+// roomOrigin reads a persisted room's anchor. Origin is required at load, so a
+// nil pointer means the caller built this RoomData by hand.
+func roomOrigin(r *encounter.RoomData) spatial.Position {
+	if r == nil || r.Origin == nil {
+		return spatial.Position{}
+	}
+	return spatial.Position{X: r.Origin.X, Y: r.Origin.Y}
 }
 
 func blankGrid(w, h int) []string {
@@ -333,11 +352,11 @@ func printAtlas(enc *encounter.Encounter) {
 
 const legend = `  @ you   A/B/C capitals: seen NOW   a/b/g lowercase: ghost at last-seen
   # pillar/sarcophagus   > the stairs down (reach them and the encounter closes)
-  connection "passage": crypt (11,0) <-> ossuary (0,0) — stand on the
-  threshold and traverse; the view flips to whichever room you're in`
+  doorway "passage": (11,0) <-> (12,0) on the map — step from one to the
+  other like any other cell; the view flips to whichever chamber you land in`
 
-const commands = `  move <name> <x> <y>   walk (the world holds still — you pump it)
-  traverse <name> <connection>   cross a connection from its threshold
+const commands = `  step <name> <x> <y>   walk one cell (dungeon-absolute; the world holds
+                        still — you pump it)
   pump                  a tick passes: the goblin patrols, sights refresh
   view <name>           world truth beside <name>'s beliefs
   story <name>          the record, as <name> is allowed to hear it
@@ -389,32 +408,19 @@ func main() {
 			if len(args) == 2 {
 				printStory(enc, core.EntityID(args[1]))
 			}
-		case "move":
+		case "step":
 			if len(args) != 4 {
-				fmt.Println("  move <name> <x> <y>")
+				fmt.Println("  step <name> <x> <y>   (dungeon-absolute)")
 				continue
 			}
 			x, y := num(args[2]), num(args[3])
-			out, err := enc.Move(&encounter.MoveInput{Member: core.EntityID(args[1]), To: spatial.Position{X: x, Y: y}})
+			out, err := enc.Step(&encounter.StepInput{Member: core.EntityID(args[1]), To: spatial.Position{X: x, Y: y}})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
 			}
-			showView(enc, core.EntityID(args[1]))
-			if out.Outcome != nil {
-				printStatus(enc)
-			}
-		case "traverse":
-			if len(args) != 3 {
-				fmt.Println("  traverse <name> <connection>")
-				continue
-			}
-			out, err := enc.Traverse(&encounter.TraverseInput{
-				Member: core.EntityID(args[1]), Connection: args[2],
-			})
-			if err != nil {
-				fmt.Println(" ", err)
-				continue
+			if out.Crossing != "" {
+				fmt.Printf("  through %s\n", out.Crossing)
 			}
 			showView(enc, core.EntityID(args[1]))
 			if out.Outcome != nil {
@@ -442,10 +448,10 @@ func main() {
 				fmt.Println("  join <name> <x> <y>")
 				continue
 			}
-			_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-				ID: core.EntityID(args[1]), Kind: encounter.KindPlayer, Room: cryptID,
-				Position: spatial.Position{X: num(args[2]), Y: num(args[3])},
-			}})
+			_, err := enc.Join(&encounter.JoinInput{
+				Member: core.EntityID(args[1]), Kind: encounter.KindPlayer,
+				Cell: spatial.Position{X: num(args[2]), Y: num(args[3])},
+			})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
@@ -525,8 +531,13 @@ func main() {
 
 func showView(enc *encounter.Encounter, who core.EntityID) {
 	data := enc.ToData()
+	members, err := enc.Members()
+	if err != nil {
+		fmt.Println(" ", err)
+		return
+	}
 	room := ""
-	for _, m := range data.Members {
+	for _, m := range members {
 		if m.ID == who {
 			room = m.Room
 		}
@@ -535,13 +546,13 @@ func showView(enc *encounter.Encounter, who core.EntityID) {
 		fmt.Println(" ", who, "is not a member")
 		return
 	}
-	belief, err := beliefGrid(enc, data, who, room)
+	belief, err := beliefGrid(enc, data, members, who, room)
 	if err != nil {
 		fmt.Println(" ", err)
 		return
 	}
 	title := fmt.Sprintf("WORLD TRUTH (%s)", room)
-	printSideBySide(worldGrid(data, room), belief, title, fmt.Sprintf("%s BELIEVES", strings.ToUpper(string(who))))
+	printSideBySide(worldGrid(data, members, room), belief, title, fmt.Sprintf("%s BELIEVES", strings.ToUpper(string(who))))
 }
 
 func num(s string) float64 {

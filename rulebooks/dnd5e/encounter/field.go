@@ -59,10 +59,31 @@ type RoomInput struct {
 	// benefit, since the composition never renders a grid itself.
 	Grid spatial.GridShape
 
-	// Occluders are positions that block line of sight.
+	// Occluders are room-local positions that block line of sight, compiled
+	// onto the canvas at construction: each one is registered at
+	// Occluders[i] + Origin, in the dungeon's own absolute frame.
 	Occluders []spatial.Position
 
-	// Boundaries define walls or barriers between adjacent cells.
+	// Boundaries are the walls this room draws, as edges between adjacent
+	// cells — room-local at authoring, compiled through Origin onto the
+	// canvas at construction (rpg-toolkit#1106).
+	//
+	// AN ENDPOINT MAY LIE OUTSIDE THIS ROOM, and that is the whole point.
+	// Until the field became one canvas, a boundary was registered on the
+	// room's OWN spatial room, whose grid refuses any endpoint that is not a
+	// cell of that room (tools/spatial's validateAndNormalizeBoundaryUnsafe:
+	// "boundary endpoints ... must be valid positions in this room"). So the
+	// seam between two authored chambers — the one place a dungeon most needs
+	// a wall — was the one place a wall could not be drawn, and the
+	// room-membership test in sight was standing in for every one of them.
+	//
+	// A room therefore walls its own edge by naming the cell beyond it: for a
+	// 6-wide room, {From: (5,y), To: (6,y)} is the wall along its east side,
+	// and (6,y) belongs to whatever sits next door. Compiled absolute, both
+	// endpoints must be adjacent cells the canvas holds; the canvas is the
+	// union of the field's footprints, so a wall on the field's outer rim has
+	// no cell to point at and is refused (ErrBadPlacement) rather than
+	// silently dropped.
 	Boundaries []spatial.Boundary
 
 	// Origin is this room's dungeon-absolute anchor: local (0,0) maps to
@@ -88,21 +109,30 @@ type RoomInput struct {
 	// against the W-laws identically (#929 T2: LoadEncounter routes
 	// through the SAME shared validators Setup uses, not a parallel
 	// reimplementation): W1 (one grid family per field), W2 (rooms never
-	// overlap in absolute space), and W3 (every connection's endpoints
-	// are adjacent absolute cells). Rules and verbs (Move, View,
-	// Traverse, ...) stay room-local — absolute coordinates only ever
-	// appear in query OUTPUTS: Atlas, Absolute, and Locate project
-	// through Origin (W4 — "projection is a read", #929 T3), never a
-	// rule's own logic. Origin also round-trips through persistence
-	// (RoomData.Origin, #929 T2).
+	// overlap in absolute space), W3 (every connection's endpoints are
+	// adjacent absolute cells), W5 (anchors are construction data), and W6
+	// (the field's absolute footprint fits in one grid of its family — see
+	// canvasSpan in encounter.go, rpg-toolkit#1106).
+	//
+	// ORIGIN IS A COMPILER INPUT, NOT A RUNTIME BRIDGE (rpg-toolkit#1106).
+	// It used to be read back on every query: W4 called projection "a read",
+	// and Atlas, Absolute and Locate each ran the arithmetic on demand. Now
+	// it is spent ONCE, at construction, when the authored rooms are compiled
+	// into the single canvas the encounter actually runs on — every cell,
+	// occluder and wall lands absolute and stays there, and no verb projects
+	// anything. Origin still round-trips through persistence
+	// (RoomData.Origin, #929 T2) because it is construction truth, and Atlas
+	// still reports each authored room's absolute footprint from it.
 	Origin spatial.Position
 }
 
 // ConnectionInput describes a connection between two rooms: a bidirectional
 // open doorway. FromPosition and ToPosition are the endpoint cells — the
-// position a member must stand on in each room to traverse the connection.
-// Traversal itself is not implemented here; this only declares where the
-// doorway sits.
+// position a member must stand on in each room to be at the doorway.
+// Crossing is not a mechanism of its own (rpg-toolkit#1106): a doorway's two
+// endpoints are adjacent absolute cells, so going through one is an ordinary
+// step. This declares where the opening sits, and [StepOutput.Crossing] names
+// it when a step goes straight across.
 type ConnectionInput struct {
 	// ID is the unique connection identifier.
 	ID string
@@ -129,7 +159,20 @@ type FieldInput struct {
 	Connections []ConnectionInput
 }
 
-// MemberInput describes a member being placed into the encounter.
+// MemberInput describes a member being placed into the encounter AT
+// CONSTRUCTION — Setup's roster, and Load's restored one.
+//
+// Room-shaped on purpose, and it stays that way (rpg-toolkit#1106, Kirk's
+// ruling: "we author rooms; that they become one thing is after render").
+// Authoring says "the skeleton stands in the hall, five cells in", which is
+// how the reference tomb is written and how a designer thinks. The canvas is
+// what those rooms compile INTO, so this position is projected through the
+// room's Origin exactly once, at construction.
+//
+// ENTRY MID-SCENE IS A DIFFERENT SHAPE. A member walking in during play is not
+// being authored; they arrive at a cell on the map, and [JoinInput] takes that
+// cell directly (rpg-toolkit#1101). Construction data and play data have
+// different shapes for a reason, and this is the construction one.
 type MemberInput struct {
 	// ID is the member's unique identifier.
 	ID MemberID
@@ -140,7 +183,8 @@ type MemberInput struct {
 	// Room is the ID of the room where the member is placed.
 	Room string
 
-	// Position is the member's location within the room.
+	// Position is the member's location within the room — ROOM-LOCAL, and
+	// compiled to Position + that room's Origin on the canvas.
 	Position spatial.Position
 
 	// Decider is the monster's decision-making engine (monsters only).
@@ -155,11 +199,16 @@ type Trigger interface {
 }
 
 // TriggerReachedPosition fires when a member reaches a specific position.
+//
+// Room-shaped because it is authored alongside the rooms (see [MemberInput]);
+// the pair is compiled to a single absolute cell at construction, and that is
+// the cell a member's arrival is compared against.
 type TriggerReachedPosition struct {
 	// Room is the target room ID.
 	Room string
 
-	// Position is the target position within the room.
+	// Position is the target position within the room — ROOM-LOCAL, compiled
+	// to Position + that room's Origin at construction.
 	Position spatial.Position
 
 	// Member is the target member ID (empty = any player member).
@@ -270,6 +319,13 @@ type StoryInput struct {
 type Member struct {
 	ID   MemberID
 	Kind MemberKind
+
+	// Room is the authored chamber whose footprint holds Position — DERIVED,
+	// not stored. A member's cell is the canvas's to know and the authored
+	// footprints decide which chamber that cell falls in, so keeping a room
+	// label on the record would be a second truth every verb had to move in
+	// step with it (rpg-toolkit#1106; the dual state [memberRecord] already
+	// warns about, one field over).
 	Room string
 
 	// Position is where the member stands, in DUNGEON-ABSOLUTE space —
@@ -286,19 +342,24 @@ type Member struct {
 	// this side of the line — absolute coordinates belong in query outputs,
 	// never in a rule's own logic.
 	//
-	// The room-local cell is still available: pass this position to [Locate],
-	// which is the exact inverse.
+	// There is no room-local counterpart any more, and no bridge to one: the
+	// field IS this frame (rpg-toolkit#1106). Room above names the authored
+	// chamber whose footprint holds this cell.
 	Position spatial.Position
 }
 
-// memberRecord is what the composition stores about a member: identity, kind,
-// and which room owns them. Deliberately NOT their cell — the spatial room
-// holds that, and duplicating it here would create a second truth that the
-// verbs would have to keep in step.
+// memberRecord is what the composition stores about a member: identity and
+// kind, and nothing spatial at all.
+//
+// Deliberately NOT their cell — the canvas holds that, and duplicating it here
+// would create a second truth that the verbs would have to keep in step. Not
+// their room either, as of rpg-toolkit#1106: with one canvas, which authored
+// chamber a member stands in is a question the field answers from their cell,
+// and the copy this record used to carry had to be mutated by hand on every
+// crossing.
 type memberRecord struct {
 	ID   MemberID
 	Kind MemberKind
-	Room string
 }
 
 // Status represents the encounter's open/closed state.
@@ -332,7 +393,7 @@ type MemberOutcome struct {
 
 	// Position is the DUNGEON-ABSOLUTE cell they finished on
 	// (rpg-toolkit#1068) — the same frame Member.Position and every beat
-	// speak, projected through the same absoluteOf.
+	// speak, and since rpg-toolkit#1106 the only frame there is.
 	//
 	// This was the last room-local report on the surface, and the worst place
 	// for one to survive: an outcome is read AFTER the encounter is over, when
@@ -341,38 +402,6 @@ type MemberOutcome struct {
 	// origin was reported at cells belonging to whatever room happens to sit
 	// there.
 	Position spatial.Position
-}
-
-// MoveInput contains the member and target position for a movement action.
-type MoveInput struct {
-	// Member is the ID of the member moving.
-	Member MemberID
-
-	// To is the target position within the same room (v1 constraint).
-	To spatial.Position
-}
-
-// MoveOutput reports the results of a movement action.
-type MoveOutput struct {
-	// Moved contains the member's ID, original position, and new position.
-	Moved struct {
-		Member MemberID
-		From   spatial.Position
-		To     spatial.Position
-	}
-
-	// IntelDeltas maps member IDs to their updated percepts after movement
-	// (SurveilOutput deltas from the refreshSight cycle).
-	IntelDeltas map[MemberID]*intel.SurveilOutput
-
-	// Seq is the sequence number of the recorded movement beat.
-	Seq uint64
-
-	// Outcome is the encounter outcome if an ending fired; nil otherwise.
-	Outcome *Outcome
-
-	// Formed is set when this step started a fight. Nil otherwise.
-	Formed *FormedBubble
 }
 
 // FormedBubble reports a fight that trigger detection started.
@@ -386,45 +415,6 @@ type FormedBubble struct {
 
 	// Seq is the story sequence of the formation beat.
 	Seq uint64
-}
-
-// TraverseInput contains the member and connection to traverse. The member
-// must be standing exactly on one of the connection's two endpoints; they
-// arrive at the other.
-type TraverseInput struct {
-	// Member is the ID of the member traversing.
-	Member MemberID
-
-	// Connection is the ID of the connection to traverse.
-	Connection string
-}
-
-// TraverseOutput reports the results of a traversal action.
-type TraverseOutput struct {
-	// Traversed contains the member's ID, departure room/position, and
-	// arrival room/position.
-	Traversed struct {
-		Member   MemberID
-		FromRoom string
-		From     spatial.Position
-		ToRoom   string
-		To       spatial.Position
-	}
-
-	// Formed is set when walking through the door started a fight — the case
-	// review caught, because traversing into a room refreshes sight exactly
-	// like moving within one does.
-	Formed *FormedBubble
-
-	// IntelDeltas maps member IDs to their updated percepts after traversal
-	// (SurveilOutput deltas from the refreshSight cycle, across both rooms).
-	IntelDeltas map[MemberID]*intel.SurveilOutput
-
-	// Seq is the sequence number of the recorded traversal beat.
-	Seq uint64
-
-	// Outcome is the encounter outcome if an ending fired; nil otherwise.
-	Outcome *Outcome
 }
 
 // StepInput names who steps and which cell they step to.
@@ -443,25 +433,23 @@ type StepInput struct {
 
 // StepOutput reports what the step actually did.
 type StepOutput struct {
-	// Stepped is the movement, in dungeon-absolute cells at both ends.
-	//
-	// From and To are projected through their OWN rooms' anchors, which for a
-	// crossing are two different ones — on the map that is simply two adjacent
-	// cells (W3), and a caller never learns there was an anchor involved.
+	// Stepped is the movement, in dungeon-absolute cells at both ends —
+	// read straight off the canvas, with no anchor involved at either end.
 	Stepped struct {
 		Member MemberID
 		From   spatial.Position
 		To     spatial.Position
 	}
 
-	// Crossing names the doorway this step went through, or is empty when the
-	// step stayed inside one room.
+	// Crossing names the doorway this step went through, or is empty when it
+	// did not go through one.
 	//
-	// A doorway identifier is not a room: it is a thing on the map, and the
-	// Atlas carries the same ids. It is reported because "what happened" is
-	// genuinely two answers here, and a caller narrating a crossing ("she
-	// slips through the gate") should not have to re-derive which one it was
-	// from the geometry.
+	// A NAME, NOT A MECHANISM (rpg-toolkit#1106). It used to be the answer to
+	// "which of the two movement mechanisms carried this", and before that the
+	// thing that granted permission to leave a room at all. Neither survives:
+	// a step is a step, and what stops one is a wall. What is left is
+	// narration — a host writing "she slips through the gate" should not have
+	// to rediscover which gate from the Atlas — and it decides nothing.
 	Crossing string
 
 	// IntelDeltas maps member IDs to their updated percepts after the step
@@ -487,8 +475,11 @@ type PumpOutput struct {
 	// Tick is the exploration clock's reading after the advance.
 	Tick uint64
 
-	// MonsterMoves contains the successful same-room moves executed by monsters
-	// during this pump.
+	// MonsterMoves contains the steps monsters actually took this pump — all
+	// of them, whether or not one went through a doorway. There is no second
+	// list: a crossing is an ordinary step (rpg-toolkit#1106), and the
+	// separate MonsterTraverses that used to sit beside this one described a
+	// mechanism the composition no longer has.
 	//
 	// From and To are DUNGEON-ABSOLUTE — already projected through the room's
 	// origin, so they can be compared with any other absolute coordinate this
@@ -499,31 +490,11 @@ type PumpOutput struct {
 	//
 	// No room field, deliberately: an absolute cell does not need one, and
 	// carrying a composition-internal room ID beside a position is the dialect
-	// the seam reshape exists to remove (rpg-toolkit#1062). To recover the
-	// room-local cell, pass the position to [Encounter.Locate].
+	// the seam reshape exists to remove (rpg-toolkit#1062).
 	MonsterMoves []struct {
 		Member MemberID
 		From   spatial.Position
 		To     spatial.Position
-	}
-
-	// MonsterTraverses contains the doorway crossings monsters made during this
-	// pump — an intended step whose cell turned out to be on the far side of a
-	// doorway. A step that could not be taken does not appear here: a cell in
-	// another room with no doorway joining it to where the monster stands is
-	// silently skipped, matching MonsterMoves' spatial-rejection contract.
-	//
-	// From and To are DUNGEON-ABSOLUTE, exactly as MonsterMoves' are — and here
-	// the two sides are projected through DIFFERENT anchors, since a crossing's
-	// departure cell belongs to FromRoom and its arrival cell to ToRoom. On the
-	// map the pair is simply two adjacent cells (W3), which is the whole point:
-	// a crossing reads like an ordinary step.
-	MonsterTraverses []struct {
-		Member   MemberID
-		FromRoom string
-		From     spatial.Position
-		ToRoom   string
-		To       spatial.Position
 	}
 
 	// IntelDeltas maps member IDs to their updated percepts after all monster actions
@@ -531,7 +502,7 @@ type PumpOutput struct {
 	IntelDeltas map[MemberID]*intel.SurveilOutput
 
 	// Seqs contains the sequence numbers of the recorded beats (tick beat
-	// first, then move/traverse beats in decision order).
+	// first, then movement beats in decision order).
 	Seqs []uint64
 
 	// Outcome is the encounter outcome if an ending fired; nil otherwise.
@@ -542,10 +513,39 @@ type PumpOutput struct {
 	Formed *FormedBubble
 }
 
-// JoinInput contains the member and placement information for joining the encounter.
+// JoinInput names who is arriving and the cell on the map they arrive at.
+//
+// A CELL, NOT A ROOM AND A CELL (rpg-toolkit#1101). This input used to be a
+// [MemberInput] — Setup's own type — so a seam holding an absolute cell had to
+// resolve it to a room and a local coordinate before it could hand somebody
+// through the door, which was the last room translation left in the session's
+// reasoning after rpg-toolkit#1059 made the walk absolute.
+//
+// The two are separate types now rather than one shared one, because they are
+// two different things: Setup AUTHORS a roster into authored rooms, and Join
+// takes somebody who is already on the map. A second entry VERB was the other
+// way to close that gap, and was refused for the reason rpg-toolkit#1059 spent
+// two PRs on: two ways in is two places for a rule to land, and eventually one
+// of them misses.
 type JoinInput struct {
-	// Member describes the joining member (ID, kind, room, position, optional decider).
-	Member MemberInput
+	// Member is the joining member's unique identifier.
+	Member MemberID
+
+	// Kind is the member's category (player or monster).
+	Kind MemberKind
+
+	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
+	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.
+	//
+	// A cell no authored room owns is refused with ErrBadPlacement: void is
+	// not floor, and arriving in it is not a placement this composition can
+	// make sense of.
+	Cell spatial.Position
+
+	// Decider is the monster's decision-making engine (monsters only).
+	// Players must not have a Decider; passing one for a player will fail
+	// validation. Deciders are NOT persisted; they are re-registered at load.
+	Decider Decider
 }
 
 // JoinOutput reports the results of a successful join.

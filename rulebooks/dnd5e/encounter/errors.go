@@ -84,10 +84,10 @@ var (
 	// encounter:") at their own call sites (#929 T2 second review round;
 	// buildValidRoomGrids' doc comment).
 	//
-	// Also returned by Absolute (#929 T3) when the named room does not
-	// exist in this field — a runtime lookup miss reusing the room-list
-	// defect vocabulary rather than a dedicated sentinel, unlike
-	// ErrNoConnection's split from ErrBadConnection below.
+	// Also returned when the field's absolute footprint cannot be drawn on a
+	// single grid of its family (W6, rpg-toolkit#1106): the canvas the rooms
+	// compile into is one grid, and a square field reaching a negative cell
+	// has no such grid — see canvasSpan, whose message names the remedy.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement or position is bad in
@@ -95,21 +95,33 @@ var (
 	// validation — that's ErrNoField/ErrBadConnection): a room or entity
 	// lookup miss, a position out of bounds or (hex) non-integral, a
 	// member not standing at a connection's threshold, or an actual
-	// underlying spatial-package call (AddRoom, PlaceEntity,
-	// TransitionEntity, RemoveEntity) failing. Only the LAST class wraps
-	// an underlying spatial error — most call sites (Absolute, Locate,
-	// moveMember's own bounds/integrality checks, Traverse's threshold
-	// check, Pump's snapshot lookups, Join's/Exit's own lookups) reject
-	// before ever reaching spatial, with nothing beneath ErrBadPlacement
-	// to wrap. Also covers LoadEncounter's member and outcome-member
-	// checks — room lookup miss, out-of-bounds position, non-integral
-	// (hex) position — which mirror NewEncounter's identical member
-	// checks and used to carry only ErrInvalidData (#929 hardening
-	// round F) — plus, outcome-only, a MISSING cell, which has no Setup
-	// analogue for the same structural reason RoomData.Origin's absence
-	// does not: an outcome's position is a plain value in memory and a
-	// pointer on the wire, so only Load can tell a blob that omitted it
-	// (the pre-#1068 room-local dialect) from one that declared (0,0).
+	// underlying spatial-package call (PlaceEntity, MoveEntity,
+	// RegisterBoundary, RemoveEntity) failing. Only the LAST class wraps an
+	// underlying spatial error — most call sites (moveMember's own
+	// integrality check, Pump's snapshot lookups, Join's and Exit's own
+	// lookups) reject before ever reaching spatial, with nothing beneath
+	// ErrBadPlacement to wrap.
+	//
+	// It is also what a WALL answers with. Since rpg-toolkit#1106 the thing
+	// that stops a step between two chambers is a movement-blocking boundary
+	// on the canvas, refused by spatial's own MoveEntity — where it used to be
+	// the absence of a doorway in a connection list, refused with a sentinel
+	// of its own (ErrNoCrossing, deleted with the concept). "There is no way
+	// through" and "that is not a cell you can stand on" stopped being
+	// different kinds of answer when walls became geometry.
+	//
+	// VOID IS NOT FLOOR carries the same error: the canvas spans the field's
+	// bounding box, so a cell can be on the map and still belong to no
+	// authored chamber, and stepping or joining onto one is refused here.
+	//
+	// Also covers LoadEncounter's member and outcome-member checks, which
+	// mirror NewEncounter's identical member checks and used to carry only
+	// ErrInvalidData (#929 hardening round F) — plus a MISSING cell on either,
+	// which has no Setup analogue for the same structural reason
+	// RoomData.Origin's absence does not: a cell is a plain value in memory
+	// and a pointer on the wire, so only Load can tell a blob that omitted it
+	// (the room-local dialects from before #1068 and #1106) from one that
+	// declared (0,0).
 	ErrBadPlacement = errors.New("bad placement")
 
 	// ErrBadConnection is returned when a connection's ID is empty or
@@ -126,25 +138,6 @@ var (
 	// validateConnectionInputs Setup uses.
 	ErrBadConnection = errors.New("bad connection")
 
-	// ErrNoCrossing is returned by Step when the destination cell lies in
-	// ANOTHER room and no doorway joins it to the cell the member is standing
-	// on. The cell is real and the member simply cannot get there from here.
-	//
-	// Distinct from ErrBadPlacement on purpose, because the remedies differ:
-	// "that is not a cell" sends a caller back to its arithmetic, while "there
-	// is no way through" sends it back to the map. W2 lets two rooms share an
-	// edge without a door between them, so two absolutely-adjacent cells can be
-	// permanently unwalkable — a refusal a caller reading only the Atlas's
-	// CELLS cannot predict, since the doorway is in the doorway list or it is
-	// nowhere.
-	ErrNoCrossing = errors.New("no doorway joins those cells")
-
-	// ErrNoConnection is returned by Traverse when the given connection ID
-	// does not name any connection in this encounter — a runtime lookup
-	// miss, the ErrNotMember analogue for connections. Distinct from
-	// ErrBadConnection, which is a declaration-time defect at Setup/Load.
-	ErrNoConnection = errors.New("no such connection")
-
 	// ErrInBubble is returned when a verb requires its member NOT be in a
 	// running bubble and they are: Form names a member already in a fight
 	// (rejected, never silently merged — merging is a Merge-verb decision
@@ -152,7 +145,7 @@ var (
 	// encounter's one allowed bubble is already running (#963 policy: one
 	// bubble per encounter, so fights stay linear and the party stays
 	// together), Transfer names ClockTurn for a member already in the
-	// fight, or Move/Traverse is asked to free-roam a member who is
+	// fight, or Step is asked to free-roam a member who is
 	// mid-fight — a fight member acts through the bubble's own turn
 	// structure, never by stepping around it.
 	ErrInBubble = errors.New("already in a bubble")

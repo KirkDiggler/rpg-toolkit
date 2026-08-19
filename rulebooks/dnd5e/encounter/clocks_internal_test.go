@@ -73,7 +73,7 @@ func TestFormRejections(t *testing.T) {
 		enc, err := NewEncounter(&SetupInput{
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: FieldInput{Rooms: []RoomInput{
-				{ID: "r1", Width: 8, Height: 8},
+				{ID: "r1", Width: 8, Height: 8, Boundaries: sealedSeam(7, 8)},
 				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
 			}},
 			Members: []MemberInput{
@@ -146,4 +146,32 @@ func TestFormRejections(t *testing.T) {
 		}
 		require.Empty(t, enc.ToData().Bubbles)
 	})
+}
+
+// sealedSeam is the wall a room draws along its own +X edge, with no opening:
+// every crossing to the column beyond it, diagonals included.
+//
+// It exists because "next door" stopped being a hiding place. The field is one
+// canvas now (rpg-toolkit#1106), so two chambers side by side share an open
+// seam unless somebody says otherwise, and a fixture whose whole premise is
+// "first light does not start the fight" has to say it. Diagonals are included
+// for the reason testwalls_test.go's squareSeamWall spells out: a square cell
+// has eight neighbours, and a wall of same-row edges leaks at every corner.
+func sealedSeam(atX, height int) []spatial.Boundary {
+	out := make([]spatial.Boundary, 0, height*3)
+	for y := 0; y < height; y++ {
+		for _, dy := range []int{-1, 0, 1} {
+			to := y + dy
+			if to < 0 || to >= height {
+				continue
+			}
+			out = append(out, spatial.Boundary{
+				From:              spatial.Position{X: float64(atX), Y: float64(y)},
+				To:                spatial.Position{X: float64(atX + 1), Y: float64(to)},
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			})
+		}
+	}
+	return out
 }

@@ -71,3 +71,81 @@ func structFieldNames(v any) []string {
 	}
 	return names
 }
+
+// A WALL BUILT OUT OF EDGES NEEDS EVERY EDGE, and that is what these two
+// helpers exist to get right.
+//
+// A room walls its own boundary by naming the cell beyond it: {From: (x,y),
+// To: (x+1,y)} is a crossing between two chambers, which is a sentence no room
+// could say until the field became one canvas (rpg-toolkit#1106). But a grid's
+// adjacency is not only orthogonal — a square cell has eight neighbours, a hex
+// six — and spatial registers a boundary between ANY two adjacent cells, so a
+// wall made of same-row crossings alone has a hole at every corner: a sightline
+// or a step that crosses the seam DIAGONALLY passes straight through it.
+//
+// Measured, on a 20x10 canvas walled at 9|10 with same-row edges only: a viewer
+// at (2,2) sees a member at (17,7), because the canonical ray crosses the seam
+// on a diagonal step and meets no registered edge. Adding the diagonal
+// crossings blocks it. That is not a defect in spatial — a diagonal pair IS
+// adjacent, and an edge between them is a real thing to register — it is what
+// "a wall" has to mean when it is built out of edges rather than out of cells.
+
+// squareSeamWall returns every crossing from column atX to the column beyond
+// it, over rows [0,height), except through the named gap rows.
+//
+// A gap row is one cell wide in both senses: only the straight crossing
+// (atX,g)-(atX+1,g) is left open, so a doorway is a doorway rather than a
+// diagonal shortcut around its own frame.
+func squareSeamWall(atX, height int, gapRows ...int) []spatial.Boundary {
+	gap := make(map[int]bool, len(gapRows))
+	for _, g := range gapRows {
+		gap[g] = true
+	}
+
+	out := make([]spatial.Boundary, 0, height*3)
+	for y := 0; y < height; y++ {
+		for _, dy := range []int{-1, 0, 1} {
+			to := y + dy
+			if to < 0 || to >= height {
+				continue
+			}
+			if dy == 0 && gap[y] {
+				continue // the doorway itself
+			}
+			out = append(out, spatial.Boundary{
+				From:              spatial.Position{X: float64(atX), Y: float64(y)},
+				To:                spatial.Position{X: float64(atX + 1), Y: float64(to)},
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			})
+		}
+	}
+	return out
+}
+
+// hexSeamWall is squareSeamWall's axial-hex sibling. A hex cell's neighbours
+// across the +Q edge are (q+1,r) and (q+1,r-1) — two crossings per cell, not
+// three — and rows are given as an inclusive [rMin,rMax] range because an axial
+// room's span is origin-centred and its R values are routinely negative.
+func hexSeamWall(atQ, rMin, rMax int, gapRows ...int) []spatial.Boundary {
+	gap := make(map[int]bool, len(gapRows))
+	for _, g := range gapRows {
+		gap[g] = true
+	}
+
+	out := make([]spatial.Boundary, 0, (rMax-rMin+1)*2)
+	for r := rMin; r <= rMax; r++ {
+		for _, dr := range []int{0, -1} {
+			if dr == 0 && gap[r] {
+				continue // the doorway itself
+			}
+			out = append(out, spatial.Boundary{
+				From:              spatial.Position{X: float64(atQ), Y: float64(r)},
+				To:                spatial.Position{X: float64(atQ + 1), Y: float64(r + dr)},
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			})
+		}
+	}
+	return out
+}

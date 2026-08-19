@@ -29,9 +29,8 @@
 // and Dissolve re-homes everyone to the tick. A fight also ENDS ITSELF when a
 // side runs out of members standing in it — [ByDefeat], with no caller, the
 // mirror of sight starting one. Everyone not in the fight keeps
-// free-roaming while it runs; everyone in it is the fight's alone — Step,
-// Move, Traverse, and Pump are world-clock verbs and will not act for a
-// fight member. Which clock somebody is on is always askable, per member, via
+// free-roaming while it runs; everyone in it is the fight's alone — Step and
+// Pump are world-clock verbs and will not act for a fight member. Which clock somebody is on is always askable, per member, via
 // ClockOf.
 //
 // # Atomicity, and what R5 does and does not promise
@@ -78,19 +77,30 @@
 //     disjoint; touching is legal, sharing a cell is not.
 //   - W3 (doorways kiss) — a connection's two endpoints, once anchored to
 //     their rooms' origins, are adjacent absolute cells.
-//   - W4 (projection is a read) — rules and verbs stay room-local; absolute
-//     coordinates appear only where this module REPORTS a cell, never in a
-//     rule's own logic. That set has grown as the seam converged on one map:
-//     the coordinate queries it started as (Atlas, Absolute, Locate), then
+//   - W4 (projection is a read) — RETIRED by #1106, and worth stating as
+//     history because the whole shape of this module used to follow from it.
+//     Rules and verbs stayed room-local and absolute coordinates appeared
+//     only where the module REPORTED a cell; that reporting set grew until
+//     it was everything (the coordinate queries it started as, then
 //     placement reads and movement beats (#1040), sight payloads (#1044),
-//     the pump's monster moves (#1062), and finally the outcome (#1068).
-//     Everything a caller is told a cell for now speaks the same one.
+//     the pump's monster moves (#1062), and the outcome (#1068)) — at which
+//     point the room-local frame underneath had no readers left. #1106
+//     spends Origin ONCE, at construction, compiling the authored rooms
+//     into one canvas: there is one frame now, and nothing to project.
 //   - W5 (anchors are construction data) — Origin's LEGALITY (bounds,
 //     integrality) is validated identically at Setup and Load, never
 //     derived or inferred; PRESENCE is structurally Load-only — Origin is
 //     a plain value at Setup (RoomInput) but a pointer at Load
 //     (RoomData), so only Load can distinguish a missing Origin from a
 //     declared zero one.
+//   - W6 (the field is one canvas) — the union of the authored rooms'
+//     absolute footprints must be expressible as a SINGLE grid of the
+//     field's family, because that is what the rooms compile into
+//     (#1106). Square grids start at (0,0), so a square field cannot
+//     reach a negative cell; hex grids are origin-centred and always fit.
+//     The remedy for a rejection is a relabelling — shift every Origin by
+//     the same vector — since a field's absolute frame only ever means
+//     "relative to the other rooms".
 //
 // Room and field size are allocation-bounded (a legal-but-absurd room or
 // field could otherwise demand an allocation Atlas cannot safely make);

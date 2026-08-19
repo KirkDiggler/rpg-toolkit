@@ -18,8 +18,8 @@ import (
 // connections out of ID order (Rooms: r3,r1,r4,r2 — sorted order is
 // r1,r2,r3,r4; Connections: connB,connA — sorted order is connA,connB),
 // so a missing/removed sort is observable through the public API. Every
-// room has a distinct, nonzero-on-both-axes Origin (r1: (-50,7), r2:
-// (-46,6)) so a sign-flipped bridge (Subtract instead of Add, or vice
+// room has a distinct, nonzero-on-both-axes Origin (r1: (0,7), r2:
+// (4,6)) so a sign-flipped projection (Subtract instead of Add, or vice
 // versa) produces a wrong, non-accidental-match absolute value. atlas-r1
 // also carries one boundary (#929 hardening round A) so AtlasRoom.Boundaries
 // projection, copy-out, reload survival, and live-state independence are
@@ -30,7 +30,7 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
 				{ID: "atlas-r3", Width: 4, Height: 3, Origin: spatial.Position{X: 9950, Y: 7}},
-				{ID: "atlas-r1", Width: 4, Height: 3, Origin: spatial.Position{X: -50, Y: 7},
+				{ID: "atlas-r1", Width: 4, Height: 3, Origin: spatial.Position{X: 0, Y: 7},
 					Occluders: []spatial.Position{{X: 1, Y: 1}},
 					// (0,2)-(1,2): the far row from atlas-p1's Y=0 move path
 					// below (TestAtlasUnaffectedByLiveState moves it (0,0) to
@@ -40,7 +40,7 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 						{From: spatial.Position{X: 0, Y: 2}, To: spatial.Position{X: 1, Y: 2}, BlocksMovement: true, BlocksLineOfSight: true},
 					}},
 				{ID: "atlas-r4", Width: 6, Height: 5, Origin: spatial.Position{X: 9954, Y: 6}},
-				{ID: "atlas-r2", Width: 6, Height: 5, Origin: spatial.Position{X: -46, Y: 6}},
+				{ID: "atlas-r2", Width: 6, Height: 5, Origin: spatial.Position{X: 4, Y: 6}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "atlas-connB", From: "atlas-r3", To: "atlas-r4",
@@ -210,20 +210,20 @@ func (s *EncounterTestSuite) TestAtlasRoomCellsAndOccludersAreAbsolute() {
 	}
 	s.Require().True(found, "atlas-r1 must be present")
 
-	s.Require().Contains(r1.Cells, spatial.Position{X: -50, Y: 7}, "local (0,0) projected through Origin")
-	s.Require().Contains(r1.Cells, spatial.Position{X: -47, Y: 9}, "local (3,2), the far corner, projected through Origin")
-	s.Require().Equal([]spatial.Position{{X: -49, Y: 8}}, r1.Occluders, "occluder must be offset by Origin too")
+	s.Require().Contains(r1.Cells, spatial.Position{X: 0, Y: 7}, "local (0,0) projected through Origin")
+	s.Require().Contains(r1.Cells, spatial.Position{X: 3, Y: 9}, "local (3,2), the far corner, projected through Origin")
+	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders, "occluder must be offset by Origin too")
 
 	// #929 T3 fix round item 3: an occluder's cell is floor AND blockage —
 	// it must appear in BOTH Cells and Occluders (ruling 1: occlusion is
 	// walkability, not ownership). This is the property hosts actually
 	// render by: floor from Cells, blockage layered from Occluders.
-	s.Require().Contains(r1.Cells, spatial.Position{X: -49, Y: 8}, "an occluded cell is still floor — it must appear in Cells too")
+	s.Require().Contains(r1.Cells, spatial.Position{X: 1, Y: 8}, "an occluded cell is still floor — it must appear in Cells too")
 
 	// #929 hardening round A: local (0,0)-(1,0) projected through Origin
-	// (-50,7) — BOTH endpoints offset, flags carried through unchanged.
+	// (0,7) — BOTH endpoints offset, flags carried through unchanged.
 	s.Require().Equal([]encounter.AtlasBoundary{
-		{From: spatial.Position{X: -50, Y: 9}, To: spatial.Position{X: -49, Y: 9}, BlocksMovement: true, BlocksLineOfSight: true},
+		{From: spatial.Position{X: 0, Y: 9}, To: spatial.Position{X: 1, Y: 9}, BlocksMovement: true, BlocksLineOfSight: true},
 	}, r1.Boundaries, "boundary endpoints must each be offset by Origin, flags preserved")
 }
 
@@ -242,9 +242,9 @@ func (s *EncounterTestSuite) TestAtlasDoorwaysAreAbsolute() {
 	connA := atlas.Doorways[0] // sorted: connA precedes connB
 	s.Require().Equal("atlas-connA", connA.Connection)
 	s.Require().Equal("atlas-r1", connA.From)
-	s.Require().Equal(spatial.Position{X: -47, Y: 8}, connA.FromCell)
+	s.Require().Equal(spatial.Position{X: 3, Y: 8}, connA.FromCell)
 	s.Require().Equal("atlas-r2", connA.To)
-	s.Require().Equal(spatial.Position{X: -46, Y: 8}, connA.ToCell)
+	s.Require().Equal(spatial.Position{X: 4, Y: 8}, connA.ToCell)
 }
 
 // TestAtlasUnaffectedByLiveState pins ruling 3: Atlas is construction
@@ -257,7 +257,8 @@ func (s *EncounterTestSuite) TestAtlasUnaffectedByLiveState() {
 	before, err := enc.Atlas()
 	s.Require().NoError(err)
 
-	_, err = enc.Move(&encounter.MoveInput{Member: "atlas-p1", To: spatial.Position{X: 3, Y: 0}})
+	// atlas-r1 is anchored at (0,7), so its own (3,0) is (3,7) on the map.
+	_, err = enc.Step(&encounter.StepInput{Member: "atlas-p1", To: spatial.Position{X: 3, Y: 7}})
 	s.Require().NoError(err)
 
 	_, err = enc.Pump(&encounter.PumpInput{})
@@ -309,14 +310,14 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 			r1 = r
 		}
 	}
-	s.Require().Equal([]spatial.Position{{X: -49, Y: 8}}, r1.Occluders,
+	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders,
 		"mutating the first snapshot's Occluders must not corrupt internal state")
-	s.Require().Contains(r1.Cells, spatial.Position{X: -50, Y: 7},
+	s.Require().Contains(r1.Cells, spatial.Position{X: 0, Y: 7},
 		"mutating the first snapshot's Cells must not corrupt internal state")
-	s.Require().Equal(spatial.Position{X: -47, Y: 8}, atlas2.Doorways[0].FromCell,
+	s.Require().Equal(spatial.Position{X: 3, Y: 8}, atlas2.Doorways[0].FromCell,
 		"mutating the first snapshot's Doorways must not corrupt internal state")
 	s.Require().Equal([]encounter.AtlasBoundary{
-		{From: spatial.Position{X: -50, Y: 9}, To: spatial.Position{X: -49, Y: 9}, BlocksMovement: true, BlocksLineOfSight: true},
+		{From: spatial.Position{X: 0, Y: 9}, To: spatial.Position{X: 1, Y: 9}, BlocksMovement: true, BlocksLineOfSight: true},
 	}, r1.Boundaries, "mutating the first snapshot's Boundaries must not corrupt internal state (#929 hardening round A)")
 }
 
@@ -380,226 +381,76 @@ func (s *EncounterTestSuite) TestAtlasCellsExactOrder() {
 	}, atlas.Rooms[0].Cells, "atlasCells must iterate Q (X) outer, R (Y) inner, in exactly this order")
 }
 
-// TestLocateAbsoluteRoundTripHex pins the round-trip law over EVERY
-// in-bounds cell of BOTH rooms in the canonical asymmetric hex fixture:
-// Locate(Absolute(r,p)) == (r,p).
-func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripHex() {
-	enc, err := encounter.NewEncounter(validAnchoredHexSetup())
+// TestChamberOwnershipAtKissingDoorway pins the case that makes W2's
+// uniqueness meaningful: each doorway cell — immediately adjacent to a cell in
+// the OTHER chamber — belongs to its OWN chamber, not its neighbour's.
+//
+// It used to ask the Locate bridge, which is gone. The question survives it,
+// and it is asked the way it is asked now: a member standing on a cell is
+// reported in the chamber whose authored footprint holds it (rpg-toolkit#1106).
+// The two members here stand one cell apart, on opposite sides of a doorway —
+// exactly the pair a room-membership answer has to get right.
+func (s *EncounterTestSuite) TestChamberOwnershipAtKissingDoorway() {
+	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
 
-	rooms := []struct {
-		id            string
-		width, height int
-	}{
-		{"hex-big", 10, 4},
-		{"hex-small", 3, 9},
-	}
-	for _, room := range rooms {
-		for _, local := range bruteForceLocalCells(spatial.GridShapeHex, room.width, room.height) {
-			abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: room.id, Position: local})
-			s.Require().NoError(err, "room %s cell %v", room.id, local)
+	// atlas-r1 local (3,1) is absolute (3,8); atlas-r2 local (0,2) is (4,8).
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: "near", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 3, Y: 8}})
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: "far", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 4, Y: 8}})
+	s.Require().NoError(err)
 
-			loc, err := enc.Locate(&encounter.LocateInput{Position: abs.Position})
-			s.Require().NoError(err, "room %s cell %v absolute %v", room.id, local, abs.Position)
-			s.Require().Equal(room.id, loc.Room, "round trip must return to the same room")
-			s.Require().Equal(local, loc.Position, "round trip must return to the same local position")
+	rooms := map[encounter.MemberID]string{}
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		rooms[m.ID] = m.Room
+	}
+	s.Require().Equal("atlas-r1", rooms["near"], "the doorway cell in atlas-r1 belongs to atlas-r1, not atlas-r2")
+	s.Require().Equal("atlas-r2", rooms["far"], "the doorway cell in atlas-r2 belongs to atlas-r2, not atlas-r1")
+}
+
+// TestAnOccludedCellIsStillFloor pins ruling 1 in the terms that survive the
+// bridges: occlusion is walkability, not ownership. A member standing on an
+// occluder's own cell is reported in the chamber that owns it, exactly as one
+// on an empty cell is — the Atlas already reports occluders as a SUBSET of
+// Cells (TestAtlasRoomCellsAndOccludersAreAbsolute), and this is the runtime
+// half of the same claim.
+func (s *EncounterTestSuite) TestAnOccludedCellIsStillFloor() {
+	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
+	s.Require().NoError(err)
+
+	// atlas-r1's occluder is local (1,1), absolute (1,8).
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: "onTheRubble", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 1, Y: 8}})
+	s.Require().NoError(err, "an occluder must not bar a placement — it blocks sight, not floor")
+
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID == "onTheRubble" {
+			s.Require().Equal("atlas-r1", m.Room)
+			s.Require().Equal(spatial.Position{X: 1, Y: 8}, m.Position)
+			return
 		}
 	}
+	s.Require().Fail("the member is not on the roster")
 }
 
-// TestLocateAbsoluteRoundTripSquare mirrors TestLocateAbsoluteRoundTripHex's
-// structure for the square family: the round-trip law over EVERY in-bounds
-// INTEGER cell of BOTH rooms in the kissing pair (atlas-r1/atlas-r2) from
-// validAtlasOrderingSetup — the design's promise applies to every room, not
-// just hex (#929 T3 fix round item 1). The fractional case is pinned
-// separately by TestLocateAbsoluteRoundTripFractionalSquare.
-func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripSquare() {
-	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
+// TestVoidIsNotFloor is what is left of Locate's rejection classes, asked of
+// the verb that still needs the answer: the canvas spans the field's bounding
+// box, so a cell can be on the map and belong to no chamber, and arriving
+// there is refused.
+func (s *EncounterTestSuite) TestVoidIsNotFloor() {
+	enc, err := encounter.NewEncounter(validAtlasVoidGapSetup())
 	s.Require().NoError(err)
 
-	rooms := []struct {
-		id            string
-		width, height int
-	}{
-		{"atlas-r1", 4, 3},
-		{"atlas-r2", 6, 5},
-	}
-	for _, room := range rooms {
-		for _, local := range bruteForceLocalCells(spatial.GridShapeSquare, room.width, room.height) {
-			abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: room.id, Position: local})
-			s.Require().NoError(err, "room %s cell %v", room.id, local)
-
-			loc, err := enc.Locate(&encounter.LocateInput{Position: abs.Position})
-			s.Require().NoError(err, "room %s cell %v absolute %v", room.id, local, abs.Position)
-			s.Require().Equal(room.id, loc.Room, "round trip must return to the same room")
-			s.Require().Equal(local, loc.Position, "round trip must return to the same local position")
-		}
-	}
-}
-
-// TestLocateAbsoluteRoundTripFractionalSquare pins ruling 2: a fractional
-// SQUARE position is legal and round-trips exactly, subtract-then-bounds.
-func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripFractionalSquare() {
-	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-	s.Require().NoError(err)
-
-	local := spatial.Position{X: 1.5, Y: 0.5}
-	abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: "atlas-r1", Position: local})
-	s.Require().NoError(err)
-	s.Require().Equal(spatial.Position{X: -48.5, Y: 7.5}, abs.Position)
-
-	loc, err := enc.Locate(&encounter.LocateInput{Position: abs.Position})
-	s.Require().NoError(err)
-	s.Require().Equal("atlas-r1", loc.Room)
-	s.Require().Equal(local, loc.Position)
-}
-
-// TestLocateAbsoluteRoundTripExactAtExtremeOrigin pins the guarantee this
-// module actually makes (#929 T3 Opus round F3, Locate's corrected doc
-// comment): an INTEGRAL round trip is exact even at an extreme anchor —
-// Origin at ±(2^30−8), just inside maxAnchorCoord (1<<30). Unlike the
-// fractional case (approximate near an extreme anchor, within one
-// float64 ULP of a room edge — not chased in code), an integral position
-// stays exact because integers round-trip exactly to 2^53, far past
-// this magnitude.
-func (s *EncounterTestSuite) TestLocateAbsoluteRoundTripExactAtExtremeOrigin() {
-	const extreme = (1 << 30) - 8
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{
-				{ID: "extreme", Width: 10, Height: 10, Origin: spatial.Position{X: extreme, Y: -extreme}},
-			},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err)
-
-	local := spatial.Position{X: 3, Y: 7}
-	abs, err := enc.Absolute(&encounter.AbsoluteInput{Room: "extreme", Position: local})
-	s.Require().NoError(err)
-	s.Require().Equal(spatial.Position{X: extreme + 3, Y: -extreme + 7}, abs.Position)
-
-	loc, err := enc.Locate(&encounter.LocateInput{Position: abs.Position})
-	s.Require().NoError(err)
-	s.Require().Equal("extreme", loc.Room)
-	s.Require().Equal(local, loc.Position, "an integral round trip at an extreme anchor must be EXACT, not off by a ULP")
-}
-
-// TestLocateOwnershipAtKissingDoorway pins the case that makes W2's
-// uniqueness meaningful: each doorway cell — immediately adjacent to a
-// cell in the OTHER room — must locate to its OWN room, not its
-// neighbor's.
-func (s *EncounterTestSuite) TestLocateOwnershipAtKissingDoorway() {
-	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-	s.Require().NoError(err)
-
-	fromAbs, err := enc.Absolute(&encounter.AbsoluteInput{Room: "atlas-r1", Position: spatial.Position{X: 3, Y: 1}})
-	s.Require().NoError(err)
-	toAbs, err := enc.Absolute(&encounter.AbsoluteInput{Room: "atlas-r2", Position: spatial.Position{X: 0, Y: 2}})
-	s.Require().NoError(err)
-
-	fromLoc, err := enc.Locate(&encounter.LocateInput{Position: fromAbs.Position})
-	s.Require().NoError(err)
-	s.Require().Equal("atlas-r1", fromLoc.Room, "the doorway cell in atlas-r1 must locate to atlas-r1, not atlas-r2")
-
-	toLoc, err := enc.Locate(&encounter.LocateInput{Position: toAbs.Position})
-	s.Require().NoError(err)
-	s.Require().Equal("atlas-r2", toLoc.Room, "the doorway cell in atlas-r2 must locate to atlas-r2, not atlas-r1")
-}
-
-// TestAbsoluteLegalOnOccludedCell and TestLocateOwnsOccludedCell pin
-// ruling 1: occlusion is walkability, not ownership — both bridges treat
-// an occluded cell exactly like an empty one.
-func (s *EncounterTestSuite) TestAbsoluteLegalOnOccludedCell() {
-	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-	s.Require().NoError(err)
-
-	out, err := enc.Absolute(&encounter.AbsoluteInput{Room: "atlas-r1", Position: spatial.Position{X: 1, Y: 1}})
-	s.Require().NoError(err, "an occluder must not bar Absolute from projecting the cell")
-	s.Require().Equal(spatial.Position{X: -49, Y: 8}, out.Position)
-}
-
-// TestLocateOwnsOccludedCell is the Locate-side sibling of
-// TestAbsoluteLegalOnOccludedCell.
-func (s *EncounterTestSuite) TestLocateOwnsOccludedCell() {
-	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-	s.Require().NoError(err)
-
-	loc, err := enc.Locate(&encounter.LocateInput{Position: spatial.Position{X: -49, Y: 8}})
-	s.Require().NoError(err, "an occluder must not bar Locate from resolving the cell's owner")
-	s.Require().Equal("atlas-r1", loc.Room)
-	s.Require().Equal(spatial.Position{X: 1, Y: 1}, loc.Position)
-}
-
-// TestAbsoluteRejections pins Absolute's R5 rejection classes.
-func (s *EncounterTestSuite) TestAbsoluteRejections() {
-	s.Run("nil input", func() {
-		enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-		s.Require().NoError(err)
-		_, err = enc.Absolute(nil)
-		s.Require().ErrorIs(err, encounter.ErrNilInput)
-	})
-
-	s.Run("unknown room", func() {
-		enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-		s.Require().NoError(err)
-		_, err = enc.Absolute(&encounter.AbsoluteInput{Room: "nowhere", Position: spatial.Position{X: 0, Y: 0}})
-		s.Require().ErrorIs(err, encounter.ErrNoField)
-		s.Require().Contains(err.Error(), `unknown room "nowhere"`)
-	})
-
-	s.Run("out of bounds", func() {
-		enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-		s.Require().NoError(err)
-		_, err = enc.Absolute(&encounter.AbsoluteInput{Room: "atlas-r1", Position: spatial.Position{X: 100, Y: 100}})
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-		s.Require().Contains(err.Error(), "out of bounds")
-	})
-
-	s.Run("hex fractional position", func() {
-		enc, err := encounter.NewEncounter(validAnchoredHexSetup())
-		s.Require().NoError(err)
-		_, err = enc.Absolute(&encounter.AbsoluteInput{Room: "hex-big", Position: spatial.Position{X: 0.5, Y: 0}})
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-		s.Require().Contains(err.Error(), "not an integral axial cell")
-	})
-}
-
-// TestLocateRejections pins Locate's R5 rejection classes.
-func (s *EncounterTestSuite) TestLocateRejections() {
-	s.Run("nil input", func() {
-		enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-		s.Require().NoError(err)
-		_, err = enc.Locate(nil)
-		s.Require().ErrorIs(err, encounter.ErrNilInput)
-	})
-
-	s.Run("void position owned by no room", func() {
-		enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
-		s.Require().NoError(err)
-		_, err = enc.Locate(&encounter.LocateInput{Position: spatial.Position{X: 99999, Y: 99999}})
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-		s.Require().Contains(err.Error(), "owned by no room")
-	})
-
-	s.Run("void position in the gap between two nearby non-touching rooms", func() {
-		// The realistic shape of the law, not just a far-away point: (4,1)
-		// sits in gap-a/gap-b's 3-cell corridor gap, close to both rooms.
-		enc, err := encounter.NewEncounter(validAtlasVoidGapSetup())
-		s.Require().NoError(err)
-		_, err = enc.Locate(&encounter.LocateInput{Position: spatial.Position{X: 4, Y: 1}})
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-		s.Require().Contains(err.Error(), "owned by no room")
-	})
-
-	s.Run("fractional hex absolute position resolves to no room", func() {
-		// (0.5,0) is not a real cell of any hex room — must be void, not
-		// silently truncated into hex-big's ownership.
-		enc, err := encounter.NewEncounter(validAnchoredHexSetup())
-		s.Require().NoError(err)
-		_, err = enc.Locate(&encounter.LocateInput{Position: spatial.Position{X: 0.5, Y: 0}})
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-		s.Require().Contains(err.Error(), "owned by no room")
-	})
+	// The 3-cell corridor of void between gap-a (X in [0,2]) and gap-b
+	// (X in [6,8]) — on the canvas, owned by nothing.
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: "nowhere", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 4, Y: 1}})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Require().Contains(err.Error(), "not floor")
 }

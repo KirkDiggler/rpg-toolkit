@@ -52,11 +52,12 @@ const (
 	stepDoor = "connecting-door"
 )
 
-// The two chambers touch along their whole shared edge and are joined at
-// exactly ONE cell pair. That is the fixture's whole point: W2 lets rooms
-// share an edge without a door, so absolute adjacency is not permission, and
-// every cell of the seam except the doorway's is an adjacent pair that must
-// refuse.
+// The two chambers touch along their whole shared edge, and the west chamber
+// WALLS that edge except at one cell pair. That is the fixture's whole point:
+// absolute adjacency is not permission, and what withholds permission is a
+// wall — an edge on the map, drawn by a room across its own boundary onto the
+// cell beyond (rpg-toolkit#1106). It used to be the absence of a doorway in a
+// connection list, because a wall there was inexpressible.
 var (
 	stepWestOrigin = spatial.Position{X: 20, Y: 10}
 	stepEastOrigin = spatial.Position{X: 26, Y: 10}
@@ -73,11 +74,18 @@ func stepAbs(origin, local spatial.Position) spatial.Position {
 	return local.Add(origin)
 }
 
+// stepSeamWall is the west chamber's east wall: an edge from each of its own
+// last-column cells to the cell beyond it, every row but the doorway's. The far
+// endpoint belongs to the EAST chamber, which is exactly the thing a room could
+// not say before the field became one canvas.
+func stepSeamWall() []spatial.Boundary { return squareSeamWall(5, 6, int(stepDoorWestLocal.Y)) }
+
 // stepField is the shared set, optionally with a decider driving the goblin.
 func stepField() encounter.FieldInput {
 	return encounter.FieldInput{
 		Rooms: []encounter.RoomInput{
-			{ID: stepWest, Width: 6, Height: 6, Origin: stepWestOrigin},
+			{ID: stepWest, Width: 6, Height: 6, Origin: stepWestOrigin,
+				Boundaries: stepSeamWall()},
 			{ID: stepEast, Width: 6, Height: 6, Origin: stepEastOrigin},
 		},
 		Connections: []encounter.ConnectionInput{{
@@ -162,14 +170,17 @@ func (s *StepSuite) TestAStepWithinARoomIsAMove() {
 	s.Equal(to, s.beatCell(beat))
 }
 
-// TestAStepThroughADoorwayIsACrossing is the same sentence one cell along.
+// TestAStepThroughADoorwayIsJustAStep is the same sentence one cell along, and
+// the story cannot tell the two apart.
 //
 // The step names a cell, exactly as the one above does; that this cell happens
 // to be on the far side of a doorway is the composition's business to notice.
 // This is what W3 bought — a doorway's two endpoints are adjacent absolute
 // cells, so "the cell next to me" and "the cell through that door" are written
-// identically.
-func (s *StepSuite) TestAStepThroughADoorwayIsACrossing() {
+// identically. The BEAT says "moved" for both: a crossing stopped being a
+// second kind of movement when the field stopped being a set of rooms
+// (rpg-toolkit#1106), and the doorway's name rides along as narration.
+func (s *StepSuite) TestAStepThroughADoorwayIsJustAStep() {
 	threshold := stepAbs(stepWestOrigin, stepDoorWestLocal)
 	farSide := stepAbs(stepEastOrigin, stepDoorEastLocal)
 
@@ -185,8 +196,8 @@ func (s *StepSuite) TestAStepThroughADoorwayIsACrossing() {
 	s.Equal(farSide, s.standsAt(alice))
 
 	beat := s.lastBeat(alice)
-	s.Equal("traversed", beat["beat"])
-	s.Equal(stepDoor, beat["connection"])
+	s.Equal("moved", beat["beat"], "the same beat an ordinary step writes")
+	s.Equal(stepDoor, beat["connection"], "with the doorway named beside it")
 	s.Equal(farSide, s.beatCell(beat))
 }
 
@@ -230,11 +241,22 @@ func (s *StepSuite) TestAStepSpeaksTheMapAtBothEnds() {
 	s.Require().NoError(err)
 
 	s.NotEqual(local, out.Stepped.To, "the local cell is not the answer")
+	s.Equal(to, out.Stepped.To)
+	s.Equal(to, s.standsAt(alice), "and the roster reports the same cell")
+	s.Equal(stepWest, s.roomOf(alice), "which is still in the chamber that authored it")
+}
 
-	located, err := s.enc.Locate(&encounter.LocateInput{Position: out.Stepped.To})
+// roomOf reads which authored chamber a member is standing in, off the roster.
+func (s *StepSuite) roomOf(id encounter.MemberID) string {
+	members, err := s.enc.Members()
 	s.Require().NoError(err)
-	s.Equal(stepWest, located.Room)
-	s.Equal(local, located.Position, "and the map cell resolves back to the local one")
+	for _, m := range members {
+		if m.ID == id {
+			return m.Room
+		}
+	}
+	s.Require().Fail("no such member", string(id))
+	return ""
 }
 
 // TestAStepIntoTheVoidIsRefused: void is not floor. The private twin skips
@@ -248,35 +270,48 @@ func (s *StepSuite) TestAStepIntoTheVoidIsRefused() {
 	s.Equal(before, s.standsAt(alice), "and she did not move")
 }
 
-// TestAStepIntoATouchingRoomWithNoDoorwayIsRefused is W2's consequence.
+// TestAStepIntoTheWallBetweenTwoChambersIsRefused is the seam, walled.
 //
-// (25,12) and (26,12) are adjacent absolute cells in different rooms with
-// nothing joining them — the chambers share their whole edge and are joined at
-// one pair. A refusal for a cell that EXISTS needs its own name: "off the map"
-// and "no way through from here" are different mistakes, and a caller told the
-// wrong one goes looking for the wrong bug.
-func (s *StepSuite) TestAStepIntoATouchingRoomWithNoDoorwayIsRefused() {
+// (25,12) and (26,12) are adjacent absolute cells in different chambers with a
+// wall between them. The refusal used to have a sentinel of its own, because
+// what withheld permission was the absence of a doorway rather than anything on
+// the map. Now a wall does it, and a wall refuses a step the way every other
+// wall does — ErrBadPlacement, from the canvas itself.
+func (s *StepSuite) TestAStepIntoTheWallBetweenTwoChambersIsRefused() {
 	before := s.standsAt(alice)
 	acrossTheSeam := stepAbs(stepEastOrigin, spatial.Position{X: 0, Y: 2})
 
-	// The premise: that cell is real, and it is next door.
-	located, err := s.enc.Locate(&encounter.LocateInput{Position: acrossTheSeam})
-	s.Require().NoError(err)
-	s.Require().Equal(stepEast, located.Room)
+	// The premise: that cell is real floor, in the chamber next door — the
+	// refusal is about the wall, not about the destination.
+	s.Require().Equal(stepEast, s.roomAtCell(acrossTheSeam))
 
-	_, err = s.enc.Step(&encounter.StepInput{Member: alice, To: acrossTheSeam})
+	_, err := s.enc.Step(&encounter.StepInput{Member: alice, To: acrossTheSeam})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrNoCrossing)
-	s.NotErrorIs(err, encounter.ErrBadPlacement, "the cell is fine; there is just no door")
+	s.ErrorIs(err, encounter.ErrBadPlacement)
 	s.Equal(before, s.standsAt(alice))
+}
+
+// roomAtCell names the authored chamber whose absolute footprint holds a cell,
+// read off the Atlas — construction truth, which is where rooms live now.
+func (s *StepSuite) roomAtCell(cell spatial.Position) string {
+	atlas, err := s.enc.Atlas()
+	s.Require().NoError(err)
+	for _, room := range atlas.Rooms {
+		for _, c := range room.Cells {
+			if c == cell {
+				return room.ID
+			}
+		}
+	}
+	return ""
 }
 
 // TestAStepAndAMonsterStepAgreeOnWhatIsCrossable is why this issue was filed.
 //
 // The same two cell pairs, asked twice: once as a player's step through the
 // public verb, once as a monster's intended step through the pump. One pair is
-// joined by the doorway and one is a bare seam between touching rooms, and the
-// two callers must answer identically on both.
+// joined by the doorway and one has a wall across it, and the two callers must
+// answer identically on both.
 //
 // Before the step verb they could not have: the SDK scanned the projected
 // Atlas doorway list, the pump scanned the raw connection inputs, and the two
@@ -295,12 +330,12 @@ func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
 	_, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 	s.Require().True(refused.called, "the decider was consulted")
-	s.Equal(seamWest, s.whereIn(enc, goblin), "the monster did not cross a seam with no door")
+	s.Equal(seamWest, s.whereIn(enc, goblin), "the monster did not walk through a wall")
 
 	// Alice, on the same cell, intending the same one: same answer.
 	_, err = s.enc.Step(&encounter.StepInput{Member: alice, To: seamEast})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrNoCrossing)
+	s.ErrorIs(err, encounter.ErrBadPlacement)
 
 	// And through the real doorway, both go.
 	crossed := &onceStepDecider{to: farSide}
@@ -316,16 +351,21 @@ func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
 	s.Equal(farSide, out.Stepped.To, "and so did she")
 }
 
-// sceneWithMonster opens a second encounter on the same set with a goblin in
-// the west chamber and alice out of its sight in the east one, so nothing
-// forms a bubble before the pump under test runs.
+// sceneWithMonster opens a second encounter on the same set with a goblin ALONE
+// in the west chamber, so nothing can form a bubble before the pump under test
+// runs — a monster in a fight is not the world's to move, and these tests are
+// about what the world does with one.
+//
+// It used to park a player in the east chamber for that job, on the reasoning
+// that a room boundary hid her. It does not (rpg-toolkit#1106): the goblin
+// stands ON the doorway cell in half these cases, looking straight through the
+// opening at the whole chamber beyond. An empty room is the honest way to say
+// "nobody has seen anybody".
 func (s *StepSuite) sceneWithMonster(at spatial.Position, decider encounter.Decider) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepEast,
-				Position: spatial.Position{X: 5, Y: 5}},
 			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
 				Position: at, Decider: decider},
 		},

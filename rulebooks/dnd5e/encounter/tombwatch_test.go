@@ -92,7 +92,7 @@ func TestTombWatch(t *testing.T) {
 	// ---- Beat 2: the watch -----------------------------------------
 	// Alice advances to (2,6) to watch; the world moves on her action:
 	// the pump ticks and the goblin takes its first patrol step to (7,10).
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 2, Y: 6}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 2, Y: 6}})
 	require.NoError(t, err, "beat 2: alice advances")
 	pumpOut, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 2: her activity pumps the clock")
@@ -111,7 +111,7 @@ func TestTombWatch(t *testing.T) {
 	// Alice slips to (6,2): the wall now sits square on the
 	// vertical line between her and the goblin at (6,10). Both lose
 	// sight of each other — and both keep a ghost at last-seen.
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 6, Y: 2}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 6, Y: 2}})
 	require.NoError(t, err, "beat 3: alice slips behind the wall")
 
 	st, p = seen(t, enc, alice, goblin)
@@ -146,9 +146,11 @@ func TestTombWatch(t *testing.T) {
 
 	// ---- Beat 5: the reinforcement ---------------------------------
 	// Cormac connects late — the ambient is always there to join.
-	joinOut, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-		ID: cormac, Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 10, Y: 2},
-	}})
+	joinOut, err := enc.Join(&encounter.JoinInput{
+		Member: cormac,
+		Kind:   encounter.KindPlayer,
+		Cell:   spatial.Position{X: 10, Y: 2},
+	})
 	require.NoError(t, err, "beat 5: cormac joins the delve")
 	require.NotZero(t, joinOut.Seq, "beat 5: his arrival is a story beat")
 	st, _ = seen(t, enc, cormac, goblin)
@@ -184,7 +186,7 @@ func TestTombWatch(t *testing.T) {
 	// Alice crosses the crypt and finds the stairs down. The declared
 	// ending fires; the encounter closes with the Outcome the campaign
 	// consumes.
-	moveOut, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 11, Y: 11}})
+	moveOut, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 11, Y: 11}})
 	require.NoError(t, err, "beat 7: alice reaches the stairs")
 	require.NotNil(t, moveOut.Outcome, "beat 7: the ending fires in the Move's own output")
 	require.Equal(t, endingStairs, moveOut.Outcome.Ending)
@@ -197,13 +199,16 @@ func TestTombWatch(t *testing.T) {
 
 	for name, verb := range map[string]func() error{
 		"Move": func() error {
-			_, e := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
+			_, e := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
 			return e
 		},
 		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
 		"Join": func() error {
-			_, e := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-				ID: "late", Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 1, Y: 1}}})
+			_, e := enc.Join(&encounter.JoinInput{
+				Member: "late",
+				Kind:   encounter.KindPlayer,
+				Cell:   spatial.Position{X: 1, Y: 1},
+			})
 			return e
 		},
 		"Exit": func() error { _, e := enc.Exit(&encounter.ExitInput{Member: alice}); return e },

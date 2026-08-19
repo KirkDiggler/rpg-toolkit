@@ -31,18 +31,64 @@ type SightPayload struct {
 	Y float64 `json:"y"`
 }
 
-// declaredEnding pairs an ending key with its trigger, in Setup order.
+// declaredEnding pairs an ending key with its trigger, in Setup order, plus
+// the canvas cell a positional trigger was compiled to.
+//
+// The cell is computed once, at construction, from the authored room and the
+// room-local position the trigger declares (rpg-toolkit#1106). Before the field
+// became one canvas, an arrival was compared room-then-cell, in whatever frame
+// the verb happened to hold; there is one frame now, so an ending is one cell,
+// and the comparison is an equality. Meaningless — and never read — for a
+// TriggerExternal, which carries no geometry.
 type declaredEnding struct {
 	key     string
 	trigger Trigger
+	cell    spatial.Position
+}
+
+// compileEndings resolves each declared ending's authored room and room-local
+// target into the single canvas cell an arrival is compared against. Every
+// room named here has already been checked to exist by validateEndingTriggers,
+// which both construction seams run before this.
+func compileEndings(endings []EndingInput, rooms []RoomInput) []declaredEnding {
+	origins := make(map[string]spatial.Position, len(rooms))
+	for _, r := range rooms {
+		origins[r.ID] = r.Origin
+	}
+
+	out := make([]declaredEnding, 0, len(endings))
+	for _, ei := range endings {
+		de := declaredEnding{key: ei.Key, trigger: ei.Trigger}
+		if t, ok := ei.Trigger.(TriggerReachedPosition); ok {
+			de.cell = t.Position.Add(origins[t.Room])
+		}
+		out = append(out, de)
+	}
+	return out
 }
 
 // Encounter is the aggregate encounter composition: members, field, clock,
 // intel, and record. Construct via NewEncounter or LoadEncounter; the zero
 // value is unusable.
 type Encounter struct {
-	orchestrator *spatial.BasicRoomOrchestrator
-	clock        *clock.Tick
+	// canvas is THE MAP: one spatial room spanning the whole dungeon, in
+	// dungeon-absolute cells, with every authored wall registered on it as an
+	// absolute boundary edge (rpg-toolkit#1106).
+	//
+	// One, not N-plus-an-orchestrator. The composition still AUTHORS rooms —
+	// that is the shape a designer writes and the shape the reference tomb is
+	// written in — but a room is construction data now, and this is what it
+	// compiles into. The orchestrator that used to hold the rooms went with
+	// them: with one room there is nothing to orchestrate, and its connection
+	// registry described a crossing mechanism this composition no longer has.
+	canvas *spatial.BasicRoom
+
+	// roomGrids is each authored room's own grid, kept from construction so
+	// the field can answer which chamber owns an absolute cell without
+	// rebuilding one per call — see roomAt.
+	roomGrids map[string]spatial.Grid
+
+	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
 	// more: a bubble exists only while a fight does, and an encounter with no
 	// fight has none.
@@ -70,7 +116,7 @@ type Encounter struct {
 	standing Standing
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
-	// for a single action (Move, Traverse, Join) declaration order is
+	// for a single action (Step, Join) declaration order is
 	// the only axis, so the first matching declared ending does win.
 	// Pump can execute several monsters' actions in one tick, and there
 	// evaluation walks them in DECISION order first — the action
@@ -169,7 +215,7 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 // connection endpoints (validateConnectionInputs, shared by both
 // construction seams), a TriggerReachedPosition ending's target
 // (validateEndingTriggers, #929 T3 Opus round F5), and the two
-// local/absolute bridges' own positions (Absolute, Locate, #929 T3).
+// and a joiner's arrival cell (Join).
 // Occluder positions do NOT go through this — they use the universal
 // isIntegralPosition instead, every family, not just hex (#929 T3 Opus
 // round F2; isIntegralPosition's own doc comment).
@@ -624,7 +670,118 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		return nil, err
 	}
 
+	// W6 — the field is one canvas: its whole absolute footprint must fit in a
+	// single grid of its family (rpg-toolkit#1106). Runs after W2, which is
+	// what makes the footprint a well-defined union in the first place.
+	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
+	if _, _, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax); err != nil {
+		return nil, err
+	}
+
 	return grids, nil
+}
+
+// fieldAbsoluteBounds returns the union of every room's absolute footprint —
+// the field's own bounding box, in dungeon-absolute cells. Requires at least
+// one room, which both construction seams check before calling.
+func fieldAbsoluteBounds(rooms []RoomInput) (qMin, qMax, rMin, rMax int) {
+	qMin, qMax, rMin, rMax = roomAbsoluteBounds(rooms[0])
+	for _, r := range rooms[1:] {
+		q0, q1, r0, r1 := roomAbsoluteBounds(r)
+		qMin, qMax = min(qMin, q0), max(qMax, q1)
+		rMin, rMax = min(rMin, r0), max(rMax, r1)
+	}
+	return qMin, qMax, rMin, rMax
+}
+
+// canvasSpan returns the Width/Height a grid of this family needs in order to
+// hold the field's whole absolute footprint — W6, and the check that makes
+// "one room spanning the union" expressible at all (rpg-toolkit#1106).
+//
+// The two families anchor differently, and that difference is the whole rule.
+// A SQUARE grid is the half-open rectangle [0,Width) x [0,Height): it starts at
+// the origin and there is no way to move it, so a field whose footprint reaches
+// a negative cell cannot be drawn on one. A HEX grid is origin-CENTERED — its
+// span is [ceil(-dim/2), ceil(dim/2)-1], negative coordinates are ordinary
+// there, and widening the span always reaches further both ways — so a hex
+// field always fits and this never rejects one.
+//
+// Both formulas invert axisBounds, the same primitive W2 measures footprints
+// with, so the canvas the field is drawn on and the bounds it was checked
+// against cannot disagree.
+//
+// The remedy for a rejection is a relabeling, not a redesign: shifting every
+// Origin by the same vector moves the whole dungeon into the non-negative
+// quadrant and changes nothing about it, since a field's absolute frame only
+// ever means "relative to the other rooms".
+func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, height int, err error) {
+	if shape == spatial.GridShapeHex {
+		// half = dim/2, min = ceil(-half), max = ceil(half)-1 (axisBounds).
+		// dim = 2*m gives min = -m and max = m-1, so m must cover both ends.
+		return 2 * max(-qMin, qMax+1), 2 * max(-rMin, rMax+1), nil
+	}
+	if qMin < 0 || rMin < 0 {
+		return 0, 0, fmt.Errorf(
+			"field's absolute footprint reaches cell (%d,%d), which no square grid can hold "+
+				"(square grids start at (0,0)): shift every room Origin by the same vector: %w",
+			qMin, rMin, ErrNoField)
+	}
+	return qMax + 1, rMax + 1, nil
+}
+
+// compileCanvas turns the authored rooms into the one spatial room the
+// encounter runs on: a grid spanning the field's whole absolute footprint, with
+// every room's occluders and walls projected through its Origin and registered
+// there.
+//
+// THIS IS WHERE A WALL BETWEEN TWO ROOMS BECOMES POSSIBLE. Registered on a
+// room's own grid, a boundary's endpoints both had to be cells of that room
+// (tools/spatial's validateAndNormalizeBoundaryUnsafe), so the seam between two
+// chambers — the place a dungeon most needs a wall — was the one place one
+// could not be drawn. On the canvas both endpoints are ordinary absolute cells
+// and the wall registers like any other.
+//
+// Shared by NewEncounter and LoadEncounter, and carries NO verb prefix in its
+// errors for the reason buildValidRoomGrids' doc comment gives: each caller
+// wraps its own.
+func compileCanvas(rooms []RoomInput) (*spatial.BasicRoom, error) {
+	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
+	width, height, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax)
+	if err != nil {
+		return nil, err
+	}
+
+	canvas := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "canvas",
+		Type: "encounter",
+		Grid: buildRoomGrid(rooms[0].Grid, width, height),
+	})
+
+	for roomIdx, ri := range rooms {
+		// Occluder entity IDs stay index-based — the room's declaration index
+		// and the occluder's index within it. Room IDs are arbitrary strings,
+		// and a coordinate- or ID-derived key collides on legal fields (#929
+		// hardening round C). A pair of slice indices cannot.
+		for occIdx, pos := range ri.Occluders {
+			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
+			if perr := canvas.PlaceEntity(occluder, pos.Add(ri.Origin)); perr != nil {
+				return nil, fmt.Errorf("occluder placement: %w: %w", ErrBadPlacement, perr)
+			}
+		}
+
+		for _, b := range ri.Boundaries {
+			if berr := canvas.RegisterBoundary(spatial.Boundary{
+				From:              b.From.Add(ri.Origin),
+				To:                b.To.Add(ri.Origin),
+				BlocksMovement:    b.BlocksMovement,
+				BlocksLineOfSight: b.BlocksLineOfSight,
+			}); berr != nil {
+				return nil, fmt.Errorf("boundary: %w: %w", ErrBadPlacement, berr)
+			}
+		}
+	}
+
+	return canvas, nil
 }
 
 // gridShapeName renders a GridShape for W1's mixed-family defect message.
@@ -968,12 +1125,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	}
 
 	// Hex rooms require integral axial member positions (interim
-	// tools/spatial#926 enforcement — see isIntegralAxialPosition). No
-	// existing bounds pre-check covers members at this seam (placement
-	// bounds are enforced by spatial's own PlaceEntity below), so this
-	// runs as its own pass over the grid this member's declared room
-	// resolved to — a member whose room doesn't exist is caught later,
-	// at placement, unrelated to this check.
+	// tools/spatial#926 enforcement — see isIntegralAxialPosition). Runs as
+	// its own pass over the grid this member's declared room resolved to — a
+	// member whose room doesn't exist is caught at placement, unrelated to
+	// this check.
 	for _, mi := range in.Members {
 		if grid, ok := roomGrids[mi.Room]; ok && !isIntegralAxialPosition(grid, mi.Position) {
 			return nil, fmt.Errorf("newencounter: member %q position is not an integral axial cell: %w", mi.ID, ErrBadPlacement)
@@ -996,6 +1151,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		members:          make(map[MemberID]*memberRecord),
 		everMembers:      make(map[MemberID]bool),
 		deciders:         make(map[MemberID]Decider),
+		roomGrids:        roomGrids,
 		initiative:       in.Initiative,
 		standing:         in.Standing,
 		endings:          nil,
@@ -1020,73 +1176,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter story: %w", err)
 	}
 
-	// Build field: orchestrator and rooms
-	e.orchestrator = spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:     "encounter-orchestrator",
-		Type:   "orchestrator",
-		Layout: spatial.LayoutTypeOrganic,
-	})
-
-	// Create all rooms, reusing each room's already-constructed Grid
-	// (roomGrids, built above) so validation and placement agree exactly.
-	roomMap := make(map[string]*spatial.BasicRoom)
-	for roomIdx, ri := range in.Field.Rooms {
-		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-			ID:   ri.ID,
-			Type: "room",
-			Grid: roomGrids[ri.ID],
-		})
-		err = e.orchestrator.AddRoom(room)
-		if err != nil {
-			return nil, fmt.Errorf("newencounter add room: %w", err)
-		}
-		roomMap[ri.ID] = room
-
-		// Add occluders as blocking entities. ID is index-based
-		// (room's own declaration index, occluder's index within that
-		// room), not room-ID-plus-coordinate string concatenation (#929
-		// hardening round C): room IDs are arbitrary, unrestricted
-		// strings, so "r" with occluder (-5,4) and "r-" with occluder
-		// (5,4) both produced "occluder-r--5-4" under the old scheme —
-		// a genuine cross-room collision on a W1/W2/W3-legal field,
-		// rejected by the orchestrator naming the wrong room. A pair of
-		// slice indices can never collide regardless of what characters
-		// appear in either ID. This ID is purely an internal spatial
-		// bookkeeping key — never surfaced to any caller — so index
-		// stability across a single construction call is all it needs.
-		for occIdx, pos := range ri.Occluders {
-			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
-			_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-				RoomID:   spatial.RoomID(ri.ID),
-				Entity:   occluder,
-				Position: pos,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("newencounter occluder placement: %w: %w", ErrBadPlacement, err)
-			}
-		}
-
-		// Add boundaries
-		for _, b := range ri.Boundaries {
-			boundaryRoom := roomMap[ri.ID]
-			if boundaryRoom != nil {
-				if br, ok := interface{}(boundaryRoom).(spatial.BoundaryAwareRoom); ok {
-					err = br.RegisterBoundary(b)
-					if err != nil {
-						return nil, fmt.Errorf("newencounter boundary: %w: %w", ErrBadPlacement, err)
-					}
-				}
-			}
-		}
-	}
-
-	// Add connections
-	for _, ci := range in.Field.Connections {
-		door := spatial.CreateDoorConnection(ci.ID, ci.From, ci.To, 1.0)
-		err = e.orchestrator.AddConnection(door)
-		if err != nil {
-			return nil, fmt.Errorf("newencounter add connection: %w", err)
-		}
+	// Compile the authored rooms into the one canvas this encounter runs on.
+	e.canvas, err = compileCanvas(in.Field.Rooms)
+	if err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Place members and collect them
@@ -1099,19 +1192,24 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			kind: mi.Kind,
 		}
 
-		_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-			RoomID:   spatial.RoomID(mi.Room),
-			Entity:   entity,
-			Position: mi.Position,
-		})
-		if err != nil {
+		// Room-local at authoring, absolute on the canvas: the member's
+		// declared cell is checked against their own room's grid — the frame
+		// they were written in — and then placed at the one cell that is.
+		grid, ok := roomGrids[mi.Room]
+		if !ok {
+			return nil, fmt.Errorf("newencounter member placement: member %q names unknown room %q: %w", mi.ID, mi.Room, ErrBadPlacement)
+		}
+		if !grid.IsValidPosition(mi.Position) {
+			return nil, fmt.Errorf("newencounter member placement: member %q position out of bounds in room %q: %w", mi.ID, mi.Room, ErrBadPlacement)
+		}
+
+		if err = e.canvas.PlaceEntity(entity, mi.Position.Add(roomOrigin(in.Field.Rooms, mi.Room))); err != nil {
 			return nil, fmt.Errorf("newencounter member placement: %w: %w", ErrBadPlacement, err)
 		}
 
 		member := &memberRecord{
 			ID:   mi.ID,
 			Kind: mi.Kind,
-			Room: mi.Room,
 		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
@@ -1128,10 +1226,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
-	// Store endings in declaration order (deterministic evaluation, C8)
-	for _, ei := range in.Endings {
-		e.endings = append(e.endings, declaredEnding{key: ei.Key, trigger: ei.Trigger})
-	}
+	// Store endings in declaration order (deterministic evaluation, C8), each
+	// positional one compiled to the canvas cell it fires on.
+	e.endings = compileEndings(in.Endings, in.Field.Rooms)
 
 	// First light: build sight percepts for each member using refreshSight
 	firstLight, err := e.rebuildPercepts(memberIDs)
@@ -1201,15 +1298,12 @@ func (e *Encounter) buildMemberOutcomes() []MemberOutcome {
 	outcomes := make([]MemberOutcome, 0, len(ids))
 	for _, id := range ids {
 		m := e.members[id]
-		mRoom, ok := e.orchestrator.GetRoom(m.Room)
+		cell, ok := e.canvas.GetEntityPosition(string(m.ID))
 		if !ok {
 			continue
 		}
-		mPos, ok := mRoom.GetEntityPosition(string(m.ID))
-		if !ok {
-			continue
-		}
-		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Room: m.Room, Position: e.absoluteOf(m.Room, mPos)})
+		room, _ := e.roomAt(cell)
+		outcomes = append(outcomes, MemberOutcome{ID: m.ID, Room: room, Position: cell})
 	}
 	return outcomes
 }
@@ -1254,57 +1348,74 @@ func (e *Encounter) Members() ([]Member, error) {
 // Members answering the same question differently is the kind of drift that
 // stays invisible until two clients disagree about where somebody is.
 func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
-	local, err := e.cellOf(record)
+	cell, err := e.cellOf(record)
 	if err != nil {
 		return Member{}, err
 	}
 
-	// Origin lives in construction truth, never on the spatial room — the
-	// same source Absolute projects through, so the two cannot disagree.
-	ri, ok := e.roomInput(record.Room)
-	if !ok {
-		return Member{}, fmt.Errorf("member %q: unknown room %q: %w", record.ID, record.Room, ErrNoField)
-	}
-
+	room, _ := e.roomAt(cell)
 	return Member{
 		ID:       record.ID,
 		Kind:     record.Kind,
-		Room:     record.Room,
-		Position: local.Add(ri.Origin),
+		Room:     room,
+		Position: cell,
 	}, nil
 }
 
-// cellOf reads a member's room-local cell from the spatial room that owns it,
-// which is the only place that knows it.
+// cellOf reads a member's cell off the canvas, which is the only place that
+// knows it — and it is already the dungeon-absolute one every report speaks.
 func (e *Encounter) cellOf(record *memberRecord) (spatial.Position, error) {
-	room, ok := e.orchestrator.GetRoom(record.Room)
+	cell, ok := e.canvas.GetEntityPosition(string(record.ID))
 	if !ok {
-		return spatial.Position{}, fmt.Errorf("member %q: unknown room %q: %w", record.ID, record.Room, ErrNoField)
+		return spatial.Position{}, fmt.Errorf("member %q: not placed on the map: %w", record.ID, ErrNoField)
 	}
-	local, ok := room.GetEntityPosition(string(record.ID))
-	if !ok {
-		return spatial.Position{}, fmt.Errorf("member %q: not placed in room %q: %w", record.ID, record.Room, ErrNoField)
-	}
-	return local, nil
+	return cell, nil
 }
 
-// absoluteOf projects a room-local cell for a beat or a report.
+// roomAt reports which authored chamber's footprint holds an absolute cell.
 //
-// Beats speak absolute for the same reason Member.Position does: a
-// room-local coordinate with no room attached — which is exactly what the
-// moved beat carried before rpg-toolkit#1040 — cannot be resolved to
-// anywhere in a multi-room field.
-func (e *Encounter) absoluteOf(room string, local spatial.Position) spatial.Position {
-	ri, ok := e.roomInput(room)
-	if !ok {
-		// Unreachable through any verb: every beat is built from a room the
-		// verb just moved a member into or out of, and construction validates
-		// every room in the field. Returning the local cell unprojected is
-		// the least-wrong answer if that ever stops being true, and it is
-		// wrong in a way a test can see rather than a panic in a host.
-		return local
+// The one question rooms still answer at runtime, and the reason they can be
+// deleted from every record that used to carry one: a member's chamber is a
+// fact about where they stand, so it is derived from where they stand.
+//
+// W2 (rooms never overlap) plus integral origins make ownership unique, so
+// iteration order never matters — at most one room's bounds check can pass.
+// Each room is asked with its OWN constructed grid, kept from construction, so
+// this answers exactly what the room itself would (fractional square positions
+// included; hex forbids fractional cells outright).
+//
+// False means no chamber owns the cell: void is not floor. Callers that place
+// or move somebody must treat that as a refusal; callers merely REPORTING a
+// member's chamber take the empty string, which cannot arise for a placed
+// member and is not worth an error return on a read path.
+func (e *Encounter) roomAt(cell spatial.Position) (string, bool) {
+	for _, ri := range e.fieldInput {
+		local := cell.Subtract(ri.Origin)
+		grid, ok := e.roomGrids[ri.ID]
+		if !ok {
+			continue
+		}
+		if !grid.IsValidPosition(local) {
+			continue
+		}
+		if !isIntegralAxialPosition(grid, local) {
+			continue
+		}
+		return ri.ID, true
 	}
-	return local.Add(ri.Origin)
+	return "", false
+}
+
+// roomOrigin is the construction-time anchor lookup compileCanvas and member
+// placement share. Rooms are few and this runs once per placed thing at
+// construction, so a linear scan is the whole implementation.
+func roomOrigin(rooms []RoomInput, id string) spatial.Position {
+	for _, r := range rooms {
+		if r.ID == id {
+			return r.Origin
+		}
+	}
+	return spatial.Position{}
 }
 
 // Status returns the encounter's current state (Open or Closed with Outcome).
@@ -1387,34 +1498,16 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 // player moves (Move verb) and monster moves (Pump). The member must exist and be in an
 // open encounter; spatial rejection does not abort the operation (handled by caller).
 func (e *Encounter) moveMember(member *memberRecord, to spatial.Position) (spatial.Position, error) {
-	// Get the room and current position
-	room, ok := e.orchestrator.GetRoom(member.Room)
+	currentPos, ok := e.canvas.GetEntityPosition(string(member.ID))
 	if !ok {
 		return spatial.Position{}, fmt.Errorf("movemember: %w", ErrBadPlacement)
 	}
 
-	currentPos, ok := room.GetEntityPosition(string(member.ID))
-	if !ok {
-		return spatial.Position{}, fmt.Errorf("movemember: %w", ErrBadPlacement)
-	}
-
-	// Hex rooms require integral axial targets (interim tools/spatial#926
-	// enforcement — see isIntegralAxialPosition). This is the SHARED path
-	// for both the Move verb and Pump's IntentMoveTo execution: a
-	// fractional target from either source is rejected here, and Pump's
-	// existing silent-skip contract for a rejected move applies exactly
-	// as it does for an out-of-bounds one — no special case needed there.
-	if !isIntegralAxialPosition(room.GetGrid(), to) {
-		return spatial.Position{}, fmt.Errorf("movemember: target is not an integral axial cell: %w", ErrBadPlacement)
-	}
-
-	// Attempt the spatial move via managed seam using MoveEntity
-	_, err := e.orchestrator.MoveEntity(&spatial.MoveEntityInput{
-		RoomID:   spatial.RoomID(member.Room),
-		EntityID: core.EntityID(member.ID),
-		To:       to,
-	})
-	if err != nil {
+	// The canvas refuses a move that crosses a movement-blocking boundary
+	// (tools/spatial's MoveEntity checks every crossing on the canonical ray),
+	// which is what a wall between two chambers now does and what a room
+	// membership test used to stand in for.
+	if err := e.canvas.MoveEntity(string(member.ID), to); err != nil {
 		return spatial.Position{}, fmt.Errorf("movemember: %w: %w", ErrBadPlacement, err)
 	}
 
@@ -1439,11 +1532,11 @@ func (e *Encounter) rosterIDs() []MemberID {
 // appendMovementBeat records one executed step in the story and returns its
 // sequence number.
 //
-// ONE narration path for every movement this composition performs — the Move
-// verb, the Traverse verb, the Step verb, and every monster action inside a
-// Pump. A movement is reported TWICE, once as a typed output and once as a
-// beat, and a host reading both must be told the same cell; two copies of this
-// arithmetic is how those two answers drift apart.
+// ONE narration path for every movement this composition performs — the Step
+// verb, and every monster action inside a Pump. A movement is reported TWICE,
+// once as a typed output and once as a beat, and a host reading both must be
+// told the same cell; two copies of this arithmetic is how those two answers
+// drift apart.
 //
 // Cells are DUNGEON-ABSOLUTE (#1040). A room-local coordinate with no room
 // attached — which is exactly what the moved beat carried before — names
@@ -1458,13 +1551,13 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	payload := map[string]interface{}{
 		"beat":     "moved",
 		"member":   string(action.member.ID),
-		"position": e.absoluteOf(action.toRoom, action.to),
+		"position": action.to,
 	}
-	if action.kind == actionTraverse {
-		// A crossing says so, and says which doorway carried it. The room key
-		// is NOT here with it: rooms are this composition's own business, and
-		// a caller that wants one asks Locate.
-		payload["beat"] = "traversed"
+	if action.connection != "" {
+		// A step that went through a doorway names it. The BEAT does not
+		// change — it is still "moved", because that is what happened
+		// (rpg-toolkit#1106): a crossing stopped being a second kind of
+		// movement when the field stopped being a set of rooms.
 		payload["connection"] = action.connection
 	}
 
@@ -1478,7 +1571,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	// propagate theirs; this is the movement half catching up.
 	beatBytes, err := json.Marshal(payload)
 	if err != nil {
-		return 0, fmt.Errorf("marshal %s beat: %w", action.kind, err)
+		return 0, fmt.Errorf("marshal moved beat: %w", err)
 	}
 
 	appendOut, err := e.appendBeat(&record.AppendInput{
@@ -1496,12 +1589,10 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 // firedReachedPosition evaluates every declared ReachedPosition ending against
 // where a member has just come to rest, closing the encounter if one fires.
 //
-// The cell is ROOM-LOCAL and the room is the member's CURRENT one, which is
-// correct for all three ways to arrive somewhere: a move never changes room, a
-// crossing has already mutated it to the arrival room, and the pump's actions
-// are one or the other. An ending is declared against a room and a local cell
-// (construction data, authored), so this is the one comparison that stays in
-// the composition's own frame.
+// The cell is DUNGEON-ABSOLUTE, and so is the ending's, compiled from its
+// authored room and local target once at construction (see compileEndings).
+// One frame, one equality — where this used to compare a room label and then a
+// coordinate, in whichever frame the calling verb happened to hold.
 //
 // The member filter carries a rule that reads backwards until you know it:
 // EMPTY means any PLAYER member, not any member at all. A monster wandering
@@ -1510,17 +1601,14 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 //
 // Returns a DEEP COPY (mutation-proof): a caller holding the returned outcome
 // cannot reach into this encounter's own.
-func (e *Encounter) firedReachedPosition(member *memberRecord, local spatial.Position, at uint64) *Outcome {
+func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Position, at uint64) *Outcome {
 	for _, de := range e.endings {
 		trigger, ok := de.trigger.(TriggerReachedPosition)
 		if !ok {
 			continue // Not a ReachedPosition trigger
 		}
-		if trigger.Room != member.Room {
-			continue // Different room
-		}
-		if trigger.Position.X != local.X || trigger.Position.Y != local.Y {
-			continue // Different position
+		if de.cell.X != cell.X || de.cell.Y != cell.Y {
+			continue // Different cell
 		}
 		if trigger.Member != "" && trigger.Member != member.ID {
 			continue // Member filter doesn't match
@@ -1542,341 +1630,10 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, local spatial.Pos
 	return nil
 }
 
-// Move executes a continuous movement within the same room for ANY
-// member — players move themselves; Pump routes monster intents through
-// the same path. Unfiltered ReachedPosition endings fire only for
-// player members; member-filtered endings fire only for the named
-// member.
-// Validation order (R5 atomicity): nil input → empty member → closed →
-// not a member → spatial move rejection. On success, refreshes sight for all members,
-// records beat, and evaluates ReachedPosition endings.
-//
-// PREFER [Encounter.Step] (rpg-toolkit#1059). Step takes a cell on the
-// map, works out for itself whether that cell is inside the member's
-// room or through a doorway, and carries it out either way. Move
-// survives as the same-room MECHANISM it always was — Step and Pump both
-// route through it — and as the verb for a caller that genuinely holds a
-// room-local cell. New callers hold a map cell, and for them this verb
-// is a trap:
-//
-// WARNING — the Locate→Move trap (#929 hardening round B): Move is
-// SAME-ROOM ONLY. It interprets MoveInput.To as local coordinates
-// within the member's OWN current room — never the room Locate resolved.
-// Composing Locate then Move (a natural host pattern: "where does this
-// absolute position land, then move the member there") silently
-// misplaces the member whenever LocateOutput.Room differs from the
-// member's current room: Move does not know or check where Locate's
-// answer came from, so it applies LocateOutput.Position as-is inside the
-// member's own room instead — e.g. an intended absolute target of (8,2)
-// in the OTHER room actually landing the member at local (2,2) in their
-// OWN room, no error.
-//
-// That warning said the real fix was "a verb input that carries the
-// intended room and rejects a mismatch, an API change filed as a
-// follow-up". [Encounter.Step] IS that fix, arrived at from the other
-// direction: its input carries an ABSOLUTE cell, which cannot be
-// mis-attributed to a room because it already names exactly one. A
-// caller composing Locate and Move by hand should stop doing both.
-func (e *Encounter) Move(in *MoveInput) (*MoveOutput, error) {
-	// Validation order
-	if in == nil {
-		return nil, fmt.Errorf("move: %w", ErrNilInput)
-	}
-
-	if in.Member == "" {
-		return nil, fmt.Errorf("move: %w", ErrNoMember)
-	}
-
-	if e.outcome != nil {
-		return nil, fmt.Errorf("move: %w", ErrClosed)
-	}
-
-	member, ok := e.members[in.Member]
-	if !ok {
-		return nil, fmt.Errorf("move: %w", ErrNotMember)
-	}
-
-	// Free-roam movement is a world-clock verb. A member caught in a bubble
-	// acts through the fight's own turn structure — the composition has no
-	// in-fight movement verb yet (that arrives with the resolution work), and
-	// until it does a fight member cannot move at all rather than moving
-	// outside initiative.
-	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
-	}
-	if bubble != nil {
-		return nil, fmt.Errorf("move: member %q: %w", in.Member, ErrInBubble)
-	}
-
-	// Execute the move through the managed seam
-	currentPos, err := e.moveMember(member, in.To)
-	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
-	}
-
-	memberIDs := e.rosterIDs()
-	clockReadingForBeat := uint64(e.clock.ToData().HighWater)
-
-	// Record the movement beat BEFORE refreshing sight: the walk is the cause,
-	// anything trigger detection appends is its effect (see refreshSight).
-	seqNum, err := e.appendMovementBeat(executedAction{
-		member: member, kind: actionMove,
-		fromRoom: member.Room, from: currentPos,
-		toRoom: member.Room, to: in.To,
-	}, memberIDs, clockReadingForBeat)
-	if err != nil {
-		return nil, fmt.Errorf("move append beat: %w", err)
-	}
-
-	// Refresh sight for all members
-	intelDeltas, formed, err := e.refreshSight(memberIDs)
-	if err != nil {
-		return nil, fmt.Errorf("move refresh sight: %w", err)
-	}
-
-	// Evaluate ReachedPosition endings
-	firedOutcome := e.firedReachedPosition(member, in.To, clockReadingForBeat)
-
-	return &MoveOutput{
-		Moved: struct {
-			Member MemberID
-			From   spatial.Position
-			To     spatial.Position
-		}{
-			Member: in.Member,
-			From:   currentPos,
-			To:     in.To,
-		},
-		IntelDeltas: intelDeltas,
-		Seq:         seqNum,
-		Outcome:     firedOutcome,
-		Formed:      formed,
-	}, nil
-}
-
-// traverseResult holds the outcome of a successful cross-room move via
-// traverseMember — shared by the Traverse verb and the doorway half of
-// stepTo, which is how a monster's intended step crosses one.
-type traverseResult struct {
-	fromRoom string
-	fromPos  spatial.Position
-	toRoom   string
-	toPos    spatial.Position
-}
-
-// traverseMember resolves connectionID against this encounter's declared
-// connections, determines direction from member's CURRENT room/position
-// (they must be standing exactly on one of the connection's two
-// endpoints — connections are bidirectional, T1 law), and moves the
-// entity between rooms via spatial's TransitionEntity + PlaceEntity
-// managed seams, mutating member.Room on success. ANY failure (unknown
-// connection, endpoint mismatch, or a spatial rejection) returns before
-// member.Room is touched.
-//
-// Shared by the Traverse verb (which owns the nil/closed/member-lookup
-// guards and propagates this function's error as its own public
-// contract — ErrNoConnection or ErrBadPlacement, already correctly
-// wrapped here) and by stepTo, which calls it when a monster's intended
-// step lands on the far side of a doorway. stepTo owns Pump's
-// silent-skip-on-failure semantics: ANY error returned here means the
-// monster simply fails to act this tick, exactly as a refused move does,
-// and never aborts the pump.
-func (e *Encounter) traverseMember(member *memberRecord, connectionID string) (traverseResult, error) {
-	var conn *ConnectionInput
-	for i := range e.connectionsInput {
-		if e.connectionsInput[i].ID == connectionID {
-			conn = &e.connectionsInput[i]
-			break
-		}
-	}
-	if conn == nil {
-		return traverseResult{}, fmt.Errorf("connection %s not found: %w", connectionID, ErrNoConnection)
-	}
-
-	room, ok := e.orchestrator.GetRoom(member.Room)
-	if !ok {
-		return traverseResult{}, fmt.Errorf("%w", ErrBadPlacement)
-	}
-	fromPos, ok := room.GetEntityPosition(string(member.ID))
-	if !ok {
-		return traverseResult{}, fmt.Errorf("%w", ErrBadPlacement)
-	}
-	fromRoom := member.Room
-
-	// The member must be standing exactly on one of the connection's two
-	// endpoints. Determine direction from WHICH endpoint they're on — the
-	// arrival side is always the connection's OTHER endpoint (never the
-	// one the member is currently standing on).
-	var toRoom string
-	var toPos spatial.Position
-	switch {
-	case fromRoom == conn.From && fromPos.X == conn.FromPosition.X && fromPos.Y == conn.FromPosition.Y:
-		toRoom, toPos = conn.To, conn.ToPosition
-	case fromRoom == conn.To && fromPos.X == conn.ToPosition.X && fromPos.Y == conn.ToPosition.Y:
-		toRoom, toPos = conn.From, conn.FromPosition
-	default:
-		return traverseResult{}, fmt.Errorf("member %s is not at connection %s's endpoint: %w", member.ID, connectionID, ErrBadPlacement)
-	}
-
-	// Move the entity between rooms via spatial's purpose-built transition
-	// seam: TransitionEntity removes from the source room (the SAME
-	// registry cleanup RemoveEntity performs — the wave-1 Exit lesson
-	// applies here too) and, as a backstop behind our own checks above,
-	// independently re-validates against spatial's own bookkeeping that
-	// the connection exists, actually links these two rooms (in either
-	// direction, since door connections are Reversible), and the entity
-	// was truly indexed in the departure room. TransitionEntity
-	// deliberately does NOT place the entity — PlaceEntity must always
-	// follow, using the SAME entity value TransitionEntity returned.
-	transitioned, err := e.orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
-		EntityID:     core.EntityID(member.ID),
-		FromRoom:     spatial.RoomID(fromRoom),
-		ToRoom:       spatial.RoomID(toRoom),
-		ConnectionID: spatial.ConnectionID(connectionID),
-	})
-	if err != nil {
-		return traverseResult{}, fmt.Errorf("transition entity: %w: %w", ErrBadPlacement, err)
-	}
-
-	// LIMBO WINDOW (defensive, currently unreachable): if PlaceEntity below
-	// were to fail after TransitionEntity above already succeeded, the
-	// entity would be removed from every room and placed in none — this
-	// function does not roll back. Four invariants keep that window
-	// unreachable today: (1) rooms are immutable after Setup/Load, so
-	// fromRoom/toRoom always exist; (2) member entities never block
-	// placement (memberEntity.BlocksMovement() is always false), so
-	// occupancy can never reject PlaceEntity; (3) connection endpoints are
-	// grid-validated at both entry seams (Setup and Load), so toPos is
-	// always valid on the arrival room's grid; (4) door connections are
-	// permanently Passable and Reversible (CreateDoorConnection, never
-	// mutated after Setup/Load), so TransitionEntity's own passability and
-	// direction checks always agree with ours. A future change that
-	// violates any one of these must meet this comment as a deliberate
-	// decision point, not a silent atomicity regression.
-	_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-		RoomID:   spatial.RoomID(toRoom),
-		Entity:   transitioned.Entity,
-		Position: toPos,
-	})
-	if err != nil {
-		return traverseResult{}, fmt.Errorf("place entity: %w: %w", ErrBadPlacement, err)
-	}
-
-	member.Room = toRoom
-
-	return traverseResult{fromRoom: fromRoom, fromPos: fromPos, toRoom: toRoom, toPos: toPos}, nil
-}
-
-// Traverse moves a member across a connection from their current endpoint to
-// the connection's OTHER endpoint, in the other room. Validation order (R5
-// atomicity): nil input → closed → not a member → traverseMember's own
-// checks (connection not found: ErrNoConnection; endpoint mismatch — wrong
-// room or wrong position, either rejects the same way: ErrBadPlacement).
-//
-// PREFER [Encounter.Step] for walking through a doorway (rpg-toolkit#1059):
-// a doorway's two endpoints are adjacent absolute cells (W3), so crossing one
-// is a step, and Step finds the doorway itself. Traverse survives as the
-// mechanism Step dispatches to, and as the verb for a caller that holds a
-// connection id rather than a cell.
-//
-// The clock is NOT advanced — traversal is an activity, not time (law T4).
-// Sight refreshes for ALL members in one refreshSight call: since
-// refreshSight scopes each observer's percept to members currently in
-// THEIR OWN room, updating member.Room before the refresh (done inside
-// traverseMember) is sufficient — departure-room observers naturally stop
-// seeing the traverser (intel's existing complete-percept contract ghosts
-// them at their last-known position, the departure endpoint) and
-// arrival-room observers naturally gain them Current. No per-room
-// special-casing needed, and sight cannot cross the opening in either
-// direction: rooms are separate spatial containers with no shared
-// geometry (spatial ADR-0015), so there is no code path by which an
-// observer's line-of-sight computation — scoped entirely to entities in
-// their own room — could see into the other room.
-//
-// Ending evaluation mirrors Move exactly, evaluated against the ARRIVAL
-// room/position: unfiltered ReachedPosition triggers fire for player
-// members only; member-filtered triggers fire for the named member
-// regardless of kind.
-func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
-	// Validation order
-	if in == nil {
-		return nil, fmt.Errorf("traverse: %w", ErrNilInput)
-	}
-
-	if e.outcome != nil {
-		return nil, fmt.Errorf("traverse: %w", ErrClosed)
-	}
-
-	member, ok := e.members[in.Member]
-	if !ok {
-		return nil, fmt.Errorf("traverse: %w", ErrNotMember)
-	}
-
-	// Same world-clock gate as Move, checked before the connection resolves:
-	// a fight member cannot free-roam through a doorway either.
-	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
-		return nil, fmt.Errorf("traverse: %w", err)
-	}
-	if bubble != nil {
-		return nil, fmt.Errorf("traverse: member %q: %w", in.Member, ErrInBubble)
-	}
-
-	result, err := e.traverseMember(member, in.Connection)
-	if err != nil {
-		return nil, fmt.Errorf("traverse: %w", err)
-	}
-
-	memberIDs := e.rosterIDs()
-	clockReadingForBeat := uint64(e.clock.ToData().HighWater)
-
-	// Record the traversal beat BEFORE refreshing sight: walking through the
-	// doorway is the cause, anything trigger detection appends is its effect
-	// (see refreshSight). The clock is NOT advanced (law T4).
-	seqNum, err := e.appendMovementBeat(executedAction{
-		member: member, kind: actionTraverse, connection: in.Connection,
-		fromRoom: result.fromRoom, from: result.fromPos,
-		toRoom: result.toRoom, to: result.toPos,
-	}, memberIDs, clockReadingForBeat)
-	if err != nil {
-		return nil, fmt.Errorf("traverse append beat: %w", err)
-	}
-
-	intelDeltas, formed, err := e.refreshSight(memberIDs)
-	if err != nil {
-		return nil, fmt.Errorf("traverse refresh sight: %w", err)
-	}
-
-	// Evaluate ReachedPosition endings against the ARRIVAL room/position —
-	// traverseMember has already moved member.Room to the arrival side.
-	firedOutcome := e.firedReachedPosition(member, result.toPos, clockReadingForBeat)
-
-	return &TraverseOutput{
-		Formed: formed,
-		Traversed: struct {
-			Member   MemberID
-			FromRoom string
-			From     spatial.Position
-			ToRoom   string
-			To       spatial.Position
-		}{
-			Member:   in.Member,
-			FromRoom: result.fromRoom,
-			From:     result.fromPos,
-			ToRoom:   result.toRoom,
-			To:       result.toPos,
-		},
-		IntelDeltas: intelDeltas,
-		Seq:         seqNum,
-		Outcome:     firedOutcome,
-	}, nil
-}
-
 // Pump advances the world by one tick: the exploration clock advances,
 // each monster member (in deterministic order) acts on its own intel via Decider,
 // the complete sight refresh happens once, and the story accrues tick and
-// move/traverse beats. Errors from a decider abort the pump atomically (R5):
+// movement beats. Errors from a decider abort the pump atomically (R5):
 // no clock advance, no moves, no record entries.
 //
 // WHAT PUMP DRIVES IN v1, stated plainly because the answer narrowed: members
@@ -1899,19 +1656,19 @@ func (e *Encounter) Traverse(in *TraverseInput) (*TraverseOutput, error) {
 //     its own holdings (anti-wall-hack contract C2 — placement included, not just
 //     sight).
 //   - IntentHold means do nothing; IntentMoveTo names a cell in dungeon-absolute
-//     space and executes through stepTo, which moves the monster within its room
-//     or carries it through a doorway, whichever the cell turns out to be.
-//   - A refused step does NOT abort the pump — a cell no room owns, a cell in
-//     another room with no doorway from here, or a spatial rejection all mean the
-//     monster simply fails to act. Only a decider error aborts.
+//     space and executes through stepTo — one step on the map, whether or not it
+//     goes through a doorway.
+//   - A refused step does NOT abort the pump — a cell no room owns, a wall in the
+//     way, or any other spatial rejection all mean the monster simply fails to
+//     act. Only a decider error aborts.
 //   - After all monster actions: ONE refreshSight for all members, ONE tick beat
-//     (stamped with the new clock reading), then move/traverse beats in
-//     decision order (the same order monsters were consulted in).
+//     (stamped with the new clock reading), then movement beats in decision order
+//     (the same order monsters were consulted in).
 //   - Ending evaluation fires ReachedPosition triggers (only if the filter matches;
 //     empty filter = players only, not monsters) against each action's resulting
-//     room/position, in the same decision order.
-//   - Returns PumpOutput with the new Tick reading, successful moves, successful
-//     traverses, deltas, and beats.
+//     cell, in the same decision order.
+//   - Returns PumpOutput with the new Tick reading, the steps monsters took,
+//     deltas, and beats.
 func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	// Validation
 	if in == nil {
@@ -1982,15 +1739,10 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			continue // no decider = hold
 		}
 
-		// The monster's own placement, read fresh from spatial — never
-		// another member's. A decider that received anyone else's room or
-		// position would be a wall hack extended to placement, not just
-		// sight (C2).
-		room, ok := e.orchestrator.GetRoom(m.Room)
-		if !ok {
-			return nil, fmt.Errorf("pump snapshot room: %w", ErrBadPlacement)
-		}
-		ownPos, ok := room.GetEntityPosition(string(m.ID))
+		// The monster's own placement, read fresh from the canvas — never
+		// another member's. A decider that received anyone else's position
+		// would be a wall hack extended to placement, not just sight (C2).
+		ownCell, ok := e.canvas.GetEntityPosition(string(m.ID))
 		if !ok {
 			return nil, fmt.Errorf("pump snapshot position: %w", ErrBadPlacement)
 		}
@@ -2005,7 +1757,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 
 		intent, err := decider.Decide(Snapshot{
-			Position: e.absoluteOf(m.Room, ownPos),
+			Position: ownCell,
 			Holdings: ownHoldings,
 		})
 		if err != nil {
@@ -2038,11 +1790,9 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	var executed []executedAction
 
 	for _, p := range planned {
-		// The REAL member pointer, not a Members()-derived copy: a
-		// traverse mutates member.Room, and that mutation must reach the
-		// live e.members entry, not a value copy that planned would
-		// otherwise have carried since Setup/Wave-1 (moves never needed
-		// to write back Room, so this distinction was previously latent).
+		// The REAL member pointer, not a Members()-derived copy: an
+		// executedAction carries it into beats and ending evaluation, and a
+		// value copy of a member who left mid-tick would keep those alive.
 		member := e.members[p.memberID]
 		if member == nil {
 			// A contract-violating decider removed itself from the
@@ -2101,7 +1851,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	for _, action := range executed {
 		actionSeq, err := e.appendMovementBeat(action, memberIDs, newTickReading)
 		if err != nil {
-			return nil, fmt.Errorf("pump append %s beat: %w", action.kind, err)
+			return nil, fmt.Errorf("pump append movement beat: %w", err)
 		}
 		seqs = append(seqs, actionSeq)
 	}
@@ -2111,10 +1861,8 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		return nil, fmt.Errorf("pump refresh sight: %w", err)
 	}
 
-	// Evaluate ReachedPosition endings, in decision order. For a
-	// traverse, action.member.Room is already the ARRIVAL room
-	// (traverseMember mutated it); for a move it is unchanged — either
-	// way the shared evaluation reads the room the action landed in.
+	// Evaluate ReachedPosition endings, in decision order, against the cell
+	// each step landed on.
 	//
 	// A monster never fires an UNFILTERED ending: the empty filter means "any
 	// player member", which firedReachedPosition enforces by kind, so a
@@ -2126,67 +1874,40 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 	}
 
-	// Build the output, splitting executed actions by kind (each output
-	// slice preserves the SAME relative order it had in executed).
+	// Build the output. ONE list, in the order the steps were executed —
+	// which is the order the deciders were consulted in (C8).
 	//
-	// Every cell is projected through the SAME absoluteOf the beats above
-	// used, and for the same reason (rpg-toolkit#1062): one movement is
-	// reported twice — once as a typed output, once as a beat — and a host
-	// reading both must be told the same cell. An executedAction carries
-	// room-local cells because that is what spatial hands back; a room-local
-	// cell is this composition's own bookkeeping, and rooms do not cross the
-	// seam. A move's cells belong to member.Room (a move never changes it);
-	// a crossing's belong to two DIFFERENT rooms, each side projected
-	// through its own anchor.
+	// It used to be two, split by which mechanism carried the step. The split
+	// was never about the world: a crossing looked different because the
+	// composition had two ways to move somebody, and it has one
+	// (rpg-toolkit#1106). Every cell here is read straight off the canvas, so
+	// what a host reads on this output and what it reads on the same movement's
+	// beat cannot disagree — the drift rpg-toolkit#1062 chased was two
+	// projections of one fact, and there are no projections left.
 	var outputMoves []struct {
 		Member MemberID
 		From   spatial.Position
 		To     spatial.Position
 	}
-	var outputTraverses []struct {
-		Member   MemberID
-		FromRoom string
-		From     spatial.Position
-		ToRoom   string
-		To       spatial.Position
-	}
 	for _, action := range executed {
-		switch action.kind {
-		case actionMove:
-			outputMoves = append(outputMoves, struct {
-				Member MemberID
-				From   spatial.Position
-				To     spatial.Position
-			}{
-				Member: action.member.ID,
-				From:   e.absoluteOf(action.member.Room, action.from),
-				To:     e.absoluteOf(action.member.Room, action.to),
-			})
-		case actionTraverse:
-			outputTraverses = append(outputTraverses, struct {
-				Member   MemberID
-				FromRoom string
-				From     spatial.Position
-				ToRoom   string
-				To       spatial.Position
-			}{
-				Member:   action.member.ID,
-				FromRoom: action.fromRoom,
-				From:     e.absoluteOf(action.fromRoom, action.from),
-				ToRoom:   action.toRoom,
-				To:       e.absoluteOf(action.toRoom, action.to),
-			})
-		}
+		outputMoves = append(outputMoves, struct {
+			Member MemberID
+			From   spatial.Position
+			To     spatial.Position
+		}{
+			Member: action.member.ID,
+			From:   action.from,
+			To:     action.to,
+		})
 	}
 
 	return &PumpOutput{
-		Tick:             newTickReading,
-		MonsterMoves:     outputMoves,
-		MonsterTraverses: outputTraverses,
-		IntelDeltas:      intelDeltas,
-		Seqs:             seqs,
-		Outcome:          firedOutcome,
-		Formed:           formed,
+		Tick:         newTickReading,
+		MonsterMoves: outputMoves,
+		IntelDeltas:  intelDeltas,
+		Seqs:         seqs,
+		Outcome:      firedOutcome,
+		Formed:       formed,
 	}, nil
 }
 
@@ -2195,7 +1916,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 //
 // The two are ONE call on purpose. Trigger detection is a rule about sight, so
 // it belongs wherever sight changes — and wiring it at the verbs instead left
-// Traverse and Join silently untriggered until review caught them
+// crossings and Join silently untriggered until review caught them
 // (rpg-toolkit#964). A verb cannot refresh sight and forget the rule if
 // refreshing sight IS running the rule; a future verb gets it by writing the
 // obvious call.
@@ -2205,8 +1926,8 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 // ANY BEAT ITS CONSEQUENCES APPEND — cause before effect, in every story. A
 // reader of Story must be able to see the walk that started the fight before
 // the fight. Setup ruled this first (a scene records that it opened before it
-// records a fight starting inside it); the same law holds for Move, Traverse,
-// Pump and Join, and each one pins its own half of it.
+// records a fight starting inside it); the same law holds for Step, Pump and
+// Join, and each one pins its own half of it.
 //
 // [Encounter.rebuildPercepts] is the half without the rule, and Setup is its
 // only caller — Setup needs the two halves separated so its scene-opened beat
@@ -2241,47 +1962,47 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 	deltas := make(map[MemberID]*intel.SurveilOutput)
 
 	for _, observerID := range observers {
-		member, ok := e.members[observerID]
-		if !ok {
+		if _, ok := e.members[observerID]; !ok {
 			continue // Skip if not found
 		}
 
-		// Get the room
-		room, ok := e.orchestrator.GetRoom(member.Room)
+		observerCell, ok := e.canvas.GetEntityPosition(string(observerID))
 		if !ok {
-			continue // Room not found
+			continue // Observer not placed
 		}
 
-		// Get observer's position
-		observerPos, ok := room.GetEntityPosition(string(observerID))
-		if !ok {
-			continue // Observer position not found
-		}
-
-		// List all OTHER members in the same room and check line of sight
+		// Every OTHER member on the map, kept or dropped by GEOMETRY ALONE.
+		//
+		// There was a room-membership test here, immediately before the line of
+		// sight check, and it decided almost everything: two members in
+		// different chambers never saw each other, however close, and the check
+		// below never ran for them. It was not a range rule, it was the ONLY
+		// visibility rule — standing in for the walls the composition could not
+		// express (rpg-toolkit#1105/#1106). With one canvas and real walls it
+		// has nothing left to say, so it is gone and the geometry answers.
+		//
+		// NOTHING BOUNDS SIGHT BY DISTANCE YET, and that is a known gap rather
+		// than an oversight: the room label was doing that job too, badly. A
+		// real range term is rpg-toolkit#1105's remaining half, and it lands
+		// with the caller that supplies it rather than as a default this module
+		// would be inventing (the argument [Standing] makes about answers this
+		// module is not allowed to decide for itself).
 		var percept []intel.Report
 		for _, otherMember := range e.members {
 			if otherMember.ID == observerID {
 				continue // Skip self
 			}
-			if otherMember.Room != member.Room {
-				continue // Different room
-			}
 
-			// Get the other member's position
-			otherPos, ok := room.GetEntityPosition(string(otherMember.ID))
+			otherCell, ok := e.canvas.GetEntityPosition(string(otherMember.ID))
 			if !ok {
-				continue // Position not found
+				continue // Not placed
 			}
 
-			// Check line of sight
-			if room.IsLineOfSightBlocked(observerPos, otherPos) {
-				continue // Blocked by obstacle
+			if e.canvas.IsLineOfSightBlocked(observerCell, otherCell) {
+				continue // A wall, or something standing in the way
 			}
 
-			// Add to percept
-			absolute := e.absoluteOf(otherMember.Room, otherPos)
-			pos := SightPayload{X: absolute.X, Y: absolute.Y}
+			pos := SightPayload{X: otherCell.X, Y: otherCell.Y}
 			payload, _ := json.Marshal(pos)
 			percept = append(percept, intel.Report{
 				Subject: intel.Subject(otherMember.ID),
@@ -2351,62 +2072,64 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: %w", ErrClosed)
 	}
 
-	if in.Member.ID == "" {
+	if in.Member == "" {
 		return nil, fmt.Errorf("join: %w", ErrNoMember)
 	}
 
 	// Check if already a member
-	if _, exists := e.members[in.Member.ID]; exists {
-		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member.ID, ErrNoMember)
+	if _, exists := e.members[in.Member]; exists {
+		return nil, fmt.Errorf("join: member %s is already in the encounter: %w", in.Member, ErrNoMember)
 	}
 
 	// Players cannot carry deciders (design law C2)
-	if in.Member.Kind == KindPlayer && in.Member.Decider != nil {
-		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member.ID, ErrNoMember)
+	if in.Kind == KindPlayer && in.Decider != nil {
+		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member, ErrNoMember)
 	}
 
-	// Hex rooms require integral axial join positions (interim
-	// tools/spatial#926 enforcement — see isIntegralAxialPosition). A
-	// nonexistent room is left to PlaceEntity's own failure below,
-	// unrelated to this check.
-	if room, ok := e.orchestrator.GetRoom(in.Member.Room); ok && !isIntegralAxialPosition(room.GetGrid(), in.Member.Position) {
+	// Hex fields require integral axial cells (interim tools/spatial#926
+	// enforcement — see isIntegralAxialPosition). Asked first, for the reason
+	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
+	// mistake and must not be reported as a map one.
+	if !isIntegralAxialPosition(e.canvas.GetGrid(), in.Cell) {
 		return nil, fmt.Errorf("join: position is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
-	// Place the new member via managed seam
-	entity := &memberEntity{
-		id:   string(in.Member.ID),
-		kind: in.Member.Kind,
+	// The arrival cell must be FLOOR — some authored chamber's footprint has
+	// to hold it. The canvas spans the field's whole bounding box, so "on the
+	// map" and "somewhere a member can stand" are different questions, and
+	// this is the one that matters (the same check [Encounter.stepMember]
+	// makes for a step).
+	if _, owned := e.roomAt(in.Cell); !owned {
+		return nil, fmt.Errorf("join: cell %v is not floor: %w", in.Cell, ErrBadPlacement)
 	}
 
-	_, err := e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-		RoomID:   spatial.RoomID(in.Member.Room),
-		Entity:   entity,
-		Position: in.Member.Position,
-	})
-	if err != nil {
+	entity := &memberEntity{
+		id:   string(in.Member),
+		kind: in.Kind,
+	}
+
+	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
 		return nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
 	}
 
 	// Register the member
 	member := &memberRecord{
-		ID:   in.Member.ID,
-		Kind: in.Member.Kind,
-		Room: in.Member.Room,
+		ID:   in.Member,
+		Kind: in.Kind,
 	}
-	e.members[in.Member.ID] = member
-	e.everMembers[in.Member.ID] = true // Track in everMembers
+	e.members[in.Member] = member
+	e.everMembers[in.Member] = true // Track in everMembers
 
 	// A joiner lands on the world clock, never mid-fight. Being pulled into a
 	// running bubble is Transfer's job and is a separate decision from joining
 	// the encounter at all.
-	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(in.Member.ID)}); cerr != nil {
-		return nil, fmt.Errorf("join member %q world clock: %w", in.Member.ID, cerr)
+	if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(in.Member)}); cerr != nil {
+		return nil, fmt.Errorf("join member %q world clock: %w", in.Member, cerr)
 	}
 
 	// Store decider if present (monsters only, validated above)
-	if in.Member.Decider != nil {
-		e.deciders[in.Member.ID] = in.Member.Decider
+	if in.Decider != nil {
+		e.deciders[in.Member] = in.Decider
 	}
 
 	// Audience for both the join beat and the sight refresh: the joiner sees
@@ -2424,7 +2147,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
 		"beat":   "joined",
-		"member": string(in.Member.ID),
+		"member": string(in.Member),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -2445,58 +2168,15 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join refresh sight: %w", err)
 	}
 
-	// Evaluate ReachedPosition endings (a player could join ON the stairs)
-	var firedOutcome *Outcome
-	for _, de := range e.endings {
-		endingKey, trigger := de.key, de.trigger
-		reachedPosTrigger, ok := trigger.(TriggerReachedPosition)
-		if !ok {
-			continue // Not a ReachedPosition trigger
-		}
-
-		// Check if the ending fires
-		if reachedPosTrigger.Room != member.Room {
-			continue // Different room
-		}
-
-		if reachedPosTrigger.Position.X != in.Member.Position.X || reachedPosTrigger.Position.Y != in.Member.Position.Y {
-			continue // Different position
-		}
-
-		// Check member filter: empty = any player member; non-empty = specific member
-		if reachedPosTrigger.Member != "" && reachedPosTrigger.Member != in.Member.ID {
-			continue // Member filter doesn't match
-		}
-
-		// Member filter passes but check kind
-		if reachedPosTrigger.Member == "" && member.Kind != KindPlayer {
-			continue // Empty filter means players only
-		}
-
-		// Ending fires! Build the outcome with all members' current positions
-		memberOutcomes := e.buildMemberOutcomes()
-
-		e.outcome = &Outcome{
-			Ending:  endingKey,
-			At:      clockReadingForBeat,
-			Members: memberOutcomes,
-		}
-		// Return a deep copy of the outcome (mutation-proof)
-		outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
-		for i, m := range e.outcome.Members {
-			outcomeMembers[i] = MemberOutcome{
-				ID:       m.ID,
-				Room:     m.Room,
-				Position: m.Position,
-			}
-		}
-		firedOutcome = &Outcome{
-			Ending:  e.outcome.Ending,
-			At:      e.outcome.At,
-			Members: outcomeMembers,
-		}
-		break
-	}
+	// Evaluate ReachedPosition endings (a player could join ON the stairs),
+	// through the SAME firedReachedPosition every other arrival uses.
+	//
+	// Join used to carry its own copy of that scan — the census's side-finding
+	// 2, and the defect class rpg-toolkit#1059 spent two PRs eliminating for
+	// movement. The copy existed because Join held a room and a local cell
+	// while the shared path held the member's current room; with one frame
+	// there is nothing left for a second implementation to differ about.
+	firedOutcome := e.firedReachedPosition(member, in.Cell, clockReadingForBeat)
 
 	placement, err := e.placementOf(member)
 	if err != nil {
@@ -2532,21 +2212,16 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit: %w", ErrClosed)
 	}
 
-	member, ok := e.members[in.Member]
-	if !ok {
+	if _, ok := e.members[in.Member]; !ok {
 		return nil, fmt.Errorf("exit: %w", ErrNotMember)
 	}
 
-	// Get the exiting member's final position
-	room, ok := e.orchestrator.GetRoom(member.Room)
+	// Get the exiting member's final cell, and the chamber it falls in.
+	finalCell, ok := e.canvas.GetEntityPosition(string(in.Member))
 	if !ok {
 		return nil, fmt.Errorf("exit: %w", ErrBadPlacement)
 	}
-
-	finalPos, ok := room.GetEntityPosition(string(in.Member))
-	if !ok {
-		return nil, fmt.Errorf("exit: %w", ErrBadPlacement)
-	}
+	finalRoom, _ := e.roomAt(finalCell)
 
 	// Capture the exiting member's holdings (carry-forward)
 	carry, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: in.Member})
@@ -2554,12 +2229,8 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit held_by: %w", err)
 	}
 
-	// Remove from the field via managed seam
-	_, err = e.orchestrator.RemoveEntity(&spatial.RemoveEntityInput{
-		RoomID:   spatial.RoomID(member.Room),
-		EntityID: core.EntityID(in.Member),
-	})
-	if err != nil {
+	// Remove from the map
+	if err = e.canvas.RemoveEntity(string(in.Member)); err != nil {
 		return nil, fmt.Errorf("exit remove entity: %w: %w", ErrBadPlacement, err)
 	}
 
@@ -2634,14 +2305,9 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	return &ExitOutput{
 		Outcome: MemberOutcome{
-			ID:   in.Member,
-			Room: member.Room,
-			// Exit builds its own outcome rather than going through
-			// buildMemberOutcomes, so it needs the SAME projection explicitly:
-			// flipping only the shared path would leave the leaver's own
-			// report — the one thing they are handed on the way out — in the
-			// frame everything else stopped speaking.
-			Position: e.absoluteOf(member.Room, finalPos),
+			ID:       in.Member,
+			Room:     finalRoom,
+			Position: finalCell,
 		},
 		Carry:  carry,
 		Seq:    seqNum,

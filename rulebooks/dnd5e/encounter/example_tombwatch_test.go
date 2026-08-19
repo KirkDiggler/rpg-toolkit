@@ -78,7 +78,7 @@ func Example_theTombWatch() {
 	}
 
 	fmt.Println("-- alice slips behind the wall --")
-	if _, err := enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: 6, Y: 2}}); err != nil {
+	if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 6, Y: 2}}); err != nil {
 		fmt.Println("move:", err)
 		return
 	}
@@ -97,7 +97,7 @@ func Example_theTombWatch() {
 	tell(enc, "alice", "goblin")
 
 	fmt.Println("-- alice finds the stairs --")
-	out, err := enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: 11, Y: 11}})
+	out, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 11, Y: 11}})
 	if err != nil {
 		fmt.Println("move:", err)
 		return
