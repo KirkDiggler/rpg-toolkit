@@ -24,7 +24,6 @@ type MeleeConfig struct {
 }
 
 // MeleeAction implements a generic melee weapon attack.
-// This generalizes ScimitarAction to work with any melee weapon.
 type MeleeAction struct {
 	name        string
 	attackBonus int

@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -80,7 +81,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_BasicMelee() {
 	})
 	s.lookup.Add(attacker)
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := monsters.NewGoblin("goblin-1")
 	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
@@ -165,7 +166,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_WithRage() {
 	err := raging.Apply(s.ctx, s.eventBus)
 	s.Require().NoError(err)
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := monsters.NewGoblin("goblin-1")
 	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
@@ -243,7 +244,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_FinesseWeapon() {
 	})
 	s.lookup.Add(attacker)
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := monsters.NewGoblin("goblin-1")
 	s.lookup.Add(goblin)
 
 	// Rapier is a finesse weapon
@@ -311,7 +312,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_CriticalHit() {
 	})
 	s.lookup.Add(attacker)
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := monsters.NewGoblin("goblin-1")
 	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{
@@ -380,7 +381,7 @@ func (s *BreakdownTestSuite) TestResolveAttack_DamageBreakdown_Miss() {
 	})
 	s.lookup.Add(attacker)
 
-	goblin := monster.NewGoblin("goblin-1")
+	goblin := monsters.NewGoblin("goblin-1")
 	s.lookup.Add(goblin)
 
 	longsword := &weapons.Weapon{

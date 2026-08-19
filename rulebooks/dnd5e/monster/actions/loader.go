@@ -31,17 +31,12 @@ func unmarshalActionConfig(raw json.RawMessage, config any) error {
 	return nil
 }
 
-const (
-	scimitarActionID = "scimitar"
-	shortbowActionID = "shortbow"
-)
+const shortbowActionID = "shortbow"
 
 // LoadAction creates a MonsterAction from ActionData.
 // It dispatches to the appropriate action constructor based on the ref.
 func LoadAction(data monster.ActionData) (monster.MonsterAction, error) {
 	switch data.Ref.ID {
-	case scimitarActionID:
-		return loadScimitarAction(data)
 	case shortbowActionID:
 		return loadShortbowAction(data)
 	case "melee":
@@ -55,20 +50,6 @@ func LoadAction(data monster.ActionData) (monster.MonsterAction, error) {
 	default:
 		return nil, rpgerr.New(rpgerr.CodeNotFound, "unknown action: "+data.Ref.ID)
 	}
-}
-
-// loadScimitarAction creates a ScimitarAction from config
-func loadScimitarAction(data monster.ActionData) (monster.MonsterAction, error) {
-	var config monster.ScimitarConfig
-	if len(data.Config) > 0 {
-		if err := json.Unmarshal(data.Config, &config); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to unmarshal scimitar config")
-		}
-	}
-	if config.ID == "" {
-		config.ID = "scimitar"
-	}
-	return monster.NewScimitarAction(config), nil
 }
 
 // loadShortbowAction creates a ShortbowAction from config

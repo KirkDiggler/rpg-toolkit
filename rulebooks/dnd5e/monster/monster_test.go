@@ -51,30 +51,6 @@ func (s *MonsterTestSuite) TestNew() {
 	s.True(monster.IsAlive())
 }
 
-func (s *MonsterTestSuite) TestNewGoblin() {
-	goblin := NewGoblin("goblin-1")
-
-	s.Require().NotNil(goblin)
-	s.Equal("goblin-1", goblin.GetID())
-	s.Equal(dnd5e.EntityTypeMonster, goblin.GetType())
-	s.Equal("Goblin", goblin.Name())
-	s.Equal(7, goblin.HP())
-	s.Equal(7, goblin.MaxHP())
-	s.Equal(15, goblin.AC())
-
-	// Check ability scores
-	scores := goblin.AbilityScores()
-	s.Equal(8, scores[abilities.STR])
-	s.Equal(14, scores[abilities.DEX])
-	s.Equal(10, scores[abilities.CON])
-	s.Equal(10, scores[abilities.INT])
-	s.Equal(8, scores[abilities.WIS])
-	s.Equal(8, scores[abilities.CHA])
-
-	// Verify DEX modifier is +2
-	s.Equal(2, scores.Modifier(abilities.DEX))
-}
-
 func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 	monster := New(Config{
 		ID:   "test-monster-1",
@@ -111,7 +87,8 @@ func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 // back to unarmed. NewGoblin's default action ID ("scimitar") must resolve
 // against the weapons catalog.
 func (s *MonsterTestSuite) TestMeleeWeapon_GoblinResolvesScimitar() {
-	goblin := NewGoblin("goblin-1")
+	goblin := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
+	goblin.AddAction(&testMeleeAction{id: "scimitar"})
 
 	w := goblin.MeleeWeapon()
 
@@ -230,7 +207,7 @@ func (s *MonsterTestSuite) TestIsAlive() {
 // TestMoveTowardEnemy_AroundObstacle verifies that monsters use A* pathfinding
 // to navigate around obstacles using BlockedHexes from PerceptionData.
 func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
-	monster := NewGoblin("goblin-1")
+	monster := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
 
 	// Monster at (0,0,0), enemy at (3,-3,0)
 	// Direct path would be: (1,-1,0) -> (2,-2,0) -> (3,-3,0)
@@ -284,7 +261,7 @@ func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
 // TestMoveTowardEnemy_TrappedStaysPut verifies that monsters stay put when
 // completely surrounded by obstacles and cannot find a path to the target.
 func (s *MonsterTestSuite) TestMoveTowardEnemy_TrappedStaysPut() {
-	monster := NewGoblin("goblin-1")
+	monster := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
 
 	// Monster at (0,0,0), completely surrounded by walls
 	startPos := spatial.CubeCoordinate{X: 0, Y: 0, Z: 0}

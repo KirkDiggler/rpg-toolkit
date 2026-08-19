@@ -41,11 +41,26 @@ func (s *MonsterCompositionTestSuite) immunityBlob() json.RawMessage {
 	return raw
 }
 
-// goblin is a monster with real actions on it — taken from the factory rather
-// than hand-written, so the ActionData below is exactly what this build's
-// action serializer produces and the byte comparison is about the loader.
+// goblinData supplies a canonical generic-melee goblin fixture without
+// importing the monster factory, which would create a test import cycle.
+func goblinData(id string) *monster.Data {
+	return &monster.Data{
+		ID:               id,
+		Name:             "Goblin",
+		Ref:              refs.Monsters.Goblin(),
+		HitPoints:        7,
+		MaxHitPoints:     7,
+		ArmorClass:       15,
+		ProficiencyBonus: 2,
+		Actions: []monster.ActionData{{
+			Ref:    *refs.MonsterActions.Melee(),
+			Config: json.RawMessage(`{"name":"scimitar","attack_bonus":4,"damage":[{"dice":"1d6","type":"slashing","flat_bonus":2}],"reach":1}`),
+		}},
+	}
+}
+
 func (s *MonsterCompositionTestSuite) goblin() *monster.Data {
-	data := monster.NewGoblin("gob-compose").ToData()
+	data := goblinData("gob-compose")
 	data.Conditions = []json.RawMessage{s.immunityBlob()}
 
 	return data

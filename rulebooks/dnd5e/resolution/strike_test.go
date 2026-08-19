@@ -459,7 +459,7 @@ func (s *StrikeTestSuite) TestRefusesAStrikeItCannotRun() {
 	world := s.world(spatial.Position{X: 8, Y: 5})
 
 	s.Run("an action this build cannot read is refused at compilation", func() {
-		_, err := AttackFromMonsterAction(monster.ActionData{Ref: *refs.MonsterActions.Scimitar()})
+		_, err := AttackFromMonsterAction(monster.ActionData{Ref: *refs.MonsterActions.Melee()})
 		s.Require().ErrorIs(err, ErrBadAttack)
 	})
 
