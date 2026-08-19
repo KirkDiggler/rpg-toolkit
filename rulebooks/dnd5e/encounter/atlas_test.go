@@ -28,7 +28,7 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "atlas-r3", Width: 4, Height: 3, Origin: spatial.Position{X: 9950, Y: 7}},
 				{ID: "atlas-r1", Width: 4, Height: 3, Origin: spatial.Position{X: 0, Y: 7},
@@ -68,7 +68,7 @@ func validAtlasVoidGapSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "gap-a", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0}},
 				{ID: "gap-b", Width: 3, Height: 3, Origin: spatial.Position{X: 6, Y: 0}},
@@ -89,7 +89,7 @@ func singleRoomSetup(shape spatial.GridShape, width, height int) *encounter.Setu
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: "solo", Width: width, Height: height, Grid: shape}},
 		},
 		Members: []encounter.MemberInput{

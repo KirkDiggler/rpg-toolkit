@@ -205,7 +205,7 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 func (s *PumpTestSuite) TestPumpDoesNotConsultExitedMonsterDecider() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
@@ -241,7 +241,7 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -341,7 +341,7 @@ func (s *PumpTestSuite) TestPumpDeciderIsolation() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{{
 					ID: room1, Width: 10, Height: 10,
 					// A wall down x=5 rather than one cell of it: spatial
@@ -392,7 +392,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -472,7 +472,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
@@ -497,7 +497,7 @@ func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 func (s *PumpTestSuite) TestPumpPartialAbort() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			// "aaa-goblin" sorts before "zzz-goblin": it decides (and
@@ -542,7 +542,7 @@ func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	vandal := &vandalDecider{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			// The vandal's victim is a MONSTER peer, not a player. Two
@@ -590,7 +590,7 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -657,7 +657,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -728,7 +728,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
 		},
@@ -766,7 +766,7 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -846,7 +846,7 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -932,7 +932,7 @@ func (s *PumpTestSuite) TestPumpClockAdvanceByOne() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -1013,7 +1013,7 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
 						ID:     room1,
@@ -1086,7 +1086,7 @@ func twoRoomSealedWall() []spatial.Boundary { return squareSeamWall(9, 10) }
 // the doorway's cells (9,5) and (10,5) are adjacent (W3).
 func twoRoomField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 			{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1107,7 +1107,7 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1159,7 +1159,7 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1233,7 +1233,7 @@ func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: cellar, Width: 10, Height: 10, Origin: spatial.Position{X: 40, Y: 20}},
 				{ID: shrine, Width: 10, Height: 10, Origin: spatial.Position{X: 50, Y: 20}},
@@ -1344,7 +1344,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenAWallIsInTheWay() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1402,7 +1402,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1455,7 +1455,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1501,7 +1501,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1611,7 +1611,7 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1714,7 +1714,7 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 	s.Run("control: decision order and declaration order agree", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				{ID: aID, Kind: encounter.KindMonster, Room: room1,
 					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
@@ -1739,7 +1739,7 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 	s.Run("cross: decision order dominates — the SECOND-declared ending wins", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				// Same decision order (aaa first, zzz second), but now each
 				// monster's landing position fires the OTHER declared ending.
@@ -1798,7 +1798,7 @@ func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblinID, Kind: encounter.KindMonster, Room: room1,
@@ -1848,7 +1848,7 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
@@ -1941,7 +1941,7 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
 				ID: room1, Width: 10, Height: 10,
 				// A short wall, positioned so that alice is visible from the

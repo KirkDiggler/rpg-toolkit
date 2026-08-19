@@ -98,11 +98,11 @@ import (
 // interface to withhold half of it would be offering a door in order to lock
 // it.
 //
-// # It answers about the rock too
+// # It answers about the void too
 //
 // IsLineOfSightBlocked here is the CANVAS's answer, which since
 // rpg-toolkit#1116 counts the field's declared void: on a field whose void is
-// rock, a sightline crossing the space between two chambers is blocked, and a
+// opaque, a sightline crossing the space between two chambers is blocked, and a
 // caller reading this map is told so. That is the whole reason the declaration
 // lives on the map rather than in the sight loop — see [canvasRoom].
 //

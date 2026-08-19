@@ -63,7 +63,7 @@ var (
 // arrivalField is two chambers with NO doorway and a fully sealed seam.
 func arrivalField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: arrivalVault, Width: 8, Height: 8, Origin: arrivalVaultOrigin,
 				Boundaries: squareSeamWall(7, 8)},
