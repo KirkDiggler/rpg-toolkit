@@ -176,9 +176,15 @@ func compileCanvas(shape spatial.GridShape, atlas encounter.Atlas) (*spatial.Bas
 	})
 
 	for regionIdx, region := range atlas.Regions {
-		// Occluder IDs are index-based, exactly as the encounter's are: a
-		// region ID is an arbitrary string and a cell-derived key collides on
-		// legal fields, but a pair of slice indices cannot.
+		// Occluder IDs are index-based for the encounter's reason — a region
+		// ID is an arbitrary string and a cell-derived key collides on legal
+		// fields, where a pair of slice indices cannot — but they are NOT the
+		// encounter's own IDs and must not be read as if they were. The
+		// encounter indexes by the room's DECLARATION order; the atlas sorts
+		// its regions by region ID (C8), so the two agree only when the
+		// authored order happens to be sorted. All these need to be is unique
+		// on this canvas, which they are, and nothing reads them: an occluder
+		// is a cell in the way, and no rule looks one up by name.
 		for occIdx, cell := range region.Occluders {
 			id := fmt.Sprintf("occluder-%d-%d", regionIdx, occIdx)
 			if perr := canvas.PlaceEntity(blocker{id: id}, cell); perr != nil {
