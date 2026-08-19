@@ -36,7 +36,7 @@ func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 			// against a fight they start themselves, so the scene has to begin
 			// as free roam.
 			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10},
+				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 		},
@@ -80,9 +80,11 @@ func (s *ClocksTestSuite) TestEveryMemberStartsOnTheWorldClock() {
 func (s *ClocksTestSuite) TestAJoinerLandsOnTheWorldClockNotInAFight() {
 	enc := s.twoMemberEncounter()
 
-	_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-		ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 4},
-	}})
+	_, err := enc.Join(&encounter.JoinInput{
+		Member: bob,
+		Kind:   encounter.KindPlayer,
+		Cell:   spatial.Position{X: 4, Y: 4},
+	})
 	s.Require().NoError(err)
 
 	out, err := enc.ClockOf(&encounter.ClockOfInput{Member: bob})
@@ -173,9 +175,11 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 	enc := s.twoMemberEncounter()
 
 	// bob is far away, doing something else entirely.
-	_, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-		ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 9, Y: 9},
-	}})
+	_, err := enc.Join(&encounter.JoinInput{
+		Member: bob,
+		Kind:   encounter.KindPlayer,
+		Cell:   spatial.Position{X: 9, Y: 9},
+	})
 	s.Require().NoError(err)
 
 	data := enc.ToData()
@@ -364,7 +368,7 @@ func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10},
+				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 		},
@@ -451,12 +455,13 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 		s.Equal(encounter.ClockWorld, out.Kind, "member %q keeps free-roaming", id)
 	}
 
-	// The distant pair keeps living while the fight runs: carl moves freely,
+	// The distant pair keeps living while the fight runs: carl moves freely
+	// (room2 is anchored at (10,0), so his own cells read (18,x) on the map),
 	// and when the world thinks, only world-clock members accrue. (Player
 	// movement driving Advance directly — the leaf's own accrual model —
 	// is not wired into Move yet; Pump is the composition's accrual
 	// mechanism today, and the pin here is WHO accrues, not how much.)
-	_, err = enc.Move(&encounter.MoveInput{Member: carl, To: spatial.Position{X: 8, Y: 7}})
+	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 7}})
 	s.Require().NoError(err)
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
@@ -494,7 +499,7 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 
 	// And having fallen in, carl is the fight's now — free-roam movement is
 	// no longer his to make.
-	_, err = enc.Move(&encounter.MoveInput{Member: carl, To: spatial.Position{X: 8, Y: 8}})
+	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 8}})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInBubble)
 
@@ -661,25 +666,25 @@ func (s *ClocksTestSuite) TestClockVerbsRejectAClosedEncounter() {
 }
 
 // TestAFightMemberCannotFreeRoam pins the coexistence rule from the verb
-// side: Move and Traverse are world-clock verbs. A fight member acts through
-// the bubble — there is no in-fight movement verb yet, and until one
-// arrives a fight member moving AT ALL would be moving outside initiative.
+// side: Step is a world-clock verb. A fight member acts through the bubble —
+// there is no in-fight movement verb yet, and until one arrives a fight member
+// moving AT ALL would be moving outside initiative.
 func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 	enc := s.fiveMemberEncounter()
 
-	_, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 2, Y: 1}})
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 2, Y: 1}})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInBubble)
 
-	// The gate outranks connection resolution: this fixture has no
-	// connections at all, and the answer is still "you are fighting",
-	// not "no such connection".
-	_, err = enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door"})
+	// The gate outranks the step itself: this cell is out of bounds for the
+	// whole field, and the answer is still "you are fighting", not "that is
+	// not a cell".
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 500, Y: 500}})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInBubble)
 
 	// Everyone else's world is still running.
-	_, err = enc.Move(&encounter.MoveInput{Member: carl, To: spatial.Position{X: 8, Y: 7}})
+	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 7}})
 	s.Require().NoError(err)
 }
 

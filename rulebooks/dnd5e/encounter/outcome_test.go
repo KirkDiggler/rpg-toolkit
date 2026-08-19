@@ -197,7 +197,7 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 func (s *OutcomeTestSuite) TestTheOutcomeLandsAfterTheVerbThatCausedIt() {
 	enc := s.scene()
 
-	moved, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 5, Y: 2}})
+	moved, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 5, Y: 2}})
 	s.Require().NoError(err)
 	s.Require().Nil(moved.Formed, "the wall keeps this walk quiet")
 

@@ -138,7 +138,7 @@ type trigger struct {
 //
 // Reading transitions is COMPLETE rather than merely cheap, and the induction
 // is worth writing down because it is what makes the shortcut safe. This runs
-// at every refreshSight from first light onward — setup, move, traverse, pump,
+// at every refreshSight from first light onward — setup, step, pump,
 // join. Every awareness that exists was created by some step, and that step
 // classified it. So a stale asymmetry — a monster that has "already been
 // watching" without anything forming — cannot arise: the step that created the

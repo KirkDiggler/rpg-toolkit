@@ -120,7 +120,7 @@ func (e *Encounter) standingNow() (map[MemberID]bool, error) {
 // knowing who is a body and who is an enemy.
 //
 // Placement: [Encounter.applyTrigger] is reached from [Encounter.refreshSight]
-// — the choke point sight already flows through, so Move, Traverse, Pump, Join
+// — the choke point sight already flows through, so Step, Pump, Join
 // and Exit all pass here by writing the obvious call — and from Setup's first
 // light, which calls applyTrigger directly so its scene-opened beat can land
 // first. A scene can open with a body already on the floor.

@@ -104,7 +104,18 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// Exact-string pin: every room now carries "origin" (#929 T2), always
 	// present (no omitempty — RoomData's doc comment) — crypt's and hall's
 	// are both negative-axial, the wire-shape proof this golden exists for.
-	expected := `{"clock":{"budgets":{"g1":1,"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":3,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","room":"hall","position":{"x":0,"y":0}},{"id":"p1","kind":"player","room":"crypt","position":{"x":0,"y":0}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	//
+	// A MEMBER IS A CELL, not a room and a cell (rpg-toolkit#1106): "cell"
+	// under a new key, absolute, with the room label gone because a member's
+	// chamber is derived from where they stand.
+	//
+	// And this blob now carries a FIGHT. The two members are one doorway apart
+	// with nothing between them, so they see each other at first light and
+	// trigger detection forms a bubble — which used to be invisible here only
+	// because sight stopped at a room boundary. That makes the golden strictly
+	// richer: it is the one place the bubbles array and intel's holdings are
+	// pinned as exact bytes.
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMywieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-3,"y":7}},{"id":"p1","kind":"player","cell":{"x":-10,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -130,7 +141,7 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: enc1.ToData()})
 	s.Require().NoError(err)
 
-	out, err := enc2.Move(&encounter.MoveInput{Member: "p1", To: spatial.Position{X: 3, Y: 3}})
+	out, err := enc2.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: 3, Y: 3}})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Outcome)
 	s.Equal("first", out.Outcome.Ending,
@@ -224,7 +235,7 @@ func (s *DataTestSuite) TestLoadSortsUnsortedConnections() {
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -322,19 +333,23 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 //
 // #929 T1: door1's FromPosition moved to r1's top-right corner (4,0) — an
 // interior cell like the original (1,0)'s neighbor set never fully escapes
-// r1's own footprint diagonally, but a corner's does. r2's Origin (5,-1)
-// anchors it diagonally past that corner: absolute FromPosition (4,0) and
-// absolute ToPosition local(0,0)+(5,-1)=(5,-1) are Chebyshev-adjacent
-// (distance 1, a diagonal kiss), while r1's absolute footprint
-// (x:[0,4],y:[0,4]) and r2's (x:[5,9],y:[-1,3]) share no x value at all,
-// so they stay disjoint (W2) regardless of y.
+// r1's own footprint diagonally, but a corner's does. r1 is anchored at (0,1)
+// and r2 at (5,0), which puts r2 diagonally past that corner: absolute
+// FromPosition local(4,0)+(0,1)=(4,1) and absolute ToPosition
+// local(0,0)+(5,0)=(5,0) are Chebyshev-adjacent (distance 1, a diagonal kiss),
+// while r1's absolute footprint (x:[0,4],y:[1,5]) and r2's (x:[5,9],y:[0,4])
+// share no x value at all, so they stay disjoint (W2) regardless of y.
+//
+// Both anchors are non-negative because the field compiles onto ONE grid and a
+// square grid starts at (0,0) — W5, rpg-toolkit#1106.
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}}},
-				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: -1}},
+				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0, Y: 1},
+					Occluders: []spatial.Position{{X: 3, Y: 3}}},
+				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "door1", From: "r1", To: "r2", FromPosition: spatial.Position{X: 4, Y: 0}, ToPosition: spatial.Position{X: 0, Y: 0}},
@@ -503,7 +518,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		s.Require().NoError(err)
 
 		// Move goblin behind the wall to create a ghost
-		_, err = enc1.Move(&encounter.MoveInput{
+		_, err = enc1.Step(&encounter.StepInput{
 			Member: "playerA",
 			To:     spatial.Position{X: 4, Y: 1},
 		})
@@ -517,7 +532,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		s.Require().NoError(err)
 
 		// Move goblin to create ghost at last-seen position
-		_, err = enc1.Move(&encounter.MoveInput{
+		_, err = enc1.Step(&encounter.StepInput{
 			Member: "goblin",
 			To:     spatial.Position{X: 5, Y: 6}, // Behind the wall from A's view
 		})
@@ -656,7 +671,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 		s.Require().NoError(err)
 
 		// Move to stairs to close
-		_, err = enc1.Move(&encounter.MoveInput{
+		_, err = enc1.Step(&encounter.StepInput{
 			Member: "playerA",
 			To:     spatial.Position{X: 0, Y: 0},
 		})
@@ -791,14 +806,14 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 		s.Require().NoError(err)
 
 		// Move should work
-		out, err := enc2.Move(&encounter.MoveInput{
+		out, err := enc2.Step(&encounter.StepInput{
 			Member: "playerA",
 			To:     spatial.Position{X: 2, Y: 2},
 		})
 
 		s.Require().NoError(err)
 		s.NotNil(out)
-		s.Equal(spatial.Position{X: 2, Y: 2}, out.Moved.To)
+		s.Equal(spatial.Position{X: 2, Y: 2}, out.Stepped.To)
 	})
 }
 
@@ -847,7 +862,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		// renamed tag fails this where a decoded comparison would not.
 		// (log carries the opening beat: a fresh encounter is born with
 		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -898,7 +913,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		s.Require().NoError(err)
 
 		// Close the encounter
-		_, err = enc.Move(&encounter.MoveInput{
+		_, err = enc.Step(&encounter.StepInput{
 			Member: "p1",
 			To:     spatial.Position{X: 0, Y: 0},
 		})
@@ -920,7 +935,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// blob written before the flip lands nowhere on today's shape and is
 		// refused by name rather than read in the wrong frame (see
 		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","room":"room1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","room":"room1","position":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","room":"room1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -1276,7 +1291,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "crypt", Width: 10, Height: 10},
+				{ID: "crypt", Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				// playerA watches from the antechamber. Two monsters sharing
 				// the crypt see only each other, which starts nothing —
 				// classification pairs players against monsters — so both
@@ -1340,7 +1355,7 @@ func validEncounterData() encounter.EncounterData {
 			{ID: "r1", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}},
 		}},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -1364,20 +1379,20 @@ func validEncounterData() encounter.EncounterData {
 // Origin (10,-6) anchors it so absolute FromPosition (9,1) and absolute
 // ToPosition (10,7... local(0,7)+Origin(10,-6)=(10,1)) are Chebyshev-
 // adjacent (W3), while r1's absolute footprint (x:[0,9],y:[0,3]) and r2's
-// (x:[10,12],y:[-6,2]) share no x value at all, so they stay disjoint (W2).
+// (x:[10,12],y:[0,8]) share no x value at all, so they stay disjoint (W2).
 func validEncounterDataWithConnection() encounter.EncounterData {
 	d := validEncounterData()
 	d.Field.Rooms[0].Width = 10
 	d.Field.Rooms[0].Height = 4
 	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
 	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{
-		ID: "r2", Width: 3, Height: 9, Origin: &encounter.PositionData{X: 10, Y: -6},
+		ID: "r2", Width: 3, Height: 9, Origin: &encounter.PositionData{X: 10, Y: 0},
 		Occluders: []encounter.PositionData{{X: 1, Y: 3}},
 	})
 	d.Field.Connections = []encounter.ConnectionData{
 		{ID: "c1", From: "r1", To: "r2",
 			FromPosition: &encounter.PositionData{X: 9, Y: 1},
-			ToPosition:   &encounter.PositionData{X: 0, Y: 7}},
+			ToPosition:   &encounter.PositionData{X: 0, Y: 1}},
 	}
 	return d
 }
@@ -1541,10 +1556,12 @@ func (s *DataTestSuite) TestLoadRejections() {
 		{"duplicate member ids", func(d *encounter.EncounterData) {
 			d.Members = append(d.Members, d.Members[0])
 		}, "duplicate member", encounter.ErrNoMember},
-		{"member room not in field", func(d *encounter.EncounterData) { d.Members[0].Room = "nowhere" }, "not in field", encounter.ErrBadPlacement},
-		{"member out of bounds", func(d *encounter.EncounterData) {
-			d.Members[0].Position = encounter.PositionData{X: 99, Y: 99}
-		}, "out of bounds", encounter.ErrBadPlacement},
+		{"member cell absent — the pre-#1106 room-local dialect", func(d *encounter.EncounterData) {
+			d.Members[0].Cell = nil
+		}, "before rpg-toolkit#1106", encounter.ErrBadPlacement},
+		{"member cell owned by no room", func(d *encounter.EncounterData) {
+			d.Members[0].Cell = &encounter.PositionData{X: 99, Y: 99}
+		}, "owned by no room", encounter.ErrBadPlacement},
 		{"connection missing room", func(d *encounter.EncounterData) {
 			// FromPosition/ToPosition present (any value) so the ONLY
 			// defect this fixture carries is the unknown "to" room — #929
@@ -1663,7 +1680,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 	s.Require().Len(connData.Field.Connections, 1)
 	s.Equal(&encounter.PositionData{X: 9, Y: 1}, connData.Field.Connections[0].FromPosition,
 		"from-position must survive Load unswapped")
-	s.Equal(&encounter.PositionData{X: 0, Y: 7}, connData.Field.Connections[0].ToPosition,
+	s.Equal(&encounter.PositionData{X: 0, Y: 1}, connData.Field.Connections[0].ToPosition,
 		"to-position must survive Load unswapped")
 }
 
@@ -1691,7 +1708,7 @@ func connBoundsData() encounter.EncounterData {
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 0, Y: 0}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -1822,7 +1839,7 @@ func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &pos},
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -1849,7 +1866,7 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
-		s.Require().Contains(err.Error(), "out of bounds")
+		s.Require().Contains(err.Error(), "owned by no room")
 	})
 
 	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
@@ -1863,7 +1880,7 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
-		s.Require().Contains(err.Error(), "out of bounds")
+		s.Require().Contains(err.Error(), "owned by no room")
 	})
 }
 
@@ -1888,7 +1905,7 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"hex-a"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -1918,7 +1935,7 @@ func validHexAxialData() encounter.EncounterData {
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: encounter.PositionData{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 0, Y: 0}}, /*ROOM:"hex-a"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -1934,8 +1951,8 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 		alsoErr  error
 		fragment string
 	}{
-		{"member position fractional", func(d *encounter.EncounterData) {
-			d.Members[0].Position = encounter.PositionData{X: 0.5, Y: 0}
+		{"member cell fractional", func(d *encounter.EncounterData) {
+			d.Members[0].Cell = &encounter.PositionData{X: 0.5, Y: 0}
 		}, nil, "not an integral axial cell"},
 		{"connection from-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
@@ -1996,7 +2013,7 @@ func validAnchoredHexData() encounter.EncounterData {
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: encounter.PositionData{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 0, Y: 0}}, /*ROOM:"hex-big"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2124,7 +2141,7 @@ func (s *DataTestSuite) TestLoadAnchoringOverlapNonAdjacentPair() {
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r-a", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r-a"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2153,7 +2170,7 @@ func (s *DataTestSuite) TestLoadAnchoringSquareOriginRejected() {
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2186,7 +2203,7 @@ func (s *DataTestSuite) TestLoadAnchoringHugeSquareOriginRejectedNotFalseOverlap
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2227,7 +2244,7 @@ func (s *DataTestSuite) TestLoadAnchoringFractionalSquareEndpointSubUnitDistance
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 0, Y: 0}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2253,7 +2270,7 @@ func (s *DataTestSuite) TestLoadAnchoringOversizedRoomRejectedNotFalseDisjoint()
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2462,32 +2479,37 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 
-	out1, err := enc1.Traverse(&encounter.TraverseInput{Member: "p1", Connection: "gate"})
-	s.Require().NoError(err, "the original encounter accepts the traverse")
-	s.Equal("hex-small", out1.Traversed.ToRoom)
-	s.Equal(spatial.Position{X: -1, Y: 4}, out1.Traversed.To)
+	// hex-small local (-1,4) through its (6,-5) anchor is (5,-1) — the far
+	// side of the gate; hex-big's own (4,0) is the near side, and since that
+	// room is anchored at the origin it reads the same either way.
+	nearSide := spatial.Position{X: 4, Y: 0}
+	farSide := spatial.Position{X: 5, Y: -1}
 
-	// Reload from BEFORE the traverse (so a fresh member can repeat it) —
-	// the round-trip law under test is "the FIELD behaves identically",
-	// not "the same member can traverse twice".
-	dataPreTraverse := enc1.ToData()
-	// p1 already moved on enc1; roll dataPreTraverse's member back to the
-	// threshold so the reloaded encounter's own member reenacts the same
-	// traverse enc1 just proved.
-	for i, m := range dataPreTraverse.Members {
+	out1, err := enc1.Step(&encounter.StepInput{Member: "p1", To: farSide})
+	s.Require().NoError(err, "the original encounter accepts the step through the gate")
+	s.Equal("gate", out1.Crossing)
+	s.Equal(farSide, out1.Stepped.To)
+
+	// Reload from BEFORE the crossing (so a fresh member can repeat it) — the
+	// round-trip law under test is "the FIELD behaves identically", not "the
+	// same member can cross twice".
+	dataPreCrossing := enc1.ToData()
+	// p1 already moved on enc1; roll dataPreCrossing's member back to the
+	// threshold so the reloaded encounter's own member reenacts the same step
+	// enc1 just proved.
+	for i, m := range dataPreCrossing.Members {
 		if m.ID == "p1" {
-			dataPreTraverse.Members[i].Room = "hex-big"
-			dataPreTraverse.Members[i].Position = encounter.PositionData{X: 4, Y: 0}
+			dataPreCrossing.Members[i].Cell = &encounter.PositionData{X: nearSide.X, Y: nearSide.Y}
 		}
 	}
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: dataPreTraverse})
+		Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: dataPreCrossing})
 	s.Require().NoError(err)
 
-	out2, err := enc2.Traverse(&encounter.TraverseInput{Member: "p1", Connection: "gate"})
-	s.Require().NoError(err, "the reloaded encounter accepts the SAME traverse")
-	s.Equal(out1.Traversed.ToRoom, out2.Traversed.ToRoom)
-	s.Equal(out1.Traversed.To, out2.Traversed.To)
+	out2, err := enc2.Step(&encounter.StepInput{Member: "p1", To: farSide})
+	s.Require().NoError(err, "the reloaded encounter accepts the SAME step")
+	s.Equal(out1.Crossing, out2.Crossing)
+	s.Equal(out1.Stepped.To, out2.Stepped.To)
 }
 
 // TestLoadAnchoringSquareEndpointNotAdjacentDistance2 is the Load-seam
@@ -2510,7 +2532,7 @@ func (s *DataTestSuite) TestLoadAnchoringSquareEndpointNotAdjacentDistance2() {
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: encounter.PositionData{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 0, Y: 0}}, /*ROOM:"r1"*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2565,7 +2587,7 @@ func connGridlessRoomData(pos encounter.PositionData) encounter.EncounterData {
 			},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &pos},
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2781,10 +2803,9 @@ func (s *DataTestSuite) TestMutation5MissingRoomCheck() {
 			},
 			Members: []encounter.MemberData{
 				{
-					ID:       "p1",
-					Kind:     encounter.KindPlayer,
-					Room:     "nonexistent",
-					Position: encounter.PositionData{X: 5, Y: 5},
+					ID:   "p1",
+					Kind: encounter.KindPlayer,
+					Cell: &encounter.PositionData{X: 5, Y: 5},
 				},
 			},
 			Endings: []encounter.EndingData{
@@ -2838,11 +2859,11 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		// (rpg-toolkit#964), and a fight member cannot free-roam — so the two
 		// break off before the goblin walks back out of sight and fades. The
 		// ghost this makes is the same ghost; it just has a story now.
-		_, err = enc1.Move(&encounter.MoveInput{Member: "playerA", To: spatial.Position{X: 4, Y: 1}})
+		_, err = enc1.Step(&encounter.StepInput{Member: "playerA", To: spatial.Position{X: 4, Y: 1}})
 		s.Require().NoError(err)
 		_, err = enc1.Dissolve(&encounter.DissolveInput{Member: "goblin"})
 		s.Require().NoError(err, "the sighting formed a fight to break off")
-		_, err = enc1.Move(&encounter.MoveInput{Member: "goblin", To: spatial.Position{X: 5, Y: 6}})
+		_, err = enc1.Step(&encounter.StepInput{Member: "goblin", To: spatial.Position{X: 5, Y: 6}})
 		s.Require().NoError(err)
 
 		holdings1, _ := enc1.View(&encounter.ViewInput{Member: "playerA"})

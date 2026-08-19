@@ -51,15 +51,17 @@ type AtlasRoom struct {
 	// can render them distinctly (#929 T3 ruling 1).
 	Occluders []spatial.Position
 
-	// Boundaries is the room's walls/barriers (RoomInput.Boundaries),
-	// with both endpoints projected into dungeon-absolute space (#929
-	// hardening round A). Boundaries are real map geometry — registered
-	// on the spatial room, affecting sight and movement, persisted in
-	// the blob — so a host rendering the static map gets them from Atlas
-	// like every other construction-truth fact, instead of reaching into
-	// ToData().Field.Rooms[].Boundaries and hand-projecting both
-	// endpoints through Origin itself: exactly the arithmetic this
-	// bridge exists to centralize. In declaration order (RoomInput's own
+	// Boundaries is the room's walls (RoomInput.Boundaries), with both
+	// endpoints projected into dungeon-absolute space (#929 hardening round
+	// A) — the SAME projection compileCanvas registers them by, so what a
+	// host draws and what the encounter enforces are the same edges.
+	//
+	// An endpoint may belong to the room NEXT DOOR: a chamber walls its own
+	// edge by naming the cell beyond it, which is what makes a wall between
+	// two authored rooms expressible at all (rpg-toolkit#1106,
+	// RoomInput.Boundaries' doc comment). Grouping such a wall under the room
+	// that DECLARED it is construction truth reported faithfully, not a claim
+	// about which room the wall belongs to. In declaration order (RoomInput's own
 	// order, the same construction-truth ordering Occluders already
 	// uses above) — deterministic given a fixed input (C8), though not
 	// independently sorted the way Rooms/Doorways are.
@@ -99,39 +101,6 @@ type AtlasDoorway struct {
 
 	// ToCell is the connection's endpoint in To, in dungeon-absolute space.
 	ToCell spatial.Position
-}
-
-// AbsoluteInput names a room-local position to project into
-// dungeon-absolute space.
-type AbsoluteInput struct {
-	// Room is the room the position is local to.
-	Room string
-
-	// Position is the room-local position to project.
-	Position spatial.Position
-}
-
-// AbsoluteOutput is a position projected into dungeon-absolute space.
-type AbsoluteOutput struct {
-	// Position is the dungeon-absolute position.
-	Position spatial.Position
-}
-
-// LocateInput names a dungeon-absolute position to resolve to its
-// owning room.
-type LocateInput struct {
-	// Position is the dungeon-absolute position to resolve.
-	Position spatial.Position
-}
-
-// LocateOutput is a dungeon-absolute position resolved to its owning
-// room and the equivalent room-local position.
-type LocateOutput struct {
-	// Room is the owning room's ID.
-	Room string
-
-	// Position is the room-local position.
-	Position spatial.Position
 }
 
 // Atlas returns a deterministic, construction-time snapshot of the field
@@ -292,128 +261,6 @@ func (e *Encounter) Grid() (spatial.GridShape, error) {
 		return unknown, fmt.Errorf("grid: %w", ErrNoField)
 	}
 	return e.fieldInput[0].Grid, nil
-}
-
-// Absolute projects a room-local position into dungeon-absolute space.
-// Legal for ANY in-bounds position, whether occupied, occluded, or
-// empty — hosts project percept ghosts at cells nobody stands on (#929
-// T3 ruling 1); it never consults members or occluders.
-//
-// Returns ErrNilInput for a nil input, ErrNoField for a room ID that
-// names no room in this field (the same room-list defect vocabulary
-// Setup/Load reject with — #929 T3 ruling), and ErrBadPlacement if
-// Position is out of the room's bounds or (hex only) not an integral
-// axial cell — the bridge refuses to project fiction.
-func (e *Encounter) Absolute(in *AbsoluteInput) (*AbsoluteOutput, error) {
-	if in == nil {
-		return nil, fmt.Errorf("absolute: %w", ErrNilInput)
-	}
-
-	// The orchestrator's own constructed Grid, not a fresh buildRoomGrid
-	// call (#929 hardening round G) — same idiom moveMember/Join already
-	// use. A room's Grid is immutable for the Encounter's lifetime (no
-	// verb ever changes Width/Height/family after construction), so this
-	// is behavior-identical to rebuilding one from ri.Grid/Width/Height,
-	// just without reconstructing it on every call on a host's per-frame
-	// path.
-	room, ok := e.orchestrator.GetRoom(in.Room)
-	if !ok {
-		return nil, fmt.Errorf("absolute: unknown room %q: %w", in.Room, ErrNoField)
-	}
-	grid := room.GetGrid()
-	if !grid.IsValidPosition(in.Position) {
-		return nil, fmt.Errorf("absolute: position out of bounds: %w", ErrBadPlacement)
-	}
-	if !isIntegralAxialPosition(grid, in.Position) {
-		return nil, fmt.Errorf("absolute: position is not an integral axial cell: %w", ErrBadPlacement)
-	}
-
-	// Origin lives ONLY in construction-truth (RoomInput), never on the
-	// spatial room itself — orchestrator already confirmed this room
-	// exists above, so no second existence check here.
-	ri, _ := e.roomInput(in.Room)
-	return &AbsoluteOutput{Position: in.Position.Add(ri.Origin)}, nil
-}
-
-// Locate is the reverse bridge: resolves a dungeon-absolute position to
-// its owning room and the equivalent room-local position. W2 (rooms
-// never overlap) plus integral origins make ownership uniqueness EXACT
-// in real (infinite-precision) arithmetic — and exact in float64 too,
-// for INTEGRAL cells specifically, since integers stay exact to 2^53,
-// far past maxAnchorCoord (1<<30). For a FRACTIONAL square position the
-// round trip is only approximate: near an extreme anchor (close to
-// maxAnchorCoord), a fraction within roughly one float64 ULP of a room
-// edge (~2.4e-7 at that magnitude) can round to the WRONG room — a
-// float64 precision limit, not a logic bug, and not chased further here
-// (#929 T3 Opus round F3 — an earlier version of this comment
-// overclaimed exactness for the fractional case too). The guarantee
-// this module DOES make and pins with a test:
-// TestLocateAbsoluteRoundTripExactAtExtremeOrigin proves an INTEGRAL
-// round trip is exact even at extreme origins (±(2^30−8)). At most one
-// room's bounds check can pass for a given input, so iteration order
-// never matters — that part holds unconditionally, independent of the
-// precision caveat above.
-//
-// Returns ErrNilInput for a nil input, and ErrBadPlacement if no room
-// owns the position — void is not floor. Occluded cells ARE owned:
-// Locate returns the owning room for a cell an occluder sits on exactly
-// as it would an empty one (#929 T3 ruling 1) — occlusion is
-// walkability, not ownership, and this function never consults
-// occluders.
-//
-// DO NOT COMPOSE THIS WITH Move to walk somewhere (rpg-toolkit#1059).
-// It is a natural host pattern — "where does this absolute position
-// land, then move the member there" — and it is the Locate→Move trap
-// (#929 hardening round B): Move is SAME-ROOM ONLY and applies
-// LocateOutput.Position inside the member's OWN current room, never
-// inside LocateOutput.Room, so a cell in another room silently misplaces
-// the member instead of erroring. [Encounter.Step] is the verb that
-// pattern was reaching for: it takes the absolute cell directly and
-// decides same-room-or-doorway itself, in the one place that decision
-// belongs. Locate stays what it always was — the reverse bridge, for
-// asking WHICH ROOM a cell belongs to.
-func (e *Encounter) Locate(in *LocateInput) (*LocateOutput, error) {
-	if in == nil {
-		return nil, fmt.Errorf("locate: %w", ErrNilInput)
-	}
-
-	for _, ri := range e.fieldInput {
-		local := in.Position.Subtract(ri.Origin)
-		// The orchestrator's own constructed Grid, not a fresh
-		// buildRoomGrid call per room per call (#929 hardening round G)
-		// — Locate was the worst offender, rebuilding a Grid for every
-		// room on every call. fieldInput and the orchestrator's room set
-		// stay in sync by construction (every room added to one is
-		// added to the other, and neither changes after construction),
-		// so a lookup miss here is unreachable, not a real defect class.
-		room, ok := e.orchestrator.GetRoom(ri.ID)
-		if !ok {
-			continue
-		}
-		grid := room.GetGrid()
-		if !grid.IsValidPosition(local) {
-			continue
-		}
-		if !isIntegralAxialPosition(grid, local) {
-			continue
-		}
-		return &LocateOutput{Room: ri.ID, Position: local}, nil
-	}
-
-	return nil, fmt.Errorf("locate: position owned by no room: %w", ErrBadPlacement)
-}
-
-// roomInput looks up a room's construction-truth RoomInput by ID —
-// shared by Absolute and Locate, both of which need Origin (only ever
-// stored here, never on the spatial room itself) alongside grid shape
-// and dimensions.
-func (e *Encounter) roomInput(id string) (RoomInput, bool) {
-	for _, ri := range e.fieldInput {
-		if ri.ID == id {
-			return ri, true
-		}
-	}
-	return RoomInput{}, false
 }
 
 // atlasCells re-derives a room's local, integral cell coordinates for

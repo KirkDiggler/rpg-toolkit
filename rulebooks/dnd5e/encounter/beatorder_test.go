@@ -92,29 +92,17 @@ func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 		"the scene opens, THEN the fight inside it starts")
 }
 
-// TestMoveBeforeItFights pins Move's half. Alice starts behind the wall and
-// walks out past its end; clearing it is what puts her in contact, so the
-// moved beat is the cause and the bubble-formed beat is its effect.
-func (s *BeatOrderTestSuite) TestMoveBeforeItFights() {
-	enc := s.blockedScene()
-
-	out, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
-	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "stepping into the open puts her in contact")
-	s.Greater(out.Formed.Seq, out.Seq, "she moves, THEN the fight starts")
-
-	s.Equal([]string{"scene-opened", "moved", "bubble-formed"}, s.beatKinds(enc, alice))
-}
-
-// TestTraverseBeforeItFights pins Traverse's half — the verb whose inversion
-// this suite was written from. Alice walks through a door into the goblin's
-// room: the traversed beat is the cause, the fight is the effect.
-func (s *BeatOrderTestSuite) TestTraverseBeforeItFights() {
+// TestAStepThroughADoorwayBeforeItFights pins the crossing case — the verb
+// whose inversion this suite was written from, back when going through a door
+// was its own verb writing its own beat. Alice steps through a doorway into
+// the goblin's chamber: the moved beat is the cause, the fight is the effect,
+// and the story cannot tell this step apart from any other (rpg-toolkit#1106).
+func (s *BeatOrderTestSuite) TestAStepThroughADoorwayBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10},
+				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
@@ -125,27 +113,32 @@ func (s *BeatOrderTestSuite) TestTraverseBeforeItFights() {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 9, Y: 5}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room2, Position: spatial.Position{X: 1, Y: 5}},
+			// OFF the doorway's row: with one canvas, a monster standing in
+			// the opening's line would be seen from room1 at first light and
+			// this scene would open as a fight (rpg-toolkit#1106).
+			{ID: goblin, Kind: encounter.KindMonster, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err)
 
-	out, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: "door1"})
+	// The far side of the doorway, in dungeon-absolute cells: room2 local
+	// (0,5) anchored at (10,0).
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 10, Y: 5}})
 	s.Require().NoError(err)
-	s.Require().NotNil(out.Formed, "she walks into the room the goblin is standing in")
+	s.Equal("door1", out.Crossing, "the doorway is named, and decides nothing")
+	s.Require().NotNil(out.Formed, "she walks into the chamber the goblin is standing in")
 	s.Greater(out.Formed.Seq, out.Seq, "she goes through the door, THEN the fight starts")
 
-	s.Equal([]string{"scene-opened", "traversed", "bubble-formed"}, s.beatKinds(enc, alice))
+	s.Equal([]string{"scene-opened", "moved", "bubble-formed"}, s.beatKinds(enc, alice))
 }
 
 // TestStepBeforeItFights pins the step verb's half, and it is the one that
 // matters most going forward: the seam walks a party one Step at a time, so
 // every player movement in the game reaches trigger detection through here.
 //
-// Alice starts behind the wall and steps out past its end, exactly as
-// TestMoveBeforeItFights does — same set, same cause, and the beat it writes
-// must be the same "moved". A step is not a new kind of event in the story.
+// Alice starts behind the wall and steps out past its end, and the beat it
+// writes is "moved". A step is not a new kind of event in the story.
 func (s *BeatOrderTestSuite) TestStepBeforeItFights() {
 	enc := s.blockedScene()
 
@@ -180,10 +173,10 @@ func (s *BeatOrderTestSuite) TestPumpBeforeItFights() {
 func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 	enc := s.blockedScene()
 
-	out, err := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-		ID: cormac, Kind: encounter.KindPlayer, Room: beatOrderRoom,
-		Position: spatial.Position{X: 0, Y: 2},
-	}})
+	out, err := enc.Join(&encounter.JoinInput{
+		Member: cormac, Kind: encounter.KindPlayer,
+		Cell: spatial.Position{X: 0, Y: 2},
+	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "he lands in the open, in the goblin's sight")
 	s.Greater(out.Formed.Seq, out.Seq, "he arrives, THEN the fight starts")

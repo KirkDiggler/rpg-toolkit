@@ -205,7 +205,7 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 func (s *PumpTestSuite) TestPumpDoesNotConsultExitedMonsterDecider() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
@@ -245,8 +245,7 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -395,8 +394,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -457,7 +455,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		var goblinPos encounter.PositionData
 		for _, m := range enc.ToData().Members {
 			if m.ID == goblinID {
-				goblinPos = m.Position
+				goblinPos = *m.Cell
 			}
 		}
 		s.Equal(5.0, goblinPos.X, "goblin must not have moved on a failed pump (R5)")
@@ -471,7 +469,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
@@ -496,7 +494,7 @@ func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 func (s *PumpTestSuite) TestPumpPartialAbort() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			// "aaa-goblin" sorts before "zzz-goblin": it decides (and
@@ -541,7 +539,7 @@ func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	vandal := &vandalDecider{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			// The vandal's victim is a MONSTER peer, not a player. Two
@@ -593,8 +591,7 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -660,8 +657,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -710,7 +706,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 		var goblinPos encounter.PositionData
 		for _, m := range enc.ToData().Members {
 			if m.ID == goblinID {
-				goblinPos = m.Position
+				goblinPos = *m.Cell
 			}
 		}
 		s.Equal(5.0, goblinPos.X)
@@ -727,7 +723,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
 		},
@@ -736,10 +732,11 @@ func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
 	})
 	s.Require().NoError(err)
 
-	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-		ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 5, Y: 5},
-		// No Decider.
-	}})
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: goblin,
+		Kind:   encounter.KindMonster,
+		Cell:   spatial.Position{X: 5, Y: 5},
+	})
 	s.Require().NoError(err)
 
 	out, err := enc.Pump(&encounter.PumpInput{})
@@ -768,8 +765,7 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -848,8 +844,7 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -934,8 +929,7 @@ func (s *PumpTestSuite) TestPumpClockAdvanceByOne() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -1015,8 +1009,7 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 					{
 						ID:     room1,
 						Width:  10,
-						Height: 10,
-					},
+						Height: 10, Boundaries: twoRoomSealedWall()},
 					{
 						ID:     room2,
 						Width:  10,
@@ -1065,6 +1058,19 @@ var twoRoomDoor = encounter.ConnectionInput{
 	ToPosition:   spatial.Position{X: 0, Y: 5},
 }
 
+// twoRoomWall is room-a's east wall, open at the doorway's row. Every edge has
+// one endpoint in room-a and one in room-b, which is a sentence no room could
+// say before the field became one canvas (rpg-toolkit#1106) — and one these
+// fixtures now have to say, because with one canvas and no wall the two
+// chambers share an open seam ten cells wide.
+func twoRoomWall() []spatial.Boundary { return squareSeamWall(9, 10, 5) }
+
+// twoRoomSealedWall is the same wall with NO opening — for the fixtures that
+// declare no doorway at all. Two chambers side by side with nothing joining
+// them is a solid partition, and saying so is now the fixture's job: it used to
+// be implied by their being different rooms.
+func twoRoomSealedWall() []spatial.Boundary { return squareSeamWall(9, 10) }
+
 // twoRoomField is the field most of this file's two-room fixtures build:
 // room-a at the origin, room-b anchored immediately east of it, joined at
 // the doorway above. Absolute footprints x:[0,9] and x:[10,19] (W2), and
@@ -1072,7 +1078,7 @@ var twoRoomDoor = encounter.ConnectionInput{
 func twoRoomField() encounter.FieldInput {
 	return encounter.FieldInput{
 		Rooms: []encounter.RoomInput{
-			{ID: "room-a", Width: 10, Height: 10},
+			{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 			{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 		},
 		Connections: []encounter.ConnectionInput{twoRoomDoor},
@@ -1092,7 +1098,7 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 		},
@@ -1143,7 +1149,7 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
@@ -1159,16 +1165,13 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	out, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 	s.Equal(uint64(1), out.Tick)
-	s.Require().Len(out.MonsterTraverses, 1)
-	s.Equal(goblinID, out.MonsterTraverses[0].Member)
-	s.Equal("room-a", out.MonsterTraverses[0].FromRoom)
-	s.Equal(spatial.Position{X: 9, Y: 5}, out.MonsterTraverses[0].From)
-	s.Equal("room-b", out.MonsterTraverses[0].ToRoom)
+	s.Require().Len(out.MonsterMoves, 1, "one step, in the one list there is")
+	s.Equal(goblinID, out.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 9, Y: 5}, out.MonsterMoves[0].From)
 	// The arrival cell as the decider named it: room-b's local (0,5) is
 	// (10,5) on the map, and what the pump reports is the cell the decider
 	// asked for, not a room-local one it would have to re-anchor.
-	s.Equal(spatial.Position{X: 10, Y: 5}, out.MonsterTraverses[0].To)
-	s.Empty(out.MonsterMoves, "this is a traverse, not a move")
+	s.Equal(spatial.Position{X: 10, Y: 5}, out.MonsterMoves[0].To)
 
 	members, err := enc.Members()
 	s.Require().NoError(err)
@@ -1248,16 +1251,14 @@ func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
 	// ---- The crossing ------------------------------------------------------
 	out2, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
-	s.Require().Len(out2.MonsterTraverses, 1)
-	s.Equal(prowler, out2.MonsterTraverses[0].Member)
-	s.Equal(cellar, out2.MonsterTraverses[0].FromRoom)
-	s.Equal(shrine, out2.MonsterTraverses[0].ToRoom)
-	s.Equal(spatial.Position{X: 49, Y: 25}, out2.MonsterTraverses[0].From,
-		"the departure cell is the cellar-side threshold, projected through the CELLAR's anchor")
-	s.Equal(spatial.Position{X: 50, Y: 25}, out2.MonsterTraverses[0].To,
-		"and the arrival cell through the SHRINE's — the two sides of a doorway have different anchors")
-	s.Equal(out2.MonsterTraverses[0].To, s.traversedBeatPosition(enc, prowler, out2.Seqs),
-		"the traversed beat and the typed output describe ONE crossing")
+	s.Require().Len(out2.MonsterMoves, 1)
+	s.Equal(prowler, out2.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 49, Y: 25}, out2.MonsterMoves[0].From,
+		"the departure cell is the cellar-side threshold, on the map")
+	s.Equal(spatial.Position{X: 50, Y: 25}, out2.MonsterMoves[0].To,
+		"and the arrival cell is the shrine-side one — one cell along, on the same map")
+	s.Equal(out2.MonsterMoves[0].To, s.movedBeatPosition(enc, prowler, out2.Seqs),
+		"the movement beat and the typed output describe ONE movement, crossing or not")
 
 	// And the map agrees with both: Members() has spoken absolute since the
 	// seam reshape, so a host comparing a move's destination against a member's
@@ -1266,7 +1267,7 @@ func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
 	s.Require().NoError(err)
 	s.Require().Len(members, 1)
 	s.Equal(shrine, members[0].Room)
-	s.Equal(out2.MonsterTraverses[0].To, members[0].Position,
+	s.Equal(out2.MonsterMoves[0].To, members[0].Position,
 		"where the pump says it went is where the field says it stands")
 }
 
@@ -1277,13 +1278,6 @@ func (s *PumpTestSuite) movedBeatPosition(
 	enc *encounter.Encounter, member core.EntityID, seqs []uint64,
 ) spatial.Position {
 	return s.beatPosition(enc, member, seqs, "moved")
-}
-
-// traversedBeatPosition is movedBeatPosition's sibling for a doorway crossing.
-func (s *PumpTestSuite) traversedBeatPosition(
-	enc *encounter.Encounter, member core.EntityID, seqs []uint64,
-) spatial.Position {
-	return s.beatPosition(enc, member, seqs, "traversed")
 }
 
 // beatPosition finds the one beat of the given kind naming this member within
@@ -1319,34 +1313,34 @@ func (s *PumpTestSuite) beatPosition(
 	return found[0]
 }
 
-// TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep pins the silent skip for the
-// crossing that is not available: the monster names a cell in the next room
-// while standing nowhere near the door between them.
+// TestPumpDoesNotAbortWhenAWallIsInTheWay pins the silent skip for the step
+// that cannot be taken: the monster names a cell in the next chamber with the
+// seam wall between them.
 //
 // Same contract Pump already gave a spatially-rejected step, and the reason it
 // must hold is the pump, not the monster: an error here would abort the tick
 // for every OTHER monster in the encounter. So the pump does NOT abort — the
 // clock still advances, the tick beat is still recorded, refreshSight still
-// runs — but no "traversed" beat is recorded and the monster has not moved.
-func (s *PumpTestSuite) TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep() {
+// runs — but no movement beat is recorded and the monster has not moved.
+func (s *PumpTestSuite) TestPumpDoesNotAbortWhenAWallIsInTheWay() {
 	goblinID := core.EntityID("goblin")
-	// The far side of the doorway again — but this goblin does not stand at
-	// the near side, so nothing joins where it is to where it is going.
-	decider := &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}
+	// Straight across the seam on row 2, where the wall is solid — the doorway
+	// is on row 5.
+	decider := &onceStepDecider{to: spatial.Position{X: 10, Y: 2}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
 		},
 		Members: []encounter.MemberInput{
-			// goblin is NOT at the threshold (the threshold is (9,5)).
+			// goblin is NOT on the doorway's row (the doorway is at (9,5)).
 			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 3, Y: 3}, Decider: decider},
+				Position: spatial.Position{X: 3, Y: 2}, Decider: decider},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1360,23 +1354,22 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenNoDoorwayJoinsTheStep() {
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances — matches IntentMoveTo's spatial-rejection contract")
 	s.Equal(uint64(1), out.Tick)
-	s.Empty(out.MonsterTraverses, "the illegal traverse must not appear as successful")
-	s.Empty(out.MonsterMoves)
-	s.Len(out.Seqs, 1, "exactly the tick beat — no traversed beat for the failure")
+	s.Empty(out.MonsterMoves, "the refused step must not appear as successful")
+	s.Len(out.Seqs, 1, "exactly the tick beat — no movement beat for the failure")
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: goblinID, AfterSeq: 0})
 	s.Require().NoError(err)
 	for _, entry := range story {
 		var beat map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		s.NotEqual("traversed", beat["beat"], "no traversed beat for a failed traverse")
+		s.NotEqual("moved", beat["beat"], "no movement beat for a refused step")
 	}
 
-	data := enc.ToData()
-	s.Require().Len(data.Members, 1)
-	s.Equal("room-a", data.Members[0].Room, "the monster never left its room")
-	s.Equal(3.0, data.Members[0].Position.X, "the monster's position is unchanged")
-	s.Equal(3.0, data.Members[0].Position.Y)
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	s.Require().Len(members, 1)
+	s.Equal("room-a", members[0].Room, "the monster never left its chamber")
+	s.Equal(spatial.Position{X: 3, Y: 2}, members[0].Position, "the monster's cell is unchanged")
 }
 
 // TestPumpDoesNotAbortWhenTheCellIsNowhere pins the third silent skip, and the
@@ -1396,7 +1389,7 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
@@ -1416,22 +1409,22 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock+1, afterClock, "clock still advances")
-	s.Empty(out.MonsterTraverses)
-	s.Len(out.Seqs, 1, "exactly the tick beat — no traversed beat for the failure")
+	s.Empty(out.MonsterMoves)
+	s.Len(out.Seqs, 1, "exactly the tick beat — no movement beat for the failure")
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: goblinID, AfterSeq: 0})
 	s.Require().NoError(err)
 	for _, entry := range story {
 		var beat map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		s.NotEqual("traversed", beat["beat"], "no traversed beat for a failed traverse")
+		s.NotEqual("moved", beat["beat"], "no movement beat for a refused step")
 	}
 
-	data := enc.ToData()
-	s.Require().Len(data.Members, 1)
-	s.Equal("room-a", data.Members[0].Room, "the monster never left its room")
-	s.Equal(9.0, data.Members[0].Position.X, "the monster's position is unchanged")
-	s.Equal(5.0, data.Members[0].Position.Y)
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	s.Require().Len(members, 1)
+	s.Equal("room-a", members[0].Room, "the monster never left its chamber")
+	s.Equal(spatial.Position{X: 9, Y: 5}, members[0].Position, "the monster's cell is unchanged")
 }
 
 // TestPumpDeciderErrorAbortsEvenWithTraversableTopology extends the
@@ -1448,7 +1441,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
@@ -1469,9 +1462,10 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 	afterClock := enc.ToData().Clock.HighWater
 	s.Equal(beforeClock, afterClock, "R5: no clock advance on a decider error, even with legal traverse topology available")
 
-	data := enc.ToData()
-	s.Require().Len(data.Members, 1)
-	s.Equal("room-a", data.Members[0].Room, "the monster never moved — R5 atomicity")
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	s.Require().Len(members, 1)
+	s.Equal("room-a", members[0].Room, "the monster never moved — R5 atomicity")
 }
 
 // TestPumpPursuitAcrossConnection is the wave's integration pin: a
@@ -1492,7 +1486,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
@@ -1518,64 +1512,65 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	_, err = enc.Dissolve(&encounter.DissolveInput{Member: aliceID})
 	s.Require().NoError(err)
 
-	// Stage 1: alice traverses away, then repositions within room-b so
-	// the monster's eventual arrival isn't a trivial same-cell coincidence.
-	_, err = enc.Traverse(&encounter.TraverseInput{Member: aliceID, Connection: "door1"})
+	// Stage 1: alice steps through the doorway, then out of its line — behind
+	// the wall room-a drew along its own edge, which is what hides her now
+	// that a room boundary hides nothing (rpg-toolkit#1106).
+	_, err = enc.Step(&encounter.StepInput{Member: aliceID, To: spatial.Position{X: 10, Y: 5}})
 	s.Require().NoError(err)
-	_, err = enc.Move(&encounter.MoveInput{Member: aliceID, To: spatial.Position{X: 3, Y: 5}})
+	_, err = enc.Step(&encounter.StepInput{Member: aliceID, To: spatial.Position{X: 13, Y: 8}})
 	s.Require().NoError(err)
 
 	goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1, "the ghost is HELD, not gone")
-	s.Equal(intel.Held, goblinView[0].Status, "alice left the room — goblin's sight of her fades")
+	s.Equal(intel.Held, goblinView[0].Status, "the wall took her — goblin's sight of her fades")
 	var ghostSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &ghostSeen))
-	s.Equal(9.0, ghostSeen.X, "the ghost holds alice at the THRESHOLD, her last-seen cell")
+	s.Equal(10.0, ghostSeen.X, "the ghost holds alice at the doorway's far cell, her last-seen one")
 	s.Equal(5.0, ghostSeen.Y)
 
-	// Stage 2: pump — goblin walks toward the ghost's last-seen position.
+	// Stage 2: pump — the goblin walks to the ghost's cell, which is through
+	// the doorway. ONE step, in the one list there is.
 	out1, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 	s.Require().Len(out1.MonsterMoves, 1)
-	s.Equal(spatial.Position{X: 9, Y: 5}, out1.MonsterMoves[0].To, "goblin walks to the threshold")
-	s.Empty(out1.MonsterTraverses, "not standing at the threshold at the time this tick decided")
+	s.Equal(goblinID, out1.MonsterMoves[0].Member)
+	// room-b is anchored at (10,0), so the arrival cell on the map is (10,5)
+	// — the same cell the movement beat carries.
+	s.Equal(spatial.Position{X: 10, Y: 5}, out1.MonsterMoves[0].To)
 
-	// Stage 3: pump — goblin, now AT the threshold, traverses.
-	out2, err := enc.Pump(&encounter.PumpInput{})
-	s.Require().NoError(err)
-	s.Require().Len(out2.MonsterTraverses, 1)
-	s.Equal(goblinID, out2.MonsterTraverses[0].Member)
-	s.Equal("room-a", out2.MonsterTraverses[0].FromRoom)
-	s.Equal("room-b", out2.MonsterTraverses[0].ToRoom)
-	// room-b is anchored at (10,0), so the arrival cell on the map is
-	// (10,5) — the same cell the traversed beat carries.
-	s.Equal(spatial.Position{X: 10, Y: 5}, out2.MonsterTraverses[0].To)
-
-	// The monster arrives in alice's room and, since THIS pump's own
-	// refreshSight ran AFTER the traverse, already holds her Current.
+	// The monster arrives in alice's chamber and, since THIS pump's own
+	// refreshSight ran AFTER the step, already holds her Current.
 	goblinView, err = enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
-	s.Equal(intel.Current, goblinView[0].Status, "the monster holds alice Current again, having crossed the threshold")
+	s.Equal(intel.Current, goblinView[0].Status, "the monster holds alice Current again, having come through the doorway")
 	var aliceSeen encounter.SightPayload
 	s.Require().NoError(json.Unmarshal(goblinView[0].Payload, &aliceSeen))
-	// room-b is anchored at (10,0), so her local (3,5) is (13,5) on the map.
 	s.Equal(13.0, aliceSeen.X)
-	s.Equal(5.0, aliceSeen.Y)
+	s.Equal(8.0, aliceSeen.Y)
 
-	// Also verify via Story that the chase left the expected trail.
+	// Also verify via Story that the chase left the expected trail: a MOVEMENT
+	// beat, because a step that goes through a doorway is a step
+	// (rpg-toolkit#1106). It is NOT named here, and that is the contract
+	// rather than an omission — the goblin walked from (8,5) to (10,5) in one
+	// move, so its departure cell was not the doorway's near cell, and
+	// Crossing names a doorway only for a step from one of its cells to the
+	// other.
 	story, err := enc.Story(&encounter.StoryInput{Audience: goblinID, AfterSeq: 0})
 	s.Require().NoError(err)
-	var sawTraversed bool
+	var sawArrival bool
 	for _, entry := range story {
 		var beat map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		if beat["beat"] == "traversed" && beat["member"] == string(goblinID) {
-			sawTraversed = true
+		if beat["beat"] != "moved" || beat["member"] != string(goblinID) {
+			continue
+		}
+		if pos, ok := beat["position"].(map[string]any); ok && pos["x"] == 10.0 && pos["y"] == 5.0 {
+			sawArrival = true
 		}
 	}
-	s.True(sawTraversed, "the goblin's traversal must appear in the Story")
+	s.True(sawArrival, "the goblin's arrival on the far side must appear in the Story")
 }
 
 // TestPumpFullTickThenEvaluateAcrossTraverse pins full-tick-then-evaluate
@@ -1600,7 +1595,7 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10},
+				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{twoRoomDoor},
@@ -1627,13 +1622,13 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 
 	// Both actions executed and both beats recorded — the closing ending
 	// (fired by aaa-goblin's traverse) did not suppress zzz-goblin's move.
-	s.Require().Len(out.MonsterTraverses, 1)
-	s.Equal(aID, out.MonsterTraverses[0].Member)
-	s.Require().Len(out.MonsterMoves, 1)
-	s.Equal(bID, out.MonsterMoves[0].Member)
-	s.Equal(spatial.Position{X: 4, Y: 4}, out.MonsterMoves[0].To)
+	s.Require().Len(out.MonsterMoves, 2, "both steps executed, in decision order")
+	s.Equal(aID, out.MonsterMoves[0].Member)
+	s.Equal(spatial.Position{X: 10, Y: 5}, out.MonsterMoves[0].To, "through the doorway")
+	s.Equal(bID, out.MonsterMoves[1].Member)
+	s.Equal(spatial.Position{X: 4, Y: 4}, out.MonsterMoves[1].To)
 
-	s.Require().NotNil(out.Outcome, "aaa-goblin's traverse must fire the filtered ending")
+	s.Require().NotNil(out.Outcome, "aaa-goblin's step through the doorway must fire the filtered ending")
 	s.Equal("escaped", out.Outcome.Ending)
 	s.Require().Len(out.Outcome.Members, 2)
 
@@ -1660,19 +1655,21 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 	// Both beats actually landed in the Story (not just the output structs).
 	story, err := enc.Story(&encounter.StoryInput{Audience: aID, AfterSeq: 0})
 	s.Require().NoError(err)
-	var sawTraversed, sawMoved bool
+	var sawCrossing, sawPlainMove bool
 	for _, entry := range story {
 		var beat map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		switch beat["beat"] {
-		case "traversed":
-			sawTraversed = true
-		case "moved":
-			sawMoved = true
+		if beat["beat"] != "moved" {
+			continue
+		}
+		if beat["connection"] == "door1" {
+			sawCrossing = true
+		} else {
+			sawPlainMove = true
 		}
 	}
-	s.True(sawTraversed, "aaa-goblin's traverse beat must be recorded")
-	s.True(sawMoved, "zzz-goblin's move beat must be recorded despite the mid-tick closure")
+	s.True(sawCrossing, "aaa-goblin's step through the doorway must be recorded, named")
+	s.True(sawPlainMove, "zzz-goblin's move beat must be recorded despite the mid-tick closure")
 
 	// The encounter is closed: the next pump returns ErrClosed.
 	_, err = enc.Pump(&encounter.PumpInput{})
@@ -1699,7 +1696,7 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 	s.Run("control: decision order and declaration order agree", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				{ID: aID, Kind: encounter.KindMonster, Room: room1,
 					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
@@ -1724,7 +1721,7 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 	s.Run("cross: decision order dominates — the SECOND-declared ending wins", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+			Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 			Members: []encounter.MemberInput{
 				// Same decision order (aaa first, zzz second), but now each
 				// monster's landing position fires the OTHER declared ending.
@@ -1783,7 +1780,7 @@ func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
 		Members: []encounter.MemberInput{
 			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblinID, Kind: encounter.KindMonster, Room: room1,
@@ -1834,13 +1831,16 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10},
+				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
 				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{gate},
 		},
 		Members: []encounter.MemberInput{
-			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 3, Y: 5}},
+			// Alice waits OFF the doorway's row, so the wall is between her and
+			// the goblin standing in the opening: with one canvas, next door is
+			// not out of sight and the opening is a window (rpg-toolkit#1106).
+			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 3, Y: 8}},
 			{
 				ID: goblinID, Kind: encounter.KindMonster, Room: room1,
 				Position: spatial.Position{X: 9, Y: 5},
@@ -1859,7 +1859,7 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 	// The pump that walks it through the door is the pump that starts the fight.
 	first, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
-	s.Require().Len(first.MonsterTraverses, 1, "the goblin went through the door")
+	s.Require().Len(first.MonsterMoves, 1, "the goblin went through the door")
 	s.Require().NotNil(first.Formed, "and was seen on arrival, so the bubble formed")
 	s.Require().ElementsMatch([]core.EntityID{aliceID, goblinID}, first.Formed.Order)
 
@@ -1872,7 +1872,6 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 	second, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 	s.Empty(second.MonsterMoves, "a seen monster is not the world's to move")
-	s.Empty(second.MonsterTraverses, "and not the world's to walk through doors either")
 }
 
 // crossThenWander steps through a doorway once, then shuffles east.
@@ -1960,7 +1959,7 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 	// Alice slips behind the wall. She fades from the goblin's percept — no
 	// current sight, so nothing re-triggers (classification reads first
 	// contact, and a fade is not a contact).
-	moved, err := enc.Move(&encounter.MoveInput{Member: aliceID, To: hidden})
+	moved, err := enc.Step(&encounter.StepInput{Member: aliceID, To: hidden})
 	s.Require().NoError(err)
 	s.Require().Nil(moved.Formed, "she left its sight rather than entering it")
 

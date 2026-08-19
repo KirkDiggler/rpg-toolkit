@@ -138,7 +138,7 @@ the contract rather than being coded defensively.
   rules refuse: each just means that monster fails to act this tick. Everything
   else proceeds.
 - **Sight refreshes once**, after all actions — then one tick beat, then the
-  move/traverse beats in decision order.
+  movement beats in decision order.
 - **A monster in a fight is not consulted.** `Pump` is the world thinking, and
   a monster caught in a turn bubble (`Form`) belongs to the fight, not the
   world — its decider is skipped entirely until the fight dissolves or the
@@ -195,7 +195,7 @@ other caller of the consult is a verb looking at a world something else changed.
 | `trigger.go` | `InitiativeRoller` and the classification that starts a fight |
 | `standing.go` | `Standing`, and the world noticing who is down |
 | `step.go` | one step on the map, and the one place that decides what one is |
-| `atlas.go` | the coordinate queries — `Atlas`, `Absolute`, `Locate`, `Grid` |
+| `atlas.go` | the map reads — `Atlas` (the authored rooms in absolute space) and `Grid` |
 | `field.go` | rooms, connections, and the per-verb output shapes |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 

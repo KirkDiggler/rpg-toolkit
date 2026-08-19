@@ -318,14 +318,14 @@ func (s *DefeatSuite) TestSurvivorsExploreAgain() {
 	down := &downList{}
 	enc := s.trio(down)
 
-	_, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
 	s.Require().ErrorIs(err, encounter.ErrInBubble, "control: mid-fight, she is not free to walk")
 
 	down.down = []encounter.MemberID{goblin, wolf}
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
 
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
 	s.Require().NoError(err, "the fight is over, so the walk is hers again")
 	s.Equal(spatial.Position{X: 1, Y: 2}, s.positionOf(enc, alice))
 }
@@ -342,10 +342,10 @@ func (s *DefeatSuite) TestSurvivorsFightAgain() {
 	s.Require().NoError(err)
 	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice))
 
-	_, err = enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-		ID: orc, Kind: encounter.KindMonster, Room: cryptID,
-		Position: spatial.Position{X: 0, Y: 6},
-	}})
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: orc, Kind: encounter.KindMonster,
+		Cell: spatial.Position{X: 0, Y: 6},
+	})
 	s.Require().NoError(err)
 
 	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice), "something new walked in, and it is a fight")

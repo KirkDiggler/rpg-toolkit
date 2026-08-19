@@ -55,7 +55,12 @@ func (s *PlacementSuite) SetupTest() {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 8, Height: 8, Origin: hallOrigin},
+				// The hall walls its own east edge, leaving the gate's row
+				// open: with one canvas the two chambers would otherwise share
+				// an open seam, and this fixture's scenes need the ogre out of
+				// sight until somebody walks through (rpg-toolkit#1106).
+				{ID: "hall", Width: 8, Height: 8, Origin: hallOrigin,
+					Boundaries: squareSeamWall(7, 8, 4)},
 				{ID: "vault", Width: 8, Height: 8, Origin: vaultOrigin},
 			},
 			Connections: []encounter.ConnectionInput{gate},
@@ -71,13 +76,16 @@ func (s *PlacementSuite) SetupTest() {
 	s.enc = enc
 }
 
-// absolute is what the composition's own bridge says, used as the cross-check
-// throughout: a roster read and a coordinate projection must never disagree
-// about the same cell, whichever of them a caller happens to use.
-func (s *PlacementSuite) absolute(room string, local spatial.Position) spatial.Position {
-	out, err := s.enc.Absolute(&encounter.AbsoluteInput{Room: room, Position: local})
-	s.Require().NoError(err)
-	return out.Position
+// absolute is the FIXTURE's own arithmetic — the anchor above plus a
+// room-local cell — used as the cross-check throughout: what the composition
+// reports must be what the authored layout says, computed here rather than
+// asked of the composition, so the two cannot agree by sharing a bug.
+//
+// It used to call the composition's Absolute bridge, which is gone: the rooms
+// are compiled onto one canvas at construction now, so there is nothing left to
+// project at runtime and nothing to ask (rpg-toolkit#1106).
+func absoluteIn(origin, local spatial.Position) spatial.Position {
+	return local.Add(origin)
 }
 
 // TestTheRosterSaysWhereEverybodyStands is #933's half 2: a caller reads
@@ -90,12 +98,12 @@ func (s *PlacementSuite) TestTheRosterSaysWhereEverybodyStands() {
 	// Sorted by ID, so alice then ogre.
 	s.Equal(encounter.MemberID("alice"), members[0].ID)
 	s.Equal(spatial.Position{X: 32, Y: 13}, members[0].Position, "hall-local (2,3) anchored at (30,10)")
-	s.Equal(s.absolute("hall", spatial.Position{X: 2, Y: 3}), members[0].Position,
-		"the roster and the projection bridge must agree")
+	s.Equal(absoluteIn(hallOrigin, spatial.Position{X: 2, Y: 3}), members[0].Position,
+		"the roster and the authored layout must agree")
 
 	s.Equal(encounter.MemberID("ogre"), members[1].ID)
 	s.Equal(spatial.Position{X: 43, Y: 11}, members[1].Position, "vault-local (5,1) anchored at (38,10)")
-	s.Equal(s.absolute("vault", spatial.Position{X: 5, Y: 1}), members[1].Position,
+	s.Equal(absoluteIn(vaultOrigin, spatial.Position{X: 5, Y: 1}), members[1].Position,
 		"and for the other room's anchor too")
 }
 
@@ -130,14 +138,13 @@ func (s *PlacementSuite) TestTheRosterAgreesWithTheMap() {
 // a coordinate it could only fix by knowing about rooms.
 func (s *PlacementSuite) TestJoiningReportsAbsolutePlacement() {
 	out, err := s.enc.Join(&encounter.JoinInput{
-		Member: encounter.MemberInput{
-			ID: "bob", Kind: encounter.KindPlayer, Room: "vault", Position: spatial.Position{X: 1, Y: 6},
-		},
+		Member: "bob", Kind: encounter.KindPlayer,
+		Cell: absoluteIn(vaultOrigin, spatial.Position{X: 1, Y: 6}),
 	})
 	s.Require().NoError(err)
 
 	s.Equal(spatial.Position{X: 39, Y: 16}, out.Member.Position, "vault-local (1,6) anchored at (38,10)")
-	s.Equal(s.absolute("vault", spatial.Position{X: 1, Y: 6}), out.Member.Position)
+	s.Equal(absoluteIn(vaultOrigin, spatial.Position{X: 1, Y: 6}), out.Member.Position)
 }
 
 // beatAt decodes the story beat a verb reported, found by the sequence the verb
@@ -170,7 +177,8 @@ func (s *PlacementSuite) beatAt(member encounter.MemberID, seq uint64) map[strin
 // different rooms could report the same "position" and mean cells at opposite
 // ends of the dungeon.
 func (s *PlacementSuite) TestTheMovedBeatSpeaksAbsolute() {
-	moved, err := s.enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: 3, Y: 3}})
+	moved, err := s.enc.Step(&encounter.StepInput{
+		Member: "alice", To: absoluteIn(hallOrigin, spatial.Position{X: 3, Y: 3})})
 	s.Require().NoError(err)
 
 	payload := s.beatAt("alice", moved.Seq)
@@ -179,25 +187,42 @@ func (s *PlacementSuite) TestTheMovedBeatSpeaksAbsolute() {
 		"hall-local (3,3) anchored at (30,10)")
 }
 
-// TestTheTraversedBeatSpeaksAbsoluteAndNamesNoRoom.
+// TestTheCrossingBeatSpeaksAbsoluteAndNamesNoRoom.
 //
-// Two assertions, and the second is the point of the slice: the room key is
-// GONE, not merely projected alongside. A beat that still named a room would
-// leave the concept crossing the seam in the one place a client actually reads.
-func (s *PlacementSuite) TestTheTraversedBeatSpeaksAbsoluteAndNamesNoRoom() {
-	// Walk to the doorway first — traversal requires standing on the endpoint.
-	_, err := s.enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: 3, Y: 4}})
+// Two assertions, and the second is the point: the room key is GONE, not merely
+// projected alongside. A beat that still named a room would leave the concept
+// crossing the seam in the one place a client actually reads.
+//
+// The beat says "moved", like every other step. A crossing stopped being a
+// second kind of movement when the field stopped being a set of rooms
+// (rpg-toolkit#1106); what survives of it is the doorway's NAME, alongside.
+func (s *PlacementSuite) TestTheCrossingBeatSpeaksAbsoluteAndNamesNoRoom() {
+	// Walk to the doorway first, one cell at a time, in dungeon-absolute cells.
+	_, err := s.enc.Step(&encounter.StepInput{
+		Member: "alice", To: absoluteIn(hallOrigin, spatial.Position{X: 3, Y: 4})})
 	s.Require().NoError(err)
 	for _, x := range []float64{4, 5, 6, 7} {
-		_, err = s.enc.Move(&encounter.MoveInput{Member: "alice", To: spatial.Position{X: x, Y: 4}})
+		_, err = s.enc.Step(&encounter.StepInput{
+			Member: "alice", To: absoluteIn(hallOrigin, spatial.Position{X: x, Y: 4})})
 		s.Require().NoError(err)
 	}
 
-	crossed, err := s.enc.Traverse(&encounter.TraverseInput{Member: "alice", Connection: "gate"})
+	// Standing in the opening she can see the ogre, and that IS a fight — the
+	// doorway is a window now (rpg-toolkit#1106). She breaks off before
+	// slipping through, and the break-off must succeed: if no bubble had
+	// formed, the premise of this walk changed and the test should say so
+	// rather than tolerate it.
+	_, err = s.enc.Dissolve(&encounter.DissolveInput{Member: "alice"})
+	s.Require().NoError(err, "the walk to the threshold puts her in the ogre's sight")
+
+	crossed, err := s.enc.Step(&encounter.StepInput{
+		Member: "alice", To: absoluteIn(vaultOrigin, spatial.Position{X: 0, Y: 4})})
 	s.Require().NoError(err)
+	s.Equal("gate", crossed.Crossing)
 
 	payload := s.beatAt("alice", crossed.Seq)
-	s.Equal("traversed", payload["beat"])
+	s.Equal("moved", payload["beat"])
+	s.Equal("gate", payload["connection"], "the doorway is narrated, not the room")
 	s.Equal(map[string]interface{}{"x": float64(38), "y": float64(14)}, payload["position"],
 		"vault-local (0,4) anchored at (38,10) — the far side of the doorway")
 	s.NotContains(payload, "room", "rooms are the composition's own business")
@@ -240,9 +265,9 @@ func (s *PlacementSuite) TestTheOutcomeSpeaksAbsolute() {
 	s.Equal(spatial.Position{X: 32, Y: 13}, placed["alice"], "hall-local (2,3) anchored at (30,10)")
 	s.Equal(spatial.Position{X: 43, Y: 11}, placed["ogre"], "vault-local (5,1) anchored at (38,10)")
 
-	s.Equal(s.absolute("hall", spatial.Position{X: 2, Y: 3}), placed["alice"],
-		"the outcome and the projection bridge must agree")
-	s.Equal(s.absolute("vault", spatial.Position{X: 5, Y: 1}), placed["ogre"],
+	s.Equal(absoluteIn(hallOrigin, spatial.Position{X: 2, Y: 3}), placed["alice"],
+		"the outcome and the authored layout must agree")
+	s.Equal(absoluteIn(vaultOrigin, spatial.Position{X: 5, Y: 1}), placed["ogre"],
 		"and for the other room's anchor too")
 }
 
@@ -294,7 +319,7 @@ func (s *PlacementSuite) TestAnExitReportsAbsolutePlacement() {
 
 	s.Equal(spatial.Position{X: 32, Y: 13}, left.Outcome.Position,
 		"hall-local (2,3) anchored at (30,10)")
-	s.Equal(s.absolute("hall", spatial.Position{X: 2, Y: 3}), left.Outcome.Position)
+	s.Equal(absoluteIn(hallOrigin, spatial.Position{X: 2, Y: 3}), left.Outcome.Position)
 }
 
 // TestTheOutcomeSurvivesARoundTripStillAbsolute.

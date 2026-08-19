@@ -57,9 +57,8 @@ type OutcomeData struct {
 // MemberOutcomeData is where a member stood when the encounter closed.
 //
 // Cell is DUNGEON-ABSOLUTE (rpg-toolkit#1068), mirroring the MemberOutcome it
-// persists — unlike MemberData above, which stays room-local because it is
-// placement to be restored into a spatial room rather than a report already
-// made.
+// persists. MemberData followed it in rpg-toolkit#1106, by the same detectable
+// rename and for the same reason.
 //
 // It is a pointer under a NEW key on purpose. This value changed frame without
 // changing type, and a bare pair of numbers cannot be told apart by
@@ -80,9 +79,11 @@ type MemberOutcomeData struct {
 	Cell *PositionData `json:"cell"`
 }
 
-// FieldData is the persistent representation of the encounter's field.
+// FieldData is the persistent representation of the encounter's field — the
+// AUTHORED rooms and their doorways, which is construction truth and the only
+// thing worth storing: the canvas they compile into is derived from them, and a
+// derived thing that is also stored is a second truth waiting to disagree.
 // Rooms hold the composition's own descriptions (mirroring RoomInput exactly).
-// Connections are the declared room links.
 type FieldData struct {
 	Rooms       []RoomData       `json:"rooms"`
 	Connections []ConnectionData `json:"connections,omitempty"`
@@ -143,11 +144,31 @@ type ConnectionData struct {
 }
 
 // MemberData is the persistent representation of a member's current placement.
+//
+// Cell is DUNGEON-ABSOLUTE (rpg-toolkit#1106), like the outcome cell beside it
+// and like every position this composition reports. There is no room field any
+// more: which chamber a member stands in is decided by their cell and the
+// authored footprints, so persisting a label alongside it would store an answer
+// that can disagree with the question.
+//
+// It is a pointer under a NEW key on purpose, and for exactly the reason
+// MemberOutcomeData.Cell is: this value changed frame without changing type,
+// and a bare pair of numbers cannot be told apart by inspection. A blob written
+// before the flip carries "room" and "position", and both land NOWHERE on this
+// shape — so Cell arrives nil, and its absence is the signal. REQUIRED at load,
+// rejected by name citing the issue that moved it, never defaulted to (0,0),
+// which is a legal cell that would invent a placement. Kirk's fail-loudly
+// ruling (2026-08-17), applied to the placement half of the pair #1068 already
+// did the outcome half of.
+//
+// There is nothing to migrate: no consumer of this module persists this shape
+// yet (rpg-api runs the old top-level encounter module), so the old dialect has
+// no installed base — only a hand-kept fixture, which is exactly what should be
+// recreated rather than reinterpreted.
 type MemberData struct {
-	ID       MemberID     `json:"id"`
-	Kind     MemberKind   `json:"kind"`
-	Room     string       `json:"room"`
-	Position PositionData `json:"position"`
+	ID   MemberID      `json:"id"`
+	Kind MemberKind    `json:"kind"`
+	Cell *PositionData `json:"cell"`
 }
 
 // EndingData is the persistent representation of a declared ending.
@@ -176,19 +197,14 @@ func (e *Encounter) ToData() EncounterData {
 	membersData := make([]MemberData, 0, len(memberIDs))
 	for _, id := range memberIDs {
 		m := e.members[id]
-		room, ok := e.orchestrator.GetRoom(m.Room)
+		cell, ok := e.canvas.GetEntityPosition(string(m.ID))
 		if !ok {
-			continue // Room not found (shouldn't happen in valid encounter)
-		}
-		pos, ok := room.GetEntityPosition(string(m.ID))
-		if !ok {
-			continue // Position not found (shouldn't happen in valid encounter)
+			continue // Not placed (shouldn't happen in valid encounter)
 		}
 		membersData = append(membersData, MemberData{
-			ID:       m.ID,
-			Kind:     m.Kind,
-			Room:     m.Room,
-			Position: PositionData{X: pos.X, Y: pos.Y},
+			ID:   m.ID,
+			Kind: m.Kind,
+			Cell: &PositionData{X: cell.X, Y: cell.Y},
 		})
 	}
 
@@ -441,7 +457,9 @@ func (in *LoadEncounterInput) Validate() error {
 // presence, then connection defects via validateConnectionInputs: unknown or
 // self-referencing room, endpoint out of bounds, non-integral (hex), or on an occluder,
 // W3 (non-kissing doorway); THEN empty or duplicate member IDs, member's room not in
-// field, member position out of bounds or non-integral (hex), ending trigger validity
+// field, member cell presence (a missing cell is the pre-#1106 room-local dialect
+// announcing itself — MemberData's doc comment) then integrality (hex) then that
+// cell being owned by some authored room, ending trigger validity
 // (unknown room or unreachable position on a TriggerReachedPosition — #929 T3 Opus round
 // F5, the SAME validateEndingTriggers Setup uses), an abandoned outcome with members
 // still present, outcome member cell PRESENCE (a missing cell is the pre-#1068
@@ -475,8 +493,9 @@ func (in *LoadEncounterInput) Validate() error {
 // Intel gets one check of its own first, because it cannot make it itself: a stored
 // sight payload naming a room is a pre-#1044 room-local frame, and intel holds
 // payloads as opaque bytes by contract — see refuseRoomLocalSightings.
-// On success, the field is rebuilt via the same path Setup uses (no re-surveil),
-// and members are re-placed at persisted positions.
+// On success, the authored rooms are compiled into the canvas via the same
+// compileCanvas Setup uses (no re-surveil), and members are re-placed at their
+// persisted absolute cells.
 func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
@@ -577,20 +596,38 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		seenIDs[m.ID] = true
 
-		if _, ok := roomGrids[m.Room]; !ok {
-			return nil, fmt.Errorf("load encounter: member %q room %q not in field: %w: %w", m.ID, m.Room, ErrInvalidData, ErrBadPlacement)
+		// A missing cell is how the pre-#1106 dialect announces itself: that
+		// blob's "room" and "position" keys land nowhere on today's shape, so
+		// the field arrives absent rather than wrong (MemberData's doc
+		// comment). Checked FIRST, so the older mistake is named as itself
+		// instead of surfacing as an out-of-bounds (0,0).
+		if m.Cell == nil {
+			return nil, fmt.Errorf(
+				"load encounter: member %q has no cell — a room-local placement from before rpg-toolkit#1106, recreate the save: %w: %w",
+				m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 
-		// Validate position in bounds — grid-deferred: the room's own
-		// constructed Grid decides validity (see roomGrids above).
-		if !roomGrids[m.Room].IsValidPosition(spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
-			return nil, fmt.Errorf("load encounter: member %q position out of bounds: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
+		cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
+
+		// Hex fields require integral axial cells, asked FIRST and named as
+		// itself — the same order and the same words Step and Join use
+		// (isIntegralAxialPosition). Ownership refuses a fractional hex cell
+		// too, but it would report it as "owned by no room", which sends
+		// whoever reads it to the map instead of to their arithmetic; three
+		// seams answering one defect three ways is exactly the drift #929 T2
+		// made Setup and Load share validators to avoid. W1 gives the whole
+		// field one grid family, so any room's grid answers for all of them.
+		if !isIntegralAxialPosition(roomGrids[roomInputs[0].ID], cell) {
+			return nil, fmt.Errorf("load encounter: member %q cell is not an integral axial cell: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 
-		// Hex rooms require integral axial member positions (interim
-		// tools/spatial#926 enforcement — see isIntegralAxialPosition).
-		if !isIntegralAxialPosition(roomGrids[m.Room], spatial.Position{X: m.Position.X, Y: m.Position.Y}) {
-			return nil, fmt.Errorf("load encounter: member %q position is not an integral axial cell: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
+		// The cell is absolute and every room's grid speaks its own local
+		// frame, so the bounds check runs the compile backwards: some authored
+		// chamber's footprint must hold it. One check, two defects — a cell
+		// outside the field entirely, and a cell in the space BETWEEN chambers,
+		// which the canvas spans but which is not floor.
+		if !ownedByAnyRoom(roomInputs, roomGrids, cell) {
+			return nil, fmt.Errorf("load encounter: member %q cell is owned by no room: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 	}
 
@@ -765,69 +802,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		logFloor:    logFloorOf(data.Log),
 	}
 
-	// Rebuild field via setup path (no bus, no surveil)
-	e.orchestrator = spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-		ID:     "encounter-orchestrator",
-		Type:   "orchestrator",
-		Layout: spatial.LayoutTypeOrganic,
-	})
-
-	// Create all rooms, reusing each room's already-constructed Grid
-	// (roomGrids, built above) so validation and placement agree exactly.
-	// Iterates roomInputs/connectionInputs (already validated, already
-	// spatial-typed) rather than re-deriving from data.Field — the same
-	// construction shape NewEncounter's own room-construction loop uses.
-	spatialRoomMap := make(map[string]*spatial.BasicRoom)
-	for roomIdx, ri := range roomInputs {
-		room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
-			ID:   ri.ID,
-			Type: "room",
-			Grid: roomGrids[ri.ID],
-		})
-		err = e.orchestrator.AddRoom(room)
-		if err != nil {
-			return nil, fmt.Errorf("load encounter add room: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
-		}
-		spatialRoomMap[ri.ID] = room
-
-		// Add occluders as blocking entities. Index-based ID, not
-		// room-ID-plus-coordinate concatenation (#929 hardening round
-		// C — see NewEncounter's identical loop for the collision this
-		// avoids; this is the SAME fix, mirrored at the Load seam).
-		for occIdx, pos := range ri.Occluders {
-			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
-			_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-				RoomID:   spatial.RoomID(ri.ID),
-				Entity:   occluder,
-				Position: pos,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("load encounter occluder placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
-			}
-		}
-
-		// Add boundaries
-		for _, b := range ri.Boundaries {
-			boundaryRoom := spatialRoomMap[ri.ID]
-			if boundaryRoom != nil {
-				if br, ok := interface{}(boundaryRoom).(spatial.BoundaryAwareRoom); ok {
-					err = br.RegisterBoundary(b)
-					if err != nil {
-						return nil, fmt.Errorf("load encounter boundary: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
-					}
-				}
-			}
-		}
+	// Compile the authored rooms into the canvas — the SAME compileCanvas
+	// NewEncounter runs, fed the SAME already-validated roomInputs, so a
+	// reloaded encounter's map is built by one implementation rather than a
+	// mirrored second one (#929 T2's shared-validator lesson, applied to
+	// construction).
+	e.canvas, err = compileCanvas(roomInputs)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-
-	// Add connections
-	for _, ci := range connectionInputs {
-		door := spatial.CreateDoorConnection(ci.ID, ci.From, ci.To, 1.0)
-		err = e.orchestrator.AddConnection(door)
-		if err != nil {
-			return nil, fmt.Errorf("load encounter add connection: %w: %w", ErrInvalidData, err)
-		}
-	}
+	e.roomGrids = roomGrids
 
 	// Load leaf state (constructors always succeed after validation)
 	e.clock = loadedClock
@@ -842,19 +826,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			kind: m.Kind,
 		}
 
-		_, err = e.orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-			RoomID:   spatial.RoomID(m.Room),
-			Entity:   entity,
-			Position: spatial.Position{X: m.Position.X, Y: m.Position.Y},
-		})
-		if err != nil {
+		if err = e.canvas.PlaceEntity(entity, spatial.Position{X: m.Cell.X, Y: m.Cell.Y}); err != nil {
 			return nil, fmt.Errorf("load encounter member placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
 		}
 
 		member := &memberRecord{
 			ID:   m.ID,
 			Kind: m.Kind,
-			Room: m.Room,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
@@ -899,11 +877,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		e.everMembers[em] = true
 	}
 
-	// Restore declared endings — endingTriggerFromData is the SAME
-	// conversion the ending-trigger validation above already ran.
-	for _, ed := range data.Endings {
-		e.endings = append(e.endings, declaredEnding{key: ed.Key, trigger: endingTriggerFromData(ed)})
-	}
+	// Restore declared endings — endingTriggerFromData is the SAME conversion
+	// the ending-trigger validation above already ran, and compileEndings is
+	// the SAME projection Setup runs, so a reloaded encounter's endings fire on
+	// the cells the original's did.
+	e.endings = compileEndings(endingInputsForValidation, roomInputs)
 
 	// Restore outcome if present
 	if data.Outcome != nil {
@@ -939,6 +917,27 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
 
 	return e, nil
+}
+
+// ownedByAnyRoom reports whether some authored chamber's footprint holds an
+// absolute cell — the load-time twin of [Encounter.roomAt], which cannot be used
+// here because it is a method on an Encounter that does not exist yet (R5: the
+// blob is validated in full before anything is constructed).
+//
+// No integrality check, for roomAt's reason: the caller asks first, and names
+// that defect as itself.
+func ownedByAnyRoom(rooms []RoomInput, grids map[string]spatial.Grid, cell spatial.Position) bool {
+	for _, ri := range rooms {
+		local := cell.Subtract(ri.Origin)
+		grid, ok := grids[ri.ID]
+		if !ok {
+			continue
+		}
+		if grid.IsValidPosition(local) {
+			return true
+		}
+	}
+	return false
 }
 
 // endingTriggerFromData converts one persisted ending's Kind/Room/Position/

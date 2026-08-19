@@ -11,15 +11,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// Example_theDungeon is the anchoring wave's signature scene (#929 T5) —
-// sibling to Example_theTraverse, which shows the SAME kind of doorway
-// crossing through percepts (what a MEMBER believes). This one shows what
-// a HOST renders: every position projected into dungeon-absolute space
-// via Absolute, so the room boundary that Example_theTraverse's story
-// crosses becomes visible as exactly what it is — one continuous space,
-// not two local coordinate systems glued together. The Output block
-// below is verified by go test, so this narration can never drift from
-// what Absolute actually returns.
+// Example_theDungeon is what a HOST renders — sibling to Example_theDoorway,
+// which shows the same doorway through a MEMBER's percepts. The Output block
+// below is verified by go test, so this narration can never drift from what
+// the composition actually reports.
+//
+// It used to be the anchoring wave's signature scene (#929 T5), and its whole
+// subject was a bridge: a host held a room and a room-local cell, and called
+// Absolute to turn the pair into a coordinate it could draw. That bridge is
+// gone (rpg-toolkit#1106). Rooms are how the dungeon is AUTHORED, and they are
+// compiled into one canvas at construction — so by the time a host asks
+// anything, every answer is already a cell on one map. The Atlas reports where
+// the authored chambers landed; the roster reports where people stand; nothing
+// needs projecting, because nothing was ever projected apart.
 func Example_theDungeon() {
 	gate := encounter.ConnectionInput{
 		ID: "gate", From: "hall", To: "vault",
@@ -51,32 +55,54 @@ func Example_theDungeon() {
 		return
 	}
 
-	// tellAbsolute is what a host does with a member's room-local
-	// position before handing it to a renderer: project it, once,
-	// through the bridge — never re-derive world coordinates by hand.
-	tellAbsolute := func(room string, pos spatial.Position) {
-		out, err := enc.Absolute(&encounter.AbsoluteInput{Room: room, Position: pos})
-		if err != nil {
-			fmt.Println("absolute:", err)
+	// The static map, as construction truth: which cells each authored chamber
+	// claimed once it was placed, and where the doorway between them sits.
+	atlas, err := enc.Atlas()
+	if err != nil {
+		fmt.Println("atlas:", err)
+		return
+	}
+	fmt.Println("-- the map --")
+	for _, room := range atlas.Rooms {
+		first, last := room.Cells[0], room.Cells[len(room.Cells)-1]
+		fmt.Printf("%s: %d cells, (%g,%g) through (%g,%g)\n",
+			room.ID, len(room.Cells), first.X, first.Y, last.X, last.Y)
+	}
+	for _, d := range atlas.Doorways {
+		fmt.Printf("doorway %s: (%g,%g) -- (%g,%g), one cell apart\n",
+			d.Connection, d.FromCell.X, d.FromCell.Y, d.ToCell.X, d.ToCell.Y)
+	}
+
+	// tell is what a host does with a member: read the roster and draw. No
+	// projection, no room-and-cell pair to reassemble.
+	tell := func() {
+		members, merr := enc.Members()
+		if merr != nil {
+			fmt.Println("members:", merr)
 			return
 		}
-		fmt.Printf("alice: %s local(%g,%g) -- dungeon-absolute(%g,%g)\n", room, pos.X, pos.Y, out.Position.X, out.Position.Y)
+		for _, m := range members {
+			fmt.Printf("alice stands at (%g,%g), in the %s\n", m.Position.X, m.Position.Y, m.Room)
+		}
 	}
 
 	fmt.Println("-- alice, at the threshold --")
-	tellAbsolute("hall", spatial.Position{X: 7, Y: 4})
+	tell()
 
-	fmt.Println("-- she crosses the gate --")
-	travOut, err := enc.Traverse(&encounter.TraverseInput{Member: "alice", Connection: "gate"})
-	if err != nil {
-		fmt.Println("traverse:", err)
+	fmt.Println("-- she steps through the gate --")
+	if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 8, Y: 4}}); err != nil {
+		fmt.Println("step:", err)
 		return
 	}
-	tellAbsolute(travOut.Traversed.ToRoom, travOut.Traversed.To)
+	tell()
 
 	// Output:
+	// -- the map --
+	// hall: 64 cells, (0,0) through (7,7)
+	// vault: 64 cells, (8,0) through (15,7)
+	// doorway gate: (7,4) -- (8,4), one cell apart
 	// -- alice, at the threshold --
-	// alice: hall local(7,4) -- dungeon-absolute(7,4)
-	// -- she crosses the gate --
-	// alice: vault local(0,4) -- dungeon-absolute(8,4)
+	// alice stands at (7,4), in the hall
+	// -- she steps through the gate --
+	// alice stands at (8,4), in the vault
 }

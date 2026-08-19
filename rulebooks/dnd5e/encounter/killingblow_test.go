@@ -282,7 +282,7 @@ func (s *KillingBlowSuite) TestTheSameDeathIsNotNarratedTwice() {
 	s.Require().NoError(err)
 
 	// The fight is over, so the walk is hers — and the walk consults again.
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
 	s.Require().NoError(err)
 
 	s.Equal(1, s.countBeats(enc, alice, "down"), "one body, told once")

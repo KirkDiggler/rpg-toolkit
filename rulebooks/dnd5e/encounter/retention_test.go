@@ -59,7 +59,7 @@ func (s *RetentionTestSuite) generateBeats(enc *encounter.Encounter, n int) {
 		if i%2 == 1 {
 			to = spatial.Position{X: 1, Y: 1}
 		}
-		_, err := enc.Move(&encounter.MoveInput{Member: "p1", To: to})
+		_, err := enc.Step(&encounter.StepInput{Member: "p1", To: to})
 		s.Require().NoError(err, "beat %d", i)
 	}
 }

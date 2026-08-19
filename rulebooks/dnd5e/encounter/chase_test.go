@@ -41,6 +41,12 @@ func TestVaultChase(t *testing.T) {
 		ToPosition:   spatial.Position{X: 0, Y: 5},
 	}
 
+	// The corridor's east wall, open at the gate's row. Without it the two
+	// chambers share an open edge ten cells wide: the field is one canvas
+	// (rpg-toolkit#1106), so a chase that needs somewhere to disappear to has
+	// to say where the walls are rather than let a room boundary imply them.
+	corridorWall := squareSeamWall(9, 10, 5)
+
 	// ---- Beat 1: sight -------------------------------------------------
 	// Alice and the goblin share the corridor, in the open — first light
 	// finds them mutually visible. The goblin's pursuitDecider knows the
@@ -57,7 +63,7 @@ func TestVaultChase(t *testing.T) {
 		Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{
-				{ID: corridorRoom, Width: 10, Height: 10},
+				{ID: corridorRoom, Width: 10, Height: 10, Boundaries: corridorWall},
 				// Anchored immediately east of the corridor (#929 T1): the
 				// gate's endpoints (9,5) and (0,5)+(10,0)=(10,5) are
 				// Chebyshev-adjacent (W3), and the rooms' absolute
@@ -95,28 +101,29 @@ func TestVaultChase(t *testing.T) {
 
 	// ---- Beat 2: to the threshold, and through it ----------------------
 	// Alice crosses to the gate, then slips through it into the vault.
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 9, Y: 5}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 9, Y: 5}})
 	require.NoError(t, err, "beat 2: alice crosses to the gate")
 
-	travOut, err := enc.Traverse(&encounter.TraverseInput{Member: alice, Connection: gateConnection})
+	travOut, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 10, Y: 5}})
 	require.NoError(t, err, "beat 2: she slips through the gate")
-	require.Equal(t, vaultRoom, travOut.Traversed.ToRoom, "beat 2: she arrives in the vault")
-	require.Equal(t, spatial.Position{X: 0, Y: 5}, travOut.Traversed.To)
+	require.Equal(t, gateConnection, travOut.Crossing, "beat 2: the doorway is named, and decides nothing")
+	require.Equal(t, spatial.Position{X: 10, Y: 5}, travOut.Stepped.To, "beat 2: vault-local (0,5) on the map")
 
-	// The ghost forms — for BOTH of them, symmetrically. Note WHERE:
-	// the threshold in the corridor, her last-seen position — not the
-	// vault, which the goblin has never seen at all.
+	// She doesn't linger in the opening — she moves deeper into the vault,
+	// toward (but not yet at) sanctuary, and out of the gate's line.
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 14, Y: 8}})
+	require.NoError(t, err, "beat 2: she moves deeper into the vault")
+
+	// The ghost forms — for BOTH of them, symmetrically. Note WHERE: the last
+	// cell each actually saw the other at, which the wall beside the gate is
+	// what makes possible. Standing IN the opening she was still visible; it
+	// takes the wall to hide her (rpg-toolkit#1106).
 	st, p := seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — she left the room")
-	require.Equal(t, 9.0, p.X, "beat 2: at the threshold, not the far side it never saw")
+	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — the wall took her")
+	require.Equal(t, 10.0, p.X, "beat 2: at the gate's far cell, the last place it saw her")
 	require.Equal(t, 5.0, p.Y)
 	st, _ = seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Held, st, "beat 2: alice loses the goblin too — symmetric")
-
-	// She doesn't linger at the arrival cell — she moves deeper into the
-	// vault, toward (but not yet at) sanctuary.
-	_, err = enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 4, Y: 5}})
-	require.NoError(t, err, "beat 2: she moves deeper into the vault")
 
 	// ---- Beat 3: the pause (pause is free) ------------------------------
 	// The table closes the Discord activity mid-chase. The host persists
@@ -134,45 +141,35 @@ func TestVaultChase(t *testing.T) {
 
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 3: the ghost survived the reload")
-	require.Equal(t, 9.0, p.X, "beat 3: still at the threshold — loading never re-derives sight")
+	require.Equal(t, 10.0, p.X, "beat 3: still at the gate's far cell — loading never re-derives sight")
 
-	// ---- Beat 4: the pursuit traverse ------------------------------------
-	// First pump: the goblin, still in the corridor, walks toward the
-	// ghost's last-seen position — the threshold.
+	// ---- Beat 4: the pursuit through the gate ---------------------------
+	// One pump: the goblin walks to the ghost's last-seen cell, which is on
+	// the far side of the gate. It is ONE step in the composition's terms and
+	// one entry in the output — there is no second list for crossings, because
+	// there is no second mechanism (rpg-toolkit#1106).
 	pumpOut1, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 4: the pursuit resumes")
-	require.Len(t, pumpOut1.MonsterMoves, 1, "beat 4: the goblin walks toward the threshold")
-	require.Equal(t, spatial.Position{X: 9, Y: 5}, pumpOut1.MonsterMoves[0].To)
-	require.Empty(t, pumpOut1.MonsterTraverses, "beat 4: not standing at the threshold yet on this tick's decision")
-
-	// Second pump: now standing exactly on the connection's endpoint, the
-	// goblin's OWN decision crosses it — the same mechanics the Traverse
-	// verb used for alice, reused, not duplicated.
-	pumpOut2, err := enc.Pump(&encounter.PumpInput{})
-	require.NoError(t, err, "beat 4: the goblin follows her through")
-	require.Len(t, pumpOut2.MonsterTraverses, 1, "beat 4: the goblin traverses the gate")
-	require.Equal(t, goblin, pumpOut2.MonsterTraverses[0].Member)
-	require.Equal(t, corridorRoom, pumpOut2.MonsterTraverses[0].FromRoom)
-	require.Equal(t, vaultRoom, pumpOut2.MonsterTraverses[0].ToRoom)
+	require.Len(t, pumpOut1.MonsterMoves, 1, "beat 4: the goblin walks toward the last place it saw her")
+	require.Equal(t, goblin, pumpOut1.MonsterMoves[0].Member)
 	// The arrival cell on the MAP: vault-local (0,5) through the vault's
-	// (10,0) anchor. The same cell the traversed beat carries — one
-	// movement cannot be reported in two frames (rpg-toolkit#1062).
-	require.Equal(t, spatial.Position{X: 10, Y: 5}, pumpOut2.MonsterTraverses[0].To)
-	require.Equal(t, spatial.Position{X: 9, Y: 5}, pumpOut2.MonsterTraverses[0].From,
-		"the departure cell is the corridor-side threshold, on the map")
+	// (10,0) anchor. The same cell the movement beat carries — one movement
+	// cannot be reported in two frames (rpg-toolkit#1062).
+	require.Equal(t, spatial.Position{X: 10, Y: 5}, pumpOut1.MonsterMoves[0].To)
 
-	// It's in her room now — this pump's own refreshSight already shows
-	// her Current again, at (4,5), where she stopped in beat 2.
+	// It's in her chamber now — this pump's own refreshSight already shows
+	// her Current again, where she stopped in beat 2.
 	st, p = seen(t, enc, goblin, alice)
-	require.Equal(t, intel.Current, st, "beat 4: the goblin holds alice Current again, having crossed the threshold")
-	require.Equal(t, 14.0, p.X, "beat 4: vault-local (4,5), anchored at (10,0) — one map")
-	require.Equal(t, 5.0, p.Y)
+	require.Equal(t, intel.Current, st, "beat 4: the goblin holds alice Current again, having come through the gate")
+	require.Equal(t, 14.0, p.X, "beat 4: vault-local (4,8), anchored at (10,0) — one map")
+	require.Equal(t, 8.0, p.Y)
 
 	// ---- Beat 5: sanctuary, in the far room ------------------------------
 	// Alice reaches the shrine before the goblin closes the distance. The
 	// declared ending fires in the VAULT — a room the corridor-side setup
 	// never mentioned directly; the ending only knows the room by name.
-	moveOut, err := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 8, Y: 8}})
+	// The vault is anchored at (10,0), so its own (8,8) is (18,8) on the map.
+	moveOut, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 18, Y: 8}})
 	require.NoError(t, err, "beat 5: alice reaches sanctuary")
 	require.NotNil(t, moveOut.Outcome, "beat 5: the ending fires in the Move's own output")
 	require.Equal(t, sanctuaryEnding, moveOut.Outcome.Ending)
@@ -201,32 +198,24 @@ func TestVaultChase(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, status.Open, "beat 5: closed = has an Outcome")
 
-	// ---- Beat 6: the archive sweep, now including Traverse ---------------
-	// A closed encounter rejects every mutating verb — tomb watch pinned
-	// this for Move/Pump/Join/Exit/End; the connections wave adds Traverse
-	// to the same sweep.
+	// ---- Beat 6: the archive sweep --------------------------------------
+	// A closed encounter rejects every mutating verb.
 	for name, verb := range map[string]func() error{
-		"Move": func() error {
-			_, e := enc.Move(&encounter.MoveInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
+		"Step": func() error {
+			_, e := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
 			return e
 		},
 		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
 		"Join": func() error {
-			_, e := enc.Join(&encounter.JoinInput{Member: encounter.MemberInput{
-				ID: "late", Kind: encounter.KindPlayer, Room: vaultRoom, Position: spatial.Position{X: 1, Y: 1}}})
+			_, e := enc.Join(&encounter.JoinInput{
+				Member: "late",
+				Kind:   encounter.KindPlayer,
+				Cell:   spatial.Position{X: 11, Y: 1}, // the vault, anchored at (10,0)
+			})
 			return e
 		},
 		"Exit": func() error { _, e := enc.Exit(&encounter.ExitInput{Member: alice}); return e },
 		"End":  func() error { _, e := enc.End(&encounter.EndInput{Ending: sanctuaryEnding}); return e },
-		// The goblin, not alice: it ends the scene standing exactly on
-		// the gate's vault-side endpoint (0,5), so this attempt is
-		// valid-if-open — the rejection below is attributable to
-		// ErrClosed alone, not also to alice's position (she is deeper
-		// in the vault, at (8,8), nowhere near either threshold).
-		"Traverse": func() error {
-			_, e := enc.Traverse(&encounter.TraverseInput{Member: goblin, Connection: gateConnection})
-			return e
-		},
 	} {
 		require.ErrorIs(t, verb(), encounter.ErrClosed, "beat 6: %s on a closed encounter", name)
 	}
@@ -251,11 +240,14 @@ func TestVaultChase(t *testing.T) {
 		// beat 1: they see each other, so the fight starts; she breaks off
 		// to run, which is what makes the rest of this a chase
 		"bubble-formed", "bubble-dissolved",
+		// Beat 2 is three steps and every one of them is a "moved": crossing
+		// the gate stopped being a second kind of movement when the field
+		// stopped being a set of rooms (rpg-toolkit#1106). The doorway's name
+		// rides on the middle beat's own payload, not on its kind.
 		"moved",         // beat 2: alice crosses to the gate
-		"traversed",     // beat 2: she slips through
+		"moved",         // beat 2: she slips through it
 		"moved",         // beat 2: she moves deeper into the vault
-		"tick", "moved", // beat 4: pump 1, the goblin walks to the threshold
-		"tick", "traversed", // beat 4: pump 2, the goblin follows her through
+		"tick", "moved", // beat 4: pump 1, the goblin comes through after her
 		"moved", // beat 5: alice reaches sanctuary
 	}, kinds, "beat 7: the story IS the chase, told in order")
 }
