@@ -376,14 +376,14 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   attackerID,
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
-		DamageType:   damage.Slashing,
-		IsCritical:   false,
-		WeaponDamage: "1d8",
-		AbilityUsed:  abilities.STR,
-		IsMelee:      true, // Simulates a STR-based melee attack (rage bonus applies)
+		AttackerID:       attackerID,
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		IsCritical:       true,
+		WeaponDamageDice: "1d8",
+		WeaponDamageType: damage.Slashing,
+		AbilityUsed:      abilities.STR,
+		IsMelee:          true, // Simulates a STR-based melee attack (rage bonus applies)
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -418,13 +418,13 @@ func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   attackerID,
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
-		DamageType:   damage.Slashing,
-		WeaponDamage: "1d8",
-		AbilityUsed:  abilityUsed,
-		IsMelee:      isMelee,
+		AttackerID:       attackerID,
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		WeaponDamageDice: "1d8",
+		WeaponDamageType: damage.Slashing,
+		AbilityUsed:      abilityUsed,
+		IsMelee:          isMelee,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -485,6 +485,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionDamageBonusAppliesToSTRMel
 	s.Require().Len(finalEvent.Components, 3, "rage damage bonus should be added for STR melee attacks")
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
 	s.Equal(2, finalEvent.Components[2].FlatBonus)
+	s.Equal(damage.Slashing, finalEvent.Components[2].DamageType)
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
@@ -519,6 +520,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
 	s.Equal(2, finalEvent.Components[2].FlatBonus, "Rage should add +2 damage")
 	s.Equal(2, finalEvent.Components[2].Total())
+	s.Equal(damage.Slashing, finalEvent.Components[2].DamageType)
+	s.False(finalEvent.Components[2].IsCritical, "flat rage damage is not doubled")
 
 	// Verify total damage
 	totalDamage := 0
@@ -764,13 +767,13 @@ func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   attackerID,
-		TargetID:     targetID,
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damageType,
-		IsCritical:   false,
-		WeaponDamage: "1d8",
-		AbilityUsed:  abilities.STR,
+		AttackerID:       attackerID,
+		TargetID:         targetID,
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       false,
+		WeaponDamageDice: "1d8",
+		WeaponDamageType: damageType,
+		AbilityUsed:      abilities.STR,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

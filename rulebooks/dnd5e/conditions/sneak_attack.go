@@ -178,9 +178,17 @@ func (s *SneakAttackCondition) onDamageChain(
 		roller = dice.NewRoller()
 	}
 
-	sneakDice, err := roller.RollN(ctx, s.DamageDice, 6)
-	if err != nil {
-		return c, rpgerr.Wrap(err, "failed to roll sneak attack dice")
+	rolls := 1
+	if event.IsCritical {
+		rolls++
+	}
+	var sneakDice []int
+	for range rolls {
+		rolled, err := roller.RollN(ctx, s.DamageDice, 6)
+		if err != nil {
+			return c, rpgerr.Wrap(err, "failed to roll sneak attack dice")
+		}
+		sneakDice = append(sneakDice, rolled...)
 	}
 
 	// Add sneak attack damage component using DamageSourceFeature

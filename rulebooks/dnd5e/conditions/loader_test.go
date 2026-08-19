@@ -51,13 +51,13 @@ func (s *LoaderTestSuite) executeDamageChain(
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   attackerID,
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
-		DamageType:   damage.Slashing,
-		WeaponDamage: "1d8",
-		AbilityUsed:  abilities.STR,
-		IsMelee:      true, // Simulates a STR-based melee attack (rage bonus applies)
+		AttackerID:       attackerID,
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		WeaponDamageDice: "1d8",
+		WeaponDamageType: damage.Slashing,
+		AbilityUsed:      abilities.STR,
+		IsMelee:          true, // Simulates a STR-based melee attack (rage bonus applies)
 	}
 
 	ch := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

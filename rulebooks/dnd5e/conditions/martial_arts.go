@@ -198,14 +198,11 @@ func (ma *MartialArtsCondition) onDamageChain(
 				}
 			}
 
-			// Find and update the weapon component with new rolls
-			for i := range e.Components {
-				component := &e.Components[i]
-				if component.Source == dnd5eEvents.DamageSourceWeapon {
-					component.OriginalDiceRolls = newRolls
-					component.FinalDiceRolls = newRolls
-					break
-				}
+			// Replace only the component carrying the marked primary weapon type.
+			if componentIndex := primaryWeaponComponentIndex(e); componentIndex >= 0 {
+				component := &e.Components[componentIndex]
+				component.OriginalDiceRolls = newRolls
+				component.FinalDiceRolls = newRolls
 			}
 
 			// Update the weapon damage notation in the event for reference

@@ -93,7 +93,8 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
+		WeaponDamageType: damage.Slashing,
+		IsCritical:       true,
 	}
 
 	// Execute through damage chain
@@ -108,6 +109,8 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	// Should have 2 components: weapon + dueling bonus
 	s.Len(finalEvent.Components, 2)
 	s.Equal(2, finalEvent.Components[1].FlatBonus)
+	s.Equal(damage.Slashing, finalEvent.Components[1].DamageType)
+	s.False(finalEvent.Components[1].IsCritical, "flat dueling damage is not doubled")
 }
 
 func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
@@ -148,7 +151,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
+		WeaponDamageType: damage.Slashing,
 	}
 
 	// Execute through damage chain
@@ -210,7 +213,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 				DamageType:        damage.Piercing,
 			},
 		},
-		DamageType: damage.Piercing,
+		WeaponDamageType: damage.Piercing,
 	}
 
 	// Execute through damage chain

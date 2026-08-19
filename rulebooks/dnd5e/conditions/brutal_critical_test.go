@@ -73,12 +73,12 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   attackerID,
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
-		DamageType:   damage.Slashing,
-		IsCritical:   isCritical,
-		WeaponDamage: weaponDamage,
+		AttackerID:       attackerID,
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		IsCritical:       isCritical,
+		WeaponDamageDice: weaponDamage,
+		WeaponDamageType: damage.Slashing,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -121,6 +121,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
 	s.Equal([]int{5}, brutalComp.FinalDiceRolls, "Should have rolled 1 extra d8")
 	s.Equal(5, brutalComp.Total(), "Brutal critical should add 5 damage")
+	s.False(brutalComp.IsCritical, "the die granted by a critical is rolled once")
 }
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
@@ -219,13 +220,13 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "barbarian-2", // Different character
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Slashing,
-		IsCritical:   true,
-		WeaponDamage: "1d8",
-		AbilityUsed:  abilities.STR,
+		AttackerID:       "barbarian-2", // Different character
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       true,
+		WeaponDamageDice: "1d8",
+		WeaponDamageType: damage.Slashing,
+		AbilityUsed:      abilities.STR,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -266,12 +267,12 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "barbarian-1",
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Slashing,
-		IsCritical:   true,
-		WeaponDamage: "1d12", // Greataxe
+		AttackerID:       "barbarian-1",
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       true,
+		WeaponDamageDice: "1d12", // Greataxe
+		WeaponDamageType: damage.Slashing,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

@@ -78,7 +78,8 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
+		WeaponDamageType: damage.Slashing,
+		IsCritical:       true,
 	}
 
 	// Execute through damage chain
@@ -93,6 +94,8 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	// Should have 2 components: weapon + TWF ability modifier
 	s.Len(finalEvent.Components, 2)
 	s.Equal(3, finalEvent.Components[1].FlatBonus) // Ability modifier added
+	s.Equal(damage.Slashing, finalEvent.Components[1].DamageType)
+	s.False(finalEvent.Components[1].IsCritical, "flat two-weapon fighting damage is not doubled")
 }
 
 func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack() {
@@ -117,7 +120,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
+		WeaponDamageType: damage.Slashing,
 	}
 
 	// Execute through damage chain
@@ -155,7 +158,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToOtherCharacter
 				DamageType:        damage.Piercing,
 			},
 		},
-		DamageType: damage.Piercing,
+		WeaponDamageType: damage.Piercing,
 	}
 
 	// Execute through damage chain

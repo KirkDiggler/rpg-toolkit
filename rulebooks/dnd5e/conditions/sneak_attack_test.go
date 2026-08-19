@@ -73,6 +73,7 @@ type damageChainInput struct {
 	targetID     string
 	abilityUsed  abilities.Ability
 	hasAdvantage bool
+	isCritical   bool
 }
 
 // executeDamageChain creates a damage chain event and executes it.
@@ -91,14 +92,14 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   input.attackerID,
-		TargetID:     targetID,
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Piercing,
-		IsCritical:   false,
-		HasAdvantage: input.hasAdvantage,
-		WeaponDamage: "1d6",
-		AbilityUsed:  input.abilityUsed,
+		AttackerID:       input.attackerID,
+		TargetID:         targetID,
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       input.isCritical,
+		HasAdvantage:     input.hasAdvantage,
+		WeaponDamageDice: "1d6",
+		WeaponDamageType: damage.Piercing,
+		AbilityUsed:      input.abilityUsed,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -154,6 +155,32 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 	s.Equal(dnd5eEvents.DamageSourceFeature, sneakComp.Source)
 	s.Equal([]int{4}, sneakComp.FinalDiceRolls, "Should have rolled 1d6")
 	s.Equal(4, sneakComp.Total(), "Sneak attack should add 4 damage")
+}
+
+func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
+
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID:   "rogue-1",
+		abilityUsed:  abilities.DEX,
+		hasAdvantage: true,
+		isCritical:   true,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(finalEvent.Components, 2)
+
+	sneakComp := finalEvent.Components[1]
+	s.Equal([]int{4, 5}, sneakComp.FinalDiceRolls)
+	s.Equal(damage.Piercing, sneakComp.DamageType)
+	s.True(sneakComp.IsCritical)
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
@@ -444,14 +471,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "rogue-1",
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Piercing,
-		IsCritical:   false,
-		HasAdvantage: false, // No advantage
-		WeaponDamage: "1d6",
-		AbilityUsed:  abilities.DEX,
+		AttackerID:       "rogue-1",
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       false,
+		HasAdvantage:     false, // No advantage
+		WeaponDamageDice: "1d6",
+		WeaponDamageType: damage.Piercing,
+		AbilityUsed:      abilities.DEX,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -505,14 +532,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() 
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "rogue-1",
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Piercing,
-		IsCritical:   false,
-		HasAdvantage: false, // No advantage
-		WeaponDamage: "1d6",
-		AbilityUsed:  abilities.DEX,
+		AttackerID:       "rogue-1",
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       false,
+		HasAdvantage:     false, // No advantage
+		WeaponDamageDice: "1d6",
+		WeaponDamageType: damage.Piercing,
+		AbilityUsed:      abilities.DEX,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -570,14 +597,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "rogue-1",
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Piercing,
-		IsCritical:   false,
-		HasAdvantage: false,
-		WeaponDamage: "1d6",
-		AbilityUsed:  abilities.DEX,
+		AttackerID:       "rogue-1",
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       false,
+		HasAdvantage:     false,
+		WeaponDamageDice: "1d6",
+		WeaponDamageType: damage.Piercing,
+		AbilityUsed:      abilities.DEX,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -634,14 +661,14 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenOnlyEnemyAdjacen
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "rogue-1",
-		TargetID:     "goblin-1",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Piercing,
-		IsCritical:   false,
-		HasAdvantage: false,
-		WeaponDamage: "1d6",
-		AbilityUsed:  abilities.DEX,
+		AttackerID:       "rogue-1",
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		IsCritical:       false,
+		HasAdvantage:     false,
+		WeaponDamageDice: "1d6",
+		WeaponDamageType: damage.Piercing,
+		AbilityUsed:      abilities.DEX,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

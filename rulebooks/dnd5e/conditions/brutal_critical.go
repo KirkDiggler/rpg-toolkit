@@ -192,7 +192,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 			Rerolls:           nil,
 			FlatBonus:         0,
 			DamageType:        e.WeaponDamageType,
-			IsCritical:        true,
+			IsCritical:        false,
 		})
 		return e, nil
 	}

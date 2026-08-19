@@ -177,11 +177,11 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 						DamageType: "bludgeoning",
 					},
 				},
-				DamageType:   "bludgeoning",
-				IsCritical:   false,
-				WeaponDamage: "1", // Will be replaced with martial arts dice
-				AbilityUsed:  abilities.STR,
-				WeaponRef:    refs.Weapons.UnarmedStrike(),
+				IsCritical:       false,
+				WeaponDamageDice: "1", // Will be replaced with martial arts dice
+				WeaponDamageType: "bludgeoning",
+				AbilityUsed:      abilities.STR,
+				WeaponRef:        refs.Weapons.UnarmedStrike(),
 			}
 
 			// Publish through damage chain
@@ -195,7 +195,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 			s.Require().NoError(err)
 
 			// Verify weapon damage dice were updated
-			s.Equal(tc.expectedDice, finalEvent.WeaponDamage)
+			s.Equal(tc.expectedDice, finalEvent.WeaponDamageDice)
 
 			// Verify weapon component has new rolls
 			weaponComponent := &finalEvent.Components[0]
@@ -253,11 +253,11 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 				IsCritical: true,
 			},
 		},
-		DamageType:   "bludgeoning",
-		IsCritical:   true,
-		WeaponDamage: "1",
-		AbilityUsed:  abilities.STR,
-		WeaponRef:    refs.Weapons.UnarmedStrike(),
+		IsCritical:       true,
+		WeaponDamageDice: "1",
+		WeaponDamageType: "bludgeoning",
+		AbilityUsed:      abilities.STR,
+		WeaponRef:        refs.Weapons.UnarmedStrike(),
 	}
 
 	// Publish through damage chain
@@ -273,6 +273,56 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 	// Verify weapon component has two dice (critical)
 	weaponComponent := &finalEvent.Components[0]
 	s.Equal([]int{4, 4}, weaponComponent.FinalDiceRolls)
+}
+
+func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesOnlyPrimaryWeaponComponent() {
+	condition := NewMartialArtsCondition(MartialArtsInput{
+		CharacterID: s.characterID,
+		MonkLevel:   1,
+		Roller:      s.mockRoller,
+	})
+	s.Require().NoError(condition.Apply(s.ctx, s.bus))
+	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
+
+	s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 4).Return([]int{3}, nil)
+
+	event := &dnd5eEvents.DamageChainEvent{
+		AttackerID:       s.characterID,
+		TargetID:         "target-1",
+		WeaponDamageDice: "1",
+		WeaponDamageType: "bludgeoning",
+		AbilityUsed:      abilities.STR,
+		WeaponRef:        refs.Weapons.UnarmedStrike(),
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				OriginalDiceRolls: []int{9},
+				FinalDiceRolls:    []int{9},
+				DamageType:        "fire",
+			},
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				OriginalDiceRolls: []int{1},
+				FinalDiceRolls:    []int{1},
+				DamageType:        "bludgeoning",
+			},
+			{
+				Source:     dnd5eEvents.DamageSourceAbility,
+				DamageType: "bludgeoning",
+			},
+		},
+	}
+
+	damageChain := dnd5eEvents.DamageChain.On(s.bus)
+	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modifiedChain, err := damageChain.PublishWithChain(s.ctx, event, chain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+
+	s.Equal([]int{9}, finalEvent.Components[0].FinalDiceRolls)
+	s.Equal([]int{3}, finalEvent.Components[1].FinalDiceRolls)
+	s.Equal("1d4", finalEvent.WeaponDamageDice)
 }
 
 // TestDEXModifierReplacement tests that DEX replaces STR when DEX > STR

@@ -331,7 +331,7 @@ func (r *RagingCondition) onDamageChain(
 				Rerolls:           nil,
 				FlatBonus:         r.DamageBonus,
 				DamageType:        e.WeaponDamageType, // Same as marked primary weapon type
-				IsCritical:        e.IsCritical,
+				IsCritical:        false,
 			})
 			return e, nil
 		}
