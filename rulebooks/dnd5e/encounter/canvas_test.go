@@ -95,7 +95,7 @@ func tombSeamWall(atLocalX, height, gapRow int) []spatial.Boundary {
 
 func tombField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			// The entrance walls itself off from the hall, all the way up its
 			// east edge except the doorway.
@@ -290,7 +290,7 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 			{"seq": 1, "audience": ["p1"], "tags": {"tag": "scene"},
 			 "payload": "eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}
 		]},
-		"field": {"canvas": {"void": "rock"}, "rooms": [{"id": "room1", "width": 5, "height": 5, "origin": {"x": 0, "y": 0}}]},
+		"field": {"canvas": {"void": "opaque"}, "rooms": [{"id": "room1", "width": 5, "height": 5, "origin": {"x": 0, "y": 0}}]},
 		"members": [{"id": "p1", "kind": "player", "room": "room1", "position": {"x": 2, "y": 2}}],
 		"endings": [{"key": "done", "kind": "external"}],
 		"ever_members": ["p1"],
@@ -329,7 +329,7 @@ func TestASquareFieldMustFitOneGrid(t *testing.T) {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5, Origin: origin}},
 			},
 			Members: []encounter.MemberInput{
@@ -361,7 +361,7 @@ func TestAHexFieldNeedsNoSuchLaw(t *testing.T) {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
 					Origin: spatial.Position{X: -20, Y: -20}},
@@ -425,7 +425,7 @@ func TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 4, Y: 4},
 						Boundaries: []spatial.Boundary{b}},

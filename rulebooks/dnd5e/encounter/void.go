@@ -18,60 +18,79 @@ import (
 //
 // Until this file, void was UNWALKABLE BUT TRANSPARENT. [Encounter.Step]
 // refused a cell no region owns while percept building checked only distance
-// and line of sight, so a sight ray crossed empty canvas as if it were open
-// air. That is neither rock nor sky. It is what fell out of nobody deciding,
-// and it decided something: two chambers with a gap between them saw each other
-// through solid nothing unless a complete wall-edge chain had been authored
-// along the seam.
+// and line of sight, so a sight ray crossed empty canvas freely. That is not a
+// decision anybody made; it is what fell out of nobody making one, and it
+// decided something anyway: two chambers with a gap between them saw each other
+// through the gap unless a complete wall-edge chain had been authored along the
+// seam.
 //
 // So the field says which it is, and Kirk ruled how (2026-08-19): "seems like
 // we have some very specific choices and these choices could be configured on
 // the canvas." Authored data, required, never defaulted.
+//
+// # The names say what void DOES, not what it is made of
+//
+// Kirk again, reviewing this file: "the isrock is very specific do we need to
+// call it rock. isBlockedLOS or maybe isblocked." He is right, and the reason
+// is the rule this whole composition runs on. Stone, a ship's hull, the air
+// over a chasm, the vacuum outside a skyship: those are four fictions and ONE
+// mechanic, and the mechanic is all this module can know. Naming the case for
+// the material would have been this file holding a fact about a world — the
+// same overreach as deciding the default in the first place, one layer up.
+//
+// So the cases are [VoidOpaque] and [VoidClear], for what a sightline does when
+// it crosses. The fiction stays in these comments, where it is an ILLUSTRATION
+// of a mechanic rather than a definition of one, and in the content that
+// authors the field.
 
 // CanvasInput is what the field DECLARES about its own canvas — the world facts
 // no rule can derive and this module is not allowed to pick.
 //
-// A struct with one field today, and a struct on purpose. "Is the space between
-// the chambers stone or sky" is the first of a species: facts that are true of
-// THIS dungeon, that arrive as construction data because there is nowhere else
-// they could come from. AMBIENT LIGHT IS THE NEXT ONE (rpg-toolkit#1113) —
-// "this dungeon is dark" is the same kind of sentence as "this dungeon is cut
-// out of rock", and it belongs beside it rather than in a second mechanism
-// invented for it. That is the slot this type exists to hold open.
+// A struct with one field today, and a struct on purpose. "Can you see across
+// the space between the chambers" is the first of a species: facts that are
+// true of THIS dungeon, that arrive as construction data because there is
+// nowhere else they could come from. AMBIENT LIGHT IS THE NEXT ONE
+// (rpg-toolkit#1113) — "this dungeon is dark" is the same kind of sentence, and
+// it belongs beside this one rather than in a second mechanism invented for it.
+// That is the slot this type exists to hold open.
 //
 // It is not a place for anything DERIVABLE. The canvas's dimensions, its grid
 // family, which cells are floor: all of those the authored rooms already say,
 // and a field that could state them twice would be a field that could state
 // them differently.
 type CanvasInput struct {
-	// Void is what the space between the authored chambers is made of.
-	// REQUIRED — see [Void] for why there is no default to fall back on.
+	// Void is what the space between the authored chambers does to a
+	// sightline. REQUIRED — see [Void] for why there is no default to fall
+	// back on.
 	Void Void
 }
 
-// VoidKind names what void is made of, in the form the story and the blob carry
-// it. See [Void].
+// VoidKind names what void does to a sightline, in the form the story and the
+// blob carry it. See [Void].
 type VoidKind string
 
 const (
-	// VoidRock is stone: the chambers were cut out of a mountain, and what
-	// was not cut is still there.
-	VoidRock VoidKind = "rock"
+	// VoidOpaque stops a sightline: you cannot see across the space between
+	// the chambers. Stone is the obvious fiction for it — a tomb cut from a
+	// mountain, with what was not cut still there — but a hull, a curtain
+	// wall, or a bank of fog are the same mechanic, and this module knows the
+	// mechanic.
+	VoidOpaque VoidKind = "opaque"
 
-	// VoidOpen is sky: the chambers stand in the open, and what is not floor
-	// is the air above a courtyard, a deck, or a rooftop.
-	VoidOpen VoidKind = "open"
+	// VoidClear does not: you can see straight across, and still not walk it.
+	// An open-air ruin, a ship's deck, a rooftop, the gap over a chasm.
+	VoidClear VoidKind = "clear"
 )
 
-// Void is what the space between the authored chambers is made of: a closed
-// set, sealed the way [DissolveCause] is and for the same reason.
+// Void is what the space between the authored chambers does to a sightline: a
+// closed set, sealed the way [DissolveCause] is and for the same reason.
 //
 // # Why it is declared rather than decided here
 //
-// "Is the space between two rooms stone or sky" is not a 5e rule this
+// "Can you see across the space between two rooms" is not a 5e rule this
 // composition could derive. It is a fact about THIS world — a tomb's void is
-// rock, an open-air ruin's or a ship's deck is sky — and a fact about the world
-// arrives as construction data. There is no correct default, which is exactly
+// opaque, an open-air ruin's or a ship's deck is clear — and a fact about the
+// world arrives as construction data. There is no correct default, which is exactly
 // what rpg-toolkit#1033's capabilities-supplied-never-defaulted law is about:
 // a default here would be this module quietly deciding what a dungeon is made
 // of, in a field the author never wrote. So [CanvasInput.Void] is required, and
@@ -82,36 +101,38 @@ const (
 //
 // Both are UNWALKABLE, and that half does not vary: void is not floor under any
 // declaration, because floor is what the authored chambers own. A member cannot
-// step into the gap in an open-air ruin any more than into the rock of a tomb —
+// step into the gap in an open-air ruin any more than into the stone of a tomb —
 // [Encounter.Step] and [Encounter.Join] refuse a cell no region owns, and this
-// declaration does not touch that. What varies is what SIGHT does with it:
-// [VoidRock] stops a sightline, [VoidOpen] does not.
+// declaration does not touch that. SIGHT is the only thing the declaration
+// decides, which is why the cases are named for it.
 //
-// Rock stops it EXACTLY AS A WALL DOES, which is the point rather than an
-// implementation note: a boundary edge is a hard block on the direct canonical
-// ray (tools/spatial's IsLineOfSightBlocked checks boundaries on that ray alone,
-// deliberately, and lets occluding ENTITIES be leaned around). Rock void is
-// checked on the same ray, by the same rule, so "the rock face at the edge of
-// the room" and "a wall somebody drew there" cannot answer differently. That is
+// OPAQUE STOPS A SIGHTLINE EXACTLY AS A WALL DOES, which is the point rather
+// than an implementation note: a boundary edge is a hard block on the direct
+// canonical ray (tools/spatial's IsLineOfSightBlocked checks boundaries on that
+// ray alone, deliberately, and lets occluding ENTITIES be leaned around).
+// Opaque void is checked on the same ray, by the same rule, so the edge of the
+// floor and a wall somebody drew along it cannot answer differently. That is
 // Kirk's ruling on rpg-toolkit#1105 fork 2 — walls are boundary edges — kept
 // true for the walls nobody had to draw.
 //
 // # What it does NOT change
 //
 // Occluders and boundaries inside a chamber are untouched: still authored,
-// still carrying BlocksMovement and BlocksLineOfSight independently, so "rock I
-// placed" and "a low altar you can see over" both stay expressible. Kirk's
-// point on the ruling was that both should be deliberate — "if I wanted rock, I
-// could place it and set it to block LoS. I could put an obstacle that does
-// not. I can have both but should be deliberate" — and what this slice changes
-// is that the DEFAULT is deliberate too.
+// still carrying BlocksMovement and BlocksLineOfSight independently, so a
+// blocker somebody placed and a low altar you can see over both stay
+// expressible. Kirk's point on the ruling was that both should be deliberate —
+// in his words, "if I wanted rock, I could place it and set it to block LoS. I
+// could put an obstacle that does not. I can have both but should be
+// deliberate" — and what this slice changes is that the DEFAULT is deliberate
+// too.
 //
 // # Why a sealed set rather than a bool
 //
 // A bool would answer today's question and could never be grown into the next
-// one. A chasm you can see across and fall into is a third case, and it is not
-// "transparent" with a footnote — it is a different thing that happens to share
-// one of transparency's answers. Sealing the set the way [DissolveCause] is
+// one. A chasm you can see across and FALL INTO is a third case, and it is not
+// [VoidClear] with a footnote — it is a different thing that happens to share
+// one of clear's two answers while differing on a third nobody has asked for
+// yet. Sealing the set the way [DissolveCause] is
 // sealed makes that structural: the unexported method means a third case cannot
 // be declared outside this package, so adding one means editing this file, and
 // editing this file means having the caller that forces it in hand. It also
@@ -135,29 +156,30 @@ type Void interface {
 	blocksSight() bool
 }
 
-// VoidIsRock declares that the space between the authored chambers is stone:
-// opaque, and not floor. The reference tomb's answer, and every dungeon cut out
-// of a mountain.
+// VoidIsOpaque declares that you cannot see across the space between the
+// authored chambers, and cannot walk it either. The reference tomb's answer,
+// where the fiction is the stone the chambers were cut from — and equally a
+// hull, a curtain wall, or a fog bank, which is why the name is the effect.
 //
 // A function rather than a package-level variable so nothing can reassign what
 // it means at runtime — [ByDecision]'s reasoning, and the save gate's before
 // it.
-func VoidIsRock() Void { return voidRock{} }
+func VoidIsOpaque() Void { return voidOpaque{} }
 
-type voidRock struct{}
+type voidOpaque struct{}
 
-func (voidRock) Kind() VoidKind    { return VoidRock }
-func (voidRock) blocksSight() bool { return true }
+func (voidOpaque) Kind() VoidKind    { return VoidOpaque }
+func (voidOpaque) blocksSight() bool { return true }
 
-// VoidIsOpen declares that the space between the authored chambers is sky:
-// transparent, and still not floor. An open-air ruin, a ship's deck, a rooftop —
-// somewhere you can see clear across the gap and still cannot walk out over it.
-func VoidIsOpen() Void { return voidOpen{} }
+// VoidIsClear declares that you can see straight across the space between the
+// authored chambers, and still cannot walk it. An open-air ruin, a ship's deck,
+// a rooftop — somewhere the gap is a drop rather than a barrier.
+func VoidIsClear() Void { return voidClear{} }
 
-type voidOpen struct{}
+type voidClear struct{}
 
-func (voidOpen) Kind() VoidKind    { return VoidOpen }
-func (voidOpen) blocksSight() bool { return false }
+func (voidClear) Kind() VoidKind    { return VoidClear }
+func (voidClear) blocksSight() bool { return false }
 
 // voidFromData resolves the persisted word back to the declaration it names.
 //
@@ -170,10 +192,10 @@ func (voidOpen) blocksSight() bool { return false }
 // that is not to pick the nearest one.
 func voidFromData(name string) (Void, error) {
 	switch VoidKind(name) {
-	case VoidRock:
-		return VoidIsRock(), nil
-	case VoidOpen:
-		return VoidIsOpen(), nil
+	case VoidOpaque:
+		return VoidIsOpaque(), nil
+	case VoidClear:
+		return VoidIsClear(), nil
 	case "":
 		return nil, fmt.Errorf("field does not say what its void is (canvas.void): %w", ErrNoField)
 	default:
@@ -207,8 +229,8 @@ type canvasRoom struct {
 	grids map[string]spatial.Grid
 
 	// hasVoid is whether this field has any cell no chamber owns — see
-	// fieldHasVoid. Purely a cost decision: where there is no void, rock and
-	// open MEAN THE SAME THING, and the scan below can only ever run to the
+	// fieldHasVoid. Purely a cost decision: where there is no void, opaque and
+	// clear MEAN THE SAME THING, and the scan below can only ever run to the
 	// end of the ray and find nothing.
 	hasVoid bool
 }
@@ -228,7 +250,7 @@ type canvasRoom struct {
 // whether it belongs in tools/spatial — and this is one derived bit, computed
 // from numbers already in hand, never stored and never persisted. The measured
 // case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
-// deleting this check costs a sight refresh 121 ms against open's 30 ms — 4.0x,
+// deleting this check costs a sight refresh 121 ms against clear's 30 ms — 4.0x,
 // and 46.7 MB of allocation against 24.2 MB — every byte of it spent proving
 // there was no void to find. With it, parity. Re-runnable: see
 // voidcost_internal_test.go.
@@ -242,17 +264,17 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 }
 
 // IsLineOfSightBlocked reports whether sight between two cells is blocked,
-// counting rock void as the wall it is.
+// counting opaque void as the wall it is.
 //
-// THE ROCK IS CHECKED FIRST AND CHECKED HARD. tools/spatial's own rule treats a
+// THE VOID IS CHECKED FIRST AND CHECKED HARD. tools/spatial's own rule treats a
 // boundary edge as an unconditional block on the direct canonical ray while
 // letting an occluding ENTITY be leaned around, because a boundary is a wall
-// drawn on an edge with no extent to lean past. A rock face is that same thing,
+// drawn on an edge with no extent to lean past. Opaque void is that same thing,
 // so it is asked the same way: [spatial.CanonicalBoundaryRay] — the very
 // rasterization spatial checks boundaries along, not a second one — and any
 // cell on it that no region owns stops the line. Sharing the ray is what makes
-// "the rock at the edge of the chamber" and "a wall somebody drew there"
-// evaluate over identical cells rather than merely similar ones.
+// the edge of the floor and a wall somebody drew along it evaluate over
+// identical cells rather than merely similar ones.
 //
 // That is a guarantee about the CODE, and no fixture found here can stand in
 // for it — stated because it was measured rather than assumed. Over eight void
@@ -274,20 +296,20 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // until a caller forces it — this one does not, because the question already
 // has an implementation.
 //
-// Under [VoidOpen] this is spatial's answer unchanged, which is the honest
+// Under [VoidClear] this is spatial's answer unchanged, which is the honest
 // shape of "the declaration decides": there is nothing to add to a sightline
-// crossing open sky. Under rock on a field with NO void it is spatial's answer
-// unchanged too, and for a better reason than speed: a field whose chambers
+// crossing a clear gap. Under opaque on a field with NO void it is spatial's
+// answer unchanged too, and for a better reason than speed: a field whose chambers
 // tile their canvas exactly has nothing for either declaration to be about, so
 // the two mean the same thing and cost the same (fieldHasVoid, pinned by
-// TestRockCostsNothingWhereThereIsNoVoid).
+// TestOpaqueCostsNothingWhereThereIsNoVoid).
 //
 // WHERE THERE IS VOID, THIS IS USUALLY CHEAPER THAN NOT DOING IT — measured,
 // because the shape of the cost is not the shape it looks like. Scanning the
 // ray is arithmetic, and the spatial call it can skip rasterizes, walks
 // boundaries, walks blocking entities and then walks a lean lane per neighbour.
-// So finding rock EARLY returns before any of that: a twenty-chamber field with
-// gaps refreshed sight 1.6-1.7x FASTER under rock than under open, and the
+// So finding void EARLY returns before any of that: a twenty-chamber field with
+// gaps refreshed sight 1.6-1.7x FASTER under opaque than under clear, and the
 // reference tomb's shape 1.4-1.6x faster. The price is paid by rays that never
 // leave the floor, which run the scan in full and then delegate anyway: one
 // forty-by-forty chamber with a void margin and forty members measured 1.34x

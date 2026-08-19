@@ -100,7 +100,7 @@ func vaultChaseHexSeamWall() []spatial.Boundary { return hexSeamWall(4, -2, 4, 1
 func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
 	field := encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex,
 				Boundaries: vaultChaseHexSeamWall()},

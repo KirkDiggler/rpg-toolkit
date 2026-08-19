@@ -90,12 +90,13 @@ func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		Field: encounter.FieldInput{
-			// The crypt is cut out of a mountain, so the space its two
-			// chambers do not cover is the rock they were cut from — stated
-			// rather than assumed (rpg-toolkit#1116). There IS such space:
+			// You cannot see across the space the crypt's two chambers do not
+			// cover — the fiction is the mountain they were cut from, and the
+			// declaration is the effect (rpg-toolkit#1116). There IS such
+			// space:
 			// the ossuary is half the crypt's height, so the canvas's
 			// north-east corner — x 12..19, y 6..11 — belongs to no chamber.
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{
 					ID: cryptID, Width: cryptSize, Height: cryptSize,

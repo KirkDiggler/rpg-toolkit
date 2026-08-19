@@ -64,7 +64,7 @@ func (s *deathScene) scene(standing encounter.Standing, members ...encounter.Mem
 		Initiative: orderAsGiven{},
 		Sight:      everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
 		}},
 		Members: members,
@@ -178,7 +178,7 @@ func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.Member
 func (s *StandingSuite) TestSetupRefusesAnEncounterThatCannotAskWhoIsDown() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
 		}},
 		Members: []encounter.MemberInput{
@@ -417,7 +417,7 @@ func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 		Initiative: orderAsGiven{},
 		Sight:      everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 		Retention: 4,
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
 		}},
 		Members: []encounter.MemberInput{

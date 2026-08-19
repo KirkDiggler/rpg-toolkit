@@ -83,7 +83,7 @@ func stepSeamWall() []spatial.Boundary { return squareSeamWall(5, 6, int(stepDoo
 // stepField is the shared set, optionally with a decider driving the goblin.
 func stepField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: stepWest, Width: 6, Height: 6, Origin: stepWestOrigin,
 				Boundaries: stepSeamWall()},
@@ -514,7 +514,7 @@ func (s *StepSuite) TestGridReportsTheFieldsFamily() {
 func (s *StepSuite) TestGridReportsAHexFieldAsHex() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()}, Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: stepWest, Width: 6, Height: 6, Grid: spatial.GridShapeHex,
 				Origin: stepWestOrigin},
 		}},

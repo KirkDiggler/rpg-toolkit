@@ -10,7 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// voidcost_internal_test.go is WHAT THE ROCK COSTS (rpg-toolkit#1116).
+// voidcost_internal_test.go is WHAT OPAQUE VOID COSTS (rpg-toolkit#1116).
 //
 // [canvasRoom.IsLineOfSightBlocked] scans the ray for cells no chamber owns,
 // and Copilot's review of PR #1124 asked the obvious question: that scan is
@@ -24,25 +24,25 @@ import (
 // One run on an AMD 7945HX. Absolute times move with whatever else the machine
 // is doing; the RATIOS held across repeats, and they are the finding:
 //
-//	tomb-shaped, 3 chambers, 8 members     open   84us  rock   53us   1.4-1.6x FASTER
-//	20 chambers with gaps, 60 members      open 31.7ms  rock 18.9ms   1.6-1.7x FASTER
-//	one 40x40 chamber, void margin, 40     open  3.1ms  rock  4.1ms   1.34x slower
-//	20 chambers, canvas tiled, NO void     open 29.7ms  rock 29.6ms   parity
+//	tomb-shaped, 3 chambers, 8 members   clear   84us  opaque   53us  1.4-1.6x FASTER
+//	20 chambers with gaps, 60 members    clear 31.7ms  opaque 18.9ms  1.6-1.7x FASTER
+//	one 40x40 chamber, void margin, 40   clear  3.1ms  opaque  4.1ms  1.34x slower
+//	20 chambers, canvas tiled, NO void   clear 29.7ms  opaque 29.6ms  parity
 //
-// Where there IS void, rock is FASTER, which is not the intuition: the scan is
+// Where there IS void, opaque is FASTER, which is not the intuition: the scan is
 // arithmetic, and the spatial call it returns before rasterizes, walks
 // boundaries, walks blocking entities and then walks a lean lane per neighbour.
-// Finding rock early skips all of that. The price is paid by rays that never
+// Finding void early skips all of that. The price is paid by rays that never
 // leave the floor, which scan in full and delegate anyway — the third row, and
 // the honest worst case. That 1.34x is the number to beat if a caller ever
 // forces the floor mask rpg-toolkit#1105's ruling (4) deferred.
 //
 // The fourth row is the one that was bad, and is the reason fieldHasVoid
 // exists. Deleting its check from IsLineOfSightBlocked and re-running that pair
-// measures rock at 121ms against open's 30ms — 4.0x, and 46.7 MB of allocation
+// measures opaque at 121ms against clear's 30ms — 4.0x, and 46.7 MB of allocation
 // against 24.2 MB — every byte of it spent proving there was no void to find on
-// a field where rock and open mean the same thing.
-// TestRockCostsNothingWhereThereIsNoVoid pins the fix as allocations, so it
+// a field where opaque and clear mean the same thing.
+// TestOpaqueCostsNothingWhereThereIsNoVoid pins the fix as allocations, so it
 // holds without a stopwatch.
 
 type benchSight struct{ cells int }
@@ -110,18 +110,22 @@ func benchSightRefresh(b *testing.B, rooms, dim, stride, anchor, members int, vo
 }
 
 // The reference tomb's shape: three chambers in a chain, a party of eight.
-func BenchmarkSightTombOpen(b *testing.B) { benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsOpen()) }
-func BenchmarkSightTombRock(b *testing.B) { benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsRock()) }
+func BenchmarkSightTombClear(b *testing.B)  { benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsClear()) }
+func BenchmarkSightTombOpaque(b *testing.B) { benchSightRefresh(b, 3, 10, 11, 0, 8, VoidIsOpaque()) }
 
-// Chambers with gaps between them — the case rock exists for.
-func BenchmarkSightGappedOpen(b *testing.B) { benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsOpen()) }
-func BenchmarkSightGappedRock(b *testing.B) { benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsRock()) }
+// Chambers with gaps between them — the case an opaque declaration exists for.
+func BenchmarkSightGappedClear(b *testing.B) { benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsClear()) }
+func BenchmarkSightGappedOpaque(b *testing.B) {
+	benchSightRefresh(b, 20, 20, 21, 0, 60, VoidIsOpaque())
+}
 
 // One chamber with a void margin and nobody ever looking across it: the scan
 // runs in full, finds nothing, and delegates anyway. The worst case.
-func BenchmarkSightMarginOpen(b *testing.B) { benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsOpen()) }
-func BenchmarkSightMarginRock(b *testing.B) { benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsRock()) }
+func BenchmarkSightMarginClear(b *testing.B)  { benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsClear()) }
+func BenchmarkSightMarginOpaque(b *testing.B) { benchSightRefresh(b, 1, 40, 40, 1, 40, VoidIsOpaque()) }
 
 // Chambers that tile their canvas exactly: no void, so nothing to look for.
-func BenchmarkSightNoVoidOpen(b *testing.B) { benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsOpen()) }
-func BenchmarkSightNoVoidRock(b *testing.B) { benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsRock()) }
+func BenchmarkSightNoVoidClear(b *testing.B) { benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsClear()) }
+func BenchmarkSightNoVoidOpaque(b *testing.B) {
+	benchSightRefresh(b, 20, 20, 20, 0, 60, VoidIsOpaque())
+}

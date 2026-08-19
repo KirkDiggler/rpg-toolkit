@@ -47,7 +47,7 @@ func Example_theDoorway() {
 	wall := squareSeamWall(7, 8, 4)
 
 	field := encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsRock()},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 		Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 8, Height: 8, Boundaries: wall},
 			// Anchored immediately east of the hall (#929 T1): the gate's
