@@ -57,7 +57,7 @@ func Validate(pools []Damage) error {
 		return fmt.Errorf("damage pool: at least one damage pool is required")
 	}
 
-	abilityPools := 0
+	abilityMarkers := 0
 	for i, pool := range pools {
 		if _, err := dice.ParseNotation(pool.Dice); err != nil {
 			return fmt.Errorf("damage pool %d (%q): invalid dice notation: %w", i, pool.Dice, err)
@@ -75,15 +75,14 @@ func Validate(pools []Damage) error {
 
 		for _, property := range pool.Properties {
 			switch property {
-			case AddsAttackAbilityModifier, DoesNotCrit:
+			case AddsAttackAbilityModifier:
+				abilityMarkers++
+				if abilityMarkers > 1 {
+					return fmt.Errorf("damage pool %d (%q): more than one %q marker", i, pool.Dice, AddsAttackAbilityModifier)
+				}
+			case DoesNotCrit:
 			default:
 				return fmt.Errorf("damage pool %d (%q): unknown property %q", i, pool.Dice, property)
-			}
-		}
-		if pool.HasProperty(AddsAttackAbilityModifier) {
-			abilityPools++
-			if abilityPools > 1 {
-				return fmt.Errorf("damage pool %d (%q): more than one pool has %q", i, pool.Dice, AddsAttackAbilityModifier)
 			}
 		}
 	}

@@ -75,6 +75,17 @@ func (s *DamageTestSuite) TestValidationRejectsFusedModifierAndDuplicateAbilityM
 	}))
 }
 
+func (s *DamageTestSuite) TestValidationRejectsDuplicateAbilityMarkersWithinPool() {
+	err := damage.Validate([]damage.Damage{{
+		Dice:       "1d8",
+		Type:       damage.Slashing,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier, damage.AddsAttackAbilityModifier},
+	}})
+	s.Require().Error(err)
+	s.Contains(err.Error(), "pool 0")
+	s.Contains(err.Error(), "1d8")
+}
+
 func (s *DamageTestSuite) TestValidationReportsLaterPoolContext() {
 	err := damage.Validate([]damage.Damage{
 		{Dice: "1d8", Type: damage.Slashing},
