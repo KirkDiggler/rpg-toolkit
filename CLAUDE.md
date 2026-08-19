@@ -203,12 +203,11 @@ These run automatically on commit.
 1. **core** - Base interfaces and types
 2. **events** - Event bus system for module communication
 3. **dice** - Dice rolling infrastructure
-4. **mechanics/conditions** - Status effects and conditions
-5. **mechanics/proficiency** - Proficiency system
-6. **mechanics/effects** - Shared infrastructure for conditions/proficiencies
-7. **mechanics/resources** - Resource management (spell slots, abilities, etc.)
-8. **tools/spatial** - Complete spatial positioning system with multi-room orchestration
-9. **tools/spawn** - Complete entity spawn engine with Phases 1-4 implementation per ADR-0013
+4. **mechanics/proficiency** - Proficiency system
+5. **mechanics/effects** - Shared infrastructure for proficiencies
+6. **mechanics/resources** - Resource management (spell slots, abilities, etc.)
+7. **tools/spatial** - Complete spatial positioning system with multi-room orchestration
+8. **tools/spawn** - Complete entity spawn engine with Phases 1-4 implementation per ADR-0013
 
 ### Spatial Module Features (Completed)
 - **Grid Systems**: Square (D&D 5e), Hex, and Gridless positioning

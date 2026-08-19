@@ -39,7 +39,7 @@ Dependency direction is generally **Core → Mechanics / Play primitives → Too
 | Layer | Current modules | Responsibility |
 |---|---|---|
 | Core | `core`, `dice`, `events`, `game`, `items`, `rpgerr` | IDs and refs, actions, dice, event chains, shared game context, base item contracts, errors |
-| Mechanics | `mechanics/conditions`, `effects`, `features`, `proficiency`, `resources`, `spells` | Rule-agnostic mechanic building blocks |
+| Mechanics | `mechanics/effects`, `features`, `proficiency`, `resources` | Rule-agnostic mechanic building blocks |
 | Play primitives | `play/clock`, `intel`, `interrupt`, `record` | Small reusable time, knowledge, interruption, and record contracts; these currently depend only on Core |
 | Tools | `tools/environments`, `selectables`, `spatial`, `spawn` | Environment graphs, weighted selection, positioning, and placement |
 | Rulebooks | `rulebooks/dnd5e` | D&D 5e content and rules, including characters, combat, monsters, conditions, and refs |
