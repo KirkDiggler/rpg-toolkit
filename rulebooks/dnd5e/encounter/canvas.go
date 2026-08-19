@@ -53,6 +53,18 @@ import (
 // and this IS the map; there is no version of "the same world, copied" that
 // stays the same world.
 //
+// AND A FAITHFUL COPY IS NOT MERELY WORSE, IT IS NOT AVAILABLE. Entities and
+// their cells can be read back off a [spatial.Room], but its REGISTERED
+// BOUNDARIES cannot: nothing on Room or [spatial.BoundaryAwareRoom] lists them,
+// and the only way to ask is GetBoundary, one adjacent pair at a time — so
+// recovering a canvas's walls means probing every adjacent pair on it, through
+// an interface this deliberately does not return (see below). Any snapshot
+// built with what a caller actually has is therefore a room with NO WALLS,
+// which is exactly the defect this exists to end, reintroduced one layer down.
+// Pinned by TestTheCanvasIsTheLiveMapNotACopy, and measured: the snapshot
+// mutant fails that test AND the sight test, and the sight failure is the one
+// that matters.
+//
 // # Which is why it refuses to be written to
 //
 // Placing, moving or removing an entity here would move a member behind every
@@ -82,8 +94,9 @@ import (
 // offer, and its reading half is already answered here: IsLineOfSightBlocked
 // consults the registered boundaries, and a caller that wants the walls
 // themselves has [Encounter.Atlas], which reports every one of them in absolute
-// space. Adding the interface to withhold half of it would be offering a door
-// in order to lock it.
+// space and in construction terms rather than a pair at a time. Adding the
+// interface to withhold half of it would be offering a door in order to lock
+// it.
 //
 // Returns ErrNoField when there is no canvas to hand out. Construction forbids
 // that — both seams compile one or fail — so it is reachable only through the
@@ -100,10 +113,22 @@ func (e *Encounter) Canvas() (spatial.Room, error) {
 // readOnlyRoom is the live canvas with its three mutators refusing.
 //
 // Every read delegates to the room itself rather than to a copy of it, which is
-// what makes [Encounter.Canvas] live. The reads are safe to pass straight
-// through: spatial's own GetAllEntities and GetEntitiesAt already copy out
-// their containers, and [spatial.Grid] has no mutating method, so nothing
-// reachable from here is a second way in.
+// what makes [Encounter.Canvas] live. Two things were checked before passing
+// them straight through, rather than assumed: spatial's own GetAllEntities and
+// GetEntitiesAt build fresh containers, so neither hands back a map or slice
+// that writes through to the room's own; and every method on [spatial.Grid] is
+// a query (GetShape, IsValidPosition, GetDimensions, Distance, GetNeighbors,
+// IsAdjacent, GetLineOfSight, GetPositionsInRange), so handing out the grid
+// hands out no way to change it.
+//
+// The pass-throughs behave EXACTLY as the room does, which is the invariant
+// worth stating because it also decides what not to do. CanPlaceEntity takes an
+// entity and spatial dereferences it without a nil check — measured:
+// BasicRoom.CanPlaceEntity(nil, an occupied cell) panics, and on an empty cell
+// it returns true because the loop never runs. That is spatial's behaviour, not
+// this view's, and guarding it HERE would make the view answer differently from
+// the room it stands in front of. The mutators are the only place this type
+// decides anything, and they are the only place it guards anything.
 type readOnlyRoom struct {
 	canvas *spatial.BasicRoom
 }
@@ -120,6 +145,10 @@ var _ spatial.Room = readOnlyRoom{}
 // read-only thing has no business being the harder of the two to call. What is
 // refused here does not depend on the entity, so the answer is the same
 // refusal, with the nil named rather than dereferenced.
+//
+// This is the ONLY mutator that can meet a nil: MoveEntity and RemoveEntity
+// take an entity ID by string, so there is nothing to dereference in either.
+// Checked rather than fixed here and left to be discovered there.
 func (r readOnlyRoom) PlaceEntity(entity core.Entity, pos spatial.Position) error {
 	id := "<nil>"
 	if entity != nil {
