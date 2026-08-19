@@ -114,6 +114,22 @@ type Input struct {
 	// owns the answer (rpg-toolkit#1079).
 	Standing encounter.Standing
 
+	// Sight reports how far each member can see, in cells. REQUIRED.
+	//
+	// Carried, never consulted, for exactly the reason Standing one field up
+	// is — and the mechanism is worth naming rather than asserting. The
+	// composition asks how far somebody can see at one choke point, where it
+	// rebuilds percepts; the only two callers of that are its own Setup and
+	// its refreshSight, and this package calls neither. It loads a world and
+	// reads it back out as data, so the question is never put.
+	//
+	// The composition still refuses to load without one (rpg-toolkit#1111),
+	// and answering on the caller's behalf — any number at all — would be this
+	// package deciding a 5e rule about light and darkvision it holds none of.
+	// So it is handed over, the way Deciders, Initiative and Standing above
+	// are handed over, and the caller that owns the sheets owns the answer.
+	Sight encounter.Sight
+
 	// Roller is used to reconstitute effects that need one — a monster's Undead
 	// Fortitude, for instance, which rolls when it is triggered rather than
 	// when it is loaded. REQUIRED. It is not the machine's roller: a machine
@@ -149,6 +165,9 @@ func (in *Input) Validate() error {
 	}
 	if in.Standing == nil {
 		return ErrNoStanding
+	}
+	if in.Sight == nil {
+		return ErrNoSight
 	}
 	if in.Roller == nil {
 		return ErrNoRoller
@@ -257,24 +276,23 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Deciders:   in.Deciders,
 		Initiative: in.Initiative,
 		Standing:   in.Standing,
+		Sight:      in.Sight,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
 	}
 
-	// Install the room this interaction happens in, so that a predicate which
+	// Install the world this interaction happens in, so that a predicate which
 	// reads positions — prone's advantage-within-five-feet, first of them —
-	// has them. Built from in.World, which is the persisted world the caller
-	// handed over: see interactionRoom. Nothing is installed when the
-	// participants do not share one room, and a machine that needs positions
-	// says so rather than measuring across coordinate systems.
-	room, err := interactionRoom(in.World, in.Participants)
+	// has them. ONE world, and it is installed every time: there is exactly one
+	// map, so "which room describes this interaction" is not a question any
+	// more, and the answer this package used to give when it could not decide —
+	// none at all — was rpg-toolkit#1090. See interactionRoom.
+	room, err := interactionRoom(enc, in.Participants)
 	if err != nil {
 		return nil, err
 	}
-	if room != nil {
-		ctx = gamectx.WithRoom(ctx, room)
-	}
+	ctx = gamectx.WithRoom(ctx, room)
 
 	cast, err := attachAll(ctx, surf, in.Participants, roller)
 	if err != nil {

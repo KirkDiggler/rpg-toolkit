@@ -134,7 +134,7 @@ func (s *CostTestSuite) strikeCost(data *character.Data) *combat.SpendProfile {
 }
 
 func (s *CostTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
@@ -207,7 +207,7 @@ func (s *CostTestSuite) swing(
 		Roller:     roller,
 	})}
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      machine,
@@ -223,7 +223,7 @@ func (s *CostTestSuite) swing(
 // ErrNoMachine's own doc blesses the form ("distinct from a machine that
 // finishes immediately, which is legal").
 func (s *CostTestSuite) declare(hero *character.Data, cost *Cost) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      &captureMachine{},
@@ -473,7 +473,7 @@ func (s *CostTestSuite) TestACostKeyedToACurrencyNoLedgerHoldsIsRefused() {
 func (s *CostTestSuite) TestAMalformedCostIsRefusedBeforeTheWorldIsLoaded() {
 	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        encounter.EncounterData{},
 		Participants: []Participant{{Character: hero}},
 		Machine:      &captureMachine{},
@@ -581,7 +581,7 @@ func (s *CostTestSuite) TestARefusedPaymentLeavesNothingOnTheBus() {
 	hero := s.hero(s.economy(firstTurn, 1, 0))
 	hero.Conditions = []json.RawMessage{s.raging()}
 
-	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
 		Machine:      &captureMachine{},

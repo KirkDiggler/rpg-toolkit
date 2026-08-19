@@ -32,6 +32,18 @@ var (
 	// cannot see (rpg-toolkit#1079).
 	ErrNoStanding = errors.New("resolution: no standing capability")
 
+	// ErrNoSight indicates an interaction given no way to find out how far
+	// anybody can see. The composition requires one to load at all, the same
+	// way it requires an initiative roller and a standing capability.
+	//
+	// Nothing in this package consults it, for ErrNoStanding's reason and by a
+	// nameable mechanism: the composition asks how far somebody can see only
+	// where it rebuilds percepts, and nothing on the load-act-save path this
+	// package walks reaches that. Carried rather than invented — a package
+	// that answered "sixty feet" on the caller's behalf would be deciding a
+	// rule about light it cannot see (rpg-toolkit#1111, rpg-toolkit#1033).
+	ErrNoSight = errors.New("resolution: no sight capability")
+
 	// ErrNoMachine indicates an interaction with nothing to resolve. Distinct
 	// from a machine that finishes immediately, which is legal.
 	ErrNoMachine = errors.New("resolution: no machine")
