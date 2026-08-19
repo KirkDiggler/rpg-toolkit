@@ -744,6 +744,10 @@ func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, hei
 // Shared by NewEncounter and LoadEncounter, and carries NO verb prefix in its
 // errors for the reason buildValidRoomGrids' doc comment gives: each caller
 // wraps its own.
+//
+// Both seams run buildValidRoomGrids first, which is what lets this read the
+// family off rooms[0] alone: W1 gives every room in a field the same one, and a
+// mixed field never reaches here.
 func compileCanvas(rooms []RoomInput) (*spatial.BasicRoom, error) {
 	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
 	width, height, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax)
