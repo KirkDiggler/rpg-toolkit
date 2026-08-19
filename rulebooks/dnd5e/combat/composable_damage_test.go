@@ -43,6 +43,8 @@ func (s *ComposableDamageTestSuite) TestFlatNecroticFeatureDoesNotDoubleOnCritic
 	s.Require().NotNil(feature, "the synthetic feature must append typed necrotic damage")
 	s.Equal(5, feature.FlatBonus, "a +5 Charisma modifier contributes five, not a doubled ten")
 	s.False(feature.IsCritical, "a flat-only feature component does not double on a critical")
+	s.True(got.featurePresentAtConditions,
+		"StageFeatures must append the feature component before StageConditions applies defenses")
 
 	weapon := componentBySourceAndType(got.components, dnd5eEvents.DamageSourceWeapon, damage.Slashing)
 	s.Require().NotNil(weapon)
@@ -70,14 +72,16 @@ func (s *ComposableDamageTestSuite) TestFlatNecroticFeatureCanExpressMinimumOne(
 }
 
 type foldedPactLongsword struct {
-	components []dnd5eEvents.DamageComponent
-	instances  []combat.DamageInstanceInput
-	total      int
+	components                 []dnd5eEvents.DamageComponent
+	instances                  []combat.DamageInstanceInput
+	total                      int
+	featurePresentAtConditions bool
 }
 
 func (s *ComposableDamageTestSuite) foldCriticalPactLongsword(strengthModifier, charismaModifier int) foldedPactLongsword {
 	s.installFlatNecroticFeature(charismaModifier)
-	s.installTypeSpecificDefenses()
+	featurePresentAtConditions := false
+	s.installTypeSpecificDefenses(&featurePresentAtConditions)
 
 	event := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
 		WeaponDamageDice: "1d8",
@@ -109,9 +113,10 @@ func (s *ComposableDamageTestSuite) foldCriticalPactLongsword(strengthModifier, 
 
 	instances, total := combat.FinalDamage(folded.Components)
 	return foldedPactLongsword{
-		components: folded.Components,
-		instances:  instances,
-		total:      total,
+		components:                 folded.Components,
+		instances:                  instances,
+		total:                      total,
+		featurePresentAtConditions: featurePresentAtConditions,
 	}
 }
 
@@ -133,11 +138,12 @@ func (s *ComposableDamageTestSuite) installFlatNecroticFeature(charismaModifier 
 	s.Require().NoError(err)
 }
 
-func (s *ComposableDamageTestSuite) installTypeSpecificDefenses() {
+func (s *ComposableDamageTestSuite) installTypeSpecificDefenses(featurePresentAtConditions *bool) {
 	_, err := dnd5eEvents.DamageChain.On(s.bus).SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.DamageChainEvent, c chain.Chain[*dnd5eEvents.DamageChainEvent]) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 			err := c.Add(combat.StageConditions, "test_lifedrinker_type_defenses",
 				func(_ context.Context, event *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+					*featurePresentAtConditions = componentBySourceAndType(event.Components, dnd5eEvents.DamageSourceFeature, damage.Necrotic) != nil
 					event.Components = append(event.Components,
 						dnd5eEvents.DamageComponent{
 							Source:     dnd5eEvents.DamageSourceCondition,
