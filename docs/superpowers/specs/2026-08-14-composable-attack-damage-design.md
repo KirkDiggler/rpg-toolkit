@@ -38,9 +38,11 @@ the design.
 - Resistance, vulnerability, and immunity apply independently to each damage
   type through the existing `combat.FinalDamage` arithmetic.
 
-ADR-0036 is still proposed and describes a conflicting variant in which the
-ooze's acid dice do not crit. Implementation must update that proposed ADR to
-the decisions above before code adopts the new model.
+ADR-0036 is superseded by this design. Its selective-critical variant conflicts
+with SRD 5.1 because the ooze's acid dice are damage dice of the attack and
+therefore double on a critical hit. The ADR, decision index, and living combat
+overview are reconciled in the same documentation change as this specification;
+implementation has one authoritative rule to follow.
 
 ## Scope
 
@@ -125,6 +127,15 @@ randomness. Compiler constructors return invalid content as `ErrBadAttack` (or
 the package-equivalent invalid-argument error) with the pool index and notation.
 No partial rolling or partial application is allowed.
 
+`AttackProfile` validation also enforces its cross-field ability invariant. A
+profile with a non-empty `AbilityUsed` must have exactly one
+`AddsAttackAbilityModifier` pool; `AbilityModifier` may legitimately be zero.
+A profile with an empty `AbilityUsed` must have `AbilityModifier == 0` and no
+marked pool. Character compilation produces the first shape. Monster
+compilation produces the second. Hand-built or decoded profiles that mix the
+shapes are rejected before rolling, so an ability modifier cannot be silently
+dropped.
+
 ## Persisted Monster Action Migration
 
 `damage_dice` and `damage_type` are persisted fields inside
@@ -167,6 +178,28 @@ readiness. If an external consumer is discovered that cannot migrate in the
 same release, writers dual-write for one explicitly bounded compatibility
 release and removal is tracked before merge.
 
+`primaryAttackSnapshot` implements the same new-first contract without calling
+an action loader:
+
+1. Its private decode shape includes both `damage` and the legacy pair.
+2. A non-empty `damage` slice is authoritative. It is validated, and invalid
+   canonical data makes that action ineligible; the reader never falls back to
+   stale legacy fields beside invalid new data.
+3. With no canonical slice, both legacy fields must be present and valid. A
+   partial, malformed, or unknown pair makes that action ineligible.
+4. The singular snapshot projects the pool marked
+   `AddsAttackAbilityModifier`, or the first pool when none is marked. It
+   reconstructs `DamageDice` deterministically as pure dice followed by the
+   signed `FlatBonus` when non-zero (`1d8+2`, `1d8-1`, or `1d8`). `DamageType`
+   comes from the same pool.
+5. The first eligible action wins exactly as today. A valid projected notation
+   remains non-empty, preserving opportunity-attack readiness for
+   canonical-only monster data.
+
+This projection is deliberately lossy and exists only for the legacy flat
+snapshot. Real resolution compiles every canonical pool from hydrated action
+data.
+
 The legacy scimitar receives a dedicated converter: its type is slashing, its
 fused notation supplies the flat bonus, and its separate historical
 `DamageBonus` must not be added again without a persisted fixture proving that
@@ -204,6 +237,14 @@ The ability modifier remains outside `Damage.FlatBonus`. `Strike` creates the
 ability-source component on the pool marked `AddsAttackAbilityModifier`, which
 preserves Martial Arts replacement, two-weapon behavior, and transparent combat
 breakdowns.
+
+Versatile remains a weapon property rather than a second always-active damage
+pool. It identifies the marked primary pool and its two-handed replacement dice.
+When the existing grip selection chooses two hands, `AttackFromCharacter`
+copies the canonical slice and replaces only that pool's `Dice`; its type,
+intrinsic flat bonus, and properties are unchanged. Other intrinsic pools are
+not stepped up. A versatile declaration without exactly one marked primary pool
+is invalid.
 
 Monster compilers copy authoritative canonical pools and leave `AbilityUsed`
 empty and `AbilityModifier` zero. Static compilation occurs before the bus
@@ -245,12 +286,20 @@ Flat-only ability and feature components use false. The chain-level
 `IsCritical` continues to describe the strike outcome for rules that react to a
 critical hit.
 
+Dice-based feature contributions made during the fold use the chain-level
+critical result. Sneak Attack rolls its eligible dice once on an ordinary hit
+and twice on a critical hit, emits one typed feature component containing both
+sets of rolls, and sets that component's `IsCritical` true only when its dice
+doubled. Brutal Critical is different: it contributes the extra weapon die
+granted because the hit is critical, but that newly granted die is rolled once;
+its component records `IsCritical` false because its own dice were not doubled.
+
 ## Damage-Chain Semantics
 
 Every weapon component carries its own dice notation and properties. This
 removes the current dependence on one `DamageChainEvent.WeaponDamage` string.
 
-The event retains narrowly named primary metadata derived from the pool marked
+The event gains narrowly named primary metadata derived from the pool marked
 `AddsAttackAbilityModifier`:
 
 ```go
@@ -272,6 +321,17 @@ explicitly inherit the ordinary weapon die or type:
   `DamageSourceFeature` component at `StageFeatures`; it does not inherit either
   primary field.
 
+During the compatibility migration, the existing singular `WeaponDamage` and
+`DamageType` fields remain deprecated read-only mirrors populated from
+`WeaponDamageDice` and `WeaponDamageType` by the event constructor. Canonical
+components and the new primary fields are the sole source of truth; subscribers
+must not mutate either mirror. The same change migrates Great Weapon Fighting,
+Brutal Critical, Martial Arts, Rage, Sneak Attack, Dueling, and Two-Weapon
+Fighting to the new primary metadata or typed components as appropriate. Rage
+resistance reads each final component's type rather than the singular mirror.
+The mirrors may be removed only after a repository-wide consumer search is
+clean, in a separately identified breaking release.
+
 Effective advantage is computed as advantage present and disadvantage absent.
 The damage event must not set `HasAdvantage` merely because an advantage source
 survived alongside a canceling disadvantage source.
@@ -292,6 +352,12 @@ type StrikeOutcome struct {
 `combat.FinalDamage` remains the sole multiplier arithmetic. `Strike` stores its
 typed result, converts it once for `ApplyDamage`, and applies every instance in
 one call.
+
+Typed evidence is guaranteed through `StrikeOutcome`. The current encounter
+record and session beat accept only named integers, so this design keeps their
+existing aggregate `ValueAmount` representation; it does not claim that typed
+instances survive into that schema. Carrying typed damage into encounter
+history requires a separately designed, versioned outcome schema.
 
 `Strike` does not publish or redesign the legacy `DamageReceivedEvent`. That
 topic currently has conflicting instruction and notification subscribers and
@@ -334,14 +400,25 @@ Tests follow the repository's testify suite pattern and cover:
 15. Bludgeoning vulnerability plus poison immunity on one strike.
 16. Great Weapon Fighting rerolling only the marked primary component with its
     own notation.
-17. Primary-pool Martial Arts and Brutal Critical behavior.
+17. Primary-pool Martial Arts and Brutal Critical behavior, including Brutal
+    Critical's granted die being rolled once with component `IsCritical=false`.
 18. Rage and Sneak Attack inheriting the primary weapon type.
-19. Advantage plus disadvantage rolling straight and not granting Sneak Attack
+19. Sneak Attack dice rolling twice on a critical hit with component
+    `IsCritical=true`.
+20. Advantage plus disadvantage rolling straight and not granting Sneak Attack
     solely through canceled advantage.
-20. Typed instances and components surviving into `StrikeOutcome` and the
-    session beat.
-21. A synthetic Lifedrinker-shaped flat necrotic feature contribution.
-22. Encounter opportunity-attack readiness from canonical action damage.
+21. Typed instances and components surviving into `StrikeOutcome`, while the
+    session beat continues to record aggregate damage.
+22. A synthetic Lifedrinker-shaped flat necrotic feature contribution.
+23. Encounter opportunity-attack readiness from canonical action damage,
+    including new-first precedence, invalid canonical data without legacy
+    fallback, primary-pool projection, and positive/zero/negative flat bonuses.
+24. One-handed and two-handed versatile attacks changing only the marked
+    primary pool.
+25. Compatibility mirrors remaining derived and Dueling, Two-Weapon Fighting,
+    and Rage no longer treating them as authoritative.
+26. `AttackProfile` rejecting missing, duplicate, and ability-less marker
+    combinations without consuming randomness.
 
 ## Module and Release Order
 
@@ -349,13 +426,21 @@ The repository's Go modules consume published sibling versions unless local
 overrides are installed. Development and release proceed inside-out:
 
 1. Modify and test `rulebooks/dnd5e`.
-2. Use an uncommitted `go.work` or temporary `replace` while resolution consumes
-   the local D&D module.
+2. Use an uncommitted `go.work` or temporary `replace` while downstream modules
+   consume local changes.
 3. Modify and test `rulebooks/dnd5e/resolution`.
-4. Modify and test `rulebooks/dnd5e/session` and affected encounter modules
-   against local dependencies.
-5. Run targeted and full module suites plus lint.
-6. Remove every `go.work` and `replace` before committing or merging.
-7. Publish and update versions in dependency order.
+4. Modify and test the top-level `encounter` module's snapshot migration against
+   local `rulebooks/dnd5e`.
+5. Modify and test `rulebooks/dnd5e/session` against local
+   `rulebooks/dnd5e`, `rulebooks/dnd5e/resolution`, and its existing
+   `rulebooks/dnd5e/encounter` dependency. The latter requires no schema change
+   for typed damage because the beat remains aggregate.
+6. Run targeted and full module suites plus lint.
+7. Remove every `go.work` and `replace` before committing or merging.
+8. Publish `rulebooks/dnd5e`; update, test, and publish
+   `rulebooks/dnd5e/resolution` and the top-level `encounter` module against that
+   version; then update, test, and publish `rulebooks/dnd5e/session` against the
+   published D&D and resolution versions. Publish `rulebooks/dnd5e/encounter`
+   only if implementation reveals an actual change in that module.
 
 No committed module may contain a local `replace` directive or `go.work` file.

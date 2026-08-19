@@ -4,8 +4,10 @@ This is the living reference for anyone working in `rulebooks/dnd5e/combat/`.
 It explains how an attack flows from input to applied damage and where each
 type lives. It is *not* a decision record — for the decisions behind the damage
 chain see [ADR-0026](../../../docs/adr/0026-damage-application-via-event-chain.md),
-and for the additional-damage / selective-crit extension see
-[ADR-0036](../../../docs/adr/0036-additional-damage-selective-crit.md).
+and for the superseded additional-damage / selective-crit proposal see
+[ADR-0036](../../../docs/adr/0036-additional-damage-selective-crit.md). Current
+multi-pool and critical-hit direction lives in the
+[Composable Attack Damage Design](../../../docs/superpowers/specs/2026-08-14-composable-attack-damage-design.md).
 
 ## The two-phase attack resolution
 
@@ -54,10 +56,10 @@ encounter/  (SDK)           AttackInput{AttackerDamageDice, AttackerDamageType, 
 flowchart TD
     subgraph P1["phase 1 - ResolveAttackHit (attack_phases.go)"]
         direction LR
-        AI["AttackInput<br/>Weapon (1d8 bludgeoning),<br/>Roller, EventBus, IDs<br/>v1: AdditionalDamage []DamageComponentSpec"]
+        AI["AttackInput<br/>Weapon (1d8 bludgeoning),<br/>Roller, EventBus, IDs"]
         R1["roll d20 -> AttackRoll"]
         AC["AttackChain: advantage,<br/>pack tactics, crit threshold"]
-        CTX["AttackContext{AttackRoll, AbilityMod,<br/>CriticalThreshold, Weapon, IsMelee}<br/>v1: + AdditionalDamage"]
+        CTX["AttackContext{AttackRoll, AbilityMod,<br/>CriticalThreshold, Weapon, IsMelee}"]
         AI --> R1 --> AC --> CTX
     end
 
@@ -68,13 +70,12 @@ flowchart TD
         HIT["hit? crit? vs effectiveAC"]
         ROLL["parse Weapon.Damage -> Pool<br/>roll crit?2:1 -> weaponComponent"]
         ABIL["abilityComponent<br/>FlatBonus=AbilityMod, never doubled"]
-        ADD["v1: each AdditionalDamage spec<br/>roll ONCE -> DamageComponent<br/>{Type, IsCritical=false}"]
-        HIT --> ROLL --> ABIL --> ADD
+        HIT --> ROLL --> ABIL
     end
 
     subgraph CH["ResolveDamage - the chain (combat/damage.go)"]
         direction LR
-        CE["DamageChainEvent{Components:<br/>weapon, ability, additional}"]
+        CE["DamageChainEvent{Components:<br/>weapon, ability, feature additions}"]
         ST["staged chain Base->Features-><br/>Conditions->Equipment->Final<br/>rage, sneak attack, GWF reroll,<br/>resist x0.5, vuln x2, immune x0"]
         CALC["calculateFinalDamage: group by Type,<br/>apply multipliers -><br/>[]DamageInstanceInput{int}  dice->INTS"]
         TOTAL["TotalDamage + FinalComponents"]
@@ -97,7 +98,7 @@ flowchart TD
 
     CTX --> WIN
     WIN --> HIT
-    ADD --> CE
+    ABIL --> CE
     TOTAL --> AR
     DRE --> HP
 ```
@@ -124,12 +125,12 @@ flowchart TD
    new resistance/vulnerability machinery — acid resistance will still halve the
    acid component for free.
 
-3. **Crit doubling is the one pool-level spot.** Everything downstream of
-   `ApplyAttackOutcome` is already component-aware. The only place that treats
-   damage as a single pool is `ApplyAttackOutcome` itself, where
-   `rollDamageDice(pool, roller, 2)` rolls the weapon's one pool twice on a crit.
-   This is why selective crit (some pools double, some don't) is a change to
-   `ApplyAttackOutcome` only.
+3. **The shipped crit roll is still singular.** Everything downstream of
+   `ApplyAttackOutcome` is already component-aware, but the currently shipped
+   entry path rolls only `Weapon.Damage`. Do not extend that singular field with
+   ADR-0036's abandoned `AdditionalDamage` carrier. The planned replacement
+   compiles an ordered damage array into `AttackProfile`, and `Strike` rolls each
+   eligible pool under SRD critical-hit rules before one component-aware fold.
 
 ## How to trace a monster attack
 
@@ -154,21 +155,13 @@ deal the wrong damage," the answer is almost always in `ApplyAttackOutcome`
 (phase 2) or a condition subscribed to the damage chain — not in the monster
 action that published the event.
 
-## v1 extension: additional damage
+## Planned extension: composable attack damage
 
-ADR-0036 adds an optional `AdditionalDamage []DamageComponentSpec` to
-`AttackInput`, threaded onto `AttackContext` and consumed by
-`ApplyAttackOutcome`. Each spec is a dice pool of a single damage type, rolled
-**once** and **never doubled on a critical hit** — the rule the ooze's pseudopod
-needs (bludgeoning crits, acid does not). The weapon's own pool keeps its
-existing crit semantics. The damage chain and `calculateFinalDamage` are
-unchanged; resistance/vulnerability still apply per type as today.
-
-```go
-// DamageComponentSpec is one intrinsic rider damage pool an attack deals on
-// a hit. It is rolled once and never doubled on a critical hit.
-type DamageComponentSpec struct {
-    Dice string      // "1d6"
-    Type damage.Type // damage.Acid
-}
-```
+ADR-0036's `AdditionalDamage` proposal is superseded. The approved design uses
+an ordered canonical damage array compiled into `AttackProfile`, then resolved
+as one strike, one damage fold, and one application. Under SRD 5.1 every
+eligible damage die of the attack rolls twice on a critical hit, including the
+gray ooze's acid dice and Sneak Attack dice. A pool rolls once only when it has
+an explicit `DoesNotCrit` property. See the composable attack-damage design for
+the migration and implementation contract; this overview continues to describe
+the currently shipped singular combat path until that work lands.

@@ -4,9 +4,17 @@ Date: 2026-01-20
 
 ## Status
 
-Proposed
+Superseded by [Composable Attack Damage Design](../superpowers/specs/2026-08-14-composable-attack-damage-design.md)
 
 Companion to [ADR-0026: Damage Application via Event Chain](0026-damage-application-via-event-chain.md).
+
+> **Supersession note (2026-08-19):** This proposed selective-critical variant
+> was never the repository's final rules decision. The approved composable
+> damage design follows SRD 5.1: all eligible damage dice of the attack,
+> including intrinsic secondary pools and Sneak Attack dice, roll twice on a
+> critical hit. Only a pool with an explicit `DoesNotCrit` exception rolls once.
+> The remainder of this ADR is retained as historical context, not current
+> implementation guidance.
 
 ## Context
 
