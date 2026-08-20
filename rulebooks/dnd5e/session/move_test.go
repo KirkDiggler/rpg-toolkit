@@ -303,23 +303,30 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	// Alice walks to the threshold itself.
+	// Alice walks to a threshold on the seam — the corridor's last column,
+	// ROW ONE, because the scene needs her standing somewhere that has a vault
+	// neighbour which is not the doorway.
+	//
+	// She used to walk straight along row 0 to (5,0). That stopped working
+	// when rpg-toolkit#1141 corrected the offset schemes: from (5,0) the ONLY
+	// adjacent vault cell is now the doorway itself, so there is no wrong step
+	// to take from there and the scenario cannot be built. Row 1 has one.
+	//
+	// The path is computed rather than eyeballed — a breadth-first walk over
+	// the corridor's real cells, around the prop at local (1,1).
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
 		Path: []spatial.Position{
-			hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0),
+			hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(3, 1), hexCell(4, 1), hexCell(5, 1),
 		},
 	})
 	s.Require().NoError(err)
 
-	// (3,-1) is a vault cell and an axial neighbour of the threshold she is
-	// standing on — adjacent, in the next room, and joined to nothing. The
-	// doorway is at (3,0), one cell over.
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
-		// The vault's column 6, one row down: a real cell, a genuine neighbour
-		// of the threshold she is standing on, and joined to it by nothing —
-		// the gate is on row 0.
+		// The vault's column 6, row 1: a real cell, a genuine neighbour of the
+		// threshold she is standing on, and joined to it by nothing — the gate
+		// is on row 0. (This cell is unchanged; only the threshold moved.)
 		Path: []spatial.Position{hexCell(6, 1)},
 	})
 	s.Require().Error(err)
