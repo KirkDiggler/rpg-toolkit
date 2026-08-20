@@ -172,8 +172,6 @@ func kindOf(payload []byte) EventKind {
 	switch beat.Beat {
 	case "moved":
 		return EventMoved
-	case "traversed":
-		return EventTraversed
 	case "joined":
 		return EventJoined
 	case "exited":

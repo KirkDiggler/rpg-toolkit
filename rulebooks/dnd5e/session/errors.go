@@ -149,21 +149,19 @@ var (
 	// leaves the party somewhere nobody chose.
 	ErrBrokenPath = errors.New("path is not a walk")
 
-	// ErrNoCrossing is returned by Move when a step lands in another room and
-	// no doorway joins it to the cell the walker is standing on.
+	// ErrLocked is returned when a door refuses to open because it is locked.
 	//
-	// Distinct from ErrBrokenPath, which means the two cells are not adjacent
-	// at all. These are different author mistakes: a broken path is arithmetic
-	// a caller can check against the map it already has, while two rooms may
-	// TOUCH without a door between them (W2 permits it), so a pair of cells can
-	// be perfectly adjacent and still have nothing to walk through. That second
-	// case is invisible to a client reading only the Atlas's cells — it is in
-	// the doorway list or it is nowhere — which is exactly why it earns a
-	// sentinel of its own rather than being folded into "not a walk".
+	// A fiction beat, not a defect: the party found the way and the way is
+	// shut, which is a thing to tell a player and a reason to go looking for a
+	// key or roll against the DC. It earns a sentinel of its own for that
+	// reason — a host that could only see "bad position" would have nothing to
+	// say and would send somebody hunting a bug in coordinates that are fine.
 	//
-	// Distinct from ErrBadPosition too: "there is no cell there" and "there is
-	// no way there from here" send whoever reads them to different places.
-	ErrNoCrossing = errors.New("no doorway joins those cells")
+	// NOT yet raised for a walk INTO a locked door. The composition refuses
+	// that with a placement error carrying the door's state as text only, so a
+	// blocked step still arrives here as ErrBadPosition (rpg-toolkit#1135).
+	// This is the translation of the door verb's own refusal until then.
+	ErrLocked = errors.New("door is locked")
 
 	// ErrNoConnection is the translation of a composition-side refusal to cross
 	// a doorway.

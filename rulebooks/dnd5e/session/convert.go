@@ -59,13 +59,22 @@ func projectGrid(shape spatial.GridShape) GridKind {
 func projectAtlas(in encounter.Atlas) Atlas {
 	out := Atlas{Doorways: make([]AtlasDoorway, 0, len(in.Doorways))}
 
-	for _, room := range in.Rooms {
-		// W1: every room in a field shares one grid family, so the last
+	for _, region := range in.Regions {
+		// W1: every region in a field shares one grid family, so the last
 		// writer wins and every writer agrees.
-		out.Grid = projectGrid(room.Grid)
-		out.Cells = append(out.Cells, room.Cells...)
-		out.Occluders = append(out.Occluders, room.Occluders...)
-		for _, b := range room.Boundaries {
+		out.Grid = projectGrid(region.Grid)
+		out.Cells = append(out.Cells, regionCells(region, in.Orientation)...)
+
+		for _, prop := range region.Props {
+			out.Props = append(out.Props, AtlasProp{
+				Ref:               prop.Ref,
+				At:                prop.At,
+				BlocksMovement:    prop.BlocksMovement,
+				BlocksLineOfSight: prop.BlocksLineOfSight,
+			})
+		}
+
+		for _, b := range region.Boundaries {
 			out.Boundaries = append(out.Boundaries, AtlasBoundary{
 				From:              b.From,
 				To:                b.To,
@@ -76,7 +85,12 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	}
 
 	sortCells(out.Cells)
-	sortCells(out.Occluders)
+	sort.Slice(out.Props, func(i, j int) bool {
+		if out.Props[i].At != out.Props[j].At {
+			return before(out.Props[i].At, out.Props[j].At)
+		}
+		return out.Props[i].Ref < out.Props[j].Ref
+	})
 	sort.Slice(out.Boundaries, func(i, j int) bool {
 		if out.Boundaries[i].From != out.Boundaries[j].From {
 			return before(out.Boundaries[i].From, out.Boundaries[j].From)
@@ -90,6 +104,47 @@ func projectAtlas(in encounter.Atlas) Atlas {
 			From:       d.FromCell,
 			To:         d.ToCell,
 		})
+	}
+
+	return out
+}
+
+// regionCells enumerates the cells a region owns, in dungeon-absolute space.
+//
+// A region describes itself as "a Width x Height rectangle anchored HERE"
+// rather than by listing cells (rpg-toolkit#1127), which is the whole reason
+// [encounter.Atlas] reports an Orientation: on hex, the same rectangle covers
+// a different set of cells under each layout, so the frame is not optional.
+//
+// # Why the anchor is added in OFFSET space
+//
+// An authored rectangle SHEARS when it becomes axial. Adding the anchor in
+// axial instead would put that shear back one level up — two chambers anchored
+// six columns apart would land at axial distances that vary by row. Three
+// callers inside the composition got this wrong before #1131 found them, so
+// this is not a hypothetical: it is the arithmetic with a track record.
+//
+// This is a SECOND implementation of a projection the composition also owns,
+// which is a thing worth being nervous about. It is kept honest rather than
+// trusted: TestEveryProjectedCellIsOwnedByItsRegion asks the composition's own
+// RegionAt about every cell this produces, so the two answers cannot drift
+// apart without a test failing. If the composition ever exports the
+// enumeration itself, this should be deleted in favour of it.
+func regionCells(r encounter.AtlasRegion, o encounter.Orientation) []spatial.Position {
+	out := make([]spatial.Position, 0, r.Width*r.Height)
+
+	for row := 0; row < r.Height; row++ {
+		for col := 0; col < r.Width; col++ {
+			if r.Grid == spatial.GridShapeHex {
+				out = append(out, encounter.HexCellAt(o, col+int(r.Origin.X), row+int(r.Origin.Y)))
+				continue
+			}
+
+			out = append(out, spatial.Position{
+				X: r.Origin.X + float64(col),
+				Y: r.Origin.Y + float64(row),
+			})
+		}
 	}
 
 	return out

@@ -115,7 +115,7 @@ func (s *SpawnTestSuite) TestOneRefMakesManyMembers() {
 
 	first, err := s.spawn("skel-1", skeleton, spatial.Position{X: 0, Y: 0})
 	s.Require().NoError(err)
-	second, err := s.spawn("skel-2", skeleton, spatial.Position{X: 1, Y: 0})
+	second, err := s.spawn("skel-2", skeleton, hexCell(1, 0))
 	s.Require().NoError(err)
 
 	s.Equal("skel-1", first.NPC.ID)
@@ -257,18 +257,18 @@ func (s *SpawnTestSuite) TestADuplicateArrivalIsRejectedButMisreported() {
 	_, err := s.spawn("skel-1", skeleton, spatial.Position{X: 0, Y: 0})
 	s.Require().NoError(err)
 
-	_, err = s.spawn("skel-1", skeleton, spatial.Position{X: 1, Y: 0})
+	_, err = s.spawn("skel-1", skeleton, hexCell(1, 0))
 	s.Require().Error(err, "a duplicate member must be refused")
 	s.ErrorIs(err, session.ErrNoMember,
 		"today a duplicate reports as ABSENT — wrong, and upstream's to fix")
 	s.Len(s.storedNPCs(), 1, "and the refused duplicate stored no second sheet")
 
 	_, joinErr := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Position: spatial.Position{X: 8, Y: 0},
+		Session: "sess", Member: "bob", Position: hexCell(4, 2),
 	})
 	s.Require().NoError(joinErr)
 	_, joinErr = s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "bob", Position: spatial.Position{X: 8, Y: 1},
+		Session: "sess", Member: "bob", Position: hexCell(5, 2),
 	})
 	s.Require().Error(joinErr, "and the same holds through the other door")
 	s.ErrorIs(joinErr, session.ErrNoMember)

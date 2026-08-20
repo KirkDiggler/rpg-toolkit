@@ -42,9 +42,9 @@ func (walkEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.Member
 func walkWorld(t *testing.T, family spatial.GridShape) *encounter.Encounter {
 	t.Helper()
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: sightSeam{},
 		Initiative: walkOrderAsGiven{}, Standing: walkEveryoneStanding{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: canvasFor(family), Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 4, Height: 4, Grid: family, Origin: spatial.Position{X: 30, Y: 40}},
 			{ID: "annex", Width: 12, Height: 12, Grid: family, Origin: spatial.Position{X: 60, Y: 40}},
 		}},
@@ -128,4 +128,19 @@ func TestStandsAtReadsTheRosterRow(t *testing.T) {
 func TestStandsAtRefusesSomebodyWhoIsNotHere(t *testing.T) {
 	_, err := standsAt(walkWorld(t, spatial.GridShapeSquare), "nobody")
 	require.ErrorIs(t, err, ErrNoMember)
+}
+
+// canvasFor declares the canvas a walkWorld of this family needs.
+//
+// Orientation is REQUIRED on hex and must be absent on square: the composition
+// refuses a hex field that does not say which way its hexes point, because the
+// same authored rectangle covers different cells under each layout
+// (rpg-toolkit#1127). Square has no such choice to make.
+func canvasFor(family spatial.GridShape) encounter.CanvasInput {
+	canvas := encounter.CanvasInput{Void: encounter.VoidIsOpaque()}
+	if family == spatial.GridShapeHex {
+		canvas.Orientation = encounter.HexesArePointyTop()
+	}
+
+	return canvas
 }

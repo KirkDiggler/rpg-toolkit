@@ -49,18 +49,22 @@ func (s *ReadTestSuite) startWith(world *encounter.EncounterData) {
 // hexWorld is a two-room hex field with a doorway, occluders and a wall — rich
 // enough that a projection dropping any one field is visible.
 func hexWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{
 					ID: "corridor", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
-					Origin:    spatial.Position{X: 0, Y: 0},
-					Occluders: []spatial.Position{{X: 1, Y: 1}},
-					Boundaries: []spatial.Boundary{{
-						From: spatial.Position{X: -2, Y: -2}, To: spatial.Position{X: -2, Y: -1},
-						BlocksMovement: true, BlocksLineOfSight: true,
-					}},
+					Origin: spatial.Position{X: 0, Y: 0},
+					Props:  occludingProps(spatial.Position{X: 1, Y: 1}),
+					// Room-local, in the AUTHORED frame: columns 0..5, rows 0..5.
+					// This used to read (-2,-2)->(-2,-1), which was the old
+					// origin-centred rhombus reading of a hex room and is out
+					// of bounds now (rpg-toolkit#1127).
+					// The seam with the vault, open only on row 0 where the gate
+					// is. Without these the two chambers are one open space and
+					// a walker crosses anywhere along the edge.
+					Boundaries: hexSeamWalls(6, 6, 0),
 				},
 				{
 					ID: "vault", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
@@ -69,8 +73,11 @@ func hexWorld(t fataler) *encounter.EncounterData {
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "corridor", To: "vault",
-				FromPosition: spatial.Position{X: 2, Y: 0},
-				ToPosition:   spatial.Position{X: -3, Y: 0},
+				// The corridor's own LAST column meets the vault's FIRST, on a
+				// shared row — the two chambers sit side by side, six columns
+				// apart. Was (2,0)->(-3,0) under the rhombus reading.
+				FromPosition: spatial.Position{X: 5, Y: 0},
+				ToPosition:   spatial.Position{X: 0, Y: 0},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -154,8 +161,10 @@ func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
 
 	s.Equal(session.GridHex, atlas.Grid, "the grid family must survive as the wire enum")
 	s.Len(atlas.Cells, 72, "both 6x6 rooms, every cell, once each")
-	s.Require().Len(atlas.Occluders, 1, "occluders are not optional decoration")
-	s.Require().Len(atlas.Boundaries, 1, "walls must survive the projection")
+	s.Require().Len(atlas.Props, 1, "props are not optional decoration")
+	s.True(atlas.Props[0].BlocksLineOfSight, "and it must still say it blocks sight")
+	s.NotEmpty(atlas.Props[0].Ref, "and name what it is — the whole point of rpg-toolkit#1130")
+	s.Require().Len(atlas.Boundaries, 10, "every seam wall must survive the projection")
 	s.True(atlas.Boundaries[0].BlocksLineOfSight)
 	s.True(atlas.Boundaries[0].BlocksMovement)
 
@@ -290,9 +299,9 @@ func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
 // trimmedWorld builds a world whose story log has already aged past its
 // retention window, so a resume from sequence 1 can no longer be honoured.
 func trimmedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -309,7 +318,7 @@ func trimmedWorld(t fataler) *encounter.EncounterData {
 		if i%2 == 1 {
 			to = spatial.Position{X: 1, Y: 1}
 		}
-		if _, err := enc.Move(&encounter.MoveInput{Member: "alice", To: to}); err != nil {
+		if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: to}); err != nil {
 			t.Fatalf("generating beats: %v", err)
 		}
 	}

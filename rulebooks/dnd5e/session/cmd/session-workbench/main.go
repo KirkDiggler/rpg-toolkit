@@ -239,8 +239,12 @@ func drive(out *bytes.Buffer) error {
 	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
 		Session: "crypt-run", ID: "skel-1",
 		Ref: refs.Monsters.Skeleton().String(),
-		// The vault is anchored at (6,0), so its local (4,5) is (10,5) on
-		// the map — and the map is what this seam speaks.
+		// The vault is anchored at (6,0), so its local (1,1) is (7,1) on the
+		// map — and the map is what this seam speaks. It stands OFF THE
+		// ARCH'S LANE: from the threshold the open gate is a corridor of
+		// sight down row 1 and this is three rows off it, so the approach
+		// sees nothing. Stepping through puts her in the room, where the
+		// lane becomes the whole chamber.
 		Position: spatial.Position{X: 10, Y: 5},
 	})
 	if err != nil {
@@ -256,8 +260,14 @@ func drive(out *bytes.Buffer) error {
 		return err
 	}
 	fmt.Fprintln(out, "\n== the map, in dungeon-absolute space ==")
-	fmt.Fprintf(out, "   one %s map: %d cells, %d of them blocking sight, %d walls\n",
-		atlas.Grid, len(atlas.Cells), len(atlas.Occluders), len(atlas.Boundaries))
+	blocking := 0
+	for _, p := range atlas.Props {
+		if p.BlocksLineOfSight {
+			blocking++
+		}
+	}
+	fmt.Fprintf(out, "   one %s map: %d cells, %d props (%d of them blocking sight), %d walls\n",
+		atlas.Grid, len(atlas.Cells), len(atlas.Props), blocking, len(atlas.Boundaries))
 	for _, d := range atlas.Doorways {
 		fmt.Fprintf(out, "   %s: (%v,%v) kisses (%v,%v)\n",
 			d.Connection, d.From.X, d.From.Y, d.To.X, d.To.Y)
@@ -276,6 +286,17 @@ func drive(out *bytes.Buffer) error {
 	}
 	fmt.Fprintf(out, "   delivered %d events\n", walked.Delivery.Events)
 
+	// SHE REACHES THE GATE UNSEEN, and that is a claim about LIGHT rather than
+	// about walls. The arch on row 1 is open, and an opening is an opening in
+	// both directions — the vault can see out of it exactly as far as somebody
+	// can see in — so nothing here hides her except the range of what she
+	// carries. At session's four cells the skeleton is out of it until she is
+	// through; unbounded, this fight starts halfway down the antechamber and
+	// bob joins it from the far room. See sightRangeCells.
+	if walked.Formed != nil {
+		return fmt.Errorf("the approach should be unseen at torchlight, but a fight started")
+	}
+
 	fmt.Fprintln(out, "\n== and through it, into something waiting ==")
 	// A doorway is a step. The antechamber's threshold is (5,1) and the
 	// vault's is (6,1): one cell apart on the map, so this is a one-step walk
@@ -292,9 +313,7 @@ func drive(out *bytes.Buffer) error {
 	}
 
 	// The doorway is where the fight starts, and the host is told in the same
-	// response that told it about the crossing. There is no window to answer
-	// and no rule for the host to apply: the composition detected the contact,
-	// started the fight, and named the order.
+	// response that told it about the crossing.
 	if crossed.Formed == nil {
 		return fmt.Errorf("expected crossing into the vault to start a fight")
 	}
@@ -358,18 +377,38 @@ func drive(out *bytes.Buffer) error {
 func authoredCrypt() (*encounter.EncounterData, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
+		// Governs THIS construction only: once session loads the world it
+		// supplies its own sight seam, so the walk below runs on session's
+		// answer rather than this one. Matched to it anyway, so the scene
+		// reads the same however it is entered.
+		Sight: encEveryoneSees{},
 		Field: encounter.FieldInput{
+			// The space between the chambers is ROCK, which is the ordinary
+			// dungeon reading and the one that keeps this scene about the gate:
+			// with transparent void, a watcher could see into the vault around
+			// the doorway rather than through it (rpg-toolkit#1116).
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
-				{ID: "antechamber", Width: 6, Height: 6},
+				{ID: "antechamber", Width: 6, Height: 6,
+					// The seam with the vault, open only on row 1 where the gate
+					// is. Rooms used to imply this: when each chamber had its own
+					// grid, nothing crossed between them except through a declared
+					// doorway. On one canvas (rpg-toolkit#1127) two chambers side
+					// by side are one open space, so without these walls the
+					// skeletons see straight into the antechamber and the fight
+					// starts before anybody walks anywhere.
+					Boundaries: squareSeam(6, 6, 1),
+				},
 				// The vault is split by rubble with one sightline through it at
 				// y=3. Crossing the gate puts alice where both of them can be
 				// seen — sight is a LANE now (spatial v0.9.1), so she looks
 				// past the rubble's corner rather than dead down its file, and
 				// the fight that starts is the whole room's rather than one
 				// skeleton's.
-				{ID: "vault", Width: 6, Height: 6, Origin: spatial.Position{X: 6, Y: 0}, Occluders: []spatial.Position{
-					{X: 2, Y: 0}, {X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 4}, {X: 2, Y: 5},
-				}},
+				{ID: "vault", Width: 6, Height: 6, Origin: spatial.Position{X: 6, Y: 0}, Props: rubble(
+					spatial.Position{X: 2, Y: 0}, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 2, Y: 2},
+					spatial.Position{X: 2, Y: 4}, spatial.Position{X: 2, Y: 5},
+				)},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "antechamber", To: "vault",
@@ -389,4 +428,69 @@ func authoredCrypt() (*encounter.EncounterData, error) {
 	}
 	data := enc.ToData()
 	return &data, nil
+}
+
+// rubble is the vault's pile of fallen stone, one prop per cell.
+//
+// Both answers are stated rather than defaulted (rpg-toolkit#1033): rubble is
+// climbed over neither — it stops a walker and it stops a sightline — and
+// saying so here is the point, since the same call could describe a coffin
+// (walked around, seen over) by changing one word.
+func rubble(at ...spatial.Position) []encounter.PropInput {
+	blocks := true
+	out := make([]encounter.PropInput, 0, len(at))
+	for _, cell := range at {
+		out = append(out, encounter.PropInput{
+			Ref:               "rubble",
+			At:                cell,
+			BlocksMovement:    &blocks,
+			BlocksLineOfSight: &blocks,
+		})
+	}
+
+	return out
+}
+
+// encEveryoneSees gives every member the same sight radius.
+type encEveryoneSees struct{}
+
+func (encEveryoneSees) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	out := make(map[encounter.MemberID]int, len(members))
+	for _, id := range members {
+		out[id] = sightRadius
+	}
+
+	return out, nil
+}
+
+// sightRadius is how far anybody in this crypt can see, in cells.
+//
+// Four, matching session's own answer (sightRangeCells) so this scene behaves
+// the same whether it is driven through session or built directly here. Twenty
+// feet at five feet to the cell: a torch's bright light.
+//
+// It is a NUMBER and not a shrug. Unbounded, the open arch on row 1 shows the
+// whole vault from halfway down the antechamber, the fight starts before
+// anybody reaches the gate, and bob — whose entire purpose in this scene is to
+// keep exploring while alice fights — is pulled into it from the far room.
+const sightRadius = 4
+
+// squareSeam is the wall between two side-by-side square chambers, with one row
+// left open for the doorway. Room-local to the WEST chamber, where column
+// width-1 is its last and column width is the east chamber's first.
+func squareSeam(width, rows, openRow int) []spatial.Boundary {
+	out := make([]spatial.Boundary, 0, rows)
+	for row := 0; row < rows; row++ {
+		if row == openRow {
+			continue // the gate itself
+		}
+		out = append(out, spatial.Boundary{
+			From:              spatial.Position{X: float64(width - 1), Y: float64(row)},
+			To:                spatial.Position{X: float64(width), Y: float64(row)},
+			BlocksMovement:    true,
+			BlocksLineOfSight: true,
+		})
+	}
+
+	return out
 }

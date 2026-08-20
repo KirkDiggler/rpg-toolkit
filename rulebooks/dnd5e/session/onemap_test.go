@@ -42,9 +42,9 @@ func TestOneMapSuite(t *testing.T) {
 // The doorway joins hall-local (5,2) — absolute (45,22) — to annex-local (0,2)
 // — absolute (46,22).
 func offsetWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 40, Y: 20}},
 				{ID: "annex", Width: 6, Height: 6, Origin: spatial.Position{X: 46, Y: 20}},
@@ -190,7 +190,10 @@ func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 		kinds[e.Kind]++
 	}
 	s.Positive(kinds[session.EventMoved], "the cells inside the hall are moves")
-	s.Positive(kinds[session.EventTraversed], "and the one through the gate is a crossing")
+	// The step through the gate is an ordinary move now, not its own kind: the
+	// composition stopped narrating crossings separately once a crossing became
+	// an ordinary step (rpg-toolkit#1048). A client that wants to draw a door
+	// matches the step against Atlas.Doorways, which still lists every pair.
 	s.Zero(kinds[session.EventUnknown], "with nothing unnameable in between")
 }
 
@@ -234,7 +237,6 @@ func (s *OneMapSuite) TestAWalkIntoTheVoidIsRefused() {
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrBadPosition, "no room owns that cell")
-	s.NotErrorIs(err, session.ErrNoCrossing, "and it is not a doorway problem — there is nothing there")
 }
 
 // TestNothingOnThePlaySurfaceNamesARoom checks the claim structurally rather
@@ -355,10 +357,10 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 // shallowAnchoredWorld is one 10x10 room anchored at (2,3) — close enough to
 // the origin that its ABSOLUTE cells overlap its own room-local ones.
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{},
 		Standing:   encEveryoneStanding{},
-		Field: encounter.FieldInput{Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 10, Height: 10, Origin: spatial.Position{X: 2, Y: 3}},
 		}},
 		Members: []encounter.MemberInput{

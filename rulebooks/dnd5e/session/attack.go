@@ -213,6 +213,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
+		Sight:        sightSeam{},
 		Cost:         price.cost,
 		Machine: resolution.NewStrike(&resolution.StrikeInput{
 			AttackerID: in.Attacker,
