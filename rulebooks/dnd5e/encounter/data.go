@@ -122,6 +122,17 @@ type FieldData struct {
 // it is a fact of the same species as.
 type CanvasData struct {
 	Void string `json:"void"`
+
+	// Orientation is which way this field's hexes point, or empty for a
+	// square field (rpg-toolkit#1127). Carries the declaration's own word for
+	// Void's reason — a wire form meaning "the second layout" would
+	// reinterpret every old blob the day a third arrives.
+	//
+	// Omitted when empty so a square field's blob is byte-identical to what
+	// it was before orientations existed, and REQUIRED for a hex one:
+	// reloading a hex field without it would read every stored cell in the
+	// wrong frame, which is a dungeon drawn correctly and played wrong.
+	Orientation string `json:"orientation,omitempty"`
 }
 
 // RoomData mirrors RoomInput exactly to persist construction inputs — true
@@ -427,7 +438,10 @@ func (e *Encounter) ToData() EncounterData {
 
 	// Deep-copy field from stored inputs
 	fieldData := FieldData{
-		Canvas:      CanvasData{Void: string(e.void.Kind())},
+		Canvas: CanvasData{
+			Void:        string(e.void.Kind()),
+			Orientation: orientationName(e.orientation),
+		},
 		Rooms:       make([]RoomData, len(e.fieldInput)),
 		Connections: make([]ConnectionData, len(e.connectionsInput)),
 	}
@@ -791,7 +805,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	roomGrids, err := buildValidRoomGrids(roomInputs)
+	orientation, err := orientationFromData(fieldGridShape(roomInputs), data.Field.Canvas.Orientation)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	roomGrids, err := buildValidRoomGrids(roomInputs, orientation)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
@@ -800,7 +818,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	if err = validateConnectionInputs(roomInputs, roomGrids, connectionInputs); err != nil {
+	if err = validateConnectionInputs(roomInputs, roomGrids, orientation, connectionInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -812,7 +830,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	if err = validateDoorInputs(roomInputs, roomGrids, doorInputs); err != nil {
+	if err = validateDoorInputs(roomInputs, roomGrids, orientation, doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -860,7 +878,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// spans but which is not floor. The SAME lookup the live verbs use
 		// (rpg-toolkit#1108); it used to be a twin that had to be kept in step
 		// by hand.
-		if _, owned := regionAt(roomInputs, roomGrids, cell); !owned {
+		if _, owned := regionAt(roomInputs, roomGrids, orientation, cell); !owned {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 	}
@@ -902,7 +920,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			// cell against the region NAMED BESIDE IT in the blob; with the
 			// region derived rather than stored there is nothing to
 			// cross-check, only somewhere to be (rpg-toolkit#1108).
-			if _, owned := regionAt(roomInputs, roomGrids, spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); !owned {
+			if _, owned := regionAt(roomInputs, roomGrids, orientation, spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); !owned {
 				return nil, fmt.Errorf("load encounter: outcome member %q cell is owned by no region: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
 		}
@@ -1029,6 +1047,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),
 		void:        void,
+		orientation: orientation,
 	}
 
 	// Compile the authored rooms into the canvas — the SAME compileCanvas
@@ -1038,7 +1057,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// construction).
 	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
 
-	e.canvas, err = compileCanvas(roomInputs, roomGrids, void, e.doors)
+	e.canvas, err = compileCanvas(roomInputs, roomGrids, void, orientation, e.doors)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
@@ -1123,7 +1142,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		for i, m := range data.Outcome.Members {
 			cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
-			region, _ := regionAt(roomInputs, roomGrids, cell)
+			region, _ := regionAt(roomInputs, roomGrids, orientation, cell)
 			outcome.Members[i] = MemberOutcome{
 				ID: m.ID,
 				// The region is DERIVED from the cell, through the same

@@ -326,7 +326,10 @@ func normalizeDoorEdge(e DoorEdge) DoorEdge {
 // wall drawn across nothing — #880's rule ("both endpoints must be in the floor
 // footprint"), and the reason rpg-toolkit#1116's declaration has to land first
 // for this to even be askable.
-func validateDoorInputs(rooms []RoomInput, grids map[string]spatial.Grid, doors []DoorInput) error {
+func validateDoorInputs(
+	rooms []RoomInput, grids map[string]spatial.Grid,
+	orientation Orientation, doors []DoorInput,
+) error {
 	if len(doors) == 0 {
 		return nil
 	}
@@ -345,7 +348,9 @@ func validateDoorInputs(rooms []RoomInput, grids map[string]spatial.Grid, doors 
 	walls := make(map[DoorEdge]string)
 	for _, r := range rooms {
 		for _, b := range r.Boundaries {
-			walls[normalizeDoorEdge(DoorEdge{From: b.From.Add(r.Origin), To: b.To.Add(r.Origin)})] = r.ID
+			walls[normalizeDoorEdge(DoorEdge{
+				From: absoluteOf(r, orientation, b.From), To: absoluteOf(r, orientation, b.To),
+			})] = r.ID
 		}
 	}
 
@@ -385,7 +390,7 @@ func validateDoorInputs(rooms []RoomInput, grids map[string]spatial.Grid, doors 
 					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor)
 			}
 			for _, end := range []spatial.Position{edge.From, edge.To} {
-				if _, floor := regionAt(rooms, grids, end); !floor {
+				if _, floor := regionAt(rooms, grids, orientation, end); !floor {
 					return fmt.Errorf("door %q edge endpoint (%g,%g) is not floor: %w",
 						d.ID, end.X, end.Y, ErrBadDoor)
 				}

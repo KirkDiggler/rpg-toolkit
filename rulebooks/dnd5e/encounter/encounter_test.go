@@ -425,7 +425,7 @@ func (s *EncounterTestSuite) TestSetupPropIDCrossRoomCollisionAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
 					Props: []encounter.PropInput{rubble(-5, 4)}},
@@ -724,7 +724,7 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Rooms: []encounter.RoomInput{
 					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
 				},
@@ -783,7 +783,7 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
 				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 7}},
@@ -822,7 +822,7 @@ func validHexAxialSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
 					Props: []encounter.PropInput{rubble(2, 2)}},
@@ -896,7 +896,7 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
@@ -924,7 +924,7 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
@@ -1031,7 +1031,7 @@ func validAnchoredHexSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
@@ -1298,7 +1298,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringW1BothDirections() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "square-first", Width: 5, Height: 5},
 				{ID: "hex-second", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
@@ -1367,7 +1367,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringRSpanSeparation() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-r-a", Width: 4, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-r-b", Width: 4, Height: 4, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 0, Y: 4}},
@@ -1530,7 +1530,7 @@ func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproductionHex(
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -1666,7 +1666,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Endings: []encounter.EndingInput{
@@ -1754,7 +1754,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() 
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Endings: []encounter.EndingInput{

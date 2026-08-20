@@ -359,7 +359,7 @@ func TestAHexFieldNeedsNoSuchLaw(t *testing.T) {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
 					Origin: spatial.Position{X: -20, Y: -20}},

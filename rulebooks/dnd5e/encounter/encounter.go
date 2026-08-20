@@ -105,6 +105,13 @@ type Encounter struct {
 	// there is no second answer to keep in step — see [canvasRoom].
 	void Void
 
+	// orientation is which way this field's hexes point, or nil for a square
+	// field (CanvasInput.Orientation). Kept from construction because the
+	// mask needs it on every RegionAt: a chamber's cells are the offset
+	// rectangle somebody drew, and "offset" is only meaningful with this in
+	// hand.
+	orientation Orientation
+
 	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
 	// more: a bubble exists only while a fight does, and an encounter with no
@@ -556,7 +563,7 @@ func (e *Encounter) enforceRetention() error {
 // "newencounter: %w", LoadEncounter wraps "load encounter: %w: %w" with
 // ErrInvalidData — so the SAME validator produces a message honest about
 // which seam actually rejected it.
-func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
+func buildValidRoomGrids(rooms []RoomInput, orientation Orientation) (map[string]spatial.Grid, error) {
 	seenIDs := make(map[string]bool, len(rooms))
 	grids := make(map[string]spatial.Grid, len(rooms))
 	for _, r := range rooms {
@@ -735,14 +742,14 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 	// their own; a multi-room field that leaves every Origin defaulted
 	// collides every room at (0,0) and is rejected HERE — there is no
 	// separate "origin required" check (RoomInput.Origin's doc comment).
-	if err := validateRoomsDisjoint(rooms); err != nil {
+	if err := validateRoomsDisjoint(rooms, orientation); err != nil {
 		return nil, err
 	}
 
 	// W6 — the field is one canvas: its whole absolute footprint must fit in a
 	// single grid of its family (rpg-toolkit#1106). Runs after W2, which is
 	// what makes the footprint a well-defined union in the first place.
-	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
+	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms, orientation)
 	if _, _, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax); err != nil {
 		return nil, err
 	}
@@ -753,10 +760,10 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 // fieldAbsoluteBounds returns the union of every room's absolute footprint —
 // the field's own bounding box, in dungeon-absolute cells. Requires at least
 // one room, which both construction seams check before calling.
-func fieldAbsoluteBounds(rooms []RoomInput) (qMin, qMax, rMin, rMax int) {
-	qMin, qMax, rMin, rMax = roomAbsoluteBounds(rooms[0])
+func fieldAbsoluteBounds(rooms []RoomInput, orientation Orientation) (qMin, qMax, rMin, rMax int) {
+	qMin, qMax, rMin, rMax = roomAbsoluteBounds(rooms[0], orientation)
 	for _, r := range rooms[1:] {
-		q0, q1, r0, r1 := roomAbsoluteBounds(r)
+		q0, q1, r0, r1 := roomAbsoluteBounds(r, orientation)
 		qMin, qMax = min(qMin, q0), max(qMax, q1)
 		rMin, rMax = min(rMin, r0), max(rMax, r1)
 	}
@@ -822,8 +829,11 @@ func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, hei
 // Both seams run buildValidRoomGrids first, which is what lets this read the
 // family off rooms[0] alone: W1 gives every room in a field the same one, and a
 // mixed field never reaches here.
-func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void, doors []*doorRecord) (*canvasRoom, error) {
-	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms)
+func compileCanvas(
+	rooms []RoomInput, grids map[string]spatial.Grid,
+	void Void, orientation Orientation, doors []*doorRecord,
+) (*canvasRoom, error) {
+	qMin, qMax, rMin, rMax := fieldAbsoluteBounds(rooms, orientation)
 	width, height, err := canvasSpan(rooms[0].Grid, qMin, qMax, rMin, rMax)
 	if err != nil {
 		return nil, err
@@ -849,7 +859,7 @@ func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void, 
 				blocksMovement:    *p.BlocksMovement,
 				blocksLineOfSight: *p.BlocksLineOfSight,
 			}
-			if perr := canvas.PlaceEntity(prop, p.At.Add(ri.Origin)); perr != nil {
+			if perr := canvas.PlaceEntity(prop, absoluteOf(ri, orientation, p.At)); perr != nil {
 				return nil, fmt.Errorf("prop placement: %w: %w", ErrBadPlacement, perr)
 			}
 		}
@@ -859,8 +869,8 @@ func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void, 
 		// same edge either way round and a wall has no side.
 		for _, b := range ri.Boundaries {
 			if berr := canvas.RegisterBoundary(spatial.Boundary{
-				From:              b.From.Add(ri.Origin),
-				To:                b.To.Add(ri.Origin),
+				From:              absoluteOf(ri, orientation, b.From),
+				To:                absoluteOf(ri, orientation, b.To),
 				BlocksMovement:    b.BlocksMovement,
 				BlocksLineOfSight: b.BlocksLineOfSight,
 			}); berr != nil {
@@ -881,11 +891,12 @@ func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void, 
 	}
 
 	return &canvasRoom{
-		BasicRoom: canvas,
-		void:      void,
-		rooms:     rooms,
-		grids:     grids,
-		hasVoid:   fieldHasVoid(rooms, width, height),
+		BasicRoom:   canvas,
+		void:        void,
+		rooms:       rooms,
+		grids:       grids,
+		orientation: orientation,
+		hasVoid:     fieldHasVoid(rooms, width, height),
 	}, nil
 }
 
@@ -960,7 +971,16 @@ func axisBounds(shape spatial.GridShape, dim int) (min, max int) {
 // Requires Origin to already be integral (buildValidRoomGrids' origin
 // legality runs before W2) — the int() truncation here is exact, not
 // lossy, for every Origin this is ever called with.
-func roomAbsoluteBounds(r RoomInput) (qMin, qMax, rMin, rMax int) {
+func roomAbsoluteBounds(r RoomInput, orientation Orientation) (qMin, qMax, rMin, rMax int) {
+	// A HEX chamber's footprint is the authored offset rectangle, which is a
+	// sheared parallelogram in axial space — so its bounding box comes from
+	// the shape itself rather than from an assumed rhombus
+	// (rpg-toolkit#1127). Read from hexRuns, which is O(Width) or O(Height)
+	// rather than a cell-by-cell sweep.
+	if r.Grid == spatial.GridShapeHex {
+		return hexFootprintBounds(r, orientation)
+	}
+
 	localQMin, localQMax := axisBounds(r.Grid, r.Width)
 	localRMin, localRMax := axisBounds(r.Grid, r.Height)
 	oq, or := int(r.Origin.X), int(r.Origin.Y)
@@ -979,16 +999,27 @@ func roomAbsoluteBounds(r RoomInput) (qMin, qMax, rMin, rMax int) {
 // the component-wise max of the two rooms' interval mins — the
 // lexicographically-first cell both footprints necessarily contain,
 // deterministic regardless of iteration order.
-func validateRoomsDisjoint(rooms []RoomInput) error {
+func validateRoomsDisjoint(rooms []RoomInput, orientation Orientation) error {
 	type bounds struct{ qMin, qMax, rMin, rMax int }
 	bs := make([]bounds, len(rooms))
 	for i, r := range rooms {
-		bs[i].qMin, bs[i].qMax, bs[i].rMin, bs[i].rMax = roomAbsoluteBounds(r)
+		bs[i].qMin, bs[i].qMax, bs[i].rMin, bs[i].rMax = roomAbsoluteBounds(r, orientation)
 	}
 	for i := 0; i < len(rooms); i++ {
 		for j := i + 1; j < len(rooms); j++ {
 			qOverlap := bs[i].qMin <= bs[j].qMax && bs[j].qMin <= bs[i].qMax
 			rOverlap := bs[i].rMin <= bs[j].rMax && bs[j].rMin <= bs[i].rMax
+			// THE BOX TEST IS EXACT FOR A RECTANGLE AND ONLY CONSERVATIVE FOR
+			// A SHEARED ONE (rpg-toolkit#1127), so on hex it is a fast REJECT
+			// path and never a verdict: two boxes that miss cannot share a
+			// cell, but two that meet very well might not. Deciding on the box
+			// is what refused the reference tomb outright under flat-top —
+			// `room "entrance" and room "hall" overlap at absolute cell
+			// (3, -9)` — for chambers that share no cell at all.
+			if qOverlap && rOverlap && rooms[i].Grid == spatial.GridShapeHex &&
+				!hexFootprintsOverlap(rooms[i], rooms[j], orientation) {
+				continue
+			}
 			if qOverlap && rOverlap {
 				witness := spatial.Position{
 					X: float64(max(bs[i].qMin, bs[j].qMin)),
@@ -1011,7 +1042,10 @@ func validateRoomsDisjoint(rooms []RoomInput) error {
 // that do not kiss — are not adjacent absolute cells once each is anchored
 // to its own room's Origin. Error messages carry NO verb prefix — shared
 // with LoadEncounter, same reasoning as buildValidRoomGrids' doc comment.
-func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Grid, connections []ConnectionInput) error {
+func validateConnectionInputs(
+	rooms []RoomInput, roomGrids map[string]spatial.Grid,
+	orientation Orientation, connections []ConnectionInput,
+) error {
 	roomsByID := make(map[string]RoomInput, len(rooms))
 	for _, r := range rooms {
 		roomsByID[r.ID] = r
@@ -1039,13 +1073,13 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 			return fmt.Errorf("connection %q connects room %q to itself: %w", c.ID, c.From, ErrBadConnection)
 		}
 
-		if !roomGrids[c.From].IsValidPosition(c.FromPosition) {
+		if !localIsInRoom(fromRoom, roomGrids, c.FromPosition) {
 			return fmt.Errorf("connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
 		if !isIntegralAxialPosition(roomGrids[c.From], c.FromPosition) {
 			return fmt.Errorf("connection %q from-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
 		}
-		if !roomGrids[c.To].IsValidPosition(c.ToPosition) {
+		if !localIsInRoom(toRoom, roomGrids, c.ToPosition) {
 			return fmt.Errorf("connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
 		if !isIntegralAxialPosition(roomGrids[c.To], c.ToPosition) {
@@ -1071,8 +1105,8 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 		// formula (AxialHexGrid: cube distance; SquareGrid: Chebyshev) —
 		// using the from-room's is an arbitrary but consistent choice, not
 		// a hand-rolled formula that could silently diverge from spatial's.
-		fromAbs := c.FromPosition.Add(fromRoom.Origin)
-		toAbs := c.ToPosition.Add(toRoom.Origin)
+		fromAbs := absoluteOf(fromRoom, orientation, c.FromPosition)
+		toAbs := absoluteOf(toRoom, orientation, c.ToPosition)
 		// Strict != 1, not > 1: origin legality's integrality requirement
 		// (every family) only constrains ORIGINS, not endpoints — square
 		// endpoints stay fractional-tolerant by design (RoomInput.Grid's
@@ -1232,11 +1266,23 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: field does not say what its void is (FieldInput.Canvas.Void): %w", ErrNoField)
 	}
 
+	// And which way its hexes point, if it has any (rpg-toolkit#1127).
+	// Required for a hex field and refused for a square one — see
+	// [Orientation] for why the second half is a refusal rather than a shrug.
+	//
+	// Resolved BEFORE the room list is validated, because the mask needs it:
+	// W2 measures a hex chamber's real footprint, and "footprint" is a
+	// sentence about offset columns that this answer completes.
+	orientation, err := fieldOrientation(in.Field.Rooms, in.Field.Canvas.Orientation)
+	if err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
 	// Check rooms: unique non-empty IDs, recognized grid shape. roomGrids
 	// holds each room's constructed Grid, reused below for connection
 	// bounds validation and again in the room-construction loop so a
 	// room's shape is built exactly once.
-	roomGrids, err := buildValidRoomGrids(in.Field.Rooms)
+	roomGrids, err := buildValidRoomGrids(in.Field.Rooms, orientation)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
@@ -1244,13 +1290,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Check connections: unique non-empty IDs, endpoints resolve to distinct
 	// declared rooms, endpoints in bounds (per the room's own grid) and off
 	// any prop.
-	if err = validateConnectionInputs(in.Field.Rooms, roomGrids, in.Field.Connections); err != nil {
+	if err = validateConnectionInputs(in.Field.Rooms, roomGrids, orientation, in.Field.Connections); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// Check doors: names, states, and edges that are real crossings on real
 	// floor and belong to exactly one door (rpg-toolkit#1123).
-	if err = validateDoorInputs(in.Field.Rooms, roomGrids, in.Field.Doors); err != nil {
+	if err = validateDoorInputs(in.Field.Rooms, roomGrids, orientation, in.Field.Doors); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
@@ -1290,6 +1336,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
 		connectionsInput: connectionsInput,
 		void:             in.Field.Canvas.Void,
+		orientation:      orientation,
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
@@ -1318,7 +1365,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// diverging the moment a caller reused its RoomInputs. Load needs no such
 	// care — its roomInputs are freshly converted from the blob and alias
 	// nothing (LoadEncounter's own note, and TestAliasImmunityLoadEncounter).
-	e.canvas, err = compileCanvas(e.fieldInput, roomGrids, in.Field.Canvas.Void, e.doors)
+	e.canvas, err = compileCanvas(e.fieldInput, roomGrids, in.Field.Canvas.Void, orientation, e.doors)
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
@@ -1344,7 +1391,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter member placement: member %q position out of bounds in room %q: %w", mi.ID, mi.Room, ErrBadPlacement)
 		}
 
-		if err = e.canvas.PlaceEntity(entity, mi.Position.Add(roomOrigin(in.Field.Rooms, mi.Room))); err != nil {
+		if err = e.canvas.PlaceEntity(entity, absoluteOf(roomByID(in.Field.Rooms, mi.Room), e.orientation, mi.Position)); err != nil {
 			return nil, fmt.Errorf("newencounter member placement: %w: %w", ErrBadPlacement, err)
 		}
 

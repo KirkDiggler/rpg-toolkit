@@ -78,6 +78,17 @@ type CanvasInput struct {
 	// sightline. REQUIRED — see [Void] for why there is no default to fall
 	// back on.
 	Void Void
+
+	// Orientation is which way this field's hexes point — REQUIRED for a hex
+	// field, and REFUSED for a square one, which has no orientation to
+	// declare. See [Orientation].
+	//
+	// It sits here rather than on the room because it is a fact about the
+	// MAP: every chamber in one field is drawn on one grid, and a field whose
+	// rooms could disagree about which way its cells point would be a field
+	// whose seams do not meet. That is the same reason W1 gives one grid
+	// family to a whole field rather than one per room.
+	Orientation Orientation
 }
 
 // VoidKind names what void does to a sightline, in the form the story and the
@@ -254,8 +265,9 @@ type canvasRoom struct {
 	// rooms and grids are the SAME slices and maps the encounter holds, so
 	// asking this room what is floor and asking [Encounter.RegionAt] are one
 	// question — see IsLineOfSightBlocked.
-	rooms []RoomInput
-	grids map[string]spatial.Grid
+	rooms       []RoomInput
+	grids       map[string]spatial.Grid
+	orientation Orientation
 
 	// hasVoid is whether this field has any cell no chamber owns — see
 	// fieldHasVoid. Purely a cost decision: where there is no void, opaque and
@@ -273,11 +285,14 @@ type canvasRoom struct {
 // count the same way: an AxialHexGrid of Width x Height holds Width*Height
 // integer (Q,R) pairs, exactly as a square grid holds Width*Height cells.
 //
-// THIS IS NOT THE FLOOR MASK, which Kirk's ruling (4) on rpg-toolkit#1105
-// deferred until a caller forces one. A mask is a per-cell structure with two
-// unanswered questions riding on it — computed per load or persisted, and
-// whether it belongs in tools/spatial — and this is one derived bit, computed
-// from numbers already in hand, never stored and never persisted. The measured
+// IT COUNTS THE MASK, not a rhombus (rpg-toolkit#1127). Width*Height is the
+// authored floor count in BOTH families, because a chamber is an offset
+// rectangle either way and an offset rectangle has exactly Width*Height cells
+// however it shears when it becomes axial. What changed under hex is the other
+// side of the comparison: the canvas span is origin-centred and covers the
+// sheared footprint, so it is much larger than the floor and this reports void
+// where the rhombus reading used to report none. That is the honest answer —
+// see orientation.go for what the rhombus reading was getting wrong. The measured
 // case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
 // deleting this check costs a sight refresh 121 ms against transparent's 30 ms —
 // and 46.7 MB of allocation against 24.2 MB — every byte of it spent proving
@@ -349,7 +364,7 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	if c.hasVoid && c.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
-			if _, floor := regionAt(c.rooms, c.grids, cell); !floor {
+			if _, floor := regionAt(c.rooms, c.grids, c.orientation, cell); !floor {
 				return true
 			}
 		}

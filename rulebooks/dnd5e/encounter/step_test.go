@@ -514,7 +514,7 @@ func (s *StepSuite) TestGridReportsTheFieldsFamily() {
 func (s *StepSuite) TestGridReportsAHexFieldAsHex() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Rooms: []encounter.RoomInput{
 			{ID: stepWest, Width: 6, Height: 6, Grid: spatial.GridShapeHex,
 				Origin: stepWestOrigin},
 		}},

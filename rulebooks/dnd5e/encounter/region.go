@@ -73,7 +73,7 @@ type RegionID = string
 // in absolute space. Standing in one is a fact about the doorway, not about
 // which region holds you.
 func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
-	return regionAt(e.fieldInput, e.roomGrids, cell)
+	return regionAt(e.fieldInput, e.roomGrids, e.orientation, cell)
 }
 
 // MembersIn reports who is standing in a region, in the same stable order (and
@@ -142,17 +142,21 @@ func (e *Encounter) MembersIn(region RegionID) ([]Member, error) {
 // so the predicate answers the question it claims to. HEX ONLY: square is
 // fractional-tolerant by design, and a square member standing between cells is
 // really in the region whose span holds them. (Found by Copilot on PR #1109.)
-func regionAt(rooms []RoomInput, grids map[string]spatial.Grid, cell spatial.Position) (RegionID, bool) {
+func regionAt(
+	rooms []RoomInput, grids map[string]spatial.Grid, orientation Orientation, cell spatial.Position,
+) (RegionID, bool) {
 	for _, ri := range rooms {
 		grid, ok := grids[ri.ID]
 		if !ok {
 			continue
 		}
-		local := cell.Subtract(ri.Origin)
-		if !isIntegralAxialPosition(grid, local) {
+		if !isIntegralAxialPosition(grid, cell.Subtract(ri.Origin)) {
 			continue
 		}
-		if !grid.IsValidPosition(local) {
+		// footprintHolds is THE mask (rpg-toolkit#1127): for a square room
+		// the rectangle it always was, for a hex one the authored offset
+		// rectangle rather than the rhombus that contains it.
+		if !footprintHolds(ri, orientation, grids, cell) {
 			continue
 		}
 		return ri.ID, true

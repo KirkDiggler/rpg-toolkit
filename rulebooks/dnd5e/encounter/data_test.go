@@ -73,7 +73,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
 					Props:      []encounter.PropInput{rubble(1, 2)},
@@ -303,7 +303,7 @@ func (s *DataTestSuite) TestRoomGridShapeSurvivesReload() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Rooms: []encounter.RoomInput{
 					{ID: "hex-room", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
 				},
@@ -1494,7 +1494,7 @@ func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 func (s *DataTestSuite) TestLoadPropIDCrossRoomCollisionAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
-			Canvas: encounter.CanvasData{Void: "opaque"},
+			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridTypeHex,
 					Origin: &encounter.PositionData{X: 0, Y: 0}, Props: []encounter.PropData{rubbleData(-5, 4)}},
@@ -1857,7 +1857,7 @@ func (s *DataTestSuite) TestLoadRoomEmptyIDReportsIDDefectNotOrigin() {
 func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
-			Canvas: encounter.CanvasData{Void: "opaque"},
+			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 			},
@@ -1918,7 +1918,7 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
-			Canvas: encounter.CanvasData{Void: "opaque"},
+			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 7}},
@@ -1948,7 +1948,7 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 func validHexAxialData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
-			Canvas: encounter.CanvasData{Void: "opaque"},
+			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0},
 					Props: []encounter.PropData{rubbleData(2, 2)}},
@@ -2028,7 +2028,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 func validAnchoredHexData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
-			Canvas: encounter.CanvasData{Void: "opaque"},
+			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
 				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 6, Y: -5}},
@@ -2445,7 +2445,7 @@ func (s *DataTestSuite) TestLoadEndingTriggerValidation() {
 func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
-			Canvas: encounter.CanvasData{Void: "opaque"},
+			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms:  []encounter.RoomData{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}}},
 		},
 		Endings: []encounter.EndingData{
@@ -2497,7 +2497,7 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
