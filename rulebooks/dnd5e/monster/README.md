@@ -90,7 +90,6 @@ Do not infer behavior from a config field alone:
 - melee/ranged attack bonus, damage dice, and damage type serialize and are used
   by current encounter seeding snapshots, but the action's `Activate` method is
   event publication, not standalone damage resolution;
-- `BiteConfig.KnockdownDC` round-trips, but bite knockdown is explicitly not
   implemented;
 - ranged activation enforces long range, but normal-range/long-range
   disadvantage behavior is not implemented there;

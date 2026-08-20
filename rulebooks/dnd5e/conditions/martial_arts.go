@@ -210,8 +210,6 @@ func (ma *MartialArtsCondition) onDamageChain(
 			component.FinalDiceRolls = append([]int(nil), newRolls...)
 			component.IsCritical = times == 2
 
-			// Update the weapon damage notation in the event for reference
-			e.WeaponDamageDice = martialArtsDice
 		}
 
 		// If DEX is higher than STR, replace ability modifier for monk weapons and unarmed strikes

@@ -155,6 +155,10 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 
 	// Character is eligible for Dueling bonus - add +2 to damage at StageFeatures
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+		primary := primaryWeaponComponent(e)
+		if primary == nil {
+			return e, nil
+		}
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 			Source:            dnd5eEvents.DamageSourceFeature,
 			SourceRef:         refs.Conditions.FightingStyleDueling(),
@@ -162,7 +166,7 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 			FinalDiceRolls:    nil,
 			Rerolls:           nil,
 			FlatBonus:         2,
-			DamageType:        e.WeaponDamageType,
+			DamageType:        primary.DamageType,
 			IsCritical:        false,
 		})
 		return e, nil

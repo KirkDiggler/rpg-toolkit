@@ -422,11 +422,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		}
 	}
 
-	var primaryDice string
-	var primaryType damage.Type
 	if primary != nil {
-		primaryDice = primary.Dice
-		primaryType = primary.Type
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source:     dnd5eEvents.DamageSourceAbility,
 			SourceRef:  attackAbilityRef(m.in.Attack.AbilityUsed),
@@ -440,14 +436,12 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		len(m.outcome.Folded.DisadvantageSources) == 0
 
 	return foldDamage(dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
-		AttackerID:       m.in.AttackerID,
-		TargetID:         m.in.TargetID,
-		Components:       components,
-		WeaponDamageDice: primaryDice,
-		WeaponDamageType: primaryType,
-		IsCritical:       m.outcome.Critical,
-		HasAdvantage:     effectiveAdvantage,
-		IsMelee:          true,
+		AttackerID:   m.in.AttackerID,
+		TargetID:     m.in.TargetID,
+		Components:   components,
+		IsCritical:   m.outcome.Critical,
+		HasAdvantage: effectiveAdvantage,
+		IsMelee:      true,
 		// Which ability swung, for the effects that predicate on it — Rage
 		// only pays out on a melee Strength attack. Empty when the compiler
 		// named none, which is a stat block's honest answer.

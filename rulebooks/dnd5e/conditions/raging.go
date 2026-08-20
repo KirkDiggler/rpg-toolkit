@@ -315,6 +315,10 @@ func (r *RagingCondition) onDamageChain(
 		// checking the pre-chain snapshot would let Rage's bonus survive a
 		// swap away from STR.
 		modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+			primary := primaryWeaponComponent(e)
+			if primary == nil {
+				return e, nil
+			}
 			// RAW: the rage damage bonus only applies to melee weapon attacks
 			// that use Strength (including unarmed strikes) -- not ranged or
 			// DEX-based attacks.
@@ -330,7 +334,7 @@ func (r *RagingCondition) onDamageChain(
 				FinalDiceRolls:    nil,
 				Rerolls:           nil,
 				FlatBonus:         r.DamageBonus,
-				DamageType:        e.WeaponDamageType, // Same as marked primary weapon type
+				DamageType:        primary.DamageType, // Same as marked primary weapon type
 				IsCritical:        false,
 			})
 			return e, nil

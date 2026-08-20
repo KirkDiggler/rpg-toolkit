@@ -80,9 +80,6 @@ type NewTurnManagerInput struct {
 	// Character is the combatant whose turn is being managed.
 	Character CombatCharacter
 
-	// Combatants provides lookup of all combatants for attack resolution.
-	Combatants CombatantLookup
-
 	// Room is the spatial room for movement and threat detection.
 	Room spatial.Room
 
@@ -92,12 +89,6 @@ type NewTurnManagerInput struct {
 	// Roller is the dice roller for attack and damage rolls.
 	// If nil, a default roller is used.
 	Roller dice.Roller
-
-	// MainHandWeapon provides main-hand weapon info for two-weapon fighting validation.
-	MainHandWeapon *EquippedWeaponInfo
-
-	// OffHandWeapon provides off-hand weapon info for two-weapon fighting validation.
-	OffHandWeapon *EquippedWeaponInfo
 }
 
 // StartTurnResult contains the outcome of starting a turn.
@@ -117,16 +108,13 @@ type EndTurnResult struct {
 // and publishes events for multiplayer broadcasting.
 // After EndTurn is called, the TurnManager must not be reused.
 type TurnManager struct {
-	character      CombatCharacter
-	economy        *ActionEconomy
-	combatants     CombatantLookup
-	room           spatial.Room
-	bus            events.EventBus
-	roller         dice.Roller
-	mainHandWeapon *EquippedWeaponInfo
-	offHandWeapon  *EquippedWeaponInfo
-	turnStarted    bool
-	turnEnded      bool
+	character   CombatCharacter
+	economy     *ActionEconomy
+	room        spatial.Room
+	bus         events.EventBus
+	roller      dice.Roller
+	turnStarted bool
+	turnEnded   bool
 }
 
 // NewTurnManager creates a TurnManager for managing a combatant's turn.
@@ -137,9 +125,6 @@ func NewTurnManager(input *NewTurnManagerInput) (*TurnManager, error) {
 	}
 	if input.Character == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "Character is required")
-	}
-	if input.Combatants == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "Combatants is required")
 	}
 	if input.Room == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "Room is required")
@@ -154,58 +139,18 @@ func NewTurnManager(input *NewTurnManagerInput) (*TurnManager, error) {
 	}
 
 	return &TurnManager{
-		character:      input.Character,
-		economy:        NewActionEconomy(),
-		combatants:     input.Combatants,
-		room:           input.Room,
-		bus:            input.EventBus,
-		roller:         roller,
-		mainHandWeapon: input.MainHandWeapon,
-		offHandWeapon:  input.OffHandWeapon,
+		character: input.Character,
+		economy:   NewActionEconomy(),
+		room:      input.Room,
+		bus:       input.EventBus,
+		roller:    roller,
 	}, nil
 }
 
-// buildContext creates an operation context with combat dependencies.
-// Wraps the caller's context with CombatantLookup, Room, and TwoWeaponContext.
+// buildContext creates an operation context with the movement room.
 func (tm *TurnManager) buildContext(ctx context.Context) context.Context {
-	ctx = WithCombatantLookup(ctx, tm.combatants)
 	ctx = WithRoom(ctx, tm.room)
-	ctx = WithTwoWeaponContext(ctx, &turnManagerTwoWeaponContext{
-		characterID:    tm.character.GetID(),
-		mainHandWeapon: tm.mainHandWeapon,
-		offHandWeapon:  tm.offHandWeapon,
-		economy:        tm.economy,
-	})
 	return ctx
-}
-
-// turnManagerTwoWeaponContext implements TwoWeaponContext for a single character's turn.
-type turnManagerTwoWeaponContext struct {
-	characterID    string
-	mainHandWeapon *EquippedWeaponInfo
-	offHandWeapon  *EquippedWeaponInfo
-	economy        *ActionEconomy
-}
-
-func (t *turnManagerTwoWeaponContext) GetMainHandWeapon(characterID string) *EquippedWeaponInfo {
-	if characterID != t.characterID {
-		return nil
-	}
-	return t.mainHandWeapon
-}
-
-func (t *turnManagerTwoWeaponContext) GetOffHandWeapon(characterID string) *EquippedWeaponInfo {
-	if characterID != t.characterID {
-		return nil
-	}
-	return t.offHandWeapon
-}
-
-func (t *turnManagerTwoWeaponContext) GetActionEconomy(characterID string) *ActionEconomy {
-	if characterID != t.characterID {
-		return nil
-	}
-	return t.economy
 }
 
 // StartTurn initializes the action economy and publishes a TurnStartEvent.

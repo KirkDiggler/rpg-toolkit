@@ -728,9 +728,10 @@ func (s *StrikeTestSuite) TestSameTypePoolsExposeMarkedPrimaryMetadata() {
 	s.Require().NotNil(out)
 
 	s.Equal(1, damageGathers)
-	s.Equal("1d6", captured.WeaponDamageDice,
-		"primary notation comes from the marked pool, not the first same-type pool")
-	s.Equal(damage.Piercing, captured.WeaponDamageType)
+	s.Require().Len(captured.Components, 3)
+	s.Equal("1d6", captured.Components[1].Dice,
+		"primary notation remains on the marked component, not the event envelope")
+	s.Equal(damage.Piercing, captured.Components[1].DamageType)
 }
 
 func (s *StrikeTestSuite) TestCriticalDoublesEveryEligiblePoolButNoFlatBonus() {

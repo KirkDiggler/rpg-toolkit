@@ -84,9 +84,7 @@ func (s *ComposableDamageTestSuite) foldCriticalPactLongsword(strengthModifier, 
 	s.installTypeSpecificDefenses(&featurePresentAtConditions)
 
 	event := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
-		WeaponDamageDice: "1d8",
-		WeaponDamageType: damage.Slashing,
-		IsCritical:       true,
+		IsCritical: true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,

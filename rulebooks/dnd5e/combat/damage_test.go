@@ -119,7 +119,7 @@ func (s *DealDamageTestSuite) TestValidateNoInstancesOrComponents() {
 	}
 	err := input.Validate()
 	s.Require().Error(err)
-	s.Contains(err.Error(), "Instances or Components")
+	s.Contains(err.Error(), "Instances")
 }
 
 func (s *DealDamageTestSuite) TestDealDamageBasic() {

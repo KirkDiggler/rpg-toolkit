@@ -193,6 +193,10 @@ func (s *SneakAttackCondition) onDamageChain(
 
 	// Add sneak attack damage component using DamageSourceFeature
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+		primary := primaryWeaponComponent(e)
+		if primary == nil {
+			return e, nil
+		}
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 			Source:            dnd5eEvents.DamageSourceFeature,
 			SourceRef:         refs.Features.SneakAttack(),
@@ -200,7 +204,7 @@ func (s *SneakAttackCondition) onDamageChain(
 			FinalDiceRolls:    sneakDice,
 			Rerolls:           nil,
 			FlatBonus:         0,
-			DamageType:        e.WeaponDamageType, // Sneak attack uses the marked primary weapon type
+			DamageType:        primary.DamageType, // Sneak attack uses the marked primary weapon type
 			IsCritical:        event.IsCritical,
 		})
 		return e, nil
