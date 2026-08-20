@@ -79,11 +79,11 @@ type OrientationKind string
 
 const (
 	// OrientationPointyTop is the pointy-top layout, whose offset form is
-	// odd-q: columns run straight and rows stagger.
+	// odd-r: rows run straight and columns stagger.
 	OrientationPointyTop OrientationKind = "pointy"
 
-	// OrientationFlatTop is the flat-top layout, whose offset form is odd-r:
-	// rows run straight and columns stagger.
+	// OrientationFlatTop is the flat-top layout, whose offset form is odd-q:
+	// columns run straight and rows stagger.
 	OrientationFlatTop OrientationKind = "flat"
 )
 
@@ -128,7 +128,7 @@ type Orientation interface {
 }
 
 // HexesArePointyTop declares a field's hexes pointy-top, whose offset form is
-// odd-q. The reference tomb's layout.
+// odd-r. The reference tomb's layout.
 //
 // A function rather than a package-level variable so nothing can reassign what
 // it means at runtime — [VoidIsOpaque]'s reasoning, and the save gate's before
@@ -140,7 +140,7 @@ type pointyTop struct{}
 func (pointyTop) Kind() OrientationKind           { return OrientationPointyTop }
 func (pointyTop) spatial() spatial.HexOrientation { return spatial.HexOrientationPointyTop }
 
-// HexesAreFlatTop declares a field's hexes flat-top, whose offset form is odd-r.
+// HexesAreFlatTop declares a field's hexes flat-top, whose offset form is odd-q.
 func HexesAreFlatTop() Orientation { return flatTop{} }
 
 type flatTop struct{}
@@ -266,7 +266,7 @@ func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.
 // maxFieldCells allows four million cells, so "build both footprints and
 // intersect" is a real cost on a legal field, paid at every construction. But a
 // sheared rectangle is not shapeless: along one axis it decomposes into
-// contiguous intervals, one per authored column (pointy) or row (flat), and two
+// contiguous intervals, one per authored column (flat) or row (pointy), and two
 // intervals intersect in O(1). So the whole disjointness question costs
 // O(Width) or O(Height) rather than O(Width x Height).
 //

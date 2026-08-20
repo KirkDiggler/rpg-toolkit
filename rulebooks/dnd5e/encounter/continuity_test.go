@@ -104,7 +104,7 @@ func vaultChaseHexSeamWall() []spatial.Boundary {
 //
 // The gate joins corridor (9,5) — its own last column — to vault local (0,5),
 // which is absolute column 10, row 5. Same-row neighbouring columns are
-// adjacent in odd-q for either parity, so those two cells kiss (W3) as
+// adjacent in odd-r for either parity, so those two cells kiss (W3) as
 // spatial's own conversion has it, not as a formula this fixture rolled.
 func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
