@@ -94,14 +94,14 @@ func TestMeleeReachForWeapon_ReachProperty_IsTwo(t *testing.T) {
 	require.Equal(t, 2, meleeReachForWeapon(&w))
 }
 
-func TestMeleeReachForCombatant_ProviderWithReachWeapon_IsTwo(t *testing.T) {
+func TestMeleeReachForCombatant_ReachWeapon_UsesCanonicalDefault(t *testing.T) {
 	glaive, err := weapons.GetByID(weapons.Glaive)
 	require.NoError(t, err)
 	reach := meleeReachForCombatant(meleeWeaponCombatant{weapon: &glaive})
-	require.Equal(t, 2, reach)
+	require.Equal(t, 1, reach)
 }
 
-func TestMeleeReachForCombatant_ProviderWithNoWeapon_DefaultsToOne(t *testing.T) {
+func TestMeleeReachForCombatant_NoWeapon_DefaultsToOne(t *testing.T) {
 	reach := meleeReachForCombatant(meleeWeaponCombatant{weapon: nil})
 	require.Equal(t, 1, reach)
 }

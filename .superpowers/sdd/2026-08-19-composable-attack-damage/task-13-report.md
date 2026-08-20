@@ -36,3 +36,13 @@ is retained.
 The bounded checkpoint did not create or push release tags. The remaining
 encounter/session dependency-generation blockers must be resolved before the
 full repository release gate can be claimed green.
+
+## Review follow-up
+
+- Updated the reach-gate fixture so `meleeReachForCombatant` asserts the
+  canonical default reach of 1 even when handed a glaive; the direct
+  `meleeReachForWeapon` test remains the proof that a Reach property resolves
+  to 2.
+- Focused range-gate test attempt was blocked before compilation because the
+  sandbox could not download the encounter module's published `events@v0.6.2`
+  and D&D `v0.71.1-0.20260808232907-1eb7569a9e1f` dependencies.
