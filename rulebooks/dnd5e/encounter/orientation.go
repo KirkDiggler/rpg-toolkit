@@ -79,11 +79,11 @@ type OrientationKind string
 
 const (
 	// OrientationPointyTop is the pointy-top layout, whose offset form is
-	// odd-q: columns run straight and rows stagger.
+	// odd-r: rows run straight and columns stagger.
 	OrientationPointyTop OrientationKind = "pointy"
 
-	// OrientationFlatTop is the flat-top layout, whose offset form is odd-r:
-	// rows run straight and columns stagger.
+	// OrientationFlatTop is the flat-top layout, whose offset form is odd-q:
+	// columns run straight and rows stagger.
 	OrientationFlatTop OrientationKind = "flat"
 )
 
@@ -128,7 +128,7 @@ type Orientation interface {
 }
 
 // HexesArePointyTop declares a field's hexes pointy-top, whose offset form is
-// odd-q. The reference tomb's layout.
+// odd-r. The reference tomb's layout.
 //
 // A function rather than a package-level variable so nothing can reassign what
 // it means at runtime — [VoidIsOpaque]'s reasoning, and the save gate's before
@@ -140,7 +140,7 @@ type pointyTop struct{}
 func (pointyTop) Kind() OrientationKind           { return OrientationPointyTop }
 func (pointyTop) spatial() spatial.HexOrientation { return spatial.HexOrientationPointyTop }
 
-// HexesAreFlatTop declares a field's hexes flat-top, whose offset form is odd-r.
+// HexesAreFlatTop declares a field's hexes flat-top, whose offset form is odd-q.
 func HexesAreFlatTop() Orientation { return flatTop{} }
 
 type flatTop struct{}
@@ -266,18 +266,22 @@ func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.
 // maxFieldCells allows four million cells, so "build both footprints and
 // intersect" is a real cost on a legal field, paid at every construction. But a
 // sheared rectangle is not shapeless: along one axis it decomposes into
-// contiguous intervals, one per authored column (pointy) or row (flat), and two
+// contiguous intervals, one per authored column (flat) or row (pointy), and two
 // intervals intersect in O(1). So the whole disjointness question costs
 // O(Width) or O(Height) rather than O(Width x Height).
 //
 // The key is the coordinate that does NOT shear:
 //
-//   - POINTY-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q;
+//   - FLAT-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q;
 //     for a fixed column, R decreases by exactly one per row, so the run is
 //     [r(row=Height-1), r(row=0)].
-//   - FLAT-TOP is odd-r, so the authored ROW is recoverable as -(Q+R) and only
-//     Q staggers. Key by that; for a fixed row, Q increases by exactly one per
-//     column.
+//   - POINTY-TOP is odd-r, so the authored ROW is recoverable as -(Q+R) and
+//     only Q staggers. Key by that; for a fixed row, Q increases by exactly one
+//     per column.
+//
+// Those two bullets USED TO NAME THE OTHER ORIENTATION, because spatial had the
+// schemes swapped (rpg-toolkit#1141). The arithmetic below is unchanged; which
+// orientation it belongs to is what moved.
 //
 // Both facts are read off spatial's own conversion rather than assumed, and
 // pinned by TestRunsAgreeWithEnumeration, which compares this against a full
@@ -286,7 +290,7 @@ func hexRuns(r RoomInput, o Orientation) map[int][2]int {
 	runs := make(map[int][2]int, max(r.Width, r.Height))
 
 	oc, or := int(r.Origin.X), int(r.Origin.Y)
-	if o.Kind() == OrientationPointyTop {
+	if o.Kind() == OrientationFlatTop {
 		for col := 0; col < r.Width; col++ {
 			top := HexCellAt(o, col+oc, or)
 			bottom := HexCellAt(o, col+oc, r.Height-1+or)
@@ -311,7 +315,7 @@ func hexFootprintBounds(r RoomInput, o Orientation) (qMin, qMax, rMin, rMax int)
 	first := true
 	for key, run := range hexRuns(r, o) {
 		var q0, q1, r0, r1 int
-		if o.Kind() == OrientationPointyTop {
+		if o.Kind() == OrientationFlatTop {
 			q0, q1, r0, r1 = key, key, run[0], run[1]
 		} else {
 			// key is the authored row; the run is a Q interval, and R is

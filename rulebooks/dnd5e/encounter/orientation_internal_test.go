@@ -134,7 +134,9 @@ func TestRunsAgreeWithEnumeration(t *testing.T) {
 				for key, run := range hexRuns(r, o) {
 					require.LessOrEqual(t, run[0], run[1], "a run's interval must be ordered")
 					for v := run[0]; v <= run[1]; v++ {
-						if o.Kind() == OrientationPointyTop {
+						// Mirrors hexRuns' contract, which swapped orientations
+						// when rpg-toolkit#1141 corrected the offset schemes.
+						if o.Kind() == OrientationFlatTop {
 							expanded[[2]int{key, v}] = true // key is Q, run is R
 						} else {
 							expanded[[2]int{v, -v - key}] = true // key is the row, run is Q

@@ -427,7 +427,19 @@ func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
 	hexOrigin := spatial.Position{X: 3, Y: -2}
 	hex := s.oneRoom(spatial.GridShapeHex, 6, 6, hexOrigin)
 
-	frac := spatial.Position{X: 3.5, Y: -1.5}
+	// A REAL cell of this room, asked for in the frame the room is authored in
+	// rather than written down as an absolute literal. It used to be the
+	// literal (4,-1); that stopped being floor when rpg-toolkit#1141 corrected
+	// the offset schemes and the projection moved underneath it. What the test
+	// is about — that a fractional position is not a cell and an integral one
+	// beside it is — has nothing to do with which absolute cell that happens to
+	// be, so it no longer names one.
+	cell := encounter.HexCellAt(orientationFor(spatial.GridShapeHex),
+		int(hexOrigin.X)+3, int(hexOrigin.Y)+3)
+
+	// Half a step off a genuine cell, so it is unambiguously between cells
+	// rather than merely outside the room.
+	frac := spatial.Position{X: cell.X + 0.5, Y: cell.Y + 0.5}
 	_, ok := hex.RegionAt(frac)
 	s.False(ok, "a fractional axial position is not a cell, so no region holds it")
 
@@ -435,7 +447,7 @@ func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
 	s.Require().Error(err, "and the verbs agree — which is the whole point")
 	s.ErrorIs(err, encounter.ErrBadPlacement)
 
-	_, ok = hex.RegionAt(spatial.Position{X: 4, Y: -1})
+	_, ok = hex.RegionAt(cell)
 	s.True(ok, "the integral cell beside it is ordinary floor")
 
 	squareOrigin := spatial.Position{X: 4, Y: 6}
