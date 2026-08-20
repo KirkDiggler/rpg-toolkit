@@ -409,8 +409,8 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 		IsNaturalOne:        roll == 1,
 		HasAdvantage:        hasAdvantage,
 		HasDisadvantage:     hasDisadvantage,
-		AdvantageSources:    folded.AdvantageSources,
-		DisadvantageSources: folded.DisadvantageSources,
+		AdvantageSources:    attackModifierRefs(folded.AdvantageSources),
+		DisadvantageSources: attackModifierRefs(folded.DisadvantageSources),
 	}
 
 	return publishPostAttackRoll(postRoll, func(nextCtx context.Context) (Step, error) {
@@ -423,6 +423,18 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 
 		return m.rollDamage(nextCtx, roller)
 	}), nil
+}
+
+// attackModifierRefs projects the richer attack-chain source records onto the
+// post-roll snapshot's established reference-only narration contract. The
+// strike fold owns source reasons/IDs; the older post-roll event intentionally
+// exposes only refs, so no source metadata is duplicated across that boundary.
+func attackModifierRefs(sources []dnd5eEvents.AttackModifierSource) []*core.Ref {
+	refs := make([]*core.Ref, 0, len(sources))
+	for _, source := range sources {
+		refs = append(refs, source.SourceRef)
+	}
+	return refs
 }
 
 // rollDamage rolls the action's damage dice and yields the fold that lets

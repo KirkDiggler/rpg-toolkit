@@ -22,10 +22,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// bareCombatant is a minimal combat.Combatant test double that does NOT
-// implement combat.MeleeWeaponProvider — exercises meleeReachForCombatant's
-// type-assertion fallback (the "attacker has no weapon-resolution seam"
-// case, e.g. a future combatant type that never adopts the provider).
+// bareCombatant is a minimal combat.Combatant test double. The encounter
+// range gate deliberately uses the canonical default reach and leaves weapon
+// selection to the typed Strike boundary.
 type bareCombatant struct{}
 
 func (bareCombatant) GetID() string        { return "bare" }
@@ -41,9 +40,9 @@ func (bareCombatant) AbilityScores() shared.AbilityScores { return shared.Abilit
 func (bareCombatant) ProficiencyBonus() int               { return 0 }
 func (bareCombatant) PassivePerception() int              { return 10 }
 
-// meleeWeaponCombatant embeds bareCombatant and additionally implements
-// combat.MeleeWeaponProvider — stands in for a hydrated character/monster
-// whose MeleeWeapon() would otherwise require full LoadFromData plumbing.
+// meleeWeaponCombatant embeds bareCombatant and carries a weapon fixture for
+// the direct meleeReachForWeapon tests. Weapon-specific reach is not consulted
+// by meleeReachForCombatant.
 type meleeWeaponCombatant struct {
 	bareCombatant
 	weapon *weapons.Weapon
@@ -52,9 +51,8 @@ type meleeWeaponCombatant struct {
 func (m meleeWeaponCombatant) MeleeWeapon() *weapons.Weapon { return m.weapon }
 
 var (
-	_ combat.Combatant           = bareCombatant{}
-	_ combat.Combatant           = meleeWeaponCombatant{}
-	_ combat.MeleeWeaponProvider = meleeWeaponCombatant{}
+	_ combat.Combatant = bareCombatant{}
+	_ combat.Combatant = meleeWeaponCombatant{}
 )
 
 func TestCheckReach_WithinMax_NoError(t *testing.T) {

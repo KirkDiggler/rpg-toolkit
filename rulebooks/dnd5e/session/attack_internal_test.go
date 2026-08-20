@@ -11,8 +11,27 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
+
+// TestRecordUsesAggregateFromTypedStrikeOutcome pins the session boundary:
+// resolution may retain typed damage evidence, but session recording writes
+// only the aggregate amount into encounter history.
+func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
+	struck := resolution.StrikeOutcome{
+		Hit:    true,
+		Damage: 9,
+		DamageInstances: []damage.Instance{
+			{Amount: 5, Type: damage.Slashing},
+			{Amount: 4, Type: damage.Fire},
+		},
+	}
+
+	record := recordFor(&AttackInput{Attacker: "alice", Target: "bob"}, struck)
+	require.Equal(t, 9, record.Values[encounter.ValueAmount])
+}
 
 // halfBrokenCharacters writes the first sheet and refuses the second.
 type halfBrokenCharacters struct {
