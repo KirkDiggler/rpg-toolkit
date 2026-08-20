@@ -27,14 +27,9 @@ package dungeonspec_test
 // it reveals the chamber. Where exactly the cells fall is the compiler's own
 // tests' business.
 //
-// # The source
-//
-// tombYAML below is rpg-api's internal/content/dungeons/reference-tomb.yaml,
-// which is the shipping authored dungeon, plus the declarations this
-// composition requires and cannot invent — see tombYAML's own comment. It is a
-// COPY, and copies drift: rpg-api owns that file and the toolkit cannot read
-// across the repo boundary. TestTheCopyMatchesWhatRPGAPIShips is the closest
-// thing to a guard that fits in one repo, and it is honest about being partial.
+// The dungeon it walks is tombsource_test.go's, which is rpg-api's shipping
+// reference-tomb.yaml plus the two declarations this composition requires and
+// cannot invent. That file carries the caveat about being a copy.
 
 import (
 	"testing"
@@ -47,63 +42,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// tombYAML is reference-tomb.yaml as rpg-api ships it, with TWO lines added:
-//
-//   - `void: opaque` — [encounter.CanvasInput.Void] is required and has no
-//     default (#1116, and #1033's law behind it). A crypt's void is stone. The
-//     compiler is not allowed to infer this from `theme: crypt`, because that
-//     would be the same defaulting one layer out.
-//   - `orientation: pointy` — the authored [col,row] pairs are offset
-//     coordinates, and offset only means something once the orientation is
-//     known. Kirk: "flat and pointy top are both valid and should be settable."
-//
-// Both are declarations the shipping file does not yet carry, which is a
-// finding rather than a fixture detail: rpg-api's copy needs the same two lines
-// before it can compile on the new stack.
-const tombYAML = `
-version: 1
-key: reference-tomb
-name: The Tomb of the Captain
-theme: crypt
-void: opaque
-orientation: pointy
-height: 8
-rooms:
-  - id: entrance
-    archetype: entrance
-    width: 6
-    place:
-      - { ref: "dnd5e:props:brazier", at: [1, 1] }
-      - { ref: "dnd5e:props:brazier", at: [1, 6] }
-  - id: hall
-    archetype: chamber
-    width: 10
-    place:
-      - { ref: "dnd5e:props:pillar", at: [2, 2] }
-      - { ref: "dnd5e:props:pillar", at: [2, 5] }
-      - { ref: "dnd5e:props:pillar", at: [6, 2] }
-      - { ref: "dnd5e:props:pillar", at: [6, 5] }
-      - { ref: "dnd5e:props:torch-ornate", at: [4, 1] }
-      - { ref: "dnd5e:props:bone-pile", at: [8, 6] }
-      - { ref: "dnd5e:monsters:skeleton", at: [5, 3], targeting: lowest-health }
-      - { ref: "dnd5e:monsters:skeleton", at: [7, 5], targeting: lowest-health }
-  - id: tomb
-    archetype: boss
-    width: 12
-    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5] }
-    place:
-      - { ref: "dnd5e:props:coffin", at: [6, 3], blocks_los: false }
-      - { ref: "dnd5e:props:altar", at: [9, 3] }
-      - { ref: "dnd5e:props:statue-reaper", at: [1, 1] }
-      - { ref: "dnd5e:props:statue-knight-hooded", at: [1, 6] }
-      - { ref: "dnd5e:props:brazier", at: [3, 1] }
-      - { ref: "dnd5e:props:brazier", at: [3, 6] }
-      - { ref: "dnd5e:props:candles", at: [10, 5] }
-connectors:
-  - { from: entrance, to: hall }
-  - { from: hall, to: tomb, locked: { dc: 12, ability: dex } }
-`
 
 const (
 	delve = core.EntityID("delve")
