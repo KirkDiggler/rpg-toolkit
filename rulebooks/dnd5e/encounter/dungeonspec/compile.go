@@ -325,12 +325,17 @@ func seamWall(spec *Spec, o encounter.Orientation, i int) []spatial.Boundary {
 }
 
 // seamProbeSpan is the span of the throwaway grid [seamWall] and [seatsOf] ask
-// for adjacency and distance.
+// for distance.
 //
-// Valid ONLY as a calculator over absolute cells: both answers depend on the
-// two positions passed in and never on the grid's own bounds (AxialHexGrid's
-// Distance is cube distance), so any instance of the family answers correctly.
-// Large enough that maxFieldCells-sized dungeons are inside it.
+// THE NUMBER DOES NOT MATTER, and saying so is the point of naming it. Both
+// callers only ever ask Distance, and AxialHexGrid.Distance converts its two
+// arguments to cube coordinates and subtracts — it never looks at the grid's
+// own bounds, so a cell far outside the span still measures correctly. Any
+// instance of the family is a valid calculator over absolute cells, which is
+// the same standing arrangement continuity_test.go's own throwaway grid runs
+// on. A large span is chosen only so that a future caller reaching for
+// IsValidPosition on it does not get a surprise; if one ever does, it should
+// take the canvas's grid instead of widening this.
 const seamProbeSpan = 1e6
 
 // joins reports whether a connector opens the seam between two chambers, by
@@ -381,13 +386,24 @@ func openingsOf(spec *Spec, o encounter.Orientation, anchors []int) (
 		// The endpoint each side contributes depends on which of them is
 		// west, and the author may have written the pair either way round.
 		fromLocal, toLocal := 0, 0
+		west, east := c.From, c.To
 		if from < to {
 			fromLocal = spec.Rooms[from].Width - 1
 		} else {
 			toLocal = spec.Rooms[to].Width - 1
+			west, east = c.To, c.From
 		}
 
-		id := spec.Key + ":" + c.From + "-" + c.To
+		// THE ID IS CANONICAL, not authored. A connector is UNDIRECTED —
+		// Validate accepts either order and de-duplicates seams ignoring it —
+		// so `{from: hall, to: entrance}` is the same opening as
+		// `{from: entrance, to: hall}`, and if the ID followed the author's
+		// order the two would mint different doors for it. A door's STATE
+		// persists under its ID (rpg-toolkit#1123), so that is not cosmetic:
+		// reordering a line in the yaml would lose which doors a party had
+		// opened. Named west-to-east, which the room list already decides.
+		id := spec.Key + ":" + west + "-" + east
+
 		connections = append(connections, encounter.ConnectionInput{
 			ID: id, From: c.From, To: c.To,
 			FromPosition: spatial.Position{X: float64(fromLocal), Y: float64(row)},
