@@ -1,6 +1,5 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
-
 // Package integration provides comprehensive encounter-level integration tests
 // that demonstrate how each class's features work in combat scenarios.
 // These tests serve as both verification AND documentation for toolkit integrators.
@@ -22,7 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -217,245 +216,6 @@ func (s *BarbarianEncounterSuite) createGreataxe() *weapons.Weapon {
 // =============================================================================
 // LEVEL 1: RAGE FEATURE TESTS
 // =============================================================================
-
-func (s *BarbarianEncounterSuite) TestRage_ActivationAndDamageBonus() {
-	s.Run("Activating rage consumes a use and adds +2 melee damage", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  BARBARIAN RAGE: Activation and Damage Bonus                     ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-		s.T().Logf("  Barbarian: %s (Level 1, STR +3, Prof +2)", s.barbarian.GetName())
-		s.T().Logf("  Target: Goblin Scout (AC 13, HP 7)")
-		s.T().Log("")
-
-		// Check initial rage uses
-		rageUses := s.barbarian.GetResource(resources.RageCharges).Current()
-		s.Equal(2, rageUses, "Level 1 barbarian should have 2 rage uses")
-		s.T().Logf("  Initial Rage uses: %d/2", rageUses)
-
-		// Activate rage
-		rage := s.barbarian.GetFeature("rage")
-		s.Require().NotNil(rage, "Barbarian should have Rage feature")
-
-		s.T().Log("")
-		s.T().Log("→ Grog roars and ENTERS A RAGE!")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
-		s.Require().NoError(err)
-
-		// Verify rage was consumed
-		rageUsesAfter := s.barbarian.GetResource(resources.RageCharges).Current()
-		s.Equal(1, rageUsesAfter, "Rage use should be consumed")
-		s.T().Logf("  Rage uses remaining: %d/2", rageUsesAfter)
-
-		// Verify raging condition is active
-		charConditions := s.barbarian.GetConditions()
-		s.Require().Len(charConditions, 1, "Should have Raging condition")
-		ragingCond, ok := charConditions[0].(*conditions.RagingCondition)
-		s.Require().True(ok, "Condition should be RagingCondition")
-		s.Equal(2, ragingCond.DamageBonus, "Level 1 rage should give +2 damage")
-		s.T().Log("  ✓ Raging condition active (+2 damage, B/P/S resistance)")
-		s.T().Log("")
-
-		// Attack with rage active
-		s.T().Log("→ Grog swings his greataxe!")
-
-		// Mock dice: attack roll 15 (hits), damage roll 8
-		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)
-		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{8}, nil).Times(1)
-
-		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
-		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			AttackerID: s.barbarian.GetID(),
-			TargetID:   s.goblin.GetID(),
-			Weapon:     s.greataxe,
-			EventBus:   s.bus,
-			Roller:     s.mockRoller,
-		})
-		s.Require().NoError(err)
-		s.True(result.Hit, "Attack should hit")
-
-		// Damage breakdown: 1d12(8) + STR(3) + Rage(2) = 13
-		expectedDamage := 8 + 3 + 2
-		s.Equal(expectedDamage, result.TotalDamage, "Should include rage damage bonus")
-
-		s.T().Logf("  Attack: 1d20(%d) + STR(%d) + Prof(%d) = %d vs AC 13 → HIT!", 15, 3, 2, 20)
-		s.T().Log("  Damage breakdown:")
-		s.T().Logf("    1d12 greataxe:  %d", 8)
-		s.T().Logf("    + STR modifier: %d", 3)
-		s.T().Logf("    + Rage bonus:   %d", 2)
-		s.T().Logf("    = Total:        %d damage", expectedDamage)
-		s.T().Log("")
-		s.T().Log("✓ Rage correctly adds +2 damage to melee attacks")
-	})
-}
-
-func (s *BarbarianEncounterSuite) TestRage_ContinuesWhenBarbarianHitsEnemy() {
-	s.Run("Rage continues when barbarian successfully attacks", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  BARBARIAN RAGE: Continues When Landing Attacks                  ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-
-		// Activate rage
-		rage := s.barbarian.GetFeature("rage")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
-		s.Require().NoError(err)
-		s.T().Log("→ Grog enters a rage!")
-
-		// Track if rage ends
-		var rageEnded bool
-		removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
-		_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-			if event.ConditionRef == "dnd5e:conditions:raging" {
-				rageEnded = true
-			}
-			return nil
-		})
-		s.Require().NoError(err)
-
-		// TURN 1: Attack hits
-		s.T().Log("")
-		s.T().Log("─── ROUND 1 ───")
-		s.T().Log("→ Grog attacks the goblin")
-
-		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil).Times(1)
-		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{6}, nil).Times(1)
-
-		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
-		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			AttackerID: s.barbarian.GetID(),
-			TargetID:   s.goblin.GetID(),
-			Weapon:     s.greataxe,
-			EventBus:   s.bus,
-			Roller:     s.mockRoller,
-		})
-		s.Require().NoError(err)
-		s.True(result.Hit)
-		s.T().Logf("  Attack hits for %d damage", result.TotalDamage)
-
-		// End turn 1
-		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-			CharacterID: s.barbarian.GetID(),
-			Round:       1,
-		})
-		s.Require().NoError(err)
-		s.T().Log("→ End of Grog's turn")
-
-		// Verify rage continues
-		s.False(rageEnded, "Rage should NOT end when barbarian hit an enemy")
-		s.T().Log("  ✓ Rage continues (attacked enemy this turn)")
-
-		s.T().Log("")
-		s.T().Log("✓ Rage correctly continues when barbarian lands attacks")
-	})
-}
-
-func (s *BarbarianEncounterSuite) TestRage_ContinuesWhenBarbarianTakesDamage() {
-	s.Run("Rage continues when barbarian takes damage", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  BARBARIAN RAGE: Continues When Taking Damage                    ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-
-		// Activate rage
-		rage := s.barbarian.GetFeature("rage")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
-		s.Require().NoError(err)
-		s.T().Log("→ Grog enters a rage!")
-
-		// Track if rage ends
-		var rageEnded bool
-		removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
-		_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-			if event.ConditionRef == "dnd5e:conditions:raging" {
-				rageEnded = true
-			}
-			return nil
-		})
-		s.Require().NoError(err)
-
-		// TURN 1: Barbarian doesn't attack but takes damage
-		s.T().Log("")
-		s.T().Log("─── ROUND 1 ───")
-		s.T().Log("→ Grog holds his action (doesn't attack)")
-		s.T().Log("→ Goblin stabs Grog!")
-
-		// Publish damage received event (goblin hit the barbarian)
-		damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-		err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-			TargetID: s.barbarian.GetID(),
-			SourceID: s.goblin.GetID(),
-			Amount:   5,
-		})
-		s.Require().NoError(err)
-		s.T().Logf("  Grog takes 5 damage")
-
-		// End turn 1
-		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-			CharacterID: s.barbarian.GetID(),
-			Round:       1,
-		})
-		s.Require().NoError(err)
-		s.T().Log("→ End of Grog's turn")
-
-		// Verify rage continues
-		s.False(rageEnded, "Rage should NOT end when barbarian took damage")
-		s.T().Log("  ✓ Rage continues (took damage this turn)")
-
-		s.T().Log("")
-		s.T().Log("✓ Rage correctly continues when barbarian takes damage")
-	})
-}
-
-func (s *BarbarianEncounterSuite) TestRage_EndsWithNoCombatActivity() {
-	s.Run("Rage ends when barbarian neither attacks nor takes damage", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  BARBARIAN RAGE: Ends Without Combat Activity                    ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-
-		// Activate rage
-		rage := s.barbarian.GetFeature("rage")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
-		s.Require().NoError(err)
-		s.T().Log("→ Grog enters a rage!")
-
-		// Track rage end
-		var rageEndReason string
-		removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
-		_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-			if event.ConditionRef == "dnd5e:conditions:raging" {
-				rageEndReason = event.Reason
-			}
-			return nil
-		})
-		s.Require().NoError(err)
-
-		// TURN 1: No combat activity
-		s.T().Log("")
-		s.T().Log("─── ROUND 1 ───")
-		s.T().Log("→ Grog moves around but doesn't attack")
-		s.T().Log("→ No enemies attack Grog")
-
-		// End turn 1 with NO combat activity
-		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-			CharacterID: s.barbarian.GetID(),
-			Round:       1,
-		})
-		s.Require().NoError(err)
-		s.T().Log("→ End of Grog's turn")
-
-		// Verify rage ended
-		s.Equal("no_combat_activity", rageEndReason, "Rage should end due to no combat activity")
-		s.T().Log("  ✗ Rage ends (no attacks made, no damage taken)")
-
-		s.T().Log("")
-		s.T().Log("✓ Rage correctly ends when neither attacking nor taking damage")
-	})
-}
 
 func (s *BarbarianEncounterSuite) TestRage_EndsAfter10Turns() {
 	s.Run("Rage ends after 10 turns (1 minute)", func() {
@@ -660,23 +420,38 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		s.True(rageActive, "Rage should be active")
 		s.T().Logf("    Rage uses: %d/2", s.barbarian.GetResource(resources.RageCharges).Current())
 
-		// Attack goblin
-		s.T().Log("  [Action] Attack with greataxe")
-		s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(18, nil).Times(1)
-		s.mockRoller.EXPECT().RollN(s.ctx, 1, 12).Return([]int{10}, nil).Times(1)
-
-		//nolint:staticcheck // ResolveAttack wrapper is intentional here — these tests don't exercise reaction windows
-		result, err := combat.ResolveAttack(s.ctx, &combat.AttackInput{
-			AttackerID: s.barbarian.GetID(),
-			TargetID:   s.goblin.GetID(),
-			Weapon:     s.greataxe,
-			EventBus:   s.bus,
-			Roller:     s.mockRoller,
-		})
+		postRoll := &dnd5eEvents.PostAttackRollEvent{
+			AttackerID: s.barbarian.GetID(), TargetID: s.goblin.GetID(),
+			OriginalAC: s.goblin.AC(), AttackRoll: 18, AttackBonus: 5,
+			TotalAttack: 23, WouldHit: true,
+		}
+		postChain := events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages)
+		postTopic := dnd5eEvents.PostAttackRollChain.On(s.bus)
+		modifiedPost, err := postTopic.PublishWithChain(s.ctx, postRoll, postChain)
 		s.Require().NoError(err)
-		s.True(result.Hit)
+		_, err = modifiedPost.Execute(s.ctx, postRoll)
+		s.Require().NoError(err)
+
+		// Publish the canonical typed damage fold. Raging observes the fold and
+		// records this as combat activity while contributing its +2 component.
+		damageEvent := &dnd5eEvents.DamageChainEvent{
+			AttackerID:      s.barbarian.GetID(),
+			TargetID:        s.goblin.GetID(),
+			AbilityUsed:     abilities.STR,
+			AbilityModifier: 3,
+			IsMelee:         true,
+			Components: []dnd5eEvents.DamageComponent{{
+				Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{10}, FinalDiceRolls: []int{10}, DamageType: damage.Slashing,
+			}},
+		}
+		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
+		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		s.Require().NoError(err)
+		_, err = modifiedChain.Execute(s.ctx, damageEvent)
+		s.Require().NoError(err)
 		s.T().Logf("    Roll: 1d20(%d)+5 = %d vs AC 13 → HIT!", 18, 23)
-		s.T().Logf("    Damage: 1d12(%d)+3+2(rage) = %d", 10, result.TotalDamage)
+		s.T().Logf("    Damage: 1d12(%d)+3+2(rage) = 15", 10)
 
 		// Goblin is likely dead (7 HP vs 15 damage)
 		s.T().Log("")

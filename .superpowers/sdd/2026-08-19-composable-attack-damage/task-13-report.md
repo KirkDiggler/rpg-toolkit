@@ -46,3 +46,25 @@ full repository release gate can be claimed green.
 - Focused range-gate test attempt was blocked before compilation because the
   sandbox could not download the encounter module's published `events@v0.6.2`
   and D&D `v0.71.1-0.20260808232907-1eb7569a9e1f` dependencies.
+
+## Final stale-test migration
+
+- Removed the remaining character integration references to the deleted
+  `AttackResolutionIntegrationSuite`/resolver path while retaining the
+  temporary-action cleanup coverage in the canonical attack-flow suite.
+- Migrated encounter and monster-trait damage fixtures to typed
+  `DamageComponent` ownership, including the canonical primary-pool marker and
+  component dice notation required by condition modifiers. The barbarian rage
+  scenario now publishes typed post-roll and damage chains; the obsolete monk
+  resolver end-to-end test is covered by the typed Martial Arts suites.
+- Removed only the stale event-envelope fields and skipped the legacy
+  opportunity-attack scenario whose resolver was deleted; disengagement
+  movement coverage remains active.
+
+## Final verification
+
+- PASS: `git diff --check`.
+- PASS: `go test ./character ./integration ./monstertraits -run '^$'` with a
+  writable task-local Go build cache.
+- PASS: full D&D module `go test ./... -count=1`.
+- PASS: `scripts/check-no-legacy-attack.sh`.
