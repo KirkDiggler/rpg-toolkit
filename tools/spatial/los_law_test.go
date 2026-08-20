@@ -312,14 +312,28 @@ func (s *LineOfSightLawSuite) TestLeaningIsNotWandering() {
 			forward:  spatial.Position{X: 0, Y: 2},
 		},
 		{
+			// These two cells SWAPPED when rpg-toolkit#1140 corrected which
+			// offset scheme pointy-top uses (see hex_offset_law_test.go).
+			//
+			// The scenario is unchanged and so is its intent: a blocker one step
+			// away, a target directly behind it that stays dark, and another at
+			// the same distance in a different lane that does not. What moved is
+			// WHICH offset pair names those hexes. Pointy-top used to run the
+			// column-shifted odd-q scheme, under which [0,2] sat behind the
+			// blocker; on the row-shifted odd-r scheme it actually uses, [1,2]
+			// does, and [0,2] is the open lane.
+			//
+			// Verified against the grid rather than re-derived by hand: with the
+			// blocker at [0,1], the only cell two steps from the origin whose
+			// sight is blocked is [1,2].
 			name: "hex-pointy",
 			grid: spatial.NewHexGrid(spatial.HexGridConfig{
 				Width: 6, Height: 6, Orientation: spatial.HexOrientationPointyTop,
 			}),
 			blocker:  spatial.Position{X: 0, Y: 1},
 			from:     spatial.Position{X: 0, Y: 0},
-			sideways: spatial.Position{X: 0, Y: 2},
-			forward:  spatial.Position{X: 1, Y: 2},
+			sideways: spatial.Position{X: 1, Y: 2},
+			forward:  spatial.Position{X: 0, Y: 2},
 		},
 	} {
 		s.Run(tc.name, func() {

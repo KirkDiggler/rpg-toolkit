@@ -199,14 +199,14 @@ func (c CubeCoordinate) ToOffsetCoordinate() Position {
 func (c CubeCoordinate) ToOffsetCoordinateWithOrientation(orientation HexOrientation) Position {
 	switch orientation {
 	case HexOrientationFlatTop:
-		// Flat-top: odd-r offset coordinates
-		col := float64(c.X + (c.Z-(c.Z&1))/2)
-		row := float64(c.Z)
-		return Position{X: col, Y: row}
-	default:
-		// Pointy-top: odd-q offset coordinates (default)
+		// Flat-top hexes shift their COLUMNS, which is the odd-q scheme.
 		col := float64(c.X)
 		row := float64(c.Z + (c.X-(c.X&1))/2)
+		return Position{X: col, Y: row}
+	default:
+		// Pointy-top hexes shift their ROWS, which is the odd-r scheme.
+		col := float64(c.X + (c.Z-(c.Z&1))/2)
+		row := float64(c.Z)
 		return Position{X: col, Y: row}
 	}
 }
@@ -225,15 +225,15 @@ func OffsetCoordinateToCubeWithOrientation(pos Position, orientation HexOrientat
 
 	switch orientation {
 	case HexOrientationFlatTop:
-		// Flat-top: odd-r offset coordinates
-		x := col - (row-(row&1))/2
-		z := row
+		// Flat-top hexes shift their COLUMNS, which is the odd-q scheme.
+		x := col
+		z := row - (col-(col&1))/2
 		y := -x - z
 		return CubeCoordinate{X: x, Y: y, Z: z}
 	default:
-		// Pointy-top: odd-q offset coordinates (default)
-		x := col
-		z := row - (col-(col&1))/2
+		// Pointy-top hexes shift their ROWS, which is the odd-r scheme.
+		x := col - (row-(row&1))/2
+		z := row
 		y := -x - z
 		return CubeCoordinate{X: x, Y: y, Z: z}
 	}
