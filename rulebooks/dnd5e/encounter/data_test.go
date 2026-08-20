@@ -1420,7 +1420,7 @@ func validEncounterDataWithConnection() encounter.EncounterData {
 // TestLoadSquarePropFractionalRejected is the Load-seam counterpart to
 // encounter_test.go's TestSetupSquarePropFractionalRejected (#929 T3
 // Opus round F2).
-func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
+func (s *DataTestSuite) TestLoadSquarePropCellFractionalRejected() {
 	data := validEncounterDataWithConnection()
 	data.Field.Rooms[0].Props[0].At = encounter.PositionData{X: 2.5, Y: 2}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -1473,7 +1473,7 @@ func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 // TestLoadPropOnBoundaryCellAccepted is the Load-seam counterpart to
 // encounter_test.go's TestSetupPropOnBoundaryCellAccepted (#929 T3
 // trailing round N2).
-func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
+func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque"},
@@ -1485,13 +1485,13 @@ func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
-	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal at Load too")
+	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
 // TestLoadPropIDCrossRoomCollisionAccepted is the Load-seam counterpart
 // to encounter_test.go's TestSetupPropIDCrossRoomCollisionAccepted
 // (#929 hardening round C).
-func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
+func (s *DataTestSuite) TestLoadPropIDCrossRoomCollisionAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque"},
@@ -1506,13 +1506,13 @@ func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
-	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide at Load either`)
+	s.Require().NoError(err, `room "r" prop (-5,4) and room "r-" prop (5,4) must not collide at Load either`)
 }
 
 // TestLoadDuplicatePropRejected is the Load-seam counterpart to
 // encounter_test.go's TestSetupDuplicatePropRejected (#929 hardening
 // round D).
-func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
+func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque"},

@@ -210,7 +210,7 @@ func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 	s.Require().NoError(err)
 	s.Require().Len(atlas.Regions, 1)
 	props := atlas.Regions[0].Props
-	s.Require().Len(props, 2, "declaration order, the ordering Occluders already promised")
+	s.Require().Len(props, 2, "declaration order, the ordering a room's contents have always promised")
 
 	s.Equal("dnd5e:props:statue-reaper", props[0].Ref)
 	s.Equal(propAbs(1, 1), props[0].At, "absolute, like everything else the map reports")

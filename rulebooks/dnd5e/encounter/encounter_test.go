@@ -382,7 +382,7 @@ func validConnSetup() *encounter.SetupInput {
 // (TestSetupHexIntegralAxial's sibling row), with the universal
 // isRepresentableInteger message, not the hex-specific one. One-defect:
 // validConnSetup's r1.Props[0] is the ONLY thing mutated.
-func (s *EncounterTestSuite) TestSetupSquareOccluderFractionalRejected() {
+func (s *EncounterTestSuite) TestSetupSquarePropCellFractionalRejected() {
 	setup := validConnSetup()
 	setup.Field.Rooms[0].Props[0].At = spatial.Position{X: 2.5, Y: 2}
 	_, err := encounter.NewEncounter(setup)
@@ -399,7 +399,7 @@ func (s *EncounterTestSuite) TestSetupSquareOccluderFractionalRejected() {
 // sight (field.go's doc comment), not placement — a boundary cell,
 // including a corner, is exactly as legal a prop cell as an
 // interior one.
-func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
+func (s *EncounterTestSuite) TestSetupPropOnBoundaryCellAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
@@ -411,7 +411,7 @@ func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
 	_, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal")
+	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal")
 }
 
 // TestSetupPropIDCrossRoomCollisionAccepted pins the hardening round's
@@ -421,7 +421,7 @@ func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
 // "prop-r--5-4" — a genuine cross-room ID collision on a field that is
 // otherwise entirely legal under W1/W2/W3. The ID is index-based now, so
 // this exact colliding pair must construct without error.
-func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
+func (s *EncounterTestSuite) TestSetupPropIDCrossRoomCollisionAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
@@ -436,7 +436,7 @@ func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
 	_, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide`)
+	s.Require().NoError(err, `room "r" prop (-5,4) and room "r-" prop (5,4) must not collide`)
 }
 
 // TestSetupDuplicatePropRejected pins the hardening round's item D:
@@ -447,7 +447,7 @@ func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
 // switched to an index-based ID and, as a side effect, removed even
 // that accidental catch. Rejected explicitly now, in the module's own
 // room-list defect vocabulary.
-func (s *EncounterTestSuite) TestSetupDuplicateOccluderRejected() {
+func (s *EncounterTestSuite) TestSetupTwoPropsOnOneCellRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
