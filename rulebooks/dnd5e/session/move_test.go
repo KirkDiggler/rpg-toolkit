@@ -313,7 +313,10 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	// to take from there and the scenario cannot be built. Row 1 has one.
 	//
 	// The path is computed rather than eyeballed — a breadth-first walk over
-	// the corridor's real cells, around the prop at local (1,1).
+	// the corridor's real in-bounds cells, so no step here re-derives the
+	// projection by hand. The pillar at local (1,1) is on the map but blocks
+	// sight only, never movement (see occludingProps) — the walk has nothing
+	// to route around.
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
 		Path: []spatial.Position{
