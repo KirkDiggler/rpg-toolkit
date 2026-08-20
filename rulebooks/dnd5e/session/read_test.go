@@ -329,3 +329,52 @@ func trimmedWorld(t fataler) *encounter.EncounterData {
 func TestReadSuite(t *testing.T) {
 	suite.Run(t, new(ReadTestSuite))
 }
+
+// TestAtlasSaysWhichWayTheHexesPoint pins the one fact a client cannot recover
+// from the cells (rpg-toolkit#1140). The same axial set draws as two different
+// pictures, pointy-top and flat-top, and the first client to render the
+// reference tomb guessed from the content and got a diagonal staircase. So the
+// atlas says it — as a render word, Layout, not the authoring word the
+// composition keeps, because confusing those two is exactly how the staircase
+// happened.
+func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
+	s.startWith(hexWorld(s.T()))
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	s.Require().NoError(err)
+	s.Equal(session.HexLayoutPointyTop, atlas.Layout,
+		"hexWorld is authored pointy-top, and after rpg-toolkit#1141 that IS the way to draw it")
+}
+
+// TestAtlasLayoutCoversBothHexLayouts guards the mapping in both directions,
+// for the same reason TestGridProjectionCoversBothFamilies does: a projection
+// hard-coded to pointy would pass every fixture in this file.
+func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
+	flat, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+		Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesAreFlatTop()},
+			Rooms: []encounter.RoomInput{{ID: "cell", Width: 4, Height: 4, Grid: spatial.GridShapeHex}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "cell", Position: spatial.Position{X: 0, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	data := flat.ToData()
+	s.startWith(&data)
+
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	s.Require().NoError(err)
+	s.Equal(session.HexLayoutFlatTop, atlas.Layout, "a flat-top field must not be reported as pointy")
+}
+
+// TestASquareAtlasHasNoLayout mirrors the composition's own law at the wire: a
+// hex field must declare an orientation and a square field must not. A square
+// map that said "pointy_top" would be a client believing something that cannot
+// be true about the grid it is drawing.
+func (s *ReadTestSuite) TestASquareAtlasHasNoLayout() {
+	s.startWith(authoredWorld(s.T()))
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	s.Require().NoError(err)
+	s.Empty(atlas.Layout, "square grids have no hex layout; the field is absent, not defaulted")
+}
