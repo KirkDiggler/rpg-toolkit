@@ -60,6 +60,25 @@ var projectedPairs = []struct {
 	{"StoryEntry", record.Entry{}, session.StoryEntry{}},
 }
 
+// renamed lists inner fields carried across under a DIFFERENT name, each with
+// the reason the name had to change. The audit below matches fields by name,
+// so without this a rename is indistinguishable from a drop — and a rename
+// that is recorded as an omission is a decision hiding behind the wrong label.
+//
+// The frame crosses as a render word (rpg-toolkit#1140). The composition
+// keeps Orientation as the frame an author typed offset cells in; this seam
+// sends the CELLS, already converted, so a client never needs that frame. What
+// a client DOES need — and found out by drawing the reference tomb as a
+// diagonal staircase — is which way to lay the hexes out, because the same
+// axial set draws as two different pictures. Same two values, different
+// question, and the staircase happened precisely because the two questions
+// shared a word. So the field is named for what a client does with it.
+var renamed = map[string]struct{ outer, reason string }{
+	"encounter.Atlas.Orientation": {outer: "Layout",
+		reason: "the frame an author typed in becomes the layout a client draws in — same " +
+			"two values, a different question, and a different name so they cannot be confused"},
+}
+
 // omitted lists inner fields deliberately not carried across, each with the
 // reason. Anything absent from a projection and absent from here is a bug, not
 // a decision.
@@ -79,18 +98,6 @@ var omitted = map[string]string{
 		"on this side has one left to project",
 	"encounter.AtlasRegion.Width":  "a room's span; the map's extent is the extent of Cells",
 	"encounter.AtlasRegion.Height": "a room's span; the map's extent is the extent of Cells",
-
-	// The frame, and the reason it does not need to cross.
-	//
-	// A region describes itself as a rectangle, and on hex the same rectangle
-	// covers different cells under each layout — so the composition reports an
-	// Orientation for a host that walks the rectangle itself
-	// (rpg-toolkit#1127). This seam does not hand out rectangles. It enumerates
-	// the cells and sends those, so a client never does the conversion and
-	// never needs the frame it would be done in. Carrying it would be handing
-	// over the tool for a job nobody on that side has.
-	"encounter.Atlas.Orientation": "the hex frame for turning a rectangle into cells; this seam sends " +
-		"the CELLS, so a client never performs that conversion",
 
 	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The room is
 	// the composition's own decomposition, and a caller that wanted it would
@@ -135,6 +142,12 @@ func (s *ConvertTestSuite) TestEveryInnerFieldIsCarriedOrJustified() {
 					continue
 				}
 				key := innerType.String() + "." + field.Name
+				if as, ok := renamed[key]; ok {
+					_, exists := outerFields[as.outer]
+					s.True(exists, "%s is recorded as carried into %T as %q, but no such field exists", key, pair.outer, as.outer)
+					s.NotEmpty(as.reason, "%s must record WHY it was renamed", key)
+					continue
+				}
 				reason, justified := omitted[key]
 				s.True(justified,
 					"%s is not carried into %T and is not listed as a deliberate omission — "+
@@ -164,6 +177,12 @@ func (s *ConvertTestSuite) TestOmissionsStillApply() {
 		s.True(known[key],
 			"%s is listed as a deliberate omission but no longer exists on any projected "+
 				"type — remove the entry rather than leaving a reason for a field that is gone",
+			key)
+	}
+	for key := range renamed {
+		s.True(known[key],
+			"%s is listed as a rename but no longer exists on any projected type — "+
+				"remove the entry rather than leaving a reason for a field that is gone",
 			key)
 	}
 }

@@ -35,6 +35,32 @@ const (
 	GridHex GridKind = "hex"
 )
 
+// HexLayout names which way a hex map's cells point when drawn: the one fact
+// about a hex atlas a client cannot recover from the cells (rpg-toolkit#1140).
+//
+// Axial coordinates fix the topology — the same six neighbours either way —
+// and not the picture: the same cell set laid out pointy-top and flat-top
+// gives two different images, roughly one rotated from the other. A client
+// putting pixels on a screen has to pick one, and the first one to try guessed
+// from the content and drew the reference tomb as a diagonal staircase.
+//
+// This is the RENDER word, deliberately not the authoring word. The composition
+// holds an Orientation: the frame an author typed offset cells in, which this
+// seam consumes when it enumerates the cells and never hands out. Same two
+// values, different question — and the staircase happened because the two
+// questions shared a word, so here they do not.
+type HexLayout string
+
+const (
+	// HexLayoutPointyTop draws each hex with a vertex up: rows run straight
+	// and alternate rows stagger.
+	HexLayoutPointyTop HexLayout = "pointy_top"
+
+	// HexLayoutFlatTop draws each hex with an edge up: columns run straight
+	// and alternate columns stagger.
+	HexLayoutFlatTop HexLayout = "flat_top"
+)
+
 // Atlas is the static world map in dungeon-absolute space.
 //
 // ONE MAP. The composition underneath keeps rooms and projects the absolute
@@ -56,6 +82,13 @@ type Atlas struct {
 	// per room: a field has a single grid family by law (W1), so a per-room
 	// grid was the same answer repeated.
 	Grid GridKind `json:"grid"`
+
+	// Layout is how to lay the cells out to draw them, present exactly when
+	// Grid is hex and absent otherwise — the composition's own law (a hex
+	// field must declare an orientation, a square field must not) mirrored at
+	// the wire. Not a default: a square map that said pointy_top would be a
+	// client believing something that cannot be true about its grid.
+	Layout HexLayout `json:"layout,omitempty"`
 
 	// Cells is every cell of the map, sorted by coordinate. Occluded cells
 	// are included: occlusion is walkability, not ownership.

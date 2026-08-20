@@ -44,6 +44,25 @@ func projectGrid(shape spatial.GridShape) GridKind {
 	}
 }
 
+// projectLayout maps the composition's authoring frame onto the wire's render
+// word (rpg-toolkit#1140). Nil — a square field, which declares no orientation
+// by law — yields the empty string, and so does an unrecognised kind, for the
+// reason projectGrid gives: a guess would turn an impossible state into a
+// wrong picture.
+func projectLayout(o encounter.Orientation) HexLayout {
+	if o == nil {
+		return ""
+	}
+	switch o.Kind() {
+	case encounter.OrientationPointyTop:
+		return HexLayoutPointyTop
+	case encounter.OrientationFlatTop:
+		return HexLayoutFlatTop
+	default:
+		return ""
+	}
+}
+
 // projectAtlas flattens the composition's room-by-room map into one map.
 //
 // The composition answers in its own terms — a footprint per room, a doorway
@@ -57,7 +76,7 @@ func projectGrid(shape spatial.GridShape) GridKind {
 // the decomposition the reshape exists to hide — and would eventually depend
 // on it. One order, derived from the coordinates themselves.
 func projectAtlas(in encounter.Atlas) Atlas {
-	out := Atlas{Doorways: make([]AtlasDoorway, 0, len(in.Doorways))}
+	out := Atlas{Layout: projectLayout(in.Orientation), Doorways: make([]AtlasDoorway, 0, len(in.Doorways))}
 
 	for _, region := range in.Regions {
 		// W1: every region in a field shares one grid family, so the last
