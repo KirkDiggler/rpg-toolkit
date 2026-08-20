@@ -18,10 +18,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	toolkitcore "github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/environments"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -105,9 +107,45 @@ func marshalData(t *testing.T, enc *Encounter) []byte {
 // ones (which already marshal DataJSON via the real ctor path).
 func smGoblinDataJSON(t *testing.T, id string) []byte {
 	t.Helper()
-	b, err := json.Marshal(monster.NewGoblin(id).ToData())
+	b, err := json.Marshal(monsters.NewGoblin(id).ToData())
 	require.NoError(t, err)
 	return b
+}
+
+type snapshotAction struct {
+	data monster.ActionData
+}
+
+func (a snapshotAction) GetID() string { return "snapshot" }
+
+func (a snapshotAction) GetType() toolkitcore.EntityType { return "snapshot" }
+
+func (a snapshotAction) CanActivate(context.Context, toolkitcore.Entity, monster.MonsterActionInput) error {
+	return nil
+}
+
+func (a snapshotAction) Activate(context.Context, toolkitcore.Entity, monster.MonsterActionInput) error {
+	return nil
+}
+
+func (a snapshotAction) Cost() monster.ActionCost { return monster.CostAction }
+
+func (a snapshotAction) Score(*monster.Monster, *monster.PerceptionData) int { return 0 }
+
+func (a snapshotAction) ActionType() monster.ActionType { return monster.TypeMeleeAttack }
+
+func (a snapshotAction) ToData() monster.ActionData { return a.data }
+
+func actionData(config string) monster.ActionData {
+	return monster.ActionData{Config: json.RawMessage(config)}
+}
+
+func monsterWith(actions ...monster.ActionData) *monster.Monster {
+	mon := monster.New(monster.Config{ID: "snapshot-monster", Name: "Snapshot Monster"})
+	for _, action := range actions {
+		mon.AddAction(snapshotAction{data: action})
+	}
+	return mon
 }
 
 // TestSeedMonsters_PlacedMonstersSpawnAtTheirCells: an At-bearing
@@ -336,7 +374,7 @@ func TestSeedMonsters_SpeedConvertedFromFeetToHexes(t *testing.T) {
 // leaves the flat AttackBonus/DamageDice/DamageType fields empty
 // (reasoning DataJSON alone carries the monster's real stats) silently
 // starves every seeded monster's OA reaction of readiness forever.
-func TestSeedMonsters_OpportunityAttackReadySeeded(t *testing.T) {
+func TestSeedMonsters_OAReadinessSeededFromCanonicalDamage(t *testing.T) {
 	enc := smNewEncounter(t)
 	require.NoError(t, enc.InitDungeon(smDungeonParams()))
 
@@ -753,6 +791,98 @@ func TestSeedMonsters_NonBlockingObstacleDoesNotReserveCell(t *testing.T) {
 	require.Len(t, enc.ToData().Monsters, 1)
 }
 
+func TestPrimaryAttackSnapshot_CanonicalDamageSelectsMarkedPool(t *testing.T) {
+	mon := monsterWith(actionData(`{
+		"attack_bonus":4,
+		"damage":[
+			{"dice":"1d6","type":"acid"},
+			{"dice":"1d8","type":"slashing","flat_bonus":-1,"properties":["adds-attack-ability-modifier"]}
+		]
+	}`))
+
+	attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+	require.Equal(t, 4, attackBonus)
+	require.Equal(t, "1d8-1", damageDice)
+	require.Equal(t, string(damage.Slashing), damageType)
+}
+
+func TestPrimaryAttackSnapshot_CanonicalDamageFormatsFlatBonus(t *testing.T) {
+	tests := []struct {
+		name       string
+		flatBonus  string
+		damageDice string
+	}{
+		{name: "positive", flatBonus: `,"flat_bonus":2`, damageDice: "2d4+2"},
+		{name: "zero", damageDice: "2d4"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mon := monsterWith(actionData(`{"attack_bonus":3,"damage":[{"dice":"2d4","type":"fire"` +
+				test.flatBonus + `}]}`))
+
+			attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+			require.Equal(t, 3, attackBonus)
+			require.Equal(t, test.damageDice, damageDice)
+			require.Equal(t, string(damage.Fire), damageType)
+		})
+	}
+}
+
+func TestPrimaryAttackSnapshot_CanonicalDamageWithoutMarkerSelectsFirstPool(t *testing.T) {
+	mon := monsterWith(actionData(`{
+		"attack_bonus":5,
+		"damage":[
+			{"dice":"1d4","type":"piercing"},
+			{"dice":"1d6","type":"poison"}
+		]
+	}`))
+
+	attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+	require.Equal(t, 5, attackBonus)
+	require.Equal(t, "1d4", damageDice)
+	require.Equal(t, string(damage.Piercing), damageType)
+}
+
+func TestPrimaryAttackSnapshot_InvalidCanonicalDamageSkipsAction(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+	}{
+		{name: "empty array", config: `{"attack_bonus":8,"damage":[]}`},
+		{name: "malformed dice", config: `{"attack_bonus":8,"damage":[{"dice":"1d6+2","type":"slashing"}]}`},
+		{name: "unknown type", config: `{"attack_bonus":8,"damage":[{"dice":"1d6","type":"radiation"}]}`},
+		{name: "legacy scalar fields", config: `{"attack_bonus":8,"damage_dice":"1d12+8","damage_type":"force"}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mon := monsterWith(
+				actionData(test.config),
+				actionData(`{"attack_bonus":2,"damage":[{"dice":"1d4","type":"cold"}]}`),
+			)
+
+			attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+			require.Equal(t, 2, attackBonus)
+			require.Equal(t, "1d4", damageDice)
+			require.Equal(t, string(damage.Cold), damageType)
+		})
+	}
+}
+
+func TestPrimaryAttackSnapshot_FirstEligibleCanonicalActionWins(t *testing.T) {
+	mon := monsterWith(
+		actionData(`{"attacks":["claw","claw"]}`),
+		actionData(`{"attack_bonus":6,"damage":[{"dice":"2d6","type":"slashing"}]}`),
+		actionData(`{"attack_bonus":9,"damage":[{"dice":"3d8","type":"force"}]}`),
+	)
+
+	attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
+	require.Equal(t, 6, attackBonus)
+	require.Equal(t, "2d6", damageDice)
+	require.Equal(t, string(damage.Slashing), damageType)
+}
+
 // TestPrimaryAttackSnapshot_SkipsMultiattackAction proves the Multiattack
 // skip directly: every real 11-constructor monster with a Multiattack
 // action happens to register its individual attack action(s) FIRST
@@ -768,9 +898,12 @@ func TestPrimaryAttackSnapshot_SkipsMultiattackAction(t *testing.T) {
 	mon.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{
 		Attacks: []string{smLongswordActionName, smLongswordActionName},
 	}))
-	mon.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name: smLongswordActionName, AttackBonus: 5, DamageDice: "1d8+3", Reach: 1, DamageType: damage.Slashing,
-	}))
+	melee, err := actions.NewMeleeAction(actions.MeleeConfig{
+		Name: smLongswordActionName, AttackBonus: 5, Reach: 1,
+		Damage: []damage.Damage{{Dice: "1d8", Type: damage.Slashing, FlatBonus: 3}},
+	})
+	require.NoError(t, err)
+	mon.AddAction(melee)
 
 	attackBonus, damageDice, damageType := primaryAttackSnapshot(mon)
 	require.Equal(t, 5, attackBonus)

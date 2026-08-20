@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	monsteractions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -40,7 +41,7 @@ func scopedBoundsWithWall(t *testing.T, id core.EncounterID, broker *encounter.B
 
 func realGoblinJSON(t *testing.T, id core.EntityID) []byte {
 	t.Helper()
-	raw, err := json.Marshal(monster.NewGoblin(string(id)).ToData())
+	raw, err := json.Marshal(monsters.NewGoblin(string(id)).ToData())
 	require.NoError(t, err)
 	return raw
 }
@@ -48,8 +49,9 @@ func realGoblinJSON(t *testing.T, id core.EntityID) []byte {
 func realRangedMonsterJSON(t *testing.T, id core.EntityID) []byte {
 	t.Helper()
 	config, err := json.Marshal(monsteractions.RangedConfig{
-		Name: "test-bow", AttackBonus: 4, DamageDice: floorMaskDamageDice, RangeNormal: 30,
-		RangeLong: 120, DamageType: damage.Piercing,
+		Name: "test-bow", AttackBonus: 4,
+		Damage:      []damage.Damage{{Dice: floorMaskDamageDice, Type: damage.Piercing}},
+		RangeNormal: 30, RangeLong: 120,
 	})
 	require.NoError(t, err)
 	raw, err := json.Marshal(&monster.Data{

@@ -278,15 +278,15 @@ func (s *EncounterEndConditionSweepSuite) TestTwoEncounterLeak_CleanedCharacterN
 		Source: dnd5eEvents.DamageSourceAbility, FlatBonus: 3,
 		DamageType: damage.Slashing,
 	}
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   bobEntityID,
-		TargetID:     "some-other-goblin",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
-		DamageType:   damage.Slashing,
-		WeaponDamage: ecsDamageDice,
-		AbilityUsed:  abilities.STR,
-		IsMelee:      true,
-	}
+	damageEvent := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+		AttackerID:       bobEntityID,
+		TargetID:         "some-other-goblin",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		WeaponDamageDice: ecsDamageDice,
+		WeaponDamageType: damage.Slashing,
+		AbilityUsed:      abilities.STR,
+		IsMelee:          true,
+	})
 	chain := tkevents.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(loadedB.EventBus())
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)

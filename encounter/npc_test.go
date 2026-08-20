@@ -14,7 +14,7 @@ import (
 	dnd5events "github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 )
 
 // monsterRefGoblin is the canonical monster ref used across NPC fixtures.
@@ -46,7 +46,7 @@ func (s *NPCSuite) SetupTest() {
 	)
 
 	// Build a goblin and serialize it.
-	gob := monster.NewGoblin(gobEntityID)
+	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
@@ -160,7 +160,7 @@ func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
 // Mirrors the guard on TakeAction (player path) — production must wire one
 // via WithCombatResolver.
 func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
-	gob := monster.NewGoblin(gobEntityID)
+	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
@@ -206,7 +206,7 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 // a MovementResolver wired, simulating an OA during movement, and asserts
 // HP delta applies exactly once.
 func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
-	gob := monster.NewGoblin(gobEntityID)
+	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
@@ -288,7 +288,7 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 // combat_phased_test.go for the other two NPC-attack shapes.
 func (s *NPCSuite) TestNPCAct_RegularAttack_DamageSharesAttackCorrelationID() {
 	const attackDamage = 5
-	gob := monster.NewGoblin(gobEntityID)
+	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)
@@ -394,7 +394,7 @@ func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
 	const attackDamage = 5
 	const aliceStartHP = 12
 
-	gob := monster.NewGoblin(gobEntityID)
+	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)

@@ -30,7 +30,7 @@ import (
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eConditions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	dnd5eMonster "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	dnd5eMonsters "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 )
 
 const (
@@ -248,7 +248,7 @@ func (s *HydrationCascadeSuite) TestNPCAct_UsesHeldMonster_NoDoubleSubscribe() {
 		Position: encountercore.Hex{}, SightRange: 10,
 		HP: 24, MaxHP: 24, AC: 14,
 	}))
-	gob := dnd5eMonster.NewGoblin("goblin-npc")
+	gob := dnd5eMonsters.NewGoblin("goblin-npc")
 	gobJSON, err := json.Marshal(gob.ToData())
 	s.Require().NoError(err)
 	s.Require().NoError(enc.AddMonster(tkenc.MonsterInput{
@@ -398,15 +398,15 @@ func (s *HydrationCascadeSuite) reloadViaWithResolver(
 func (s *HydrationCascadeSuite) executeDamageChain(
 	bus dnd5events.EventBus,
 ) (*dnd5eEvents.DamageChainEvent, error) {
-	evt := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   string(rogueEntityID),
-		TargetID:     string(hydrGoblinID),
-		AbilityUsed:  "dex",
-		DamageType:   damagePiercing,
-		WeaponDamage: dice1d6,
-		IsCritical:   false,
-		HasAdvantage: true,
-	}
+	evt := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+		AttackerID:       string(rogueEntityID),
+		TargetID:         string(hydrGoblinID),
+		AbilityUsed:      "dex",
+		WeaponDamageType: damagePiercing,
+		WeaponDamageDice: dice1d6,
+		IsCritical:       false,
+		HasAdvantage:     true,
+	})
 	chain := dnd5events.NewStagedChain[*dnd5eEvents.DamageChainEvent](dnd5eCombat.ModifierStages)
 	modified, err := dnd5eEvents.DamageChain.On(bus).PublishWithChain(s.ctx, evt, chain)
 	if err != nil {

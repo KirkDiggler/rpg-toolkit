@@ -423,8 +423,8 @@ func TestNPCAct_HydratedMonster_OutOfReachCapturedAttack_SkipsWithoutWedging(t *
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 
 	meleeCfg := monsteractions.MeleeConfig{
-		Name: "unmatched-claw", AttackBonus: 4, DamageDice: "1d6",
-		Reach: 3, DamageType: damage.Slashing,
+		Name: "unmatched-claw", AttackBonus: 4,
+		Damage: []damage.Damage{{Dice: "1d6", Type: damage.Slashing}}, Reach: 3,
 	}
 	cfgJSON, err := json.Marshal(meleeCfg)
 	require.NoError(t, err)

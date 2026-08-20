@@ -23,7 +23,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
 	"github.com/KirkDiggler/rpg-toolkit/encounter/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 )
 
 const (
@@ -84,7 +84,7 @@ func (s *NPCTargetingDownedSuite) TestFullAIPath_BuildPerception_NeverTargetsDow
 		HP: 12, MaxHP: 12, AC: 10,
 	}))
 
-	gob := monster.NewGoblin(gobEntityID)
+	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
 	s.Require().NoError(err)

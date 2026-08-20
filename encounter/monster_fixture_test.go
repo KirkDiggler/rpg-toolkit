@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 )
 
 // testGoblinDataJSON returns valid, rehydratable monster.Data JSON for a
@@ -32,7 +32,7 @@ import (
 // per-call-site conversions.
 func testGoblinDataJSON(t *testing.T, id core.EntityID) []byte {
 	t.Helper()
-	b, err := json.Marshal(monster.NewGoblin(string(id)).ToData())
+	b, err := json.Marshal(monsters.NewGoblin(string(id)).ToData())
 	require.NoError(t, err)
 	return b
 }

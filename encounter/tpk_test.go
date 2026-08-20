@@ -367,15 +367,15 @@ func (s *TPKSuite) TestTPK_DeadFlagDoesNotLeakAcrossEncounters() {
 		Source: dnd5eEvents.DamageSourceWeapon, FlatBonus: 7,
 		DamageType: damage.Slashing,
 	}
-	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   string(tpkBobEntityID),
-		TargetID:     "some-other-goblin",
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		DamageType:   damage.Slashing,
-		WeaponDamage: tpkDamageDice,
-		AbilityUsed:  abilities.STR,
-		IsMelee:      true,
-	}
+	damageEvent := dnd5eEvents.NewDamageChainEvent(dnd5eEvents.DamageChainInput{
+		AttackerID:       string(tpkBobEntityID),
+		TargetID:         "some-other-goblin",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		WeaponDamageDice: tpkDamageDice,
+		WeaponDamageType: damage.Slashing,
+		AbilityUsed:      abilities.STR,
+		IsMelee:          true,
+	})
 	chain := tkevents.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damageTopic := dnd5eEvents.DamageChain.On(loadedB.EventBus())
 	modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, chain)

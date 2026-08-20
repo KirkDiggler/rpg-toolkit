@@ -10,6 +10,7 @@ import (
 	"math"
 
 	"github.com/KirkDiggler/rpg-toolkit/encounter/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -437,18 +438,13 @@ func regionWidth(hexes core.HexSet) int {
 	return maxX - minX + 1
 }
 
-// attackSnapshot mirrors the JSON shape shared by every damage-dealing
-// MonsterAction's Config (MeleeConfig, RangedConfig, BiteConfig —
-// monster/actions/*.go): attack_bonus/damage_dice/damage_type. Decoding
-// into this one small struct rather than each action's own concrete
-// Config type means no type switch on the action's Ref is needed —
-// Multiattack (whose Config only ever carries an Attacks []string) and
-// any non-damage action (e.g. Nimble Escape) simply decode to zero
-// values here and get skipped by primaryAttackSnapshot below.
+// attackSnapshot mirrors the canonical fields shared by every
+// damage-dealing MonsterAction config. Decoding into this small struct avoids
+// a type switch on the action ref; non-damage actions decode with an empty
+// damage slice and are skipped by primaryAttackSnapshot.
 type attackSnapshot struct {
-	AttackBonus int    `json:"attack_bonus"`
-	DamageDice  string `json:"damage_dice"`
-	DamageType  string `json:"damage_type"`
+	AttackBonus int             `json:"attack_bonus"`
+	Damage      []damage.Damage `json:"damage"`
 }
 
 // primaryAttackSnapshot extracts a flat combat-snapshot (AttackBonus,
@@ -467,24 +463,34 @@ type attackSnapshot struct {
 // DataJSON alone was sufficient) silently starves every dungeon-seeded
 // monster's OA reaction of readiness forever.
 //
-// One known, accepted gap: the goblin's hardcoded ScimitarConfig
-// (monster/scimitar_action.go, predating the generic actions.MeleeAction)
-// never serializes a damage type at all (damage_bonus instead) — its
-// DamageType comes back empty here; AttackBonus/DamageDice still populate
-// correctly, which is what OA readiness actually needs. A broader gap —
-// a ranged-only monster's OA readiness assumes a melee-shaped attack —
-// is tracked separately as rpg-toolkit#844 (a typed attack-snapshot
-// accessor belongs in rulebooks/dnd5e, not patched here).
+// The projection is deliberately lossy: it selects the pool marked as
+// receiving the attack ability modifier, or the first pool when no marker is
+// present, and reconstructs the encounter's singular dice notation from that
+// pool's intrinsic flat bonus. Invalid canonical damage makes only that action
+// ineligible. Legacy scalar action fields are not decoded.
 func primaryAttackSnapshot(mon *monster.Monster) (attackBonus int, damageDice, damageType string) {
 	for _, action := range mon.Actions() {
 		var snap attackSnapshot
 		if err := json.Unmarshal(action.ToData().Config, &snap); err != nil {
 			continue
 		}
-		if snap.DamageDice == "" {
+		if err := damage.Validate(snap.Damage); err != nil {
 			continue
 		}
-		return snap.AttackBonus, snap.DamageDice, snap.DamageType
+
+		primary := snap.Damage[0]
+		for _, pool := range snap.Damage {
+			if pool.HasProperty(damage.AddsAttackAbilityModifier) {
+				primary = pool
+				break
+			}
+		}
+
+		notation := primary.Dice
+		if primary.FlatBonus != 0 {
+			notation = fmt.Sprintf("%s%+d", notation, primary.FlatBonus)
+		}
+		return snap.AttackBonus, notation, string(primary.Type)
 	}
 	return 0, "", ""
 }
