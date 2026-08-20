@@ -1131,7 +1131,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// the ending-trigger validation above already ran, and compileEndings is
 	// the SAME projection Setup runs, so a reloaded encounter's endings fire on
 	// the cells the original's did.
-	e.endings = compileEndings(endingInputsForValidation, roomInputs)
+	e.endings = compileEndings(endingInputsForValidation, roomInputs, e.orientation)
 
 	// Restore outcome if present
 	if data.Outcome != nil {

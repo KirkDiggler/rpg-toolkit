@@ -50,17 +50,19 @@ type declaredEnding struct {
 // target into the single canvas cell an arrival is compared against. Every
 // room named here has already been checked to exist by validateEndingTriggers,
 // which both construction seams run before this.
-func compileEndings(endings []EndingInput, rooms []RoomInput) []declaredEnding {
-	origins := make(map[string]spatial.Position, len(rooms))
-	for _, r := range rooms {
-		origins[r.ID] = r.Origin
-	}
-
+//
+// Through [absoluteOf], the one projection this package has, rather than
+// through an addition of its own (rpg-toolkit#1127). An ending is compared to a
+// member's live cell by EQUALITY, so a second projection here would not be
+// merely untidy: on a hex field it lands the sanctuary tile somewhere no member
+// can ever stand, and the encounter simply never ends — the liveness hole
+// ErrNoEnding exists to prevent, arrived at from the inside.
+func compileEndings(endings []EndingInput, rooms []RoomInput, orientation Orientation) []declaredEnding {
 	out := make([]declaredEnding, 0, len(endings))
 	for _, ei := range endings {
 		de := declaredEnding{key: ei.Key, trigger: ei.Trigger}
 		if t, ok := ei.Trigger.(TriggerReachedPosition); ok {
-			de.cell = t.Position.Add(origins[t.Room])
+			de.cell = absoluteOf(roomByID(rooms, t.Room), orientation, t.Position)
 		}
 		out = append(out, de)
 	}
@@ -1415,7 +1417,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// Store endings in declaration order (deterministic evaluation, C8), each
 	// positional one compiled to the canvas cell it fires on.
-	e.endings = compileEndings(in.Endings, in.Field.Rooms)
+	e.endings = compileEndings(in.Endings, in.Field.Rooms, e.orientation)
 
 	// First light: build sight percepts for each member using refreshSight
 	firstLight, err := e.rebuildPercepts(memberIDs)
@@ -1559,18 +1561,6 @@ func (e *Encounter) cellOf(record *memberRecord) (spatial.Position, error) {
 		return spatial.Position{}, fmt.Errorf("member %q: not placed on the map: %w", record.ID, ErrNoField)
 	}
 	return cell, nil
-}
-
-// roomOrigin is the construction-time anchor lookup compileCanvas and member
-// placement share. Rooms are few and this runs once per placed thing at
-// construction, so a linear scan is the whole implementation.
-func roomOrigin(rooms []RoomInput, id string) spatial.Position {
-	for _, r := range rooms {
-		if r.ID == id {
-			return r.Origin
-		}
-	}
-	return spatial.Position{}
 }
 
 // Status returns the encounter's current state (Open or Closed with Outcome).

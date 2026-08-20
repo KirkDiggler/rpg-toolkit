@@ -5,7 +5,6 @@ package encounter_test
 
 import (
 	"fmt"
-	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -94,13 +93,19 @@ func vaultChaseHexSeamWall() []spatial.Boundary {
 // leaving the vault's Origin fixed at the one geometry this scene ever
 // actually uses.
 //
-// Geometry: corridor is 10x10 hex at Origin (0,0) — Q,R both in [-5,4].
-// The vault's Origin is (10,3): vault's Q-range ([5,14]) is fully
-// disjoint from corridor's ([-5,4]) regardless of R (W2), and the gate's
-// endpoints — corridor (4,1) [Q-max edge] and vault local (-5,-2)
-// [Q-min edge] — land on absolute (4,1) and (5,1): cube distance 1, a
-// genuine axial neighbor via the standard (+1,0) offset, not a formula
-// quirk (W3).
+// Geometry, in the frame a hex chamber is authored in since
+// rpg-toolkit#1127 — OFFSET columns and rows, counted from the chamber's own
+// corner. Corridor is 10x10 at Origin (0,0), so columns 0-9 and rows 0-9;
+// the vault is 10x10 at Origin (10,0), so columns 10-19. The two column
+// ranges do not meet, so the chambers share no cell (W2) — and unlike the
+// rhombus reading this replaces, that is now true under EITHER orientation,
+// because a chamber's footprint no longer depends on which way its hexes
+// point.
+//
+// The gate joins corridor (9,5) — its own last column — to vault local (0,5),
+// which is absolute column 10, row 5. Same-row neighbouring columns are
+// adjacent in odd-q for either parity, so those two cells kiss (W3) as
+// spatial's own conversion has it, not as a formula this fixture rolled.
 func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
 	field := encounter.FieldInput{
@@ -117,18 +122,32 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 1, Y: 1}},
-			// One hex-step from the gate's corridor-side endpoint (4,1) via
-			// the (0,+1) offset — close enough that the pursuit decider's
-			// "jump to last-seen position" IS a genuine single-step move,
-			// not a room-spanning teleport (#929 T4: every recorded beat in
-			// this scene, not just the doorway, is a real single-cell hop).
+			{ID: alice, Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 6, Y: 5}},
+			// One hex-step from the gate's corridor-side endpoint (9,5), and
+			// BESIDE the seam rather than in line with it. Both halves are
+			// load-bearing, and neither is arbitrary.
+			//
+			// One step, because [Encounter.Step] does not check adjacency
+			// (its doc comment says so, deliberately) and neither does the
+			// silent stepTo a Pump moves a monster with — so the pursuit
+			// decider's "jump to the last-seen cell" lands wherever that cell
+			// is, in one go. It is the FIXTURE that makes every recorded beat
+			// a real single-cell hop, not the verb, which is exactly why this
+			// scene can claim continuity over the whole transcript.
+			//
+			// Beside, because the seam wall leaves one edge open — (9,5) to
+			// (10,5) — and a watcher off that line cannot see through it: the
+			// ray from (9,4) into the vault crosses a walled edge in every
+			// direction. So this goblin watches her walk the corridor and
+			// loses her AT the threshold, which is what leaves the ghost on
+			// the corridor's own gate cell one step away, and what makes the
+			// decider reach for the doorway on its second think.
 			{ID: goblin, Kind: encounter.KindMonster, Room: "corridor",
-				Position: spatial.Position{X: 4, Y: 0}, Decider: pursuit},
+				Position: spatial.Position{X: 9, Y: 4}, Decider: pursuit},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "sanctuary", Trigger: encounter.TriggerReachedPosition{
-				Room: "vault", Position: spatial.Position{X: -3, Y: -3}}},
+				Room: "vault", Position: spatial.Position{X: 2, Y: 6}}},
 		},
 	}
 }
@@ -176,9 +195,17 @@ func (p *continuityProjector) useEncounter(enc *encounter.Encounter) {
 // project turns one room-local position into the canvas cell the authored
 // layout puts it at, records it in the human-readable transcript, and returns
 // the absolute position for the caller's own path-continuity bookkeeping.
+//
+// The arithmetic is offset-then-convert since rpg-toolkit#1127: a hex
+// chamber's local cell and its anchor are both counted in authored columns and
+// rows, and the SUM is what becomes an axial cell. Adding the anchor in axial —
+// what this used to do — is the shear that made a chamber a rhombus, one level
+// up.
 func (p *continuityProjector) project(member, verb, room string, pos spatial.Position) spatial.Position {
 	p.t.Helper()
-	absolute := pos.Add(p.originOf(room))
+	origin := p.originOf(room)
+	absolute := encounter.HexCellAt(encounter.HexesArePointyTop(),
+		int(pos.X)+int(origin.X), int(pos.Y)+int(origin.Y))
 	p.transcript = append(p.transcript, fmt.Sprintf("%s %s: %s(%g,%g) -> absolute(%g,%g)",
 		member, verb, room, pos.X, pos.Y, absolute.X, absolute.Y))
 	return absolute
@@ -195,15 +222,14 @@ func (p *continuityProjector) project(member, verb, room string, pos spatial.Pos
 // transcript row says which.
 func (p *continuityProjector) locate(member, verb string, absolute spatial.Position) spatial.Position {
 	p.t.Helper()
+	col, row := hexOffsetOfCell(absolute)
 	for _, r := range p.rooms {
-		local := absolute.Subtract(r.Origin)
-		qMin, qMax := hexSpan(r.Width)
-		rMin, rMax := hexSpan(r.Height)
-		if local.X < qMin || local.X > qMax || local.Y < rMin || local.Y > rMax {
+		localCol, localRow := col-int(r.Origin.X), row-int(r.Origin.Y)
+		if localCol < 0 || localCol >= r.Width || localRow < 0 || localRow >= r.Height {
 			continue
 		}
-		p.transcript = append(p.transcript, fmt.Sprintf("%s %s: %s(%g,%g) -> absolute(%g,%g)",
-			member, verb, r.ID, local.X, local.Y, absolute.X, absolute.Y))
+		p.transcript = append(p.transcript, fmt.Sprintf("%s %s: %s(%d,%d) -> absolute(%g,%g)",
+			member, verb, r.ID, localCol, localRow, absolute.X, absolute.Y))
 		return absolute
 	}
 	require.FailNow(p.t, "cell belongs to no chamber",
@@ -211,11 +237,19 @@ func (p *continuityProjector) locate(member, verb string, absolute spatial.Posit
 	return absolute
 }
 
-// hexSpan is an axial hex room's own [min,max] cell bounds along one axis: the
-// origin-centred half-open span tools/spatial gives an AxialHexGrid.
-func hexSpan(dim int) (min, max float64) {
-	half := float64(dim) / 2
-	return math.Ceil(-half), math.Ceil(half) - 1
+// hexOffsetOfCell is [encounter.HexCellAt] run backwards: the authored
+// [col,row] a dungeon-absolute cell came from.
+//
+// The fixture's own arithmetic, deliberately — this file projects with the
+// layout it authored rather than asking the composition, so the transcript
+// stays independent of the code it describes and the two cannot agree by
+// sharing a mistake. What it may borrow is tools/spatial's conversion, which
+// belongs to neither side of that comparison.
+func hexOffsetOfCell(cell spatial.Position) (col, row int) {
+	q, r := int(cell.X), int(cell.Y)
+	offset := spatial.CubeCoordinate{X: q, Y: r, Z: -q - r}.
+		ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+	return int(offset.X), int(offset.Y)
 }
 
 // TestVaultChaseAbsoluteContinuity is the wave's payoff scene (#929 T4):
@@ -246,8 +280,8 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	var alicePath, goblinPath []spatial.Position
 
 	// ---- Beat 1: starting placements, mutual sight ----------------------
-	alicePath = append(alicePath, proj.project(string(alice), "start", "corridor", spatial.Position{X: 1, Y: 1}))
-	goblinPath = append(goblinPath, proj.project(string(goblin), "start", "corridor", spatial.Position{X: 4, Y: 0}))
+	alicePath = append(alicePath, proj.project(string(alice), "start", "corridor", spatial.Position{X: 6, Y: 5}))
+	goblinPath = append(goblinPath, proj.project(string(goblin), "start", "corridor", spatial.Position{X: 9, Y: 4}))
 
 	st, _ := seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Current, st, "beat 1: alice sees the goblin across the open corridor")
@@ -260,34 +294,39 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	require.NoError(t, err, "beat 1: alice breaks off to run")
 
 	// ---- Beat 2: alice steps toward the gate, one hex at a time ----------
-	for _, to := range []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 4, Y: 1}} {
-		_, err = enc.Step(&encounter.StepInput{Member: alice, To: to})
+	for _, to := range []spatial.Position{{X: 7, Y: 5}, {X: 8, Y: 5}, {X: 9, Y: 5}} {
+		absolute := proj.project(string(alice), "move", "corridor", to)
+		_, err = enc.Step(&encounter.StepInput{Member: alice, To: absolute})
 		require.NoError(t, err, "alice steps toward the gate")
-		alicePath = append(alicePath, proj.project(string(alice), "move", "corridor", to))
+		alicePath = append(alicePath, absolute)
 	}
 
 	// Through the gate: one more step, to the cell on the other side. The
 	// departure cell was already recorded as alicePath's last entry, so only
 	// the arrival cell is new.
-	throughTheGate := proj.project(string(alice), "arrive via gate", "vault", spatial.Position{X: -5, Y: -2})
+	throughTheGate := proj.project(string(alice), "arrive via gate", "vault", spatial.Position{X: 0, Y: 5})
 	travOut, err := enc.Step(&encounter.StepInput{Member: alice, To: throughTheGate})
 	require.NoError(t, err, "alice slips through the gate")
 	require.Equal(t, "gate", travOut.Crossing, "the doorway is named, and decides nothing")
-	require.Equal(t, spatial.Position{X: 4, Y: 1}, travOut.Stepped.From, "the departure cell matches the last recorded move")
+	require.Equal(t, alicePath[len(alicePath)-1], travOut.Stepped.From, "the departure cell matches the last recorded move")
 	require.Equal(t, throughTheGate, travOut.Stepped.To)
 	alicePath = append(alicePath, throughTheGate)
 
-	// She takes one more step deeper into the vault before the pause, OFF the
-	// gate's row, and THAT is what puts the wall between them: standing in the
-	// opening she was still in plain view (rpg-toolkit#1106).
-	deeper := proj.project(string(alice), "move", "vault", spatial.Position{X: -5, Y: -3})
+	// She takes one more step deeper into the vault before the pause, off the
+	// gate's row. The wall took her one step earlier, at the threshold itself:
+	// the goblin watches from beside the seam, so crossing the opening is
+	// already out of its sight (see vaultChaseHexSetup's placement note). This
+	// step is what puts a second cell between the ghost and where she actually
+	// is, so the pursuit has somewhere to be wrong about.
+	deeper := proj.project(string(alice), "move", "vault", spatial.Position{X: 0, Y: 6})
 	_, err = enc.Step(&encounter.StepInput{Member: alice, To: deeper})
 	require.NoError(t, err, "alice steps deeper into the vault")
 	alicePath = append(alicePath, deeper)
 
 	// The ghost forms at the goblin's LAST SIGHT of her, which the wall beside
-	// the gate is what makes possible: a room boundary hid nothing here, and
-	// standing in the opening she was in plain view.
+	// the gate is what makes possible: a room boundary hid nothing here
+	// (rpg-toolkit#1106), and without a wall on the seam the vault would be in
+	// plain view from the corridor and there would be nowhere to disappear to.
 	st, p := seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — the wall took her")
 
@@ -312,36 +351,41 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// Re-project alice's CURRENT position on the reloaded encounter — it
 	// must be identical to her last pre-reload position (distance 0,
 	// trivially continuous): a reload never moves anyone.
-	afterReload := proj.project(string(alice), "reload checkpoint", "vault", spatial.Position{X: -5, Y: -3})
+	afterReload := proj.project(string(alice), "reload checkpoint", "vault", spatial.Position{X: 0, Y: 6})
 	require.Equal(t, beforeReload, afterReload, "beat 3: the projected position is unchanged by the reload")
 
 	// ---- Beat 4: the pursuit crosses too ----------------------------------
 	pumpOut1, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 4: the pursuit resumes")
 	require.Len(t, pumpOut1.MonsterMoves, 1, "beat 4: the goblin steps toward the threshold")
-	// The pump reports where it walked on the MAP — no room needed to read
-	// it, and no arithmetic to redo (rpg-toolkit#1062). The corridor is
-	// anchored at the origin, so this one cell reads the same either way;
-	// the crossing below is where the two frames part company.
-	require.Equal(t, spatial.Position{X: 4, Y: 1}, pumpOut1.MonsterMoves[0].To)
+	// The pump reports where it walked on the MAP — no room needed to read it,
+	// and no arithmetic to redo (rpg-toolkit#1062). It went to the ghost, and
+	// the ghost stands on the last cell it saw her on: the corridor's own gate
+	// cell, which is the fourth thing her path recorded. Asserted as that
+	// entry rather than as a literal, so the two cannot drift apart — and note
+	// that the absolute cell is NOT the pair either of them was authored as
+	// (rpg-toolkit#1127), which is exactly why the pump reports absolute.
+	require.Equal(t, alicePath[3], pumpOut1.MonsterMoves[0].To)
 	goblinPath = append(goblinPath, proj.locate(string(goblin), "move", pumpOut1.MonsterMoves[0].To))
 
 	pumpOut2, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 4: the goblin follows her through")
 	require.Len(t, pumpOut2.MonsterMoves, 1, "beat 4: the goblin comes through the gate")
-	// vault-local (-5,-2) through the vault's (10,3) anchor: the same absolute
-	// cell alice's own step landed on, and the same cell the movement beat
-	// carries. ONE list, because there is one kind of step.
-	require.Equal(t, spatial.Position{X: 5, Y: 1}, pumpOut2.MonsterMoves[0].To)
+	// Standing on the ghost and she is not there, the decider reaches for the
+	// door it is standing in — so vault-local (0,5) through the vault's (10,0)
+	// anchor: the same absolute cell alice's own step landed on, and the same
+	// cell the movement beat carries. ONE list, because there is one kind of
+	// step.
+	require.Equal(t, throughTheGate, pumpOut2.MonsterMoves[0].To)
 	goblinPath = append(goblinPath, proj.locate(string(goblin), "arrive via gate", pumpOut2.MonsterMoves[0].To))
 
 	// ---- Beat 5: sanctuary ------------------------------------------------
-	for _, to := range []spatial.Position{{X: -4, Y: -3}, {X: -3, Y: -3}} {
+	for _, to := range []spatial.Position{{X: 1, Y: 6}, {X: 2, Y: 6}} {
 		absolute := proj.project(string(alice), "move", "vault", to)
 		moveOut, mErr := enc.Step(&encounter.StepInput{Member: alice, To: absolute})
 		require.NoError(t, mErr, "alice steps toward sanctuary")
 		alicePath = append(alicePath, absolute)
-		if to == (spatial.Position{X: -3, Y: -3}) {
+		if to == (spatial.Position{X: 2, Y: 6}) {
 			require.NotNil(t, moveOut.Outcome, "the ending fires on arrival")
 			require.Equal(t, "sanctuary", moveOut.Outcome.Ending)
 
@@ -387,19 +431,19 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// entries) read exactly like an ordinary move, by design: the room
 	// boundary is invisible in world space.
 	require.Equal(t, []string{
-		"alice start: corridor(1,1) -> absolute(1,1)",
-		"goblin start: corridor(4,0) -> absolute(4,0)",
-		"alice move: corridor(2,1) -> absolute(2,1)",
-		"alice move: corridor(3,1) -> absolute(3,1)",
-		"alice move: corridor(4,1) -> absolute(4,1)",
-		"alice arrive via gate: vault(-5,-2) -> absolute(5,1)",
-		"alice move: vault(-5,-3) -> absolute(5,0)",
-		"alice reload checkpoint: vault(-5,-3) -> absolute(5,0)",
-		"goblin move: corridor(4,1) -> absolute(4,1)",
-		"goblin arrive via gate: vault(-5,-2) -> absolute(5,1)",
-		"alice move: vault(-4,-3) -> absolute(6,0)",
-		"alice move: vault(-3,-3) -> absolute(7,0)",
-		"alice outcome: vault(-3,-3) -> absolute(7,0)",
-		"goblin outcome: vault(-5,-2) -> absolute(5,1)",
+		"alice start: corridor(6,5) -> absolute(6,-8)",
+		"goblin start: corridor(9,4) -> absolute(9,-9)",
+		"alice move: corridor(7,5) -> absolute(7,-9)",
+		"alice move: corridor(8,5) -> absolute(8,-9)",
+		"alice move: corridor(9,5) -> absolute(9,-10)",
+		"alice arrive via gate: vault(0,5) -> absolute(10,-10)",
+		"alice move: vault(0,6) -> absolute(10,-11)",
+		"alice reload checkpoint: vault(0,6) -> absolute(10,-11)",
+		"goblin move: corridor(9,5) -> absolute(9,-10)",
+		"goblin arrive via gate: vault(0,5) -> absolute(10,-10)",
+		"alice move: vault(1,6) -> absolute(11,-12)",
+		"alice move: vault(2,6) -> absolute(12,-12)",
+		"alice outcome: vault(2,6) -> absolute(12,-12)",
+		"goblin outcome: vault(0,5) -> absolute(10,-10)",
 	}, proj.transcript, "the story IS the projected continuity, told in order")
 }

@@ -231,9 +231,9 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		doorways[i] = AtlasDoorway{
 			Connection: ci.ID,
 			From:       ci.From,
-			FromCell:   ci.FromPosition.Add(roomsByID[ci.From].Origin),
+			FromCell:   absoluteOf(roomsByID[ci.From], e.orientation, ci.FromPosition),
 			To:         ci.To,
-			ToCell:     ci.ToPosition.Add(roomsByID[ci.To].Origin),
+			ToCell:     absoluteOf(roomsByID[ci.To], e.orientation, ci.ToPosition),
 		}
 	}
 	// Currently redundant — e.connectionsInput is already sorted by ID at
