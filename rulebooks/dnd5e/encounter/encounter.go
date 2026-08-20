@@ -167,14 +167,35 @@ type Encounter struct {
 }
 
 // deepCopyRoomInputs snapshots the caller's room descriptions — the
-// persistence source must never alias caller-owned slices (T6 review
+// persistence source must never alias caller-owned state (T6 review
 // M4: a caller editing its SetupInput after construction silently
 // corrupted ToData and made the encounter unsavable).
+//
+// COPYING THE SLICE IS NOT ENOUGH FOR PROPS, and that is why they are copied
+// element-wise here rather than with an append like the boundaries beside them.
+// A [PropInput] holds its two blocking answers as POINTERS ([PropInput]'s doc
+// comment: absence has to be absence), so a copied element still points at the
+// caller's bools, and a caller flipping one after construction would change what
+// ToData writes while the running encounter — which dereferenced them once, at
+// compileCanvas — went on behaving the other way. That is the T6 defect exactly,
+// reintroduced one indirection down, and it survived the mutation battery on
+// rpg-toolkit#1128 until this loop was written.
 func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 	out := make([]RoomInput, len(rooms))
 	for i, r := range rooms {
 		rc := r
-		rc.Props = append([]PropInput(nil), r.Props...)
+		rc.Props = make([]PropInput, len(r.Props))
+		for j, p := range r.Props {
+			rc.Props[j] = p
+			if p.BlocksMovement != nil {
+				blocksMovement := *p.BlocksMovement
+				rc.Props[j].BlocksMovement = &blocksMovement
+			}
+			if p.BlocksLineOfSight != nil {
+				blocksSight := *p.BlocksLineOfSight
+				rc.Props[j].BlocksLineOfSight = &blocksSight
+			}
+		}
 		rc.Boundaries = append([]spatial.Boundary(nil), r.Boundaries...)
 		out[i] = rc
 	}

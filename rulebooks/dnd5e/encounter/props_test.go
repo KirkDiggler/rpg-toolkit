@@ -324,3 +324,105 @@ func (s *PropsSuite) TestAnOldBlobsOccludersAreRefusedLoudly() {
 	s.Contains(err.Error(), "occluders",
 		"named, so whoever holds the blob knows which dialect it is written in")
 }
+
+// TestAPersistedPropMustSayWhatItDoesToo — the load seam's half of
+// TestAPropMustSayWhatItDoes.
+//
+// Construction refusing a nil answer proves nothing about LOAD, which builds
+// its rooms from a blob rather than from a caller's struct. A blob written by a
+// build that did not ask is exactly the case the required-at-load rule exists
+// for, and it is reachable by hand-editing JSON, which is what a stored
+// encounter IS. Both mutants that defaulted a missing persisted answer survived
+// the battery until this test existed.
+func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
+	loadWith := func(mutate func(*encounter.RoomData)) error {
+		enc := s.chamber("dnd5e:props:pillar", propTrue(), propTrue())
+		data := enc.ToData()
+		mutate(&data.Field.Rooms[0])
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+			Initiative: orderAsGiven{},
+		})
+		return err
+	}
+
+	s.Run("no movement answer", func() {
+		err := loadWith(func(r *encounter.RoomData) { r.Props[0].BlocksMovement = nil })
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Contains(err.Error(), "blocks_movement")
+		s.Contains(err.Error(), "dnd5e:props:pillar", "named, so the blob's owner can find it")
+	})
+
+	s.Run("no sight answer", func() {
+		err := loadWith(func(r *encounter.RoomData) { r.Props[0].BlocksLineOfSight = nil })
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Contains(err.Error(), "blocks_line_of_sight")
+	})
+}
+
+// TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon is T6 review M4's
+// guarantee, asked of a field the caller holds by POINTER.
+//
+// deepCopyRoomInputs promised the persistence source never aliases caller-owned
+// state, and copying the Props slice looked like it kept that promise — the
+// elements are copied, after all. But a prop's two answers are pointers, so the
+// copies pointed straight back at the caller's bools: flipping one afterwards
+// rewrote what ToData would save, while the running encounter kept behaving the
+// way it was built. A promise in a comment is not a mechanism, and this is the
+// mechanism.
+func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() {
+	solid := true
+	setup := &encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms: []encounter.RoomInput{{
+				ID: "crypt", Width: 12, Height: 8, Origin: propsOrigin,
+				Props: []encounter.PropInput{{
+					Ref:               "dnd5e:props:pillar",
+					At:                spatial.Position{X: 5, Y: 4},
+					BlocksMovement:    &solid,
+					BlocksLineOfSight: &solid,
+				}},
+			}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: delver, Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 2, Y: 4}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	}
+
+	enc, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+
+	// The caller changes its mind about its own struct, after the fact.
+	solid = false
+
+	data := enc.ToData()
+	s.Require().Len(data.Field.Rooms[0].Props, 1)
+	s.Require().NotNil(data.Field.Rooms[0].Props[0].BlocksMovement)
+	s.True(*data.Field.Rooms[0].Props[0].BlocksMovement,
+		"the dungeon was built with a solid pillar and saves one")
+	s.Require().NotNil(data.Field.Rooms[0].Props[0].BlocksLineOfSight)
+	s.True(*data.Field.Rooms[0].Props[0].BlocksLineOfSight)
+
+	// And the encounter that is actually running never wavered.
+	_, err = enc.Step(&encounter.StepInput{Member: delver, To: propAbs(5, 4)})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+}
+
+// TestASavedPropIsNotAliasedByTheSnapshot — snapshot immunity, the direction
+// ToData's own doc comment promises: "mutating the returned EncounterData will
+// not affect this Encounter".
+func (s *PropsSuite) TestASavedPropIsNotAliasedByTheSnapshot() {
+	enc := s.chamber("dnd5e:props:coffin", propTrue(), propFalse())
+
+	first := enc.ToData()
+	*first.Field.Rooms[0].Props[0].BlocksMovement = false
+	*first.Field.Rooms[0].Props[0].BlocksLineOfSight = true
+
+	second := enc.ToData()
+	s.True(*second.Field.Rooms[0].Props[0].BlocksMovement,
+		"a second snapshot must not carry the first one's edits")
+	s.False(*second.Field.Rooms[0].Props[0].BlocksLineOfSight)
+}
