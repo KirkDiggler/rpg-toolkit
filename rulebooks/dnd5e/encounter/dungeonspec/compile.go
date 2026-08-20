@@ -83,10 +83,10 @@ type MonsterPlacement struct {
 
 // Load decodes, validates and compiles a dungeon in one call.
 //
-// The three steps are separately available ([Decode], [Validate]) because their
-// errors are about different things, and a tool that wants to lint a file
-// without building a world should not have to build one. Most callers want all
-// three, and this is that call.
+// The three steps are separately available ([Decode], [Validate], [Compile])
+// because their errors are about different things, and a tool that wants to
+// lint a file without building a world should not have to build one. Most
+// callers want all three, and this is that call.
 func Load(raw []byte) (Compiled, error) {
 	spec, err := Decode(raw)
 	if err != nil {
@@ -96,29 +96,36 @@ func Load(raw []byte) (Compiled, error) {
 		return Compiled{}, err
 	}
 
-	return compile(spec)
+	return Compile(spec)
 }
 
-// compile turns a validated spec into a world.
+// Compile turns a VALIDATED spec into a world.
 //
-// # The layout rule, stated once
-//
-// Chambers sit in a row, in declaration order, each one immediately east of the
-// last: chamber i's anchor is the sum of the widths before it, and every
-// chamber is the dungeon's full height. That is the entire layout language, and
-// it is deliberately small — [encounter.RoomInput.Origin] can anchor a chamber
-// anywhere, so a richer dialect is a change to this file and nothing else.
-//
-// # Everything here is authored columns and rows
-//
-// A chamber's anchor, a prop's cell, a wall's endpoints and a connector's
-// endpoints are all in the frame the author wrote (rpg-toolkit#1127), and the
-// composition converts them once at construction. The two places this package
-// needs an ABSOLUTE cell — a door's edges, which [encounter.DoorInput] takes
-// absolute because a door spans two chambers and belongs to neither — go
-// through [encounter.HexCellAt], which is the same conversion the composition
-// runs.
-func compile(spec *Spec) (Compiled, error) {
+// It assumes [Validate] has already passed and does not re-run it: the checks
+// below would be a second, weaker copy of rules that already exist, and two
+// copies of a rule are two rules waiting to disagree. Handing it an unvalidated
+// spec is a programming error, and the failure it produces is a compiled
+// dungeon the composition then refuses — which is the right place for it to
+// stop, but a worse message than [Validate] would have given.
+func Compile(spec *Spec) (Compiled, error) {
+	//
+	// # The layout rule, stated once
+	//
+	// Chambers sit in a row, in declaration order, each one immediately east of the
+	// last: chamber i's anchor is the sum of the widths before it, and every
+	// chamber is the dungeon's full height. That is the entire layout language, and
+	// it is deliberately small — [encounter.RoomInput.Origin] can anchor a chamber
+	// anywhere, so a richer dialect is a change to this file and nothing else.
+	//
+	// # Everything here is authored columns and rows
+	//
+	// A chamber's anchor, a prop's cell, a wall's endpoints and a connector's
+	// endpoints are all in the frame the author wrote (rpg-toolkit#1127), and the
+	// composition converts them once at construction. The two places this package
+	// needs an ABSOLUTE cell — a door's edges, which [encounter.DoorInput] takes
+	// absolute because a door spans two chambers and belongs to neither — go
+	// through [encounter.HexCellAt], which is the same conversion the composition
+	// runs.
 	orientation, err := orientationOf(spec)
 	if err != nil {
 		return Compiled{}, err
