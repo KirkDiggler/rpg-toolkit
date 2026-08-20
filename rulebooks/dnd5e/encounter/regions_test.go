@@ -439,12 +439,15 @@ func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
 func (s *RegionSuite) oneRoom(shape spatial.GridShape, w, h int, origin spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "only", Width: w, Height: h, Grid: shape, Origin: origin},
-		}},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: orientationFor(shape)},
+			Rooms: []encounter.RoomInput{
+				{ID: "only", Width: w, Height: h, Grid: shape, Origin: origin},
+			}},
 		Members: []encounter.MemberInput{
-			// Local (0,0) is a cell in both families: square rooms start
-			// there, hex rooms are centered on it.
+			// Local (0,0) is a cell in both families, and since
+			// rpg-toolkit#1127 it is the same cell in both: the corner a
+			// chamber is counted from. Hex rooms used to be centred on it.
 			{ID: alice, Kind: encounter.KindPlayer, Room: "only", Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},

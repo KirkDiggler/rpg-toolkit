@@ -405,20 +405,27 @@ func roomByID(rooms []RoomInput, id string) RoomInput {
 	return RoomInput{}
 }
 
-// fieldGridShape reports the grid family a field is drawn on, read off its
-// first room.
+// fieldGridShape reports the grid family a field is drawn on.
 //
-// W1 gives every room in a valid field the same family, so one room answers for
-// all of them — and this runs BEFORE W1 does, which is deliberate rather than a
-// gap: a mixed field is refused either way, and asking here only decides which
-// error the author sees first. An empty field answers square, and is refused a
-// moment later for being empty.
+// ANY hex room makes this a hex field, rather than reading the family off the
+// first room, and that is about ERROR ORDER rather than about grids. W1 gives
+// every room in a valid field the same family, so on a valid field the two
+// readings are identical. On an INVALID one they differ, and reading the first
+// room would make a field of [square, hex] answer "square" and get refused for
+// declaring an orientation — burying the real defect, which is that it mixes
+// families, under a complaint about a field that is not square either. Asking
+// "is there a hex room here" lets a mixed field satisfy this check and reach
+// W1, which is the rule that has something useful to say about it.
+//
+// An empty field answers square, and is refused a moment later for being empty.
 func fieldGridShape(rooms []RoomInput) spatial.GridShape {
-	if len(rooms) == 0 {
-		return spatial.GridShapeSquare
+	for _, r := range rooms {
+		if r.Grid == spatial.GridShapeHex {
+			return spatial.GridShapeHex
+		}
 	}
 
-	return rooms[0].Grid
+	return spatial.GridShapeSquare
 }
 
 // fieldOrientation checks a declared orientation against the field it describes.

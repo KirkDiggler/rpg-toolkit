@@ -89,7 +89,7 @@ func singleRoomSetup(shape spatial.GridShape, width, height int) *encounter.Setu
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: orientationFor(shape)},
 			Rooms:  []encounter.RoomInput{{ID: "solo", Width: width, Height: height, Grid: shape}},
 		},
 		Members: []encounter.MemberInput{
@@ -99,21 +99,48 @@ func singleRoomSetup(shape spatial.GridShape, width, height int) *encounter.Setu
 	}
 }
 
-// bruteForceLocalCells independently enumerates a room's valid integer
-// local cells using ONLY spatial's public API (NewSquareGrid/
-// NewAxialHexGrid + IsValidPosition) — no dependency on this module's
-// own enumeration, so it is a genuine independent oracle for
-// TestAtlasCellsMatchIsValidPosition (#929 T3 ruling 4).
-func bruteForceLocalCells(shape spatial.GridShape, width, height int) []spatial.Position {
-	var grid spatial.Grid
+// orientationFor is the declaration a single-room fixture of this family needs:
+// one for hex, none for square (rpg-toolkit#1127).
+func orientationFor(shape spatial.GridShape) encounter.Orientation {
 	if shape == spatial.GridShapeHex {
-		grid = spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: float64(width), SpanHeight: float64(height)})
-	} else {
-		grid = spatial.NewSquareGrid(spatial.SquareGridConfig{Width: float64(width), Height: float64(height)})
+		return encounter.HexesArePointyTop()
 	}
 
-	pad := width + height + 4 // generous — bigger than any valid span in either family
+	return nil
+}
+
+// bruteForceLocalCells independently enumerates a room's cells, WITHOUT asking
+// this module — a genuine oracle for TestRegionMembershipMatchesIsValidPosition
+// (#929 T3 ruling 4).
+//
+// THE HEX ORACLE CHANGED IN rpg-toolkit#1127, and the change is the whole
+// slice. It used to be spatial.NewAxialHexGrid + IsValidPosition, because a hex
+// room WAS an origin-centred axial rhombus. A chamber is now the offset
+// rectangle its author drew, so the oracle is that rectangle's image under
+// spatial's own offset->cube conversion — still spatial's public API only, and
+// still not this module's answer, which is what makes it an oracle rather than
+// a mirror.
+//
+// Square is untouched: for square, offset and grid coordinates are the same
+// thing, so the rectangle and the grid's IsValidPosition are one set and this
+// still asks the grid.
+func bruteForceLocalCells(shape spatial.GridShape, width, height int) []spatial.Position {
 	var cells []spatial.Position
+
+	if shape == spatial.GridShapeHex {
+		for col := 0; col < width; col++ {
+			for row := 0; row < height; row++ {
+				cube := spatial.OffsetCoordinateToCubeWithOrientation(
+					spatial.Position{X: float64(col), Y: float64(row)}, spatial.HexOrientationPointyTop)
+				cells = append(cells, spatial.Position{X: float64(cube.X), Y: float64(cube.Y)})
+			}
+		}
+
+		return cells
+	}
+
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: float64(width), Height: float64(height)})
+	pad := width + height + 4 // generous — bigger than any valid span
 	for x := -pad; x <= pad; x++ {
 		for y := -pad; y <= pad; y++ {
 			pos := spatial.Position{X: float64(x), Y: float64(y)}
@@ -122,22 +149,31 @@ func bruteForceLocalCells(shape spatial.GridShape, width, height int) []spatial.
 			}
 		}
 	}
+
 	return cells
 }
 
-// TestRegionMembershipMatchesIsValidPosition is the ruling-4 property test,
+// TestRegionMembershipMatchesTheAuthoredChamber is the ruling-4 property test,
 // asked of the thing that answers membership now (rpg-toolkit#1108). For a
 // spread of dimension parities (odd, even, and 1xN thin rooms) across both grid
 // families, the cells RegionAt claims for a region (Origin zero, so absolute ==
-// local) must be EXACTLY the set spatial's own IsValidPosition accepts — not a
-// subset, not a superset. A one-cell span drift fails this for some parity in
-// the spread.
+// local) must be EXACTLY the chamber its author drew — not a subset, not a
+// superset. A one-cell drift fails this for some parity in the spread.
+//
+// Its name and its oracle both changed in rpg-toolkit#1127, and the old ones
+// were the defect rather than the casualty: it used to compare against
+// spatial's IsValidPosition, which was right while a hex room was an axial
+// rhombus and became the wrong question when a chamber became the offset
+// rectangle somebody drew. Under the rhombus reading this test passed on 100
+// dimension pairs while the reference tomb's chambers reported 156 cells as
+// floor that nobody had drawn — the property held, and it was a property of the
+// wrong set.
 //
 // It used to compare Atlas's enumerated Cells against the same brute-force set.
 // The Atlas no longer enumerates, and this is the stronger question anyway: it
 // pins the lookup every verb in the module actually consults, rather than a
 // parallel enumerator that agreed with it.
-func (s *EncounterTestSuite) TestRegionMembershipMatchesIsValidPosition() {
+func (s *EncounterTestSuite) TestRegionMembershipMatchesTheAuthoredChamber() {
 	dims := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	shapes := map[string]spatial.GridShape{"square": spatial.GridShapeSquare, "hex": spatial.GridShapeHex}
 
@@ -165,7 +201,7 @@ func (s *EncounterTestSuite) TestRegionMembershipMatchesIsValidPosition() {
 					}
 
 					s.Require().Equal(want, got,
-						"RegionAt must agree exactly with spatial's own IsValidPosition")
+						"RegionAt must claim exactly the chamber that was drawn")
 				})
 			}
 		}
