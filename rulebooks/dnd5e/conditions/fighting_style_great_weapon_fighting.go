@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -128,60 +129,50 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Check for weapon component
-	if len(event.Components) == 0 {
-		return c, nil
-	}
-
-	weaponComponent := &event.Components[0]
-	if weaponComponent.Source != dnd5eEvents.DamageSourceWeapon {
+	if primaryWeaponComponentIndex(event) < 0 {
 		return c, nil
 	}
 
 	// Add modifier that rerolls at StageFeatures
 	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		for i := range e.Components {
-			component := &e.Components[i]
-			if component.Source != dnd5eEvents.DamageSourceWeapon {
-				continue
-			}
-
-			// Get roller
-			roller := f.roller
-			if roller == nil {
-				roller = dice.NewRoller()
-			}
-
-			// Parse die size from weapon damage notation
-			dieSize, err := parseGWFWeaponDieSize(e.WeaponDamage)
-			if err != nil {
-				return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", e.WeaponDamage)
-			}
-
-			// Reroll 1s and 2s
-			newRolls := make([]int, len(component.OriginalDiceRolls))
-			copy(newRolls, component.OriginalDiceRolls)
-
-			for idx, roll := range component.OriginalDiceRolls {
-				if roll == 1 || roll == 2 {
-					newRoll, rollErr := roller.Roll(modCtx, dieSize)
-					if rollErr != nil {
-						return e, rpgerr.Wrap(rollErr, "failed to reroll die")
-					}
-
-					component.Rerolls = append(component.Rerolls, dnd5eEvents.RerollEvent{
-						DieIndex: idx,
-						Before:   roll,
-						After:    newRoll,
-						Reason:   "great_weapon_fighting",
-					})
-
-					newRolls[idx] = newRoll
-				}
-			}
-
-			component.FinalDiceRolls = newRolls
+		componentIndex := primaryWeaponComponentIndex(e)
+		if componentIndex < 0 {
+			return e, nil
 		}
+		component := &e.Components[componentIndex]
+
+		roller := f.roller
+		if roller == nil {
+			roller = dice.NewRoller()
+		}
+
+		dieSize, err := parseGWFWeaponDieSize(component.Dice)
+		if err != nil {
+			return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", component.Dice)
+		}
+
+		newRolls := make([]int, len(component.OriginalDiceRolls))
+		copy(newRolls, component.OriginalDiceRolls)
+
+		for idx, roll := range component.OriginalDiceRolls {
+			if roll == 1 || roll == 2 {
+				newRoll, rollErr := roller.Roll(modCtx, dieSize)
+				if rollErr != nil {
+					return e, rpgerr.Wrap(rollErr, "failed to reroll die")
+				}
+
+				component.Rerolls = append(component.Rerolls, dnd5eEvents.RerollEvent{
+					DieIndex: idx,
+					Before:   roll,
+					After:    newRoll,
+					Reason:   "great_weapon_fighting",
+				})
+
+				newRolls[idx] = newRoll
+			}
+		}
+
+		component.FinalDiceRolls = newRolls
 
 		return e, nil
 	}
@@ -191,6 +182,20 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	}
 
 	return c, nil
+}
+
+// primaryWeaponComponentIndex finds the weapon component carrying the exact
+// canonical ability marker. Type and position cannot identify the primary
+// component when one attack carries multiple same-type weapon pools.
+func primaryWeaponComponentIndex(event *dnd5eEvents.DamageChainEvent) int {
+	for i := range event.Components {
+		component := &event.Components[i]
+		if component.Source == dnd5eEvents.DamageSourceWeapon &&
+			component.HasProperty(damage.AddsAttackAbilityModifier) {
+			return i
+		}
+	}
+	return -1
 }
 
 // parseGWFWeaponDieSize extracts the die size from weapon damage notation

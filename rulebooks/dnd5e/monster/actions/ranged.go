@@ -17,37 +17,38 @@ import (
 
 // RangedConfig holds configuration for creating a ranged action
 type RangedConfig struct {
-	Name        string      `json:"name"`         // e.g., "shortbow", "light crossbow"
-	AttackBonus int         `json:"attack_bonus"` // e.g., +4
-	DamageDice  string      `json:"damage_dice"`  // e.g., "1d6+2"
-	RangeNormal int         `json:"range_normal"` // in hexes, typically 16 (80ft / 5)
-	RangeLong   int         `json:"range_long"`   // in hexes, typically 64 (320ft / 5)
-	DamageType  damage.Type `json:"damage_type"`  // e.g., piercing
+	Name        string          `json:"name"`         // e.g., "shortbow", "light crossbow"
+	AttackBonus int             `json:"attack_bonus"` // e.g., +4
+	Damage      []damage.Damage `json:"damage"`
+	RangeNormal int             `json:"range_normal"` // in hexes, typically 16 (80ft / 5)
+	RangeLong   int             `json:"range_long"`   // in hexes, typically 64 (320ft / 5)
 }
 
 // RangedAction implements a generic ranged weapon attack.
 type RangedAction struct {
 	name        string
 	attackBonus int
-	damageDice  string
+	damage      []damage.Damage
 	rangeNormal int
 	rangeLong   int
-	damageType  damage.Type
 }
 
 // Ensure RangedAction implements MonsterAction
 var _ monster.MonsterAction = (*RangedAction)(nil)
 
 // NewRangedAction creates a ranged action with the given config
-func NewRangedAction(config RangedConfig) *RangedAction {
+func NewRangedAction(config RangedConfig) (*RangedAction, error) {
+	if err := damage.Validate(config.Damage); err != nil {
+		return nil, rpgerr.Wrap(err, "invalid ranged action damage")
+	}
+
 	return &RangedAction{
 		name:        config.Name,
 		attackBonus: config.AttackBonus,
-		damageDice:  config.DamageDice,
+		damage:      copyDamage(config.Damage),
 		rangeNormal: config.RangeNormal,
 		rangeLong:   config.RangeLong,
-		damageType:  config.DamageType,
-	}
+	}, nil
 }
 
 // GetID implements core.Entity
@@ -140,10 +141,9 @@ func (r *RangedAction) ToData() monster.ActionData {
 	config := RangedConfig{
 		Name:        r.name,
 		AttackBonus: r.attackBonus,
-		DamageDice:  r.damageDice,
+		Damage:      copyDamage(r.damage),
 		RangeNormal: r.rangeNormal,
 		RangeLong:   r.rangeLong,
-		DamageType:  r.damageType,
 	}
 	configJSON, _ := json.Marshal(config)
 

@@ -77,19 +77,19 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerolls1sAnd2s() {
 
 	// Create damage chain event with 1s and 2s
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "fighter-1",
-		TargetID:     "goblin-1",
-		WeaponDamage: "2d6", // Die size for rerolls
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				Dice:              "2d6",
 				OriginalDiceRolls: []int{1, 2, 6}, // 1 and 2 need rerolling, 6 stays
 				FinalDiceRolls:    []int{1, 2, 6},
 				FlatBonus:         4,
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Execute through damage chain
@@ -116,19 +116,19 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 	// No rerolls expected - all dice are 3+
 	// Create damage chain event with no 1s or 2s
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   "fighter-1",
-		TargetID:     "goblin-1",
-		WeaponDamage: "2d6",
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				Dice:              "2d6",
 				OriginalDiceRolls: []int{3, 4, 6}, // All above 2
 				FinalDiceRolls:    []int{3, 4, 6},
 				FlatBonus:         4,
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Execute through damage chain
@@ -143,6 +143,46 @@ func (s *FightingStyleGreatWeaponFightingTestSuite) TestDoesNotRerollHigherValue
 	// Dice should be unchanged
 	s.Equal([]int{3, 4, 6}, finalEvent.Components[0].FinalDiceRolls)
 	s.Empty(finalEvent.Components[0].Rerolls)
+}
+
+func (s *FightingStyleGreatWeaponFightingTestSuite) TestRerollsMarkedPrimaryWhenWeaponPoolsShareType() {
+	gwf := conditions.NewFightingStyleGreatWeaponFightingCondition("fighter-1", s.mockRoller)
+	s.Require().NoError(gwf.Apply(s.ctx, s.bus))
+	defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
+
+	s.mockRoller.EXPECT().Roll(gomock.Any(), 6).Return(5, nil)
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				OriginalDiceRolls: []int{1},
+				FinalDiceRolls:    []int{1},
+				Dice:              "1d4",
+				DamageType:        damage.Slashing,
+			},
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				OriginalDiceRolls: []int{1},
+				FinalDiceRolls:    []int{1},
+				Dice:              "1d6",
+				DamageType:        damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	s.Equal([]int{1}, finalEvent.Components[0].FinalDiceRolls)
+	s.Equal([]int{5}, finalEvent.Components[1].FinalDiceRolls)
 }
 
 func (s *FightingStyleGreatWeaponFightingTestSuite) TestToJSON() {

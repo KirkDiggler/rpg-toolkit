@@ -9,7 +9,6 @@ const TypeMonsterActions core.Type = "monster_actions"
 // Monster action singletons - unexported for controlled access via methods
 var (
 	// Goblin actions
-	monsterActionScimitar              = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "scimitar"}
 	monsterActionShortbow              = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "shortbow"}
 	monsterActionNimbleEscapeDisengage = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "nimble_escape_disengage"}
 	monsterActionNimbleEscapeHide      = &core.Ref{Module: Module, Type: TypeMonsterActions, ID: "nimble_escape_hide"}
@@ -27,9 +26,6 @@ var (
 var MonsterActions = monsterActionsNS{}
 
 type monsterActionsNS struct{}
-
-// Scimitar returns the ref for a scimitar attack
-func (n monsterActionsNS) Scimitar() *core.Ref { return monsterActionScimitar }
 
 // Shortbow returns the ref for a shortbow attack
 func (n monsterActionsNS) Shortbow() *core.Ref { return monsterActionShortbow }

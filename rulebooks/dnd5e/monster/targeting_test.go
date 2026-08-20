@@ -91,10 +91,7 @@ func (s *TargetingTestSuite) TestTargetClosest() {
 	s.monster.SetTargeting(TargetClosest)
 
 	// Create a simple melee action to test selectTarget
-	action := NewScimitarAction(ScimitarConfig{
-		AttackBonus: 4,
-		DamageDice:  "1d6+2",
-	})
+	action := &testMeleeAction{id: "scimitar"}
 
 	target := s.monster.selectTarget(action, s.perception)
 	s.Require().NotNil(target)
@@ -106,10 +103,7 @@ func (s *TargetingTestSuite) TestTargetLowestHP() {
 	s.monster.SetTargeting(TargetLowestHP)
 
 	// Create a simple melee action to test selectTarget
-	action := NewScimitarAction(ScimitarConfig{
-		AttackBonus: 4,
-		DamageDice:  "1d6+2",
-	})
+	action := &testMeleeAction{id: "scimitar"}
 
 	target := s.monster.selectTarget(action, s.perception)
 	s.Require().NotNil(target)
@@ -121,10 +115,7 @@ func (s *TargetingTestSuite) TestTargetLowestAC() {
 	s.monster.SetTargeting(TargetLowestAC)
 
 	// Create a simple melee action to test selectTarget
-	action := NewScimitarAction(ScimitarConfig{
-		AttackBonus: 4,
-		DamageDice:  "1d6+2",
-	})
+	action := &testMeleeAction{id: "scimitar"}
 
 	target := s.monster.selectTarget(action, s.perception)
 	s.Require().NotNil(target)
@@ -142,7 +133,7 @@ func (s *TargetingTestSuite) TestTargetingDefault() {
 	s.Equal(TargetingUnspecified, s.monster.Targeting(),
 		"a fresh monster's targeting must be the zero value, TargetingUnspecified, not TargetClosest")
 
-	action := NewScimitarAction(ScimitarConfig{AttackBonus: 4, DamageDice: "1d6+2"})
+	action := &testMeleeAction{id: "scimitar"}
 	target := s.monster.selectTarget(action, s.perception)
 	s.Require().NotNil(target)
 	s.Equal("enemy-1", target.GetID(), "TargetingUnspecified must select exactly like TargetClosest")
@@ -152,10 +143,7 @@ func (s *TargetingTestSuite) TestTargetingDefault() {
 func (s *TargetingTestSuite) TestTargetingNoEnemies() {
 	s.perception.Enemies = []PerceivedEntity{}
 
-	action := NewScimitarAction(ScimitarConfig{
-		AttackBonus: 4,
-		DamageDice:  "1d6+2",
-	})
+	action := &testMeleeAction{id: "scimitar"}
 
 	target := s.monster.selectTarget(action, s.perception)
 	s.Nil(target, "should return nil when no enemies")
@@ -182,7 +170,7 @@ func (s *TargetingTestSuite) TestTargetingWithTies() {
 			},
 		}
 
-		action := NewScimitarAction(ScimitarConfig{AttackBonus: 4, DamageDice: "1d6+2"})
+		action := &testMeleeAction{id: "scimitar"}
 		target := s.monster.selectTarget(action, s.perception)
 		s.Require().NotNil(target)
 		s.Equal("enemy-1", target.GetID(), "when HP tied, should pick first")
@@ -207,7 +195,7 @@ func (s *TargetingTestSuite) TestTargetingWithTies() {
 			},
 		}
 
-		action := NewScimitarAction(ScimitarConfig{AttackBonus: 4, DamageDice: "1d6+2"})
+		action := &testMeleeAction{id: "scimitar"}
 		target := s.monster.selectTarget(action, s.perception)
 		s.Require().NotNil(target)
 		s.Equal("enemy-1", target.GetID(), "when AC tied, should pick first")

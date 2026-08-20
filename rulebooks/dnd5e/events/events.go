@@ -163,14 +163,16 @@ type RerollEvent struct {
 
 // DamageComponent represents damage from one source
 type DamageComponent struct {
-	Source            DamageSourceType // Category: weapon, ability, condition, etc.
-	SourceRef         *core.Ref        // Specific reference (e.g., refs.Weapons.Longsword())
-	OriginalDiceRolls []int            // As first rolled
-	FinalDiceRolls    []int            // After all rerolls
-	Rerolls           []RerollEvent    // History of rerolls
-	FlatBonus         int              // Flat modifier (0 if none)
-	DamageType        damage.Type      // damage.Slashing, damage.Fire, etc.
-	IsCritical        bool             // Was this doubled for crit?
+	Source            DamageSourceType  // Category: weapon, ability, condition, etc.
+	SourceRef         *core.Ref         // Specific reference (e.g., refs.Weapons.Longsword())
+	Dice              string            // Pure notation for this component's declared dice pool.
+	OriginalDiceRolls []int             // As first rolled
+	FinalDiceRolls    []int             // After all rerolls
+	Rerolls           []RerollEvent     // History of rerolls
+	FlatBonus         int               // Flat modifier (0 if none)
+	DamageType        damage.Type       // damage.Slashing, damage.Fire, etc.
+	Properties        []damage.Property // Behavior belonging to this component's declared pool.
+	IsCritical        bool              // Was this doubled for crit?
 	// Multiplier scales the other components of the same damage type rather
 	// than adding damage of its own: vulnerability (2.0), resistance (0.5),
 	// immunity (0.0).
@@ -185,6 +187,18 @@ type DamageComponent struct {
 	//
 	// Build one with [Multiply]; &0.0 is not expressible inline.
 	Multiplier *float64
+}
+
+// HasProperty reports whether this component carries a declared damage-pool
+// property.
+func (dc DamageComponent) HasProperty(property damage.Property) bool {
+	for _, got := range dc.Properties {
+		if got == property {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Multiply returns a factor for [DamageComponent.Multiplier].
@@ -284,16 +298,47 @@ func (e *AttackChainEvent) IsCancelled() bool {
 type DamageChainEvent struct {
 	AttackerID      string
 	TargetID        string
-	Components      []DamageComponent // All damage sources
-	DamageType      damage.Type       // Type of damage (slashing, piercing, etc.)
+	Components      []DamageComponent // All damage sources; each component owns its damage type.
 	IsCritical      bool              // Double damage dice on crit
 	HasAdvantage    bool              // True if attacker had advantage on the attack roll
-	WeaponDamage    string            // Weapon damage dice (e.g., "1d8")
 	AbilityUsed     abilities.Ability // Which ability was used (str, dex, etc.)
 	WeaponRef       *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
 	IsOffHandAttack bool              // True for bonus action off-hand attacks (two-weapon fighting)
 	AbilityModifier int               // The ability modifier (STR/DEX) for this attack
 	IsMelee         bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
+}
+
+// DamageChainInput contains the facts used to construct a DamageChainEvent.
+// Components are the authoritative typed damage; attack-specific primary
+// metadata belongs to the marked component rather than the event envelope.
+type DamageChainInput struct {
+	AttackerID      string
+	TargetID        string
+	Components      []DamageComponent
+	IsCritical      bool
+	HasAdvantage    bool
+	AbilityUsed     abilities.Ability
+	WeaponRef       *core.Ref
+	IsOffHandAttack bool
+	AbilityModifier int
+	IsMelee         bool
+}
+
+// NewDamageChainEvent constructs a damage-chain event. Primary weapon facts,
+// when needed by a modifier, are read from the marked DamageComponent.
+func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
+	return &DamageChainEvent{
+		AttackerID:      input.AttackerID,
+		TargetID:        input.TargetID,
+		Components:      input.Components,
+		IsCritical:      input.IsCritical,
+		HasAdvantage:    input.HasAdvantage,
+		AbilityUsed:     input.AbilityUsed,
+		WeaponRef:       input.WeaponRef,
+		IsOffHandAttack: input.IsOffHandAttack,
+		AbilityModifier: input.AbilityModifier,
+		IsMelee:         input.IsMelee,
+	}
 }
 
 // =============================================================================
@@ -662,7 +707,7 @@ type ReactionTriggerEvent struct {
 	Payload any
 }
 
-// PostAttackRollEvent is published by ResolveAttackHit AFTER the d20 has been
+// PostAttackRollEvent is published by Strike resolution AFTER the d20 has been
 // rolled and wouldHit has been determined against the original AC, but BEFORE
 // the AttackContext is returned to the caller.
 //
@@ -671,7 +716,7 @@ type ReactionTriggerEvent struct {
 // only fires when the attack would hit AND a +5 AC bonus would deflect it.
 //
 // Subscribers receive a read-only snapshot. They cannot mutate the in-flight
-// roll — the AC modifier is applied in phase 2 (ApplyAttackOutcome) via
+// roll — the AC modifier is applied in phase 2 via
 // ReactionModifier when the reactor takes the reaction. Subscribers may
 // publish ReactionTriggerEvents to surface a player prompt or signal the
 // orchestrator that an NPC auto-resolve modifier should be applied.
@@ -993,7 +1038,7 @@ var (
 	ReactionTriggerTopic = events.DefineTypedTopic[ReactionTriggerEvent]("dnd5e.combat.reaction.trigger")
 )
 
-// PostAttackRollChain is a chained topic published by combat.ResolveAttackHit
+// PostAttackRollChain is a chained topic published by resolution.Strike
 // AFTER the d20 has been rolled and wouldHit has been computed, BEFORE the
 // AttackContext is returned. The Shield spell condition subscribes here to
 // publish a ReactionTriggerEvent when a hit-but-deflectable attack lands on

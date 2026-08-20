@@ -79,8 +79,9 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
 - **0032** — The character package's dispatch is canonical; the encounter
   delegates rather than building a parallel registry. *Rule: default to one
   system.*
-- **0036** — Additional damage components roll **once** and never double on a
-  crit; only the weapon pool doubles.
+- **0036** *(superseded)* — The proposed selective-critical variant was replaced
+  by the composable attack-damage design: all eligible attack damage dice double
+  on a crit; only an explicit `DoesNotCrit` pool does not.
 
 ## Spatial and world
 

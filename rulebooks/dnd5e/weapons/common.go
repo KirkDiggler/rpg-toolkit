@@ -58,7 +58,6 @@ const (
 	HandCrossbow  WeaponID = "hand-crossbow"
 	HeavyCrossbow WeaponID = "heavy-crossbow"
 	Longbow       WeaponID = "longbow"
-	Net           WeaponID = "net"
 )
 
 // Special Weapons

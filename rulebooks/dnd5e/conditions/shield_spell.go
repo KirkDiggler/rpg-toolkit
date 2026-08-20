@@ -21,7 +21,7 @@ import (
 
 // ShieldACBonus is the canonical AC bonus the Shield spell applies for the
 // remainder of the attack window when cast as a reaction. The bonus is
-// applied in phase 2 (combat.ApplyAttackOutcome) via a ReactionModifier.
+// applied in phase 2 via a ReactionModifier.
 const ShieldACBonus = 5
 
 // ShieldSpellConditionData is the JSON shape for persisting the Shield
@@ -40,7 +40,7 @@ type ShieldSpellConditionData struct {
 // the wizard would hit AND a +5 AC bonus would deflect it AND Shield is readied
 // (gamectx.IsReactionReady).
 //
-// Subscribes to PostAttackRollTopic (published by combat.ResolveAttackHit after
+// Subscribes to PostAttackRollChain (published by Strike after
 // the d20 has been rolled and wouldHit has been computed). The condition does
 // NOT mutate the in-flight chain — the AC modifier is applied in phase 2 via a
 // ReactionModifier when the wizard takes the reaction.

@@ -52,7 +52,6 @@ func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 				DamageType:     damage.Poison,
 			},
 		},
-		DamageType: damage.Poison,
 	}
 
 	// Publish damage chain event
@@ -102,7 +101,6 @@ func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {
 				DamageType:     damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Publish damage chain event
@@ -142,7 +140,6 @@ func (s *ImmunityTestSuite) TestImmunityIgnoresOtherTargets() {
 				DamageType:     damage.Poison,
 			},
 		},
-		DamageType: damage.Poison,
 	}
 
 	// Publish damage chain event

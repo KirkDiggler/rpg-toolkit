@@ -13,9 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -230,36 +228,6 @@ func (m *Monster) IsAlive() bool {
 	return m.hp > 0
 }
 
-// NewGoblin creates a standard goblin (CR 1/4, D&D 5e SRD stats)
-func NewGoblin(id string) *Monster {
-	m := New(Config{
-		ID:   id,
-		Name: "Goblin",
-		Ref:  refs.Monsters.Goblin(),
-		HP:   7,  // 2d6 average
-		AC:   15, // Leather armor + DEX
-		AbilityScores: shared.AbilityScores{
-			abilities.STR: 8,  // -1
-			abilities.DEX: 14, // +2
-			abilities.CON: 10, // +0
-			abilities.INT: 10, // +0
-			abilities.WIS: 8,  // -1
-			abilities.CHA: 8,  // -1
-		},
-	})
-
-	// Add default goblin actions (SRD stats)
-	m.AddAction(NewScimitarAction(ScimitarConfig{
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "1d6+2", // 1d6 + DEX
-	}))
-
-	// Set default goblin speed
-	m.speed = SpeedData{Walk: 30}
-
-	return m
-}
-
 // HPPercent returns current HP as a percentage of max HP
 func (m *Monster) HPPercent() int {
 	if m.maxHP == 0 {
@@ -296,37 +264,6 @@ func (m *Monster) Actions() []MonsterAction {
 // AddAction adds an action to the monster's available actions
 func (m *Monster) AddAction(action MonsterAction) {
 	m.actions = append(m.actions, action)
-}
-
-// MeleeWeapon implements combat.MeleeWeaponProvider (rpg-toolkit#722): it
-// resolves the weapon this monster swings for a reflexive melee attack
-// outside the normal action economy (an opportunity attack).
-//
-// Monster actions don't carry a *weapons.Weapon reference (their damage
-// dice/type are private, action-specific fields — see ScimitarAction,
-// actions.MeleeAction), so this resolves by convention instead: it walks
-// the monster's TypeMeleeAttack actions in order and returns the first
-// whose ID successfully maps to a catalog weapon (e.g. NewGoblin's
-// "scimitar" action ID matches weapons.Scimitar), skipping any melee
-// action ID that has no catalog match. This covers equipment-wielding
-// monsters, whose action IDs are named after real weapons. If none of the
-// monster's melee actions match — natural weapons like bite or claw —
-// this returns nil, and the caller's unarmed-strike fallback takes over.
-// A generalized natural-weapon damage profile is future work (would need
-// MonsterAction to expose damage dice/type/bonus directly rather than
-// this catalog convention).
-func (m *Monster) MeleeWeapon() *weapons.Weapon {
-	for _, action := range m.actions {
-		if action.ActionType() != TypeMeleeAttack {
-			continue
-		}
-		w, err := weapons.GetByID(weapons.WeaponID(action.GetID()))
-		if err != nil {
-			continue
-		}
-		return &w
-	}
-	return nil
 }
 
 // AddCondition adds a condition/trait to the monster's active conditions.

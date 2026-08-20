@@ -32,23 +32,21 @@ func NewSkeleton(id string) *monster.Monster {
 	})
 
 	// Shortsword melee attack
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "shortsword",
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "1d6+2", // 1d6 + DEX
+		AttackBonus: 4, // +2 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		Reach:       5,
-		DamageType:  damage.Piercing,
-	}))
+	})))
 
 	// Shortbow ranged attack
-	m.AddAction(actions.NewRangedAction(actions.RangedConfig{
+	m.AddAction(mustAction(actions.NewRangedAction(actions.RangedConfig{
 		Name:        "shortbow",
-		AttackBonus: 4,       // +2 DEX + 2 proficiency
-		DamageDice:  "1d6+2", // 1d6 + DEX
+		AttackBonus: 4, // +2 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 80,
 		RangeLong:   320,
-		DamageType:  damage.Piercing,
-	}))
+	})))
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

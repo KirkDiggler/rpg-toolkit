@@ -82,7 +82,6 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeSavesOnSuccess() {
 				DamageType:     damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Publish damage chain event
@@ -125,7 +124,6 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeFailsOnLowRoll() {
 				DamageType:     damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Publish damage chain event
@@ -165,7 +163,6 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeIgnoresRadiantDamage() {
 				DamageType:     damage.Radiant, // Radiant damage
 			},
 		},
-		DamageType: damage.Radiant,
 	}
 
 	// Publish damage chain event
@@ -206,7 +203,6 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeIgnoresCriticalHits() {
 				IsCritical:     true, // Critical hit
 			},
 		},
-		DamageType: damage.Slashing,
 		IsCritical: true,
 	}
 

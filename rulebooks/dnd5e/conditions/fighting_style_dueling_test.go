@@ -87,13 +87,14 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 				FlatBonus:         3,
-				DamageType:        damage.Slashing,
+				DamageType:        damage.Fire,
 			},
 		},
-		DamageType: damage.Slashing,
+		IsCritical: true,
 	}
 
 	// Execute through damage chain
@@ -108,6 +109,8 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	// Should have 2 components: weapon + dueling bonus
 	s.Len(finalEvent.Components, 2)
 	s.Equal(2, finalEvent.Components[1].FlatBonus)
+	s.Equal(damage.Fire, finalEvent.Components[1].DamageType)
+	s.False(finalEvent.Components[1].IsCritical, "flat dueling damage is not doubled")
 }
 
 func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
@@ -142,13 +145,13 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				OriginalDiceRolls: []int{6, 6},
 				FinalDiceRolls:    []int{6, 6},
 				FlatBonus:         4,
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Execute through damage chain
@@ -204,13 +207,13 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 				FlatBonus:         3,
 				DamageType:        damage.Piercing,
 			},
 		},
-		DamageType: damage.Piercing,
 	}
 
 	// Execute through damage chain

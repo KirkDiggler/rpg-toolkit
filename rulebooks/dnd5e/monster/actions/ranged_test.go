@@ -32,19 +32,24 @@ func (s *RangedActionTestSuite) SetupTest() {
 	s.roller = dice.NewRoller()
 }
 
+func (s *RangedActionTestSuite) newRangedAction(config RangedConfig) *RangedAction {
+	action, err := NewRangedAction(config)
+	s.Require().NoError(err)
+	return action
+}
+
 func (s *RangedActionTestSuite) TestNewRangedAction() {
 	// Arrange
 	config := RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16, // 16 hexes (80 feet / 5)
 		RangeLong:   64, // 64 hexes (320 feet / 5)
-		DamageType:  damage.Piercing,
 	}
 
 	// Act
-	action := NewRangedAction(config)
+	action := s.newRangedAction(config)
 
 	// Assert
 	s.Assert().NotNil(action)
@@ -56,13 +61,12 @@ func (s *RangedActionTestSuite) TestNewRangedAction() {
 
 func (s *RangedActionTestSuite) TestCanActivate_NoTarget() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	owner := &mockEntity{id: "monster-1"}
@@ -80,13 +84,12 @@ func (s *RangedActionTestSuite) TestCanActivate_NoTarget() {
 
 func (s *RangedActionTestSuite) TestCanActivate_TargetOutOfRange() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	owner := &mockEntity{id: "monster-1"}
@@ -119,13 +122,12 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetOutOfRange() {
 
 func (s *RangedActionTestSuite) TestCanActivate_TargetInNormalRange() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	owner := &mockEntity{id: "monster-1"}
@@ -157,13 +159,12 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInNormalRange() {
 
 func (s *RangedActionTestSuite) TestCanActivate_TargetInLongRange() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	owner := &mockEntity{id: "monster-1"}
@@ -195,13 +196,12 @@ func (s *RangedActionTestSuite) TestCanActivate_TargetInLongRange() {
 
 func (s *RangedActionTestSuite) TestActivate_PublishesAttackEvent() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	owner := &mockEntity{id: "bandit-1"}
@@ -250,13 +250,12 @@ func (s *RangedActionTestSuite) TestActivate_PublishesAttackEvent() {
 
 func (s *RangedActionTestSuite) TestScore_NoAdjacentEnemy() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	m := monster.New(monster.Config{
@@ -280,13 +279,12 @@ func (s *RangedActionTestSuite) TestScore_NoAdjacentEnemy() {
 
 func (s *RangedActionTestSuite) TestScore_AdjacentEnemy() {
 	// Arrange
-	action := NewRangedAction(RangedConfig{
+	action := s.newRangedAction(RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	})
 
 	m := monster.New(monster.Config{
@@ -313,12 +311,11 @@ func (s *RangedActionTestSuite) TestToData() {
 	config := RangedConfig{
 		Name:        "shortbow",
 		AttackBonus: 4,
-		DamageDice:  "1d6+2",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
 		RangeNormal: 16,
 		RangeLong:   64,
-		DamageType:  damage.Piercing,
 	}
-	action := NewRangedAction(config)
+	action := s.newRangedAction(config)
 
 	// Act
 	data := action.ToData()

@@ -72,13 +72,14 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				OriginalDiceRolls: []int{4},
 				FinalDiceRolls:    []int{4},
 				FlatBonus:         0, // No ability modifier added yet
-				DamageType:        damage.Slashing,
+				DamageType:        damage.Fire,
 			},
 		},
-		DamageType: damage.Slashing,
+		IsCritical: true,
 	}
 
 	// Execute through damage chain
@@ -93,6 +94,8 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	// Should have 2 components: weapon + TWF ability modifier
 	s.Len(finalEvent.Components, 2)
 	s.Equal(3, finalEvent.Components[1].FlatBonus) // Ability modifier added
+	s.Equal(damage.Fire, finalEvent.Components[1].DamageType)
+	s.False(finalEvent.Components[1].IsCritical, "flat two-weapon fighting damage is not doubled")
 }
 
 func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack() {
@@ -111,13 +114,13 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				OriginalDiceRolls: []int{8},
 				FinalDiceRolls:    []int{8},
 				FlatBonus:         3, // Already has ability modifier
 				DamageType:        damage.Slashing,
 			},
 		},
-		DamageType: damage.Slashing,
 	}
 
 	// Execute through damage chain
@@ -149,13 +152,13 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToOtherCharacter
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 				OriginalDiceRolls: []int{4},
 				FinalDiceRolls:    []int{4},
 				FlatBonus:         0,
 				DamageType:        damage.Piercing,
 			},
 		},
-		DamageType: damage.Piercing,
 	}
 
 	// Execute through damage chain

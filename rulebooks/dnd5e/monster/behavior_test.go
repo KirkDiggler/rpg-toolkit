@@ -2,6 +2,7 @@ package monster
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -41,6 +42,38 @@ func (m *mockTarget) GetID() string            { return m.id }
 func (m *mockTarget) GetType() core.EntityType { return "character" }
 func (m *mockTarget) GetName() string          { return m.name }
 
+type testMeleeAction struct{ id string }
+
+func newMeleeMonsterForTest(id string) *Monster {
+	m := New(Config{ID: id, Name: "Goblin", HP: 7, AC: 15})
+	m.SetSpeed(SpeedData{Walk: 30})
+	m.AddAction(&testMeleeAction{id: "scimitar"})
+	return m
+}
+
+func (a *testMeleeAction) GetID() string            { return a.id }
+func (a *testMeleeAction) GetType() core.EntityType { return "monster-action" }
+func (a *testMeleeAction) Cost() ActionCost         { return CostAction }
+func (a *testMeleeAction) ActionType() ActionType   { return TypeMeleeAttack }
+func (a *testMeleeAction) Score(_ *Monster, perception *PerceptionData) int {
+	if perception.HasAdjacentEnemy() {
+		return 70
+	}
+	return 50
+}
+func (a *testMeleeAction) CanActivate(_ context.Context, _ core.Entity, input MonsterActionInput) error {
+	for _, enemy := range input.Perception.Enemies {
+		if enemy.Entity.GetID() == input.Target.GetID() && enemy.Distance <= 1 {
+			return nil
+		}
+	}
+	return errors.New("target not in melee range")
+}
+func (a *testMeleeAction) Activate(_ context.Context, _ core.Entity, _ MonsterActionInput) error {
+	return nil
+}
+func (a *testMeleeAction) ToData() ActionData { return ActionData{} }
+
 // TestLoadFromData moved to actions/integration_test.go to avoid import cycle
 
 func (s *BehaviorTestSuite) TestLoadFromDataNoBus() {
@@ -56,14 +89,10 @@ func (s *BehaviorTestSuite) TestLoadFromDataNoBus() {
 	s.Contains(err.Error(), "event bus is required")
 }
 
-func (s *BehaviorTestSuite) TestScimitarActionScore() {
-	scimitar := NewScimitarAction(ScimitarConfig{
-		ID:          "scimitar",
-		AttackBonus: 4,
-		DamageDice:  "1d6+2",
-	})
+func (s *BehaviorTestSuite) TestMeleeActionScore() {
+	melee := &testMeleeAction{id: "scimitar"}
 
-	monster := NewGoblin("goblin-1")
+	monster := newMeleeMonsterForTest("goblin-1")
 
 	s.Run("higher score when adjacent", func() {
 		perception := &PerceptionData{
@@ -78,7 +107,7 @@ func (s *BehaviorTestSuite) TestScimitarActionScore() {
 			},
 		}
 
-		score := scimitar.Score(monster, perception)
+		score := melee.Score(monster, perception)
 		s.Equal(70, score) // base 50 + 20 for adjacent
 	})
 
@@ -95,28 +124,20 @@ func (s *BehaviorTestSuite) TestScimitarActionScore() {
 			},
 		}
 
-		score := scimitar.Score(monster, perception)
+		score := melee.Score(monster, perception)
 		s.Equal(50, score) // base only
 	})
 }
 
-func (s *BehaviorTestSuite) TestScimitarActionCost() {
-	scimitar := NewScimitarAction(ScimitarConfig{
-		ID: "scimitar",
-	})
+func (s *BehaviorTestSuite) TestMeleeActionCost() {
+	melee := &testMeleeAction{id: "scimitar"}
 
-	s.Equal(CostAction, scimitar.Cost())
-	s.Equal(TypeMeleeAttack, scimitar.ActionType())
+	s.Equal(CostAction, melee.Cost())
+	s.Equal(TypeMeleeAttack, melee.ActionType())
 }
 
 func (s *BehaviorTestSuite) TestTakeTurnSelectsAndExecutesAction() {
-	// Create a goblin with a scimitar
-	goblin := NewGoblin("goblin-1")
-	scimitar := NewScimitarAction(ScimitarConfig{
-		ID:          "scimitar",
-		AttackBonus: 4,
-	})
-	goblin.AddAction(scimitar)
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 
 	// Create perception with adjacent enemy (1 hex away)
@@ -157,9 +178,7 @@ func (s *BehaviorTestSuite) TestTakeTurnSelectsAndExecutesAction() {
 }
 
 func (s *BehaviorTestSuite) TestTakeTurnNoEnemies() {
-	goblin := NewGoblin("goblin-1")
-	scimitar := NewScimitarAction(ScimitarConfig{ID: "scimitar"})
-	goblin.AddAction(scimitar)
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 
 	// No enemies
@@ -185,9 +204,7 @@ func (s *BehaviorTestSuite) TestTakeTurnNoEnemies() {
 }
 
 func (s *BehaviorTestSuite) TestTakeTurnExhaustsActions() {
-	goblin := NewGoblin("goblin-1")
-	scimitar := NewScimitarAction(ScimitarConfig{ID: "scimitar"})
-	goblin.AddAction(scimitar)
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 
 	// Adjacent enemy (1 hex away)
@@ -351,24 +368,11 @@ func (s *BehaviorTestSuite) TestCleanup() {
 	s.NoError(err)
 }
 
-func (s *BehaviorTestSuite) TestNewGoblinHasDefaultActions() {
-	goblin := NewGoblin("goblin-1")
-
-	// Goblin should have default scimitar action
-	actions := goblin.Actions()
-	s.Require().Len(actions, 1)
-	s.Equal("scimitar", actions[0].GetID())
-	s.Equal(TypeMeleeAttack, actions[0].ActionType())
-
-	// Should have default speed (30 feet, see #481 for hex conversion)
-	s.Equal(30, goblin.Speed().Walk)
-}
-
 // TestActionRoundTrip moved to actions/integration_test.go to avoid import cycle
 
 func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 	// Create a goblin at position (0, 0)
-	goblin := NewGoblin("goblin-1")
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 
 	// Enemy is 7 hexes away (outside movement range but within speed+melee)
@@ -438,7 +442,7 @@ func (s *BehaviorTestSuite) TestTakeTurnMovesAndAttacks() {
 // toward the closer enemy" are distinguishable outcomes, not just different
 // distances along the same line.
 func (s *BehaviorTestSuite) TestTakeTurnMovesTowardStrategyTargetNotClosest() {
-	goblin := NewGoblin("goblin-1")
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 	goblin.SetTargeting(TargetLowestHP)
 
@@ -554,7 +558,7 @@ func (s *BehaviorTestSuite) TestTakeTurnTraversalPredicateControlsAStar() {
 
 func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {
 	// Create a goblin already adjacent to enemy
-	goblin := NewGoblin("goblin-1")
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 
 	// Enemy is 1 hex away (already adjacent)
@@ -592,7 +596,7 @@ func (s *BehaviorTestSuite) TestTakeTurnAlreadyAdjacent() {
 
 func (s *BehaviorTestSuite) TestTakeTurnEnemyTooFar() {
 	// Create a goblin with enemy very far away
-	goblin := NewGoblin("goblin-1")
+	goblin := newMeleeMonsterForTest("goblin-1")
 	goblin.bus = s.bus
 
 	// Enemy is 20 hexes away - can move toward but not attack
