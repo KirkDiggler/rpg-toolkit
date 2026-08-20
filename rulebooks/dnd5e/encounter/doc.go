@@ -98,7 +98,8 @@
 //     absolute footprints must be expressible as a SINGLE grid of the
 //     field's family, because that is what the rooms compile into
 //     (#1106). Square grids start at (0,0), so a square field cannot
-//     reach a negative cell; hex grids are origin-centred and always fit.
+//     reach a negative cell; a hex canvas is an origin-centred axial span
+//     and always widens to cover the sheared footprints it holds.
 //     The remedy for a rejection is a relabelling — shift every Origin by
 //     the same vector — since a field's absolute frame only ever means
 //     "relative to the other rooms".

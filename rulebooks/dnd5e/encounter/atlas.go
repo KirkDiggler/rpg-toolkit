@@ -50,13 +50,17 @@ type AtlasRegion struct {
 	// Grid is the region's coordinate family (GridShapeSquare or GridShapeHex).
 	Grid spatial.GridShape
 
-	// Origin is the region's dungeon-absolute anchor (RoomInput.Origin).
+	// Origin is the region's anchor, in the same authored columns and rows
+	// Width and Height are counted in (RoomInput.Origin). For a SQUARE field
+	// those are the absolute axes and this is a dungeon-absolute cell; for a
+	// hex one they are not, and [Atlas.Orientation] is the frame that turns
+	// this rectangle into cells.
 	Origin spatial.Position
 
-	// Width is the region's horizontal dimension, in cells.
+	// Width is how many columns wide the region is.
 	Width int
 
-	// Height is the region's vertical dimension, in cells.
+	// Height is how many rows tall the region is.
 	Height int
 
 	// Props is the things standing in this region, in dungeon-absolute

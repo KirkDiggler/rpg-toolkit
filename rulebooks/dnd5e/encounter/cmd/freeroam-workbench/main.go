@@ -331,19 +331,24 @@ func printStatus(enc *encounter.Encounter) {
 // own bounds (SquareGrid.Distance and AxialHexGrid.Distance's own
 // implementations), so any instance of the right family computes the
 // correct distance between two dungeon-absolute doorway cells (#929 T5).
-// regionExtent is the absolute rectangle a region covers, from the anchor and
-// span it reports — the arithmetic AtlasRegion's doc comment describes, which
+// regionExtent is the rectangle a region covers, in the columns and rows it
+// was authored in — the arithmetic AtlasRegion's doc comment describes, which
 // is all the Atlas hands out now that it no longer enumerates cells
-// (rpg-toolkit#1108). Square regions start at their origin; hex spans are
-// origin-centred.
-func regionExtent(r encounter.AtlasRegion) (qMin, qMax, rMin, rMax float64) {
-	if r.Grid == spatial.GridShapeHex {
-		qMin = r.Origin.X - float64(r.Width/2)
-		rMin = r.Origin.Y - float64(r.Height/2)
-	} else {
-		qMin, rMin = r.Origin.X, r.Origin.Y
-	}
-	return qMin, qMin + float64(r.Width) - 1, rMin, rMin + float64(r.Height) - 1
+// (rpg-toolkit#1108).
+//
+// ONE ARITHMETIC FOR BOTH FAMILIES since rpg-toolkit#1127: a chamber is the
+// rectangle somebody drew, so it runs from its anchor for Width columns and
+// Height rows whichever grid it is on. For a SQUARE field those columns and
+// rows are the absolute axes and this rectangle is a footprint in world space,
+// which is what printAtlas labels it. For a hex one they are not — the
+// absolute cells are what encounter.HexCellAt makes of each pair under
+// Atlas.Orientation, and the footprint is a sheared parallelogram no pair of
+// intervals describes. This workbench's dungeon is square, so the label is
+// honest for what it actually prints; a hex workbench would have to say
+// "columns" and "rows" and mean it.
+func regionExtent(r encounter.AtlasRegion) (colMin, colMax, rowMin, rowMax float64) {
+	return r.Origin.X, r.Origin.X + float64(r.Width) - 1,
+		r.Origin.Y, r.Origin.Y + float64(r.Height) - 1
 }
 
 func atlasDistanceGrid(family spatial.GridShape) spatial.Grid {

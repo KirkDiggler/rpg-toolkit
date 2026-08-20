@@ -237,9 +237,12 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 // the wire. HexGrid's bounded offset column/row coordinates would force a
 // lossy, orientation-dependent offset<->cube conversion at that seam for no
 // benefit inside the composition, which never renders a grid itself.
-// width/height become AxialHexGridConfig's SpanWidth/SpanHeight — see
-// RoomInput.Grid's doc comment for what that means for a hex room's
-// Position values (origin-centered, negative coordinates legal).
+// width/height become AxialHexGridConfig's SpanWidth/SpanHeight, an
+// origin-centred axial span. THAT SPAN IS THE CANVAS, NOT A CHAMBER
+// (rpg-toolkit#1127): a room's own grid is still built here because a hex
+// canvas needs one and because square rooms decide their bounds with it, but
+// which cells a hex CHAMBER owns is [footprintHolds]' answer and no longer
+// this grid's — see orientation.go for why the two ever differed.
 func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 	switch shape {
 	case spatial.GridShapeHex:
@@ -739,8 +742,8 @@ func buildValidRoomGrids(rooms []RoomInput, orientation Orientation) (map[string
 		}
 	}
 
-	// W2 — rooms never overlap: distinct rooms' absolute cell sets (local
-	// cell + Origin) must be disjoint. Zero-value origins are legal on
+	// W2 — rooms never overlap: distinct rooms' absolute cell sets must be
+	// disjoint. Zero-value origins are legal on
 	// their own; a multi-room field that leaves every Origin defaulted
 	// collides every room at (0,0) and is rejected HERE — there is no
 	// separate "origin required" check (RoomInput.Origin's doc comment).
@@ -919,11 +922,11 @@ func gridShapeName(shape spatial.GridShape) string {
 }
 
 // validateGridFamilies rejects a field whose rooms declare more than one
-// grid family (W1 — one geometry per field). Local→absolute is element-wise
-// addition (RoomInput.Origin's doc comment): a hex room's axial Q/R and a
-// square room's Cartesian X/Y cannot be added together and mean anything, so
-// a mixed field has no coherent absolute space at all — this must reject
-// before W2/W3 ever try to build one. Compares ALL pairs semantically, not
+// grid family (W1 — one geometry per field). A hex chamber's authored columns
+// and rows and a square room's Cartesian X/Y do not land in the same absolute
+// space — the first is converted, the second is not (RoomInput.Grid's doc
+// comment) — so a mixed field has no coherent absolute space at all, and this
+// must reject before W2/W3 ever try to build one. Compares ALL pairs semantically, not
 // just adjacent-in-slice: a three-room field ordered square, hex, square
 // must still be caught even though both adjacent pairs (0,1) and (1,2)
 // already mismatch on their own — see #929 T1 mutation notes for why an
@@ -990,17 +993,21 @@ func roomAbsoluteBounds(r RoomInput, orientation Orientation) (qMin, qMax, rMin,
 }
 
 // validateRoomsDisjoint rejects a field whose rooms' absolute footprints
-// share a cell (W2 — rooms never overlap): absolute = local cell + Origin,
-// element-wise (RoomInput.Origin's doc comment). Touching — adjacent cells,
-// no shared cell — is legal; this rejects ONLY a shared cell. Both grid
-// families are solid rectangles in their OWN coordinate system (a hex
-// room's Q,R span is a rhombus embedded in 2D axial space, but each axis
-// is independently an interval, exactly like square's X,Y), so two rooms'
-// footprints overlap iff BOTH axes' intervals intersect — no enumeration:
-// O(1) per room pair, not O(cells). The witness cell, when rejecting, is
-// the component-wise max of the two rooms' interval mins — the
-// lexicographically-first cell both footprints necessarily contain,
-// deterministic regardless of iteration order.
+// share a cell (W2 — rooms never overlap). Touching — adjacent cells, no
+// shared cell — is legal; this rejects ONLY a shared cell.
+//
+// TWO TESTS, AND WHICH ONE DECIDES DEPENDS ON THE FAMILY. A SQUARE chamber is
+// a rectangle in the very frame the canvas runs on, so its bounding box is the
+// chamber: both axes' intervals intersecting is exactly a shared cell, O(1) per
+// pair and exact. A HEX chamber is an authored rectangle sheared into axial
+// space (rpg-toolkit#1127), so its box strictly contains it, and the box test
+// is only a fast REJECT — two boxes that miss cannot share a cell, two that
+// meet very well might not. The verdict there is [hexFootprintsOverlap], on
+// runs rather than cells: O(Width) per pair, still not O(cells).
+//
+// The witness cell, when rejecting, is the component-wise max of the two
+// rooms' interval mins — the lexicographically-first cell both BOXES
+// necessarily contain, deterministic regardless of iteration order.
 func validateRoomsDisjoint(rooms []RoomInput, orientation Orientation) error {
 	type bounds struct{ qMin, qMax, rMin, rMax int }
 	bs := make([]bounds, len(rooms))

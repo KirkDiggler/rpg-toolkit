@@ -24,14 +24,29 @@ const (
 type MemberID = core.EntityID
 
 // RoomInput describes a room to be created.
+//
+// A CHAMBER IS THE RECTANGLE SOMEBODY DREW (rpg-toolkit#1127). Width and
+// Height mean the same thing in both grid families — the columns and rows of
+// the rectangle a human sees on screen — and a chamber's cells are exactly the
+// Width x Height of them. Square is the degenerate case where nothing shears.
+//
+// That sentence is worth stating because it used to be false. Width and Height
+// were read as an AXIAL span for a hex room: a rhombus, origin-centred, which
+// is not a shape anybody authors. One name meant two shapes, and the cost was
+// measured rather than argued — on the reference tomb, [Encounter.RegionAt]
+// called 380 cells floor against the 224 somebody drew, and the same three
+// chambers could not be built flat-top at all. See orientation.go.
 type RoomInput struct {
 	// ID is the unique room identifier.
 	ID string
 
-	// Width is the room's horizontal dimension.
+	// Width is how many columns wide the chamber is — the rectangle's own
+	// horizontal dimension, in both grid families. See the type's doc
+	// comment.
 	Width int
 
-	// Height is the room's vertical dimension.
+	// Height is how many rows tall the chamber is. See the type's doc
+	// comment.
 	Height int
 
 	// Grid selects the room's coordinate system: GridShapeSquare (the zero
@@ -44,30 +59,47 @@ type RoomInput struct {
 	// zero value keeps every pre-existing room square, so v0.1 persisted
 	// blobs without this field unmarshal to square unchanged.
 	//
-	// GridShapeHex rooms speak AXIAL cube coordinates (tools/spatial's
-	// AxialHexGrid), not offset: Position.X is Q, Position.Y is R, and S
-	// = -(Q+R) is derived. Bounds are ORIGIN-CENTERED spans, unlike
-	// square — Q is valid in [-Width/2, Width/2) and R in
-	// [-Height/2, Height/2), so negative coordinates are legal and
-	// expected, not a defect. Distance, adjacency, and line of sight in a
-	// hex room run true cube hex math via spatial. This is a deliberate
-	// choice, not an implementation detail: the wire (and Platform's
-	// pathing) already speaks cube coordinates natively, and axial is
-	// cube's 2D projection — an IDENTITY mapping to the wire. A bounded
-	// offset column/row grid (spatial's HexGrid) would force a lossy,
-	// orientation-dependent offset<->cube conversion at that seam for no
-	// benefit, since the composition never renders a grid itself.
+	// A GridShapeHex room is AUTHORED in offset [col,row] pairs — counted
+	// from the chamber's own corner, [0,Width) x [0,Height), exactly as a
+	// square room is — and RUNS on the axial cube coordinates the canvas and
+	// the wire speak (Position.X is Q, Position.Y is R, S = -(Q+R) derived).
+	// The two frames are not the same numbers and are not meant to be: an
+	// offset rectangle shears when it becomes axial, so a chamber's cells
+	// stay a contiguous, non-overlapping set while the smallest rhombus
+	// containing them is strictly bigger than they are.
+	//
+	// EVERY FIELD IN THIS TYPE IS IN THE AUTHORED FRAME. Origin, PropInput.At,
+	// Boundaries' endpoints, MemberInput.Position, ConnectionInput's
+	// endpoints and TriggerReachedPosition.Position are all columns and rows;
+	// every cell a VERB reports or accepts is absolute and axial. The
+	// conversion happens once, at construction, and [CanvasInput.Orientation]
+	// is the declaration it needs — an offset pair means nothing until the
+	// orientation is known, since the same [2,3] is a different hex under each
+	// layout, with different neighbours.
+	//
+	// The canvas speaking axial is a deliberate choice, not an implementation
+	// detail: the wire (and Platform's pathing) already speaks cube
+	// coordinates natively, and axial is cube's 2D projection — an IDENTITY
+	// mapping to the wire. Distance, adjacency and line of sight all run true
+	// cube math via spatial and never see an offset pair. Content, which draws
+	// rectangles, never sees an axial one.
 	Grid spatial.GridShape
 
 	// Props are the things standing in this room that are not creatures —
 	// room-local at authoring, compiled onto the canvas at construction, each
-	// one registered at Props[i].At + Origin in the dungeon's own absolute
-	// frame. See [PropInput].
+	// one registered at the absolute cell its authored column and row name.
+	// See [PropInput].
 	Props []PropInput
 
 	// Boundaries are the walls this room draws, as edges between adjacent
 	// cells — room-local at authoring, compiled through Origin onto the
 	// canvas at construction (rpg-toolkit#1106).
+	//
+	// WHICH CELLS ARE ADJACENT IS THE GRID'S ANSWER, not a pair of offsets to
+	// hardcode. In axial space a cell's +Q neighbours are (q+1,r) and
+	// (q+1,r-1) always; in the authored offset frame the answer STAGGERS with
+	// the column's parity, so a seam wall built from one hardcoded pair has a
+	// hole in every other row. Ask spatial.
 	//
 	// AN ENDPOINT MAY LIE OUTSIDE THIS ROOM, and that is the whole point.
 	// Until the field became one canvas, a boundary was registered on the
@@ -87,15 +119,23 @@ type RoomInput struct {
 	// silently dropped.
 	Boundaries []spatial.Boundary
 
-	// Origin is this room's dungeon-absolute anchor: local (0,0) maps to
-	// Origin in the field's shared absolute space. Local→absolute is
-	// element-wise addition (local cell + Origin) — for hex rooms this is
-	// ordinary axial cube arithmetic (axial+axial is valid cube math), not
-	// a special case. The zero value anchors a room at the absolute
-	// origin, which is legal on its own; in a multi-room field, leaving
-	// every Origin at its zero value collides every room at (0,0) and is
-	// rejected by W2 (see NewEncounter) — there is no separate
-	// "origin required" check.
+	// Origin is this room's anchor: which column and row of the FIELD the
+	// chamber's own (0,0) corner sits at. Local plus Origin is the authored
+	// cell, and THAT is what becomes an absolute one — offset-then-convert,
+	// in that order (rpg-toolkit#1127).
+	//
+	// The order is the whole of it. For a square room the two are the same
+	// arithmetic. For a hex room, adding the anchor in AXIAL instead puts the
+	// shear back one level up: two chambers anchored six columns apart would
+	// land at axial distances that vary by row, and the seam between them
+	// would stop being a straight line. So an anchor is counted in the same
+	// columns and rows the author counts their chamber in, and there is
+	// exactly one function in this package that spends it.
+	//
+	// The zero value anchors a room at the field's own corner, which is legal
+	// on its own; in a multi-room field, leaving every Origin at its zero
+	// value collides every room there and is rejected by W2 (see
+	// NewEncounter) — there is no separate "origin required" check.
 	//
 	// Origin must be an INTEGRAL cell (X and Y both whole numbers) for
 	// EVERY grid family, square included — not just hex. W2's "rooms never
@@ -195,10 +235,10 @@ type PropInput struct {
 	// type's doc comment.
 	Ref string
 
-	// At is where it stands, ROOM-LOCAL, compiled to At + the room's Origin
-	// on the canvas. Must be an integral cell in every grid family: a prop
-	// is a cell OF its region, and a region's cells are integral
-	// ([AtlasRegion.Props]).
+	// At is where it stands, ROOM-LOCAL in the authored frame, compiled to
+	// the absolute cell that column and row name (see [RoomInput.Origin]).
+	// Must be an integral cell in every grid family: a prop is a cell OF its
+	// region, and a region's cells are integral ([AtlasRegion.Props]).
 	At spatial.Position
 
 	// BlocksMovement is whether a member can end a step on this cell.
@@ -229,10 +269,12 @@ type ConnectionInput struct {
 	// To is the destination room ID.
 	To string
 
-	// FromPosition is the endpoint cell within room From.
+	// FromPosition is the endpoint cell within room From — ROOM-LOCAL in the
+	// authored frame (see [RoomInput.Origin]).
 	FromPosition spatial.Position
 
-	// ToPosition is the endpoint cell within room To.
+	// ToPosition is the endpoint cell within room To — ROOM-LOCAL in the
+	// authored frame.
 	ToPosition spatial.Position
 }
 
@@ -282,8 +324,9 @@ type MemberInput struct {
 	// Room is the ID of the room where the member is placed.
 	Room string
 
-	// Position is the member's location within the room — ROOM-LOCAL, and
-	// compiled to Position + that room's Origin on the canvas.
+	// Position is the member's location within the room — ROOM-LOCAL in the
+	// authored frame, and compiled to the absolute cell that column and row
+	// names on the canvas (see [RoomInput.Origin]).
 	Position spatial.Position
 
 	// Decider is the monster's decision-making engine (monsters only).
@@ -306,8 +349,9 @@ type TriggerReachedPosition struct {
 	// Room is the target room ID.
 	Room string
 
-	// Position is the target position within the room — ROOM-LOCAL, compiled
-	// to Position + that room's Origin at construction.
+	// Position is the target position within the room — ROOM-LOCAL in the
+	// authored frame, compiled at construction to the one absolute cell an
+	// arrival is compared against (see [RoomInput.Origin]).
 	Position spatial.Position
 
 	// Member is the target member ID (empty = any player member).
