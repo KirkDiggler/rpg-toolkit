@@ -347,7 +347,7 @@ func (s *PumpTestSuite) TestPumpDeciderIsolation() {
 					// A wall down x=5 rather than one cell of it: spatial
 					// v0.9.1 leans around a lone obstacle, so a fixture that
 					// wants sight blocked builds a wall (testwalls_test.go).
-					Occluders: wallColumn(5, 4, 6),
+					Props: wallColumn(5, 4, 6),
 				}},
 			},
 			Members: []encounter.MemberInput{
@@ -1517,7 +1517,7 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	})
 	s.Require().NoError(err)
 
-	// Precondition: goblin sees alice Current (adjacent, no occluders).
+	// Precondition: goblin sees alice Current (adjacent, no props).
 	goblinView, err := enc.View(&encounter.ViewInput{Member: goblinID})
 	s.Require().NoError(err)
 	s.Require().Len(goblinView, 1)
@@ -1948,7 +1948,7 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 				// goblin where she starts and hidden where she ends up. It
 				// was a single pillar until spatial v0.9.1, which leans
 				// around one — see testwalls_test.go.
-				Occluders: wallColumn(5, 4, 6),
+				Props: wallColumn(5, 4, 6),
 			}},
 		},
 		Members: []encounter.MemberInput{

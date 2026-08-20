@@ -24,7 +24,7 @@ type DataTestSuite struct {
 }
 
 // TestGoldenJSONRich pins the tags the two small goldens cannot see:
-// occluders, boundaries, connections, a member-filtered ending, an
+// props, boundaries, connections, a member-filtered ending, an
 // External ending, intel-free monsters in a second room, and non-zero
 // clock/At fields. Eleven tag renames survived the small goldens
 // because omitempty hid these fields (T6 review).
@@ -37,7 +37,7 @@ type DataTestSuite struct {
 // zero value) — unaffected by this rewrite. Every position below is
 // re-derived for crypt's (Width=8,Height=8 => Q,R valid [-4,4)) and hall's
 // (Width=6,Height=6 => Q,R valid [-3,3)) origin-centered spans: crypt's
-// occluder, boundary (still an axial-neighbor pair, ΔR=1), member p1, and
+// prop, boundary (still an axial-neighbor pair, ΔR=1), member p1, and
 // the "guarded" ending's position are distinct in-bounds cells; door1's
 // endpoints are each room's own boundary cell (an interior cell can never
 // kiss anything) — FromPosition (3,0) is crypt's max-Q edge, ToPosition
@@ -76,7 +76,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
-					Occluders:  []spatial.Position{{X: 1, Y: 2}},
+					Props:      []encounter.PropInput{rubble(1, 2)},
 					Boundaries: []spatial.Boundary{{From: spatial.Position{X: -2, Y: -2}, To: spatial.Position{X: -2, Y: -1}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
 				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -3, Y: 7}},
@@ -116,7 +116,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// because sight stopped at a room boundary. That makes the golden strictly
 	// richer: it is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMywieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","occluders":[{"x":1,"y":2}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-3,"y":7}},{"id":"p1","kind":"player","cell":{"x":-10,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMywieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-3,"y":7}},{"id":"p1","kind":"player","cell":{"x":-10,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -354,7 +354,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0, Y: 1},
-					Occluders: []spatial.Position{{X: 3, Y: 3}}},
+					Props: []encounter.PropInput{rubble(3, 3)}},
 				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{
@@ -371,7 +371,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 
 	setup.Field.Rooms[0].ID = "VANDALIZED"
 	setup.Field.Rooms[0].Width = 999
-	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 4, Y: 4}
+	setup.Field.Rooms[0].Props[0].At = spatial.Position{X: 4, Y: 4}
 	setup.Field.Connections[0].ID = "VANDALIZED"
 	setup.Field.Connections[0].From = "VANDALIZED"
 	setup.Field.Connections[0].FromPosition = spatial.Position{X: 4, Y: 4}
@@ -381,7 +381,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	s.Require().Len(data.Field.Rooms, 2)
 	s.Equal("r1", data.Field.Rooms[0].ID, "the snapshot must not see the caller's vandalism")
 	s.Equal(5, data.Field.Rooms[0].Width)
-	s.Equal(encounter.PositionData{X: 3, Y: 3}, data.Field.Rooms[0].Occluders[0])
+	s.Equal(encounter.PositionData{X: 3, Y: 3}, data.Field.Rooms[0].Props[0].At)
 
 	s.Require().Len(data.Field.Connections, 1)
 	s.Equal("door1", data.Field.Connections[0].ID, "the snapshot must not see the caller's vandalism")
@@ -411,10 +411,10 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
-						ID:        "crypt",
-						Width:     10,
-						Height:    10,
-						Occluders: wallColumn(5, 3, 7),
+						ID:     "crypt",
+						Width:  10,
+						Height: 10,
+						Props:  wallColumn(5, 3, 7),
 						Boundaries: []spatial.Boundary{
 							{
 								From:              spatial.Position{X: 3, Y: 3},
@@ -493,7 +493,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 						// still reads the same three ways: blocked at first
 						// light, open once playerA steps to (4,1), blocked
 						// again once the goblin ducks behind it.
-						Occluders:  wallRow(3, 3, 5),
+						Props:      wallRow(3, 3, 5),
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -589,7 +589,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 						// world's to pump. Co-located and visible would be
 						// a fight at first light (rpg-toolkit#964), and a
 						// fight monster's decider is never consulted.
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						Props:      []encounter.PropInput{rubble(5, 5)},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -651,7 +651,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 						// world's to pump. Co-located and visible would be
 						// a fight at first light (rpg-toolkit#964), and a
 						// fight monster's decider is never consulted.
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						Props:      []encounter.PropInput{rubble(5, 5)},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -722,7 +722,7 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 						// world's to pump. Co-located and visible would be
 						// a fight at first light (rpg-toolkit#964), and a
 						// fight monster's decider is never consulted.
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						Props:      []encounter.PropInput{rubble(5, 5)},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -785,7 +785,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 						// world's to pump. Co-located and visible would be
 						// a fight at first light (rpg-toolkit#964), and a
 						// fight monster's decider is never consulted.
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						Props:      []encounter.PropInput{rubble(5, 5)},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -841,7 +841,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 						ID:         "room1",
 						Width:      5,
 						Height:     5,
-						Occluders:  []spatial.Position{},
+						Props:      []encounter.PropInput{},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -892,7 +892,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 						ID:         "room1",
 						Width:      5,
 						Height:     5,
-						Occluders:  []spatial.Position{},
+						Props:      []encounter.PropInput{},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -966,7 +966,7 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 						ID:         "room1",
 						Width:      5,
 						Height:     5,
-						Occluders:  []spatial.Position{},
+						Props:      []encounter.PropInput{},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -1035,7 +1035,7 @@ func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 						ID:         "room1",
 						Width:      5,
 						Height:     5,
-						Occluders:  []spatial.Position{},
+						Props:      []encounter.PropInput{},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -1141,7 +1141,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 						// world's to pump. Co-located and visible would be
 						// a fight at first light (rpg-toolkit#964), and a
 						// fight monster's decider is never consulted.
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						Props:      []encounter.PropInput{rubble(5, 5)},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -1216,7 +1216,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 						// world's to pump. Co-located and visible would be
 						// a fight at first light (rpg-toolkit#964), and a
 						// fight monster's decider is never consulted.
-						Occluders:  []spatial.Position{{X: 5, Y: 5}},
+						Props:      []encounter.PropInput{rubble(5, 5)},
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -1390,8 +1390,8 @@ func validEncounterData() encounter.EncounterData {
 // and ToPosition{0,7} valid ONLY in r2: same-sized rooms and equal From/To
 // positions would make a check that validates an endpoint against the WRONG
 // room (or a From/To transposition in convertConnectionDataToConnectionInput)
-// invisible. r1 carries an occluder at (2,2) and r2 an occluder at (1,3), so
-// both the from- and to-side "endpoint on occluder" rows have something to hit.
+// invisible. r1 carries a prop at (2,2) and r2 a prop at (1,3), so
+// both the from- and to-side "endpoint on prop" rows have something to hit.
 //
 // #929 T2: mirrors encounter_test.go's validConnSetup exactly (its own
 // comment explains the geometry in full) — FromPosition sits on r1's own
@@ -1404,10 +1404,10 @@ func validEncounterDataWithConnection() encounter.EncounterData {
 	d := validEncounterData()
 	d.Field.Rooms[0].Width = 10
 	d.Field.Rooms[0].Height = 4
-	d.Field.Rooms[0].Occluders = []encounter.PositionData{{X: 2, Y: 2}}
+	d.Field.Rooms[0].Props = []encounter.PropData{rubbleData(2, 2)}
 	d.Field.Rooms = append(d.Field.Rooms, encounter.RoomData{
 		ID: "r2", Width: 3, Height: 9, Origin: &encounter.PositionData{X: 10, Y: 0},
-		Occluders: []encounter.PositionData{{X: 1, Y: 3}},
+		Props: []encounter.PropData{rubbleData(1, 3)},
 	})
 	d.Field.Connections = []encounter.ConnectionData{
 		{ID: "c1", From: "r1", To: "r2",
@@ -1417,12 +1417,12 @@ func validEncounterDataWithConnection() encounter.EncounterData {
 	return d
 }
 
-// TestLoadSquareOccluderFractionalRejected is the Load-seam counterpart to
-// encounter_test.go's TestSetupSquareOccluderFractionalRejected (#929 T3
+// TestLoadSquarePropFractionalRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupSquarePropFractionalRejected (#929 T3
 // Opus round F2).
-func (s *DataTestSuite) TestLoadSquareOccluderFractionalRejected() {
+func (s *DataTestSuite) TestLoadSquarePropCellFractionalRejected() {
 	data := validEncounterDataWithConnection()
-	data.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
+	data.Field.Rooms[0].Props[0].At = encounter.PositionData{X: 2.5, Y: 2}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
 	s.Require().Error(err)
@@ -1470,57 +1470,55 @@ func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 	s.Require().NotNil(enc)
 }
 
-// TestLoadOccluderOnBoundaryCellAccepted is the Load-seam counterpart to
-// encounter_test.go's TestSetupOccluderOnBoundaryCellAccepted (#929 T3
+// TestLoadPropOnBoundaryCellAccepted is the Load-seam counterpart to
+// encounter_test.go's TestSetupPropOnBoundaryCellAccepted (#929 T3
 // trailing round N2).
-func (s *DataTestSuite) TestLoadOccluderOnBoundaryCellAccepted() {
+func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque"},
 			Rooms: []encounter.RoomData{
-				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}, Occluders: []encounter.PositionData{
-					{X: 0, Y: 2}, {X: 4, Y: 2}, {X: 2, Y: 0}, {X: 2, Y: 4}, {X: 0, Y: 0}, {X: 4, Y: 4},
-				}},
+				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0}, Props: []encounter.PropData{rubbleData(0, 2), rubbleData(4, 2), rubbleData(2, 0), rubbleData(2, 4), rubbleData(0, 0), rubbleData(4, 4)}},
 			},
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
-	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal at Load too")
+	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
-// TestLoadOccluderIDCrossRoomCollisionAccepted is the Load-seam counterpart
-// to encounter_test.go's TestSetupOccluderIDCrossRoomCollisionAccepted
+// TestLoadPropIDCrossRoomCollisionAccepted is the Load-seam counterpart
+// to encounter_test.go's TestSetupPropIDCrossRoomCollisionAccepted
 // (#929 hardening round C).
-func (s *DataTestSuite) TestLoadOccluderIDCrossRoomCollisionAccepted() {
+func (s *DataTestSuite) TestLoadPropIDCrossRoomCollisionAccepted() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque"},
 			Rooms: []encounter.RoomData{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridTypeHex,
-					Origin: &encounter.PositionData{X: 0, Y: 0}, Occluders: []encounter.PositionData{{X: -5, Y: 4}}},
+					Origin: &encounter.PositionData{X: 0, Y: 0}, Props: []encounter.PropData{rubbleData(-5, 4)}},
 				{ID: "r-", Width: 12, Height: 10, Grid: spatial.GridTypeHex,
-					Origin: &encounter.PositionData{X: 1000, Y: 0}, Occluders: []encounter.PositionData{{X: 5, Y: 4}}},
+					Origin: &encounter.PositionData{X: 1000, Y: 0}, Props: []encounter.PropData{rubbleData(5, 4)}},
 			},
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
-	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide at Load either`)
+	s.Require().NoError(err, `room "r" prop (-5,4) and room "r-" prop (5,4) must not collide at Load either`)
 }
 
-// TestLoadDuplicateOccluderRejected is the Load-seam counterpart to
-// encounter_test.go's TestSetupDuplicateOccluderRejected (#929 hardening
+// TestLoadDuplicatePropRejected is the Load-seam counterpart to
+// encounter_test.go's TestSetupDuplicatePropRejected (#929 hardening
 // round D).
-func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
+func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
 	data := encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque"},
 			Rooms: []encounter.RoomData{
 				{ID: "hall", Width: 5, Height: 5, Origin: &encounter.PositionData{X: 0, Y: 0},
-					Occluders: []encounter.PositionData{{X: 3, Y: 3}, {X: 3, Y: 3}}},
+					Props: []encounter.PropData{rubbleData(3, 3), rubbleData(3, 3)}},
 			},
 		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
@@ -1530,7 +1528,7 @@ func (s *DataTestSuite) TestLoadDuplicateOccluderRejected() {
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "duplicate occluder")
+	s.Require().Contains(err.Error(), "two props at")
 }
 
 // TestLoadDuplicateEndingKeyRejected is the Load-seam counterpart to
@@ -1623,14 +1621,14 @@ func (s *DataTestSuite) TestLoadRejections() {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 99, Y: 99}
 		}, "to-position out of bounds", encounter.ErrBadConnection},
-		{"connection from-position on occluder", func(d *encounter.EncounterData) {
+		{"connection from-position on a prop", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 2, Y: 2}
-		}, "from-position on occluder", encounter.ErrBadConnection},
-		{"connection to-position on occluder", func(d *encounter.EncounterData) {
+		}, "from-position on prop", encounter.ErrBadConnection},
+		{"connection to-position on a prop", func(d *encounter.EncounterData) {
 			*d = validEncounterDataWithConnection()
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 1, Y: 3}
-		}, "to-position on occluder", encounter.ErrBadConnection},
+		}, "to-position on prop", encounter.ErrBadConnection},
 		{"connection missing from_position", func(d *encounter.EncounterData) {
 			// Deletes the field from the wire path (nil), not a zero-valued
 			// position — a missing endpoint must never silently default to
@@ -1943,7 +1941,7 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 }
 
 // validHexAxialData returns a fresh EncounterData with two hex rooms
-// joined by one connection, a member, and an occluder — the Load-seam
+// joined by one connection, a member, and a prop — the Load-seam
 // counterpart to encounter_test.go's validHexAxialSetup, mirrored exactly
 // (its own comment explains the geometry). Every position is integral
 // axial, including a negative one (gate.ToPosition).
@@ -1953,7 +1951,7 @@ func validHexAxialData() encounter.EncounterData {
 			Canvas: encounter.CanvasData{Void: "opaque"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0},
-					Occluders: []encounter.PositionData{{X: 2, Y: 2}}},
+					Props: []encounter.PropData{rubbleData(2, 2)}},
 				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 1}},
 			},
 			Connections: []encounter.ConnectionData{{
@@ -1988,11 +1986,11 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 		{"connection to-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: -1.5, Y: -1}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
-		{"occluder position fractional", func(d *encounter.EncounterData) {
-			// #929 T3 Opus round F2: occluder integrality is now universal
+		{"prop cell fractional", func(d *encounter.EncounterData) {
+			// #929 T3 Opus round F2: prop integrality is now universal
 			// (isIntegralPosition), not hex-only — see the Setup-seam
 			// counterpart in encounter_test.go's TestSetupHexIntegralAxial.
-			d.Field.Rooms[0].Occluders[0] = encounter.PositionData{X: 2.5, Y: 2}
+			d.Field.Rooms[0].Props[0].At = encounter.PositionData{X: 2.5, Y: 2}
 		}, encounter.ErrNoField, "not a representable integral cell"},
 	}
 	for _, tc := range cases {
@@ -2681,7 +2679,7 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
-					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
+					{ID: "room1", Width: 5, Height: 5, Props: []encounter.PropInput{}, Boundaries: []spatial.Boundary{}},
 				},
 				Connections: []encounter.ConnectionInput{},
 			},
@@ -2722,7 +2720,7 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
-					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
+					{ID: "room1", Width: 5, Height: 5, Props: []encounter.PropInput{}, Boundaries: []spatial.Boundary{}},
 				},
 				Connections: []encounter.ConnectionInput{},
 			},
@@ -2754,7 +2752,7 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
-					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
+					{ID: "room1", Width: 5, Height: 5, Props: []encounter.PropInput{}, Boundaries: []spatial.Boundary{}},
 				},
 				Connections: []encounter.ConnectionInput{},
 			},
@@ -2788,7 +2786,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
-					{ID: "room1", Width: 5, Height: 5, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
+					{ID: "room1", Width: 5, Height: 5, Props: []encounter.PropInput{}, Boundaries: []spatial.Boundary{}},
 				},
 				Connections: []encounter.ConnectionInput{},
 			},
@@ -2884,7 +2882,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 						// still reads the same three ways — blocked at first
 						// light, open once playerA steps to (4,1), blocked
 						// again once the goblin ducks to (5,6).
-						Occluders:  wallRow(3, 3, 5),
+						Props:      wallRow(3, 3, 5),
 						Boundaries: []spatial.Boundary{},
 					},
 				},
@@ -2949,7 +2947,7 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
-					{ID: "room1", Width: 10, Height: 10, Occluders: []spatial.Position{}, Boundaries: []spatial.Boundary{}},
+					{ID: "room1", Width: 10, Height: 10, Props: []encounter.PropInput{}, Boundaries: []spatial.Boundary{}},
 				},
 				Connections: []encounter.ConnectionInput{},
 			},

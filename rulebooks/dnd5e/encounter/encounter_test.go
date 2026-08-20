@@ -122,7 +122,7 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 }
 
 func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
-	s.Run("occluder blocks both directions", func() {
+	s.Run("a wall blocks both directions", func() {
 		// Arrange: alice and goblin separated by a WALL — a pillar is leaned
 		// around now (spatial v0.9.1, see testwalls_test.go), so a fixture
 		// that wants sight blocked has to build something worth blocking.
@@ -132,10 +132,10 @@ func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
-						ID:        room1,
-						Width:     10,
-						Height:    10,
-						Occluders: wallColumn(4, 0, 9),
+						ID:     room1,
+						Width:  10,
+						Height: 10,
+						Props:  wallColumn(4, 0, 9),
 					},
 				},
 				Connections: []encounter.ConnectionInput{},
@@ -335,7 +335,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 }
 
 // validConnSetup returns a fresh SetupInput with two DELIBERATELY
-// mismatched rooms — r1 is 10x4 (occluder at (2,2)), r2 is 3x9 (occluder
+// mismatched rooms — r1 is 10x4 (prop at (2,2)), r2 is 3x9 (prop
 // at (1,3)) — and one fully valid connection between them, with
 // FromPosition{9,1} valid ONLY in r1 and ToPosition{0,7} valid ONLY in r2.
 // Same-sized rooms and equal From/To positions would make a check that
@@ -359,8 +359,8 @@ func validConnSetup() *encounter.SetupInput {
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 10, Height: 4, Occluders: []spatial.Position{{X: 2, Y: 2}}},
-				{ID: "r2", Width: 3, Height: 9, Origin: spatial.Position{X: 10, Y: 0}, Occluders: []spatial.Position{{X: 1, Y: 3}}},
+				{ID: "r1", Width: 10, Height: 4, Props: []encounter.PropInput{rubble(2, 2)}},
+				{ID: "r2", Width: 3, Height: 9, Origin: spatial.Position{X: 10, Y: 0}, Props: []encounter.PropInput{rubble(1, 3)}},
 			},
 			Connections: []encounter.ConnectionInput{
 				{ID: "c1", From: "r1", To: "r2",
@@ -375,92 +375,85 @@ func validConnSetup() *encounter.SetupInput {
 	}
 }
 
-// TestSetupSquareOccluderFractionalRejected pins F2 (#929 T3 Opus round):
-// occluder integrality is universal now, not hex-only — a fractional
-// occluder on a SQUARE room (previously accepted outright, before this
+// TestSetupSquarePropFractionalRejected pins F2 (#929 T3 Opus round):
+// prop integrality is universal now, not hex-only — a fractional
+// prop on a SQUARE room (previously accepted outright, before this
 // fix) must reject exactly like a fractional hex one
 // (TestSetupHexIntegralAxial's sibling row), with the universal
 // isRepresentableInteger message, not the hex-specific one. One-defect:
-// validConnSetup's r1.Occluders[0] is the ONLY thing mutated.
-func (s *EncounterTestSuite) TestSetupSquareOccluderFractionalRejected() {
+// validConnSetup's r1.Props[0] is the ONLY thing mutated.
+func (s *EncounterTestSuite) TestSetupSquarePropCellFractionalRejected() {
 	setup := validConnSetup()
-	setup.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
+	setup.Field.Rooms[0].Props[0].At = spatial.Position{X: 2.5, Y: 2}
 	_, err := encounter.NewEncounter(setup)
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Require().Contains(err.Error(), "not a representable integral cell")
 }
 
-// TestSetupOccluderOnBoundaryCellAccepted pins N2's over-tightening sweep
-// (#929 T3 trailing round): every occluder in every EXISTING fixture sits
-// on an interior cell, so a mutant that rejected a boundary-cell occluder
-// (plausible: "occluders should be interior only") survived the suite
-// with zero failures until this row was added. Occluders block line of
+// TestSetupPropOnBoundaryCellAccepted pins N2's over-tightening sweep
+// (#929 T3 trailing round): every prop in every EXISTING fixture sits
+// on an interior cell, so a mutant that rejected a boundary-cell prop
+// (plausible: "props should be interior only") survived the suite
+// with zero failures until this row was added. Props block line of
 // sight (field.go's doc comment), not placement — a boundary cell,
-// including a corner, is exactly as legal an occluder position as an
+// including a corner, is exactly as legal a prop cell as an
 // interior one.
-func (s *EncounterTestSuite) TestSetupOccluderOnBoundaryCellAccepted() {
+func (s *EncounterTestSuite) TestSetupPropOnBoundaryCellAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{
-					{X: 0, Y: 2}, // left edge
-					{X: 4, Y: 2}, // right edge
-					{X: 2, Y: 0}, // top edge
-					{X: 2, Y: 4}, // bottom edge
-					{X: 0, Y: 0}, // corner
-					{X: 4, Y: 4}, // corner
-				}},
+				{ID: "hall", Width: 5, Height: 5, Props: []encounter.PropInput{rubble(0, 2), rubble(4, 2), rubble(2, 0), rubble(2, 4), rubble(0, 0), rubble(4, 4)}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
 	_, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, "an occluder on a room's boundary cell, including a corner, must be legal")
+	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal")
 }
 
-// TestSetupOccluderIDCrossRoomCollisionAccepted pins the hardening round's
-// fix (#929 item C): the occluder entity ID used to concatenate room ID
-// and truncated coordinates (occluder-<room>-<int(X)>-<int(Y)>), so room
-// "r" with occluder (-5,4) and room "r-" with occluder (5,4) both produced
-// "occluder-r--5-4" — a genuine cross-room ID collision on a field that is
+// TestSetupPropIDCrossRoomCollisionAccepted pins the hardening round's
+// fix (#929 item C): the prop entity ID used to concatenate room ID
+// and truncated coordinates (prop-<room>-<int(X)>-<int(Y)>), so room
+// "r" with prop (-5,4) and room "r-" with prop (5,4) both produced
+// "prop-r--5-4" — a genuine cross-room ID collision on a field that is
 // otherwise entirely legal under W1/W2/W3. The ID is index-based now, so
 // this exact colliding pair must construct without error.
-func (s *EncounterTestSuite) TestSetupOccluderIDCrossRoomCollisionAccepted() {
+func (s *EncounterTestSuite) TestSetupPropIDCrossRoomCollisionAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
-					Occluders: []spatial.Position{{X: -5, Y: 4}}},
+					Props: []encounter.PropInput{rubble(-5, 4)}},
 				{ID: "r-", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
-					Origin: spatial.Position{X: 1000, Y: 0}, Occluders: []spatial.Position{{X: 5, Y: 4}}},
+					Origin: spatial.Position{X: 1000, Y: 0}, Props: []encounter.PropInput{rubble(5, 4)}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
 	_, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, `room "r" occluder (-5,4) and room "r-" occluder (5,4) must not collide`)
+	s.Require().NoError(err, `room "r" prop (-5,4) and room "r-" prop (5,4) must not collide`)
 }
 
-// TestSetupDuplicateOccluderRejected pins the hardening round's item D:
-// two occluders at the SAME cell used to escape module validation
+// TestSetupDuplicatePropRejected pins the hardening round's item D:
+// two props at the SAME cell used to escape module validation
 // entirely and reject only in spatial's own voice ("entity ... already
 // indexed") as an accident of the old coordinate-derived entity ID —
-// see TestSetupOccluderIDCrossRoomCollisionAccepted's fix, which
+// see TestSetupPropIDCrossRoomCollisionAccepted's fix, which
 // switched to an index-based ID and, as a side effect, removed even
 // that accidental catch. Rejected explicitly now, in the module's own
 // room-list defect vocabulary.
-func (s *EncounterTestSuite) TestSetupDuplicateOccluderRejected() {
+func (s *EncounterTestSuite) TestSetupTwoPropsOnOneCellRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 3, Y: 3}, {X: 3, Y: 3}}},
+				{ID: "hall", Width: 5, Height: 5, Props: []encounter.PropInput{rubble(3, 3), rubble(3, 3)}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -468,7 +461,7 @@ func (s *EncounterTestSuite) TestSetupDuplicateOccluderRejected() {
 	_, err := encounter.NewEncounter(setup)
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "duplicate occluder")
+	s.Require().Contains(err.Error(), "two props at")
 }
 
 // TestSetupDuplicateEndingKeyRejected pins hardening round item E: two
@@ -527,12 +520,12 @@ func (s *EncounterTestSuite) TestSetupConnectionValidation() {
 		{"connection to-position out of bounds", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].ToPosition = spatial.Position{X: 99, Y: 99}
 		}, "to-position out of bounds"},
-		{"connection from-position on occluder", func(in *encounter.SetupInput) {
+		{"connection from-position on a prop", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 2, Y: 2}
-		}, "from-position on occluder"},
-		{"connection to-position on occluder", func(in *encounter.SetupInput) {
+		}, "from-position on prop"},
+		{"connection to-position on a prop", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 3}
-		}, "to-position on occluder"},
+		}, "to-position on prop"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -810,7 +803,7 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 }
 
 // validHexAxialSetup returns a fresh SetupInput with two hex rooms joined
-// by one connection, a member, and an occluder — every position integral
+// by one connection, a member, and a prop — every position integral
 // axial, including a negative one (gate.ToPosition). The base for
 // TestSetupHexIntegralAxial's one-defect rows: interim tools/spatial#926
 // enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
@@ -832,7 +825,7 @@ func validHexAxialSetup() *encounter.SetupInput {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
-					Occluders: []spatial.Position{{X: 2, Y: 2}}},
+					Props: []encounter.PropInput{rubble(2, 2)}},
 				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 1}},
 			},
 			Connections: []encounter.ConnectionInput{{
@@ -851,7 +844,7 @@ func validHexAxialSetup() *encounter.SetupInput {
 // TestSetupHexIntegralAxial pins the interim tools/spatial#926
 // enforcement at the Setup seam: a fractional X or Y is rejected for
 // every position kind a hex room accepts externally — member, both
-// connection endpoints, and an occluder — each with the error class its
+// connection endpoints, and a prop — each with the error class its
 // existing defect family already uses. Load-seam counterpart:
 // TestLoadHexIntegralAxial in data_test.go.
 func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
@@ -870,12 +863,12 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 		{"connection to-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].ToPosition = spatial.Position{X: -1.5, Y: -1}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
-		{"occluder position fractional", func(in *encounter.SetupInput) {
-			// #929 T3 Opus round F2: occluder integrality is now universal
+		{"prop cell fractional", func(in *encounter.SetupInput) {
+			// #929 T3 Opus round F2: prop integrality is now universal
 			// (isIntegralPosition), not hex-only (isIntegralAxialPosition) —
 			// the message matches Origin's ("not a representable integral
 			// cell"), not the hex-specific connection/member wording.
-			in.Field.Rooms[0].Occluders[0] = spatial.Position{X: 2.5, Y: 2}
+			in.Field.Rooms[0].Props[0].At = spatial.Position{X: 2.5, Y: 2}
 		}, encounter.ErrNoField, "not a representable integral cell"},
 	}
 	for _, tc := range cases {
@@ -1688,7 +1681,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
 
 // validTriggerAcceptanceFieldSetup is the rich SQUARE-family fixture for
 // TestSetupEndingTriggerMustAccept (#929 T3 trailing round N2): a kissing
-// pair (hall/vault, connected, hall carries an occluder) plus an isolated
+// pair (hall/vault, connected, hall carries a prop) plus an isolated
 // room (annex, no connection at all) — exercising every must-accept shape
 // a TriggerReachedPosition can legally target. A rejection-only test
 // suite proves a validator rejects; this fixture is what proves it does
@@ -1699,7 +1692,7 @@ func validTriggerAcceptanceFieldSetup() *encounter.SetupInput {
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 5, Height: 5, Occluders: []spatial.Position{{X: 2, Y: 2}}},
+				{ID: "hall", Width: 5, Height: 5, Props: []encounter.PropInput{rubble(2, 2)}},
 				{ID: "vault", Width: 4, Height: 4, Origin: spatial.Position{X: 5, Y: 0}},
 				{ID: "annex", Width: 3, Height: 3, Origin: spatial.Position{X: 1000, Y: 1000}},
 			},
@@ -2046,10 +2039,10 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{
 					{
-						ID:        room1,
-						Width:     20,
-						Height:    20,
-						Occluders: wallRow(10, 7, 13),
+						ID:     room1,
+						Width:  20,
+						Height: 20,
+						Props:  wallRow(10, 7, 13),
 					},
 				},
 			},

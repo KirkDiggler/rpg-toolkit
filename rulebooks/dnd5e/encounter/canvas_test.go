@@ -105,9 +105,7 @@ func tombField() encounter.FieldInput {
 			// carries the pillars the reference tomb puts there.
 			{ID: tombHall, Width: 10, Height: 8, Origin: tombHallOrigin,
 				Boundaries: tombSeamWall(9, 8, tombDoorRow),
-				Occluders: []spatial.Position{
-					{X: 2, Y: 1}, {X: 2, Y: 6}, {X: 6, Y: 1}, {X: 6, Y: 6},
-				}},
+				Props:      []encounter.PropInput{rubble(2, 1), rubble(2, 6), rubble(6, 1), rubble(6, 6)}},
 			{ID: tombChamber, Width: 12, Height: 8, Origin: tombChamberOrigin},
 		},
 		Connections: []encounter.ConnectionInput{
@@ -375,23 +373,23 @@ func TestAHexFieldNeedsNoSuchLaw(t *testing.T) {
 	require.NoError(t, err, "a hex field anchored deep in the negative quadrant is ordinary")
 }
 
-// TestOccludersAreCompiledThroughTheirRoomsAnchor is the occluder half of the
+// TestPropsAreCompiledThroughTheirRoomsAnchor is the prop half of the
 // compile, pinned where it is observable: a sightline.
 //
-// The Atlas reports occluders absolute too, but it computes that projection
+// The Atlas reports props absolute too, but it computes that projection
 // itself, from the same construction data — so an Atlas assertion cannot tell
 // whether the CANVAS got them right. This one can: the blocking column sits in
 // a chamber anchored well away from the origin, and the two members are placed
-// so that an unprojected occluder would land in a different chamber entirely
+// so that an unprojected prop would land in a different chamber entirely
 // and block nothing.
-func TestOccludersAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
+func TestPropsAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
 	// A pillar wall three cells tall at hall-local x=5, y=2..4 — absolute
 	// x=14, y=6..8 through the hall's (9,4) anchor. Unprojected it would sit
 	// at (5,2..4), which is entrance floor and nowhere near the pair below.
 	field := tombField()
 	for i := range field.Rooms {
 		if field.Rooms[i].ID == tombHall {
-			field.Rooms[i].Occluders = wallColumn(5, 2, 4)
+			field.Rooms[i].Props = wallColumn(5, 2, 4)
 		}
 	}
 

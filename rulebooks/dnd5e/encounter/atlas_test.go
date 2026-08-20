@@ -23,7 +23,7 @@ import (
 // versa) produces a wrong, non-accidental-match absolute value. atlas-r1
 // also carries one boundary (#929 hardening round A) so AtlasRoom.Boundaries
 // projection, copy-out, reload survival, and live-state independence are
-// all exercised by the same tests that already cover Cells/Occluders.
+// all exercised by the same tests that already cover Cells/Props.
 func validAtlasOrderingSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -32,7 +32,7 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 			Rooms: []encounter.RoomInput{
 				{ID: "atlas-r3", Width: 4, Height: 3, Origin: spatial.Position{X: 9950, Y: 7}},
 				{ID: "atlas-r1", Width: 4, Height: 3, Origin: spatial.Position{X: 0, Y: 7},
-					Occluders: []spatial.Position{{X: 1, Y: 1}},
+					Props: []encounter.PropInput{rubble(1, 1)},
 					// (0,2)-(1,2): the far row from atlas-p1's Y=0 move path
 					// below (TestAtlasUnaffectedByLiveState moves it (0,0) to
 					// (3,0)) — a movement-blocking boundary on that row would
@@ -197,7 +197,7 @@ func (s *EncounterTestSuite) TestAtlasDeterministicOrdering() {
 		"Doorways must be sorted by connection ID regardless of declaration order")
 }
 
-// TestAtlasRegionOccludersAndBoundariesAreAbsolute pins exact absolute values —
+// TestAtlasRegionPropsAndBoundariesAreAbsolute pins exact absolute values —
 // local cell + Origin, element-wise — and would die under a sign-flipped
 // Add-vs-Subtract mutant inside Atlas itself. Also pins AtlasBoundary's
 // absolute projection (#929 hardening round A): both endpoints offset by
@@ -207,7 +207,7 @@ func (s *EncounterTestSuite) TestAtlasDeterministicOrdering() {
 // The region's own footprint is pinned beside it through RegionAt rather than
 // through an enumerated cell list (rpg-toolkit#1108): the anchor and span the
 // region reports have to mean the cells it actually holds.
-func (s *EncounterTestSuite) TestAtlasRegionOccludersAndBoundariesAreAbsolute() {
+func (s *EncounterTestSuite) TestAtlasRegionPropsAndBoundariesAreAbsolute() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
 
@@ -227,7 +227,8 @@ func (s *EncounterTestSuite) TestAtlasRegionOccludersAndBoundariesAreAbsolute() 
 	s.Require().Equal(spatial.Position{X: 0, Y: 7}, r1.Origin, "the region's anchor is where its local (0,0) landed")
 	s.Require().Equal(4, r1.Width, "the span is the region's cell set, so the axes must not be swapped")
 	s.Require().Equal(3, r1.Height)
-	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders, "occluder must be offset by Origin too")
+	s.Require().Equal([]encounter.AtlasProp{absoluteRubble(1, 8)}, r1.Props,
+		"a prop's cell must be offset by Origin too")
 
 	// The span means cells: local (0,0) and the far corner local (3,2) are
 	// both this region's, in absolute space, and RegionAt is what says so.
@@ -237,10 +238,10 @@ func (s *EncounterTestSuite) TestAtlasRegionOccludersAndBoundariesAreAbsolute() 
 		s.Require().Equal(encounter.RegionID("atlas-r1"), got, "cell %v", cell)
 	}
 
-	// #929 T3 fix round item 3: an occluder's cell is floor AND blockage
+	// #929 T3 fix round item 3: a prop's cell is floor AND blockage
 	// (ruling 1: occlusion is walkability, not ownership). This is the
 	// property hosts render by — floor from the region's span, blockage
-	// layered from Occluders — and RegionAt is where it is now visible.
+	// layered from Props — and RegionAt is where it is now visible.
 	got, owned := enc.RegionAt(spatial.Position{X: 1, Y: 8})
 	s.Require().True(owned, "an occluded cell is still floor")
 	s.Require().Equal(encounter.RegionID("atlas-r1"), got)
@@ -299,7 +300,7 @@ func (s *EncounterTestSuite) TestAtlasUnaffectedByLiveState() {
 // TestAtlasCopyOutImmunity mutates every slice a returned Atlas exposes
 // and re-fetches — the second Atlas must be unaffected, proving nothing
 // aliases internal storage (MUTATION-PROOF: verified by temporarily
-// aliasing Occluders directly to fieldInput and observing this fail,
+// aliasing Props directly to fieldInput and observing this fail,
 // per #929 T3 mutation-evidence protocol).
 func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
@@ -309,8 +310,8 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 	s.Require().NoError(err)
 
 	for i := range atlas1.Regions {
-		for j := range atlas1.Regions[i].Occluders {
-			atlas1.Regions[i].Occluders[j] = spatial.Position{X: -999, Y: -999}
+		for j := range atlas1.Regions[i].Props {
+			atlas1.Regions[i].Props[j].At = spatial.Position{X: -999, Y: -999}
 		}
 		for j := range atlas1.Regions[i].Boundaries {
 			atlas1.Regions[i].Boundaries[j] = encounter.AtlasBoundary{
@@ -332,8 +333,8 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 			r1 = r
 		}
 	}
-	s.Require().Equal([]spatial.Position{{X: 1, Y: 8}}, r1.Occluders,
-		"mutating the first snapshot's Occluders must not corrupt internal state")
+	s.Require().Equal([]encounter.AtlasProp{absoluteRubble(1, 8)}, r1.Props,
+		"mutating the first snapshot's Props must not corrupt internal state")
 	s.Require().Equal(spatial.Position{X: 3, Y: 8}, atlas2.Doorways[0].FromCell,
 		"mutating the first snapshot's Doorways must not corrupt internal state")
 	s.Require().Equal([]encounter.AtlasBoundary{
@@ -348,11 +349,11 @@ func (s *EncounterTestSuite) TestAtlasCopyOutImmunity() {
 // must be deep-equal (#929 T3 fix round item 2).
 //
 // What it can show is that a reload changes NOTHING the Atlas reports — every
-// region's anchor, span, occluders and walls, and every doorway's endpoints,
+// region's anchor, span, props and walls, and every doorway's endpoints,
 // come back identical. It cannot show that any of them is the INTENDED value,
 // since both sides are produced by the same code from the same construction
 // data; the intended values are pinned against hand-computed fixtures by
-// TestAtlasRegionOccludersAndBoundariesAreAbsolute and
+// TestAtlasRegionPropsAndBoundariesAreAbsolute and
 // TestAtlasDoorwaysAreAbsolute.
 func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 	enc1, err := encounter.NewEncounter(validAtlasOrderingSetup())
@@ -404,27 +405,48 @@ func (s *EncounterTestSuite) TestRegionOwnershipAtKissingDoorway() {
 	s.Require().Equal(encounter.RegionID("atlas-r2"), regions["far"], "the doorway cell in atlas-r2 belongs to atlas-r2, not atlas-r1")
 }
 
-// TestAnOccludedCellIsStillFloor pins ruling 1 in the terms that survive the
-// bridges: occlusion is walkability, not ownership. A member standing on an
-// occluder's own cell is reported in the region that owns it, exactly as one on
-// an empty cell is — RegionAt names an occluded cell like any other
-// (TestAtlasRegionOccludersAndBoundariesAreAbsolute), and this is the runtime
-// half of the same claim.
-func (s *EncounterTestSuite) TestAnOccludedCellIsStillFloor() {
+// TestAPropsCellIsStillFloor pins ruling 1 in the terms that survive the
+// bridges: WHAT A PROP BLOCKS IS NOT OWNERSHIP. RegionAt names a prop's cell
+// like any other (TestAtlasRegionPropsAndBoundariesAreAbsolute), and this is
+// the runtime half of the same claim.
+//
+// The two halves came apart in rpg-toolkit#1128 and are worth keeping apart.
+// This test used to assert that a member could be PLACED on a prop's cell, and
+// read that as proof the cell was floor — which held only because every prop
+// was hardcoded walk-through, so the assertion could not have failed for any
+// reason at all. Now a prop says whether it blocks movement, and the fixture's
+// rubble is solid: the cell is still floor, still owned by atlas-r1, and
+// nobody may stand on it. Ownership is the map's answer; blockage is the
+// prop's.
+func (s *EncounterTestSuite) TestAPropsCellIsStillFloor() {
 	enc, err := encounter.NewEncounter(validAtlasOrderingSetup())
 	s.Require().NoError(err)
 
-	// atlas-r1's occluder is local (1,1), absolute (1,8).
+	// atlas-r1's prop is local (1,1), absolute (1,8).
+	onTheRubble := spatial.Position{X: 1, Y: 8}
+
+	region, floor := enc.RegionAt(onTheRubble)
+	s.Require().True(floor, "a prop stands ON the floor; it is not a hole in it")
+	s.Require().Equal(encounter.RegionID("atlas-r1"), region,
+		"and the region that owns the cell owns it whatever is standing there")
+
 	_, err = enc.Join(&encounter.JoinInput{
-		Member: "onTheRubble", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 1, Y: 8}})
-	s.Require().NoError(err, "an occluder must not bar a placement — it blocks sight, not floor")
+		Member: "onTheRubble", Kind: encounter.KindPlayer, Cell: onTheRubble})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement,
+		"solid rubble is somewhere you cannot stand — which is blockage, not ownership")
+
+	// The cell one step over is the control: same region, nothing on it.
+	beside := spatial.Position{X: 2, Y: 8}
+	_, err = enc.Join(&encounter.JoinInput{
+		Member: "besideIt", Kind: encounter.KindPlayer, Cell: beside})
+	s.Require().NoError(err)
 
 	members, err := enc.Members()
 	s.Require().NoError(err)
 	for _, m := range members {
-		if m.ID == "onTheRubble" {
+		if m.ID == "besideIt" {
 			s.Require().Equal(encounter.RegionID("atlas-r1"), m.Region)
-			s.Require().Equal(spatial.Position{X: 1, Y: 8}, m.Position)
+			s.Require().Equal(beside, m.Position)
 			return
 		}
 	}

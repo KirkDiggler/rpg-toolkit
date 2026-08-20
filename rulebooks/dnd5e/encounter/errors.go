@@ -60,12 +60,15 @@ var (
 	// ErrNoField is returned when Setup is called without rooms, or when a
 	// declared room is itself defective — empty or duplicate ID, an
 	// unrecognized-or-no-longer-supported grid shape value (gridless
-	// included — RoomData's doc comment in data.go), a non-integral
-	// occluder position in ANY family, not just hex (#929 T3 Opus round
-	// F2), a duplicate occluder position within one room (#929 hardening
-	// round D — previously escaped module validation and rejected only
-	// in spatial's own voice, an accident of the pre-index-based
-	// occluder entity ID), non-positive OR oversized Width/Height
+	// included — RoomData's doc comment in data.go), a prop with no ref or
+	// with either blocking answer left unsaid (rpg-toolkit#1128 —
+	// [PropInput]), a non-integral prop cell in ANY family, not just hex
+	// (#929 T3 Opus round F2), two props on one cell within one room (#929
+	// hardening round D — previously escaped module validation and
+	// rejected only in spatial's own voice, an accident of the
+	// pre-index-based prop entity ID), a room carrying the retired
+	// `occluders` key at load (RoomData.Occluders), non-positive OR
+	// oversized Width/Height
 	// (maxRoomSpan), a
 	// per-room or field-total cell count exceeding maxRoomCells/
 	// maxFieldCells (allocation safety for Atlas — #929 T3 Opus round F1),
@@ -142,7 +145,7 @@ var (
 	// ErrBadConnection is returned when a connection's ID is empty or
 	// duplicated, its From/To names an unknown room or itself, an
 	// endpoint lies outside its room's bounds, is non-integral (hex
-	// rooms only), or sits on an occluder position — or (W3) its two
+	// rooms only), or sits on a prop's cell — or (W3) its two
 	// endpoints, once anchored to their rooms' Origin, are not adjacent
 	// absolute cells — or, Load-only, since ConnectionInput's endpoints
 	// are plain values and can't be absent the way ConnectionData's
