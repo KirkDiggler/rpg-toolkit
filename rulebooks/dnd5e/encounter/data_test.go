@@ -110,13 +110,23 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// under a new key, absolute, with the room label gone because a member's
 	// chamber is derived from where they stand.
 	//
+	// FOUR VALUES MOVED when rpg-toolkit#1141 corrected the hex offset schemes,
+	// and only four: the two members' absolute cells, and the two intel payloads
+	// that mirror them (each member holds where it SEES the other, so those
+	// track the cells by construction). Everything else here is byte-identical
+	// -- every tag, key, log entry, bubble, ending, and every AUTHORED value,
+	// since room origins, props, boundaries and connection endpoints are all
+	// written in the offset frame and did not move. That is the check that
+	// justified updating a golden at all: this file exists to pin tags and wire
+	// shape, and none of that changed.
+	//
 	// And this blob now carries a FIGHT. The two members are one doorway apart
 	// with nothing between them, so they see each other at first light and
 	// trigger detection forms a bubble — which used to be invisible here only
 	// because sight stopped at a room boundary. That makes the golden strictly
 	// richer: it is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOi0yfQ==","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMiwieSI6LTZ9","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-2,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":7,"y":3},"to_position":{"x":0,"y":3}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-2,"y":-6}},{"id":"p1","kind":"player","cell":{"x":-10,"y":-2}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTMsInkiOjZ9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotNSwieSI6LTJ9","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-2,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":7,"y":3},"to_position":{"x":0,"y":3}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":-2}},{"id":"p1","kind":"player","cell":{"x":-13,"y":6}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -2072,6 +2082,36 @@ func validAnchoredHexData() encounter.EncounterData {
 	}
 }
 
+// TestLoadRefusesAnAxialDiagonalAsAdjacent is the Load-seam mirror of
+// encounter_test.go's TestSetupRefusesAnAxialDiagonalAsAdjacent, and a separate
+// test for the same reason.
+//
+// Both existing Load W3 rows sit at distance 3, which a Chebyshev-on-axial
+// implementation rejects too, so neither tells the correct formula from that
+// mutant. Only a (1,1) diagonal does: Chebyshev calls it 1, cube distance calls
+// it 2.
+//
+// That delta stopped being reachable from validAnchoredHexData by any single
+// field change when rpg-toolkit#1141 corrected the offset schemes — see the
+// Setup-seam test for the sweep that established it. Hence its own scenario
+// rather than a reshaped shared base.
+func (s *DataTestSuite) TestLoadRefusesAnAxialDiagonalAsAdjacent() {
+	data := validAnchoredHexData()
+	// Same three values as the Setup-seam mirror; they compile to (8,-8) and
+	// (9,-7).
+	data.Field.Rooms[1].Origin = &encounter.PositionData{X: 8, Y: -9}
+	data.Field.Connections[0].FromPosition = &encounter.PositionData{X: 8, Y: 0}
+	data.Field.Connections[0].ToPosition = &encounter.PositionData{X: 0, Y: 7}
+
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:       data,
+		Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	})
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Contains(err.Error(), "distance 2",
+		"a (1,1) axial diagonal is two steps apart, and only the cube formula says so")
+}
+
 // TestLoadAnchoring pins the Load-seam one-defect rows for W1 (mixed grid
 // families), origin legality (non-integral, infinite, and non-representable
 // — isRepresentableInteger, encounter.go), W5 (nil origin presence, naming
@@ -2142,19 +2182,6 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 			// — this must fail on adjacency, not on the earlier bounds check.
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 1, Y: 4}
 		}, encounter.ErrBadConnection, "not adjacent"},
-		{"W3: hex axial (1,1) delta is NOT adjacent (cube distance 2)", func(d *encounter.EncounterData) {
-			// Load-seam mirror of encounter_test.go's TestSetupAnchoring
-			// row of the same name (#929 hardening round, test-gap closure
-			// item 6): both existing Load W3 rows above sit at cube/
-			// Chebyshev distance 3 either way ("endpoints do not kiss") —
-			// neither discriminates a Chebyshev-on-axial mutant (which
-			// would wrongly accept max(|ΔQ|,|ΔR|)=1 as adjacent) from the
-			// correct cube-distance formula. hex-small's Origin shifts
-			// from (6,-5) to (6,-3): the gate's endpoints, once anchored,
-			// differ by axial (ΔQ=1,ΔR=1) — cube distance (1+1+2)/2=2, NOT
-			// 1 — while still disjoint from hex-big (W2 passes).
-			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 10, Y: -4}
-		}, encounter.ErrBadConnection, "distance 2"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
@@ -2541,14 +2568,27 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 
-	// The gate's two sides, on the canvas. hex-big's authored [9,1] compiles
-	// to axial (9,-6) and hex-small's [0,4] — through its (10,-2) anchor,
-	// so authored [10,2] absolute — to (10,-7). Neither reads the same as its
-	// authored pair any more, and that is the point of rpg-toolkit#1127
-	// rather than an inconvenience: a chamber is drawn in offset columns and
-	// run on a cube grid, and the compile is where the two meet.
-	nearSide := spatial.Position{X: 9, Y: -6}
-	farSide := spatial.Position{X: 10, Y: -7}
+	// The gate's two sides, on the canvas — READ from the compiled field
+	// rather than written down. Neither side reads the same as its authored
+	// pair, and that is the point of rpg-toolkit#1127 rather than an
+	// inconvenience: a chamber is drawn in offset columns and run on a cube
+	// grid, and the compile is where the two meet.
+	//
+	// These used to be the literals (9,-6) and (10,-7). They moved when
+	// rpg-toolkit#1141 corrected the offset schemes, which is exactly why they
+	// are no longer literals: what this test is about is that the field behaves
+	// identically across a round trip, and hard-coding the projection's current
+	// output made it fail for a reason that has nothing to do with that.
+	atlas, err := enc1.Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(atlas.Doorways, 1, "the fixture authors exactly one connection")
+	nearSide := atlas.Doorways[0].FromCell
+	farSide := atlas.Doorways[0].ToCell
+
+	// Still worth asserting the compile did something: the absolute cells are
+	// not the authored pairs.
+	s.NotEqual(spatial.Position{X: 9, Y: 1}, nearSide, "authored [9,1] is not its own absolute cell")
+	s.NotEqual(spatial.Position{X: 0, Y: 4}, farSide, "authored [0,4] is not its own absolute cell")
 
 	out1, err := enc1.Step(&encounter.StepInput{Member: "p1", To: farSide})
 	s.Require().NoError(err, "the original encounter accepts the step through the gate")

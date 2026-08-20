@@ -1092,6 +1092,46 @@ func validAnchoredHexSetup() *encounter.SetupInput {
 	}
 }
 
+// TestSetupRefusesAnAxialDiagonalAsAdjacent keeps the discriminator that used
+// to be a row in TestSetupAnchoring, and it is a separate test because that row
+// stopped being buildable.
+//
+// # What it discriminates
+//
+// A "Chebyshev-on-axial" implementation of adjacency — max(|dQ|,|dR|) <= 1 —
+// accepts pairs the cube-distance formula rejects. The two disagree on exactly
+// one shape: a (1,1) diagonal, where Chebyshev says 1 and the true distance is
+// (1+1+2)/2 = 2. Every other near-miss delta is rejected by both, so only a
+// (1,1) or (-1,-1) delta can tell the correct formula from that mutant.
+//
+// # Why it is not a row any more
+//
+// When rpg-toolkit#1141 corrected the hex offset schemes, the projection from
+// authored cells to absolute ones changed, and a (1,1) delta became UNREACHABLE
+// from validAnchoredHexSetup by changing any single field. Verified by sweeping
+// all three independently against the compiled endpoints: origins from (5,-20)
+// to (20,12), every legal ToPosition in hex-small, and every legal FromPosition
+// in hex-big. None produces one. That is a property of the corrected geometry,
+// not a search that gave up.
+//
+// So the scenario gets its own setup rather than the shared base being reshaped
+// around it — reshaping the base would have moved every other row in this suite
+// and its mirror in data_test.go to preserve one assertion.
+func (s *EncounterTestSuite) TestSetupRefusesAnAxialDiagonalAsAdjacent() {
+	setup := validAnchoredHexSetup()
+	// Chosen by asking the compiler which combination lands on the diagonal,
+	// not by re-deriving the projection by hand: these compile to (8,-8) and
+	// (9,-7).
+	setup.Field.Rooms[1].Origin = spatial.Position{X: 8, Y: -9}
+	setup.Field.Connections[0].FromPosition = spatial.Position{X: 8, Y: 0}
+	setup.Field.Connections[0].ToPosition = spatial.Position{X: 0, Y: 7}
+
+	_, err := encounter.NewEncounter(setup)
+	s.Require().ErrorIs(err, encounter.ErrBadConnection)
+	s.Contains(err.Error(), "distance 2",
+		"a (1,1) axial diagonal is two steps apart, and only the cube formula says so")
+}
+
 // TestSetupAnchoring pins the one-defect rows for W1 (mixed grid families),
 // origin legality (non-integral origin), and W3 (endpoints that don't
 // kiss) — each breaking exactly ONE thing about validAnchoredHexSetup's
@@ -1150,18 +1190,6 @@ func (s *EncounterTestSuite) TestSetupAnchoring() {
 			// not on the earlier bounds check.
 			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 4}
 		}, encounter.ErrBadConnection, "not adjacent"},
-		{"W3: hex axial (1,1) delta is NOT adjacent (cube distance 2)", func(in *encounter.SetupInput) {
-			// hex-small's Origin shifts two rows north of the valid base's
-			// (10,0): the gate's endpoints, once compiled, are axial (9,-6)
-			// and (10,-5), differing by (ΔQ=1,ΔR=1) — cube distance
-			// (1+1+2)/2=2, NOT 1. A "Chebyshev-on-axial" mutant
-			// (max(|ΔQ|,|ΔR|)=1) would wrongly ACCEPT this as adjacent — see
-			// the mutation evidence table in the #929 T1 fix-round report.
-			// Still disjoint from hex-big (W2 passes): hex-small owns columns
-			// 10..12 whatever its rows are, and hex-big owns 0..9, so this is
-			// a genuine W3-only defect.
-			in.Field.Rooms[1].Origin = spatial.Position{X: 10, Y: -4}
-		}, encounter.ErrBadConnection, "distance 2"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {

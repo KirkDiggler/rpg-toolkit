@@ -272,12 +272,16 @@ func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.
 //
 // The key is the coordinate that does NOT shear:
 //
-//   - POINTY-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q;
+//   - FLAT-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q;
 //     for a fixed column, R decreases by exactly one per row, so the run is
 //     [r(row=Height-1), r(row=0)].
-//   - FLAT-TOP is odd-r, so the authored ROW is recoverable as -(Q+R) and only
-//     Q staggers. Key by that; for a fixed row, Q increases by exactly one per
-//     column.
+//   - POINTY-TOP is odd-r, so the authored ROW is recoverable as -(Q+R) and
+//     only Q staggers. Key by that; for a fixed row, Q increases by exactly one
+//     per column.
+//
+// Those two bullets USED TO NAME THE OTHER ORIENTATION, because spatial had the
+// schemes swapped (rpg-toolkit#1141). The arithmetic below is unchanged; which
+// orientation it belongs to is what moved.
 //
 // Both facts are read off spatial's own conversion rather than assumed, and
 // pinned by TestRunsAgreeWithEnumeration, which compares this against a full
@@ -286,7 +290,7 @@ func hexRuns(r RoomInput, o Orientation) map[int][2]int {
 	runs := make(map[int][2]int, max(r.Width, r.Height))
 
 	oc, or := int(r.Origin.X), int(r.Origin.Y)
-	if o.Kind() == OrientationPointyTop {
+	if o.Kind() == OrientationFlatTop {
 		for col := 0; col < r.Width; col++ {
 			top := HexCellAt(o, col+oc, or)
 			bottom := HexCellAt(o, col+oc, r.Height-1+or)
@@ -311,7 +315,7 @@ func hexFootprintBounds(r RoomInput, o Orientation) (qMin, qMax, rMin, rMax int)
 	first := true
 	for key, run := range hexRuns(r, o) {
 		var q0, q1, r0, r1 int
-		if o.Kind() == OrientationPointyTop {
+		if o.Kind() == OrientationFlatTop {
 			q0, q1, r0, r1 = key, key, run[0], run[1]
 		} else {
 			// key is the authored row; the run is a Q interval, and R is
