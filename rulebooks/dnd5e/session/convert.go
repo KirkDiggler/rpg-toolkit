@@ -46,9 +46,14 @@ func projectGrid(shape spatial.GridShape) GridKind {
 
 // projectLayout maps the composition's authoring frame onto the wire's render
 // word (rpg-toolkit#1140). Nil — a square field, which declares no orientation
-// by law — yields the empty string, and so does an unrecognised kind, for the
-// reason projectGrid gives: a guess would turn an impossible state into a
-// wrong picture.
+// by law — yields the empty string, which is what keeps Atlas.Layout's
+// "present exactly when the grid is hex" true.
+//
+// The default arm is unreachable, the way projectGrid's is: encounter.Orientation
+// is SEALED by an unexported method, so the only kinds that can exist are the
+// two named here, and a hex field must declare one of them. It still refuses
+// to guess rather than invent a layout, for the reason projectGrid gives — a
+// guess would turn an impossible state into a wrong picture.
 func projectLayout(o encounter.Orientation) HexLayout {
 	if o == nil {
 		return ""
