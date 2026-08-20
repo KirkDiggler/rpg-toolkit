@@ -286,17 +286,13 @@ func drive(out *bytes.Buffer) error {
 	}
 	fmt.Fprintf(out, "   delivered %d events\n", walked.Delivery.Events)
 
-	// SHE DOES NOT REACH THE GATE. The arch is open on row 1, and an opening is
-	// an opening in both directions — the vault can see out of it exactly as
-	// far as somebody can see in. So the contact happens on the APPROACH,
-	// two cells short of the threshold, rather than on the step through it.
-	//
-	// This scene used to walk her to (5,1) and cross to (6,1), with the fight
-	// starting on the crossing. That reading depended on rooms separating
-	// themselves; on one canvas (rpg-toolkit#1127) the only thing that stops a
-	// sightline is something drawn, and nothing is drawn across an open arch.
-	// The same lesson the tomb's forcing case landed on: an arch you are seen
-	// through, a door you are not.
+	// SHE REACHES THE GATE UNSEEN, and that is a claim about LIGHT rather than
+	// about walls. The arch on row 1 is open, and an opening is an opening in
+	// both directions — the vault can see out of it exactly as far as somebody
+	// can see in — so nothing here hides her except the range of what she
+	// carries. At session's four cells the skeleton is out of it until she is
+	// through; unbounded, this fight starts halfway down the antechamber and
+	// bob joins it from the far room. See sightRangeCells.
 	if walked.Formed != nil {
 		return fmt.Errorf("the approach should be unseen at torchlight, but a fight started")
 	}
@@ -381,10 +377,10 @@ func drive(out *bytes.Buffer) error {
 func authoredCrypt() (*encounter.EncounterData, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		// Geometry decides what is visible, not range — the same position
-		// session takes in v1 (see sightRangeCells). The rubble and the walls
-		// are what this scene is demonstrating; a sight radius would only
-		// confuse which of the two stopped a sightline.
+		// Governs THIS construction only: once session loads the world it
+		// supplies its own sight seam, so the walk below runs on session's
+		// answer rather than this one. Matched to it anyway, so the scene
+		// reads the same however it is entered.
 		Sight: encEveryoneSees{},
 		Field: encounter.FieldInput{
 			// The space between the chambers is ROCK, which is the ordinary
@@ -455,30 +451,29 @@ func rubble(at ...spatial.Position) []encounter.PropInput {
 	return out
 }
 
-// encEveryoneSees is the workbench's sight capability: unbounded range, so the
-// only thing that hides a member is something drawn on the map.
-// encEveryoneSees gives every member the same torchlit radius.
+// encEveryoneSees gives every member the same sight radius.
 type encEveryoneSees struct{}
 
 func (encEveryoneSees) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
 	out := make(map[encounter.MemberID]int, len(members))
 	for _, id := range members {
-		out[id] = torchlight
+		out[id] = sightRadius
 	}
 
 	return out, nil
 }
 
-// torchlight is how far anybody in this crypt can see, in cells.
+// sightRadius is how far anybody in this crypt can see, in cells.
 //
-// A NUMBER, deliberately, and a small one. The composition refuses to invent
-// this (encounter.ErrNoSight) because sight is per-creature and per-light
-// source, so it asks — and what a scene answers changes what the scene IS.
-// Unbounded, the open arch on row 1 shows the whole vault from halfway down the
-// antechamber and the fight starts before anybody reaches the gate. At two
-// cells the crypt is lit by what the party carries, which is the story this
-// workbench is telling.
-const torchlight = 1_000_000
+// Four, matching session's own answer (sightRangeCells) so this scene behaves
+// the same whether it is driven through session or built directly here. Twenty
+// feet at five feet to the cell: a torch's bright light.
+//
+// It is a NUMBER and not a shrug. Unbounded, the open arch on row 1 shows the
+// whole vault from halfway down the antechamber, the fight starts before
+// anybody reaches the gate, and bob — whose entire purpose in this scene is to
+// keep exploring while alice fights — is pulled into it from the far room.
+const sightRadius = 4
 
 // squareSeam is the wall between two side-by-side square chambers, with one row
 // left open for the doorway. Room-local to the WEST chamber, where column

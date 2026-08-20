@@ -100,10 +100,18 @@ type AtlasProp struct {
 	At spatial.Position `json:"at"`
 
 	// BlocksMovement reports whether an entity may enter its cell.
-	BlocksMovement bool `json:"blocks_movement,omitempty"`
+	//
+	// No omitempty, here or on any of these four: false is an ANSWER, not an
+	// absence. A pile of bones is walked through and seen over, so both of its
+	// flags are false, and with omitempty it would serialise carrying no
+	// blocking information at all — indistinguishable on the wire from a prop
+	// nobody declared one for. That is exactly the ambiguity the composition
+	// spends a *bool to prevent one layer down (rpg-toolkit#1033), and it must
+	// not come back at the seam that a non-Go client reads.
+	BlocksMovement bool `json:"blocks_movement"`
 
 	// BlocksLineOfSight reports whether sight passes through its cell.
-	BlocksLineOfSight bool `json:"blocks_line_of_sight,omitempty"`
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
@@ -115,10 +123,10 @@ type AtlasBoundary struct {
 	To spatial.Position `json:"to"`
 
 	// BlocksMovement reports whether an entity may cross.
-	BlocksMovement bool `json:"blocks_movement,omitempty"`
+	BlocksMovement bool `json:"blocks_movement"`
 
 	// BlocksLineOfSight reports whether sight may cross.
-	BlocksLineOfSight bool `json:"blocks_line_of_sight,omitempty"`
+	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
 }
 
 // AtlasDoorway is one crossable pair of cells. The two are adjacent in
