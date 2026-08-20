@@ -662,12 +662,21 @@ func (s *StrikeTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
 		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2},
 		damage.Damage{Dice: "1d6", Type: damage.Acid},
 	)
-	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(), NewStrike(&StrikeInput{
+	machine := NewStrike(&StrikeInput{
 		AttackerID: wolfID,
 		TargetID:   heroID,
 		Attack:     profile,
 		Roller:     scripted(15, 4, 5),
-	}))
+	}).(*strikeMachine)
+	applyDamageCalls := 0
+	machine.applyDamage = func(
+		ctx context.Context, target combat.Combatant, input *combat.ApplyDamageInput,
+	) *combat.ApplyDamageResult {
+		applyDamageCalls++
+		return target.ApplyDamage(ctx, input)
+	}
+
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(), machine)
 	s.Require().NoError(err)
 
 	struck := s.strikeOutcome(out)
@@ -675,9 +684,53 @@ func (s *StrikeTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
 	s.Len(struck.DamageInstances, 2)
 	s.Len(struck.DamageComponents, 2)
 	s.Equal(1, damageGathers, "all pools travel through one damage fold")
+	s.Equal(1, applyDamageCalls, "all typed instances enter one target application")
 	s.Require().Len(out.DirtyCharacters, 1)
 	s.Equal(14-11, out.DirtyCharacters[0].HitPoints,
 		"the folded instances land together in one application")
+}
+
+func (s *StrikeTestSuite) TestSameTypePoolsExposeMarkedPrimaryMetadata() {
+	bus := events.NewEventBus()
+	var captured dnd5eEvents.DamageChainEvent
+	damageGathers := 0
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, event *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			damageGathers++
+			captured = *event
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	profile := AttackProfile{
+		Ref:             refs.Weapons.Shortsword(),
+		AttackBonus:     5,
+		AbilityUsed:     abilities.DEX,
+		AbilityModifier: 3,
+		Damage: []damage.Damage{
+			{Dice: "1d4", Type: damage.Piercing},
+			{
+				Dice:       "1d6",
+				Type:       damage.Piercing,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			},
+		},
+	}
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(), NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   heroID,
+		Attack:     profile,
+		Roller:     scripted(15, 2, 4),
+	}))
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+
+	s.Equal(1, damageGathers)
+	s.Equal("1d6", captured.WeaponDamageDice,
+		"primary notation comes from the marked pool, not the first same-type pool")
+	s.Equal(damage.Piercing, captured.WeaponDamageType)
 }
 
 func (s *StrikeTestSuite) TestCriticalDoublesEveryEligiblePoolButNoFlatBonus() {

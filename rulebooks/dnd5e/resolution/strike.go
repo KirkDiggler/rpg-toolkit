@@ -236,11 +236,23 @@ func (StrikeOutcome) isOutcome() {}
 // what the reaction windows of ADR-0027 will need, and why they can be added
 // without rebuilding this. They are not here: reactions are wave 5.
 func NewStrike(in *StrikeInput) Machine {
-	return &strikeMachine{in: in}
+	return &strikeMachine{
+		in: in,
+		applyDamage: func(
+			ctx context.Context, target combat.Combatant, input *combat.ApplyDamageInput,
+		) *combat.ApplyDamageResult {
+			return target.ApplyDamage(ctx, input)
+		},
+	}
 }
 
 type strikeMachine struct {
 	in *StrikeInput
+
+	// applyDamage is the one target-application boundary. Keeping it as a
+	// dependency lets tests count calls while delegating to the real combatant;
+	// NewStrike always installs the direct production behavior.
+	applyDamage func(context.Context, combat.Combatant, *combat.ApplyDamageInput) *combat.ApplyDamageResult
 
 	// cast is the sheets this interaction attached, kept because a phase after
 	// the first needs them and a step's closure is handed only a bus.
@@ -540,7 +552,7 @@ func (m *strikeMachine) afterDamageChain(
 
 	// Bus-free, and the only phase that is: applying damage is the sheet's own
 	// business and takes no bus on either a character or a monster.
-	applied := target.ApplyDamage(ctx, &combat.ApplyDamageInput{
+	applied := m.applyDamage(ctx, target, &combat.ApplyDamageInput{
 		Instances:  instances,
 		IsCritical: m.outcome.Critical,
 	})
