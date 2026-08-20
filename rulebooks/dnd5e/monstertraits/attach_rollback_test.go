@@ -80,7 +80,7 @@ func (s *AttachMonsterRollbackTestSuite) immunityBlob() json.RawMessage {
 // goblin carries two trait blobs so that a failure on the second can be told
 // apart from a failure that lost the lot.
 func (s *AttachMonsterRollbackTestSuite) goblin() *monster.Data {
-	data := monster.NewGoblin("gob-rollback").ToData()
+	data := goblinData("gob-rollback")
 	data.Conditions = []json.RawMessage{s.immunityBlob(), s.vulnerabilityBlob()}
 
 	return data

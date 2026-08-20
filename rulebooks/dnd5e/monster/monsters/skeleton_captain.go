@@ -41,13 +41,12 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 	})
 
 	// Longsword attack (part of multiattack)
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "longsword",
-		AttackBonus: 5,       // +3 STR + 2 proficiency
-		DamageDice:  "1d8+3", // 1d8 + STR
+		AttackBonus: 5, // +3 STR + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Slashing, FlatBonus: 3}},
 		Reach:       5,
-		DamageType:  damage.Slashing,
-	}))
+	})))
 
 	// Multiattack - 2x longsword
 	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{

@@ -33,9 +33,9 @@ factory, a canonical ref, actions and traits, whichever stack drives it.
 
 | Import path suffix | Current responsibility |
 |---|---|
-| `monster` | `Monster` runtime type, `Data`, action/perception contracts, targeting, `TakeTurn`, pure `Load` + `SheetKeeper`, legacy `LoadFromData` / `ToData`; also the older `NewGoblin` factory |
+| `monster` | `Monster` runtime type, `Data`, action/perception contracts, targeting, `TakeTurn`, pure `Load` + `SheetKeeper`, legacy `LoadFromData` / `ToData` |
 | `monster/actions` | Loadable generic melee, ranged, multiattack, and bite action implementations plus the action loader |
-| `monster/monsters` | Built-in stat factories and the canonical-ref-to-constructor registry |
+| `monster/monsters` | Built-in stat factories (including `NewGoblin`) and the canonical-ref-to-constructor registry |
 | `monstertraits` | Loadable condition-style monster traits (separate sibling package to avoid import cycles) |
 | `refs` | Canonical monster, monster-action, and monster-trait refs |
 
@@ -90,7 +90,6 @@ Do not infer behavior from a config field alone:
 - melee/ranged attack bonus, damage dice, and damage type serialize and are used
   by current encounter seeding snapshots, but the action's `Activate` method is
   event publication, not standalone damage resolution;
-- `BiteConfig.KnockdownDC` round-trips, but bite knockdown is explicitly not
   implemented;
 - ranged activation enforces long range, but normal-range/long-range
   disadvantage behavior is not implemented there;

@@ -32,9 +32,7 @@ var byRef = map[string]Constructor{
 	refs.Monsters.Bandit().String():          NewBanditMelee,
 	refs.Monsters.BanditArcher().String():    NewBanditRanged,
 	refs.Monsters.Thug().String():            NewThug,
-	refs.Monsters.Goblin().String(): func(id string) *monster.Monster {
-		return monster.NewGoblin(id)
-	},
+	refs.Monsters.Goblin().String():          NewGoblin,
 }
 
 // ByRef resolves a canonical monster ref to its constructor. The bool

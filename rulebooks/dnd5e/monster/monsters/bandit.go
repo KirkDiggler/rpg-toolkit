@@ -32,13 +32,12 @@ func NewBanditMelee(id string) *monster.Monster {
 	})
 
 	// Scimitar melee attack
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "scimitar",
-		AttackBonus: 3,       // +1 DEX + 2 proficiency
-		DamageDice:  "1d6+1", // 1d6 + DEX
+		AttackBonus: 3, // +1 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 1}},
 		Reach:       5,
-		DamageType:  damage.Slashing,
-	}))
+	})))
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})
@@ -65,14 +64,13 @@ func NewBanditRanged(id string) *monster.Monster {
 	})
 
 	// Light crossbow ranged attack
-	m.AddAction(actions.NewRangedAction(actions.RangedConfig{
+	m.AddAction(mustAction(actions.NewRangedAction(actions.RangedConfig{
 		Name:        "light crossbow",
-		AttackBonus: 3,       // +1 DEX + 2 proficiency
-		DamageDice:  "1d8+1", // 1d8 + DEX
+		AttackBonus: 3, // +1 DEX + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 1}},
 		RangeNormal: 80,
 		RangeLong:   320,
-		DamageType:  damage.Piercing,
-	}))
+	})))
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

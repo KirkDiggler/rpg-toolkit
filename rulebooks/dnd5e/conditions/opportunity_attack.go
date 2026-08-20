@@ -46,7 +46,7 @@ type OpportunityAttackConditionData struct {
 // trigger event; the encounter SDK wrapper (Encounter.MoveEntity) iterates the
 // buffered events and either resolves NPC OAs inline (no prompt) or surfaces
 // player OAs as InputRequired{reaction_prompt} on the reactor's stream. The
-// condition handler itself does NOT make re-entrant combat.ResolveAttack calls.
+// condition handler itself does NOT make re-entrant Strike calls.
 //
 // Subscribes to MovementChain. Predicate per move event:
 //   - Mover is not self (no self-OA).

@@ -11,10 +11,12 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
 type BiteActionTestSuite struct {
@@ -32,17 +34,22 @@ func (s *BiteActionTestSuite) SetupTest() {
 	s.roller = dice.NewRoller()
 }
 
+func (s *BiteActionTestSuite) newBiteAction(config BiteConfig) *BiteAction {
+	action, err := NewBiteAction(config)
+	s.Require().NoError(err)
+	return action
+}
+
 func (s *BiteActionTestSuite) TestNewBiteAction() {
 	// Arrange
 	config := BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	}
 
 	// Act
-	action := NewBiteAction(config)
+	action := s.newBiteAction(config)
 
 	// Assert
 	s.Assert().NotNil(action)
@@ -54,11 +61,10 @@ func (s *BiteActionTestSuite) TestNewBiteAction() {
 
 func (s *BiteActionTestSuite) TestCanActivate_NoTarget() {
 	// Arrange
-	action := NewBiteAction(BiteConfig{
+	action := s.newBiteAction(BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	})
 
 	owner := &mockEntity{id: "wolf-1"}
@@ -76,11 +82,10 @@ func (s *BiteActionTestSuite) TestCanActivate_NoTarget() {
 
 func (s *BiteActionTestSuite) TestCanActivate_TargetOutOfReach() {
 	// Arrange
-	action := NewBiteAction(BiteConfig{
+	action := s.newBiteAction(BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	})
 
 	owner := &mockEntity{id: "wolf-1"}
@@ -113,11 +118,10 @@ func (s *BiteActionTestSuite) TestCanActivate_TargetOutOfReach() {
 
 func (s *BiteActionTestSuite) TestCanActivate_TargetInReach() {
 	// Arrange
-	action := NewBiteAction(BiteConfig{
+	action := s.newBiteAction(BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	})
 
 	owner := &mockEntity{id: "wolf-1"}
@@ -149,11 +153,10 @@ func (s *BiteActionTestSuite) TestCanActivate_TargetInReach() {
 
 func (s *BiteActionTestSuite) TestActivate_PublishesAttackEvent() {
 	// Arrange
-	action := NewBiteAction(BiteConfig{
+	action := s.newBiteAction(BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	})
 
 	owner := &mockEntity{id: "wolf-1"}
@@ -202,11 +205,10 @@ func (s *BiteActionTestSuite) TestActivate_PublishesAttackEvent() {
 
 func (s *BiteActionTestSuite) TestScore_AdjacentEnemy() {
 	// Arrange
-	action := NewBiteAction(BiteConfig{
+	action := s.newBiteAction(BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	})
 
 	m := monster.New(monster.Config{
@@ -230,11 +232,10 @@ func (s *BiteActionTestSuite) TestScore_AdjacentEnemy() {
 
 func (s *BiteActionTestSuite) TestScore_NoAdjacentEnemy() {
 	// Arrange
-	action := NewBiteAction(BiteConfig{
+	action := s.newBiteAction(BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	})
 
 	m := monster.New(monster.Config{
@@ -260,11 +261,10 @@ func (s *BiteActionTestSuite) TestToData() {
 	// Arrange
 	config := BiteConfig{
 		AttackBonus: 4,
-		DamageDice:  "2d4+2",
-		KnockdownDC: 11,
-		DamageType:  damage.Piercing,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+		SaveGate:    saves.NewSaveGate(abilities.STR, 11),
 	}
-	action := NewBiteAction(config)
+	action := s.newBiteAction(config)
 
 	// Act
 	data := action.ToData()
@@ -273,5 +273,5 @@ func (s *BiteActionTestSuite) TestToData() {
 	s.Assert().Equal("bite", data.Ref.ID)
 	s.Assert().NotNil(data.Config)
 	// Config should be valid JSON with our config
-	s.Assert().Contains(string(data.Config), "2d4+2")
+	s.Assert().Contains(string(data.Config), "2d4")
 }

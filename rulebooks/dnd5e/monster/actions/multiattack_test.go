@@ -32,6 +32,12 @@ func (s *MultiattackActionTestSuite) SetupTest() {
 	s.roller = dice.NewRoller()
 }
 
+func (s *MultiattackActionTestSuite) newMeleeAction(config MeleeConfig) *MeleeAction {
+	action, err := NewMeleeAction(config)
+	s.Require().NoError(err)
+	return action
+}
+
 func (s *MultiattackActionTestSuite) TestNewMultiattackAction() {
 	// Arrange
 	config := MultiattackConfig{
@@ -103,19 +109,17 @@ func (s *MultiattackActionTestSuite) TestCanActivate_Valid() {
 		AC:   16,
 	})
 	// Add the sub-actions that multiattack will use
-	m.AddAction(NewMeleeAction(MeleeConfig{
+	m.AddAction(s.newMeleeAction(MeleeConfig{
 		Name:        "bite",
 		AttackBonus: 5,
-		DamageDice:  "1d8+3",
+		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 3}},
 		Reach:       1, // 1 hex = 5 feet
-		DamageType:  damage.Piercing,
 	}))
-	m.AddAction(NewMeleeAction(MeleeConfig{
+	m.AddAction(s.newMeleeAction(MeleeConfig{
 		Name:        "claw",
 		AttackBonus: 5,
-		DamageDice:  "1d6+3",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 3}},
 		Reach:       1, // 1 hex = 5 feet
-		DamageType:  damage.Slashing,
 	}))
 
 	target := &mockEntity{id: "hero-1"}
@@ -156,19 +160,17 @@ func (s *MultiattackActionTestSuite) TestActivate_ExecutesMultipleAttacks() {
 		AC:   16,
 	})
 	// Add the sub-actions
-	m.AddAction(NewMeleeAction(MeleeConfig{
+	m.AddAction(s.newMeleeAction(MeleeConfig{
 		Name:        "bite",
 		AttackBonus: 5,
-		DamageDice:  "1d8+3",
+		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 3}},
 		Reach:       1, // 1 hex = 5 feet
-		DamageType:  damage.Piercing,
 	}))
-	m.AddAction(NewMeleeAction(MeleeConfig{
+	m.AddAction(s.newMeleeAction(MeleeConfig{
 		Name:        "claw",
 		AttackBonus: 5,
-		DamageDice:  "1d6+3",
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 3}},
 		Reach:       1, // 1 hex = 5 feet
-		DamageType:  damage.Slashing,
 	}))
 
 	target := &mockEntity{id: "hero-1"}

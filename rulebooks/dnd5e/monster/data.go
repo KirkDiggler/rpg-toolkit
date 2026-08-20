@@ -71,7 +71,7 @@ type SensesData struct {
 // ActionData represents a serializable monster action.
 // The Ref identifies which action implementation to load.
 type ActionData struct {
-	Ref    core.Ref        `json:"ref"`    // e.g., refs.MonsterActions.Scimitar()
+	Ref    core.Ref        `json:"ref"`    // e.g., refs.MonsterActions.Melee()
 	Config json.RawMessage `json:"config"` // Action-specific configuration
 }
 

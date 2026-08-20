@@ -435,10 +435,9 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
-			DamageType:  damage.Piercing,
 			AbilityUsed: abilities.STR,
 			Components: []dnd5eEvents.DamageComponent{
-				{Source: dnd5eEvents.DamageSourceWeapon, OriginalDiceRolls: []int{6}, FinalDiceRolls: []int{6}, DamageType: damage.Piercing},
+				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{6}, FinalDiceRolls: []int{6}, DamageType: damage.Piercing},
 			},
 		}
 
@@ -491,7 +490,6 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_TwoHanded() {
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
-			DamageType:  damage.Slashing,
 			AbilityUsed: abilities.STR,
 			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
 		}
@@ -545,7 +543,6 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_DualWielding() 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
-			DamageType:  damage.Piercing,
 			AbilityUsed: abilities.STR,
 			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
 		}
@@ -661,13 +658,13 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 
 		// Create damage event with 1s and 2s in the roll (2d6 = 2 dice)
 		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:   s.fighter.GetID(),
-			TargetID:     s.goblin.GetID(),
-			WeaponDamage: "2d6",
-			DamageType:   damage.Slashing,
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+					Dice:              "2d6",
 					OriginalDiceRolls: []int{1, 2}, // Both need rerolling
 					FinalDiceRolls:    []int{1, 2},
 					DamageType:        damage.Slashing,
@@ -703,13 +700,13 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
 		defer func() { _ = gwf.Remove(s.ctx, s.bus) }()
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
-			AttackerID:   s.fighter.GetID(),
-			TargetID:     s.goblin.GetID(),
-			WeaponDamage: "2d6",
-			DamageType:   damage.Slashing,
+			AttackerID: s.fighter.GetID(),
+			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+					Dice:              "2d6",
 					OriginalDiceRolls: []int{3, 5}, // Both 3+, no rerolls (2d6 = 2 dice)
 					FinalDiceRolls:    []int{3, 5},
 					DamageType:        damage.Slashing,
@@ -753,10 +750,10 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
 			TargetID:        s.goblin.GetID(),
 			IsOffHandAttack: true, // Off-hand attack
 			AbilityModifier: 3,    // STR modifier to add
-			DamageType:      damage.Slashing,
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
 					OriginalDiceRolls: []int{4},
 					FinalDiceRolls:    []int{4},
 					FlatBonus:         0, // No ability mod by default for off-hand
@@ -798,7 +795,6 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_NoBonus_MainHand() {
 			TargetID:        s.goblin.GetID(),
 			IsOffHandAttack: false, // Main-hand attack
 			AbilityModifier: 3,
-			DamageType:      damage.Slashing,
 			Components:      []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
 		}
 

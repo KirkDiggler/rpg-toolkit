@@ -1,7 +1,6 @@
 package monster
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -9,9 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -51,30 +48,6 @@ func (s *MonsterTestSuite) TestNew() {
 	s.True(monster.IsAlive())
 }
 
-func (s *MonsterTestSuite) TestNewGoblin() {
-	goblin := NewGoblin("goblin-1")
-
-	s.Require().NotNil(goblin)
-	s.Equal("goblin-1", goblin.GetID())
-	s.Equal(dnd5e.EntityTypeMonster, goblin.GetType())
-	s.Equal("Goblin", goblin.Name())
-	s.Equal(7, goblin.HP())
-	s.Equal(7, goblin.MaxHP())
-	s.Equal(15, goblin.AC())
-
-	// Check ability scores
-	scores := goblin.AbilityScores()
-	s.Equal(8, scores[abilities.STR])
-	s.Equal(14, scores[abilities.DEX])
-	s.Equal(10, scores[abilities.CON])
-	s.Equal(10, scores[abilities.INT])
-	s.Equal(8, scores[abilities.WIS])
-	s.Equal(8, scores[abilities.CHA])
-
-	// Verify DEX modifier is +2
-	s.Equal(2, scores.Modifier(abilities.DEX))
-}
-
 func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 	monster := New(Config{
 		ID:   "test-monster-1",
@@ -105,63 +78,6 @@ func (s *MonsterTestSuite) TestGetSavingThrowModifier() {
 		})
 	}
 }
-
-// TestMeleeWeapon_GoblinResolvesScimitar is the regression guard for
-// rpg-toolkit#722: a goblin's OA must swing its real scimitar, not fall
-// back to unarmed. NewGoblin's default action ID ("scimitar") must resolve
-// against the weapons catalog.
-func (s *MonsterTestSuite) TestMeleeWeapon_GoblinResolvesScimitar() {
-	goblin := NewGoblin("goblin-1")
-
-	w := goblin.MeleeWeapon()
-
-	s.Require().NotNil(w, "goblin's scimitar action must resolve to a catalog weapon")
-	s.Equal(weapons.Scimitar, w.ID)
-	s.Equal(damage.Slashing, w.DamageType)
-}
-
-// TestMeleeWeapon_NoMeleeAction_ReturnsNil proves a monster with no melee
-// action falls back to nil (letting the combat package's unarmed-strike
-// fallback take over) rather than panicking or returning a bogus weapon.
-func (s *MonsterTestSuite) TestMeleeWeapon_NoMeleeAction_ReturnsNil() {
-	m := New(Config{ID: "no-actions-1", Name: "Inert", HP: 1, AC: 10})
-
-	s.Nil(m.MeleeWeapon())
-}
-
-// TestMeleeWeapon_NaturalWeaponAction_ReturnsNil proves a monster whose
-// melee action doesn't correspond to a catalog weapon (a natural attack
-// like bite/claw, which carries its damage profile as private fields on
-// the action rather than a *weapons.Weapon reference) resolves to nil
-// rather than a false match — documented as a known limitation on
-// MeleeWeapon's doc comment.
-func (s *MonsterTestSuite) TestMeleeWeapon_NaturalWeaponAction_ReturnsNil() {
-	m := New(Config{ID: "wolf-1", Name: "Wolf", HP: 11, AC: 13})
-	m.AddAction(&naturalWeaponTestAction{id: "bite"})
-
-	s.Nil(m.MeleeWeapon())
-}
-
-// naturalWeaponTestAction is a minimal MonsterAction double for a natural
-// weapon (an action ID with no weapons-catalog match). Hand-written rather
-// than a gomock double — MonsterAction has no generated mock in this
-// package and the interface surface needed here is small.
-type naturalWeaponTestAction struct {
-	id string
-}
-
-func (n *naturalWeaponTestAction) GetID() string                           { return n.id }
-func (n *naturalWeaponTestAction) GetType() core.EntityType                { return "monster-action" }
-func (n *naturalWeaponTestAction) Cost() ActionCost                        { return CostAction }
-func (n *naturalWeaponTestAction) ActionType() ActionType                  { return TypeMeleeAttack }
-func (n *naturalWeaponTestAction) Score(_ *Monster, _ *PerceptionData) int { return 0 }
-func (n *naturalWeaponTestAction) CanActivate(_ context.Context, _ core.Entity, _ MonsterActionInput) error {
-	return nil
-}
-func (n *naturalWeaponTestAction) Activate(_ context.Context, _ core.Entity, _ MonsterActionInput) error {
-	return nil
-}
-func (n *naturalWeaponTestAction) ToData() ActionData { return ActionData{} }
 
 func (s *MonsterTestSuite) TestTakeDamage() {
 	monster := New(Config{
@@ -228,7 +144,7 @@ func (s *MonsterTestSuite) TestIsAlive() {
 // TestMoveTowardEnemy_AroundObstacle verifies that monsters use A* pathfinding
 // to navigate around obstacles using BlockedHexes from PerceptionData.
 func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
-	monster := NewGoblin("goblin-1")
+	monster := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
 
 	// Monster at (0,0,0), enemy at (3,-3,0)
 	// Direct path would be: (1,-1,0) -> (2,-2,0) -> (3,-3,0)
@@ -282,7 +198,7 @@ func (s *MonsterTestSuite) TestMoveTowardEnemy_AroundObstacle() {
 // TestMoveTowardEnemy_TrappedStaysPut verifies that monsters stay put when
 // completely surrounded by obstacles and cannot find a path to the target.
 func (s *MonsterTestSuite) TestMoveTowardEnemy_TrappedStaysPut() {
-	monster := NewGoblin("goblin-1")
+	monster := New(Config{ID: "goblin-1", Name: "Goblin", HP: 7, AC: 15})
 
 	// Monster at (0,0,0), completely surrounded by walls
 	startPos := spatial.CubeCoordinate{X: 0, Y: 0, Z: 0}

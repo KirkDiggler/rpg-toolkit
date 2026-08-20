@@ -24,6 +24,9 @@ Each ADR follows this structure:
 **See [DECISIONS.md](DECISIONS.md)** — the cliffnotes digest of every decision,
 one or two lines each, with the rule it generalises to.
 
+The accepted composable attack-damage rules are recorded in [ADR-0040](0040-composable-attack-damage.md),
+which supersedes ADR-0036's selective-critical proposal.
+
 Read that instead of this directory. Thirty-plus ADRs is a large context load and
 much of it is history: superseded shapes, proposals never built, and narrative
 that made sense at the time. Open a full ADR when you are about to contradict one,

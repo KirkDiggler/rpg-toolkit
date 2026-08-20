@@ -10,7 +10,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -152,12 +151,6 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "entity %s not found in room", input.EntityID)
 	}
 
-	// Use provided roller or default
-	roller := input.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
-
 	result := &MoveEntityResult{
 		FinalPosition:  currentPos,
 		StepsCompleted: 0,
@@ -211,29 +204,6 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 			return result, nil
 		}
 
-		// Process opportunity attacks if not prevented
-		if !finalEvent.IsOAPrevented() {
-			for _, threatenerID := range threateningEntities {
-				// Check if mover is leaving this threatener's threat range
-				if isLeavingThreatRange(ctx, room, input.EntityID, threatenerID, currentPos, nextPos) {
-					// Trigger opportunity attack
-					oaResult, err := triggerOpportunityAttack(ctx, threatenerID, input.EntityID, input.EventBus, roller)
-					if err != nil {
-						// Record error for debugging but continue - OA failure shouldn't stop movement
-						result.OAErrors = append(result.OAErrors, err.Error())
-						continue
-					}
-
-					if oaResult != nil {
-						result.OAsTriggered = append(result.OAsTriggered, *oaResult)
-
-						// Future: Check for Sentinel-style effects that stop movement on hit
-						// For now, OAs don't stop movement unless the target is incapacitated
-					}
-				}
-			}
-		}
-
 		// Actually move the entity in the spatial room
 		if err := room.MoveEntity(input.EntityID, nextPos); err != nil {
 			return nil, rpgerr.Wrapf(err, "failed to move entity to position (%v, %v)", nextPos.X, nextPos.Y)
@@ -284,42 +254,6 @@ func findThreateningEntities(
 	return threatening
 }
 
-// isLeavingThreatRange checks if moving from fromPos to toPos leaves the threatener's threat range.
-// An entity leaves threat range when:
-// - They were within threat range at fromPos
-// - They will be outside threat range at toPos
-func isLeavingThreatRange(
-	ctx context.Context,
-	room spatial.Room,
-	_ string,
-	threatenerID string,
-	fromPos, toPos spatial.Position,
-) bool {
-	threatenerPos, found := room.GetEntityPosition(threatenerID)
-	if !found {
-		return false
-	}
-
-	grid := room.GetGrid()
-	distanceFrom := grid.Distance(threatenerPos, fromPos)
-	distanceTo := grid.Distance(threatenerPos, toPos)
-
-	// Get the threatener's reach (default 5ft for now)
-	reach := getEntityReach(ctx, threatenerID)
-
-	// Leaving threat range means: was in range, will be out of range
-	return distanceFrom <= reach && distanceTo > reach
-}
-
-// getEntityReach returns the melee threat reach for an entity in grid units.
-// Most entities have 1 unit reach (5ft), but reach weapons extend this to 2 units (10ft).
-// Future: Check equipped weapons for reach property.
-func getEntityReach(_ context.Context, _ string) float64 {
-	// For now, assume all entities have standard 1 unit (5ft) reach
-	// Future: Look up equipped weapon and check for reach property
-	return DefaultMeleeReach
-}
-
 // canMakeOpportunityAttack checks if an entity is capable of making opportunity attacks.
 // An entity cannot make OAs if they are incapacitated, have no reaction available, etc.
 // Future: Check conditions and reaction availability.
@@ -331,91 +265,8 @@ func canMakeOpportunityAttack(_ context.Context, _ string) bool {
 
 // triggerOpportunityAttack resolves an opportunity attack from attacker against target.
 // Returns nil if the attacker cannot make an attack (no weapon, etc.).
-func triggerOpportunityAttack(
-	ctx context.Context,
-	attackerID, targetID string,
-	bus events.EventBus,
-	roller dice.Roller,
-) (*OpportunityAttackResult, error) {
-	// Get the attacker from context
-	attacker, err := GetCombatantFromContext(ctx, attackerID)
-	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to get attacker %s for opportunity attack", attackerID)
-	}
-
-	// Get the attacker's real melee weapon (rpg-toolkit#722). Falls back to
-	// unarmed strike when the attacker doesn't implement MeleeWeaponProvider
-	// or has nothing equipped.
-	weapon := getAttackerMeleeWeapon(attacker)
-	if weapon == nil {
-		// No melee weapon available - cannot make opportunity attack
-		return nil, nil
-	}
-
-	// TODO: Use attacker to check and consume reaction availability via ActionEconomy.
-	// Opportunity attacks require a reaction, which should be checked and consumed here.
-
-	// Resolve the opportunity attack
-	attackResult, err := ResolveAttack(ctx, &AttackInput{
-		AttackerID: attackerID,
-		TargetID:   targetID,
-		Weapon:     weapon,
-		EventBus:   bus,
-		Roller:     roller,
-		AttackType: dnd5eEvents.AttackTypeOpportunity,
-	})
-	if err != nil {
-		return nil, rpgerr.Wrap(err, "failed to resolve opportunity attack")
-	}
-
-	// Future: Consume the attacker's reaction through ActionEconomy
-	// This would happen regardless of hit/miss since the reaction is spent on the attempt
-
-	return &OpportunityAttackResult{
-		AttackerID: attackerID,
-		Hit:        attackResult.Hit,
-		Damage:     attackResult.TotalDamage,
-		Critical:   attackResult.Critical,
-	}, nil
-}
-
-// MeleeWeaponProvider is implemented by combatants that know which weapon
-// they would swing for a reflexive melee attack outside the normal action
-// economy (an opportunity attack). It is optional — combat.Combatant does
-// not require it — because triggerOpportunityAttack falls back to unarmed
-// strike for combatants that don't implement it.
-//
-// combat cannot import character or monster directly (both import combat,
-// so importing them back would cycle), so this interface is the seam:
-// character.Character and monster.Monster implement it structurally.
-// Character mirrors the ref->weapon mapping's default case from #712
-// (equipped main-hand weapon, falling back to unarmed). Monster walks its
-// melee actions in order and returns the first whose ID matches the
-// weapons catalog (e.g. a "scimitar" action maps to weapons.Scimitar),
-// skipping any that don't; if none match — natural weapons like bite/claw
-// — it returns nil and the unarmed-strike fallback below takes over.
-type MeleeWeaponProvider interface {
-	// MeleeWeapon returns the weapon this combatant uses for a reflexive
-	// melee attack. Returns nil if none is resolvable.
-	MeleeWeapon() *weapons.Weapon
-}
-
-// getAttackerMeleeWeapon returns the melee weapon the attacker would use for
-// an opportunity attack. Falls back to the canonical unarmed-strike weapon
-// when the attacker doesn't implement MeleeWeaponProvider or reports none.
-// Returns nil only if even the unarmed-strike catalog lookup fails.
-func getAttackerMeleeWeapon(attacker Combatant) *weapons.Weapon {
-	if provider, ok := attacker.(MeleeWeaponProvider); ok {
-		if w := provider.MeleeWeapon(); w != nil {
-			return w
-		}
-	}
-	w, err := weapons.GetByID(weapons.UnarmedStrike)
-	if err != nil {
-		return nil
-	}
-	return &w
-}
+// Opportunity attacks are scheduled by the canonical resolution module after
+// movement reports a threat departure.
 
 // toEventPosition converts a spatial.Position to an events.Position.
 func toEventPosition(pos spatial.Position) dnd5eEvents.Position {

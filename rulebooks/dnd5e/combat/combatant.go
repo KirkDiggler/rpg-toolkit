@@ -119,7 +119,7 @@ type CombatantLookup interface {
 type combatantLookupKey struct{}
 
 // WithCombatantLookup adds a CombatantLookup to the context.
-// Use this to enable ResolveAttack to look up combatants by ID.
+// Use this to enable Strike resolution to look up combatants by ID.
 func WithCombatantLookup(ctx context.Context, lookup CombatantLookup) context.Context {
 	return context.WithValue(ctx, combatantLookupKey{}, lookup)
 }

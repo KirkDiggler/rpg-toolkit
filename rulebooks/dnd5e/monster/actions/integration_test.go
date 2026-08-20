@@ -5,14 +5,17 @@ package actions_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -52,8 +55,8 @@ func (s *IntegrationTestSuite) TestLoadFromData() {
 		Senses: monster.SensesData{Darkvision: 60, PassivePerception: 9},
 		Actions: []monster.ActionData{
 			{
-				Ref:    *refs.MonsterActions.Scimitar(),
-				Config: []byte(`{"attack_bonus": 4, "damage_dice": "1d6+2"}`),
+				Ref:    *refs.MonsterActions.Melee(),
+				Config: []byte(`{"name":"scimitar","attack_bonus":4,"damage":[{"dice":"1d6","type":"slashing","flat_bonus":2}],"reach":1}`),
 			},
 		},
 		Proficiencies: []monster.ProficiencyData{
@@ -84,8 +87,8 @@ func (s *IntegrationTestSuite) TestLoadFromData() {
 }
 
 func (s *IntegrationTestSuite) TestActionRoundTrip() {
-	// Create a goblin with the factory (includes scimitar)
-	original := monster.NewGoblin("goblin-1")
+	// Create a goblin with the factory (includes generic melee scimitar)
+	original := monsters.NewGoblin("goblin-1")
 
 	// Verify original has action
 	s.Require().Len(original.Actions(), 1)
@@ -95,7 +98,7 @@ func (s *IntegrationTestSuite) TestActionRoundTrip() {
 
 	// Verify action was serialized
 	s.Require().Len(data.Actions, 1)
-	s.Equal("scimitar", data.Actions[0].Ref.ID)
+	s.Equal(refs.MonsterActions.Melee().ID, data.Actions[0].Ref.ID)
 
 	// Load from data
 	loaded, err := monster.LoadFromData(s.ctx, data, s.bus)
@@ -114,5 +117,26 @@ func (s *IntegrationTestSuite) TestActionRoundTrip() {
 	// The action should be functional - verify it can be serialized again
 	reData := loaded.ToData()
 	s.Require().Len(reData.Actions, 1)
-	s.Equal("scimitar", reData.Actions[0].Ref.ID)
+	s.Equal(refs.MonsterActions.Melee().ID, reData.Actions[0].Ref.ID)
+}
+
+func (s *IntegrationTestSuite) TestGoblinScimitarUsesGenericMeleeDamage() {
+	action := goblinActionByName("scimitar")
+	s.Equal(refs.MonsterActions.Melee().ID, action.ToData().Ref.ID)
+	s.Equal([]damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}}, decodeMelee(action).Damage)
+}
+
+func goblinActionByName(name string) monster.MonsterAction {
+	for _, action := range monsters.NewGoblin("goblin-1").Actions() {
+		if action.GetID() == name {
+			return action
+		}
+	}
+	return nil
+}
+
+func decodeMelee(action monster.MonsterAction) actions.MeleeConfig {
+	var config actions.MeleeConfig
+	_ = json.Unmarshal(action.ToData().Config, &config)
+	return config
 }

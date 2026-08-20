@@ -21,7 +21,7 @@ type ReactionReadinessMap map[string]map[string]bool
 // Purpose: Enables condition handlers to call IsReactionReady without coupling
 // to rpg-api or the encounter SDK.
 //
-// The caller (rpg-api's CombatResolver) is responsible for passing the
+// The caller (rpg-api's StrikeResolver) is responsible for passing the
 // encounter's reaction readiness map into the context before invoking the
 // rulebook attack chain.
 //

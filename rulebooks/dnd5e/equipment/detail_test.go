@@ -35,8 +35,11 @@ func (s *ResolveEquipmentDetailSuite) TestWeapon_Longsword() {
 
 	s.Require().NotNil(detail.Weapon)
 	s.Assert().Equal(weapons.CategoryMartialMelee, detail.Weapon.Category)
-	s.Assert().Equal("1d8", detail.Weapon.Damage)
-	s.Assert().Equal(damage.Slashing, detail.Weapon.DamageType)
+	s.Assert().Equal([]damage.Damage{{
+		Dice:       "1d8",
+		Type:       damage.Slashing,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+	}}, detail.Weapon.Damage)
 	s.Assert().Equal([]weapons.WeaponProperty{weapons.PropertyVersatile}, detail.Weapon.Properties)
 	s.Assert().Nil(detail.Weapon.Range)
 
@@ -54,8 +57,11 @@ func (s *ResolveEquipmentDetailSuite) TestWeapon_Longbow_HasRange() {
 
 	s.Require().NotNil(detail.Weapon)
 	s.Assert().Equal(weapons.CategoryMartialRanged, detail.Weapon.Category)
-	s.Assert().Equal("1d8", detail.Weapon.Damage)
-	s.Assert().Equal(damage.Piercing, detail.Weapon.DamageType)
+	s.Assert().Equal([]damage.Damage{{
+		Dice:       "1d8",
+		Type:       damage.Piercing,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+	}}, detail.Weapon.Damage)
 	s.Assert().Contains(detail.Weapon.Properties, weapons.PropertyAmmunition)
 	s.Assert().Contains(detail.Weapon.Properties, weapons.PropertyHeavy)
 	s.Assert().Contains(detail.Weapon.Properties, weapons.PropertyTwoHanded)

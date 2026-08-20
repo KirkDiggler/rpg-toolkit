@@ -31,13 +31,12 @@ func NewThug(id string) *monster.Monster {
 	})
 
 	// Mace attack (part of multiattack)
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "mace",
-		AttackBonus: 4,       // +2 STR + 2 proficiency
-		DamageDice:  "1d6+2", // 1d6 + STR
+		AttackBonus: 4, // +2 STR + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 2}},
 		Reach:       5,
-		DamageType:  damage.Bludgeoning,
-	}))
+	})))
 
 	// Multiattack - 2x mace
 	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{

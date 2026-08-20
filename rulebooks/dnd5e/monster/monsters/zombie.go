@@ -32,13 +32,12 @@ func NewZombie(id string) *monster.Monster {
 	})
 
 	// Slam melee attack
-	m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
+	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
 		Name:        "slam",
-		AttackBonus: 3,       // +1 STR + 2 proficiency
-		DamageDice:  "1d6+1", // 1d6 + STR
+		AttackBonus: 3, // +1 STR + 2 proficiency
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 1}},
 		Reach:       5,
-		DamageType:  damage.Bludgeoning,
-	}))
+	})))
 
 	// Set movement speed (zombies are slow)
 	m.SetSpeed(monster.SpeedData{Walk: 20})

@@ -178,13 +178,25 @@ func (s *SneakAttackCondition) onDamageChain(
 		roller = dice.NewRoller()
 	}
 
-	sneakDice, err := roller.RollN(ctx, s.DamageDice, 6)
-	if err != nil {
-		return c, rpgerr.Wrap(err, "failed to roll sneak attack dice")
+	rolls := 1
+	if event.IsCritical {
+		rolls++
+	}
+	var sneakDice []int
+	for range rolls {
+		rolled, err := roller.RollN(ctx, s.DamageDice, 6)
+		if err != nil {
+			return c, rpgerr.Wrap(err, "failed to roll sneak attack dice")
+		}
+		sneakDice = append(sneakDice, rolled...)
 	}
 
 	// Add sneak attack damage component using DamageSourceFeature
 	modifyDamage := func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+		primary := primaryWeaponComponent(e)
+		if primary == nil {
+			return e, nil
+		}
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
 			Source:            dnd5eEvents.DamageSourceFeature,
 			SourceRef:         refs.Features.SneakAttack(),
@@ -192,7 +204,7 @@ func (s *SneakAttackCondition) onDamageChain(
 			FinalDiceRolls:    sneakDice,
 			Rerolls:           nil,
 			FlatBonus:         0,
-			DamageType:        e.DamageType, // Sneak attack uses weapon's damage type
+			DamageType:        e.WeaponDamageType, // Sneak attack uses the marked primary weapon type
 			IsCritical:        event.IsCritical,
 		})
 		return e, nil

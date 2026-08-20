@@ -21,12 +21,15 @@ func TestWeaponLookup(t *testing.T) {
 			name:     "find longsword",
 			weaponID: "longsword",
 			want: weapons.Weapon{
-				ID:         weapons.Longsword,
-				Name:       "Longsword",
-				Category:   weapons.CategoryMartialMelee,
-				Cost:       "15 gp",
-				Damage:     "1d8",
-				DamageType: damage.Slashing,
+				ID:       weapons.Longsword,
+				Name:     "Longsword",
+				Category: weapons.CategoryMartialMelee,
+				Cost:     "15 gp",
+				Damage: []damage.Damage{{
+					Dice:       "1d8",
+					Type:       damage.Slashing,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				}},
 				Weight:     3,
 				Properties: []weapons.WeaponProperty{weapons.PropertyVersatile},
 			},
@@ -36,12 +39,15 @@ func TestWeaponLookup(t *testing.T) {
 			name:     "find dagger",
 			weaponID: "dagger",
 			want: weapons.Weapon{
-				ID:         weapons.Dagger,
-				Name:       "Dagger",
-				Category:   weapons.CategorySimpleMelee,
-				Cost:       "2 gp",
-				Damage:     "1d4",
-				DamageType: damage.Piercing,
+				ID:       weapons.Dagger,
+				Name:     "Dagger",
+				Category: weapons.CategorySimpleMelee,
+				Cost:     "2 gp",
+				Damage: []damage.Damage{{
+					Dice:       "1d4",
+					Type:       damage.Piercing,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				}},
 				Weight:     1,
 				Properties: []weapons.WeaponProperty{weapons.PropertyFinesse, weapons.PropertyLight, weapons.PropertyThrown},
 				Range:      &weapons.Range{Normal: 20, Long: 60},
@@ -52,11 +58,14 @@ func TestWeaponLookup(t *testing.T) {
 			name:     "find unarmed strike",
 			weaponID: "unarmed-strike",
 			want: weapons.Weapon{
-				ID:         weapons.UnarmedStrike,
-				Name:       "Unarmed Strike",
-				Category:   weapons.CategorySimpleMelee,
-				Damage:     "1d1",
-				DamageType: damage.Bludgeoning,
+				ID:       weapons.UnarmedStrike,
+				Name:     "Unarmed Strike",
+				Category: weapons.CategorySimpleMelee,
+				Damage: []damage.Damage{{
+					Dice:       "1d1",
+					Type:       damage.Bludgeoning,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				}},
 				Weight:     0,
 				Properties: []weapons.WeaponProperty{},
 			},
@@ -80,6 +89,20 @@ func TestWeaponLookup(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEveryCatalogWeaponHasOneMarkedPrimaryDamagePool(t *testing.T) {
+	for id, weapon := range weapons.All {
+		primary, ok := weapon.PrimaryDamage()
+		require.Truef(t, ok, "%s must have one marked primary damage pool", id)
+		assert.Truef(t, primary.HasProperty(damage.AddsAttackAbilityModifier), "%s primary damage must carry the ability marker", id)
+		assert.NoErrorf(t, damage.Validate(weapon.Damage), "%s damage pools must be valid", id)
+	}
+}
+
+func TestNetIsNotInDamageWeaponCatalog(t *testing.T) {
+	_, err := weapons.GetByID("net")
+	require.Error(t, err)
 }
 
 func TestWeaponCategories(t *testing.T) {

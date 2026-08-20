@@ -2,6 +2,9 @@
 package weapons
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/ammunition"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -52,9 +55,8 @@ type Weapon struct {
 	ID             WeaponID
 	Name           string
 	Category       WeaponCategory
-	Cost           string      // "5 gp"
-	Damage         string      // "1d8"
-	DamageType     damage.Type // "slashing"
+	Cost           string // "5 gp"
+	Damage         []damage.Damage
 	Weight         float64
 	Properties     []WeaponProperty
 	Range          *Range          // nil for melee-only weapons
@@ -91,7 +93,11 @@ func (w *Weapon) EquipmentValue() int {
 // EquipmentDescription returns a description of the weapon
 func (w *Weapon) EquipmentDescription() string {
 	// Build description from damage and properties
-	desc := w.Damage + " " + string(w.DamageType) + " damage"
+	damages := make([]string, len(w.Damage))
+	for i, pool := range w.Damage {
+		damages[i] = fmt.Sprintf("%s %s damage", pool.Dice, pool.Type)
+	}
+	desc := strings.Join(damages, ", ")
 	if len(w.Properties) > 0 {
 		desc += " ("
 		for i, prop := range w.Properties {
@@ -103,6 +109,31 @@ func (w *Weapon) EquipmentDescription() string {
 		desc += ")"
 	}
 	return desc
+}
+
+// PrimaryDamage returns the sole damage pool that receives the attack's
+// ability modifier. A weapon without exactly one marked pool has no primary
+// damage pool.
+func (w Weapon) PrimaryDamage() (damage.Damage, bool) {
+	index, ok := w.primaryDamageIndex()
+	if !ok {
+		return damage.Damage{}, false
+	}
+	return w.Damage[index], true
+}
+
+func (w Weapon) primaryDamageIndex() (int, bool) {
+	index := -1
+	for i, pool := range w.Damage {
+		if !pool.HasProperty(damage.AddsAttackAbilityModifier) {
+			continue
+		}
+		if index != -1 {
+			return -1, false
+		}
+		index = i
+	}
+	return index, index != -1
 }
 
 // Range represents weapon range (for thrown/ranged weapons)
