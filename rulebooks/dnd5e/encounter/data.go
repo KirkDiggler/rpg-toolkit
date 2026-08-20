@@ -861,13 +861,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 		// Hex fields require integral axial cells, asked FIRST and named as
 		// itself — the same order and the same words Step and Join use
-		// (isIntegralAxialPosition). Ownership refuses a fractional hex cell
+		// (isIntegralHexCell). Ownership refuses a fractional hex cell
 		// too, but it would report it as "owned by no room", which sends
 		// whoever reads it to the map instead of to their arithmetic; three
 		// seams answering one defect three ways is exactly the drift #929 T2
 		// made Setup and Load share validators to avoid. W1 gives the whole
 		// field one grid family, so any room's grid answers for all of them.
-		if !isIntegralAxialPosition(roomGrids[roomInputs[0].ID], cell) {
+		if !isIntegralHexCell(roomGrids[roomInputs[0].ID], cell) {
 			return nil, fmt.Errorf("load encounter: member %q cell is not an integral axial cell: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 

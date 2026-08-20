@@ -252,29 +252,40 @@ func buildRoomGrid(shape spatial.GridShape, width, height int) spatial.Grid {
 	}
 }
 
-// isIntegralAxialPosition reports whether pos satisfies spatial's
-// implicit integer-cube contract for hex rooms — upholds it at this
-// composition's boundary until tools/spatial#926 enforces it at ingress;
-// becomes redundant defense once the fixed spatial tag is consumed.
-// AxialHexGrid bounds-checks Position.X/Y but does not integrality-check
-// them, and all of its cube math truncates, so a fractional axial
-// position like (0.5, 0.5) would otherwise persist as a distinct
-// position that behaves exactly like (0,0) — an invisible collision with
-// an unrelated, legitimately-placed cell. Applies ONLY to hex rooms:
-// square stays fractional-tolerant by design (RoomInput.Grid's doc
-// comment) — call this next to every grid-deferred IsValidPosition check
-// (or, where no such check exists at a seam, next to where the position
-// first enters) so every externally supplied hex-room position is
-// covered: member positions at Setup and Load (NewEncounter,
-// LoadEncounter), Move's target (moveMember), Join's position,
-// connection endpoints (validateConnectionInputs, shared by both
+// isIntegralHexCell reports whether pos names a whole cell on a hex grid —
+// spatial's implicit integer-cube contract, upheld at this composition's
+// boundary until tools/spatial#926 enforces it at ingress; redundant defense
+// once the fixed spatial tag is consumed. AxialHexGrid bounds-checks
+// Position.X/Y but does not integrality-check them, and all of its cube math
+// truncates, so a fractional position like (0.5, 0.5) would otherwise persist
+// as a distinct position that behaves exactly like (0,0) — an invisible
+// collision with an unrelated, legitimately-placed cell.
+//
+// # It says HEX, not AXIAL, and the distinction is now real
+//
+// It used to be called isIntegralHexCell, from when every hex coordinate
+// this module saw was axial. Since rpg-toolkit#1127 there are two frames: what
+// an AUTHOR writes is offset columns and rows, and what a VERB reports is
+// absolute axial. This check is the same question in both — are these whole
+// numbers on a hex grid — so it must not name either, and neither must the
+// errors its callers raise. (Copilot caught exactly that on #1131: the
+// connection and ending messages still said "integral axial cell" about a
+// [col,row] pair the author had written.)
+//
+// Applies ONLY to hex rooms: square stays fractional-tolerant by design
+// (RoomInput.Grid's doc comment). Call it next to every grid-deferred
+// IsValidPosition check, or where no such check exists at a seam, next to where
+// the position first enters — member positions at Setup and Load
+// (NewEncounter, LoadEncounter), Move's target (moveMember), a joiner's arrival
+// cell (Join), connection endpoints (validateConnectionInputs, shared by both
 // construction seams), a TriggerReachedPosition ending's target
-// (validateEndingTriggers, #929 T3 Opus round F5), and the two
-// and a joiner's arrival cell (Join).
+// (validateEndingTriggers, #929 T3 Opus round F5), a door's edges
+// (validateDoorInputs) and the floor mask itself (footprintHolds).
+//
 // Occluder positions do NOT go through this — they use the universal
 // isIntegralPosition instead, every family, not just hex (#929 T3 Opus
 // round F2; isIntegralPosition's own doc comment).
-func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
+func isIntegralHexCell(grid spatial.Grid, pos spatial.Position) bool {
 	if grid.GetShape() != spatial.GridShapeHex {
 		return true
 	}
@@ -284,7 +295,7 @@ func isIntegralAxialPosition(grid spatial.Grid, pos spatial.Position) bool {
 // isIntegralPosition reports whether pos has X and Y that are each a
 // REPRESENTABLE integer, with no grid-shape exception — the universal
 // origin-legality check (#929 T1 Opus round finding): unlike
-// isIntegralAxialPosition, a fractional SQUARE origin is also a defect,
+// isIntegralHexCell, a fractional SQUARE origin is also a defect,
 // not just a fractional hex one. W2's disjointness promise (RoomInput.Origin's
 // doc comment) is only sound over an INTEGER cell lattice: two 5x5 square
 // rooms anchored at (0,0) and (0.5,0.5) have disjoint integer cell sets
@@ -619,7 +630,7 @@ func buildValidRoomGrids(rooms []RoomInput, orientation Orientation) (map[string
 		// cells at all — undrawable under the host contract "floor from
 		// the span, blockage from Props", and indistinguishable from a
 		// member's position, which alone may be fractional on a square
-		// grid. isIntegralPosition, not isIntegralAxialPosition —
+		// grid. isIntegralPosition, not isIntegralHexCell —
 		// universal, not hex-only.
 		//
 		// Integrality is the ONLY reason left, as of #929 hardening round
@@ -1047,7 +1058,7 @@ func validateRoomsDisjoint(rooms []RoomInput, orientation Orientation) error {
 // duplicate ID, an unknown or self-referencing room, an endpoint outside
 // its room's bounds (per that room's own constructed Grid, from roomGrids —
 // see buildValidRoomGrids) or non-integral (hex rooms only — see
-// isIntegralAxialPosition) or on an occluder position, and (W3) endpoints
+// isIntegralHexCell) or on an occluder position, and (W3) endpoints
 // that do not kiss — are not adjacent absolute cells once each is anchored
 // to its own room's Origin. Error messages carry NO verb prefix — shared
 // with LoadEncounter, same reasoning as buildValidRoomGrids' doc comment.
@@ -1085,14 +1096,14 @@ func validateConnectionInputs(
 		if !localIsInRoom(fromRoom, roomGrids, c.FromPosition) {
 			return fmt.Errorf("connection %q from-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
-		if !isIntegralAxialPosition(roomGrids[c.From], c.FromPosition) {
-			return fmt.Errorf("connection %q from-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
+		if !isIntegralHexCell(roomGrids[c.From], c.FromPosition) {
+			return fmt.Errorf("connection %q from-position is not an integral cell: %w", c.ID, ErrBadConnection)
 		}
 		if !localIsInRoom(toRoom, roomGrids, c.ToPosition) {
 			return fmt.Errorf("connection %q to-position out of bounds: %w", c.ID, ErrBadConnection)
 		}
-		if !isIntegralAxialPosition(roomGrids[c.To], c.ToPosition) {
-			return fmt.Errorf("connection %q to-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
+		if !isIntegralHexCell(roomGrids[c.To], c.ToPosition) {
+			return fmt.Errorf("connection %q to-position is not an integral cell: %w", c.ID, ErrBadConnection)
 		}
 
 		for _, prop := range fromRoom.Props {
@@ -1163,8 +1174,8 @@ func validateEndingTriggers(rooms []RoomInput, endings []EndingInput, roomGrids 
 		if !localIsInRoom(roomByID(rooms, trigger.Room), roomGrids, trigger.Position) {
 			return fmt.Errorf("ending %q trigger position is out of bounds: %w", ei.Key, ErrNoEnding)
 		}
-		if !isIntegralAxialPosition(grid, trigger.Position) {
-			return fmt.Errorf("ending %q trigger position is not an integral axial cell: %w", ei.Key, ErrNoEnding)
+		if !isIntegralHexCell(grid, trigger.Position) {
+			return fmt.Errorf("ending %q trigger position is not an integral cell: %w", ei.Key, ErrNoEnding)
 		}
 	}
 	return nil
@@ -1309,14 +1320,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
-	// Hex rooms require integral axial member positions (interim
-	// tools/spatial#926 enforcement — see isIntegralAxialPosition). Runs as
+	// Hex rooms require integral member positions — whole columns and rows in
+	// the frame the author wrote them in (interim tools/spatial#926
+	// enforcement — see isIntegralHexCell). Runs as
 	// its own pass over the grid this member's declared room resolved to — a
 	// member whose room doesn't exist is caught at placement, unrelated to
 	// this check.
 	for _, mi := range in.Members {
-		if grid, ok := roomGrids[mi.Room]; ok && !isIntegralAxialPosition(grid, mi.Position) {
-			return nil, fmt.Errorf("newencounter: member %q position is not an integral axial cell: %w", mi.ID, ErrBadPlacement)
+		if grid, ok := roomGrids[mi.Room]; ok && !isIntegralHexCell(grid, mi.Position) {
+			return nil, fmt.Errorf("newencounter: member %q position is not an integral cell: %w", mi.ID, ErrBadPlacement)
 		}
 	}
 
@@ -2289,10 +2301,10 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	// Hex fields require integral axial cells (interim tools/spatial#926
-	// enforcement — see isIntegralAxialPosition). Asked first, for the reason
+	// enforcement — see isIntegralHexCell). Asked first, for the reason
 	// [Encounter.stepMember] asks it first: a fractional cell is an arithmetic
 	// mistake and must not be reported as a map one.
-	if !isIntegralAxialPosition(e.canvas.GetGrid(), in.Cell) {
+	if !isIntegralHexCell(e.canvas.GetGrid(), in.Cell) {
 		return nil, fmt.Errorf("join: position is not an integral axial cell: %w", ErrBadPlacement)
 	}
 

@@ -240,14 +240,14 @@ func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.
 	if r.Grid != spatial.GridShapeHex {
 		local := cell.Subtract(r.Origin)
 
-		return isIntegralAxialPosition(grid, local) && grid.IsValidPosition(local)
+		return isIntegralHexCell(grid, local) && grid.IsValidPosition(local)
 	}
 
 	// A fractional axial position is not a cell at all, and no chamber holds
 	// one (interim tools/spatial#926 enforcement). Asked here rather than in
 	// regionAt so that turning an absolute cell into a room's own frame
 	// happens in exactly ONE function — see TestRegionOwnershipIsAskedInOneFunction.
-	if !isIntegralAxialPosition(grid, cell) {
+	if !isIntegralHexCell(grid, cell) {
 		return false
 	}
 

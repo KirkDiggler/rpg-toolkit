@@ -377,7 +377,7 @@ func validateDoorInputs(
 		for _, raw := range d.Edges {
 			edge := normalizeDoorEdge(raw)
 
-			if !isIntegralAxialPosition(grid, edge.From) || !isIntegralAxialPosition(grid, edge.To) {
+			if !isIntegralHexCell(grid, edge.From) || !isIntegralHexCell(grid, edge.To) {
 				return fmt.Errorf("door %q edge (%g,%g)-(%g,%g) is not an integral axial crossing: %w",
 					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor)
 			}
