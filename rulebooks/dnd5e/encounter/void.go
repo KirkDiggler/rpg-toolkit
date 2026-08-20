@@ -78,6 +78,17 @@ type CanvasInput struct {
 	// sightline. REQUIRED — see [Void] for why there is no default to fall
 	// back on.
 	Void Void
+
+	// Orientation is which way this field's hexes point — REQUIRED for a hex
+	// field, and REFUSED for a square one, which has no orientation to
+	// declare. See [Orientation].
+	//
+	// It sits here rather than on the room because it is a fact about the
+	// MAP: every chamber in one field is drawn on one grid, and a field whose
+	// rooms could disagree about which way its cells point would be a field
+	// whose seams do not meet. That is the same reason W1 gives one grid
+	// family to a whole field rather than one per room.
+	Orientation Orientation
 }
 
 // VoidKind names what void does to a sightline, in the form the story and the
@@ -254,8 +265,9 @@ type canvasRoom struct {
 	// rooms and grids are the SAME slices and maps the encounter holds, so
 	// asking this room what is floor and asking [Encounter.RegionAt] are one
 	// question — see IsLineOfSightBlocked.
-	rooms []RoomInput
-	grids map[string]spatial.Grid
+	rooms       []RoomInput
+	grids       map[string]spatial.Grid
+	orientation Orientation
 
 	// hasVoid is whether this field has any cell no chamber owns — see
 	// fieldHasVoid. Purely a cost decision: where there is no void, opaque and
@@ -273,11 +285,14 @@ type canvasRoom struct {
 // count the same way: an AxialHexGrid of Width x Height holds Width*Height
 // integer (Q,R) pairs, exactly as a square grid holds Width*Height cells.
 //
-// THIS IS NOT THE FLOOR MASK, which Kirk's ruling (4) on rpg-toolkit#1105
-// deferred until a caller forces one. A mask is a per-cell structure with two
-// unanswered questions riding on it — computed per load or persisted, and
-// whether it belongs in tools/spatial — and this is one derived bit, computed
-// from numbers already in hand, never stored and never persisted. The measured
+// IT COUNTS THE MASK, not a rhombus (rpg-toolkit#1127). Width*Height is the
+// authored floor count in BOTH families, because a chamber is an offset
+// rectangle either way and an offset rectangle has exactly Width*Height cells
+// however it shears when it becomes axial. What changed under hex is the other
+// side of the comparison: the canvas span is origin-centred and covers the
+// sheared footprint, so it is much larger than the floor and this reports void
+// where the rhombus reading used to report none. That is the honest answer —
+// see orientation.go for what the rhombus reading was getting wrong. The measured
 // case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
 // deleting this check costs a sight refresh 121 ms against transparent's 30 ms —
 // and 46.7 MB of allocation against 24.2 MB — every byte of it spent proving
@@ -333,23 +348,31 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // the two mean the same thing and cost the same (fieldHasVoid, pinned by
 // TestOpaqueCostsNothingWhereThereIsNoVoid).
 //
-// WHERE THERE IS VOID, THIS IS USUALLY CHEAPER THAN NOT DOING IT — measured,
-// because the shape of the cost is not the shape it looks like. Scanning the
-// ray is arithmetic, and the spatial call it can skip rasterizes, walks
-// boundaries, walks blocking entities and then walks a lean lane per neighbour.
-// So finding void EARLY returns before any of that: a twenty-chamber field with
-// gaps refreshed sight 1.6-1.7x FASTER under opaque than under transparent, and
-// reference tomb's shape 1.4-1.6x faster. The price is paid by rays that never
-// leave the floor, which run the scan in full and then delegate anyway: one
-// forty-by-forty chamber with a void margin and forty members measured 1.34x
-// SLOWER. That is the honest worst case, and it is the one to beat if a caller
-// ever forces the floor mask. Ratios rather than times because the times move
-// with the machine and the ratios did not; both are in
-// voidcost_internal_test.go, which is where they are re-runnable.
+// WHERE VOID LIES BETWEEN THE CHAMBERS, THIS IS CHEAPER THAN NOT DOING IT —
+// measured, because the shape of the cost is not the shape it looks like.
+// Scanning the ray is arithmetic, and the spatial call it can skip rasterizes,
+// walks boundaries, walks blocking entities and then walks a lean lane per
+// neighbour. So finding void EARLY returns before any of that: a twenty-chamber
+// square field with gaps refreshed sight 1.7x FASTER under opaque than under
+// transparent, and a three-chamber square field 1.2-1.4x faster.
+//
+// THE PRICE IS PAID BY RAYS THAT NEVER LEAVE THE FLOOR, which run the scan in
+// full and then delegate anyway — and since rpg-toolkit#1127 the worst case is
+// no longer a contrived fixture. The reference tomb is HEX, and a hex canvas
+// holding sheared rectangles is 90.5% void pointy-top, yet opaque measures
+// 1.34-1.40x SLOWER on it: a party of eight in three chambers looks mostly at
+// people in the same chamber, and none of those rays ever reach the void. That
+// is the number to beat if this is ever asked to go faster. (The old worst
+// case, one forty-by-forty square chamber with a void margin, sits at
+// 1.35-1.43x — the same place, for the same reason.)
+//
+// Ratios rather than times because the times move with the machine and the
+// ratios did not; both are in voidcost_internal_test.go, which is where they
+// are re-runnable.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	if c.hasVoid && c.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
-			if _, floor := regionAt(c.rooms, c.grids, cell); !floor {
+			if _, floor := regionAt(c.rooms, c.grids, c.orientation, cell); !floor {
 				return true
 			}
 		}

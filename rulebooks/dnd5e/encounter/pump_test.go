@@ -115,9 +115,9 @@ func (s *snapshotSpyDecider) Decide(snap encounter.Snapshot) (encounter.Intent, 
 // the real Atlas after construction, which is what a host would do; this is
 // the same arithmetic for the cases where ordering makes that awkward.
 func doorwaysFrom(field encounter.FieldInput) []encounter.AtlasDoorway {
-	origin := map[string]spatial.Position{}
+	rooms := map[string]encounter.RoomInput{}
 	for _, room := range field.Rooms {
-		origin[room.ID] = room.Origin
+		rooms[room.ID] = room
 	}
 
 	out := make([]encounter.AtlasDoorway, 0, len(field.Connections))
@@ -125,12 +125,30 @@ func doorwaysFrom(field encounter.FieldInput) []encounter.AtlasDoorway {
 		out = append(out, encounter.AtlasDoorway{
 			Connection: c.ID,
 			From:       c.From,
-			FromCell:   c.FromPosition.Add(origin[c.From]),
+			FromCell:   authoredCellAt(field, rooms[c.From], c.FromPosition),
 			To:         c.To,
-			ToCell:     c.ToPosition.Add(origin[c.To]),
+			ToCell:     authoredCellAt(field, rooms[c.To], c.ToPosition),
 		})
 	}
 	return out
+}
+
+// authoredCellAt is a fixture's own copy of the projection the composition
+// spends a room's anchor with — element-wise addition for a square room, and
+// for a hex one the authored offset column and row added FIRST and converted
+// once (rpg-toolkit#1127).
+//
+// A copy rather than a call, because the point of a fixture that builds a
+// decider's map by hand is to compare the composition's answer against
+// arithmetic done independently of it. What it borrows is tools/spatial's
+// conversion, through the exported [encounter.HexCellAt], which belongs to
+// neither side of that comparison.
+func authoredCellAt(field encounter.FieldInput, room encounter.RoomInput, local spatial.Position) spatial.Position {
+	if room.Grid != spatial.GridShapeHex {
+		return local.Add(room.Origin)
+	}
+	return encounter.HexCellAt(field.Canvas.Orientation,
+		int(local.X)+int(room.Origin.X), int(local.Y)+int(room.Origin.Y))
 }
 
 // onceStepDecider intends one step to a fixed absolute cell, then holds

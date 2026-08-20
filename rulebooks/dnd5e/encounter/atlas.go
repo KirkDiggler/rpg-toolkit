@@ -15,6 +15,17 @@ import (
 // and occluders, and every connection's absolute doorway pair (#929 T3 —
 // the read surface promised by RoomInput.Origin's doc comment).
 type Atlas struct {
+	// Orientation is which way this field's hexes point, or nil for a square
+	// field (rpg-toolkit#1127).
+	//
+	// Reported because a region describes itself as "a Width x Height
+	// rectangle anchored HERE" rather than by listing its cells, and that
+	// sentence is ambiguous on hex without this: the same rectangle covers a
+	// different set of cells under each layout. A host walking the rectangle
+	// itself — which [AtlasRegion] explicitly invites — needs the same frame
+	// the encounter used.
+	Orientation Orientation
+
 	// Regions is every region, sorted by region ID (C8).
 	Regions []AtlasRegion
 
@@ -39,13 +50,17 @@ type AtlasRegion struct {
 	// Grid is the region's coordinate family (GridShapeSquare or GridShapeHex).
 	Grid spatial.GridShape
 
-	// Origin is the region's dungeon-absolute anchor (RoomInput.Origin).
+	// Origin is the region's anchor, in the same authored columns and rows
+	// Width and Height are counted in (RoomInput.Origin). For a SQUARE field
+	// those are the absolute axes and this is a dungeon-absolute cell; for a
+	// hex one they are not, and [Atlas.Orientation] is the frame that turns
+	// this rectangle into cells.
 	Origin spatial.Position
 
-	// Width is the region's horizontal dimension, in cells.
+	// Width is how many columns wide the region is.
 	Width int
 
-	// Height is the region's vertical dimension, in cells.
+	// Height is how many rows tall the region is.
 	Height int
 
 	// Props is the things standing in this region, in dungeon-absolute
@@ -185,7 +200,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		for j, p := range ri.Props {
 			props[j] = AtlasProp{
 				Ref:               p.Ref,
-				At:                p.At.Add(ri.Origin),
+				At:                absoluteOf(ri, e.orientation, p.At),
 				BlocksMovement:    *p.BlocksMovement,
 				BlocksLineOfSight: *p.BlocksLineOfSight,
 			}
@@ -194,8 +209,8 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		boundaries := make([]AtlasBoundary, len(ri.Boundaries))
 		for j, b := range ri.Boundaries {
 			boundaries[j] = AtlasBoundary{
-				From:              b.From.Add(ri.Origin),
-				To:                b.To.Add(ri.Origin),
+				From:              absoluteOf(ri, e.orientation, b.From),
+				To:                absoluteOf(ri, e.orientation, b.To),
 				BlocksMovement:    b.BlocksMovement,
 				BlocksLineOfSight: b.BlocksLineOfSight,
 			}
@@ -220,9 +235,9 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		doorways[i] = AtlasDoorway{
 			Connection: ci.ID,
 			From:       ci.From,
-			FromCell:   ci.FromPosition.Add(roomsByID[ci.From].Origin),
+			FromCell:   absoluteOf(roomsByID[ci.From], e.orientation, ci.FromPosition),
 			To:         ci.To,
-			ToCell:     ci.ToPosition.Add(roomsByID[ci.To].Origin),
+			ToCell:     absoluteOf(roomsByID[ci.To], e.orientation, ci.ToPosition),
 		}
 	}
 	// Currently redundant — e.connectionsInput is already sorted by ID at
@@ -237,7 +252,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	// on any normally-constructed encounter).
 	sort.Slice(doorways, func(i, j int) bool { return doorways[i].Connection < doorways[j].Connection })
 
-	return Atlas{Regions: regions, Doorways: doorways}, nil
+	return Atlas{Orientation: e.orientation, Regions: regions, Doorways: doorways}, nil
 }
 
 // Grid reports the field's coordinate family — GridShapeSquare or

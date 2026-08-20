@@ -169,29 +169,51 @@ func squareSeamWall(atX, height int, gapRows ...int) []spatial.Boundary {
 	return out
 }
 
-// hexSeamWall is squareSeamWall's axial-hex sibling. A hex cell's neighbours
-// across the +Q edge are (q+1,r) and (q+1,r-1) — two crossings per cell, not
-// three — and rows are given as an inclusive [rMin,rMax] range because an axial
-// room's span is origin-centred and its R values are routinely negative.
-func hexSeamWall(atQ, rMin, rMax int, gapRows ...int) []spatial.Boundary {
+// hexOffsetSeamWall is squareSeamWall's hex sibling, in the frame a hex chamber
+// is authored in since rpg-toolkit#1127: OFFSET columns and rows, counted from
+// the chamber's own corner.
+//
+// It computes which crossings exist rather than knowing them, and that is the
+// point. It replaced an axial version that hardcoded them, which it could: in
+// axial space a cell's +Q neighbours are (q+1,r) and (q+1,r-1), always. In
+// offset space the answer STAGGERS with the column's parity, so a wall built
+// from one hardcoded pair has a hole in every other row. Asking spatial which
+// offset pairs are actually adjacent is both shorter and correct for either
+// orientation.
+//
+// A gap row leaves only the straight crossing open, exactly as squareSeamWall's
+// does, so a doorway is a doorway rather than a diagonal shortcut around its
+// own frame.
+func hexOffsetSeamWall(o encounter.Orientation, atCol, rowMin, rowMax int, gapRows ...int) []spatial.Boundary {
 	gap := make(map[int]bool, len(gapRows))
 	for _, g := range gapRows {
 		gap[g] = true
 	}
 
-	out := make([]spatial.Boundary, 0, (rMax-rMin+1)*2)
-	for r := rMin; r <= rMax; r++ {
-		for _, dr := range []int{0, -1} {
-			if dr == 0 && gap[r] {
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
+
+	out := make([]spatial.Boundary, 0, (rowMax-rowMin+1)*2)
+	for row := rowMin; row <= rowMax; row++ {
+		near := encounter.HexCellAt(o, atCol, row)
+		for _, dr := range []int{-1, 0, 1} {
+			to := row + dr
+			if to < rowMin || to > rowMax {
+				continue
+			}
+			if dr == 0 && gap[row] {
 				continue // the doorway itself
 			}
+			if grid.Distance(near, encounter.HexCellAt(o, atCol+1, to)) != 1 {
+				continue // not a crossing at all on this grid
+			}
 			out = append(out, spatial.Boundary{
-				From:              spatial.Position{X: float64(atQ), Y: float64(r)},
-				To:                spatial.Position{X: float64(atQ + 1), Y: float64(r + dr)},
+				From:              spatial.Position{X: float64(atCol), Y: float64(row)},
+				To:                spatial.Position{X: float64(atCol + 1), Y: float64(to)},
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
 			})
 		}
 	}
+
 	return out
 }

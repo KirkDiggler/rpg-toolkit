@@ -49,6 +49,13 @@ import (
 // So: one Subtract, one region lookup. A second implementation has to subtract
 // an origin in order to exist, and this is the test it fails.
 //
+// The one function is footprintHolds since rpg-toolkit#1127, and it used to be
+// regionAt — which is a move rather than an addition, and worth the sentence
+// because the slice that moved it briefly had TWO: regionAt subtracting to ask
+// about integrality, and footprintHolds subtracting to ask about ownership.
+// Two subtractions for two questions in two functions is exactly the shape this
+// test exists to catch, so both questions were put in the one place instead.
+//
 // If a legitimate second use ever appears — a delta between two cells for a
 // beat, say — the honest fix is to name it in the expected list, not to delete
 // the test. The point is that a second one becomes a decision somebody makes on
@@ -63,7 +70,7 @@ func TestRegionOwnershipIsAskedInOneFunction(t *testing.T) {
 		return ok && sel.Sel.Name == "Subtract"
 	})
 
-	require.Equal(t, []string{"regionAt"}, callers,
+	require.Equal(t, []string{"footprintHolds"}, callers,
 		"region ownership must be answered in exactly one place (rpg-toolkit#1108): a second "+
 			"function projecting an absolute cell into a room's local frame is a second answer "+
 			"to which region holds it")

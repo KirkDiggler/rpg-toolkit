@@ -425,7 +425,7 @@ func (s *EncounterTestSuite) TestSetupPropIDCrossRoomCollisionAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
 					Props: []encounter.PropInput{rubble(-5, 4)}},
@@ -719,12 +719,15 @@ func (s *EncounterTestSuite) TestSetupRoomValidation() {
 // only gridless could kill a "grid shape ignored, always builds square"
 // mutant; the negative-Q case below now kills that mutant independently.
 func (s *EncounterTestSuite) TestHexRoomBounds() {
-	// Width=4, Height=3 => Q valid in [-2,2), R valid in [-1.5,1.5).
+	// Width=4, Height=3 => the chamber's own columns 0..3 and rows 0..2
+	// (rpg-toolkit#1127 — a chamber is the rectangle somebody drew, counted
+	// from its corner). Positions here are ROOM-LOCAL, so they are read in
+	// exactly those terms.
 	hexSetup := func(pos spatial.Position) *encounter.SetupInput {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Rooms: []encounter.RoomInput{
 					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
 				},
@@ -736,29 +739,35 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 		}
 	}
 
-	s.Run("positive Q, positive R within span accepted", func() {
+	s.Run("a cell inside it accepted", func() {
 		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 1, Y: 1}))
 		s.Require().NoError(err)
 	})
 
-	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -1, Y: 0}))
-		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
+	s.Run("its own corner accepted", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 0, Y: 0}))
+		s.Require().NoError(err, "a chamber is anchored at its corner, and the corner is a cell")
 	})
 
-	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 2, Y: 0}))
-		s.Require().Error(err)
+	s.Run("its far corner accepted", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 3, Y: 2}))
+		s.Require().NoError(err, "the last column of the last row is still inside")
+	})
+
+	s.Run("one column past the last rejected", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 4, Y: 0}))
 		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 	})
 
-	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -2, Y: 0}))
-		s.Require().NoError(err)
+	s.Run("one row past the last rejected", func() {
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 0, Y: 3}))
+		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 	})
 
-	s.Run("Q beyond -Width/2 rejected", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -3, Y: 0}))
+	s.Run("a negative column rejected", func() {
+		// Under the origin-centred reading this was comfortably inside the
+		// room, which is the clearest single statement of what changed.
+		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -1, Y: 0}))
 		s.Require().Error(err)
 		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
 	})
@@ -771,35 +780,52 @@ func (s *EncounterTestSuite) TestHexRoomBounds() {
 // Load-seam counterpart: TestHexConnectionEndpointNegativeAxialLoad in
 // data_test.go.
 //
-// #929 T1 follow-up: both rooms are hex (W1 forbids mixing families in one
-// field — see TestSetupAnchoring's W1 row) rather than the original
-// square+hex pairing. hex-a is 10x10 (Q,R valid [-5,5)); hex-b is 6x6 (Q,R
-// valid [-3,3)), anchored at (8,7) so its NEGATIVE-axial corner (-3,-3) —
-// the coordinate that gives this test its name — sits immediately east of
-// hex-a's own (4,4) corner: absolute (5,4) is a cube-distance-1 neighbor of
-// (4,4) (W3), and hex-b's absolute Q span ([5,10]) shares no Q value with
-// hex-a's ([-5,4]), so the rooms stay disjoint (W2) regardless of R.
-func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
-				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 7}},
+// TestAHexChambersCellsAreOffsetNotAxial replaces a test whose SUBJECT this
+// slice deleted, and the replacement is the same question asked of the new
+// answer.
+//
+// It used to be TestHexConnectionEndpointNegativeAxial, and it pinned that a
+// connection endpoint at a NEGATIVE axial coordinate validates — which was
+// right while a hex room was an origin-centred rhombus, where roughly half of
+// every chamber's own cells had a negative coordinate. A chamber is the offset
+// rectangle its author drew now (rpg-toolkit#1127), so its local cells run
+// [0,Width) x [0,Height) and a negative one is outside it. That is not a
+// narrowing of what a dungeon can be — the same hexes are still reachable, and
+// a chamber can still be anchored anywhere — it is a change of the frame the
+// author counts in, from one where the middle is zero to one where the corner
+// is.
+func (s *EncounterTestSuite) TestAHexChambersCellsAreOffsetNotAxial() {
+	build := func(to spatial.Position) error {
+		_, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Rooms: []encounter.RoomInput{
+					{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
+					{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
+						Origin: spatial.Position{X: 10, Y: 0}},
+				},
+				Connections: []encounter.ConnectionInput{{
+					ID: "gate", From: "hex-a", To: "hex-b",
+					FromPosition: spatial.Position{X: 9, Y: 4},
+					ToPosition:   to,
+				}},
 			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: spatial.Position{X: 4, Y: 4},
-				ToPosition:   spatial.Position{X: -3, Y: -3},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
+			Members: []encounter.MemberInput{
+				{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 1, Y: 1}},
+			},
+			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		})
+		return err
+	}
+
+	s.Require().NoError(build(spatial.Position{X: 0, Y: 4}),
+		"the chambers meet at hex-a's last column and hex-b's first, on the same row")
+
+	err := build(spatial.Position{X: -3, Y: -3})
+	s.Require().ErrorIs(err, encounter.ErrBadConnection,
+		"a negative local cell is outside the rectangle somebody drew")
+	s.Contains(err.Error(), "out of bounds")
 }
 
 // validHexAxialSetup returns a fresh SetupInput with two hex rooms joined
@@ -809,29 +835,31 @@ func (s *EncounterTestSuite) TestHexConnectionEndpointNegativeAxial() {
 // enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
 // any of these positions in a hex room.
 //
-// #929 T1: both rooms are Width=8,Height=8, so each has valid axial Q,R in
-// [-4,4) (i.e. -4..3). gate.FromPosition sits at hex-a's own Q=3 boundary
-// (an interior cell like the original (1,1) can never kiss anything — every
-// neighbor of an interior cell is still inside that room's own footprint).
-// hex-b's Origin (8,1) anchors it immediately past that boundary: absolute
-// FromPosition (3,0) and absolute ToPosition local(-4,-1)+(8,1)=(4,0) are
-// cube-distance 1 (W3), while hex-b's absolute Q span ([4,11]) shares no Q
-// value with hex-a's ([-4,3]), so the two rooms stay disjoint (W2)
-// regardless of R.
+// Both rooms are Width=8,Height=8 offset rectangles (rpg-toolkit#1127), so each
+// chamber's own cells are columns 0..7 and rows 0..7 counted from its corner.
+// hex-b is anchored at column 8, immediately east of hex-a's last column, so
+// the two rectangles tile without sharing a cell (W2) and the gate's two
+// endpoints — hex-a's (7,3) and hex-b's (0,3), the same row either side of the
+// seam — land on adjacent absolute cells (W3).
+//
+// gate.FromPosition sits on hex-a's boundary column rather than somewhere in
+// the middle, and that part has not changed: an interior cell can never kiss
+// anything, because every neighbour of an interior cell is still inside that
+// room's own footprint.
 func validHexAxialSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
 					Props: []encounter.PropInput{rubble(2, 2)}},
-				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 1}},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 0}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: spatial.Position{X: 3, Y: 0},
-				ToPosition:   spatial.Position{X: -4, Y: -1},
+				FromPosition: spatial.Position{X: 7, Y: 3},
+				ToPosition:   spatial.Position{X: 0, Y: 3},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -861,7 +889,7 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"connection to-position fractional", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].ToPosition = spatial.Position{X: -1.5, Y: -1}
+			in.Field.Connections[0].ToPosition = spatial.Position{X: 0.5, Y: 3}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"prop cell fractional", func(in *encounter.SetupInput) {
 			// #929 T3 Opus round F2: prop integrality is now universal
@@ -896,7 +924,7 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
@@ -914,7 +942,12 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 	})
 
 	s.Run("integral negative axial target accepted", func() {
-		_, err := enc.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: -2, Y: -1}})
+		// Absolute cells are axial and a negative R is entirely ordinary —
+		// the reference tomb's own run from -21 to 0. What changed in
+		// rpg-toolkit#1127 is which cells a chamber HOLDS, so this names one
+		// it does: the chamber's authored column 2, row 5, which lands on
+		// axial (2,-6).
+		_, err := enc.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: 2, Y: -6}})
 		s.Require().NoError(err)
 	})
 }
@@ -924,7 +957,7 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
@@ -946,10 +979,12 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	})
 
 	s.Run("integral negative axial position accepted", func() {
+		// The chamber's authored column 0, row 7 — axial (0,-7). See the
+		// Move counterpart for why a negative R is unremarkable.
 		_, err := enc.Join(&encounter.JoinInput{
 			Member: "p3",
 			Kind:   encounter.KindPlayer,
-			Cell:   spatial.Position{X: -3, Y: -3},
+			Cell:   spatial.Position{X: 0, Y: -7},
 		})
 		s.Require().NoError(err)
 	})
@@ -1009,37 +1044,39 @@ func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 // validAnchoredHexSetup returns THE core fixture for the W-law tests below:
 // two hex rooms, asymmetric in every dimension (T1 review lesson —
 // symmetric fixtures hide cross-wiring mutants: a prior wave's full sweep
-// missed four of them this way). hex-big is 10x4 (Q valid [-5,4), R valid
-// [-2,2)) at the zero-value Origin; hex-small is 3x9 (Q valid [-1,2), R
-// valid [-4,5)) anchored at (6,-5) — a NEGATIVE-axial origin, on purpose.
+// missed four of them this way). hex-big is a 10x4 offset rectangle at the
+// zero-value Origin, so columns 0..9 and rows 0..3; hex-small is 3x9 anchored
+// at column 10 and row -2, so columns 10..12 and rows -2..6 (rpg-toolkit#1127 — a chamber
+// is the rectangle somebody drew, counted from its corner, and the spans this
+// comment used to quote were the rhombus reading).
 //
-// The connection's endpoints are each their own room's OWN boundary cell —
-// an interior cell can never kiss anything, since every neighbor of an
-// interior cell is still inside that room's own footprint — and are
-// computed, not guessed, from the span arithmetic above: FromPosition
-// (4,0) is hex-big's max-Q boundary; ToPosition (-1,4) is hex-small's
-// min-Q/max-R corner. Anchored, their absolute cells are (4,0) and (5,-1):
-// ΔQ=1, ΔR=-1, ΔS=0, cube distance (1+1+0)/2 = 1 — adjacent, and
-// deliberately OFF-AXIS (both ΔQ and ΔR nonzero) so a Manhattan-distance
-// mutant (|ΔQ|+|ΔR|=2) would wrongly reject this valid base — see
-// TestAnchoringMutationEvidence.
+// The connection's endpoints are each their own room's OWN boundary cell — an
+// interior cell can never kiss anything, since every neighbour of an interior
+// cell is still inside that room's own footprint. FromPosition (9,1) is
+// hex-big's last column; ToPosition (0,2) is hex-small's first. Converted to
+// the canvas they are axial (9,-6) and (10,-7): ΔQ=1, ΔR=-1, ΔS=0, cube
+// distance (1+1+0)/2 = 1 — adjacent, and deliberately OFF-AXIS (both ΔQ and ΔR
+// nonzero) so a Manhattan-distance mutant (|ΔQ|+|ΔR|=2) would wrongly reject
+// this valid base. That off-axis pair is why the rows differ by one either side
+// of the seam rather than matching: on a pointy-top grid a same-row crossing is
+// the on-axis one.
 //
-// hex-big's absolute Q span is [-5,4]; hex-small's is local[-1,1]+6=[5,7]:
-// the two share NO Q value at all, so W2 holds regardless of R — the
-// rooms are disjoint, touching only through the one declared doorway.
+// hex-big owns columns 0..9 and hex-small columns 10..12: the two share no
+// column at all, so W2 holds regardless of row — the rooms are disjoint,
+// touching only through the one declared doorway.
 func validAnchoredHexSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
-				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: -2}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "hex-big", To: "hex-small",
-				FromPosition: spatial.Position{X: 4, Y: 0},
-				ToPosition:   spatial.Position{X: -1, Y: 4},
+				FromPosition: spatial.Position{X: 9, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: 4},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -1102,21 +1139,22 @@ func (s *EncounterTestSuite) TestSetupAnchoring() {
 			in.Field.Rooms[1].Origin = spatial.Position{X: 0, Y: 0}
 		}, encounter.ErrNoField, "overlap at absolute cell"},
 		{"W3: endpoints do not kiss", func(in *encounter.SetupInput) {
-			// (1,4) is still a legal LOCAL cell in hex-small (max Q, max R)
-			// — this must fail on adjacency, not on the earlier bounds check.
+			// (1,4) is still a legal LOCAL cell in hex-small (its middle
+			// column, well inside its rows) — this must fail on adjacency,
+			// not on the earlier bounds check.
 			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 4}
 		}, encounter.ErrBadConnection, "not adjacent"},
 		{"W3: hex axial (1,1) delta is NOT adjacent (cube distance 2)", func(in *encounter.SetupInput) {
-			// hex-small's Origin shifts by (0,+2) from the valid base's
-			// (6,-5) to (6,-3): the gate's endpoints, once anchored, now
-			// differ by axial (ΔQ=1,ΔR=1) — cube distance (1+1+2)/2=2, NOT
-			// 1. A "Chebyshev-on-axial" mutant (max(|ΔQ|,|ΔR|)=1) would
-			// wrongly ACCEPT this as adjacent — see the mutation evidence
-			// table in the #929 T1 fix-round report. Still disjoint from
-			// hex-big (W2 passes): hex-small's absolute Q span becomes
-			// local[-1,1]+6=[5,7], still sharing no Q value with hex-big's
-			// [-5,4], so this is a genuine W3-only defect.
-			in.Field.Rooms[1].Origin = spatial.Position{X: 6, Y: -3}
+			// hex-small's Origin shifts two rows north of the valid base's
+			// (10,0): the gate's endpoints, once compiled, are axial (9,-6)
+			// and (10,-5), differing by (ΔQ=1,ΔR=1) — cube distance
+			// (1+1+2)/2=2, NOT 1. A "Chebyshev-on-axial" mutant
+			// (max(|ΔQ|,|ΔR|)=1) would wrongly ACCEPT this as adjacent — see
+			// the mutation evidence table in the #929 T1 fix-round report.
+			// Still disjoint from hex-big (W2 passes): hex-small owns columns
+			// 10..12 whatever its rows are, and hex-big owns 0..9, so this is
+			// a genuine W3-only defect.
+			in.Field.Rooms[1].Origin = spatial.Position{X: 10, Y: -4}
 		}, encounter.ErrBadConnection, "distance 2"},
 	}
 	for _, tc := range cases {
@@ -1298,7 +1336,7 @@ func (s *EncounterTestSuite) TestSetupAnchoringW1BothDirections() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "square-first", Width: 5, Height: 5},
 				{ID: "hex-second", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
@@ -1367,15 +1405,20 @@ func (s *EncounterTestSuite) TestSetupAnchoringRSpanSeparation() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-r-a", Width: 4, Height: 4, Grid: spatial.GridShapeHex},
 				{ID: "hex-r-b", Width: 4, Height: 4, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 0, Y: 4}},
+				// hex-r-a owns rows 0..3 and hex-r-b rows 4..7, over the SAME
+				// columns 0..3 — the case the run decomposition exists for
+				// (rpg-toolkit#1127): both chambers key on every column, so
+				// disjointness is decided per column on the rows, not waved
+				// through by a bounding box that misses.
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "hex-r-a", To: "hex-r-b",
-				FromPosition: spatial.Position{X: 0, Y: 1},
-				ToPosition:   spatial.Position{X: 0, Y: -2},
+				FromPosition: spatial.Position{X: 0, Y: 3},
+				ToPosition:   spatial.Position{X: 0, Y: 0},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -1530,7 +1573,7 @@ func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproductionHex(
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -1666,7 +1709,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Endings: []encounter.EndingInput{
@@ -1745,20 +1788,25 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerMustAccept() {
 	}
 }
 
-// TestSetupEndingTriggerHexNegativeAxialMustAccept is
-// TestSetupEndingTriggerMustAccept's hex-specific sibling (W1 forbids
-// mixing families in one fixture): hex rooms are ORIGIN-CENTERED, so a
-// negative Q/R trigger position is the NORMAL case for roughly half of
-// any room, not an edge case — the realistic hazard N2 names explicitly.
-func (s *EncounterTestSuite) TestSetupEndingTriggerHexNegativeAxialMustAccept() {
+// TestSetupEndingTriggerHexFarCornerMustAccept is
+// TestSetupEndingTriggerMustAccept's hex-specific sibling (W1 forbids mixing
+// families in one fixture): the far corner of a chamber is where a "reach this
+// cell" ending most often sits — stairs at the back of a room — and it is the
+// cell a bounds check written for the wrong frame is most likely to reject.
+//
+// It was TestSetupEndingTriggerHexNegativeAxialMustAccept until
+// rpg-toolkit#1127, when a hex room stopped being origin-centred and its own
+// cells stopped being half negative. The hazard N2 names is unchanged; the cell
+// that embodies it moved.
+func (s *EncounterTestSuite) TestSetupEndingTriggerHexFarCornerMustAccept() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms:  []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
 		},
 		Endings: []encounter.EndingInput{
-			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: -2, Y: -2}}},
+			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 7, Y: 7}}},
 		},
 	}
 	enc, err := encounter.NewEncounter(setup)

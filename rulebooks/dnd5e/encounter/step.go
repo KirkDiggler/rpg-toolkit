@@ -246,8 +246,8 @@ func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedA
 // which gate from the Atlas.
 func (e *Encounter) crossingOf(from, to spatial.Position) string {
 	for _, c := range e.connectionsInput {
-		near := c.FromPosition.Add(roomOrigin(e.fieldInput, c.From))
-		far := c.ToPosition.Add(roomOrigin(e.fieldInput, c.To))
+		near := absoluteOf(roomByID(e.fieldInput, c.From), e.orientation, c.FromPosition)
+		far := absoluteOf(roomByID(e.fieldInput, c.To), e.orientation, c.ToPosition)
 		if (near == from && far == to) || (far == from && near == to) {
 			return c.ID
 		}
