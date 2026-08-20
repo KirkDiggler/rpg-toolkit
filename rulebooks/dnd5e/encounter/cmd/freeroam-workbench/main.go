@@ -86,6 +86,20 @@ func goblinPatrol() *patrol {
 // main_test.go, both tell the story) — a future W-law addition that
 // invalidates this fixture now fails CI instead of surfacing only when
 // someone launches the workbench by hand.
+// solidPillar is a chunk of rubble the workbench draws as '#': solid to walk
+// into and solid to look through, which is what its two-cell runs were always
+// meant to be. Before rpg-toolkit#1128 a room's contents could not say either,
+// and this pane's '#' was drawing a thing you could stand inside.
+func solidPillar(x, y float64) encounter.PropInput {
+	blocks := true
+	return encounter.PropInput{
+		Ref:               "workbench:props:rubble",
+		At:                spatial.Position{X: x, Y: y},
+		BlocksMovement:    &blocks,
+		BlocksLineOfSight: &blocks,
+	}
+}
+
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
@@ -100,7 +114,9 @@ func dungeonSetup() *encounter.SetupInput {
 			Rooms: []encounter.RoomInput{
 				{
 					ID: cryptID, Width: cryptSize, Height: cryptSize,
-					Occluders: []spatial.Position{{X: 6, Y: 6}, {X: 5, Y: 6}},
+					Props: []encounter.PropInput{
+						solidPillar(6, 6), solidPillar(5, 6),
+					},
 				},
 				{
 					// Anchored immediately east of the crypt (#929): the
@@ -114,8 +130,8 @@ func dungeonSetup() *encounter.SetupInput {
 					// room "crypt" and room "ossuary" overlap at absolute
 					// cell (0, 0): no field`) until this fix.
 					ID: ossuaryID, Width: ossuaryW, Height: ossuaryH,
-					Origin:    spatial.Position{X: 12, Y: 0},
-					Occluders: []spatial.Position{{X: 4, Y: 3}},
+					Origin: spatial.Position{X: 12, Y: 0},
+					Props:  []encounter.PropInput{solidPillar(4, 3)},
 				},
 			},
 			Connections: []encounter.ConnectionInput{
@@ -165,8 +181,8 @@ func worldGrid(data encounter.EncounterData, members []encounter.Member, room st
 		return nil
 	}
 	grid := blankGrid(r.Width, r.Height)
-	for _, o := range r.Occluders {
-		set(grid, o.X, o.Y, '#')
+	for _, o := range r.Props {
+		set(grid, o.At.X, o.At.Y, '#')
 	}
 	origin := roomOrigin(r)
 	for _, m := range members {
@@ -206,8 +222,8 @@ func beliefGrid(
 	origin := roomOrigin(r)
 
 	grid := blankGrid(r.Width, r.Height)
-	for _, o := range r.Occluders {
-		set(grid, o.X, o.Y, '#')
+	for _, o := range r.Props {
+		set(grid, o.At.X, o.At.Y, '#')
 	}
 	for _, h := range view {
 		var p encounter.SightPayload

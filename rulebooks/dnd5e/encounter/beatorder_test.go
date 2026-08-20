@@ -57,7 +57,7 @@ const beatOrderRoom = "hall"
 func wallRoom() encounter.RoomInput {
 	return encounter.RoomInput{
 		ID: beatOrderRoom, Width: 12, Height: 12,
-		Occluders: wallRow(6, 4, 8),
+		Props: wallRow(6, 4, 8),
 	}
 }
 

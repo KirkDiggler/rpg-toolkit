@@ -48,11 +48,19 @@ type AtlasRegion struct {
 	// Height is the region's vertical dimension, in cells.
 	Height int
 
-	// Occluders is the region's line-of-sight-blocking cells, in
-	// dungeon-absolute space. An occluder is still a cell OF the region —
-	// occlusion is walkability, not ownership (#929 T3 ruling 1), and
-	// RegionAt names an occluded cell's region like any other.
-	Occluders []spatial.Position
+	// Props is the things standing in this region, in dungeon-absolute
+	// space and in declaration order. A prop's cell is still a cell OF the
+	// region — what a prop blocks is not ownership (#929 T3 ruling 1), and
+	// [Encounter.RegionAt] names an occupied cell's region like any other,
+	// whichever way its flags are set.
+	//
+	// EACH ONE SAYS WHICH THING IT IS (rpg-toolkit#1128). These used to be
+	// bare positions, so a host could draw blockage but could not draw a
+	// ROOM: a pillar, a statue and a bone pile were the same cell, which the
+	// multi-room census (rpg-project#227) recorded as the reason authored
+	// content could not land. See [PropInput] for why the ref is opaque and
+	// why both flags are the author's to set.
+	Props []AtlasProp
 
 	// Boundaries is the region's walls (RoomInput.Boundaries), with both
 	// endpoints projected into dungeon-absolute space (#929 hardening round
@@ -65,10 +73,30 @@ type AtlasRegion struct {
 	// RoomInput.Boundaries' doc comment). Grouping such a wall under the region
 	// that DECLARED it is construction truth reported faithfully, not a claim
 	// about which region the wall belongs to. In declaration order (RoomInput's
-	// own order, the same construction-truth ordering Occluders already
+	// own order, the same construction-truth ordering Props already
 	// uses above) — deterministic given a fixed input (C8), though not
 	// independently sorted the way Regions/Doorways are.
 	Boundaries []AtlasBoundary
+}
+
+// AtlasProp is one authored thing standing in a region, as the map reports it:
+// what it is, where it stands in dungeon-absolute space, and what it does to a
+// step and to a sightline. See [PropInput] for the authoring side.
+type AtlasProp struct {
+	// Ref is content's identifier for this thing, carried through the
+	// compile unchanged and never interpreted by this module.
+	Ref string
+
+	// At is where it stands, in dungeon-absolute space.
+	At spatial.Position
+
+	// BlocksMovement is whether a member can end a step on this cell.
+	BlocksMovement bool
+
+	// BlocksLineOfSight is whether it obstructs a sightline — subject to
+	// spatial's lane rule, so one cell of it obstructs nothing on its own
+	// ([PropInput]).
+	BlocksLineOfSight bool
 }
 
 // AtlasBoundary is one wall or barrier crossing, with both endpoints
@@ -131,21 +159,21 @@ type AtlasDoorway struct {
 // microseconds per call (TestAtlasReportsRegionsWithoutEnumeratingThem).
 //
 // Deterministic (C8): Regions sorted by region ID, Doorways sorted by
-// connection ID, each region's Boundaries and Occluders in declaration order
+// connection ID, each region's Boundaries and Props in declaration order
 // (RoomInput's own order — #929 hardening round A). Copy-out: every returned
 // slice is freshly allocated per call; mutating the result never reaches
 // internal state.
 //
-// Occluders are map data, not entities: an occluder cell is a cell OF its
-// region (RegionAt names it like any other), which is why occluders must be
-// integral in every family (encounter.go's occluder-integrality check, #929 T3
+// Props are map data, not entities: a prop's cell is a cell OF its region
+// (RegionAt names it like any other), which is why a prop's cell must be
+// integral in every family (encounter.go's prop-integrality check, #929 T3
 // Opus round F2). A MEMBER's position is different in kind — an entity's
 // position, not a map cell — and on a fractional-tolerant square grid it may
 // sit anywhere in a region's continuous span, coinciding with no integer cell
 // at all; hex forbids fractional member positions entirely
 // (isIntegralAxialPosition), so this only affects square hosts (#929 T3 Opus
-// round F4). The asymmetry — occluders must be integral, member positions may
-// be fractional — is deliberate: one is floor/blockage data, the other is a
+// round F4). The asymmetry — a prop's cell must be integral, member positions
+// may be fractional — is deliberate: one is floor/blockage data, the other is a
 // live position the Atlas never touches.
 func (e *Encounter) Atlas() (Atlas, error) {
 	roomsByID := make(map[string]RoomInput, len(e.fieldInput))
@@ -153,9 +181,14 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	for i, ri := range e.fieldInput {
 		roomsByID[ri.ID] = ri
 
-		occluders := make([]spatial.Position, len(ri.Occluders))
-		for j, o := range ri.Occluders {
-			occluders[j] = o.Add(ri.Origin)
+		props := make([]AtlasProp, len(ri.Props))
+		for j, p := range ri.Props {
+			props[j] = AtlasProp{
+				Ref:               p.Ref,
+				At:                p.At.Add(ri.Origin),
+				BlocksMovement:    *p.BlocksMovement,
+				BlocksLineOfSight: *p.BlocksLineOfSight,
+			}
 		}
 
 		boundaries := make([]AtlasBoundary, len(ri.Boundaries))
@@ -174,7 +207,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Origin:     ri.Origin,
 			Width:      ri.Width,
 			Height:     ri.Height,
-			Occluders:  occluders,
+			Props:      props,
 			Boundaries: boundaries,
 		}
 	}

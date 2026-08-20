@@ -61,7 +61,7 @@ func TestTombWatch(t *testing.T) {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
-				Occluders: wallRow(6, 5, 7),
+				Props: wallRow(6, 5, 7),
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -273,7 +273,7 @@ func TestTombWatch(t *testing.T) {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
 				ID: cryptRoom, Width: 12, Height: 12,
-				Occluders: wallRow(6, 5, 7),
+				Props: wallRow(6, 5, 7),
 			}},
 		},
 		Members: sequelMembers,

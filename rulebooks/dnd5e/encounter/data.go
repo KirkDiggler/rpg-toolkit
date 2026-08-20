@@ -141,13 +141,51 @@ type CanvasData struct {
 // spatial ever reordered it. Grid omits when empty (the square zero value)
 // so pre-v0.2 blobs and square-only encounters keep byte-identical output.
 type RoomData struct {
-	ID         string         `json:"id"`
-	Width      int            `json:"width"`
-	Height     int            `json:"height"`
-	Grid       string         `json:"grid,omitempty"`
-	Occluders  []PositionData `json:"occluders,omitempty"`
+	ID     string `json:"id"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	Grid   string `json:"grid,omitempty"`
+
+	// Props are the room's authored things (rpg-toolkit#1128). Written
+	// under a NEW key, and Occluders below is why.
+	Props []PropData `json:"props,omitempty"`
+
+	// Occluders is a TOMBSTONE: the key this room's contents used to be
+	// written under, kept solely so a blob carrying it is refused by name.
+	//
+	// Renaming was not enough on its own, and that is the whole reason this
+	// field exists. The precedent (rpg-toolkit#1053/#1068, Kirk's
+	// fail-loudly ruling) is that a changed shape gets a detectable name so
+	// the old dialect lands nowhere — but "lands nowhere" only SIGNALS
+	// anything for a REQUIRED field, whose absence is then the defect.
+	// A room's contents are optional: a chamber with nothing in it is
+	// ordinary. So an old blob would have loaded clean as a room with no
+	// props, silently dropping every blocker somebody authored — a party
+	// walking through pillars in a dungeon whose load reported success.
+	// That is the exact failure mode MemberOutcomeData.Cell's rename exists
+	// to prevent, and here it needs a positive check rather than an absent
+	// one.
+	//
+	// json.RawMessage rather than the old type because nothing decodes it:
+	// the only question asked is whether the key was present at all.
+	Occluders json.RawMessage `json:"occluders,omitempty"`
+
 	Boundaries []BoundaryData `json:"boundaries,omitempty"`
 	Origin     *PositionData  `json:"origin"`
+}
+
+// PropData is the persistent representation of a [PropInput].
+//
+// BOTH FLAGS ARE POINTERS HERE TOO, and for the input's reason rather than a
+// mechanical mirror of it: a persisted false and a persisted nothing are
+// different facts, and a blob that lost the difference would reload a coffin
+// as decoration. Required at load, refused by name, never defaulted — the
+// same call RoomData.Origin makes for a missing anchor.
+type PropData struct {
+	Ref               string       `json:"ref"`
+	At                PositionData `json:"at"`
+	BlocksMovement    *bool        `json:"blocks_movement"`
+	BlocksLineOfSight *bool        `json:"blocks_line_of_sight"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -400,7 +438,7 @@ func (e *Encounter) ToData() EncounterData {
 			Width:      ri.Width,
 			Height:     ri.Height,
 			Grid:       gridShapeToData(ri.Grid),
-			Occluders:  make([]PositionData, len(ri.Occluders)),
+			Props:      make([]PropData, len(ri.Props)),
 			Boundaries: make([]BoundaryData, len(ri.Boundaries)),
 			// Always a fresh pointer, always written — even the zero value
 			// (no omitempty, RoomData's own doc comment) — so a declared
@@ -409,8 +447,16 @@ func (e *Encounter) ToData() EncounterData {
 			Origin: &PositionData{X: ri.Origin.X, Y: ri.Origin.Y},
 		}
 
-		for j, occ := range ri.Occluders {
-			rd.Occluders[j] = PositionData{X: occ.X, Y: occ.Y}
+		for j, p := range ri.Props {
+			// Fresh pointers, never the input's own: two ToData calls must
+			// not alias one bool, for RoomData.Origin's reason.
+			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
+			rd.Props[j] = PropData{
+				Ref:               p.Ref,
+				At:                PositionData{X: p.At.X, Y: p.At.Y},
+				BlocksMovement:    &blocksMovement,
+				BlocksLineOfSight: &blocksSight,
+			}
 		}
 
 		for j, b := range ri.Boundaries {
@@ -1242,19 +1288,48 @@ func convertRoomDataToRoomInput(rooms []RoomData) ([]RoomInput, error) {
 		if rd.Origin == nil {
 			return nil, fmt.Errorf("room %q missing origin: %w", rd.ID, ErrNoField)
 		}
+		// The tombstone, checked before anything is built from this room —
+		// see RoomData.Occluders for why a rename alone would have loaded
+		// this blob clean and thrown its blockers away.
+		if len(rd.Occluders) > 0 {
+			return nil, fmt.Errorf(
+				"room %q carries occluders, a dialect this build does not speak: "+
+					"a room's contents are props now, and each says its ref and what it "+
+					"blocks (rpg-toolkit#1128): %w", rd.ID, ErrNoField)
+		}
 
 		ri := RoomInput{
 			ID:         rd.ID,
 			Width:      rd.Width,
 			Height:     rd.Height,
 			Grid:       shape,
-			Occluders:  make([]spatial.Position, len(rd.Occluders)),
+			Props:      make([]PropInput, len(rd.Props)),
 			Boundaries: make([]spatial.Boundary, len(rd.Boundaries)),
 			Origin:     spatial.Position{X: rd.Origin.X, Y: rd.Origin.Y},
 		}
 
-		for j, pd := range rd.Occluders {
-			ri.Occluders[j] = spatial.Position{X: pd.X, Y: pd.Y}
+		for j, pd := range rd.Props {
+			// REQUIRED at load, both of them, by name. A persisted prop that
+			// does not say what it blocks is a blob from before this module
+			// asked — loading it under a guess would put a party in a room
+			// whose blockers the host never authored (PropData).
+			if pd.BlocksMovement == nil {
+				return nil, fmt.Errorf("room %q prop %q does not say whether it blocks_movement: %w",
+					rd.ID, pd.Ref, ErrNoField)
+			}
+			if pd.BlocksLineOfSight == nil {
+				return nil, fmt.Errorf("room %q prop %q does not say whether it blocks_line_of_sight: %w",
+					rd.ID, pd.Ref, ErrNoField)
+			}
+			// Fresh pointers again: a loaded RoomInput must not alias the
+			// caller's EncounterData (snapshot immunity, both directions).
+			blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
+			ri.Props[j] = PropInput{
+				Ref:               pd.Ref,
+				At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
+				BlocksMovement:    &blocksMovement,
+				BlocksLineOfSight: &blocksSight,
+			}
 		}
 
 		for j, bd := range rd.Boundaries {

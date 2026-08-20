@@ -174,7 +174,7 @@ func deepCopyRoomInputs(rooms []RoomInput) []RoomInput {
 	out := make([]RoomInput, len(rooms))
 	for i, r := range rooms {
 		rc := r
-		rc.Occluders = append([]spatial.Position(nil), r.Occluders...)
+		rc.Props = append([]PropInput(nil), r.Props...)
 		rc.Boundaries = append([]spatial.Boundary(nil), r.Boundaries...)
 		out[i] = rc
 	}
@@ -567,55 +567,72 @@ func buildValidRoomGrids(rooms []RoomInput) (map[string]spatial.Grid, error) {
 		}
 		grids[r.ID] = buildRoomGrid(r.Grid, r.Width, r.Height)
 
-		// Occluders must be integral in EVERY family, not just hex (#929 T3
-		// Opus round F2 — the identical square-vs-hex asymmetry T1 already
-		// fixed for Origin: see isIntegralPosition's doc comment):
-		// an occluder is a CELL of its region, and a region's cells are
-		// the integer lattice points inside its anchor-plus-span
-		// (AtlasRegion's doc comment). A fractional occluder would be
+		// A PROP MUST SAY WHAT IT IS AND WHAT IT DOES (rpg-toolkit#1128,
+		// and rpg-toolkit#1033's law behind it). All four blocking
+		// combinations are real content, so no zero value could stand in
+		// for a missing answer without inventing a wall nobody drew or
+		// removing one somebody did — the flags are pointers precisely so
+		// absence is absence, and both are refused here rather than
+		// silently taken (the argument [Void]'s doc comment makes for
+		// sealing itself, one type over).
+		//
+		// A prop's cell must be integral in EVERY family, not just hex
+		// (#929 T3 Opus round F2 — the identical square-vs-hex asymmetry
+		// T1 already fixed for Origin: see isIntegralPosition's doc
+		// comment): a prop is a CELL of its region, and a region's cells
+		// are the integer lattice points inside its anchor-plus-span
+		// ([AtlasRegion]'s doc comment). A fractional one would be
 		// blockage reported at a point that is not one of the region's
 		// cells at all — undrawable under the host contract "floor from
-		// the span, blockage from Occluders", and indistinguishable from
-		// a member's position, which alone may be fractional on a square
+		// the span, blockage from Props", and indistinguishable from a
+		// member's position, which alone may be fractional on a square
 		// grid. isIntegralPosition, not isIntegralAxialPosition —
 		// universal, not hex-only.
 		//
-		// This is the ONLY reason left, as of #929 hardening round C: an
-		// earlier version of this comment ALSO cited the occluder entity
-		// ID (built below) truncating fractional coordinates to int as a
-		// second, "reinforcing" reason — that claim was itself wrong in a
-		// way integrality could never have fixed: truncation makes
-		// coordinate-based IDs collide only WITHIN one room's own
-		// occluders, but the old ID scheme concatenated the ROOM ID too
-		// (occluder-<room>-<int(X)>-<int(Y)>), and room IDs are arbitrary,
-		// unrestricted strings — "r" with occluder (-5,4) and "r-" with
-		// occluder (5,4) both produced "occluder-r--5-4" regardless of
-		// integrality, a genuine CROSS-room collision on a legal field.
-		// The entity ID is index-based now (room's declaration index,
-		// occluder's index within it — see the occluder-placement loop
-		// below), which can never collide on ANY input, integral or not.
-		// Duplicate occluder positions are a room-list defect too (#929
-		// hardening round D), not something left to spatial's own voice:
-		// before the occluder entity ID went index-based (hardening round
-		// C), a duplicate coordinate happened to collide on the OLD
+		// Integrality is the ONLY reason left, as of #929 hardening round
+		// C: an earlier version of this comment ALSO cited the prop
+		// entity ID (built below) truncating fractional coordinates to
+		// int as a second, "reinforcing" reason — that claim was itself
+		// wrong in a way integrality could never have fixed: truncation
+		// makes coordinate-based IDs collide only WITHIN one room's own
+		// props, but the old ID scheme concatenated the ROOM ID too
+		// (occluder-<room>-<int(X)>-<int(Y)>), and room IDs are
+		// arbitrary, unrestricted strings — "r" with a prop at (-5,4) and
+		// "r-" with one at (5,4) both produced "occluder-r--5-4"
+		// regardless of integrality, a genuine CROSS-room collision on a
+		// legal field. The entity ID is index-based now (room's
+		// declaration index, prop's index within it — see the
+		// prop-placement loop below), which can never collide on ANY
+		// input, integral or not. Duplicate prop cells are a room-list
+		// defect too (#929 hardening round D), not something left to
+		// spatial's own voice: before the ID went index-based (hardening
+		// round C), a duplicate coordinate happened to collide on the OLD
 		// coordinate-derived ID and got rejected as "entity ... already
 		// indexed" — spatial's vocabulary, not ours, and an accident of
 		// that ID scheme, not a real "no duplicate cells" rule (spatial
 		// freely allows two DIFFERENT entities to share a position). The
-		// index-based ID fixed the cross-room collision but also
-		// silently REMOVED that accidental duplicate-catch — two
-		// occluders at the same cell now place without error. Caught
-		// explicitly here instead: same room-list defect vocabulary
-		// every other room check uses.
-		seenOccluders := make(map[spatial.Position]bool, len(r.Occluders))
-		for _, occ := range r.Occluders {
-			if !isIntegralPosition(occ) {
-				return nil, fmt.Errorf("room %q occluder (%g,%g) is not a representable integral cell: %w", r.ID, occ.X, occ.Y, ErrNoField)
+		// index-based ID fixed the cross-room collision but also silently
+		// REMOVED that accidental duplicate-catch — two props at the same
+		// cell now place without error. Caught explicitly here instead:
+		// same room-list defect vocabulary every other room check uses.
+		seenProps := make(map[spatial.Position]bool, len(r.Props))
+		for _, p := range r.Props {
+			if p.Ref == "" {
+				return nil, fmt.Errorf("room %q has a prop at (%g,%g) with no ref: %w", r.ID, p.At.X, p.At.Y, ErrNoField)
 			}
-			if seenOccluders[occ] {
-				return nil, fmt.Errorf("room %q has duplicate occluder (%g,%g): %w", r.ID, occ.X, occ.Y, ErrNoField)
+			if p.BlocksMovement == nil {
+				return nil, fmt.Errorf("room %q prop %q does not say whether it blocks_movement: %w", r.ID, p.Ref, ErrNoField)
 			}
-			seenOccluders[occ] = true
+			if p.BlocksLineOfSight == nil {
+				return nil, fmt.Errorf("room %q prop %q does not say whether it blocks_line_of_sight: %w", r.ID, p.Ref, ErrNoField)
+			}
+			if !isIntegralPosition(p.At) {
+				return nil, fmt.Errorf("room %q prop %q at (%g,%g) is not a representable integral cell: %w", r.ID, p.Ref, p.At.X, p.At.Y, ErrNoField)
+			}
+			if seenProps[p.At] {
+				return nil, fmt.Errorf("room %q has two props at (%g,%g): %w", r.ID, p.At.X, p.At.Y, ErrNoField)
+			}
+			seenProps[p.At] = true
 		}
 	}
 
@@ -762,7 +779,7 @@ func canvasSpan(shape spatial.GridShape, qMin, qMax, rMin, rMax int) (width, hei
 
 // compileCanvas turns the authored rooms into the one spatial room the
 // encounter runs on: a grid spanning the field's whole absolute footprint, with
-// every room's occluders and walls projected through its Origin and registered
+// every room's props and walls projected through its Origin and registered
 // there, and the field's own declaration of what the space between them is made
 // of (rpg-toolkit#1116).
 //
@@ -798,14 +815,21 @@ func compileCanvas(rooms []RoomInput, grids map[string]spatial.Grid, void Void, 
 	})
 
 	for roomIdx, ri := range rooms {
-		// Occluder entity IDs stay index-based — the room's declaration index
-		// and the occluder's index within it. Room IDs are arbitrary strings,
-		// and a coordinate- or ID-derived key collides on legal fields (#929
-		// hardening round C). A pair of slice indices cannot.
-		for occIdx, pos := range ri.Occluders {
-			occluder := &occluderEntity{id: fmt.Sprintf("occluder-%d-%d", roomIdx, occIdx)}
-			if perr := canvas.PlaceEntity(occluder, pos.Add(ri.Origin)); perr != nil {
-				return nil, fmt.Errorf("occluder placement: %w: %w", ErrBadPlacement, perr)
+		// Prop entity IDs stay index-based — the room's declaration index
+		// and the prop's index within it. Room IDs are arbitrary strings, and
+		// a coordinate- or ID-derived key collides on legal fields (#929
+		// hardening round C); the authored REF cannot be one either, since
+		// four pillars in a hall legitimately share one (rpg-toolkit#1128).
+		// A pair of slice indices cannot collide on any input.
+		for propIdx, p := range ri.Props {
+			prop := &propEntity{
+				id:                fmt.Sprintf("prop-%d-%d", roomIdx, propIdx),
+				ref:               p.Ref,
+				blocksMovement:    *p.BlocksMovement,
+				blocksLineOfSight: *p.BlocksLineOfSight,
+			}
+			if perr := canvas.PlaceEntity(prop, p.At.Add(ri.Origin)); perr != nil {
+				return nil, fmt.Errorf("prop placement: %w: %w", ErrBadPlacement, perr)
 			}
 		}
 
@@ -1007,14 +1031,14 @@ func validateConnectionInputs(rooms []RoomInput, roomGrids map[string]spatial.Gr
 			return fmt.Errorf("connection %q to-position is not an integral axial cell: %w", c.ID, ErrBadConnection)
 		}
 
-		for _, occ := range fromRoom.Occluders {
-			if occ.X == c.FromPosition.X && occ.Y == c.FromPosition.Y {
-				return fmt.Errorf("connection %q from-position on occluder: %w", c.ID, ErrBadConnection)
+		for _, prop := range fromRoom.Props {
+			if prop.At.X == c.FromPosition.X && prop.At.Y == c.FromPosition.Y {
+				return fmt.Errorf("connection %q from-position on prop %q: %w", c.ID, prop.Ref, ErrBadConnection)
 			}
 		}
-		for _, occ := range toRoom.Occluders {
-			if occ.X == c.ToPosition.X && occ.Y == c.ToPosition.Y {
-				return fmt.Errorf("connection %q to-position on occluder: %w", c.ID, ErrBadConnection)
+		for _, prop := range toRoom.Props {
+			if prop.At.X == c.ToPosition.X && prop.At.Y == c.ToPosition.Y {
+				return fmt.Errorf("connection %q to-position on prop %q: %w", c.ID, prop.Ref, ErrBadConnection)
 			}
 		}
 
@@ -1198,7 +1222,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// Check connections: unique non-empty IDs, endpoints resolve to distinct
 	// declared rooms, endpoints in bounds (per the room's own grid) and off
-	// any occluder.
+	// any prop.
 	if err = validateConnectionInputs(in.Field.Rooms, roomGrids, in.Field.Connections); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
@@ -2128,34 +2152,46 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 	return deltas, nil
 }
 
-// occluderEntity is an internal entity for blocking line of sight
-type occluderEntity struct {
-	id string
+// propEntity is one authored [PropInput] as the canvas holds it.
+//
+// BOTH ANSWERS ARE CARRIED, NOT DECIDED (rpg-toolkit#1128). Its predecessor
+// answered true to sight and false to movement unconditionally, which made
+// every authored thing transparent to walk through and opaque to look through —
+// the inverse of a pillar, a statue and a coffin alike. What a prop blocks is
+// the author's to say, and this type's only job is to say it back to spatial.
+type propEntity struct {
+	id                string
+	ref               string
+	blocksMovement    bool
+	blocksLineOfSight bool
 }
 
-// GetID returns the occluder's ID
-func (o *occluderEntity) GetID() string {
-	return o.id
+// GetID returns the prop's index-derived entity ID — see compileCanvas for why
+// it is not the ref.
+func (p *propEntity) GetID() string {
+	return p.id
 }
 
-// GetType returns "occluder"
-func (o *occluderEntity) GetType() core.EntityType {
-	return core.EntityType("occluder")
+// GetType returns "prop"
+func (p *propEntity) GetType() core.EntityType {
+	return core.EntityType("prop")
 }
 
 // GetSize returns 1 (single-cell entity)
-func (o *occluderEntity) GetSize() int {
+func (p *propEntity) GetSize() int {
 	return 1
 }
 
-// BlocksLineOfSight returns true for occluders
-func (o *occluderEntity) BlocksLineOfSight() bool {
-	return true
+// BlocksLineOfSight reports what the author declared. Subject to spatial's lane
+// rule either way: one cell of it obstructs nothing on its own ([PropInput]).
+func (p *propEntity) BlocksLineOfSight() bool {
+	return p.blocksLineOfSight
 }
 
-// BlocksMovement returns false for occluders
-func (o *occluderEntity) BlocksMovement() bool {
-	return false
+// BlocksMovement reports what the author declared. True refuses an arrival on
+// this cell, which is what a step is ([PropInput]).
+func (p *propEntity) BlocksMovement() bool {
+	return p.blocksMovement
 }
 
 // Join adds a new member to the encounter. The ambient field is always there

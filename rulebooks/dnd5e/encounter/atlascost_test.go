@@ -50,7 +50,7 @@ func budgetField() encounter.FieldInput {
 func TestAtlasReportsRegionsWithoutEnumeratingThem(t *testing.T) {
 	t.Run("a region describes its cells rather than listing them", func(t *testing.T) {
 		require.Equal(t,
-			[]string{"ID", "Grid", "Origin", "Width", "Height", "Occluders", "Boundaries"},
+			[]string{"ID", "Grid", "Origin", "Width", "Height", "Props", "Boundaries"},
 			structFieldNames(encounter.AtlasRegion{}),
 			"an AtlasRegion is an anchor and a span; a cell list would be the enumeration this slice deleted")
 	})

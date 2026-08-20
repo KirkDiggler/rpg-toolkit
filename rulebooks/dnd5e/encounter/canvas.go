@@ -22,7 +22,7 @@ import (
 // rpg-toolkit#1090's slice measured what it costs. The one that exists today,
 // in `rulebooks/dnd5e/resolution`, carries its own copy of grid construction
 // with a comment promising it "tracks encounter.buildRoomGrid rather than
-// choosing for itself" — and has no walls and no occluders in it at all, so the
+// choosing for itself" — and has no walls and no props in it at all, so the
 // first rule to ask it about line of sight would be told nothing blocks while
 // this module says otherwise. A promise in a comment is not a mechanism.
 //
@@ -34,7 +34,7 @@ import (
 //
 // One spatial room spanning the whole dungeon, in dungeon-absolute cells — the
 // canvas the authored rooms compiled into (#1106), with every wall registered
-// as an absolute boundary edge and every occluder and member placed on it. It
+// as an absolute boundary edge and every prop and member placed on it. It
 // answers what a room answers: where somebody stands, what the distance between
 // two cells is, whether a sightline is blocked, who is within a radius.
 //

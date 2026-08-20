@@ -59,10 +59,11 @@ type RoomInput struct {
 	// benefit, since the composition never renders a grid itself.
 	Grid spatial.GridShape
 
-	// Occluders are room-local positions that block line of sight, compiled
-	// onto the canvas at construction: each one is registered at
-	// Occluders[i] + Origin, in the dungeon's own absolute frame.
-	Occluders []spatial.Position
+	// Props are the things standing in this room that are not creatures —
+	// room-local at authoring, compiled onto the canvas at construction, each
+	// one registered at Props[i].At + Origin in the dungeon's own absolute
+	// frame. See [PropInput].
+	Props []PropInput
 
 	// Boundaries are the walls this room draws, as edges between adjacent
 	// cells — room-local at authoring, compiled through Origin onto the
@@ -124,6 +125,91 @@ type RoomInput struct {
 	// (RoomData.Origin, #929 T2) because it is construction truth, and Atlas
 	// still reports each authored room's absolute footprint from it.
 	Origin spatial.Position
+}
+
+// PropInput is one thing standing in a room that is not a creature: a pillar,
+// a coffin, an altar, a bank of candles.
+//
+// IT SAYS WHAT IT IS AND WHAT IT DOES, and until rpg-toolkit#1128 it said
+// neither. A room's contents were bare cells called occluders, and the module
+// decided their behaviour for them: every one blocked line of sight, none
+// blocked movement, both hardcoded. That is the inverse of nearly everything a
+// dungeon contains. Measured before the fix, on a chamber with a coffin across
+// the middle: a member stood INSIDE the coffin, stepped out through its far
+// side, and could not see the wight beyond it. A pillar you can walk through is
+// not a pillar.
+//
+// # The ref is opaque, and that is the point
+//
+// [PropInput.Ref] is content's word for what this is — "dnd5e:props:pillar" —
+// and nothing in this module ever reads it. It exists so the map can say WHICH
+// thing is where: the multi-room census (rpg-project#227) recorded that "a
+// pillar and a statue are the same cell", and a client that cannot tell them
+// apart cannot draw the room. Behaviour comes from the two flags, never from
+// the ref; a module that switched on ref strings would be holding a fact about
+// a world, which is the overreach [Void]'s doc comment is about.
+//
+// # Both answers are required, neither is defaulted
+//
+// The flags are pointers because a prop must SAY what it does. This is
+// rpg-toolkit#1033's capabilities-supplied-never-defaulted law, and [Void]'s
+// own argument applied one type over: a nil pointer is obviously absent, where
+// a false bool is a legal-looking answer nobody wrote. All four combinations
+// are real content, so there is no combination the zero value could safely
+// stand for:
+//
+//   - both — a pillar, a statue: go round it, cannot see past it.
+//   - movement only — the reference tomb's coffin, a low altar: seen over,
+//     not walked through. Authored `blocks_los: false`.
+//   - sight only — a curtain, a fog bank: walked through blind.
+//   - neither — candles, a rug: present, drawn, in nobody's way.
+//
+// The old top-level encounter module's authoring dialect carries the same two
+// flags as pointers (dungeonspec's ObstacleEntry) with a documented nil-means-
+// true default. The default is what this drops: a blocker nobody declared is a
+// wall nobody drew.
+//
+// # What a movement-blocking prop denies
+//
+// A PLACE TO STAND, not a path. [Encounter.Step] deliberately does not check
+// adjacency — that is a rule about walking and it lives with the walk
+// ([StepOutput.Doors]' doc comment) — so a step is a placement question, and a
+// solid prop refuses to be stood on (ErrBadPlacement). A seam that walks a path
+// cell by cell asks once per cell and gets the wall it expects. A prop is not a
+// [spatial.Boundary]: a wall is an edge BETWEEN cells and stops a crossing, a
+// prop occupies a cell and stops an arrival.
+//
+// # Sight, and why one prop is not a wall
+//
+// A LONE PROP BLOCKS NOBODY even with BlocksLineOfSight set, and that is
+// spatial v0.9.1's rule rather than this module's: sight is a LANE, blocked
+// only when the direct lane and every lane from a neighbour closer to the
+// target are obstructed, so a viewer leans around a single occupied cell
+// exactly as they would at the table (testwalls_test.go's own finding, and
+// rpg-toolkit#1022 behind it). Occluding ENTITIES can be leaned around;
+// boundary EDGES cannot. So a prop that must genuinely stop a sightline needs
+// width — or it wants to be a wall.
+type PropInput struct {
+	// Ref is content's identifier for this thing, e.g.
+	// "dnd5e:props:pillar". REQUIRED and never inspected here — see the
+	// type's doc comment.
+	Ref string
+
+	// At is where it stands, ROOM-LOCAL, compiled to At + the room's Origin
+	// on the canvas. Must be an integral cell in every grid family: a prop
+	// is a cell OF its region, and a region's cells are integral
+	// ([AtlasRegion.Props]).
+	At spatial.Position
+
+	// BlocksMovement is whether a member can end a step on this cell.
+	// REQUIRED — a nil pointer is refused at construction (ErrNoField), and
+	// there is no default. See the type's doc comment.
+	BlocksMovement *bool
+
+	// BlocksLineOfSight is whether a sightline is obstructed by it — subject
+	// to the lane rule, so one cell of it obstructs nothing on its own.
+	// REQUIRED, for the same reason and with the same refusal.
+	BlocksLineOfSight *bool
 }
 
 // ConnectionInput describes a connection between two rooms: a bidirectional

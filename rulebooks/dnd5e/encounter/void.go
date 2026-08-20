@@ -132,14 +132,28 @@ const (
 //
 // # What it does NOT change
 //
-// Occluders and boundaries inside a chamber are untouched: still authored,
-// still carrying BlocksMovement and BlocksLineOfSight independently, so a
-// blocker somebody placed and a low altar you can see over both stay
-// expressible. Kirk's point on the ruling was that both should be deliberate —
-// in his words, "if I wanted rock, I could place it and set it to block LoS. I
-// could put an obstacle that does not. I can have both but should be
-// deliberate" — and what this slice changes is that the DEFAULT is deliberate
-// too.
+// Props and boundaries inside a chamber are untouched: still authored, still
+// carrying BlocksMovement and BlocksLineOfSight independently, so a blocker
+// somebody placed and a low altar you can see over both stay expressible.
+// Kirk's point on the ruling was that both should be deliberate — in his words,
+// "if I wanted rock, I could place it and set it to block LoS. I could put an
+// obstacle that does not. I can have both but should be deliberate" — and what
+// this slice changes is that the DEFAULT is deliberate too.
+//
+// THAT SENTENCE WAS HALF FALSE WHEN IT WAS WRITTEN, and it is worth saying so
+// here rather than quietly correcting it, because of what it took to notice.
+// It was true of boundaries, which have carried both flags all along. It was
+// false of a chamber's CONTENTS, which were bare cells the module decided for:
+// every one blocked sight, none blocked movement, hardcoded. The low altar you
+// can see over is the reference tomb's own coffin (`blocks_los: false`), and it
+// was precisely the thing that could not be authored — the example the comment
+// reached for was the counter-example. Fixed in rpg-toolkit#1128, where a
+// chamber's contents became [PropInput] and the promise became true.
+//
+// The lesson is this file's own, one paragraph up: a composition that may not
+// hold fiction has to be READ for it, and what hides is a sentence that
+// describes the design correctly while the code does something else. This one
+// survived writing, review and a mutation battery — nothing tests a comment.
 //
 // # Why a sealed set rather than a bool
 //

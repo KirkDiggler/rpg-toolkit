@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"reflect"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -27,26 +28,71 @@ import (
 // and reading one of them now ("the pillar blocks sight") tells you something
 // the engine no longer believes.
 //
+// A pillar still STOPS you, mind — a prop declares movement and sight
+// separately (rpg-toolkit#1128), and leaning around one is a fact about the
+// sightline, not about walking through it.
+//
 // The width is not decoration either. A wall must be wide enough that the
 // neighbour lanes are obstructed too, which means covering the cells a viewer
 // would lean toward, not just the one on the centre line.
 
-// wallRow returns a horizontal run of occluder cells at the given row,
-// inclusive of both ends.
-func wallRow(y, fromX, toX int) []spatial.Position {
-	out := make([]spatial.Position, 0, toX-fromX+1)
+// rubble is one cell of a fixture wall: solid to walk into and solid to look
+// through, which is what every caller of wallRow and wallColumn has always
+// meant by "wall".
+//
+// Both answers are stated because a prop has to state them (rpg-toolkit#1128).
+// Before that, a fixture like this got the opposite of what it asked for on the
+// movement axis — the module hardcoded every placed thing as walk-through — and
+// no test noticed, because none of them tried to walk into one.
+func rubble(x, y int) encounter.PropInput {
+	solid := true
+	return encounter.PropInput{
+		Ref:               "test:props:rubble",
+		At:                spatial.Position{X: float64(x), Y: float64(y)},
+		BlocksMovement:    &solid,
+		BlocksLineOfSight: &solid,
+	}
+}
+
+// rubbleData is rubble as it persists — the PropData half, for fixtures that
+// build a blob directly rather than saving one.
+func rubbleData(x, y float64) encounter.PropData {
+	solid := true
+	return encounter.PropData{
+		Ref:               "test:props:rubble",
+		At:                encounter.PositionData{X: x, Y: y},
+		BlocksMovement:    &solid,
+		BlocksLineOfSight: &solid,
+	}
+}
+
+// absoluteRubble is rubble as the map reports it: the same thing, at a
+// dungeon-absolute cell, with the flags it was authored with.
+func absoluteRubble(x, y float64) encounter.AtlasProp {
+	return encounter.AtlasProp{
+		Ref:               "test:props:rubble",
+		At:                spatial.Position{X: x, Y: y},
+		BlocksMovement:    true,
+		BlocksLineOfSight: true,
+	}
+}
+
+// wallRow returns a horizontal run of wall cells at the given row, inclusive of
+// both ends.
+func wallRow(y, fromX, toX int) []encounter.PropInput {
+	out := make([]encounter.PropInput, 0, toX-fromX+1)
 	for x := fromX; x <= toX; x++ {
-		out = append(out, spatial.Position{X: float64(x), Y: float64(y)})
+		out = append(out, rubble(x, y))
 	}
 	return out
 }
 
-// wallColumn returns a vertical run of occluder cells in the given column,
+// wallColumn returns a vertical run of wall cells in the given column,
 // inclusive of both ends.
-func wallColumn(x, fromY, toY int) []spatial.Position {
-	out := make([]spatial.Position, 0, toY-fromY+1)
+func wallColumn(x, fromY, toY int) []encounter.PropInput {
+	out := make([]encounter.PropInput, 0, toY-fromY+1)
 	for y := fromY; y <= toY; y++ {
-		out = append(out, spatial.Position{X: float64(x), Y: float64(y)})
+		out = append(out, rubble(x, y))
 	}
 	return out
 }

@@ -50,7 +50,7 @@ func Example_theTombWatch() {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
 				ID: "crypt", Width: 12, Height: 12,
-				Occluders: wallRow(6, 5, 7),
+				Props: wallRow(6, 5, 7),
 			}},
 		},
 		Members: []encounter.MemberInput{
