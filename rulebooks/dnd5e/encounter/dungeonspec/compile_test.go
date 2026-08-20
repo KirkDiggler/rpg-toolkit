@@ -191,6 +191,34 @@ func (s *CompileSuite) TestAConnectorMayBeWrittenEitherWayRound() {
 	s.Equal(spatial.Position{X: 5, Y: 4}, arch.ToPosition, "and the entrance its last")
 }
 
+// TestTheSameSeamMintsTheSameIDEitherWayRound — a door's identity is the SEAM,
+// not the sentence that declared it.
+//
+// [Validate] already treats a connector as undirected: it canonicalises the
+// pair by room index before de-duplicating, so the same seam declared twice is
+// refused whichever way round either line was written. The minted ID has to
+// agree with that, because a door's STATE persists under its ID
+// (rpg-toolkit#1123) — if the ID followed the author's words, swapping two of
+// them would orphan every door a party had already opened, silently and at
+// load time. Found by Copilot on rpg-toolkit#1133.
+func (s *CompileSuite) TestTheSameSeamMintsTheSameIDEitherWayRound() {
+	canonical := s.load(tombYAML)
+	swapped := s.load(tombWith(
+		"  - { from: hall, to: tomb, locked: { dc: 12, ability: dex } }",
+		"  - { from: tomb, to: hall, locked: { dc: 12, ability: dex } }"))
+
+	s.Require().Len(swapped.Field.Doors, 1)
+	s.Equal(canonical.Field.Doors[0].ID, swapped.Field.Doors[0].ID,
+		"the locked seam is ONE door, however the line was written")
+
+	s.Require().Len(swapped.Field.Connections, 2)
+	s.Equal(canonical.Field.Connections[1].ID, swapped.Field.Connections[1].ID,
+		"and one connection")
+
+	s.Equal("tomb", swapped.Field.Connections[1].From,
+		"while the author's own words survive on the endpoints, which is where they belong")
+}
+
 // TestAPropCarriesBothAnswersAndOwnsThem.
 //
 // The copy is the point of the second half. [encounter.PropInput] holds the two
