@@ -101,7 +101,60 @@ func Validate(spec *Spec) error {
 		return err
 	}
 
-	return validateConnectors(spec, index)
+	if err := validateConnectors(spec, index); err != nil {
+		return err
+	}
+
+	return validateStart(spec)
+}
+
+// validateStart checks the party's way in.
+//
+// A cell inside the dungeon and not on top of anything, which is as far as this
+// can go before geometry: WHICH chamber holds it is a question about a layout
+// that has not been computed yet, and [Load] answers it — and refuses a start
+// that lands in no chamber at all, which on a chain of chambers cannot happen
+// but on a future layout could.
+//
+// It does not refuse a start on the doorway row. Standing in an opening is a
+// legal place to be — the composition says so, and the vault-chase scene in the
+// encounter package is built on it — and a party that comes in through a door
+// is coming in through a door.
+func validateStart(spec *Spec) error {
+	if spec.Start == nil {
+		return fmt.Errorf("the dungeon does not say where the party starts (start:): %w", ErrBadSpec)
+	}
+
+	width := 0
+	for _, r := range spec.Rooms {
+		width += r.Width
+	}
+
+	col, row := spec.Start[0], spec.Start[1]
+
+	if col < 0 || col >= width || row < 0 || row >= spec.Height {
+		return fmt.Errorf(
+			"the party starts at [%d,%d], which is outside the dungeon (%dx%d): %w",
+			col, row, width, spec.Height, ErrBadSpec)
+	}
+
+	base := 0
+	for _, r := range spec.Rooms {
+		if col < base+r.Width {
+			for _, p := range r.Place {
+				if p.At[0] == col-base && p.At[1] == row {
+					return fmt.Errorf(
+						"the party starts at [%d,%d], where %q already stands: %w",
+						col, row, p.Ref, ErrBadSpec)
+				}
+			}
+
+			return nil
+		}
+		base += r.Width
+	}
+
+	return nil
 }
 
 // validateRooms checks the chamber list and returns each chamber's position in
@@ -133,71 +186,93 @@ func validateRooms(spec *Spec) (map[string]int, error) {
 
 // validatePlacements checks everything standing in one chamber, boss included.
 //
-// The boss is checked through the SAME rules as everything else rather than a
-// parallel set: it is a monster in a cell, and the only thing that makes it
-// special is that the author named it separately. A second implementation of
-// "is this cell inside the room" is how the two answers eventually disagree.
+// The boss goes through these rules rather than a parallel set, which is what
+// folding it into `place:` bought: it is a monster in a cell, and the only
+// thing that makes it special is a flag. A second implementation of "is this
+// cell inside the room" is how the two answers eventually disagree.
 func validatePlacements(spec *Spec, room RoomSpec) error {
-	occupied := make(map[[2]int]string, len(room.Place)+1)
-
-	check := func(what, ref string, at [2]int, targeting *string, blocksMovement, blocksLoS *bool) error {
-		kind, err := refKind(ref)
-		if err != nil {
-			return fmt.Errorf("room %q: %s: %w", room.ID, what, err)
-		}
-		if what == "boss" && kind != typeMonsters {
-			return fmt.Errorf("room %q: boss %q is not a monster: %w", room.ID, ref, ErrBadSpec)
-		}
-
-		if at[0] < 0 || at[0] >= room.Width || at[1] < 0 || at[1] >= spec.Height {
-			return fmt.Errorf(
-				"room %q: %s %q at [%d,%d], which is outside the chamber (%dx%d): %w",
-				room.ID, what, ref, at[0], at[1], room.Width, spec.Height, ErrBadSpec)
-		}
-		if doorwayRow(spec.Height) == at[1] && standsInASeam(spec, room, at[0]) {
-			return fmt.Errorf(
-				"room %q: %s %q at [%d,%d] stands in a doorway: %w",
-				room.ID, what, ref, at[0], at[1], ErrBadSpec)
-		}
-		if other, taken := occupied[at]; taken {
-			return fmt.Errorf("room %q: %q and %q are on the same cell [%d,%d]: %w",
-				room.ID, other, ref, at[0], at[1], ErrBadSpec)
-		}
-		occupied[at] = ref
-
-		if targeting != nil {
-			if kind != typeMonsters {
-				return fmt.Errorf("room %q: %q is not a monster and cannot have targeting: %w",
-					room.ID, ref, ErrBadSpec)
-			}
-			if !targetings[*targeting] {
-				return fmt.Errorf("room %q: %q declares targeting %q, which is not a word this build knows: %w",
-					room.ID, ref, *targeting, ErrBadSpec)
-			}
-		}
-		if kind != typeProps {
-			if blocksMovement != nil {
-				return fmt.Errorf("room %q: %q is not a prop and cannot declare blocks_movement: %w",
-					room.ID, ref, ErrBadSpec)
-			}
-			if blocksLoS != nil {
-				return fmt.Errorf("room %q: %q is not a prop and cannot declare blocks_los: %w",
-					room.ID, ref, ErrBadSpec)
-			}
-		}
-
-		return nil
-	}
+	occupied := make(map[[2]int]string, len(room.Place))
+	bosses := 0
 
 	for _, p := range room.Place {
-		if err := check("place", p.Ref, p.At, p.Targeting, p.BlocksMovement, p.BlocksLoS); err != nil {
+		kind, err := refKind(p.Ref)
+		if err != nil {
+			return fmt.Errorf("room %q: %w", room.ID, err)
+		}
+
+		if p.At[0] < 0 || p.At[0] >= room.Width || p.At[1] < 0 || p.At[1] >= spec.Height {
+			return fmt.Errorf(
+				"room %q: %q at [%d,%d], which is outside the chamber (%dx%d): %w",
+				room.ID, p.Ref, p.At[0], p.At[1], room.Width, spec.Height, ErrBadSpec)
+		}
+		if doorwayRow(spec.Height) == p.At[1] && standsInASeam(spec, room, p.At[0]) {
+			return fmt.Errorf(
+				"room %q: %q at [%d,%d] stands in a doorway: %w",
+				room.ID, p.Ref, p.At[0], p.At[1], ErrBadSpec)
+		}
+		if other, taken := occupied[p.At]; taken {
+			return fmt.Errorf("room %q: %q and %q are on the same cell [%d,%d]: %w",
+				room.ID, other, p.Ref, p.At[0], p.At[1], ErrBadSpec)
+		}
+		occupied[p.At] = p.Ref
+
+		if kind == typeMonsters {
+			if err := validateMonsterPlacement(room, p); err != nil {
+				return err
+			}
+			if p.Boss {
+				bosses++
+				if bosses > 1 {
+					return fmt.Errorf("room %q names more than one boss: %w", room.ID, ErrBadSpec)
+				}
+			}
+
+			continue
+		}
+
+		if err := validatePropPlacement(room, p); err != nil {
 			return err
 		}
 	}
-	if room.Boss != nil {
-		if err := check("boss", room.Boss.Ref, room.Boss.At, room.Boss.Targeting, nil, nil); err != nil {
-			return err
-		}
+
+	return nil
+}
+
+// validateMonsterPlacement checks the fields only a monster may carry.
+func validateMonsterPlacement(room RoomSpec, p PlaceSpec) error {
+	if p.BlocksMovement != nil || p.BlocksLoS != nil {
+		return fmt.Errorf("room %q: %q is not a prop and cannot declare what it blocks: %w",
+			room.ID, p.Ref, ErrBadSpec)
+	}
+	if p.Targeting != nil && !targetings[*p.Targeting] {
+		return fmt.Errorf("room %q: %q declares targeting %q, which is not a word this build knows: %w",
+			room.ID, p.Ref, *p.Targeting, ErrBadSpec)
+	}
+
+	return nil
+}
+
+// validatePropPlacement checks the fields only a prop may carry, and insists on
+// the two it must.
+//
+// Both answers REQUIRED, never defaulted — see [PlaceSpec.BlocksMovement] for
+// the argument, which is [encounter.PropInput]'s own one layer out.
+func validatePropPlacement(room RoomSpec, p PlaceSpec) error {
+	if p.Targeting != nil {
+		return fmt.Errorf("room %q: %q is not a monster and cannot have targeting: %w",
+			room.ID, p.Ref, ErrBadSpec)
+	}
+	if p.Boss {
+		return fmt.Errorf("room %q: %q is not a monster and cannot be the boss: %w",
+			room.ID, p.Ref, ErrBadSpec)
+	}
+	if p.BlocksMovement == nil {
+		return fmt.Errorf("room %q: %q does not say whether it blocks movement, and there is no default: %w",
+			room.ID, p.Ref, ErrBadSpec)
+	}
+	if p.BlocksLoS == nil {
+		return fmt.Errorf("room %q: %q does not say whether it blocks line of sight, and there is no default: %w",
+			room.ID, p.Ref, ErrBadSpec)
 	}
 
 	return nil

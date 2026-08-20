@@ -51,16 +51,6 @@ type Spec struct {
 	// mints so two dungeons in one process cannot collide.
 	Key string `yaml:"key"`
 
-	// Name is the dungeon's human-facing title. Carried, never interpreted.
-	Name string `yaml:"name"`
-
-	// Theme is the author's word for the dungeon's look. Carried, never
-	// interpreted, and explicitly NOT a source of mechanics: "crypt" does
-	// not mean the void is stone, because deciding that here would be the
-	// same defaulting the composition refuses one layer down
-	// (rpg-toolkit#1033). See Void.
-	Theme string `yaml:"theme"`
-
 	// Void is what the space between the chambers does to a sightline —
 	// "opaque" or "transparent", the words [encounter.Void] carries.
 	//
@@ -86,11 +76,24 @@ type Spec struct {
 	// chambers share a seam at all.
 	Height int `yaml:"height"`
 
-	// Start is an optional party-start cell, absolute [col,row]. Nil means
-	// the compiler seats the party in the chamber whose archetype is
-	// "entrance" — the reference tomb declares no start, which is why the
-	// derivation exists rather than the field being required.
-	Start *[2]int `yaml:"start,omitempty"`
+	// Start is where the party comes in: an absolute [col,row] cell.
+	//
+	// REQUIRED and explicit. The dialect this replaces derived it from a
+	// chamber's `archetype: entrance`, which is the shape of defaulting
+	// rpg-toolkit#1033 forbids — a word describing what a room is FOR,
+	// silently deciding where people stand. An author who wants the party in
+	// the entrance says which cell of it.
+	//
+	// The compiler resolves which chamber holds this cell rather than being
+	// told, because it already knows: the chambers' footprints are what it
+	// just computed, and asking the author to name the room as well would be
+	// a second fact that can disagree with the first.
+	//
+	// A POINTER because [0,0] is a legal cell — the north-west corner of the
+	// first chamber — so a plain value could not tell "the author said corner"
+	// apart from "the author said nothing", and the second would silently
+	// become the first. Same argument as a prop's blocking flags, one field up.
+	Start *[2]int `yaml:"start"`
 
 	// Rooms are the chambers, IN LAYOUT ORDER: each one sits immediately
 	// east of the one before it. Declaration order is geometry here, not
@@ -106,23 +109,13 @@ type RoomSpec struct {
 	// ID names the chamber, and survives the compile as the region's ID.
 	ID string `yaml:"id"`
 
-	// Archetype is the author's word for what the chamber is for —
-	// "entrance", "chamber", "boss". The compiler reads exactly one thing
-	// from it: which chamber the party starts in when no start is declared.
-	Archetype string `yaml:"archetype"`
-
 	// Width is the chamber's horizontal extent in cells. Its height is the
 	// dungeon's.
 	Width int `yaml:"width"`
 
-	// Boss is the chamber's boss monster, or nil. Separate from Place
-	// because it is authored separately and a host may legitimately want to
-	// know which member is the one whose death ends things.
-	Boss *BossSpec `yaml:"boss,omitempty"`
-
-	// Place is everything standing in the chamber — props and monsters
-	// alike, routed by the ref's type segment rather than by which list they
-	// were written in.
+	// Place is everything standing in the chamber — props, monsters, and the
+	// boss alike, routed by the ref's type segment rather than by which list
+	// they were written in.
 	Place []PlaceSpec `yaml:"place,omitempty"`
 }
 
@@ -136,29 +129,40 @@ type PlaceSpec struct {
 	// At is the room-local cell, offset [col,row].
 	At [2]int `yaml:"at"`
 
-	// BlocksMovement is whether a prop stops somebody standing there. Nil
-	// means the author left it out, which compiles to blocking — a thing in
-	// a room is solid unless it says otherwise. Props only.
+	// BlocksMovement is whether a prop stops somebody standing there.
+	//
+	// REQUIRED on every prop, and REFUSED on anything else. The dialect this
+	// replaces read a missing value as `true`, and [encounter.PropInput]'s
+	// own doc comment names that default as the thing it drops: "a blocker
+	// nobody declared is a wall nobody drew". The composition refuses a nil
+	// pointer one layer down, so a default here would be exactly the move
+	// rpg-toolkit#1033 forbids, relocated to where it is harder to see.
+	//
+	// It costs an author two lines per prop. All four combinations are real
+	// content — a pillar blocks both, this tomb's coffin is seen over but not
+	// walked through, a curtain is the reverse, candles block neither — so
+	// there is no combination the omission could have safely stood for.
 	BlocksMovement *bool `yaml:"blocks_movement,omitempty"`
 
-	// BlocksLoS is whether a prop stops a sightline. Nil means blocking, for
-	// BlocksMovement's reason. Props only — and the tomb's coffin is the one
-	// placement in the shipping file that writes it, as false.
+	// BlocksLoS is whether a prop stops a sightline. REQUIRED on every prop
+	// and refused on anything else, for BlocksMovement's reason.
 	BlocksLoS *bool `yaml:"blocks_los,omitempty"`
 
 	// Targeting is the author's word for how a monster picks a target.
 	// Monsters only. Carried opaquely and never interpreted here: what it
 	// MEANS is a rule, and rules live in the rulebook.
 	Targeting *string `yaml:"targeting,omitempty"`
-}
 
-// BossSpec designates a chamber's boss.
-type BossSpec struct {
-	Ref string `yaml:"ref"`
-	At  [2]int `yaml:"at"`
-	// Targeting is the boss's own targeting word, same vocabulary and same
-	// opacity as [PlaceSpec.Targeting].
-	Targeting *string `yaml:"targeting,omitempty"`
+	// Boss marks the monster whose death ends things. Monsters only, and at
+	// most one per chamber.
+	//
+	// A FLAG RATHER THAN ITS OWN KEY, which is Kirk's question answered: the
+	// dialect this replaces gave a chamber a `boss:` entry beside its
+	// `place:` list, and the two then needed the same rules about cells,
+	// refs, targeting and collisions written twice. A boss is a monster with
+	// a flag. What it is FOR — which member a host watches — is a fact worth
+	// carrying, and [MonsterPlacement.Boss] carries it.
+	Boss bool `yaml:"boss,omitempty"`
 }
 
 // ConnectorSpec is an opening between two neighbouring chambers.
