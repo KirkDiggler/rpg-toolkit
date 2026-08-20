@@ -47,7 +47,13 @@ func cubeDistance(a, b spatial.CubeCoordinate) int {
 	return dx
 }
 
-func offsetNeighbours(t *testing.T, o spatial.HexOrientation, col, row int) int {
+// stepsFromOrigin is how many hex steps the offset cell [col,row] is from the
+// offset origin, under the given orientation.
+//
+// It answers a DISTANCE, and the assertions below all turn on whether that
+// distance is 1 -- "is this cell a neighbour of the origin" -- so the value one
+// step out and the value two steps out are both meaningful and both appear.
+func stepsFromOrigin(t *testing.T, o spatial.HexOrientation, col, row int) int {
 	t.Helper()
 	origin := spatial.OffsetCoordinateToCubeWithOrientation(spatial.Position{}, o)
 	other := spatial.OffsetCoordinateToCubeWithOrientation(
@@ -63,7 +69,7 @@ func offsetNeighbours(t *testing.T, o spatial.HexOrientation, col, row int) int 
 // that same pair is two steps apart. So this single assertion says which scheme
 // is in use and cannot be satisfied by the other.
 func TestPointyTopUsesRowOffsets(t *testing.T) {
-	if got := offsetNeighbours(t, spatial.HexOrientationPointyTop, -1, 1); got != 1 {
+	if got := stepsFromOrigin(t, spatial.HexOrientationPointyTop, -1, 1); got != 1 {
 		t.Fatalf("pointy-top should use odd-r (row-shifted) offsets, so [-1,1] should "+
 			"neighbour the origin; got distance %d. A distance of 2 means pointy-top is "+
 			"running the odd-q scheme, which belongs to FLAT-top.", got)
@@ -74,7 +80,7 @@ func TestPointyTopUsesRowOffsets(t *testing.T) {
 // shifted, which makes [1,-1] a neighbour of the origin, and under odd-r it is
 // two steps away.
 func TestFlatTopUsesColumnOffsets(t *testing.T) {
-	if got := offsetNeighbours(t, spatial.HexOrientationFlatTop, 1, -1); got != 1 {
+	if got := stepsFromOrigin(t, spatial.HexOrientationFlatTop, 1, -1); got != 1 {
 		t.Fatalf("flat-top should use odd-q (column-shifted) offsets, so [1,-1] should "+
 			"neighbour the origin; got distance %d. A distance of 2 means flat-top is "+
 			"running the odd-r scheme, which belongs to POINTY-top.", got)
@@ -85,8 +91,8 @@ func TestFlatTopUsesColumnOffsets(t *testing.T) {
 // both branches at once, which would restore the symmetry while leaving them
 // swapped -- the bug wearing different labels.
 func TestTheTwoOrientationsAreNotTheSameScheme(t *testing.T) {
-	pointy := offsetNeighbours(t, spatial.HexOrientationPointyTop, -1, 1)
-	flat := offsetNeighbours(t, spatial.HexOrientationFlatTop, -1, 1)
+	pointy := stepsFromOrigin(t, spatial.HexOrientationPointyTop, -1, 1)
+	flat := stepsFromOrigin(t, spatial.HexOrientationFlatTop, -1, 1)
 	if pointy == flat {
 		t.Fatalf("the two orientations answered identically (%d) for [-1,1]; they use "+
 			"different offset schemes and must disagree somewhere", pointy)
