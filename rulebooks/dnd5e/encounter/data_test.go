@@ -1965,12 +1965,12 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 		"the chambers meet at hex-a's last column and hex-b's first, on the same row")
 }
 
-// validHexAxialData returns a fresh EncounterData with two hex rooms
+// validHexData returns a fresh EncounterData with two hex rooms
 // joined by one connection, a member, and a prop — the Load-seam
-// counterpart to encounter_test.go's validHexAxialSetup, mirrored exactly
+// counterpart to encounter_test.go's validHexSetup, mirrored exactly
 // (its own comment explains the geometry). Every position is integral
 // axial, including a negative one (gate.ToPosition).
-func validHexAxialData() encounter.EncounterData {
+func validHexData() encounter.EncounterData {
 	return encounter.EncounterData{
 		Field: encounter.FieldData{
 			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
@@ -1993,9 +1993,9 @@ func validHexAxialData() encounter.EncounterData {
 	}
 }
 
-// TestLoadHexIntegralAxial is the Load-seam counterpart to
-// encounter_test.go's TestSetupHexIntegralAxial.
-func (s *DataTestSuite) TestLoadHexIntegralAxial() {
+// TestLoadHexIntegralCells is the Load-seam counterpart to
+// encounter_test.go's TestSetupHexIntegralCells.
+func (s *DataTestSuite) TestLoadHexIntegralCells() {
 	cases := []struct {
 		name     string
 		mutate   func(d *encounter.EncounterData)
@@ -2007,20 +2007,20 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 		}, nil, "not an integral axial cell"},
 		{"connection from-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
-		}, encounter.ErrBadConnection, "not an integral axial cell"},
+		}, encounter.ErrBadConnection, "not an integral cell"},
 		{"connection to-position fractional", func(d *encounter.EncounterData) {
 			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 0.5, Y: 3}
-		}, encounter.ErrBadConnection, "not an integral axial cell"},
+		}, encounter.ErrBadConnection, "not an integral cell"},
 		{"prop cell fractional", func(d *encounter.EncounterData) {
 			// #929 T3 Opus round F2: prop integrality is now universal
 			// (isIntegralPosition), not hex-only — see the Setup-seam
-			// counterpart in encounter_test.go's TestSetupHexIntegralAxial.
+			// counterpart in encounter_test.go's TestSetupHexIntegralCells.
 			d.Field.Rooms[0].Props[0].At = encounter.PositionData{X: 2.5, Y: 2}
 		}, encounter.ErrNoField, "not a representable integral cell"},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			data := validHexAxialData()
+			data := validHexData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
@@ -2035,8 +2035,8 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 	}
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validHexAxialData()})
-	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: validHexData()})
+	s.Require().NoError(err, "integral cells must be accepted — authored for the connections, absolute for the member")
 }
 
 // ============================================================
@@ -2482,7 +2482,7 @@ func (s *DataTestSuite) TestLoadEndingTriggerHexNonIntegralRejected() {
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
-	s.Require().Contains(err.Error(), "not an integral axial cell")
+	s.Require().Contains(err.Error(), "not an integral cell")
 }
 
 // TestOriginRoundTripByteIdentical pins W5's round-trip law: origins

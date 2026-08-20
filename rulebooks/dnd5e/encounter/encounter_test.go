@@ -379,7 +379,7 @@ func validConnSetup() *encounter.SetupInput {
 // prop integrality is universal now, not hex-only — a fractional
 // prop on a SQUARE room (previously accepted outright, before this
 // fix) must reject exactly like a fractional hex one
-// (TestSetupHexIntegralAxial's sibling row), with the universal
+// (TestSetupHexIntegralCells's sibling row), with the universal
 // isRepresentableInteger message, not the hex-specific one. One-defect:
 // validConnSetup's r1.Props[0] is the ONLY thing mutated.
 func (s *EncounterTestSuite) TestSetupSquarePropCellFractionalRejected() {
@@ -828,11 +828,11 @@ func (s *EncounterTestSuite) TestAHexChambersCellsAreOffsetNotAxial() {
 	s.Contains(err.Error(), "out of bounds")
 }
 
-// validHexAxialSetup returns a fresh SetupInput with two hex rooms joined
+// validHexSetup returns a fresh SetupInput with two hex rooms joined
 // by one connection, a member, and a prop — every position integral
 // axial, including a negative one (gate.ToPosition). The base for
-// TestSetupHexIntegralAxial's one-defect rows: interim tools/spatial#926
-// enforcement (isIntegralAxialPosition) rejects a fractional X or Y at
+// TestSetupHexIntegralCells's one-defect rows: interim tools/spatial#926
+// enforcement (isIntegralHexCell) rejects a fractional X or Y at
 // any of these positions in a hex room.
 //
 // Both rooms are Width=8,Height=8 offset rectangles (rpg-toolkit#1127), so each
@@ -846,7 +846,7 @@ func (s *EncounterTestSuite) TestAHexChambersCellsAreOffsetNotAxial() {
 // the middle, and that part has not changed: an interior cell can never kiss
 // anything, because every neighbour of an interior cell is still inside that
 // room's own footprint.
-func validHexAxialSetup() *encounter.SetupInput {
+func validHexSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
@@ -869,13 +869,13 @@ func validHexAxialSetup() *encounter.SetupInput {
 	}
 }
 
-// TestSetupHexIntegralAxial pins the interim tools/spatial#926
+// TestSetupHexIntegralCells pins the interim tools/spatial#926
 // enforcement at the Setup seam: a fractional X or Y is rejected for
 // every position kind a hex room accepts externally — member, both
 // connection endpoints, and a prop — each with the error class its
 // existing defect family already uses. Load-seam counterpart:
-// TestLoadHexIntegralAxial in data_test.go.
-func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
+// TestLoadHexIntegralCells in data_test.go.
+func (s *EncounterTestSuite) TestSetupHexIntegralCells() {
 	cases := []struct {
 		name     string
 		mutate   func(in *encounter.SetupInput)
@@ -884,16 +884,16 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 	}{
 		{"member position fractional", func(in *encounter.SetupInput) {
 			in.Members[0].Position = spatial.Position{X: 0.5, Y: 0}
-		}, encounter.ErrBadPlacement, "not an integral axial cell"},
+		}, encounter.ErrBadPlacement, "not an integral cell"},
 		{"connection from-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
-		}, encounter.ErrBadConnection, "not an integral axial cell"},
+		}, encounter.ErrBadConnection, "not an integral cell"},
 		{"connection to-position fractional", func(in *encounter.SetupInput) {
 			in.Field.Connections[0].ToPosition = spatial.Position{X: 0.5, Y: 3}
-		}, encounter.ErrBadConnection, "not an integral axial cell"},
+		}, encounter.ErrBadConnection, "not an integral cell"},
 		{"prop cell fractional", func(in *encounter.SetupInput) {
 			// #929 T3 Opus round F2: prop integrality is now universal
-			// (isIntegralPosition), not hex-only (isIntegralAxialPosition) —
+			// (isIntegralPosition), not hex-only (isIntegralHexCell) —
 			// the message matches Origin's ("not a representable integral
 			// cell"), not the hex-specific connection/member wording.
 			in.Field.Rooms[0].Props[0].At = spatial.Position{X: 2.5, Y: 2}
@@ -901,7 +901,7 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			setup := validHexAxialSetup()
+			setup := validHexSetup()
 			tc.mutate(setup)
 			_, err := encounter.NewEncounter(setup)
 			s.Require().Error(err, tc.name)
@@ -911,10 +911,16 @@ func (s *EncounterTestSuite) TestSetupHexIntegralAxial() {
 		})
 	}
 
-	// Positive control: the valid base — integral throughout, including
-	// a NEGATIVE axial position (gate.ToPosition at (-4,-1)) — constructs.
-	_, err := encounter.NewEncounter(validHexAxialSetup())
-	s.Require().NoError(err, "integral axial positions, including negative ones, must be accepted")
+	// Positive control: the valid base — integral throughout — constructs.
+	//
+	// It used to add "including a NEGATIVE position (gate.ToPosition at
+	// (-4,-1))", which was true when a hex room's own frame was an
+	// origin-centred rhombus. Since rpg-toolkit#1127 an authored cell is a
+	// column and a row, so there are no negative ones to accept here; negative
+	// ABSOLUTE cells are still entirely ordinary, and TestMoveHexIntegralAxial
+	// is where that is pinned.
+	_, err := encounter.NewEncounter(validHexSetup())
+	s.Require().NoError(err, "integral authored cells must be accepted")
 }
 
 // TestMoveHexIntegralAxial is Move's verb-seam counterpart: a fractional
@@ -1719,7 +1725,7 @@ func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
 	_, err := encounter.NewEncounter(setup)
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
-	s.Require().Contains(err.Error(), "not an integral axial cell")
+	s.Require().Contains(err.Error(), "not an integral cell")
 }
 
 // validTriggerAcceptanceFieldSetup is the rich SQUARE-family fixture for

@@ -130,7 +130,7 @@ func (e *Encounter) MembersIn(region RegionID) ([]Member, error) {
 // here was a branch no input could take, which is a branch no test could pin.
 //
 // Making the question PUBLIC made that branch reachable. A hex grid's
-// IsValidPosition bounds-checks and nothing more (isIntegralAxialPosition's doc
+// IsValidPosition bounds-checks and nothing more (isIntegralHexCell's doc
 // comment says so, and tools/spatial's AxialHexGrid is where it is true), so
 // without this, RegionAt answered "yes, the hall holds it" for an axial
 // position Join refuses as not a cell — measured, before the fix:

@@ -186,7 +186,7 @@ type AtlasDoorway struct {
 // position, not a map cell — and on a fractional-tolerant square grid it may
 // sit anywhere in a region's continuous span, coinciding with no integer cell
 // at all; hex forbids fractional member positions entirely
-// (isIntegralAxialPosition), so this only affects square hosts (#929 T3 Opus
+// (isIntegralHexCell), so this only affects square hosts (#929 T3 Opus
 // round F4). The asymmetry — a prop's cell must be integral, member positions
 // may be fractional — is deliberate: one is floor/blockage data, the other is a
 // live position the Atlas never touches.
