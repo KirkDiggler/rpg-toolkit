@@ -348,19 +348,27 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // the two mean the same thing and cost the same (fieldHasVoid, pinned by
 // TestOpaqueCostsNothingWhereThereIsNoVoid).
 //
-// WHERE THERE IS VOID, THIS IS USUALLY CHEAPER THAN NOT DOING IT — measured,
-// because the shape of the cost is not the shape it looks like. Scanning the
-// ray is arithmetic, and the spatial call it can skip rasterizes, walks
-// boundaries, walks blocking entities and then walks a lean lane per neighbour.
-// So finding void EARLY returns before any of that: a twenty-chamber field with
-// gaps refreshed sight 1.6-1.7x FASTER under opaque than under transparent, and
-// reference tomb's shape 1.4-1.6x faster. The price is paid by rays that never
-// leave the floor, which run the scan in full and then delegate anyway: one
-// forty-by-forty chamber with a void margin and forty members measured 1.34x
-// SLOWER. That is the honest worst case, and it is the one to beat if a caller
-// ever forces the floor mask. Ratios rather than times because the times move
-// with the machine and the ratios did not; both are in
-// voidcost_internal_test.go, which is where they are re-runnable.
+// WHERE VOID LIES BETWEEN THE CHAMBERS, THIS IS CHEAPER THAN NOT DOING IT —
+// measured, because the shape of the cost is not the shape it looks like.
+// Scanning the ray is arithmetic, and the spatial call it can skip rasterizes,
+// walks boundaries, walks blocking entities and then walks a lean lane per
+// neighbour. So finding void EARLY returns before any of that: a twenty-chamber
+// square field with gaps refreshed sight 1.7x FASTER under opaque than under
+// transparent, and a three-chamber square field 1.2-1.4x faster.
+//
+// THE PRICE IS PAID BY RAYS THAT NEVER LEAVE THE FLOOR, which run the scan in
+// full and then delegate anyway — and since rpg-toolkit#1127 the worst case is
+// no longer a contrived fixture. The reference tomb is HEX, and a hex canvas
+// holding sheared rectangles is 90.5% void pointy-top, yet opaque measures
+// 1.34-1.40x SLOWER on it: a party of eight in three chambers looks mostly at
+// people in the same chamber, and none of those rays ever reach the void. That
+// is the number to beat if this is ever asked to go faster. (The old worst
+// case, one forty-by-forty square chamber with a void margin, sits at
+// 1.35-1.43x — the same place, for the same reason.)
+//
+// Ratios rather than times because the times move with the machine and the
+// ratios did not; both are in voidcost_internal_test.go, which is where they
+// are re-runnable.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
 	if c.hasVoid && c.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
