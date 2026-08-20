@@ -15,27 +15,30 @@ package encounter_test
 // non-overlapping set, but the smallest rhombus containing them is strictly
 // bigger than they are.
 //
-// Measured against the constructor before this file existed, on the reference
-// tomb's own three chambers:
+// Measured against the constructor, on the reference tomb's own three
+// chambers — the ones this file builds:
 //
-//   - pointy-top constructed, and RegionAt then reported 380 cells as floor
-//     against the 224 the author drew — 156 places a member may stand, and be
-//     reported standing, that nobody put there.
-//   - flat-top DID NOT CONSTRUCT AT ALL: `room "entrance" and room "hall"
-//     overlap at absolute cell (3, -9)`, because W2 compared bounding boxes and
-//     the sheared rhombi intersect even though the chambers do not.
+//   - NEITHER ORIENTATION CONSTRUCTED. `room "entrance" and room "hall"
+//     overlap at absolute cell (1, -4)`, pointy and flat alike, because W2
+//     compared origin-centred spans and those intersect even though the
+//     chambers do not.
+//   - With W2 disabled so the footprint itself could be seen: of the 224 cells
+//     the author drew, 25 fell inside the rhombi under pointy-top and 24 under
+//     flat-top. 88% of what RegionAt then called floor was somewhere nobody
+//     drew, and 199 of the drawn cells were not floor at all.
 //
-// So "both settable" was not merely awkward, it was unreachable. What fixes it
-// is the room saying which rectangle it is rather than which rhombus contains
-// it — the floor mask Kirk deferred on rpg-toolkit#1105 until a caller forced
-// one, and this is the caller.
+// So "both settable" was not merely awkward, it was unreachable — and so was
+// either. What fixes it is the room saying which rectangle it is rather than
+// which rhombus contains it: the floor mask Kirk deferred on rpg-toolkit#1105
+// until a caller forced one, and this is the caller.
 //
 // # The mask is a function, not a set
 //
 // Nothing here stores a cell list. A cell is floor iff converting it back to
 // offset space lands inside [0,Width) x [0,Height) — one conversion and two
 // comparisons, O(1), from four numbers RoomData already persists (width,
-// height, origin, and the field's orientation). See [OrientationInput].
+// height, origin, and the field's orientation). See
+// [encounter.CanvasInput.Orientation].
 
 import (
 	"strings"
@@ -127,8 +130,8 @@ func (s *OrientationSuite) TestTheFloorIsExactlyWhatWasDrawn() {
 			}
 			s.Require().Equal(224, drawn, "the tomb is 6+10+12 wide and 8 tall")
 
-			// And NOTHING else is. Swept over the whole canvas, which is where
-			// the 156 phantom cells used to be.
+			// And NOTHING else is. Swept over the whole canvas, which is
+			// where the rhombus reading's phantom floor was.
 			canvas, cerr := enc.Canvas()
 			s.Require().NoError(cerr)
 			dims := canvas.GetGrid().GetDimensions()
@@ -142,7 +145,8 @@ func (s *OrientationSuite) TestTheFloorIsExactlyWhatWasDrawn() {
 				}
 			}
 			s.Equal(224, floorCells,
-				"no cell is floor but undrawn — this counted 380 against the rhombus reading")
+				"no cell is floor but undrawn — under the rhombus reading 88%% of the "+
+					"reported floor was somewhere nobody drew")
 		})
 	}
 }

@@ -33,9 +33,11 @@ type MemberID = core.EntityID
 // That sentence is worth stating because it used to be false. Width and Height
 // were read as an AXIAL span for a hex room: a rhombus, origin-centred, which
 // is not a shape anybody authors. One name meant two shapes, and the cost was
-// measured rather than argued — on the reference tomb, [Encounter.RegionAt]
-// called 380 cells floor against the 224 somebody drew, and the same three
-// chambers could not be built flat-top at all. See orientation.go.
+// measured rather than argued — the reference tomb's three chambers did not
+// construct at ALL under that reading, in either orientation, and with the
+// disjointness check disabled so the footprints could be seen, 88% of what
+// [Encounter.RegionAt] called floor was somewhere nobody drew. See
+// orientation.go.
 type RoomInput struct {
 	// ID is the unique room identifier.
 	ID string

@@ -1022,9 +1022,9 @@ func validateRoomsDisjoint(rooms []RoomInput, orientation Orientation) error {
 			// A SHEARED ONE (rpg-toolkit#1127), so on hex it is a fast REJECT
 			// path and never a verdict: two boxes that miss cannot share a
 			// cell, but two that meet very well might not. Deciding on the box
-			// is what refused the reference tomb outright under flat-top —
-			// `room "entrance" and room "hall" overlap at absolute cell
-			// (3, -9)` — for chambers that share no cell at all.
+			// is what refused the reference tomb outright in BOTH
+			// orientations — `room "entrance" and room "hall" overlap at
+			// absolute cell (1, -4)` — for chambers that share no cell at all.
 			if qOverlap && rOverlap && rooms[i].Grid == spatial.GridShapeHex &&
 				!hexFootprintsOverlap(rooms[i], rooms[j], orientation) {
 				continue

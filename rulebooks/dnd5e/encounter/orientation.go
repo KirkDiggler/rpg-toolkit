@@ -21,25 +21,24 @@ import (
 // cells stay a contiguous, non-overlapping set, but the smallest rhombus
 // containing them is strictly bigger than they are.
 //
-// Measured on the reference tomb's own three chambers, against the constructor:
+// Measured on the reference tomb's own three chambers (6, 10 and 12 columns
+// wide, 8 rows tall, laid left to right), against the constructor:
 //
-//   - pointy-top built, and then RegionAt reported 380 cells as floor against
-//     the 224 somebody drew. 156 places a member could stand, and be reported
-//     standing, that nobody put there.
-//   - flat-top DID NOT BUILD AT ALL — `room "entrance" and room "hall" overlap
-//     at absolute cell (3, -9)` — because W2 compared bounding boxes and the
-//     sheared rhombi intersect where the chambers do not.
+//   - NEITHER ORIENTATION BUILT. `room "entrance" and room "hall" overlap at
+//     absolute cell (1, -4)`, pointy-top and flat-top alike, because W2
+//     compared origin-centred spans and those intersect where the chambers do
+//     not. So Kirk's ruling that "flat and pointy top are both valid and should
+//     be settable" was not merely awkward to honour: neither was reachable.
 //
-// So Kirk's ruling that "flat and pointy top are both valid and should be
-// settable" was not merely awkward to honour, it was unreachable. This file is
-// what delivers it.
+//   - With W2 disabled, so the footprint itself is observable, the two
+//     readings turn out to disagree about nearly every cell. Of the 224 cells
+//     the author drew, 25 are inside the rhombi under pointy-top and 24 under
+//     flat-top. 88% of what RegionAt then called floor was somewhere nobody
+//     drew, and 199 of the 224 drawn cells were not floor at all.
 //
-// A third thing fell out of the measurement and is worth recording because it
-// is the sharpest form of the argument: an origin-centred axial span can only
-// be EVEN (axisBounds gives [-dim/2, dim/2-1]), so RoomInput{Width, Height}
-// could not express an 11-cell rhombus at all. The tomb's chambers were not
-// merely approximated by the old reading — several of them were not
-// expressible under it.
+// With the mask: 224 cells drawn, 224 reported floor, nothing phantom and
+// nothing missing, in BOTH orientations. That is what this file delivers, and
+// TestTheFloorIsExactlyWhatWasDrawn is where it is pinned.
 //
 // # The mask is a FUNCTION, not a set
 //
@@ -50,6 +49,14 @@ import (
 // comparisons, O(1), derived from four numbers RoomData already carries —
 // width, height, origin, and the field's orientation. There is no cell list on
 // the wire and none in memory.
+//
+// It is not free, and the price is VOID. A chamber's cells are a sheared
+// parallelogram and the canvas holding it is an origin-centred axial span, so
+// the span is far larger than the floor: the tomb's canvas is 90.5% void
+// pointy-top and 93.5% flat-top, where the rhombus reading's was 43.2%. Void
+// costs no memory — nothing is allocated per cell — but it IS what
+// [Encounter.IsLineOfSightBlocked] scans under [VoidIsOpaque], which is why
+// voidcost_internal_test.go measures its worst case on this shape.
 //
 // The second question ("does it belong in tools/spatial?") answers itself the
 // same way: there is no new grid type here. spatial already owns both
