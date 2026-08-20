@@ -18,10 +18,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -276,6 +278,55 @@ func (s *StrictnessTestSuite) TestAnAttachThatFailsFailsTheResolution() {
 	s.Require().Nil(out)
 	s.Require().ErrorIs(err, errRefused)
 	s.Require().Contains(err.Error(), heroID, "the error names the participant that would not attach")
+}
+
+func (s *StrictnessTestSuite) TestAbilityRequiresExactlyOneMarkedPool() {
+	profile := AttackProfile{
+		Ref:             refs.Weapons.Longsword(),
+		AbilityUsed:     abilities.STR,
+		AbilityModifier: 3,
+		Damage:          []damage.Damage{{Dice: "1d8", Type: damage.Slashing}},
+	}
+
+	s.Require().ErrorIs(profile.validate(), ErrBadAttack)
+}
+
+func (s *StrictnessTestSuite) TestAbilityAllowsZeroModifierWithExactlyOneMarkedPool() {
+	profile := AttackProfile{
+		Ref:             refs.Weapons.Longsword(),
+		AbilityUsed:     abilities.STR,
+		AbilityModifier: 0,
+		Damage: []damage.Damage{{
+			Dice:       "1d8",
+			Type:       damage.Slashing,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		}},
+	}
+
+	s.Require().NoError(profile.validate())
+}
+
+func (s *StrictnessTestSuite) TestMonsterProfileRejectsAbilityMarker() {
+	profile := AttackProfile{
+		Ref: refs.MonsterActions.Bite(),
+		Damage: []damage.Damage{{
+			Dice:       "2d4",
+			Type:       damage.Piercing,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		}},
+	}
+
+	s.Require().ErrorIs(profile.validate(), ErrBadAttack)
+}
+
+func (s *StrictnessTestSuite) TestMonsterProfileRejectsAbilityModifier() {
+	profile := AttackProfile{
+		Ref:             refs.MonsterActions.Bite(),
+		AbilityModifier: 2,
+		Damage:          []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+	}
+
+	s.Require().ErrorIs(profile.validate(), ErrBadAttack)
 }
 
 func TestStrictnessSuite(t *testing.T) {

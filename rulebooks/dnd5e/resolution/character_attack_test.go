@@ -187,11 +187,16 @@ func (s *CharacterAttackTestSuite) raging() json.RawMessage {
 func (s *CharacterAttackTestSuite) TestAHeroSwingsTheirLongswordAtAWolf() {
 	profile := s.compile(s.martialHero(), s.mainHand())
 
-	// STR 16 (+3) plus proficiency +2 to hit; the +3 rides the damage pool.
+	// STR 16 (+3) plus proficiency +2 to hit; the +3 remains separately attributable.
 	s.Require().Equal(refs.Weapons.Longsword(), profile.Ref)
 	s.Require().Equal(3+2, profile.AttackBonus)
-	s.Require().Equal("1d8+3", profile.DamageDice)
-	s.Require().Equal(damage.Slashing, profile.DamageType)
+	s.Require().Equal([]damage.Damage{{
+		Dice:       "1d8",
+		Type:       damage.Slashing,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+	}}, profile.Damage)
+	s.Require().Equal(abilities.STR, profile.AbilityUsed)
+	s.Require().Equal(3, profile.AbilityModifier)
 	s.Require().Nil(profile.Gate, "a weapon declares no rider")
 
 	out, err := s.swingAt(s.martialHero(), profile,
@@ -231,12 +236,16 @@ func (s *CharacterAttackTestSuite) TestFinesseTakesTheBetterAbilityInBothNumbers
 
 	dagger := s.compile(sheet, &CharacterAttackInput{Slot: character.SlotMainHand})
 	s.Require().Equal(4+2, dagger.AttackBonus, "DEX +4 plus proficiency +2")
-	s.Require().Equal("1d4+4", dagger.DamageDice, "and the DEX modifier rides the damage too")
-	s.Require().Equal(damage.Piercing, dagger.DamageType)
+	s.Require().Equal("1d4", dagger.Damage[0].Dice)
+	s.Require().Equal(damage.Piercing, dagger.Damage[0].Type)
+	s.Require().Equal(abilities.DEX, dagger.AbilityUsed)
+	s.Require().Equal(4, dagger.AbilityModifier, "and the DEX modifier is preserved separately")
 
 	mace := s.compile(sheet, &CharacterAttackInput{Slot: character.SlotOffHand})
 	s.Require().Equal(0+2, mace.AttackBonus, "no finesse: STR +0 plus proficiency +2")
-	s.Require().Equal("1d6+0", mace.DamageDice, "and STR rides the damage, at +0")
+	s.Require().Equal("1d6", mace.Damage[0].Dice)
+	s.Require().Equal(abilities.STR, mace.AbilityUsed)
+	s.Require().Zero(mace.AbilityModifier, "a legitimate +0 modifier remains explicit")
 
 	// The whole point, stated as the difference the property makes.
 	s.Require().Equal(4, dagger.AttackBonus-mace.AttackBonus,
@@ -255,7 +264,9 @@ func (s *CharacterAttackTestSuite) TestFinesseKeepsStrengthWhenStrengthIsBetter(
 
 	dagger := s.compile(sheet, s.mainHand())
 	s.Require().Equal(4+2, dagger.AttackBonus, "STR +4 wins")
-	s.Require().Equal("1d4+4", dagger.DamageDice)
+	s.Require().Equal("1d4", dagger.Damage[0].Dice)
+	s.Require().Equal(abilities.STR, dagger.AbilityUsed)
+	s.Require().Equal(4, dagger.AbilityModifier)
 }
 
 // A tie is not a choice: identical modifiers produce identical numbers, so the
@@ -270,7 +281,9 @@ func (s *CharacterAttackTestSuite) TestFinesseOnATieIsStillTheSameArithmetic() {
 
 	dagger := s.compile(sheet, s.mainHand())
 	s.Require().Equal(2+2, dagger.AttackBonus)
-	s.Require().Equal("1d4+2", dagger.DamageDice)
+	s.Require().Equal("1d4", dagger.Damage[0].Dice)
+	s.Require().Equal(abilities.STR, dagger.AbilityUsed)
+	s.Require().Equal(2, dagger.AbilityModifier)
 }
 
 // ---------------------------------------------------------------------------
@@ -294,9 +307,10 @@ func (s *CharacterAttackTestSuite) TestProficiencyIsWorthExactlyTheProficiencyBo
 	s.Require().Equal(2, trained.AttackBonus-untrained.AttackBonus,
 		"exactly the sheet's proficiency bonus apart")
 
-	s.Require().Equal(untrained.DamageDice, trained.DamageDice,
+	s.Require().Equal(untrained.Damage, trained.Damage,
 		"proficiency never touches the damage pool")
-	s.Require().Equal("1d8+3", trained.DamageDice)
+	s.Require().Equal(3, trained.AbilityModifier)
+	s.Require().Equal(3, untrained.AbilityModifier)
 }
 
 // A sheet with no weapon grants at all adds nothing.
@@ -309,16 +323,27 @@ func (s *CharacterAttackTestSuite) TestNoGrantsAddsNoProficiencyBonus() {
 	s.Require().Equal(3, profile.AttackBonus)
 }
 
+func (s *CharacterAttackTestSuite) TestNegativeAbilityModifierRemainsSeparateFromPureDice() {
+	sheet := s.martialHero()
+	sheet.AbilityScores[abilities.STR] = 8
+
+	profile := s.compile(sheet, s.mainHand())
+
+	s.Require().Equal("1d8", profile.Damage[0].Dice)
+	s.Require().Equal(-1, profile.AbilityModifier)
+	s.Require().Equal(abilities.STR, profile.AbilityUsed)
+}
+
 // ---------------------------------------------------------------------------
 // 4. A character's critical hit doubles the dice and not the modifier.
 // ---------------------------------------------------------------------------
 
-// The ability modifier rides inside "1d8+3", and that is exactly why the crit
-// is right: the machine rolls the pool twice and takes the flat modifier from
-// the first roll only. Two d8s, one +3.
+// The ability modifier remains separate from pure "1d8" notation. The strike
+// still applies it once on a critical hit: two d8s, one +3.
 func (s *CharacterAttackTestSuite) TestACharacterCritDoublesTheDiceNotTheAbilityModifier() {
 	profile := s.compile(s.martialHero(), s.mainHand())
-	s.Require().Equal("1d8+3", profile.DamageDice)
+	s.Require().Equal("1d8", profile.Damage[0].Dice)
+	s.Require().Equal(3, profile.AbilityModifier)
 
 	out, err := s.swingAt(s.martialHero(), profile,
 		&sequenceRoller{singles: []int{20}, pair: []int{5, 4}, fallback: 2})
@@ -349,7 +374,8 @@ func (s *CharacterAttackTestSuite) TestARagingHerosBonusArrivesViaTheChainNotThe
 
 	s.Require().Equal(calm, raging,
 		"the compiler reads static facts only — Rage is invisible to it")
-	s.Require().Equal("1d8+3", raging.DamageDice, "no +2 anywhere in the compiled pool")
+	s.Require().Equal("1d8", raging.Damage[0].Dice, "no arithmetic is fused into canonical dice")
+	s.Require().Equal(3, raging.AbilityModifier, "only the static ability modifier compiles")
 	s.Require().Equal(3+2, raging.AttackBonus)
 
 	out, err := s.swingAt(s.martialHero(s.raging()), raging,
@@ -395,7 +421,8 @@ func (s *CharacterAttackTestSuite) TestRageDoesNotPayOutOnADexterityFinesseSwing
 
 	profile := s.compile(sheet, s.mainHand())
 	s.Require().Equal(abilities.DEX, profile.AbilityUsed, "finesse chose DEX")
-	s.Require().Equal("1d4+4", profile.DamageDice)
+	s.Require().Equal("1d4", profile.Damage[0].Dice)
+	s.Require().Equal(4, profile.AbilityModifier)
 
 	freshSheet := s.heroSheet(grants, equipped, s.raging())
 	freshSheet.AbilityScores[abilities.STR] = 10
@@ -481,6 +508,18 @@ func (s *CharacterAttackTestSuite) TestTheCompilerIsDeterministic() {
 	s.Require().Equal(first, second)
 }
 
+func (s *CharacterAttackTestSuite) TestCompiledDamagePropertiesDoNotAliasWeaponCatalogContent() {
+	profile := s.compile(s.martialHero(), s.mainHand())
+	s.Require().Equal([]damage.Property{damage.AddsAttackAbilityModifier}, profile.Damage[0].Properties)
+
+	original := profile.Damage[0].Properties[0]
+	defer func() { profile.Damage[0].Properties[0] = original }()
+	profile.Damage[0].Properties[0] = damage.DoesNotCrit
+
+	fresh := s.compile(s.martialHero(), s.mainHand())
+	s.Require().Equal([]damage.Property{damage.AddsAttackAbilityModifier}, fresh.Damage[0].Properties)
+}
+
 // ---------------------------------------------------------------------------
 // Versatile, and the refusals.
 // ---------------------------------------------------------------------------
@@ -492,12 +531,15 @@ func (s *CharacterAttackTestSuite) TestAVersatileWeaponStepsItsDieAndNothingElse
 	twoHanded := s.compile(s.martialHero(),
 		&CharacterAttackInput{Slot: character.SlotMainHand, TwoHanded: true})
 
-	s.Require().Equal("1d8+3", oneHanded.DamageDice)
-	s.Require().Equal("1d10+3", twoHanded.DamageDice)
+	s.Require().Equal("1d8", oneHanded.Damage[0].Dice)
+	s.Require().Equal("1d10", twoHanded.Damage[0].Dice)
 
 	s.Require().Equal(oneHanded.AttackBonus, twoHanded.AttackBonus, "the grip does not change accuracy")
 	s.Require().Equal(oneHanded.Ref, twoHanded.Ref)
-	s.Require().Equal(oneHanded.DamageType, twoHanded.DamageType)
+	s.Require().Equal(oneHanded.Damage[0].Type, twoHanded.Damage[0].Type)
+	s.Require().Equal(oneHanded.Damage[0].FlatBonus, twoHanded.Damage[0].FlatBonus)
+	s.Require().Equal(oneHanded.Damage[0].Properties, twoHanded.Damage[0].Properties)
+	s.Require().Equal(oneHanded.AbilityModifier, twoHanded.AbilityModifier)
 }
 
 // A non-versatile weapon in two hands is the same weapon: the flag asks the
@@ -511,7 +553,8 @@ func (s *CharacterAttackTestSuite) TestTwoHandedOnANonVersatileWeaponChangesNoth
 	oneHanded := s.compile(sheet, s.mainHand())
 	twoHanded := s.compile(sheet, &CharacterAttackInput{Slot: character.SlotMainHand, TwoHanded: true})
 
-	s.Require().Equal("2d6+3", oneHanded.DamageDice)
+	s.Require().Equal("2d6", oneHanded.Damage[0].Dice)
+	s.Require().Equal(3, oneHanded.AbilityModifier)
 	s.Require().Equal(oneHanded, twoHanded)
 }
 
@@ -536,7 +579,8 @@ func (s *CharacterAttackTestSuite) TestRefusesWhatItCannotCompile() {
 		)
 		profile, err := AttackFromCharacter(s.load(sheet), s.mainHand())
 		s.Require().NoError(err, "a dagger carries a thrown range but is a melee weapon")
-		s.Require().Equal("1d4+3", profile.DamageDice)
+		s.Require().Equal("1d4", profile.Damage[0].Dice)
+		s.Require().Equal(3, profile.AbilityModifier)
 	})
 
 	s.Run("an empty slot, rather than a silent unarmed strike", func() {

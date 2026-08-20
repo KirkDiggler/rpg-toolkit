@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -391,7 +392,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	for i := 0; i < 10; i++ {
 		switch typed := step.(type) {
 		case Done:
-			s.Require().Equal([]string{"attack chain", "damage chain"}, names,
+			s.Require().Equal([]string{"attack chain", "post attack roll", "damage chain"}, names,
 				"every phase boundary was a value this test drove by hand")
 
 			outcome, ok := typed.Outcome.(StrikeOutcome)
@@ -420,6 +421,35 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	}
 
 	s.Require().Fail("the machine did not finish")
+}
+
+func (s *StrikeTestSuite) TestStrikePublishesPostAttackRollForSubscribers() {
+	bus := events.NewEventBus()
+	var got *dnd5eEvents.PostAttackRollEvent
+	_, err := dnd5eEvents.PostAttackRollChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, event *dnd5eEvents.PostAttackRollEvent,
+			c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
+		) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
+			copy := *event
+			got = &copy
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	_, err = s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(),
+		NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Attack:     s.wolfAttack(),
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, fallback: 2},
+		}))
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(wolfID, got.AttackerID)
+	s.Require().Equal(heroID, got.TargetID)
+	s.Require().Equal(hitRoll, got.AttackRoll)
+	s.Require().Equal(14, got.OriginalAC)
+	s.Require().True(got.WouldHit)
 }
 
 // Damage lands exactly once. It is applied to the sheet directly, and NOT
@@ -459,7 +489,7 @@ func (s *StrikeTestSuite) TestRefusesAStrikeItCannotRun() {
 	world := s.world(spatial.Position{X: 8, Y: 5})
 
 	s.Run("an action this build cannot read is refused at compilation", func() {
-		_, err := AttackFromMonsterAction(monster.ActionData{Ref: *refs.MonsterActions.Scimitar()})
+		_, err := AttackFromMonsterAction(monster.ActionData{Ref: *refs.MonsterActions.Melee()})
 		s.Require().ErrorIs(err, ErrBadAttack)
 	})
 
@@ -624,6 +654,264 @@ func (s *StrikeTestSuite) TestANaturalTwentyDoublesTheDiceNotTheModifier() {
 	s.Require().True(outcome.Critical)
 	s.Require().Equal(3+4+1+2+2, outcome.Damage,
 		"four dice for the crit, the modifier exactly once")
+}
+
+func (s *StrikeTestSuite) resolveProfile(
+	profile AttackProfile, roller dice.Roller,
+) (*Output, error) {
+	return s.resolve(s.world(spatial.Position{X: 8, Y: 5}), s.hero(), NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   heroID,
+		Attack:     profile,
+		Roller:     roller,
+	}))
+}
+
+func oozeProfile(pools ...damage.Damage) AttackProfile {
+	return AttackProfile{
+		Ref:         refs.MonsterActions.Melee(),
+		AttackBonus: 4,
+		Damage:      pools,
+	}
+}
+
+func (s *StrikeTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
+	bus := events.NewEventBus()
+	damageGathers := 0
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			damageGathers++
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	profile := oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2},
+		damage.Damage{Dice: "1d6", Type: damage.Acid},
+	)
+	machine := NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   heroID,
+		Attack:     profile,
+		Roller:     scripted(15, 4, 5),
+	}).(*strikeMachine)
+	applyDamageCalls := 0
+	machine.applyDamage = func(
+		ctx context.Context, target combat.Combatant, input *combat.ApplyDamageInput,
+	) *combat.ApplyDamageResult {
+		applyDamageCalls++
+		return target.ApplyDamage(ctx, input)
+	}
+
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(), machine)
+	s.Require().NoError(err)
+
+	struck := s.strikeOutcome(out)
+	s.Equal(11, struck.Damage)
+	s.Len(struck.DamageInstances, 2)
+	s.Len(struck.DamageComponents, 2)
+	s.Equal(1, damageGathers, "all pools travel through one damage fold")
+	s.Equal(1, applyDamageCalls, "all typed instances enter one target application")
+	s.Require().Len(out.DirtyCharacters, 1)
+	s.Equal(14-11, out.DirtyCharacters[0].HitPoints,
+		"the folded instances land together in one application")
+}
+
+func (s *StrikeTestSuite) TestSameTypePoolsExposeMarkedPrimaryMetadata() {
+	bus := events.NewEventBus()
+	var captured dnd5eEvents.DamageChainEvent
+	damageGathers := 0
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, event *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			damageGathers++
+			captured = *event
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	profile := AttackProfile{
+		Ref:             refs.Weapons.Shortsword(),
+		AttackBonus:     5,
+		AbilityUsed:     abilities.DEX,
+		AbilityModifier: 3,
+		Damage: []damage.Damage{
+			{Dice: "1d4", Type: damage.Piercing},
+			{
+				Dice:       "1d6",
+				Type:       damage.Piercing,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			},
+		},
+	}
+	out, err := s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(), NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   heroID,
+		Attack:     profile,
+		Roller:     scripted(15, 2, 4),
+	}))
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+
+	s.Equal(1, damageGathers)
+	s.Require().Len(captured.Components, 3)
+	s.Equal("1d6", captured.Components[1].Dice,
+		"primary notation remains on the marked component, not the event envelope")
+	s.Equal(damage.Piercing, captured.Components[1].DamageType)
+	s.Equal("1d6", captured.WeaponDamageDice,
+		"the event carries the marked primary notation for inheriting features")
+	s.Equal(damage.Piercing, captured.WeaponDamageType,
+		"the event carries the marked primary type for inheriting features")
+}
+
+func (s *StrikeTestSuite) TestCriticalDoublesEveryEligiblePoolButNoFlatBonus() {
+	profile := oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2},
+		damage.Damage{Dice: "1d6", Type: damage.Acid},
+	)
+	out, err := s.resolveProfile(profile, scripted(20, 4, 5, 6, 3))
+	s.Require().NoError(err)
+
+	struck := s.strikeOutcome(out)
+	s.Equal(20, struck.Damage)
+	s.Require().Len(struck.DamageComponents, 2)
+	s.Equal([]int{4, 5}, struck.DamageComponents[0].FinalDiceRolls)
+	s.Equal([]int{6, 3}, struck.DamageComponents[1].FinalDiceRolls)
+	s.True(struck.DamageComponents[0].IsCritical)
+	s.True(struck.DamageComponents[1].IsCritical)
+}
+
+func (s *StrikeTestSuite) TestDoesNotCritPoolRollsOnlyOnce() {
+	profile := oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning},
+		damage.Damage{Dice: "1d6", Type: damage.Acid, Properties: []damage.Property{damage.DoesNotCrit}},
+	)
+	roller := scripted(20, 4, 5, 6)
+	out, err := s.resolveProfile(profile, roller)
+	s.Require().NoError(err)
+
+	struck := s.strikeOutcome(out)
+	s.Equal(15, struck.Damage)
+	s.Require().Len(struck.DamageComponents, 2)
+	s.Equal([]int{4, 5}, struck.DamageComponents[0].FinalDiceRolls)
+	s.True(struck.DamageComponents[0].IsCritical)
+	s.Equal([]int{6}, struck.DamageComponents[1].FinalDiceRolls)
+	s.False(struck.DamageComponents[1].IsCritical)
+	s.Empty(roller.values, "the non-critical pool consumed no second roll")
+}
+
+func (s *StrikeTestSuite) TestTypedOutcomeMarksTheExactAbilityPool() {
+	profile := AttackProfile{
+		Ref:             refs.Weapons.Shortsword(),
+		AttackBonus:     5,
+		AbilityUsed:     abilities.DEX,
+		AbilityModifier: 3,
+		Damage: []damage.Damage{
+			{Dice: "1d4", Type: damage.Piercing},
+			{
+				Dice:       "1d6",
+				Type:       damage.Piercing,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			},
+		},
+	}
+	out, err := s.resolveProfile(profile, scripted(15, 2, 4))
+	s.Require().NoError(err)
+
+	struck := s.strikeOutcome(out)
+	s.Equal(9, struck.Damage)
+	s.Equal([]damage.Instance{{Amount: 9, Type: damage.Piercing}}, struck.DamageInstances)
+	s.Require().Len(struck.DamageComponents, 3)
+	s.Equal("1d4", struck.DamageComponents[0].Dice)
+	s.Empty(struck.DamageComponents[0].Properties)
+	s.Equal(0, struck.DamageComponents[0].FlatBonus)
+	s.Equal("1d6", struck.DamageComponents[1].Dice)
+	s.Equal([]damage.Property{damage.AddsAttackAbilityModifier}, struck.DamageComponents[1].Properties)
+	s.Equal(0, struck.DamageComponents[1].FlatBonus)
+	s.Equal(dnd5eEvents.DamageSourceAbility, struck.DamageComponents[2].Source)
+	s.Equal(refs.Abilities.Dexterity(), struck.DamageComponents[2].SourceRef)
+	s.Equal(damage.Piercing, struck.DamageComponents[2].DamageType)
+	s.Equal(3, struck.DamageComponents[2].FlatBonus)
+	s.False(struck.DamageComponents[2].IsCritical)
+}
+
+func (s *StrikeTestSuite) TestInvalidProfileConsumesNoRandomness() {
+	roller := scripted(15, 4)
+	_, err := s.resolveProfile(oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning},
+		damage.Damage{Dice: "1d6+2", Type: damage.Acid},
+	), roller)
+
+	s.Require().ErrorIs(err, ErrBadAttack)
+	s.Zero(roller.rolls)
+}
+
+func (s *StrikeTestSuite) TestCanceledAdvantageRollsStraightAndDoesNotGrantSneakAttack() {
+	sneak, err := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
+		CharacterID: heroID,
+		Level:       1,
+	}).ToJSON()
+	s.Require().NoError(err)
+
+	bus := events.NewEventBus()
+	_, err = dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ dnd5eEvents.AttackChainEvent,
+			c chain.Chain[dnd5eEvents.AttackChainEvent],
+		) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+			err := c.Add(combat.StageConditions, "canceled_advantage",
+				func(_ context.Context, event dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+					event.AdvantageSources = append(event.AdvantageSources, dnd5eEvents.AttackModifierSource{
+						SourceRef: refs.Conditions.Helped(),
+					})
+					event.DisadvantageSources = append(event.DisadvantageSources, dnd5eEvents.AttackModifierSource{
+						SourceRef: refs.Conditions.Dodging(),
+					})
+					return event, nil
+				})
+			return c, err
+		})
+	s.Require().NoError(err)
+
+	profile := AttackProfile{
+		Ref:             refs.Weapons.Shortsword(),
+		AttackBonus:     5,
+		AbilityUsed:     abilities.DEX,
+		AbilityModifier: 3,
+		Damage: []damage.Damage{{
+			Dice:       "1d6",
+			Type:       damage.Piercing,
+			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		}},
+	}
+	roller := scripted(15, 4)
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: s.world(spatial.Position{X: 8, Y: 5}),
+		Participants: []Participant{
+			{Character: s.hero(sneak)},
+			{Monster: s.wolf(wolfID)},
+			{Monster: s.wolf(secondWolfID)},
+		},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Attack:     profile,
+			Roller:     roller,
+		}),
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	struck := s.strikeOutcome(out)
+	s.Equal(15, struck.Roll, "advantage and disadvantage cancel to one d20")
+	s.Require().Len(struck.Folded.AdvantageSources, 1)
+	s.Require().Len(struck.Folded.DisadvantageSources, 1)
+	s.Equal(7, struck.Damage)
+	for _, component := range struck.DamageComponents {
+		s.NotEqual(refs.Features.SneakAttack(), component.SourceRef,
+			"canceled advantage alone cannot satisfy Sneak Attack")
+	}
 }
 
 // wolfAttack compiles the catalog wolf's bite into the neutral profile the

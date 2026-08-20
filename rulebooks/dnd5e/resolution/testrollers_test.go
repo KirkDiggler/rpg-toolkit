@@ -1,8 +1,48 @@
 package resolution
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
+
+// queuedRoller consumes one shared queue across Roll and RollN. Damage-pool
+// tests use it to prove the exact amount and order of randomness a strike
+// consumes rather than giving every dice API a reusable fallback answer.
+type queuedRoller struct {
+	values []int
+	rolls  int
+}
+
+func scripted(values ...int) *queuedRoller {
+	return &queuedRoller{values: append([]int(nil), values...)}
+}
+
+func (r *queuedRoller) Roll(_ context.Context, sides int) (int, error) {
+	values, err := r.take(1, sides)
+	if err != nil {
+		return 0, err
+	}
+
+	return values[0], nil
+}
+
+func (r *queuedRoller) RollN(_ context.Context, count, sides int) ([]int, error) {
+	return r.take(count, sides)
+}
+
+func (r *queuedRoller) take(count, sides int) ([]int, error) {
+	if len(r.values) < count {
+		return nil, fmt.Errorf("scripted roller exhausted: need %d d%d, have %d values", count, sides, len(r.values))
+	}
+
+	out := append([]int(nil), r.values[:count]...)
+	r.values = r.values[count:]
+	r.rolls += count
+
+	return out, nil
+}
 
 // orderAsGiven is the deterministic InitiativeRoller every fixture wires.
 //
