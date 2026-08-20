@@ -68,3 +68,19 @@ full repository release gate can be claimed green.
   writable task-local Go build cache.
 - PASS: full D&D module `go test ./... -count=1`.
 - PASS: `scripts/check-no-legacy-attack.sh`.
+
+## Review follow-up commit
+
+- Strengthened the barbarian encounter fixture with an explicit typed ability
+  component and assertions for the folded +3 ability and +2 rage components;
+  `combat.FinalDamage` now proves the canonical fold totals 15 rather than
+  relying on narration-only logging.
+- Formatted the rogue encounter fixture and removed remaining stale resolver
+  wording from touched encounter comments and the skipped superseded scenario.
+
+## Review follow-up verification
+
+- PASS: `go test ./integration -count=1`.
+- PASS: full D&D module `go test ./... -count=1`.
+- PASS: `scripts/check-no-legacy-attack.sh`.
+- PASS: `git diff --check`.

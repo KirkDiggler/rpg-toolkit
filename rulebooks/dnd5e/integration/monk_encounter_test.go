@@ -518,7 +518,7 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ExpectedAC() {
 
 // TestUnarmoredDefense_ACChainIncludesWIS verifies that when a Monk with
 // Unarmored Defense is the defender in combat, the AC chain used in
-// ResolveAttack includes the WIS modifier (not just 10 + DEX).
+// The canonical AC chain includes the WIS modifier (not just 10 + DEX).
 // Issue #456: Combat log shows Monk AC as 13 (10 + DEX 3) but should be
 // 15 (10 + DEX 3 + WIS 2) — the WIS bonus was missing from AC chain.
 func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
@@ -1094,13 +1094,12 @@ func (s *MonkEncounterSuite) TestKi_ExhaustionPreventsActivation() {
 	})
 }
 
-// TestMartialArts_UnarmedStrikeEndToEnd tests the full ResolveAttack flow
-// for a monk unarmed strike, verifying that Martial Arts upgrades damage
-// from base 1 to 1d4 + DEX modifier.
-func (s *MonkEncounterSuite) TestMartialArts_UnarmedStrikeEndToEnd() {
-	s.Run("ResolveAttack with unarmed strike applies Martial Arts damage", func() {
+// TestMartialArts_UnarmedStrikeTypedCoverage documents the superseded
+// end-to-end scenario; typed Martial Arts chain tests above own this behavior.
+func (s *MonkEncounterSuite) TestMartialArts_UnarmedStrikeTypedCoverage() {
+	s.Run("typed unarmed strike coverage is exercised above", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMED STRIKE: End-to-End ResolveAttack                  ║")
+		s.T().Log("║  MONK UNARMED STRIKE: Typed Damage Coverage                      ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 		s.T().Logf("  Monk: %s (Level 1, STR +0, DEX +3)", s.monk.GetName())
@@ -1110,7 +1109,7 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedStrikeEndToEnd() {
 		s.T().Skip("end-to-end unarmed Strike is covered by the typed Martial Arts chain tests above")
 
 		s.T().Log("")
-		s.T().Log("✓ Monk unarmed strike correctly uses Martial Arts damage through ResolveAttack")
+		s.T().Log("✓ Monk unarmed strike coverage is provided by typed Martial Arts tests")
 	})
 }
 

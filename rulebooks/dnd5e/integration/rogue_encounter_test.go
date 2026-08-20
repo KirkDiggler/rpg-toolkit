@@ -365,8 +365,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 		// First attack - sneak attack should trigger
 		s.mockRoller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{3}, nil)
 
-			damageEvent1 := &dnd5eEvents.DamageChainEvent{
-				AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, HasAdvantage: true,
+		damageEvent1 := &dnd5eEvents.DamageChainEvent{
+			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, HasAdvantage: true,
 			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}},
 		}
 
@@ -379,8 +379,8 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 		s.Len(finalEvent1.Components, 2, "First attack should have sneak attack")
 
 		// Second attack (same turn) - sneak attack should NOT trigger
-			damageEvent2 := &dnd5eEvents.DamageChainEvent{
-				AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, HasAdvantage: true,
+		damageEvent2 := &dnd5eEvents.DamageChainEvent{
+			AttackerID: s.rogue.GetID(), TargetID: s.goblin.GetID(), AbilityUsed: abilities.DEX, HasAdvantage: true,
 			Components: []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}}},
 		}
 

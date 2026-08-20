@@ -107,7 +107,7 @@ func (s *BarbarianEncounterSuite) SetupSubTest() {
 	s.lookup.Add(s.barbarian)
 	s.lookup.Add(s.goblin)
 
-	// Set up context with combatant lookup for ResolveAttack
+	// Set up context with combatant lookup for encounter fixtures.
 	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
 
 	// Place in room - adjacent for melee
@@ -442,24 +442,34 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 			IsMelee:         true,
 			Components: []dnd5eEvents.DamageComponent{{
 				Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{10}, FinalDiceRolls: []int{10}, DamageType: damage.Slashing,
+			}, {
+				Source: dnd5eEvents.DamageSourceAbility, FlatBonus: 3, DamageType: damage.Slashing,
 			}},
 		}
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
 		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
-		_, err = modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 		s.Require().NoError(err)
-		s.T().Logf("    Roll: 1d20(%d)+5 = %d vs AC 13 → HIT!", 18, 23)
-		s.T().Logf("    Damage: 1d12(%d)+3+2(rage) = 15", 10)
-
-		// Goblin is likely dead (7 HP vs 15 damage)
-		s.T().Log("")
-		if s.goblin.GetHitPoints() <= 0 {
-			s.T().Log("  💀 The goblin falls!")
-		} else {
-			s.T().Logf("  Goblin HP: %d/%d", s.goblin.GetHitPoints(), s.goblin.GetMaxHitPoints())
+		var abilityBonus, rageBonus int
+		for _, component := range finalEvent.Components {
+			switch component.Source {
+			case dnd5eEvents.DamageSourceAbility:
+				abilityBonus += component.FlatBonus
+			case dnd5eEvents.DamageSourceCondition:
+				rageBonus += component.FlatBonus
+			}
 		}
+		s.Equal(3, abilityBonus, "typed ability component should contribute +3")
+		s.Equal(2, rageBonus, "raging condition should contribute +2")
+		_, foldedDamage := combat.FinalDamage(finalEvent.Components)
+		s.Equal(15, foldedDamage, "typed damage fold should total weapon 10 + ability 3 + rage 2")
+		s.T().Logf("    Roll: 1d20(%d)+5 = %d vs AC 13 → HIT!", 18, 23)
+		s.T().Logf("    Damage fold: weapon 1d12(%d) + ability +%d + rage +%d = %d", 10, abilityBonus, rageBonus, foldedDamage)
+
+		s.T().Log("")
+		s.T().Logf("  Goblin HP remains %d/%d; this scenario verifies the canonical fold", s.goblin.GetHitPoints(), s.goblin.GetMaxHitPoints())
 
 		// End round 1
 		_ = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
@@ -477,7 +487,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		s.T().Log("═══════════════════════════════════════════════════════════════════")
 		s.T().Logf("  Rounds: 1")
 		s.T().Logf("  Grog HP: %d/%d", s.barbarian.GetHitPoints(), s.barbarian.GetMaxHitPoints())
-		s.T().Logf("  Goblin: DEFEATED")
+		s.T().Logf("  Goblin HP: %d/%d", s.goblin.GetHitPoints(), s.goblin.GetMaxHitPoints())
 		s.T().Logf("  Rage status: Active")
 		s.T().Logf("  Rage uses remaining: %d/2", s.barbarian.GetResource(resources.RageCharges).Current())
 		s.T().Log("")
