@@ -181,9 +181,9 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 					},
 				},
 				WeaponDamageDice: "1d1",
-				IsCritical:  false,
-				AbilityUsed: abilities.STR,
-				WeaponRef:   refs.Weapons.UnarmedStrike(),
+				IsCritical:       false,
+				AbilityUsed:      abilities.STR,
+				WeaponRef:        refs.Weapons.UnarmedStrike(),
 			}
 
 			// Publish through damage chain

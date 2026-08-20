@@ -151,12 +151,6 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "entity %s not found in room", input.EntityID)
 	}
 
-	// Use provided roller or default
-	roller := input.Roller
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
-
 	result := &MoveEntityResult{
 		FinalPosition:  currentPos,
 		StepsCompleted: 0,
@@ -210,17 +204,6 @@ func MoveEntity(ctx context.Context, input *MoveEntityInput) (*MoveEntityResult,
 			return result, nil
 		}
 
-		// Process opportunity attacks if not prevented
-		if !finalEvent.IsOAPrevented() {
-			for _, threatenerID := range threateningEntities {
-				// Check if mover is leaving this threatener's threat range
-				if isLeavingThreatRange(ctx, room, input.EntityID, threatenerID, currentPos, nextPos) {
-					// The canonical resolution module owns opportunity Strike
-					// scheduling; this package only detects the departure.
-				}
-			}
-		}
-
 		// Actually move the entity in the spatial room
 		if err := room.MoveEntity(input.EntityID, nextPos); err != nil {
 			return nil, rpgerr.Wrapf(err, "failed to move entity to position (%v, %v)", nextPos.X, nextPos.Y)
@@ -269,42 +252,6 @@ func findThreateningEntities(
 	}
 
 	return threatening
-}
-
-// isLeavingThreatRange checks if moving from fromPos to toPos leaves the threatener's threat range.
-// An entity leaves threat range when:
-// - They were within threat range at fromPos
-// - They will be outside threat range at toPos
-func isLeavingThreatRange(
-	ctx context.Context,
-	room spatial.Room,
-	_ string,
-	threatenerID string,
-	fromPos, toPos spatial.Position,
-) bool {
-	threatenerPos, found := room.GetEntityPosition(threatenerID)
-	if !found {
-		return false
-	}
-
-	grid := room.GetGrid()
-	distanceFrom := grid.Distance(threatenerPos, fromPos)
-	distanceTo := grid.Distance(threatenerPos, toPos)
-
-	// Get the threatener's reach (default 5ft for now)
-	reach := getEntityReach(ctx, threatenerID)
-
-	// Leaving threat range means: was in range, will be out of range
-	return distanceFrom <= reach && distanceTo > reach
-}
-
-// getEntityReach returns the melee threat reach for an entity in grid units.
-// Most entities have 1 unit reach (5ft), but reach weapons extend this to 2 units (10ft).
-// Future: Check equipped weapons for reach property.
-func getEntityReach(_ context.Context, _ string) float64 {
-	// For now, assume all entities have standard 1 unit (5ft) reach
-	// Future: Look up equipped weapon and check for reach property
-	return DefaultMeleeReach
 }
 
 // canMakeOpportunityAttack checks if an entity is capable of making opportunity attacks.
