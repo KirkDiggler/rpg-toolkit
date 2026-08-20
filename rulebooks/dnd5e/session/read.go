@@ -292,6 +292,7 @@ func (m *Manager) loadWorldWithBaseline(
 		Data:       *world,
 		Initiative: m.initiative,
 		Standing:   standing,
+		Sight:      sightSeam{},
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot
@@ -341,15 +342,22 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrClosed)
 	case errors.Is(err, encounter.ErrNoEnding):
 		return fmt.Errorf("%w", ErrNoEnding)
-	case errors.Is(err, encounter.ErrNoConnection), errors.Is(err, encounter.ErrBadConnection):
+	case errors.Is(err, encounter.ErrBadConnection),
+		errors.Is(err, encounter.ErrNoDoor),
+		errors.Is(err, encounter.ErrBadDoor):
 		return fmt.Errorf("%w", ErrNoConnection)
-	case errors.Is(err, encounter.ErrNoCrossing):
-		// Checked BEFORE ErrBadPlacement below, though the two cannot both
-		// match: the ordering states the distinction rather than relying on it.
-		// A cell in the next room with no doorway is not a bad position — the
-		// cell is real, and a caller told "off the map" would go looking for
+	case errors.Is(err, encounter.ErrLocked):
+		// A door refusing to open because it is locked. Checked BEFORE
+		// ErrBadPlacement below: a locked door is a fiction beat with a DC
+		// behind it, and a caller told "bad position" would go looking for
 		// arithmetic that is fine.
-		return fmt.Errorf("%w", ErrNoCrossing)
+		//
+		// This catches the DOOR VERB's refusal only. A walk into a locked door
+		// still arrives as ErrBadPlacement, because the composition puts the
+		// door's state in text rather than in a sentinel (rpg-toolkit#1135).
+		// When that lands, the walk case joins this one and nothing else here
+		// has to change.
+		return fmt.Errorf("%w", ErrLocked)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):

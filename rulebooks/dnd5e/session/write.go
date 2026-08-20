@@ -350,28 +350,21 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 func place(
 	scope *writeScope, id string, kind MemberKind, at spatial.Position,
 ) (*encounter.JoinOutput, error) {
-	// The one place a cell becomes a room. The composition's verbs are
-	// room-local by law, so somebody has to resolve an absolute cell to the
-	// chamber that owns it; doing it HERE means every caller of this seam
-	// speaks one map, and a room id never has to appear in an input.
-	located, err := scope.enc.Locate(&encounter.LocateInput{Position: at})
-	if err != nil {
-		// ErrBadPosition is what a caller matches on, and the composition's own
-		// error keeps WHY — owned by no room, off the grid, or not an integral
-		// cell — which is the difference between a typo and a fractional
-		// coordinate. That account is kept as TEXT: wrapping it too would let a
-		// host match on encounter.ErrBadPlacement, which is the leak S2 exists
-		// to prevent and the one no AST test can see (rpg-toolkit#1058).
-		return nil, fmt.Errorf("no room owns %v: %w: %v", at, ErrBadPosition, err)
-	}
-
+	// This used to resolve the cell to a room first, because the composition's
+	// verbs were room-local by law and somebody had to say which chamber owned
+	// an absolute cell. That law is gone (rpg-toolkit#1059 and the world-model
+	// wave): the composition speaks one map, so the cell goes straight in and
+	// the chamber that owns it is nobody's business at this seam.
+	//
+	// The refusal moved with it. Join validates the cell itself — owned by no
+	// region, off the grid, not an integral cell — and translate() turns that
+	// into ErrBadPosition, so a caller matches on the same sentinel as before
+	// and the composition's account still crosses as TEXT rather than as a
+	// chain a host could match on (the S2 leak, rpg-toolkit#1058).
 	placed, err := scope.enc.Join(&encounter.JoinInput{
-		Member: encounter.MemberInput{
-			ID:       encounter.MemberID(id),
-			Kind:     encounter.MemberKind(kind),
-			Room:     located.Room,
-			Position: located.Position,
-		},
+		Member: encounter.MemberID(id),
+		Kind:   encounter.MemberKind(kind),
+		Cell:   at,
 	})
 	if err != nil {
 		return nil, translate(err)
@@ -544,6 +537,7 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		Data:       world,
 		Initiative: m.initiative,
 		Standing:   scope.standing,
+		Sight:      sightSeam{},
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)

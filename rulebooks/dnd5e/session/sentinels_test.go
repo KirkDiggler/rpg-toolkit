@@ -63,7 +63,10 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrNoField":       encounter.ErrNoField,
 	"encounter.ErrBadPlacement":  encounter.ErrBadPlacement,
 	"encounter.ErrBadConnection": encounter.ErrBadConnection,
-	"encounter.ErrNoConnection":  encounter.ErrNoConnection,
+	"encounter.ErrNoDoor":        encounter.ErrNoDoor,
+	"encounter.ErrBadDoor":       encounter.ErrBadDoor,
+	"encounter.ErrLocked":        encounter.ErrLocked,
+	"encounter.ErrNoRegion":      encounter.ErrNoRegion,
 	"encounter.ErrInBubble":      encounter.ErrInBubble,
 	"encounter.ErrNoBubble":      encounter.ErrNoBubble,
 	"encounter.ErrBadClock":      encounter.ErrBadClock,
@@ -277,7 +280,10 @@ func (s *SentinelSuite) TestAnEntryOffTheMap() {
 // underneath the composition (clock, intel, record) are replaceable too, and
 // they report through the same channel.
 func (s *SentinelSuite) TestACorruptStoredWorld() {
-	s.encounters.byID["world"].Members[0].Room = "nowhere"
+	// A cell no region owns — the stored world naming somewhere that is
+	// not on the map. Was `Room = "nowhere"` before members stopped
+	// carrying a room at all (rpg-toolkit#1059).
+	s.encounters.byID["world"].Members[0].Cell = &encounter.PositionData{X: 9999, Y: 9999}
 	ctx := context.Background()
 
 	_, err := s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})
@@ -291,7 +297,7 @@ func (s *SentinelSuite) TestACorruptStoredWorld() {
 	})
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
 
-	s.Contains(err.Error(), "nowhere",
+	s.Contains(err.Error(), "owned by no region",
 		"and the refusal still names the room the blob invented")
 }
 
@@ -304,13 +310,13 @@ func (s *SentinelSuite) TestACorruptStoredWorld() {
 // host to a module we intend to replace.
 func (s *SentinelSuite) TestAWorldThatWillNotLoad() {
 	broken := offsetWorld(s.T())
-	broken.Members[0].Room = "nowhere"
+	broken.Members[0].Cell = &encounter.PositionData{X: 9999, Y: 9999}
 
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "another", Encounter: "another-world", World: broken,
 	})
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
-	s.Contains(err.Error(), "nowhere",
+	s.Contains(err.Error(), "owned by no region",
 		"and the refusal still names the room the world invented")
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // EntitiesTestSuite covers loading a character through the host's repository:
@@ -51,7 +50,7 @@ func (s *EntitiesTestSuite) SetupSubTest() { s.SetupTest() }
 func (s *EntitiesTestSuite) joinBob() (*session.JoinOutput, error) {
 	return s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Position: spatial.Position{X: 6, Y: 0},
+		Position: hexCell(2, 2),
 	})
 }
 
@@ -92,7 +91,7 @@ func (s *EntitiesTestSuite) TestSpeedIsDerivedRatherThanDefaulted() {
 
 	humanOut, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "human-one",
-		Position: spatial.Position{X: 7, Y: 0},
+		Position: hexCell(3, 2),
 	})
 	s.Require().NoError(err)
 
@@ -107,7 +106,7 @@ func (s *EntitiesTestSuite) TestSpeedIsDerivedRatherThanDefaulted() {
 func (s *EntitiesTestSuite) TestJoiningAPlayerWithNoCharacterIsRejected() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "nobody",
-		Position: spatial.Position{X: 6, Y: 0},
+		Position: hexCell(2, 2),
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrNoCharacter)
@@ -132,7 +131,7 @@ func (s *EntitiesTestSuite) TestJoiningAPlayerWithNoCharacterIsRejected() {
 func (s *EntitiesTestSuite) TestARejectedJoinPlacesNobody() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "nobody",
-		Position: spatial.Position{X: 6, Y: 0},
+		Position: hexCell(2, 2),
 	})
 	s.Require().Error(err)
 
@@ -174,7 +173,7 @@ func (s *EntitiesTestSuite) TestSpawnedContentIsNeverLookedUpAsACharacter() {
 
 	out, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: "sess", ID: "ogre-7", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 7, Y: 0},
+		Position: hexCell(3, 2),
 	})
 	s.Require().NoError(err, "content that lives in code needs no stored sheet")
 	s.Require().NotNil(out.NPC)
@@ -194,7 +193,7 @@ func (s *EntitiesTestSuite) TestSpawnedContentIsNeverLookedUpAsACharacter() {
 func (s *EntitiesTestSuite) TestAMonsterCannotJoin() {
 	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "ogre-7",
-		Position: spatial.Position{X: 7, Y: 0},
+		Position: hexCell(3, 2),
 	})
 	s.ErrorIs(err, session.ErrNoCharacter)
 }
@@ -219,7 +218,7 @@ func (s *EntitiesTestSuite) TestEveryPlayerJoinConsultsTheRepository() {
 
 	_, err = s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "carol",
-		Position: spatial.Position{X: 7, Y: 0},
+		Position: hexCell(3, 2),
 	})
 	s.Require().NoError(err)
 	s.Greater(s.characters.loads, first, "a second join must load again, not reuse")
@@ -238,7 +237,7 @@ func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected(
 
 	_, err = mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "bob",
-		Position: spatial.Position{X: 6, Y: 0},
+		Position: hexCell(2, 2),
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrBadRepository)
@@ -264,7 +263,7 @@ func (s *EntitiesTestSuite) TestACorruptConditionIsDroppedRatherThanRejected() {
 
 	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
 		Session: "sess", Member: "corrupt-one",
-		Position: spatial.Position{X: 7, Y: 0},
+		Position: hexCell(3, 2),
 	})
 
 	s.Require().NoError(err, "upstream currently swallows this; if that changes, so must this test")
@@ -323,7 +322,7 @@ func BenchmarkJoinPlayer(b *testing.B) {
 
 		if _, err := mgr.Join(ctx, &session.JoinInput{
 			Session: "sess", Member: "bob",
-			Position: spatial.Position{X: 6, Y: 0},
+			Position: hexCell(2, 2),
 		}); err != nil {
 			b.Fatalf("join: %v", err)
 		}
@@ -339,7 +338,7 @@ func BenchmarkSpawnMonster(b *testing.B) {
 
 		if _, err := mgr.Spawn(ctx, &session.SpawnInput{
 			Session: "sess", ID: "ogre-7", Ref: refs.Monsters.Skeleton().String(),
-			Position: spatial.Position{X: 6, Y: 0},
+			Position: hexCell(2, 2),
 		}); err != nil {
 			b.Fatalf("spawn: %v", err)
 		}

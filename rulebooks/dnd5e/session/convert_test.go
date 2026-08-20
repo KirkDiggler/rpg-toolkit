@@ -49,7 +49,7 @@ var projectedPairs = []struct {
 	// every field of a room accounted for: the ones that survive match by
 	// name, and the four that describe a room AS a room have to be justified
 	// below rather than quietly disappearing with the type that held them.
-	{"AtlasRoom folded into Atlas", encounter.AtlasRoom{}, session.Atlas{}},
+	{"AtlasRoom folded into Atlas", encounter.AtlasRegion{}, session.Atlas{}},
 	{"AtlasBoundary", encounter.AtlasBoundary{}, session.AtlasBoundary{}},
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
 	{"Status", encounter.Status{}, session.Status{}},
@@ -73,18 +73,42 @@ var omitted = map[string]string{
 	// The seam speaks ONE MAP (rpg-project#227). The composition keeps rooms
 	// and projects the absolute geometry out of them; by the time a map
 	// reaches a client the decomposition has done its job.
-	"encounter.Atlas.Rooms":  "the decomposition itself — folded into the flat Cells/Occluders/Boundaries",
-	"encounter.AtlasRoom.ID": "a room id, which is exactly what the one-map seam stops carrying",
-	"encounter.AtlasRoom.Origin": "an anchor exists to project room-local coordinates, and nothing " +
+	"encounter.Atlas.Regions":  "the decomposition itself — folded into the flat Cells/Props/Boundaries",
+	"encounter.AtlasRegion.ID": "a room id, which is exactly what the one-map seam stops carrying",
+	"encounter.AtlasRegion.Origin": "an anchor exists to project room-local coordinates, and nothing " +
 		"on this side has one left to project",
-	"encounter.AtlasRoom.Width":  "a room's span; the map's extent is the extent of Cells",
-	"encounter.AtlasRoom.Height": "a room's span; the map's extent is the extent of Cells",
+	"encounter.AtlasRegion.Width":  "a room's span; the map's extent is the extent of Cells",
+	"encounter.AtlasRegion.Height": "a room's span; the map's extent is the extent of Cells",
+
+	// The frame, and the reason it does not need to cross.
+	//
+	// A region describes itself as a rectangle, and on hex the same rectangle
+	// covers different cells under each layout — so the composition reports an
+	// Orientation for a host that walks the rectangle itself
+	// (rpg-toolkit#1127). This seam does not hand out rectangles. It enumerates
+	// the cells and sends those, so a client never does the conversion and
+	// never needs the frame it would be done in. Carrying it would be handing
+	// over the tool for a job nobody on that side has.
+	"encounter.Atlas.Orientation": "the hex frame for turning a rectangle into cells; this seam sends " +
+		"the CELLS, so a client never performs that conversion",
 
 	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The room is
 	// the composition's own decomposition, and a caller that wanted it would
 	// be reconstructing the frame the reshape removed.
-	"encounter.Member.Room":        "a room id; the seam reports the cell instead",
-	"encounter.MemberOutcome.Room": "a room id; the composition's own bookkeeping — Position already names the cell on the map",
+	// Renamed from Room to Region when chambers became named regions of one
+	// canvas (rpg-toolkit#1127). The omission survives the rename, and it is
+	// the one worth arguing with: a region is now an AUTHORED name — "the
+	// hall", "the tomb" — rather than the incidental grouping it was when this
+	// entry was written. Telling a player which room they are standing in is a
+	// reasonable thing for a client to want.
+	//
+	// It stays omitted because a region id alone is not usable without the
+	// membership map that says which cells belong to it, and handing THAT over
+	// is handing back the decomposition this seam exists to flatten. If a
+	// client needs the name, the shape to give it is per-cell and
+	// viewer-authorised, not a global map.
+	"encounter.Member.Region":        "a region id; the seam reports the cell instead",
+	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
 
 	// A doorway's endpoints kept their meaning and lost their qualifier: on one
 	// map there is no second pair of From/To fields naming rooms to

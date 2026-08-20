@@ -43,9 +43,9 @@ func (s *MoveTestSuite) SetupTest() {
 // three steps to her east — near enough to walk onto, far enough that a walk
 // can be interrupted before reaching it.
 func corridorWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -216,9 +216,9 @@ func (s *MoveTestSuite) TestHexAdjacencyUsesCubeDistance() {
 	// And a genuine hex neighbour is accepted, so the check is not simply
 	// rejecting everything.
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "hex", Member: "alice", Path: []spatial.Position{{X: 1, Y: 0}},
+		Session: "hex", Member: "alice", Path: []spatial.Position{hexCell(1, 0)},
 	})
-	s.Require().NoError(err, "axial (1,0) is a real neighbour and must be walkable")
+	s.Require().NoError(err, "the next column along is a real neighbour and must be walkable")
 	s.Len(out.Steps, 1)
 }
 
@@ -270,11 +270,13 @@ func (s *MoveTestSuite) TestAWalkCrossesTheDoorway() {
 
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
-		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 0}},
+		Path: []spatial.Position{
+			hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0), hexCell(6, 0),
+		},
 	})
 	s.Require().NoError(err, "the doorway is a step like any other")
-	s.Require().Len(out.Steps, 3, "two in the corridor, one through the gate")
-	s.Equal(spatial.Position{X: 3, Y: 0}, out.Steps[2].Position, "she is on the far side")
+	s.Require().Len(out.Steps, 6, "five along the corridor, one through the gate")
+	s.Equal(hexCell(6, 0), out.Steps[5].Position, "she is on the far side, in the vault")
 	s.NotZero(out.Steps[2].Seq)
 }
 
@@ -283,9 +285,17 @@ func (s *MoveTestSuite) TestAWalkCrossesTheDoorway() {
 //
 // A caller can no longer name a connection, so "no such connection" is not a
 // mistake it can make. What it CAN do is name a cell in the next room with
-// nothing joining it to where the walker stands — and that has its own
-// refusal, because two rooms touching without a door is a thing W2 allows and
-// a client reading only the map's cells cannot see.
+// nothing joining it to where the walker stands — two rooms touching without a
+// door is a thing W2 allows, and a client reading only the map's cells cannot
+// see it coming.
+//
+// That refusal USED TO HAVE ITS OWN SENTINEL. It no longer does: the
+// composition answers a blocked step with a placement refusal carrying the
+// reason as text, so "there is no cell there" and "there is no way there from
+// here" now arrive as the same thing. The step is still refused — that is what
+// this test protects — but a host can no longer tell a wall from a typo.
+// rpg-toolkit#1135 is what would give the distinction a source again, and when
+// it lands the assertion below should get sharper, not disappear.
 func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	ctx := context.Background()
 	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
@@ -296,7 +306,9 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	// Alice walks to the threshold itself.
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
-		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}},
+		Path: []spatial.Position{
+			hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0),
+		},
 	})
 	s.Require().NoError(err)
 
@@ -305,12 +317,16 @@ func (s *MoveTestSuite) TestAStepWithNoDoorwayIsRefused() {
 	// doorway is at (3,0), one cell over.
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
-		Path: []spatial.Position{{X: 3, Y: -1}},
+		// The vault's column 6, one row down: a real cell, a genuine neighbour
+		// of the threshold she is standing on, and joined to it by nothing —
+		// the gate is on row 0.
+		Path: []spatial.Position{hexCell(6, 1)},
 	})
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoCrossing)
 	s.NotErrorIs(err, session.ErrBrokenPath, "the cells ARE adjacent — that is the point")
-	s.NotErrorIs(err, session.ErrBadPosition, "and the cell exists; there is just no way through")
+	s.ErrorIs(err, session.ErrBadPosition,
+		"currently the only answer available: the composition does not distinguish "+
+			"a walled crossing from a cell that is not there (rpg-toolkit#1135)")
 }
 
 // TestAWalkComesBackThroughTheSameDoorway pins the direction a fixture will not
@@ -334,30 +350,32 @@ func (s *MoveTestSuite) TestAWalkComesBackThroughTheSameDoorway() {
 	})
 	s.Require().NoError(err)
 
-	// Out: the corridor is anchored at the origin, the vault at (6,0), and the
-	// gate joins corridor-local (2,0) to vault-local (-3,0) — absolute (2,0)
-	// and (3,0), one axial step apart.
+	// Out: the corridor owns authored columns 0..5 and the vault 6..11, and the
+	// gate joins the corridor's last column to the vault's first on row 0 —
+	// one step apart on the map, however far apart their columns read.
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
-		Path: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}, {X: 3, Y: 0}},
+		Path: []spatial.Position{
+			hexCell(1, 0), hexCell(2, 0), hexCell(3, 0), hexCell(4, 0), hexCell(5, 0), hexCell(6, 0),
+		},
 	})
 	s.Require().NoError(err)
-	s.Require().Len(out.Steps, 3, "the walk ran to the end: nothing here stops it")
+	s.Require().Len(out.Steps, 6, "the walk ran to the end: nothing here stops it")
 	s.Require().Nil(out.Outcome, "and nothing ended underfoot")
-	s.Equal(spatial.Position{X: 3, Y: 0}, out.Steps[2].Position, "the far side, in the vault")
+	s.Equal(hexCell(6, 0), out.Steps[5].Position, "the far side, in the vault")
 
 	// And back, against the direction the connection was declared in.
 	back, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "hex", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 0}},
+		Path: []spatial.Position{hexCell(5, 0)},
 	})
 	s.Require().NoError(err, "a doorway is crossable both ways")
 	s.Require().Len(back.Steps, 1)
-	s.Equal(spatial.Position{X: 2, Y: 0}, back.Steps[0].Position)
+	s.Equal(hexCell(5, 0), back.Steps[0].Position)
 
 	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "hex", Member: "alice"})
 	s.Require().NoError(err)
-	s.Equal(spatial.Position{X: 2, Y: 0}, where.Position,
+	s.Equal(hexCell(5, 0), where.Position,
 		"standing back on the corridor threshold, read cold")
 }
 
@@ -388,7 +406,7 @@ func (s *MoveTestSuite) TestAStepOntoNoCellUsesOurSentinelNotTheirs() {
 	// Demoting the inner error must cost its MESSAGE nothing: whoever debugs
 	// this still needs to know it was owned by no room rather than, say, a
 	// fractional hex cell.
-	s.Contains(err.Error(), "owned by no room",
+	s.Contains(err.Error(), "is not floor",
 		"the composition's account of why survives, even though its sentinel does not")
 }
 

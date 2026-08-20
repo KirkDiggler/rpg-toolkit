@@ -46,9 +46,9 @@ func (s *EventsTestSuite) SetupTest() {
 // twoRoomParty puts alice and dave in the corridor and carol in the sealed
 // vault, so one member is genuinely unable to perceive what the others do.
 func twoRoomParty(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "corridor", Width: 8, Height: 8},
 				{ID: "vault", Width: 8, Height: 8, Origin: spatial.Position{X: 20, Y: 0}},

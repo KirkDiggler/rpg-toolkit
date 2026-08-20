@@ -39,9 +39,9 @@ func TestAtlasMapSuite(t *testing.T) {
 // order pin written against it passes with the sorting deleted, which is
 // exactly what the first version of this file did.
 func backwardsWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "alpha", Width: 4, Height: 4, Origin: spatial.Position{X: 4, Y: 0}},
 				{ID: "beta", Width: 4, Height: 4, Origin: spatial.Position{X: 0, Y: 0}},
@@ -98,9 +98,9 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 // instead of passing review.
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
-		[]string{"Grid", "Cells", "Occluders", "Boundaries", "Doorways"},
+		[]string{"Grid", "Cells", "Props", "Boundaries", "Doorways"},
 		fieldsOf(session.Atlas{}),
-		"the map is a grid, its cells, what blocks sight, its walls, and its doorways",
+		"the map is a grid, its cells, the things standing on it, its walls, and its doorways",
 	)
 	s.Equal(
 		[]string{"Connection", "From", "To"},

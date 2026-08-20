@@ -66,15 +66,44 @@ type Atlas struct {
 	// a new type.
 	Cells []spatial.Position `json:"cells,omitempty"`
 
-	// Occluders is the subset of Cells that blocks line of sight, reported
-	// separately so a host can render them distinctly. Sorted like Cells.
-	Occluders []spatial.Position `json:"occluders,omitempty"`
+	// Props is the things standing on the map — a pillar, a coffin, a pile of
+	// bones — each naming WHAT it is and answering both blocking questions for
+	// itself.
+	//
+	// This used to be `Occluders []spatial.Position`: the subset of cells that
+	// blocked sight, as bare coordinates. That could not say a pillar from a
+	// statue (rpg-project#227 recorded it as "a pillar and a statue are the
+	// same cell"), and it hardcoded one answer to two independent questions —
+	// wrong in both directions, since a coffin is walked around but seen over
+	// and a pile of bones is neither. Carried through from the composition
+	// rather than re-flattened here (rpg-toolkit#1130).
+	Props []AtlasProp `json:"props,omitempty"`
 
 	// Boundaries is every wall and barrier on the map, sorted by endpoint.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
 
 	// Doorways is every crossable cell pair, sorted by connection ID.
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
+}
+
+// AtlasProp is one thing standing on the map, in dungeon-absolute space.
+//
+// The two blocking answers are independent and both are carried: a pillar
+// blocks movement and sight, a coffin blocks movement and is seen over, a
+// pile of bones is walked through and seen over. A host that wants the old
+// "occluders" list filters on BlocksLineOfSight.
+type AtlasProp struct {
+	// Ref names what this is, so a host can draw it.
+	Ref string `json:"ref"`
+
+	// At is the cell it stands on, in dungeon-absolute space.
+	At spatial.Position `json:"at"`
+
+	// BlocksMovement reports whether an entity may enter its cell.
+	BlocksMovement bool `json:"blocks_movement,omitempty"`
+
+	// BlocksLineOfSight reports whether sight passes through its cell.
+	BlocksLineOfSight bool `json:"blocks_line_of_sight,omitempty"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
@@ -243,16 +272,23 @@ const (
 	// EventMoved reports that a member stepped to a new cell.
 	EventMoved EventKind = "moved"
 
-	// EventTraversed reports that a member's step carried them through a
-	// doorway.
+	// NOTE: there is no EventTraversed any more.
 	//
-	// Distinct from EventMoved even though both are one step of the same size
-	// on the same map — and it stayed distinct through the reshape that took
-	// rooms off everything else a client sees, because ONE MAP DOES NOT MEAN
-	// ONE NARRATION. A client renders a doorway differently from a corridor,
-	// and the composition still knows which happened; collapsing them would
-	// make a client re-derive it from the geometry.
-	EventTraversed EventKind = "traversed"
+	// It reported that a step carried a member through a doorway, and it was
+	// kept distinct from EventMoved on the argument that ONE MAP DOES NOT MEAN
+	// ONE NARRATION — a client renders a doorway differently from a corridor,
+	// and making it re-derive that from geometry was the thing to avoid.
+	//
+	// The composition stopped emitting the beat. A crossing is written like any
+	// other step now (rpg-toolkit#1048, #1059), which was the point: absolute
+	// coordinates made a crossing expressible as an ordinary move. So nothing
+	// upstream can distinguish the two, and a kind nothing can produce is worse
+	// than no kind at all — it reads as a contract.
+	//
+	// The information is not lost, only moved: [Atlas.Doorways] lists every
+	// crossable pair, so a step whose from/to matches one IS a traversal and a
+	// client (or this package) can say so. Restoring the distinction means
+	// deriving it here rather than waiting for a beat that is not coming.
 
 	// EventJoined reports that a member entered the encounter.
 	EventJoined EventKind = "joined"
