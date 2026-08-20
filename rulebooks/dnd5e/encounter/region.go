@@ -150,13 +150,11 @@ func regionAt(
 		if !ok {
 			continue
 		}
-		if !isIntegralAxialPosition(grid, cell.Subtract(ri.Origin)) {
-			continue
-		}
-		// footprintHolds is THE mask (rpg-toolkit#1127): for a square room
-		// the rectangle it always was, for a hex one the authored offset
-		// rectangle rather than the rhombus that contains it.
-		if !footprintHolds(ri, orientation, grids, cell) {
+		// footprintHolds is THE mask (rpg-toolkit#1127), and the only place
+		// this package turns an absolute cell into a room's own frame: for a
+		// square room the rectangle it always was, for a hex one the authored
+		// offset rectangle rather than the rhombus that contains it.
+		if !footprintHolds(ri, orientation, grid, cell) {
 			continue
 		}
 		return ri.ID, true

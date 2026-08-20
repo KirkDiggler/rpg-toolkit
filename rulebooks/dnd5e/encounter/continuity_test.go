@@ -62,20 +62,24 @@ func continuityViolation(family spatial.GridShape, positions []spatial.Position,
 func vaultChaseHexGate() encounter.ConnectionInput {
 	return encounter.ConnectionInput{
 		ID: "gate", From: "corridor", To: "vault",
-		FromPosition: spatial.Position{X: 4, Y: 1},
-		ToPosition:   spatial.Position{X: -5, Y: -2},
+		FromPosition: spatial.Position{X: 9, Y: 5},
+		ToPosition:   spatial.Position{X: 0, Y: 5},
 	}
 }
 
-// vaultChaseHexSeamWall is the corridor's wall along its Q-max edge, open at
-// the gate's row. The corridor's own last column is Q=4 and the vault's first
-// is Q=5, so every edge here has one endpoint in each chamber — a sentence no
-// room could say before the field became one canvas (rpg-toolkit#1106), and
-// the reason this scene needs to say it: with one canvas and no wall, the two
+// vaultChaseHexSeamWall is the corridor's wall along its last column, open at
+// the gate's row. The corridor's own last column is 9 and the vault's first is
+// 10, so every edge here has one endpoint in each chamber — a sentence no room
+// could say before the field became one canvas (rpg-toolkit#1106), and the
+// reason this scene needs to say it: with one canvas and no wall, the two
 // chambers share an open seam and there is nowhere in the vault to disappear
-// to. R is the vault's own range, [-2,7], intersected with the corridor's
-// [-5,4].
-func vaultChaseHexSeamWall() []spatial.Boundary { return hexSeamWall(4, -2, 4, 1) }
+// to.
+//
+// Counted in the chamber's own offset rows since rpg-toolkit#1127, so the range
+// is simply its full height.
+func vaultChaseHexSeamWall() []spatial.Boundary {
+	return hexOffsetSeamWall(encounter.HexesArePointyTop(), 9, 0, 9, 5)
+}
 
 // vaultChaseHexSetup is the hex-family sibling of chase_test.go's
 // TestVaultChase fixture (#929 T4 — "the vault-chase fixture/story, or a
@@ -104,7 +108,7 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 		Rooms: []encounter.RoomInput{
 			{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex,
 				Boundaries: vaultChaseHexSeamWall()},
-			{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: 3}},
+			{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: 0}},
 		},
 		Connections: []encounter.ConnectionInput{gate},
 	}

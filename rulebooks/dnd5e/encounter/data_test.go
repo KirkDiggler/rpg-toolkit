@@ -77,14 +77,14 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 			Rooms: []encounter.RoomInput{
 				{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -10, Y: 7},
 					Props:      []encounter.PropInput{rubble(1, 2)},
-					Boundaries: []spatial.Boundary{{From: spatial.Position{X: -2, Y: -2}, To: spatial.Position{X: -2, Y: -1}, BlocksMovement: true, BlocksLineOfSight: true}},
+					Boundaries: []spatial.Boundary{{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 2, Y: 3}, BlocksMovement: true, BlocksLineOfSight: true}},
 				},
-				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -3, Y: 7}},
+				{ID: "hall", Width: 6, Height: 6, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: -2, Y: 7}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "door1", From: "crypt", To: "hall",
-				FromPosition: spatial.Position{X: 3, Y: 0},
-				ToPosition:   spatial.Position{X: -3, Y: 0},
+				FromPosition: spatial.Position{X: 7, Y: 3},
+				ToPosition:   spatial.Position{X: 0, Y: 3},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -116,7 +116,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// because sight stopped at a room boundary. That makes the golden strictly
 	// richer: it is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMywieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":-2,"y":-2},"to":{"x":-2,"y":-1},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-3,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":3,"y":0},"to_position":{"x":-3,"y":0}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-3,"y":7}},{"id":"p1","kind":"player","cell":{"x":-10,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTAsInkiOi0yfQ==","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotMiwieSI6LTZ9","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-2,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":7,"y":3},"to_position":{"x":0,"y":3}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-2,"y":-6}},{"id":"p1","kind":"player","cell":{"x":-10,"y":-2}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -1870,39 +1870,63 @@ func connHexRoomData(pos encounter.PositionData) encounter.EncounterData {
 	}
 }
 
-// TestHexRoomBoundsLoad is the Load-seam counterpart to
-// encounter_test.go's TestHexRoomBounds.
+// TestHexRoomBoundsLoad is the Load-seam counterpart to encounter_test.go's
+// TestHexRoomBounds, and every cell in it moved with rpg-toolkit#1127.
+//
+// The chamber is a 4x3 OFFSET rectangle at the origin, so it owns authored
+// columns 0..2... 0..3 and rows 0..2, and the absolute cells below are that
+// rectangle's image on the canvas. The subtests used to be named for an
+// origin-centred axial span — "Q at exactly -Width/2 accepted (lower bound
+// inclusive)" — and that span is what the slice replaced: a chamber is
+// anchored at its CORNER now, so there is no lower bound to be inclusive of,
+// and the boundary that matters is the rectangle's own edge.
+//
+// Each accepted cell names the authored [col,row] it came from, because an
+// absolute axial pair is unreadable on its own and a reader checking this test
+// should not have to run the conversion in their head.
 func (s *DataTestSuite) TestHexRoomBoundsLoad() {
-	s.Run("positive Q, positive R within span accepted", func() {
+	load := func(cell encounter.PositionData) error {
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 1, Y: 1})})
-		s.Require().NoError(err)
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+			Initiative: orderAsGiven{}, Data: connHexRoomData(cell)})
+		return err
+	}
+
+	s.Run("the chamber's own corner accepted", func() {
+		// authored [0,0]
+		s.Require().NoError(load(encounter.PositionData{X: 0, Y: 0}))
 	})
 
-	s.Run("negative Q within span accepted — rejected under the old offset HexGrid", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -1, Y: 0})})
-		s.Require().NoError(err, "axial hex rooms are origin-centered; negative Q is ordinary, not a defect")
+	s.Run("its far corner accepted", func() {
+		// authored [3,2] — the last column of the last row
+		s.Require().NoError(load(encounter.PositionData{X: 3, Y: -4}))
 	})
 
-	s.Run("Q at exactly +Width/2 rejected (upper bound exclusive)", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: 2, Y: 0})})
-		s.Require().Error(err)
+	s.Run("a negative R inside it accepted", func() {
+		// authored [0,2]. A negative absolute coordinate is ordinary: the
+		// conversion from offset to axial produces them for almost every
+		// chamber, and the reference tomb's own R values run -21 to 0.
+		s.Require().NoError(load(encounter.PositionData{X: 0, Y: -2}))
+	})
+
+	s.Run("one column past the last rejected", func() {
+		// authored [4,0], which the 4-wide rectangle does not hold
+		err := load(encounter.PositionData{X: 4, Y: -2})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "owned by no region")
 	})
 
-	s.Run("Q at exactly -Width/2 accepted (lower bound inclusive)", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -2, Y: 0})})
-		s.Require().NoError(err)
+	s.Run("one column before the first rejected", func() {
+		// authored [-1,0] — outside the rectangle, where under the old
+		// origin-centred reading it would have been comfortably inside
+		err := load(encounter.PositionData{X: -1, Y: 0})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Require().Contains(err.Error(), "owned by no region")
 	})
 
-	s.Run("Q beyond -Width/2 rejected", func() {
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: connHexRoomData(encounter.PositionData{X: -3, Y: 0})})
-		s.Require().Error(err)
+	s.Run("one row past the last rejected", func() {
+		// authored [0,3]
+		err := load(encounter.PositionData{X: 0, Y: -3})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "owned by no region")
 	})
@@ -1921,23 +1945,24 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
-				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 7}},
+				{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 10, Y: 0}},
 			},
 			Connections: []encounter.ConnectionData{{
 				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: &encounter.PositionData{X: 4, Y: 4},
-				ToPosition:   &encounter.PositionData{X: -3, Y: -3},
+				FromPosition: &encounter.PositionData{X: 9, Y: 4},
+				ToPosition:   &encounter.PositionData{X: 0, Y: 4},
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"hex-a"*/
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: -2}}, /*ROOM:"hex-a" authored [1,1]*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
-	s.Require().NoError(err, "a connection endpoint at a negative axial coordinate must validate")
+	s.Require().NoError(err,
+		"the chambers meet at hex-a's last column and hex-b's first, on the same row")
 }
 
 // validHexAxialData returns a fresh EncounterData with two hex rooms
@@ -1952,12 +1977,12 @@ func validHexAxialData() encounter.EncounterData {
 			Rooms: []encounter.RoomData{
 				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0},
 					Props: []encounter.PropData{rubbleData(2, 2)}},
-				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 1}},
+				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 8, Y: 0}},
 			},
 			Connections: []encounter.ConnectionData{{
 				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: &encounter.PositionData{X: 3, Y: 0},
-				ToPosition:   &encounter.PositionData{X: -4, Y: -1},
+				FromPosition: &encounter.PositionData{X: 7, Y: 3},
+				ToPosition:   &encounter.PositionData{X: 0, Y: 3},
 			}},
 		},
 		Members: []encounter.MemberData{
@@ -1984,7 +2009,7 @@ func (s *DataTestSuite) TestLoadHexIntegralAxial() {
 			d.Field.Connections[0].FromPosition = &encounter.PositionData{X: 1.5, Y: 1}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"connection to-position fractional", func(d *encounter.EncounterData) {
-			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: -1.5, Y: -1}
+			d.Field.Connections[0].ToPosition = &encounter.PositionData{X: 0.5, Y: 3}
 		}, encounter.ErrBadConnection, "not an integral axial cell"},
 		{"prop cell fractional", func(d *encounter.EncounterData) {
 			// #929 T3 Opus round F2: prop integrality is now universal
@@ -2031,12 +2056,12 @@ func validAnchoredHexData() encounter.EncounterData {
 			Canvas: encounter.CanvasData{Void: "opaque", Orientation: "pointy"},
 			Rooms: []encounter.RoomData{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 0, Y: 0}},
-				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 6, Y: -5}},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridTypeHex, Origin: &encounter.PositionData{X: 10, Y: -2}},
 			},
 			Connections: []encounter.ConnectionData{{
 				ID: "gate", From: "hex-big", To: "hex-small",
-				FromPosition: &encounter.PositionData{X: 4, Y: 0},
-				ToPosition:   &encounter.PositionData{X: -1, Y: 4},
+				FromPosition: &encounter.PositionData{X: 9, Y: 1},
+				ToPosition:   &encounter.PositionData{X: 0, Y: 4},
 			}},
 		},
 		Members: []encounter.MemberData{
@@ -2128,7 +2153,7 @@ func (s *DataTestSuite) TestLoadAnchoring() {
 			// from (6,-5) to (6,-3): the gate's endpoints, once anchored,
 			// differ by axial (ΔQ=1,ΔR=1) — cube distance (1+1+2)/2=2, NOT
 			// 1 — while still disjoint from hex-big (W2 passes).
-			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 6, Y: -3}
+			d.Field.Rooms[1].Origin = &encounter.PositionData{X: 10, Y: -4}
 		}, encounter.ErrBadConnection, "distance 2"},
 	}
 	for _, tc := range cases {
@@ -2482,7 +2507,7 @@ func (s *DataTestSuite) TestOriginRoundTripByteIdentical() {
 	s.Require().NoError(err)
 
 	s.Equal(string(bs1), string(bs2), "origins (including hex-small's negative-axial one) must survive a second round trip byte-identically")
-	s.Contains(string(bs1), `"origin":{"x":6,"y":-5}`, "the negative-axial origin must be present, not truncated or dropped")
+	s.Contains(string(bs1), `"origin":{"x":10,"y":-2}`, "the negative-axial origin must be present, not truncated or dropped")
 }
 
 // TestReloadedAnchoredEncounterAcceptsSameTraverse pins behavior-identity
@@ -2500,27 +2525,30 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
 				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
-				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 6, Y: -5}},
+				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: -2}},
 			},
 			Connections: []encounter.ConnectionInput{{
 				ID: "gate", From: "hex-big", To: "hex-small",
-				FromPosition: spatial.Position{X: 4, Y: 0},
-				ToPosition:   spatial.Position{X: -1, Y: 4},
+				FromPosition: spatial.Position{X: 9, Y: 1},
+				ToPosition:   spatial.Position{X: 0, Y: 4},
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: spatial.Position{X: 4, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: spatial.Position{X: 9, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 
-	// hex-small local (-1,4) through its (6,-5) anchor is (5,-1) — the far
-	// side of the gate; hex-big's own (4,0) is the near side, and since that
-	// room is anchored at the origin it reads the same either way.
-	nearSide := spatial.Position{X: 4, Y: 0}
-	farSide := spatial.Position{X: 5, Y: -1}
+	// The gate's two sides, on the canvas. hex-big's authored [9,1] compiles
+	// to axial (9,-6) and hex-small's [0,4] — through its (10,-2) anchor,
+	// so authored [10,2] absolute — to (10,-7). Neither reads the same as its
+	// authored pair any more, and that is the point of rpg-toolkit#1127
+	// rather than an inconvenience: a chamber is drawn in offset columns and
+	// run on a cube grid, and the compile is where the two meet.
+	nearSide := spatial.Position{X: 9, Y: -6}
+	farSide := spatial.Position{X: 10, Y: -7}
 
 	out1, err := enc1.Step(&encounter.StepInput{Member: "p1", To: farSide})
 	s.Require().NoError(err, "the original encounter accepts the step through the gate")
@@ -2600,7 +2628,7 @@ func (s *DataTestSuite) TestLoadRejectsHostileNonKissingBlob() {
 	// OTHER corner (1,4) — still a legal LOCAL cell, but cube distance 2
 	// from the absolute anchor, same defect TestLoadAnchoring's "W3" row
 	// pins via a struct mutation — this pins it via raw bytes instead.
-	hostile := bytes.Replace(bs, []byte(`"to_position":{"x":-1,"y":4}`), []byte(`"to_position":{"x":1,"y":4}`), 1)
+	hostile := bytes.Replace(bs, []byte(`"to_position":{"x":0,"y":4}`), []byte(`"to_position":{"x":2,"y":4}`), 1)
 	s.Require().NotEqual(bs, hostile, "the byte replacement must actually have matched something")
 
 	var data encounter.EncounterData

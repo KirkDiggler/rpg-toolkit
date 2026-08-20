@@ -1141,7 +1141,7 @@ func validateConnectionInputs(
 // doc comment): unknown room, out-of-bounds position, or (hex only)
 // non-integral position all reject with ErrNoEnding, no verb prefix — each
 // caller wraps its own at the call site.
-func validateEndingTriggers(endings []EndingInput, roomGrids map[string]spatial.Grid) error {
+func validateEndingTriggers(rooms []RoomInput, endings []EndingInput, roomGrids map[string]spatial.Grid) error {
 	for _, ei := range endings {
 		trigger, ok := ei.Trigger.(TriggerReachedPosition)
 		if !ok {
@@ -1151,7 +1151,7 @@ func validateEndingTriggers(endings []EndingInput, roomGrids map[string]spatial.
 		if !ok {
 			return fmt.Errorf("ending %q trigger names unknown room %q: %w", ei.Key, trigger.Room, ErrNoEnding)
 		}
-		if !grid.IsValidPosition(trigger.Position) {
+		if !localIsInRoom(roomByID(rooms, trigger.Room), roomGrids, trigger.Position) {
 			return fmt.Errorf("ending %q trigger position is out of bounds: %w", ei.Key, ErrNoEnding)
 		}
 		if !isIntegralAxialPosition(grid, trigger.Position) {
@@ -1313,7 +1313,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// A TriggerReachedPosition ending must name a real room and reachable
 	// position (#929 T3 Opus round F5) — see validateEndingTriggers.
-	if err := validateEndingTriggers(in.Endings, roomGrids); err != nil {
+	if err := validateEndingTriggers(in.Field.Rooms, in.Endings, roomGrids); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
@@ -1383,11 +1383,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		// Room-local at authoring, absolute on the canvas: the member's
 		// declared cell is checked against their own room's grid — the frame
 		// they were written in — and then placed at the one cell that is.
-		grid, ok := roomGrids[mi.Room]
-		if !ok {
+		if _, ok := roomGrids[mi.Room]; !ok {
 			return nil, fmt.Errorf("newencounter member placement: member %q names unknown room %q: %w", mi.ID, mi.Room, ErrBadPlacement)
 		}
-		if !grid.IsValidPosition(mi.Position) {
+		if !localIsInRoom(roomByID(in.Field.Rooms, mi.Room), roomGrids, mi.Position) {
 			return nil, fmt.Errorf("newencounter member placement: member %q position out of bounds in room %q: %w", mi.ID, mi.Room, ErrBadPlacement)
 		}
 

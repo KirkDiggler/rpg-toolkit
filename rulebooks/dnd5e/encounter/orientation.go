@@ -229,15 +229,19 @@ func hexOffsetOf(o Orientation, cell spatial.Position) (col, row int) {
 // the same change: a chamber's anchor says where its rectangle starts, in the
 // columns and rows the author counts in. Anchoring in axial would put the
 // shear back, one level up.
-func footprintHolds(r RoomInput, o Orientation, grids map[string]spatial.Grid, cell spatial.Position) bool {
+func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.Position) bool {
 	if r.Grid != spatial.GridShapeHex {
-		grid, ok := grids[r.ID]
-		if !ok {
-			return false
-		}
 		local := cell.Subtract(r.Origin)
 
-		return grid.IsValidPosition(local)
+		return isIntegralAxialPosition(grid, local) && grid.IsValidPosition(local)
+	}
+
+	// A fractional axial position is not a cell at all, and no chamber holds
+	// one (interim tools/spatial#926 enforcement). Asked here rather than in
+	// regionAt so that turning an absolute cell into a room's own frame
+	// happens in exactly ONE function — see TestRegionOwnershipIsAskedInOneFunction.
+	if !isIntegralAxialPosition(grid, cell) {
+		return false
 	}
 
 	col, row := hexOffsetOf(o, cell)

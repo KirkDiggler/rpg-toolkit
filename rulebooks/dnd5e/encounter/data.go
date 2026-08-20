@@ -893,7 +893,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	for i, ed := range data.Endings {
 		endingInputsForValidation[i] = EndingInput{Key: ed.Key, Trigger: endingTriggerFromData(ed)}
 	}
-	if err := validateEndingTriggers(endingInputsForValidation, roomGrids); err != nil {
+	if err := validateEndingTriggers(roomInputs, endingInputsForValidation, roomGrids); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 

@@ -195,3 +195,51 @@ func hexSeamWall(atQ, rMin, rMax int, gapRows ...int) []spatial.Boundary {
 	}
 	return out
 }
+
+// hexOffsetSeamWall is hexSeamWall re-derived for the frame a hex chamber is
+// authored in since rpg-toolkit#1127: OFFSET columns and rows, counted from the
+// chamber's own corner.
+//
+// It computes which crossings exist rather than knowing them, and that is the
+// point. In axial space a cell's +Q neighbours are (q+1,r) and (q+1,r-1),
+// always — a fact hexSeamWall could hardcode. In offset space the answer
+// STAGGERS with the column's parity, so a wall built from a hardcoded pair has
+// a hole in every other row. Asking spatial which offset pairs are actually
+// adjacent is both shorter and correct for either orientation.
+//
+// A gap row leaves only the straight crossing open, exactly as squareSeamWall's
+// does, so a doorway is a doorway rather than a diagonal shortcut around its
+// own frame.
+func hexOffsetSeamWall(o encounter.Orientation, atCol, rowMin, rowMax int, gapRows ...int) []spatial.Boundary {
+	gap := make(map[int]bool, len(gapRows))
+	for _, g := range gapRows {
+		gap[g] = true
+	}
+
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
+
+	out := make([]spatial.Boundary, 0, (rowMax-rowMin+1)*2)
+	for row := rowMin; row <= rowMax; row++ {
+		near := encounter.HexCellAt(o, atCol, row)
+		for _, dr := range []int{-1, 0, 1} {
+			to := row + dr
+			if to < rowMin || to > rowMax {
+				continue
+			}
+			if dr == 0 && gap[row] {
+				continue // the doorway itself
+			}
+			if grid.Distance(near, encounter.HexCellAt(o, atCol+1, to)) != 1 {
+				continue // not a crossing at all on this grid
+			}
+			out = append(out, spatial.Boundary{
+				From:              spatial.Position{X: float64(atCol), Y: float64(row)},
+				To:                spatial.Position{X: float64(atCol + 1), Y: float64(to)},
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			})
+		}
+	}
+
+	return out
+}

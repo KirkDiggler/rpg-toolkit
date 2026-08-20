@@ -383,16 +383,27 @@ func (s *RegionSuite) TestRegionAtAnswersExactlyWhatTheAuthoredGridWould() {
 	})
 
 	s.Run("hex", func() {
-		// Hex spans are origin-CENTERED: [-dim/2, dim/2).
+		// A hex chamber is the OFFSET rectangle its author drew
+		// (rpg-toolkit#1127), anchored at its corner — so the oracle is
+		// "convert this cell back to offset and see whether it lands in the
+		// rectangle", which is the same sentence as the square case above in
+		// a frame that has to be converted into.
+		//
+		// This used to read `local.X >= -3 && local.X < 3` and so on, because
+		// a hex room's span was origin-CENTRED. That reading is what put 156
+		// cells of the reference tomb's chambers on the floor that nobody had
+		// drawn.
 		origin := spatial.Position{X: 3, Y: -2}
 		enc := s.oneRoom(spatial.GridShapeHex, 6, 4, origin)
 		for q := -10; q <= 10; q++ {
 			for r := -10; r <= 10; r++ {
 				cell := spatial.Position{X: float64(q), Y: float64(r)}
-				local := cell.Subtract(origin)
-				want := local.X >= -3 && local.X < 3 && local.Y >= -2 && local.Y < 2
+				offset := spatial.CubeCoordinate{X: q, Y: r, Z: -q - r}.
+					ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+				col, row := offset.X-origin.X, offset.Y-origin.Y
+				want := col >= 0 && col < 6 && row >= 0 && row < 4
 				_, ok := enc.RegionAt(cell)
-				s.Require().Equal(want, ok, "hex cell %v (local %v)", cell, local)
+				s.Require().Equal(want, ok, "hex cell %v (authored col,row %v,%v)", cell, col, row)
 			}
 		}
 	})
