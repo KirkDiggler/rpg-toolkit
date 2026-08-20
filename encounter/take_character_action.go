@@ -3,7 +3,7 @@ package encounter
 // Beat-1 of the TakeAction wave (rpg-project #54 / #697 chunk 2).
 //
 // General (non-attack) action dispatch. The attack ref AND the granted-capacity
-// strike refs keep their dedicated two-phase resolver path in TakeActionPhased
+// strike refs keep their dedicated two-phase resolver path in TakeStrikePhased
 // (they carry attack rolls, damage resolution, and reaction prompts — #708);
 // every OTHER action ref flows through here, delegating to the held
 // character's own rules engine. There is no per-ref logic in the encounter
@@ -105,7 +105,7 @@ func (e *Encounter) takeCharacterAction(
 // (combat ability or feature) goes through ActivateAbility; a granted-capacity
 // action goes through ExecuteAction. Membership is decided by the character's
 // own menu, so no ref is enumerated here. Note the granted STRIKES never reach
-// this path — TakeActionPhased routes them down the attack-resolver path
+// this path — TakeStrikePhased routes them down the attack-resolver path
 // (spendStrikeEconomy owns their ExecuteAction spend) so they swing (#708);
 // today only move (deferred) and future non-attack granted actions land here.
 //

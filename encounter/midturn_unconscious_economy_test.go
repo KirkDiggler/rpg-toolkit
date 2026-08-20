@@ -5,7 +5,7 @@ package encounter_test
 //
 // This file covers the MID-TURN half of the bug specifically: a player's
 // own Move triggers an opportunity attack (combat.MoveEntity ->
-// triggerOpportunityAttack -> ResolveAttack) that drops them to 0 HP
+// triggerOpportunityAttack -> ResolveStrike) that drops them to 0 HP
 // partway through their OWN turn, after their action economy was already
 // seeded in full at turn start. applyUnconsciousOnZeroHP (death.go)
 // applies the Unconscious condition but, pre-fix, left the player's
@@ -102,7 +102,7 @@ func (s *MidTurnUnconsciousEconomySuite) SetupTest() {
 
 	s.enc = encounter.New(s.ctx, "enc-mue-1", s.broker,
 		encounter.WithMovementResolver(s.resolver),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: muePlayerID, EntityID: mueEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -133,7 +133,7 @@ func (s *MidTurnUnconsciousEconomySuite) SetupTest() {
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker,
 		encounter.WithMovementResolver(s.resolver),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(err)
 	s.enc = loaded
 

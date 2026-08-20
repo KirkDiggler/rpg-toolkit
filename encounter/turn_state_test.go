@@ -359,7 +359,7 @@ func (s *TurnStateSuite) combatMonkEncounter() *encounter.Encounter {
 		AC:       12,
 	}
 	enc, err := encounter.LoadFromData(s.ctx, data, s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 3, damageType: "bludgeoning"}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 3, damageType: "bludgeoning"}),
 	)
 	s.Require().NoError(err)
 	return enc
@@ -415,17 +415,17 @@ func (s *TurnStateSuite) TestGoalBehavior_MonkTakesActionThenBonusAction() {
 	s.Equal(0, afterBonus.Economy.BonusActionsRemaining, "the bonus unarmed strike consumed the bonus action")
 }
 
-// recordingResolver wraps alwaysHitResolver and records every AttackInput it
+// recordingResolver wraps alwaysHitResolver and records every StrikeInput it
 // receives, so tests can assert WHICH refs reached the resolver (a granted
 // strike must swing through the resolver, not just book economy — #708).
 type recordingResolver struct {
 	alwaysHitResolver
-	inputs []encounter.AttackInput
+	inputs []encounter.StrikeInput
 }
 
-func (r *recordingResolver) ResolveAttack(input encounter.AttackInput) (*encounter.AttackOutcome, error) {
+func (r *recordingResolver) ResolveStrike(input encounter.StrikeInput) (*encounter.StrikeOutcome, error) {
 	r.inputs = append(r.inputs, input)
-	return r.alwaysHitResolver.ResolveAttack(input)
+	return r.alwaysHitResolver.ResolveStrike(input)
 }
 
 // TestTakeAction_GrantedStrikeResolvesAttack is the #708 regression proof: a
@@ -459,7 +459,7 @@ func (s *TurnStateSuite) TestTakeAction_GrantedStrikeResolvesAttack() {
 		MaxHP:    7,
 		AC:       12,
 	}
-	enc, err := encounter.LoadFromData(s.ctx, data, s.broker, encounter.WithCombatResolver(resolver))
+	enc, err := encounter.LoadFromData(s.ctx, data, s.broker, encounter.WithStrikeResolver(resolver))
 	s.Require().NoError(err)
 
 	s.Require().NoError(enc.SetMode(core.ModeTurnBased))

@@ -44,7 +44,7 @@ import (
 // deterministically, three turn-starts in a row, without depending on real
 // randomness. Non-d20 rolls (RollN, or Roll for any other size) pass through
 // at max face — irrelevant here since nothing else in these fixtures rolls
-// dice (alwaysHitResolver is a canned CombatResolver stub).
+// dice (alwaysHitResolver is a canned StrikeResolver stub).
 type alwaysFailDeathSaveRoller struct{}
 
 func (alwaysFailDeathSaveRoller) Roll(_ context.Context, size int) (int, error) {
@@ -154,7 +154,7 @@ func (s *UnconsciousZeroHPSuite) buildEncounter(
 ) *encounter.Encounter {
 	s.T().Helper()
 	enc := encounter.New(s.ctx, encID, s.broker, roller,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
@@ -175,7 +175,7 @@ func (s *UnconsciousZeroHPSuite) buildEncounter(
 	var data encounter.Data
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker, roller,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}),
 	)
 	s.Require().NoError(err)
 	return loaded
@@ -370,7 +370,7 @@ func (s *UnconsciousZeroHPSuite) TestDeathSaveRoll_SurvivesPerRPCReload_ViaRealE
 	// onTurnStart's own death-save roll (uncontrollable across reload, by
 	// design here — see the doc comment above).
 	roller := encounter.WithRoller(fixedMaxRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 	opts := []encounter.Option{roller, resolver}
 
 	enc := s.buildEncounter("enc-uzh-realendturn", roller)
@@ -510,7 +510,7 @@ func (s *UnconsciousZeroHPSuite) reloadEncounter(
 // death saves ultimately use, without depending on either gap.
 func (s *UnconsciousZeroHPSuite) TestThreeFailedDeathSaves_AcrossPerRPCReloads_BridgesToEntityDied() {
 	roller := encounter.WithRoller(fixedMaxRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 	opts := []encounter.Option{roller, resolver}
 
 	enc := s.buildEncounter("enc-uzh-3", roller)

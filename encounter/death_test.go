@@ -74,7 +74,7 @@ func (s *DeathSuite) TearDownTest() {
 // Returns the encounter; subscriptions are written into the suite fields.
 func (s *DeathSuite) newSingleMonsterEnc(encID core.EncounterID) *encounter.Encounter {
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -180,7 +180,7 @@ func (s *DeathSuite) TestSlice_PostEnd_ErrEncounterEnded() {
 func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 	encID := core.EncounterID("enc-death-3")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	// Players first (original order — this is the realistic shape: players
 	// join the lobby, then StartEncounter seeds monsters one AddMonster call
 	// at a time). Two goblins; goblin-1 has 1 HP (instakill target), goblin-2
@@ -259,7 +259,7 @@ func (s *DeathSuite) TestSlice_OneOfTwoMonstersDies_EncounterContinues() {
 func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 	encID := core.EncounterID("enc-death-4")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	// Player first (original order), same reasoning as
 	// TestSlice_OneOfTwoMonstersDies_EncounterContinues: goblin-1 shares
 	// alice's line of sight, so AddMonster(goblin-1) auto-enters combat;
@@ -324,7 +324,7 @@ func (s *DeathSuite) TestSlice_EndTurnSkipsDeadActor() {
 func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 	encID := core.EncounterID("enc-death-5")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -387,7 +387,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedBroadcastsToAll() {
 func (s *DeathSuite) TestSlice_PlayerDies_PartialOnly() {
 	encID := core.EncounterID("enc-death-6")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	// alice has 1 HP — guaranteed kill on first NPC hit.
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -528,7 +528,7 @@ func (s *DeathSuite) TestSlice_EncounterEndedReasonAllHostilesDefeated() {
 func (s *DeathSuite) TestSlice_PlayerDeath_NotRePublishedOnReHit() {
 	encID := core.EncounterID("enc-death-rehit-player")
 	enc := encounter.New(context.Background(), encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,

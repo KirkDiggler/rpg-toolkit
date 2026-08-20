@@ -52,8 +52,8 @@ var (
 	// whose combat snapshot (HP, AC, AttackBonus, DamageDice) is not
 	// fully populated. Maps to gRPC FailedPrecondition.
 	ErrNonCombatant = errors.New("actor is not a combatant")
-	// ErrUnsupportedAttackDirection is returned by CompleteTakeAction when
-	// the (attacker, target) pair encoded in PhasedAttackContext is not a
+	// ErrUnsupportedAttackDirection is returned by CompleteStrikeAction when
+	// the (attacker, target) pair encoded in PhasedStrikeContext is not a
 	// shipped PvE direction (player→monster or monster→player). Player→
 	// player and monster→monster are out of scope until a wave adds the
 	// corresponding verb. Maps to gRPC Unimplemented.
@@ -74,13 +74,13 @@ var (
 const damageTypeUntyped = "untyped"
 
 // actionIDAttack is the canonical action ID for a standard melee/ranged
-// attack. Used as AttackInput.ActionRef.ID for both the player path
+// attack. Used as StrikeInput.ActionRef.ID for both the player path
 // (TakeAction) and the NPC path (NPCAct / npcActScripted).
 const actionIDAttack = "attack"
 
 // attackActionRef is the canonical ref string the ActionResolvedEvent carries
 // for a standard attack. Mirrors the {Module:"dnd5e", Type:"action",
-// ID:"attack"} shape the SDK threads into AttackInput.ActionRef (npc.go), in
+// ID:"attack"} shape the SDK threads into StrikeInput.ActionRef (npc.go), in
 // the toolkit-canonical "module:type:id" string form so the encounter SDK
 // stays free of rulebook ref types. The menu/economy unification PR will
 // generalize the attack publish path to carry the actor's submitted ref so
@@ -224,8 +224,8 @@ func (e *Encounter) spendStrikeEconomy(
 //
 // An ACTUALLY HELD seat (e.heldCharacter returns non-nil) is always
 // combat-ready regardless of the flat AC/DamageDice snapshot:
-// Dnd5eCombatResolver routes a held attacker through the real rules chain
-// (character.WeaponForActionRef + combat.ResolveAttack), which reads the
+// Dnd5eStrikeResolver routes a held attacker through the real rules chain
+// (the rulebook's character-to-Strike compiler), which reads the
 // held character's actual equipped weapon and ability scores and never
 // consults the flat snapshot fields — see the resolver's doc comment
 // ("Stand-in fallback"). Those fields are load-bearing ONLY for a seat
@@ -587,7 +587,7 @@ func (e *Encounter) firstEngagedPlayerEntityID() (core.EntityID, bool) {
 	}
 	// Sorted by EntityID directly (not via a map keyed on it): two player
 	// seats sharing an EntityID isn't structurally enforced against
-	// elsewhere in this package (see CompleteTakeAction's doc comment on
+	// elsewhere in this package (see CompleteStrikeAction's doc comment on
 	// cross-map id collisions), so this avoids introducing a new place that
 	// would silently collapse such a collision.
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].EntityID < candidates[j].EntityID })
@@ -901,11 +901,11 @@ func (e *Encounter) EndTurn(
 // last hostile) flips the encounter to ModeEnded and publishes
 // EncounterEndedEvent.
 //
-// Wave 2.11d: TakeAction is now a thin wrapper over TakeActionPhased that
+// Wave 2.11d: TakeAction is now a thin wrapper over TakeStrikePhased that
 // returns just the error for callers that don't need reaction-prompt support.
 // A returned outcome with Reactions populated is treated as an internal-state
-// programming error here — callers that wire a PhasedCombatResolver should
-// use TakeActionPhased directly to handle reaction prompts.
+// programming error here — callers that wire a PhasedStrikeResolver should
+// use TakeStrikePhased directly to handle reaction prompts.
 //
 // Returns ErrEncounterEnded when the encounter is in the terminal state.
 // Returns ErrNonCombatant if the player's combat snapshot
@@ -913,13 +913,13 @@ func (e *Encounter) EndTurn(
 // added without combat fields. PlayerInput documents that a zero combat
 // snapshot opts the player out of combat verbs.
 func (e *Encounter) TakeAction(playerID core.PlayerID, ref ActionRef, target ActionTarget) error {
-	outcome, err := e.TakeActionPhased(playerID, ref, target)
+	outcome, err := e.TakeStrikePhased(playerID, ref, target)
 	if err != nil {
 		return err
 	}
 	if outcome != nil && len(outcome.Reactions) > 0 {
-		return fmt.Errorf("TakeAction: reactions pending but caller did not use TakeActionPhased; " +
-			"use TakeActionPhased to handle reaction prompts")
+		return fmt.Errorf("TakeAction: reactions pending but caller did not use TakeStrikePhased; " +
+			"use TakeStrikePhased to handle reaction prompts")
 	}
 	return nil
 }
@@ -1017,7 +1017,7 @@ func rollD20(r dice.Roller) int {
 	return v
 }
 
-// publishAttackOutcome emits the first-class ActionResolvedEvent (the cause
+// publishStrikeOutcome emits the first-class ActionResolvedEvent (the cause
 // beat, Invariant 9), the AttackResolvedEvent (attack roll detail, always),
 // and the DamageDealtEvent (only on hit) with per-viewer projection determined
 // by LoS to attacker OR target.
@@ -1043,9 +1043,9 @@ func rollD20(r dice.Roller) int {
 // the attacker or the target are omitted from PerPlayer entirely (and so
 // are excluded from Audience()). The broker delivers only to listed
 // viewers, which prevents fog-of-war leakage of out-of-LoS combat.
-func (e *Encounter) publishAttackOutcome(
+func (e *Encounter) publishStrikeOutcome(
 	attackerID, targetID core.EntityID,
-	outcome *AttackOutcome,
+	outcome *StrikeOutcome,
 	targetHPAfter, targetMaxHP int,
 	damageType string,
 	attackerPos, targetPos core.Hex,

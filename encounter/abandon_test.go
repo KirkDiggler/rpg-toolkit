@@ -66,7 +66,7 @@ func (s *AbandonSuite) TearDownTest() {
 func (s *AbandonSuite) TestEnd_MidCombat_Abandoned_EndsEncounter_PersistsThroughReload_RejectsPostLoadVerbs() {
 	encID := core.EncounterID("enc-abandon-midcombat")
 	enc := encounter.New(s.ctx, encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
 		Position: core.Hex{}, SightRange: 10,
@@ -112,7 +112,7 @@ func (s *AbandonSuite) TestEnd_MidCombat_Abandoned_EndsEncounter_PersistsThrough
 
 	reloaded, err := encounter.LoadFromData(s.ctx, &data, s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(err)
 	s.Equal(core.ModeEnded, reloaded.Mode(), "ended state must survive LoadFromData")
 
@@ -197,7 +197,7 @@ func (s *AbandonSuite) TestEnd_AlreadyEnded_ReturnsErrEncounterEnded_NegativeCon
 	s.Run("already ended naturally (victory)", func() {
 		encID := core.EncounterID("enc-abandon-after-victory")
 		enc := encounter.New(s.ctx, encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-			encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+			encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 		s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 			PlayerID: "alice", EntityID: aliceEntityID,
 			Position: core.Hex{}, SightRange: 10,

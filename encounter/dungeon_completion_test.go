@@ -169,7 +169,7 @@ func (s *DungeonCompletionSuite) TearDownTest() {
 // encounter in a completed, endable state rather than a resumed fight.
 func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHostile_ReloadSafe() {
 	roller := encounter.WithRoller(fixedMaxRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 	enc := encounter.New(s.ctx, "enc-dungeon-completion-victory", s.broker, roller, resolver)
 
 	s.Require().NoError(enc.InitDungeon(dcDungeonParams(dcSeed)))
@@ -332,7 +332,7 @@ func (s *DungeonCompletionSuite) TestClearingEarlyPockets_ThenVictoryOnLastHosti
 // victory reason instead.
 func (s *DungeonCompletionSuite) TestTPKMidDungeon_EndsWithCanonicalReason_HostilesRemainElsewhere() {
 	roller := encounter.WithRoller(fixedMaxRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 	enc := encounter.New(s.ctx, "enc-dungeon-completion-tpk", s.broker, roller, resolver)
 
 	s.Require().NoError(enc.InitDungeon(dcDungeonParams(dcSeed)))

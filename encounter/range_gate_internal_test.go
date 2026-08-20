@@ -5,7 +5,7 @@ package encounter
 // package encounter (not encounter_test) so it can exercise the unexported
 // helpers (checkReach, meleeReachForWeapon, meleeReachForCombatant) directly
 // with hand-built fixtures, rather than driving a full hydrated
-// character/monster through TakeActionPhased/NPCAct just to prove the
+// character/monster through TakeStrikePhased/NPCAct just to prove the
 // weapon-reach arithmetic — that integration coverage lives in
 // combat_phased_test.go / combat_test.go (encounter_test package).
 

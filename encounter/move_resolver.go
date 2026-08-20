@@ -10,11 +10,11 @@ package encounter
 // Wave 2.11e ships NPC-OA-only scope per director signoff on #658 (Q1=b):
 // per-step iteration + trigger buffer drain. NPC OA triggers are resolved
 // inline by the resolver impl (rpg-api wraps combat.MoveEntity which calls
-// triggerOpportunityAttack → ResolveAttack end-to-end). Player-pause
+// triggerOpportunityAttack → ResolveStrike end-to-end). Player-pause
 // branch (Sentinel-shape / spell reactions) deferred to #665.
 //
 // Pattern parallel: this is the second instance of the resolver-per-verb
-// pattern that PhasedCombatResolver established. ADR-0027 names it as the
+// pattern that PhasedStrikeResolver established. ADR-0027 names it as the
 // canonical seam for any future SDK verbs that need rulebook-aware chain
 // execution.
 
@@ -46,7 +46,7 @@ type MovementResolver interface {
 	// step result. The bus path is canonical for OA/reaction handoff.
 	//
 	// NPC OAs are resolved inline by the resolver impl: combat.MoveEntity
-	// → triggerOpportunityAttack → ResolveAttack runs end-to-end, applying
+	// → triggerOpportunityAttack → ResolveStrike runs end-to-end, applying
 	// damage and publishing AttackResolved events on the bus before
 	// ResolveStep returns. The encounter SDK does not need to act on NPC
 	// triggers — they were already resolved.
@@ -73,7 +73,7 @@ type MovementStepInput struct {
 	ToHex encountercore.Hex
 
 	// EventBus is the encounter's rulebook event bus, populated by the SDK
-	// at call time (mirrors AttackInput.EventBus). The resolver impl uses
+	// at call time (mirrors StrikeInput.EventBus). The resolver impl uses
 	// this when it needs to publish on the bus chain subscribers are
 	// listening on — e.g., wrapping rulebooks/dnd5e/combat.MoveEntity which
 	// requires a bus to publish MovementChain so OA/Disengage conditions
@@ -102,7 +102,7 @@ type MovementStepInput struct {
 // observes them through the buffer. There is intentionally no
 // resolver-returned trigger slot: a second channel would invite
 // implementers to silently drop bus triggers, and the bus path is
-// canonical for OA/reaction handoff (see PhasedCombatResolver for the
+// canonical for OA/reaction handoff (see PhasedStrikeResolver for the
 // same shape applied to attack reactions).
 type MovementStepResult struct {
 	// Prevented is true when chain subscribers (Disengage, etc.) blocked

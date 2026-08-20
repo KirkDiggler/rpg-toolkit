@@ -124,7 +124,7 @@ func (s *PocketClearMoveTeardownSuite) loadErinVsTwoPockets() *encounter.Encount
 	s.T().Helper()
 	enc := encounter.New(s.ctx, "enc-pocket-clear-move-teardown", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.InitRoom(40, 40, environments.PatternEmpty))
 	s.Require().NoError(enc.AddDoor(pcmDoorID, lineHex(10), false))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -153,7 +153,7 @@ func (s *PocketClearMoveTeardownSuite) loadErinVsTwoPockets() *encounter.Encount
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(err)
 	return loaded
 }
@@ -323,7 +323,7 @@ func (s *PocketClearMoveTeardownSuite) TestPocketClear_CombatScopedConditionPers
 
 	enc := encounter.New(s.ctx, "enc-pocket-clear-condition-persist", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.InitRoom(20, 20, environments.PatternEmpty))
 	s.Require().NoError(enc.AddDoor(pcmDoorID, lineHex(10), false))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -352,7 +352,7 @@ func (s *PocketClearMoveTeardownSuite) TestPocketClear_CombatScopedConditionPers
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(err)
 
 	for i := 0; loaded.ActiveActor() != core.EntityID(bobEntityID) && i < 8; i++ {

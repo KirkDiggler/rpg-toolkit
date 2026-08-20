@@ -394,14 +394,35 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 	}
 	m.outcome.Critical = m.outcome.Hit && roll >= folded.CriticalThreshold
 
-	if !m.outcome.Hit {
-		// A miss ends the strike here: no damage, and no save. The rider the
-		// action declares is gated on the blow landing, so a bite that misses
-		// rolls no save (rpg-toolkit#962's residual).
-		return Done{Outcome: m.outcome}, nil
+	// PostAttackRollChain is the reaction boundary for both hits and misses.
+	// Shield and rage-attempt subscribers need the actual d20 result before
+	// phase two can decide damage, so publish it before the miss short-circuit.
+	postRoll := &dnd5eEvents.PostAttackRollEvent{
+		AttackerID:          m.outcome.AttackerID,
+		TargetID:            m.outcome.TargetID,
+		OriginalAC:          folded.TargetAC,
+		AttackRoll:          roll,
+		AttackBonus:         folded.AttackBonus,
+		TotalAttack:         m.outcome.Total,
+		WouldHit:            m.outcome.Hit,
+		IsNaturalTwenty:     roll == 20,
+		IsNaturalOne:        roll == 1,
+		HasAdvantage:        hasAdvantage,
+		HasDisadvantage:     hasDisadvantage,
+		AdvantageSources:    folded.AdvantageSources,
+		DisadvantageSources: folded.DisadvantageSources,
 	}
 
-	return m.rollDamage(ctx, roller)
+	return publishPostAttackRoll(postRoll, func(nextCtx context.Context) (Step, error) {
+		if !m.outcome.Hit {
+			// A miss ends the strike here: no damage, and no save. The rider the
+			// action declares is gated on the blow landing, so a bite that misses
+			// rolls no save (rpg-toolkit#962's residual).
+			return Done{Outcome: m.outcome}, nil
+		}
+
+		return m.rollDamage(nextCtx, roller)
+	}), nil
 }
 
 // rollDamage rolls the action's damage dice and yields the fold that lets
@@ -780,6 +801,29 @@ func gatherAttack(
 			}
 
 			return next(ctx, folded)
+		},
+	}
+}
+
+// publishPostAttackRoll runs the post-roll reaction chain on the interaction's
+// bus. It deliberately executes for misses as well as hits: subscribers such
+// as Rage record an attack attempt, while Shield simply ignores misses.
+func publishPostAttackRoll(
+	event *dnd5eEvents.PostAttackRollEvent,
+	next func(context.Context) (Step, error),
+) Gather {
+	return Gather{
+		name: "post attack roll",
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			chain := events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages)
+			modified, err := dnd5eEvents.PostAttackRollChain.On(bus).PublishWithChain(ctx, event, chain)
+			if err != nil {
+				return nil, fmt.Errorf("publish post attack roll: %w", err)
+			}
+			if _, err := modified.Execute(ctx, event); err != nil {
+				return nil, fmt.Errorf("execute post attack roll: %w", err)
+			}
+			return next(ctx)
 		},
 	}
 }

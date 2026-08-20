@@ -78,7 +78,7 @@ func (s *CombatPocketsSuite) SetupTest() {
 	s.broker = encounter.NewBroker(s.transport)
 	s.enc = encounter.New(s.ctx, "enc-combat-pockets", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}),
 	)
 
 	s.Require().NoError(s.enc.InitRoom(20, 20, environments.PatternEmpty))

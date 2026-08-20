@@ -104,7 +104,8 @@ type EndTurnResult struct {
 }
 
 // TurnManager orchestrates a single combatant's turn in combat.
-// It manages the action economy, delegates to ResolveAttack and MoveEntity,
+// It manages the action economy, delegates to the canonical Strike boundary
+// and MoveEntity,
 // and publishes events for multiplayer broadcasting.
 // After EndTurn is called, the TurnManager must not be reused.
 type TurnManager struct {

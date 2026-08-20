@@ -26,9 +26,9 @@ import (
 // as encounter-scoped per-viewer events.
 //
 // For each captured dnd5e.AttackEvent, the encounter SDK resolves hit/damage
-// by delegating to the wired CombatResolver — the same resolver used by the
-// player-attack path (TakeAction). NPCAct returns ErrNoCombatResolver if no
-// resolver has been wired via WithCombatResolver.
+// by delegating to the wired StrikeResolver — the same resolver used by the
+// player-attack path (TakeAction). NPCAct returns ErrNoStrikeResolver if no
+// resolver has been wired via WithStrikeResolver.
 //
 // Position is updated from TurnResult.Movement; a MoveEvent is emitted
 // per-viewer for the NPC's path.
@@ -48,8 +48,8 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, npcID)
 	}
-	if e.combatResolver == nil {
-		return ErrNoCombatResolver
+	if e.strikeResolver == nil {
+		return ErrNoStrikeResolver
 	}
 	if len(mon.DataJSON) == 0 {
 		// No-fallback rider (rpg-toolkit#895): an empty-DataJSON monster used
@@ -79,7 +79,7 @@ func (e *Encounter) NPCAct(ctx context.Context, npcID encountercore.EntityID) er
 	// subscriber in iterateMovementStepsForEntity (#675); installing the
 	// outer before movement would double-capture and double-apply HP via
 	// applyCapturedDamage. The outer's purpose is the attack-resolution
-	// window (applyCapturedAttacks → ResolveAttack → DamageReceivedEvent).
+	// window (applyCapturedAttacks → ResolveStrike → DamageReceivedEvent).
 	// Wave 2.11e (#677 director review).
 	var capturedDmg *[]dnd5eEvents.DamageReceivedEvent
 	var unsubDmg func() error
@@ -237,7 +237,7 @@ func syncMonsterDataFromSnapshot(data *monster.Data, snap *MonsterData) {
 // a MovementResolver is wired (Wave 2.11e #668), iterates per-step so
 // chain subscribers (player OA conditions in particular) fire and
 // inline OAs against the moving NPC resolve via the resolver impl
-// (combat.MoveEntity → triggerOpportunityAttack → ResolveAttack). When
+// (combat.MoveEntity → triggerOpportunityAttack → ResolveStrike). When
 // no resolver is wired, preserves the legacy single-jump behavior for
 // non-combat encounters that don't need chain mediation.
 //
@@ -368,7 +368,7 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 }
 
 // applyCapturedAttacks resolves each captured dnd5e AttackEvent (cause-only)
-// through the wired CombatResolver, mutates the target player's HP,
+// through the wired StrikeResolver, mutates the target player's HP,
 // and emits AttackResolved + DamageDealt encounter events.
 //
 // Wave 2.10: when an NPC's attack drops a player to HP=0, also publishes
@@ -385,13 +385,13 @@ func (e *Encounter) applyNPCMovementSteps(mon *MonsterData, path []encountercore
 // outer subscribeDamage listener writes into. After each attack resolves,
 // this function drains whatever the resolver added to that slice — those
 // events are the rulebook's internal DamageReceivedEvent notify step
-// (combat.ApplyAttackOutcome publishes one after running the damage chain).
+// (combat.ApplyStrikeOutcome publishes one after running the damage chain).
 // HP and the encounter-side DamageDealtEvent are already handled by
 // applyAndPublishNPCOutcome; draining prevents applyCapturedDamage from
 // re-applying the same damage a second time.
 //
 // applyCapturedDamage remains in place for the speculative future case
-// where a monster action deals damage via DealDamage (not ResolveAttack)
+// where a monster action deals damage via DealDamage (not ResolveStrike)
 // — e.g., a breath weapon action. That path would publish a
 // DamageReceivedEvent without a preceding AttackEvent, so it would not be
 // consumed here and would correctly flow through applyCapturedDamage.
@@ -408,7 +408,7 @@ func (e *Encounter) applyCapturedAttacks(
 		}
 
 		// rpg-toolkit#864: the same shared range gate the player attack path
-		// uses (TakeActionPhased), applied here so no actor is an exception.
+		// uses (TakeStrikePhased), applied here so no actor is an exception.
 		// Melee-only: dnd5eEvents.AttackEvent carries IsMelee but no numeric
 		// range, and MonsterData has no range field to consult for ranged
 		// attacks without inventing new plumbing — a gap worth its own
@@ -441,7 +441,7 @@ func (e *Encounter) applyCapturedAttacks(
 			}
 		}
 
-		input := AttackInput{
+		input := StrikeInput{
 			AttackerID:          mon.ID,
 			TargetID:            targetID,
 			ActionRef:           core.Ref{Module: "dnd5e", Type: "action", ID: actionIDAttack},
@@ -456,16 +456,16 @@ func (e *Encounter) applyCapturedAttacks(
 
 		// Snapshot the damage slice length before the resolver runs. The
 		// resolver publishes DamageReceivedEvent internally (the "notify"
-		// step in combat.ApplyAttackOutcome). We drain those events after
+		// step in combat.ApplyStrikeOutcome). We drain those events after
 		// applyAndPublishNPCOutcome so applyCapturedDamage doesn't re-apply
 		// them. See #684.
 		dmgLenBefore := len(*capturedDmg)
 
 		// Wave 2.11d: route NPC attacks through the phased path when the
 		// resolver supports it so player Shield prompts can fire on hits
-		// against players. Falls back to single-phase ResolveAttack when the
+		// against players. Falls back to single-phase ResolveStrike when the
 		// resolver is legacy-only.
-		outcome, paused, err := e.npcResolveAttackPhased(input)
+		outcome, paused, err := e.npcResolveStrikePhased(input)
 		if err != nil {
 			return fmt.Errorf("combat resolver: %w", err)
 		}
@@ -474,7 +474,7 @@ func (e *Encounter) applyCapturedAttacks(
 			// reaction state + prompt event already published. Stop processing
 			// further captured attacks for this NPC turn — the orchestrator
 			// will resume the NPC dispatch after the reactor responds via
-			// SubmitCheck → CompleteTakeAction (the NPC-attacker direction
+			// SubmitCheck → CompleteStrikeAction (the NPC-attacker direction
 			// added in Wave 2.11e).
 			return errNPCPausedForReaction
 		}
@@ -482,7 +482,7 @@ func (e *Encounter) applyCapturedAttacks(
 			return fmt.Errorf("combat resolver: nil outcome with nil error")
 		}
 		// Wave 2.11e: share the NPC-attacker outcome publish path with
-		// CompleteTakeAction so inline and resume emit the same shape.
+		// CompleteStrikeAction so inline and resume emit the same shape.
 		if err := e.applyAndPublishNPCOutcome(mon, targetPlayer, outcome); err != nil {
 			return err
 		}
@@ -499,7 +499,7 @@ func (e *Encounter) applyCapturedAttacks(
 	return nil
 }
 
-// npcResolveAttackPhased runs an NPC attack via the resolver's phased path
+// npcResolveStrikePhased runs an NPC attack via the resolver's phased path
 // when available, installing a buffered subscriber on ReactionTriggerTopic
 // to catch player Shield prompts. Returns:
 //   - (outcome, false, nil): attack resolved normally (no reactions, or only
@@ -510,14 +510,14 @@ func (e *Encounter) applyCapturedAttacks(
 //     responds via SubmitCheck.
 //   - (_, _, err): resolver failure.
 //
-// Falls back to the legacy single-phase ResolveAttack when the resolver
-// does not implement PhasedCombatResolver.
-func (e *Encounter) npcResolveAttackPhased(input AttackInput) (*AttackOutcome, bool, error) {
-	phased, ok := e.combatResolver.(PhasedCombatResolver)
+// Falls back to the legacy single-phase ResolveStrike when the resolver
+// does not implement PhasedStrikeResolver.
+func (e *Encounter) npcResolveStrikePhased(input StrikeInput) (*StrikeOutcome, bool, error) {
+	phased, ok := e.strikeResolver.(PhasedStrikeResolver)
 	if !ok {
 		// Legacy path — single-phase. Reactions cannot fire because the
 		// resolver doesn't expose phase-1 state. Return the outcome as-is.
-		out, err := e.combatResolver.ResolveAttack(input)
+		out, err := e.strikeResolver.ResolveStrike(input)
 		return out, false, err
 	}
 
@@ -527,7 +527,7 @@ func (e *Encounter) npcResolveAttackPhased(input AttackInput) (*AttackOutcome, b
 	}
 	defer drainCleanup()
 
-	attackCtx, resolverTriggers, err := phased.ResolveAttackHit(input)
+	attackCtx, resolverTriggers, err := phased.ResolveStrikeHit(input)
 	if err != nil {
 		return nil, false, err
 	}
@@ -539,7 +539,7 @@ func (e *Encounter) npcResolveAttackPhased(input AttackInput) (*AttackOutcome, b
 	if len(playerTriggers) == 0 {
 		// No player prompts — resolve NPC modifiers (if any) and run phase 2.
 		modifiers := e.npcModifiers(npcTriggers)
-		outcome, err := phased.ApplyAttackOutcome(attackCtx, modifiers)
+		outcome, err := phased.ApplyStrikeOutcome(attackCtx, modifiers)
 		if err != nil {
 			return nil, false, err
 		}
@@ -558,7 +558,7 @@ func (e *Encounter) npcResolveAttackPhased(input AttackInput) (*AttackOutcome, b
 
 // persistNPCPendingReactions records each player trigger from an NPC attack
 // as a PendingReactionPrompt (with empty AttackContextJSON), caches the live
-// PhasedAttackContext on the in-process map, and emits an
+// PhasedStrikeContext on the in-process map, and emits an
 // InputRequiredDeliveredEvent.
 //
 // HOST CONTRACT — the SDK cannot serialize the rulebook-side AttackContext
@@ -566,24 +566,24 @@ func (e *Encounter) npcResolveAttackPhased(input AttackInput) (*AttackOutcome, b
 //
 //  1. Detect IsNPCPausedForReaction on the NPCAct error return.
 //  2. Walk PendingReactionPrompts that have empty AttackContextJSON, fetch
-//     the live context via PendingPhasedAttackContext(reactorPlayerID),
+//     the live context via PendingPhasedStrikeContext(reactorPlayerID),
 //     marshal it via the host's rulebook adapter, and write it back into
 //     the prompt's AttackContextJSON BEFORE calling ToData / saving the
 //     snapshot.
 //
 // Without that step, an NPC-attack-paused-for-reaction encounter that gets
 // rehydrated on the next RPC (e.g. rpg-api's Get → LoadFromData lifecycle)
-// will lose the AttackContext entirely, and CompleteTakeAction cannot
+// will lose the AttackContext entirely, and CompleteStrikeAction cannot
 // reconstruct phase-2 state.
 //
 // rpg-api's EndTurn handler calls a serializePendingPhasedAttacks helper
 // that performs this marshaling step. See the wave plan for the full flow.
 //
 // FUTURE: when the SDK gains a resolver-supplied serializer callback (e.g.
-// CombatResolver.MarshalAttackContext([]byte)), the SDK can populate
+// StrikeResolver.MarshalAttackContext([]byte)), the SDK can populate
 // AttackContextJSON itself and the host contract collapses.
 func (e *Encounter) persistNPCPendingReactions(
-	attackCtx *PhasedAttackContext,
+	attackCtx *PhasedStrikeContext,
 	playerTriggers []ReactionTrigger,
 ) error {
 	for _, trig := range playerTriggers {
@@ -602,7 +602,7 @@ func (e *Encounter) persistNPCPendingReactions(
 			TriggerKind:     trig.TriggerKind,
 			SourceEntity:    trig.SourceEntity,
 			// AttackContextJSON intentionally empty — the host marshals the
-			// PhasedAttackContext (which includes the rulebook-side context)
+			// PhasedStrikeContext (which includes the rulebook-side context)
 			// via its own type before re-saving the encounter.
 		})
 		if err := e.PublishInputRequiredDelivered(reactorPlayerID, events.PromptKindReaction); err != nil {
@@ -610,7 +610,7 @@ func (e *Encounter) persistNPCPendingReactions(
 		}
 		// Cache the in-flight phasedCtx so the host can pull it via a
 		// follow-up call (added below for the resume path).
-		e.cachePhasedAttackContext(reactorPlayerID, attackCtx)
+		e.cachePhasedStrikeContext(reactorPlayerID, attackCtx)
 	}
 	return nil
 }
@@ -641,8 +641,8 @@ func IsNPCPausedForReaction(err error) bool {
 	return errors.Is(err, errNPCPausedForReaction)
 }
 
-// cachePhasedAttackContext stores the in-flight PhasedAttackContext for a
-// reactor so the host can read it via PendingPhasedAttackContext on the
+// cachePhasedStrikeContext stores the in-flight PhasedStrikeContext for a
+// reactor so the host can read it via PendingPhasedStrikeContext on the
 // resume path. This complements the persisted PendingReactionPrompt: the
 // prompt is durable across RPCs (snapshot persists), the AttackContext is
 // in-process for the same RPC (the cache is per-Encounter instance).
@@ -651,21 +651,21 @@ func IsNPCPausedForReaction(err error) bool {
 // the PendingReactionPrompt.AttackContextJSON before persisting; on the
 // next RPC the host unmarshals it back. This cache only matters when the
 // host doesn't marshal (fast-path single-RPC NPC attacks that pause).
-func (e *Encounter) cachePhasedAttackContext(
+func (e *Encounter) cachePhasedStrikeContext(
 	reactorPlayerID encountercore.PlayerID,
-	attackCtx *PhasedAttackContext,
+	attackCtx *PhasedStrikeContext,
 ) {
-	if e.pendingPhasedAttacks == nil {
-		e.pendingPhasedAttacks = make(map[encountercore.PlayerID]*PhasedAttackContext)
+	if e.pendingPhasedStrikes == nil {
+		e.pendingPhasedStrikes = make(map[encountercore.PlayerID]*PhasedStrikeContext)
 	}
-	e.pendingPhasedAttacks[reactorPlayerID] = attackCtx
+	e.pendingPhasedStrikes[reactorPlayerID] = attackCtx
 }
 
-// PendingPhasedAttackContext returns the in-process AttackContext for the
+// PendingPhasedStrikeContext returns the in-process AttackContext for the
 // reactor (set by an NPC attack that paused for a player reaction). Nil if
-// none. The host calls this on the resume path to feed CompleteTakeAction.
-func (e *Encounter) PendingPhasedAttackContext(reactorPlayerID encountercore.PlayerID) *PhasedAttackContext {
-	return e.pendingPhasedAttacks[reactorPlayerID]
+// none. The host calls this on the resume path to feed CompleteStrikeAction.
+func (e *Encounter) PendingPhasedStrikeContext(reactorPlayerID encountercore.PlayerID) *PhasedStrikeContext {
+	return e.pendingPhasedStrikes[reactorPlayerID]
 }
 
 // applyCapturedDamage translates each dnd5e DamageReceivedEvent into an
@@ -673,7 +673,7 @@ func (e *Encounter) PendingPhasedAttackContext(reactorPlayerID encountercore.Pla
 // is empty (applyCapturedAttacks drains the resolver's internal notify
 // events — see #684). This function is the future-facing path for monster
 // actions that deal direct damage via DealDamage rather than through
-// ResolveAttack (e.g., a goblin's breath weapon or a splash damage action).
+// ResolveStrike (e.g., a goblin's breath weapon or a splash damage action).
 // Those actions publish a DamageReceivedEvent without a preceding AttackEvent,
 // so they are not consumed by applyCapturedAttacks and correctly arrive here.
 // The function is NPC-scoped: mon.Position is used for the per-viewer LoS
@@ -740,25 +740,25 @@ func (e *Encounter) applyCapturedDamage(
 	return nil
 }
 
-// applyMoveAttackOutcomes translates the PostAttackRollEvents (and, for
+// applyMoveStrikeOutcomes translates the PostAttackRollEvents (and, for
 // hits, the paired DamageReceivedEvents) captured during one movement step
-// into encounter events, mirroring publishAttackOutcome's shape for the
+// into encounter events, mirroring publishStrikeOutcome's shape for the
 // TakeAction path: AttackResolvedEvent is published for every roll — hit or
 // miss — and DamageDealtEvent only for rolls that hit. Closes #715: before
 // this, the Move-path OA seam only observed DamageReceivedTopic, so a miss
-// (which combat.ApplyAttackOutcome never publishes damage for) produced no
+// (which combat.ApplyStrikeOutcome never publishes damage for) produced no
 // event at all, and a hit produced a bare DamageDealtEvent with no
 // AttackResolvedEvent alongside it.
 //
-// Matching rolls to damages: combat.ResolveAttackHit unconditionally
-// publishes one PostAttackRollEvent before combat.ApplyAttackOutcome
+// Matching rolls to damages: combat.ResolveStrikeHit unconditionally
+// publishes one PostAttackRollEvent before combat.ApplyStrikeOutcome
 // conditionally publishes one DamageReceivedEvent (hit only) — both within
-// the same synchronous combat.ResolveAttack call, and OAs resolve one at a
+// the same synchronous combat.ResolveStrike call, and OAs resolve one at a
 // time (not concurrently). So within a step, the two captured slices line
 // up positionally: the Nth hit roll consumes the Nth entry in damages.
 //
 // #710: each roll's AttackResolvedEvent + its matched DamageDealtEvent (if
-// any) share one correlation id, mirroring publishAttackOutcome's grouping
+// any) share one correlation id, mirroring publishStrikeOutcome's grouping
 // (Invariant 8) — one id per OA, derived from that OA's own
 // AttackResolvedEvent identity since (unlike TakeAction) there is no
 // ActionResolvedEvent cause-beat for an OA to seed from.
@@ -767,7 +767,7 @@ func (e *Encounter) applyCapturedDamage(
 // silently drop damage: a MovementResolver implementation that publishes
 // DamageReceivedEvent without a preceding PostAttackRollEvent (a non-attack
 // movement hazard, or a resolver that doesn't route through
-// combat.ResolveAttackHit) would never reach the loop body, and its HP
+// combat.ResolveStrikeHit) would never reach the loop body, and its HP
 // delta would be lost. Any damages left unconsumed after the roll loop —
 // whether from more damage entries than hit rolls, or no rolls at all —
 // still apply via applyMoveDamage's fallback shape (HP + DamageDealtEvent,
@@ -775,7 +775,7 @@ func (e *Encounter) applyCapturedDamage(
 // roll — and therefore no causing OA identity — to report or derive one
 // from). HP correctness takes priority over the attackResolved-shape
 // guarantee when the two signals disagree.
-func (e *Encounter) applyMoveAttackOutcomes(
+func (e *Encounter) applyMoveStrikeOutcomes(
 	ctx context.Context, rolls []dnd5eEvents.PostAttackRollEvent, damages []dnd5eEvents.DamageReceivedEvent,
 ) error {
 	dmgIdx := 0
@@ -812,7 +812,7 @@ func (e *Encounter) applyMoveAttackOutcomes(
 // publishMoveAttackResolved publishes an encounter AttackResolvedEvent for
 // one Move-path attack roll (hit or miss), and returns the correlation id
 // derived from its own (encounter, sequence) identity — mirroring
-// publishAttackOutcome's correlationFor pattern — so the caller can stamp
+// publishStrikeOutcome's correlationFor pattern — so the caller can stamp
 // the same id on the matched DamageDealtEvent (#710, Invariant 8).
 //
 // Per-viewer projection mirrors applyMoveDamage: a viewer is included if
@@ -868,7 +868,7 @@ func (e *Encounter) publishMoveAttackResolved(
 // corrID is the causing OA's correlation id — shared with the
 // AttackResolvedEvent publishMoveAttackResolved already published for a
 // matched hit roll — or the zero value ("") for unpaired damage
-// (applyMoveAttackOutcomes' unpaired-damage fallback, which has no roll and
+// (applyMoveStrikeOutcomes' unpaired-damage fallback, which has no roll and
 // therefore no OA identity to derive a correlation id from). Stamping only
 // takes effect when corrID is non-empty; publishCorrelated always calls
 // Stamp, but an empty corrID means "not part of a correlated action group"
@@ -876,11 +876,11 @@ func (e *Encounter) publishMoveAttackResolved(
 // turn-start refresh).
 //
 // Wave 2.11e (#675): MovementResolver path damage application.
-// combat.MoveEntity → triggerOpportunityAttack → combat.ResolveAttack
+// combat.MoveEntity → triggerOpportunityAttack → combat.ResolveStrike
 // publishes DamageReceivedEvent on the bus mid-iterate; the encounter SDK
 // captures the events around ResolveStep (iterateMovementStepsForEntity)
 // and dispatches HP delta + encounter-side DamageDealtEvent here, plus the
-// kill/death chain on the >0 → 0 transition. #715: applyMoveAttackOutcomes
+// kill/death chain on the >0 → 0 transition. #715: applyMoveStrikeOutcomes
 // matches each hit roll to its damage entry and publishes the roll's
 // AttackResolvedEvent before calling in here; unpaired damage (no matching
 // roll) calls in directly with corrID="".
@@ -991,7 +991,7 @@ func (e *Encounter) applyDamageToTarget(
 // an encounter ConditionAppliedEvent. As with damage, no shipped action
 // publishes one through this bus today.
 //
-// Per-viewer projection mirrors publishAttackOutcome: a viewer is in
+// Per-viewer projection mirrors publishStrikeOutcome: a viewer is in
 // PerPlayer iff they have LoS to the source (mon) or the target. Viewers
 // out of LoS are omitted from PerPlayer entirely so the broker does not
 // deliver to them — matching the Move / OpenDoor audience-routing
@@ -1045,7 +1045,7 @@ var ErrMonsterNotRehydratable = errors.New("monster has no DataJSON to rehydrate
 // (rpg-toolkit#895, e.g. "dnd5e:targeting:lowest-hp") for a monster's NPC
 // attack from its persisted targeting strategy. Used on both the inline
 // NPC-attack path (applyCapturedAttacks, via applyAndPublishNPCOutcome) and
-// the Shield-resume path (CompleteTakeAction), which have no live
+// the Shield-resume path (CompleteStrikeAction), which have no live
 // *monster.Monster instance in common but always have MonsterData.DataJSON
 // — the no-fallback rider (AddMonster, encounter.go) guarantees it is never
 // empty for any monster reachable here. Best-effort: a DataJSON that fails
@@ -1296,9 +1296,9 @@ func subscribeDamage(
 }
 
 // subscribeAttackRolls attaches a pure observer to the dnd5e
-// PostAttackRollChain. combat.ResolveAttackHit publishes one
+// PostAttackRollChain. combat.ResolveStrikeHit publishes one
 // PostAttackRollEvent per attack — hit or miss — before
-// combat.ApplyAttackOutcome conditionally publishes DamageReceivedEvent
+// combat.ApplyStrikeOutcome conditionally publishes DamageReceivedEvent
 // (hit only). #715: this is the toolkit-side signal the Move-path OA seam
 // (iterateMovementStepsForEntity) uses to detect attack-roll outcomes;
 // the MovementResolver interface itself only returns Prevented/

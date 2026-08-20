@@ -534,7 +534,7 @@ func (s *MovementResolverSuite) TestNPCMove_ResolverPublishesTrigger_BufferDrain
 // hold — chain fires, dice roll, but target's HP never moves.
 //
 // These tests use the stub resolver to publish DamageReceivedEvent on the
-// bus during ResolveStep (simulating combat.ResolveAttack inside
+// bus during ResolveStep (simulating combat.ResolveStrike inside
 // combat.MoveEntity's triggerOpportunityAttack path) and verify the SDK
 // dispatches HP + DamageDealtEvent.
 
@@ -549,10 +549,10 @@ const (
 )
 
 // publishOAHit publishes the pair of bus events a real resolver publishes
-// for one OA hit — combat.ResolveAttackHit's PostAttackRollEvent (always)
-// followed by combat.ApplyAttackOutcome's DamageReceivedEvent (hit only).
+// for one OA hit — combat.ResolveStrikeHit's PostAttackRollEvent (always)
+// followed by combat.ApplyStrikeOutcome's DamageReceivedEvent (hit only).
 // Test stubs simulate both, in that order, matching production's
-// synchronous ResolveAttack call. See #715: before the fix, tests only
+// synchronous ResolveStrike call. See #715: before the fix, tests only
 // simulated the damage half, which masked the OA path never publishing
 // AttackResolvedEvent at all.
 func publishOAHit(bus dnd5events.EventBus, attackerID, targetID string, amount int) {
@@ -591,7 +591,7 @@ func (s *MovementResolverSuite) TestMove_PlayerMoves_OADamagesPlayer() {
 
 	// Stub publishes the roll + damage pair on the bus during step 0 — the
 	// step where alice leaves the goblin's reach (the rulebook fires
-	// triggerOpportunityAttack → ResolveAttack here).
+	// triggerOpportunityAttack → ResolveStrike here).
 	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
 		if stepIdx == 0 {
 			publishOAHit(bus, string(gobEntityID), string(aliceEntityID), 6)
@@ -642,10 +642,10 @@ drainLoop:
 
 // TestMove_OAAttackResolved_CarriesAdvantageDisadvantage verifies the
 // Move-path OA route (npc.go's publishMoveAttackResolved, distinct from the
-// TakeAction path's publishAttackOutcome) also threads HasDisadvantage +
+// TakeAction path's publishStrikeOutcome) also threads HasDisadvantage +
 // DisadvantageSources onto its AttackResolvedEvent (#726). This route
 // builds the event straight from dnd5eEvents.PostAttackRollEvent -- not
-// from AttackOutcome/CombatResolver -- so it needs its own field-threading
+// from StrikeOutcome/StrikeResolver -- so it needs its own field-threading
 // check; PostAttackRollEvent gained the same two bool + two ref-slice
 // fields for exactly this reason.
 func (s *MovementResolverSuite) TestMove_OAAttackResolved_CarriesAdvantageDisadvantage() {
@@ -840,13 +840,13 @@ drainLoop:
 // hit.
 //
 // Before this fix, iterateMovementStepsForEntity only observed
-// DamageReceivedTopic: a miss (which combat.ApplyAttackOutcome never
+// DamageReceivedTopic: a miss (which combat.ApplyStrikeOutcome never
 // publishes damage for) produced no encounter event at all, and a hit
 // produced a bare DamageDealtEvent with no AttackResolvedEvent alongside
-// it — a different shape than TakeAction's publishAttackOutcome, which
+// it — a different shape than TakeAction's publishStrikeOutcome, which
 // always emits AttackResolvedEvent and gates DamageDealtEvent on Hit.
 //
-// combat.ResolveAttackHit unconditionally publishes one PostAttackRollEvent
+// combat.ResolveStrikeHit unconditionally publishes one PostAttackRollEvent
 // per attack (hit or miss) via PostAttackRollChain; these tests simulate
 // that real behavior directly through the stub resolver.
 
@@ -863,7 +863,7 @@ func (s *MovementResolverSuite) TestMove_OAMisses_EmitsAttackResolvedNoDamage() 
 	aliceBefore.MaxHP = 20
 
 	// Stub publishes ONLY a PostAttackRollEvent with WouldHit=false — no
-	// DamageReceivedEvent, matching combat.ApplyAttackOutcome's `if !hit {
+	// DamageReceivedEvent, matching combat.ApplyStrikeOutcome's `if !hit {
 	// return }` early-out (attack_phases.go) which never reaches the
 	// damage-publish step on a miss.
 	s.resolver.publishOnStep = func(bus dnd5events.EventBus, stepIdx int) {
@@ -999,7 +999,7 @@ drainLoopHit:
 // guard from PR #718: a MovementResolver implementation that publishes
 // DamageReceivedEvent WITHOUT a preceding PostAttackRollEvent (a non-attack
 // movement hazard, or a resolver that doesn't route through
-// combat.ResolveAttackHit) must still have its damage applied — a strict
+// combat.ResolveStrikeHit) must still have its damage applied — a strict
 // roll-driven loop would otherwise silently drop the HP delta because the
 // damage has no roll to pair with. Verifies HP still applies and
 // DamageDealtEvent still publishes even with zero captured rolls.
@@ -1063,7 +1063,7 @@ drainLoopUnpaired:
 
 // --- Issue #710 — Move-path OA's DamageDealtEvent shares its sibling
 // AttackResolvedEvent's correlation id (Invariant 8), matching TakeAction's
-// publishAttackOutcome. Before this fix, applyMoveDamage published
+// publishStrikeOutcome. Before this fix, applyMoveDamage published
 // DamageDealtEvent via a raw broker.Publish call that never stamped a
 // correlation id (Stamp is only called by publishCorrelated), so the event
 // always carried an empty correlation id on the wire — unlike its

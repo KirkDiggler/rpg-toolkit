@@ -392,7 +392,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	for i := 0; i < 10; i++ {
 		switch typed := step.(type) {
 		case Done:
-			s.Require().Equal([]string{"attack chain", "damage chain"}, names,
+			s.Require().Equal([]string{"attack chain", "post attack roll", "damage chain"}, names,
 				"every phase boundary was a value this test drove by hand")
 
 			outcome, ok := typed.Outcome.(StrikeOutcome)
@@ -421,6 +421,35 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	}
 
 	s.Require().Fail("the machine did not finish")
+}
+
+func (s *StrikeTestSuite) TestStrikePublishesPostAttackRollForSubscribers() {
+	bus := events.NewEventBus()
+	var got *dnd5eEvents.PostAttackRollEvent
+	_, err := dnd5eEvents.PostAttackRollChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, event *dnd5eEvents.PostAttackRollEvent,
+			c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
+		) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
+			copy := *event
+			got = &copy
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	_, err = s.resolveWith(bus, s.world(spatial.Position{X: 8, Y: 5}), s.hero(),
+		NewStrike(&StrikeInput{
+			AttackerID: wolfID,
+			TargetID:   heroID,
+			Attack:     s.wolfAttack(),
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, fallback: 2},
+		}))
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(wolfID, got.AttackerID)
+	s.Require().Equal(heroID, got.TargetID)
+	s.Require().Equal(hitRoll, got.AttackRoll)
+	s.Require().Equal(14, got.OriginalAC)
+	s.Require().True(got.WouldHit)
 }
 
 // Damage lands exactly once. It is applied to the sheet directly, and NOT

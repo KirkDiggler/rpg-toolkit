@@ -20,7 +20,7 @@ type DamageDealtEvent struct {
 	MaxHP      int
 	PerPlayer  map[core.PlayerID]DamageDealtSlice
 	// Components is the optional per-source breakdown forwarded from the
-	// combat resolver's AttackOutcome.Components. Nil means no breakdown.
+	// combat resolver's StrikeOutcome.Components. Nil means no breakdown.
 	Components []core.DamageComponent
 }
 

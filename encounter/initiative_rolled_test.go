@@ -36,7 +36,7 @@ func (s *InitiativeRolledSuite) SetupTest() {
 	// ties are broken deterministically by rollInitiative's ascending-id
 	// tiebreak ("char-alice" < "goblin-1") — alice always acts first. Without
 	// this, a real roll can put the goblin first, and TestEndTurn's EndTurn
-	// call would need a wired CombatResolver to run NPCAct on it; determinism
+	// call would need a wired StrikeResolver to run NPCAct on it; determinism
 	// here is simpler and correct than exercising both branches.
 	s.enc = encounter.New(context.Background(), "enc-initiative-rolled", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}))
@@ -111,7 +111,7 @@ func (s *InitiativeRolledSuite) TestSetMode_InitiativeRolled_SequencedBetweenMod
 // FREE_ROAM->TURN_BASED transition, never again on later EndTurn advances.
 // The suite's fixedMaxRoller makes alice deterministically win the initiative
 // tiebreak (ascending entity id), so EndTurn always runs the player path
-// here — no NPCAct / CombatResolver dependency.
+// here — no NPCAct / StrikeResolver dependency.
 func (s *InitiativeRolledSuite) TestEndTurn_DoesNotRepublishInitiativeRolled() {
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: "char-alice",

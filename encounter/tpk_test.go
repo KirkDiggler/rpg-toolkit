@@ -80,7 +80,7 @@ func (s *TPKSuite) TearDownTest() {
 func (s *TPKSuite) TestMultiPlayer_OneDeath_DoesNotEndEncounter_BothDeaths_EndsAsTPK() {
 	encID := encountercore.EncounterID("enc-tpk-multi")
 	enc := encounter.New(s.ctx, encID, s.broker, encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 
 	// alice and bob are both exactly 1 hex from the goblin (its default
 	// melee reach, and the only distance PerceivedEntity.Adjacent treats as
@@ -181,7 +181,7 @@ func (s *TPKSuite) TestTPK_RunsEndOfCombatSweep_ExitCombatClearsEconomy() {
 	charJSON := ecsRagingBarbDataJSON(s.T(), string(tpkBobEntityID), string(tpkBobPlayerID), 1)
 
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 
 	enc := encounter.New(s.ctx, "enc-tpk-sweep", s.broker, roller, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -296,7 +296,7 @@ func (s *TPKSuite) TestTPK_DeadFlagDoesNotLeakAcrossEncounters() {
 	charJSON := ecsRagingBarbDataJSON(s.T(), string(tpkBobEntityID), string(tpkBobPlayerID), 1)
 
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 
 	encA := encounter.New(s.ctx, "enc-tpk-leak-a", s.broker, roller, resolver)
 	s.Require().NoError(encA.AddPlayer(encounter.PlayerInput{

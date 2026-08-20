@@ -142,7 +142,7 @@ func (s *TurnEconomyDownedSuite) TestDownedPlayerTurnStart_ZeroesEconomy_NotRese
 
 	encID := core.EncounterID("enc-ted-1")
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 
 	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -258,7 +258,7 @@ func (s *TurnEconomyDownedSuite) aliceAliveSeededCharDataJSON() json.RawMessage 
 func (s *TurnEconomyDownedSuite) TestDownedPlayerRevivedByNat20MidTurnStart_ReseedsEconomy() {
 	encID := core.EncounterID("enc-ted-nat20")
 	roller := encounter.WithRoller(fixedMaxRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 
 	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -396,7 +396,7 @@ func (s *TurnEconomyDownedSuite) TestAlivePlayerTurnStart_StillSeedsNormalEconom
 func (s *TurnEconomyDownedSuite) TestDownedPlayerViaRealCombat_StaysZeroedAcrossMultipleTurns() {
 	encID := core.EncounterID("enc-ted-realcombat")
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 
 	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{

@@ -71,7 +71,7 @@ func (s *HydrationCascadeSuite) TearDownTest() {
 // persisted SneakAttack condition, so the cascade reconstitutes + Apply()s it
 // to the encounter bus during LoadFromData.
 func (s *HydrationCascadeSuite) rogueCharDataJSON() json.RawMessage {
-	sneak := dnd5eConditions.NewSneakAttackCondition(dnd5eConditions.SneakAttackInput{
+	sneak := dnd5eConditions.NewSneakAttackCondition(dnd5eConditions.SneakStrikeInput{
 		CharacterID: string(rogueEntityID),
 		Level:       3,
 		Roller:      tkdice.NewRoller(),
@@ -242,7 +242,7 @@ func (s *HydrationCascadeSuite) sneakUsedThisTurn(data *tkenc.Data) bool {
 // re-load would surface as a double-subscribe failure in the chain.
 func (s *HydrationCascadeSuite) TestNPCAct_UsesHeldMonster_NoDoubleSubscribe() {
 	enc := tkenc.New(s.ctx, "enc-npc-689", s.broker,
-		tkenc.WithCombatResolver(&spyCombatResolver{}))
+		tkenc.WithStrikeResolver(&spyStrikeResolver{}))
 	s.Require().NoError(enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: roguePlayerID, EntityID: rogueEntityID,
 		Position: encountercore.Hex{}, SightRange: 10,
@@ -259,7 +259,7 @@ func (s *HydrationCascadeSuite) TestNPCAct_UsesHeldMonster_NoDoubleSubscribe() {
 	}))
 
 	// Round-trip so the cascade hydrates the goblin onto the held bus.
-	spy := &spyCombatResolver{}
+	spy := &spyStrikeResolver{}
 	enc2 := s.reloadViaWithResolver(enc, spy)
 	// The rogue and the goblin are in mutual LoS, so AddMonster (above, on
 	// enc) already auto-transitioned to TURN_BASED before the round-trip;
@@ -278,29 +278,29 @@ func (s *HydrationCascadeSuite) TestNPCAct_UsesHeldMonster_NoDoubleSubscribe() {
 		"NPCAct on a cascade-hydrated monster must not re-load / double-subscribe")
 }
 
-// spyCombatResolver records the AttackInput it receives so tests can assert the
+// spyStrikeResolver records the StrikeInput it receives so tests can assert the
 // SDK passed the held entity (Attacker/Defender) rather than expecting a
 // re-load.
-type spyCombatResolver struct {
-	lastInput tkenc.AttackInput
+type spyStrikeResolver struct {
+	lastInput tkenc.StrikeInput
 	calls     int
 }
 
-func (r *spyCombatResolver) ResolveAttack(input tkenc.AttackInput) (*tkenc.AttackOutcome, error) {
+func (r *spyStrikeResolver) ResolveStrike(input tkenc.StrikeInput) (*tkenc.StrikeOutcome, error) {
 	r.calls++
 	r.lastInput = input
-	return &tkenc.AttackOutcome{
+	return &tkenc.StrikeOutcome{
 		Hit: true, AttackRoll: 15, AttackBonus: 5, TargetAC: 12,
 		Damage: 4, DamageType: damagePiercing,
 	}, nil
 }
 
 // TestResolver_ReceivesHeldEntity proves the resolver seam receives the
-// SDK-held, already-hydrated combatant (AttackInput.Attacker) — not a bare ID
+// SDK-held, already-hydrated combatant (StrikeInput.Attacker) — not a bare ID
 // to re-load. The held attacker must be present and carry the rogue's ID.
 func (s *HydrationCascadeSuite) TestResolver_ReceivesHeldEntity() {
-	spy := &spyCombatResolver{}
-	enc := tkenc.New(s.ctx, "enc-spy", s.broker, tkenc.WithCombatResolver(spy))
+	spy := &spyStrikeResolver{}
+	enc := tkenc.New(s.ctx, "enc-spy", s.broker, tkenc.WithStrikeResolver(spy))
 	s.Require().NoError(enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: roguePlayerID, EntityID: rogueEntityID,
 		Position: encountercore.Hex{}, SightRange: 6,
@@ -332,8 +332,8 @@ func (s *HydrationCascadeSuite) TestResolver_ReceivesHeldEntity() {
 // held entity, so the resolver falls back to its stat-snapshot stand-in path
 // (Attacker/Defender nil) — guards existing fixtures that don't carry blobs.
 func (s *HydrationCascadeSuite) TestResolver_NoDataJSON_FallsBack() {
-	spy := &spyCombatResolver{}
-	enc := tkenc.New(s.ctx, "enc-nodata", s.broker, tkenc.WithCombatResolver(spy))
+	spy := &spyStrikeResolver{}
+	enc := tkenc.New(s.ctx, "enc-nodata", s.broker, tkenc.WithStrikeResolver(spy))
 	// No DataJSON on the player.
 	s.Require().NoError(enc.AddPlayer(tkenc.PlayerInput{
 		PlayerID: roguePlayerID, EntityID: rogueEntityID,
@@ -380,13 +380,13 @@ func (s *HydrationCascadeSuite) driveAttackFromRogue(enc *tkenc.Encounter) {
 // reloadViaWithResolver round-trips the encounter and re-wires the spy resolver
 // on the loaded instance (resolvers are not serialized).
 func (s *HydrationCascadeSuite) reloadViaWithResolver(
-	enc *tkenc.Encounter, spy *spyCombatResolver,
+	enc *tkenc.Encounter, spy *spyStrikeResolver,
 ) *tkenc.Encounter {
 	raw, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
 	var data tkenc.Data
 	s.Require().NoError(json.Unmarshal(raw, &data))
-	loaded, err := tkenc.LoadFromData(s.ctx, &data, s.broker, tkenc.WithCombatResolver(spy))
+	loaded, err := tkenc.LoadFromData(s.ctx, &data, s.broker, tkenc.WithStrikeResolver(spy))
 	s.Require().NoError(err)
 	return loaded
 }

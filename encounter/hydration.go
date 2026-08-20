@@ -260,7 +260,7 @@ func (e *Encounter) syncCombatantsToData() error {
 
 // combatantFor returns the held runtime entity for the given id, or nil if the
 // entity was not hydrated (no DataJSON). Used by the verbs to populate the
-// resolver inputs (AttackInput.Attacker/Defender, MovementStepInput.Mover) so
+// resolver inputs (StrikeInput.Attacker/Defender, MovementStepInput.Mover) so
 // the resolver uses the held entity and never re-loads.
 func (e *Encounter) combatantFor(id core.EntityID) combat.Combatant {
 	return e.combatants[id]

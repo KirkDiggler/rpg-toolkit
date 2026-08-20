@@ -142,7 +142,7 @@ func (s *ArcadeRecoverySuite) aliveArcBobCharDataJSON() json.RawMessage {
 // no Unconscious condition, and able to act on their own turn.
 func (s *ArcadeRecoverySuite) TestPostTPKCharacter_EntersNewEncounter_FullyRestored() {
 	encID := core.EncounterID("enc-arc-new")
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 1, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 1, damageType: damageSlashing})
 
 	enc := encounter.New(s.ctx, encID, s.broker, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -210,7 +210,7 @@ func (s *ArcadeRecoverySuite) TestPostTPKCharacter_EntersNewEncounter_FullyResto
 func (s *ArcadeRecoverySuite) TestExistingSeat_MidEncounterReload_DoesNotHeal() {
 	encID := core.EncounterID("enc-arc-resume")
 	roller := encounter.WithRoller(alwaysFailDeathSaveRoller{})
-	resolver := encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
+	resolver := encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing})
 
 	enc := encounter.New(s.ctx, encID, s.broker, roller, resolver)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{

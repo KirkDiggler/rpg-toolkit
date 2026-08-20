@@ -16,7 +16,7 @@ package encounter
 //
 // This file is the single shared gate every call site below consults:
 //   - OpenDoor / AttemptUnlock (encounter.go / prompts.go): checkInteractReach
-//   - TakeActionPhased, the player attack path (combat_phased.go):
+//   - TakeStrikePhased, the player attack path (combat_phased.go):
 //     (*Encounter).checkAttackRange
 //   - applyCapturedAttacks / npcActScripted, the monster attack paths
 //     (npc.go): meleeReachForCombatant + checkReach directly
@@ -125,32 +125,18 @@ func meleeReachForWeapon(w *weapons.Weapon) int {
 	return defaultMeleeReachHexes
 }
 
-// meleeReachForCombatant resolves melee reach via combat.MeleeWeaponProvider
-// — the same seam opportunity-attack resolution already uses
-// (rpg-toolkit#722) to answer "which weapon would this combatant swing."
-// Used by the monster attack path (applyCapturedAttacks, npcActScripted),
-// which has no per-ActionRef weapon selection the way the player path's
-// Character.WeaponForActionRef gives (see checkAttackRange). Falls back to
-// defaultMeleeReachHexes when attacker doesn't implement the provider (a
-// nil combat.Combatant included) or reports no weapon (natural attacks like
-// bite/claw, or a flat stat-snapshot monster).
-func meleeReachForCombatant(attacker combat.Combatant) int {
-	provider, ok := attacker.(combat.MeleeWeaponProvider)
-	if !ok {
-		return defaultMeleeReachHexes
-	}
-	return meleeReachForWeapon(provider.MeleeWeapon())
+// meleeReachForCombatant keeps the encounter gate independent from any
+// rulebook weapon-selection API. Natural attacks and the typed Strike input
+// both use the canonical default reach; weapon-specific reach is compiled by
+// the rulebook at the Strike boundary.
+func meleeReachForCombatant(_ combat.Combatant) int {
+	return defaultMeleeReachHexes
 }
 
-// checkAttackRange gates a player attack (TakeActionPhased) on the target
-// being within reach (melee) or range (ranged) of the weapon this specific
-// ActionRef actually swings. Resolves the real weapon via
-// Character.WeaponForActionRef (rpg-toolkit#712 — the same ref->weapon
-// mapping the real combat resolver uses), so an off_hand_strike or
-// unarmed_strike/flurry_strike gates on the weapon it will actually attack
-// with rather than always the main-hand weapon. A player with no hydrated
-// character (a flat stat-snapshot seat) has no weapon to consult and is
-// gated as melee at the default reach — see defaultMeleeReachHexes.
+// checkAttackRange gates a player attack (TakeStrikePhased) on the target
+// being within the canonical default melee reach. Weapon selection and ranged
+// semantics are compiled into the typed Strike input by the rulebook; the
+// encounter package does not mirror that rulebook API.
 //
 // Ranged weapon range is checked against the weapon's LONG range (not
 // Normal) — D&D 5e RAW imposes disadvantage beyond Normal range, not a hard
@@ -160,30 +146,5 @@ func meleeReachForCombatant(attacker combat.Combatant) int {
 func (e *Encounter) checkAttackRange(player *PlayerData, targetPos core.Hex, ref *toolkitcore.Ref) error {
 	attackerPos := player.View.Position
 
-	var w *weapons.Weapon
-	if char := e.heldCharacter(player.EntityID); char != nil {
-		if sel, err := char.WeaponForActionRef(ref); err == nil && sel != nil {
-			w = sel.Weapon
-		}
-	}
-
-	// Gate-review note (rpg-toolkit#864 minor item): deliberately keyed on
-	// w.IsRanged() (the weapon's Category), NOT "w.Range != nil". A thrown
-	// weapon (dagger/handaxe/javelin: CategorySimpleMelee + PropertyThrown)
-	// carries real Range data in the catalog, but the only ActionRef this
-	// gate sees today is the standard melee "attack" (or a granted strike) —
-	// there is no distinct "thrown_attack" ref yet, so WeaponForActionRef's
-	// default case always resolves the ordinary melee swing for a dagger,
-	// not a throw. Keying on Range!=nil instead of category would silently
-	// gate a normal melee dagger swing on its 60ft THROWN range rather than
-	// 5ft melee reach — wrong for the common case (any rogue swinging a
-	// dagger) to fix a case that can't happen yet (no thrown ref exists to
-	// route here). When a thrown-attack ref is added, IT should consult
-	// w.Range explicitly for its own gating rather than this default case
-	// being widened to guess at intent from the weapon's stats alone.
-	if w != nil && w.IsRanged() && w.Range != nil {
-		rangeHexes := w.Range.Long / int(combat.FeetPerGridUnit)
-		return checkReach(attackerPos, targetPos, rangeHexes, "range")
-	}
-	return checkReach(attackerPos, targetPos, meleeReachForWeapon(w), "reach")
+	return checkReach(attackerPos, targetPos, defaultMeleeReachHexes, "reach")
 }

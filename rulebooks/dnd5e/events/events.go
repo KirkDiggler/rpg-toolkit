@@ -707,7 +707,7 @@ type ReactionTriggerEvent struct {
 	Payload any
 }
 
-// PostAttackRollEvent is published by ResolveAttackHit AFTER the d20 has been
+// PostAttackRollEvent is published by Strike resolution AFTER the d20 has been
 // rolled and wouldHit has been determined against the original AC, but BEFORE
 // the AttackContext is returned to the caller.
 //
@@ -716,7 +716,7 @@ type ReactionTriggerEvent struct {
 // only fires when the attack would hit AND a +5 AC bonus would deflect it.
 //
 // Subscribers receive a read-only snapshot. They cannot mutate the in-flight
-// roll — the AC modifier is applied in phase 2 (ApplyAttackOutcome) via
+// roll — the AC modifier is applied in phase 2 via
 // ReactionModifier when the reactor takes the reaction. Subscribers may
 // publish ReactionTriggerEvents to surface a player prompt or signal the
 // orchestrator that an NPC auto-resolve modifier should be applied.
@@ -1038,7 +1038,7 @@ var (
 	ReactionTriggerTopic = events.DefineTypedTopic[ReactionTriggerEvent]("dnd5e.combat.reaction.trigger")
 )
 
-// PostAttackRollChain is a chained topic published by combat.ResolveAttackHit
+// PostAttackRollChain is a chained topic published by resolution.Strike
 // AFTER the d20 has been rolled and wouldHit has been computed, BEFORE the
 // AttackContext is returned. The Shield spell condition subscribes here to
 // publish a ReactionTriggerEvent when a hit-but-deflectable attack lands on

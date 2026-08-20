@@ -36,7 +36,7 @@ func (s *ActionResolvedSuite) SetupTest() {
 	// Inject a deterministic clock so OccurredAt is asserted exactly.
 	s.broker = encounter.NewBrokerWithClock(s.transport, core.FixedClock{At: s.clockAt})
 	s.enc = encounter.New(context.Background(), "enc-ar", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{

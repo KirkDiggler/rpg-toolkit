@@ -2,7 +2,7 @@ package core
 
 // DamageComponent is the encounter-SDK-level descriptor of a single damage
 // source within a hit. Rulebook resolvers populate []DamageComponent on
-// AttackOutcome so the encounter SDK can forward the breakdown to
+// StrikeOutcome so the encounter SDK can forward the breakdown to
 // DamageDealtEvent without importing rulebook-specific types.
 //
 // Source is an opaque identifier the wire layer uses to label each line.

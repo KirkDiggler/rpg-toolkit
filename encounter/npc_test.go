@@ -42,7 +42,7 @@ func (s *NPCSuite) SetupTest() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
 	s.enc = encounter.New(context.Background(), "enc-npc", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 	)
 
 	// Build a goblin and serialize it.
@@ -100,7 +100,7 @@ func (s *NPCSuite) TestNPCAct_GoblinTakeTurn_PublishesAttack() {
 
 // TestNPCAct_AttackPublishesTargetRationale is the NPC-path half of the
 // decision-rationale proof (rpg-toolkit#895; the player-path "must be
-// empty" half is TestTakeAction_PublishesAttackOutcome in combat_test.go).
+// empty" half is TestTakeAction_PublishesStrikeOutcome in combat_test.go).
 // SetupTest's goblin never calls SetTargeting, so it carries TargetClosest
 // (the iota-zero default) — its ActionResolvedEvent must still carry the
 // explicit "dnd5e:targeting:closest" ref, not an empty string, proving
@@ -156,10 +156,10 @@ func (s *NPCSuite) TestNPCAct_RejectsUnknownNPC() {
 	s.ErrorIs(err, encounter.ErrNotYourTurn)
 }
 
-// NPCAct returns ErrNoCombatResolver when no CombatResolver is wired.
+// NPCAct returns ErrNoStrikeResolver when no StrikeResolver is wired.
 // Mirrors the guard on TakeAction (player path) — production must wire one
-// via WithCombatResolver.
-func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
+// via WithStrikeResolver.
+func (s *NPCSuite) TestNPCAct_ErrNoStrikeResolver() {
 	gob := monsters.NewGoblin(gobEntityID)
 	gobData := gob.ToData()
 	dataJSON, err := json.Marshal(gobData)
@@ -187,7 +187,7 @@ func (s *NPCSuite) TestNPCAct_ErrNoCombatResolver() {
 	}
 
 	err = enc.NPCAct(s.ctx, gobEntityID)
-	s.ErrorIs(err, encounter.ErrNoCombatResolver)
+	s.ErrorIs(err, encounter.ErrNoStrikeResolver)
 }
 
 // TestNPCAct_MovementOA_AppliesDamageOnce is the production-path regression
@@ -214,9 +214,9 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 	// Stub MovementResolver that publishes the PostAttackRollEvent +
 	// DamageReceivedEvent pair targeting the goblin (mover) during step 0 —
 	// simulating an OA the player has already taken against the retreating
-	// monster. combat.ResolveAttack would do this in production (#715:
-	// ResolveAttackHit always publishes the roll event before
-	// ApplyAttackOutcome conditionally publishes the damage event).
+	// monster. combat.ResolveStrike would do this in production (#715:
+	// ResolveStrikeHit always publishes the roll event before
+	// ApplyStrikeOutcome conditionally publishes the damage event).
 	const oaDamage = 5
 	resolver := &stubMovementResolver{
 		publishOnStep: func(bus dnd5events.EventBus, stepIdx int) {
@@ -232,7 +232,7 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 	// keeps the test focused on the movement-OA path (no attack publishes
 	// to confound the captured-damage slice post-movement).
 	enc := encounter.New(context.Background(), "enc-npcact-move-oa", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 		encounter.WithMovementResolver(resolver),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -274,17 +274,17 @@ func (s *NPCSuite) TestNPCAct_MovementOA_AppliesDamageOnce() {
 // NPC-attack / OA reaction path"). It exercises a plain single-hit NPC
 // attack turn — applyCapturedAttacks → applyAndPublishNPCOutcome, via the
 // legacy non-phased resolver branch (busPublishingResolver does not
-// implement PhasedCombatResolver) — with the same "notify" double-publish
+// implement PhasedStrikeResolver) — with the same "notify" double-publish
 // shape #684 reproduced, and asserts AttackResolvedEvent and
 // DamageDealtEvent share one correlation id.
 //
-// This already passes on main: publishAttackOutcome (encounter/combat.go)
+// This already passes on main: publishStrikeOutcome (encounter/combat.go)
 // derives one corrID and stamps every event it publishes with it,
 // regardless of what the caller does with the returned value. #723's
 // "regular goblin attack hit" symptom does not reproduce against current
 // rpg-toolkit — see the OA-hit companion coverage in move_resolver_test.go
 // (TestMove_OAHit_DamageSharesAttackResolvedCorrelationID, added by #719)
-// and TestCompleteTakeAction_NPCAttacker_DamageSharesAttackCorrelationID in
+// and TestCompleteStrikeAction_NPCAttacker_DamageSharesAttackCorrelationID in
 // combat_phased_test.go for the other two NPC-attack shapes.
 func (s *NPCSuite) TestNPCAct_RegularAttack_DamageSharesAttackCorrelationID() {
 	const attackDamage = 5
@@ -294,7 +294,7 @@ func (s *NPCSuite) TestNPCAct_RegularAttack_DamageSharesAttackCorrelationID() {
 	s.Require().NoError(err)
 
 	enc := encounter.New(context.Background(), "enc-npc-probe-corr", s.broker,
-		encounter.WithCombatResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
@@ -348,10 +348,10 @@ probeDrain:
 	s.Equal(attackCorr, damageCorr, "attack and damage must share one correlation id (#723)")
 }
 
-// busPublishingResolver is a test CombatResolver that mimics the production
-// dnd5e resolver: it returns an AttackOutcome AND publishes a
+// busPublishingResolver is a test StrikeResolver that mimics the production
+// dnd5e resolver: it returns an StrikeOutcome AND publishes a
 // DamageReceivedEvent on the encounter bus (the "notify" step that
-// combat.ApplyAttackOutcome performs after running the damage chain).
+// combat.ApplyStrikeOutcome performs after running the damage chain).
 // This is the minimal reproducer for #684 — the standard alwaysHitResolver
 // does NOT publish on the bus and so cannot trigger the double-apply.
 type busPublishingResolver struct {
@@ -359,7 +359,7 @@ type busPublishingResolver struct {
 	damageType string
 }
 
-func (r busPublishingResolver) ResolveAttack(input encounter.AttackInput) (*encounter.AttackOutcome, error) {
+func (r busPublishingResolver) ResolveStrike(input encounter.StrikeInput) (*encounter.StrikeOutcome, error) {
 	if input.EventBus != nil {
 		topic := dnd5eEvents.DamageReceivedTopic.On(input.EventBus)
 		_ = topic.Publish(context.Background(), dnd5eEvents.DamageReceivedEvent{
@@ -369,7 +369,7 @@ func (r busPublishingResolver) ResolveAttack(input encounter.AttackInput) (*enco
 			DamageType: damage.Type(r.damageType),
 		})
 	}
-	return &encounter.AttackOutcome{
+	return &encounter.StrikeOutcome{
 		Hit:         true,
 		AttackRoll:  20,
 		AttackBonus: 4,
@@ -387,7 +387,7 @@ func (r busPublishingResolver) ResolveAttack(input encounter.AttackInput) (*enco
 // a second DamageDealtEvent with empty Components and a second HP mutation.
 //
 // This test uses busPublishingResolver which reproduces the production
-// resolver pattern: returns AttackOutcome AND publishes DamageReceivedEvent
+// resolver pattern: returns StrikeOutcome AND publishes DamageReceivedEvent
 // on the encounter bus. Without the #684 fix, alice (12 HP) would take 10
 // HP of damage from a 5-damage hit and be at 2 HP; with the fix she is at 7.
 func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
@@ -402,7 +402,7 @@ func (s *NPCSuite) TestNPCAct_SingleDamageDealtEvent_PerAttack() {
 	// Build a fresh encounter with the bus-publishing resolver so the
 	// DamageReceivedEvent notify fires during the attack-resolution window.
 	enc := encounter.New(context.Background(), "enc-npc-single-dmg", s.broker,
-		encounter.WithCombatResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(busPublishingResolver{damage: attackDamage, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
@@ -453,7 +453,7 @@ drainLoop:
 	// ASSERT: exactly one DamageDealtEvent (not two).
 	s.Require().Len(dmgEvents, 1,
 		"exactly one DamageDealtEvent per NPC attack (#684: before fix, two events fire — "+
-			"one from publishAttackOutcome with Components, one from applyCapturedDamage without)")
+			"one from publishStrikeOutcome with Components, one from applyCapturedDamage without)")
 
 	// ASSERT: HP applied exactly once — alice goes from 12 → 7, not 12 → 2.
 	aliceAfter := enc.ToData().Players[alicePlayerID]

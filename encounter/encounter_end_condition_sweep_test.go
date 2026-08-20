@@ -139,7 +139,7 @@ func (s *EncounterEndConditionSweepSuite) loadRagingBarbVsGoblin(charJSON json.R
 	s.T().Helper()
 	enc := encounter.New(s.ctx, ecsEncounterID, s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: bobPlayerID, EntityID: bobEntityID,
 		Position: encountercore.Hex{}, SightRange: 10,
@@ -162,7 +162,7 @@ func (s *EncounterEndConditionSweepSuite) loadRagingBarbVsGoblin(charJSON json.R
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(s.ctx, &data, s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(err)
 
 	// bob and the goblin are in mutual LoS, so AddMonster (above, on enc)

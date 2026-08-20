@@ -51,7 +51,7 @@ type Data struct {
 	// PendingReactionPrompts holds, per reactor PlayerID, the in-flight
 	// phase-1 attack state plus the trigger details for which reaction the
 	// reactor is being asked about. The orchestrator persists this across
-	// the (TakeAction → wait for SubmitCheck{take_reaction} → CompleteTakeAction)
+	// the (TakeAction → wait for SubmitCheck{take_reaction} → CompleteStrikeAction)
 	// flow.
 	//
 	// Keyed by REACTOR playerID (not the original caller's playerID): the
@@ -357,12 +357,12 @@ func (sd *SpaceData) RegionAt(h core.Hex) (string, bool) {
 
 // PendingReactionPrompt is the persisted shape of a reaction prompt waiting
 // on a player's SubmitCheck{take_reaction} response. The orchestrator sets
-// this when TakeActionPhased returns reactions for a player reactor; it is
-// cleared (and consumed) when CompleteTakeAction runs after the reactor's
+// this when TakeStrikePhased returns reactions for a player reactor; it is
+// cleared (and consumed) when CompleteStrikeAction runs after the reactor's
 // response.
 //
 // AttackContext is opaque to the encounter SDK — the resolver implementation
-// (rpg-api's Dnd5eCombatResolver) interprets it. The field is json.RawMessage
+// (rpg-api's Dnd5eStrikeResolver) interprets it. The field is json.RawMessage
 // to keep the SDK rulebook-agnostic; rpg-api marshals/unmarshals via its own
 // type when persisting and reloading.
 type PendingReactionPrompt struct {
@@ -384,8 +384,8 @@ type PendingReactionPrompt struct {
 
 	// AttackContextJSON is the serialized phase-1 attack state. The
 	// resolver implementation owns the schema; the SDK treats it as opaque
-	// bytes to keep the boundary clean. CompleteTakeAction unmarshals it
-	// into the resolver's PhasedAttackContext shape before phase 2.
+	// bytes to keep the boundary clean. CompleteStrikeAction unmarshals it
+	// into the resolver's PhasedStrikeContext shape before phase 2.
 	AttackContextJSON []byte `json:"attack_context_json"`
 }
 
@@ -393,7 +393,7 @@ type PendingReactionPrompt struct {
 //
 // HP / MaxHP / AC / AttackBonus / DamageDice are Wave 2.8 additions used
 // by combat verbs. They are intentionally minimal; full character /
-// ResolveAttack chain integration (ability scores, weapons, EffectiveAC)
+// ResolveStrike chain integration (ability scores, weapons, EffectiveAC)
 // is tracked as a followup.
 type PlayerData struct {
 	ID       core.PlayerID    `json:"id"`

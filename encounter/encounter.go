@@ -40,25 +40,25 @@ type Encounter struct {
 	broker           *Broker
 	roller           dice.Roller
 	resolver         CharacterResolver
-	combatResolver   CombatResolver
+	strikeResolver   StrikeResolver
 	movementResolver MovementResolver
 	// bus is the encounter-scoped dnd5e event bus. Conditions subscribe
 	// once at rehydration and remain subscribed for the encounter's lifetime.
 	// Reconstructed (not serialized) at each LoadFromData call.
 	bus dnd5events.EventBus
-	// pendingPhasedAttacks caches the in-flight PhasedAttackContext for each
+	// pendingPhasedStrikes caches the in-flight PhasedStrikeContext for each
 	// reactor whose NPC-attack-triggered prompt is awaiting response. This is
 	// in-process state, not serialized — the host marshals via its rulebook
 	// adapter into PendingReactionPrompt.AttackContextJSON before saving the
 	// encounter snapshot. Wave 2.11d.
-	pendingPhasedAttacks map[core.PlayerID]*PhasedAttackContext
+	pendingPhasedStrikes map[core.PlayerID]*PhasedStrikeContext
 
 	// combatants holds the runtime rulebook entities (characters + monsters)
 	// hydrated once by the LoadFromData cascade. #689: this is the single place
 	// combatants are loaded and their conditions Apply()'d to e.bus, curing the
 	// #684 double-subscribe class. Reconstructed (not serialized) at each
 	// LoadFromData — exactly like e.bus. The combat/movement resolvers receive
-	// the held entity (AttackInput.Attacker/Defender, MovementStepInput.Mover)
+	// the held entity (StrikeInput.Attacker/Defender, MovementStepInput.Mover)
 	// and never re-load. Empty when no entities carry rehydratable data.
 	combatants map[core.EntityID]combat.Combatant
 
@@ -104,15 +104,15 @@ func WithCharacterResolver(r CharacterResolver) Option {
 	}
 }
 
-// WithCombatResolver injects a CombatResolver used by combat verbs
+// WithStrikeResolver injects a StrikeResolver used by combat verbs
 // (today: TakeAction's player-attack path; future waves extend) to
 // evaluate attack mechanics through a rulebook implementation. The
 // encounter SDK never embeds rulebook logic; the orchestrator (rpg-api)
 // wires this against the dnd5e rulebook in production. Tests supply
-// a stub. TakeAction returns ErrNoCombatResolver if invoked without one.
-func WithCombatResolver(r CombatResolver) Option {
+// a stub. TakeAction returns ErrNoStrikeResolver if invoked without one.
+func WithStrikeResolver(r StrikeResolver) Option {
 	return func(e *Encounter) {
-		e.combatResolver = r
+		e.strikeResolver = r
 	}
 }
 
@@ -262,7 +262,7 @@ func validatePersistedActorEntries(
 // applying their persistent conditions + default reaction conditions. This
 // single cascade is the only subscribe point — it cures the #684
 // double-subscribe class that arose when the host loaded entities per attack.
-// The held entities are exposed to the resolvers (AttackInput.Attacker/Defender,
+// The held entities are exposed to the resolvers (StrikeInput.Attacker/Defender,
 // MovementStepInput.Mover); resolvers MUST NOT re-load.
 //
 // ctx flows into the rulebook loaders (they take a context). The bus + held
@@ -728,7 +728,7 @@ func (e *Encounter) EventBus() dnd5events.EventBus { return e.bus }
 // specific entity. Returns an error if the entity is not in the encounter.
 //
 // charID must be an EntityID (not a PlayerID) — the same identifier used
-// in AttackInput.AttackerID / TargetID.
+// in StrikeInput.AttackerID / TargetID.
 //
 // reactionRef is the canonical ref string for the reaction (e.g.
 // OAReactionRef for Opportunity Attack, or "dnd5e:conditions:shield" for
@@ -1004,7 +1004,7 @@ func (e *Encounter) Move(playerID core.PlayerID, path []core.Hex) error {
 // Wave 2.11e NPC-OA-only scope (per director signoff on #658): the SDK
 // drains triggers but does not partition or act on them. NPC OAs are
 // resolved inline by the resolver impl (combat.MoveEntity →
-// triggerOpportunityAttack → ResolveAttack runs end-to-end). Player-pause
+// triggerOpportunityAttack → ResolveStrike runs end-to-end). Player-pause
 // branch deferred to #665.
 //
 // Thin player-mover wrapper around iterateMovementStepsForEntity — kept so
@@ -1047,7 +1047,7 @@ func (e *Encounter) iterateMovementStepsForEntity(
 			// subscribers publish during this step's resolver call. In
 			// NPC-OA-only scope the SDK doesn't act on captured triggers
 			// (the resolver impl resolves them inline), but the buffer is
-			// installed for shape parity with TakeActionPhased and to
+			// installed for shape parity with TakeStrikePhased and to
 			// flush subscriptions cleanly per step.
 			_, drainCleanup, err := e.installTriggerBuffer()
 			if err != nil {
@@ -1057,7 +1057,7 @@ func (e *Encounter) iterateMovementStepsForEntity(
 
 			// Wave 2.11e (#675): capture DamageReceivedEvent published by
 			// the resolver's chain (combat.MoveEntity →
-			// triggerOpportunityAttack → ResolveAttack). OA fires AND
+			// triggerOpportunityAttack → ResolveStrike). OA fires AND
 			// resolves end-to-end inside the rulebook; the encounter SDK
 			// observes the damage post-hoc on the bus and applies HP delta
 			// + encounter-side DamageDealtEvent below.
@@ -1069,7 +1069,7 @@ func (e *Encounter) iterateMovementStepsForEntity(
 			defer func() { _ = unsubDmg() }()
 
 			// #715: capture PostAttackRollEvent published by
-			// combat.ResolveAttackHit — unconditionally, hit or miss —
+			// combat.ResolveStrikeHit — unconditionally, hit or miss —
 			// alongside the damage subscription above. This is the only
 			// bus-observable signal that an OA resolved with the roll
 			// detail (roll, bonus, AC) needed to publish AttackResolvedEvent
@@ -1116,10 +1116,10 @@ func (e *Encounter) iterateMovementStepsForEntity(
 		// only caller) don't thread a ctx through this call chain today,
 		// mirroring the ctx := context.Background() already used a few
 		// lines up in this same function's per-step closure (#733: needed
-		// by applyMoveAttackOutcomes -> applyMoveDamage -> the new
+		// by applyMoveStrikeOutcomes -> applyMoveDamage -> the new
 		// applyUnconsciousOnZeroHP helper's ConditionAppliedTopic publish).
 		if len(capture.rolls) > 0 || len(capture.dmg) > 0 {
-			if err := e.applyMoveAttackOutcomes(context.Background(), capture.rolls, capture.dmg); err != nil {
+			if err := e.applyMoveStrikeOutcomes(context.Background(), capture.rolls, capture.dmg); err != nil {
 				return traveled, fmt.Errorf("apply move attack outcomes: %w", err)
 			}
 		}

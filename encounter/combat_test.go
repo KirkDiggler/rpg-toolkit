@@ -49,7 +49,7 @@ func (s *CombatSuite) SetupTest() {
 	s.transport = encounter.NewInMemoryTransport()
 	s.broker = encounter.NewBroker(s.transport)
 	s.enc = encounter.New(context.Background(), "enc-combat", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 
 	s.Require().NoError(s.enc.AddPlayer(encounter.PlayerInput{
@@ -75,7 +75,7 @@ func (s *CombatSuite) SetupTest() {
 		// a co-located target never reads as adjacent and CanActivate
 		// rejects it as out of melee range. Distance 1 from alice also
 		// keeps the player-attacks-goblin tests in this suite (e.g.
-		// TestTakeAction_PublishesAttackOutcome) in melee reach.
+		// TestTakeAction_PublishesStrikeOutcome) in melee reach.
 		Position: core.Hex{Q: 1, R: -1, S: 0},
 		HP:       7, MaxHP: 7, AC: 15, Speed: 6,
 		MonsterRef:  "dnd5e:monsters:goblin",
@@ -206,7 +206,7 @@ func (s *CombatSuite) TestTakeAction_RejectsUnknownAction() {
 // DamageDealtEvent rides alongside.
 // s.enc is already TURN_BASED by SetupTest (alice/bob/goblin start in
 // mutual LoS, auto-triggering combat entry at AddMonster time).
-func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
+func (s *CombatSuite) TestTakeAction_PublishesStrikeOutcome() {
 	for s.enc.ActiveActor() != aliceEntityID {
 		_, _, err := s.enc.EndTurn(context.Background(), s.enc.ActiveActor())
 		s.Require().NoError(err)
@@ -240,7 +240,7 @@ func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 }
 
 // TakeAction copies HasAdvantage/HasDisadvantage/AdvantageSources/
-// DisadvantageSources from the resolver's AttackOutcome onto the published
+// DisadvantageSources from the resolver's StrikeOutcome onto the published
 // AttackResolvedEvent verbatim (#726). The stub resolver here hands back
 // canned values the same way rpg-api's real resolver copies them from
 // combat.AttackResult -- this proves the encounter-side plumbing does not
@@ -248,7 +248,7 @@ func (s *CombatSuite) TestTakeAction_PublishesAttackOutcome() {
 func (s *CombatSuite) TestTakeAction_PublishesAdvantageDisadvantageOnAttackResolved() {
 	dodgingRef := &toolkitcore.Ref{Module: "dnd5e", Type: "conditions", ID: "dodging"}
 	enc := encounter.New(context.Background(), "enc-adv", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{
+		encounter.WithStrikeResolver(alwaysHitResolver{
 			damage: 8, damageType: damageSlashing,
 			hasDisadvantage:     true,
 			disadvantageSources: []*toolkitcore.Ref{dodgingRef},
@@ -358,7 +358,7 @@ func (s *CombatSuite) TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate() {
 	s.Require().NoError(err)
 
 	enc := encounter.New(context.Background(), "enc-hydrated-gate", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -379,7 +379,7 @@ func (s *CombatSuite) TestTakeAction_HydratedPlayerBypassesFlatSnapshotGate() {
 	var data encounter.Data
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(context.Background(), &data, s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	s.Require().NoError(err)
 
@@ -416,7 +416,7 @@ func (s *CombatSuite) TestTakeAction_DataJSONWithoutLoadFromData_StillRejected()
 	s.Require().NoError(err)
 
 	enc := encounter.New(context.Background(), "enc-unhydrated-datajson", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,
@@ -526,7 +526,7 @@ func (s *CombatSuite) TestNPCAct_AttackPublishes() {
 // OpenDoor audience-routing.
 func (s *CombatSuite) TestTakeAction_OmitsNonViewersFromAudience() {
 	enc := encounter.New(context.Background(), "enc-combat-2", s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "alice", EntityID: aliceEntityID,

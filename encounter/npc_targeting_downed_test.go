@@ -71,7 +71,7 @@ func (s *NPCTargetingDownedSuite) TearDownTest() {
 func (s *NPCTargetingDownedSuite) TestFullAIPath_BuildPerception_NeverTargetsDownedPlayer() {
 	encID := core.EncounterID("enc-ntd-full-ai")
 	enc := encounter.New(s.ctx, encID, s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 1, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 1, damageType: damageSlashing}),
 	)
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: "ntd-down", EntityID: ntdDownEntityID,

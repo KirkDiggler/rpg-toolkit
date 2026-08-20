@@ -29,7 +29,7 @@ func scopedBoundsWithWall(t *testing.T, id core.EncounterID, broker *encounter.B
 	left := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
 	right := core.HexFromPosition(spatial.Position{X: 1, Y: 0})
 	enc := encounter.New(context.Background(), id, broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 	)
 	require.NoError(t, enc.InitDungeon(encounter.DungeonParams{
 		Key: string(id), FloorSource: encounter.FloorSourceCanvas, Width: 2, Height: 1,
@@ -91,7 +91,7 @@ func TestRoomChainPlayerAttackPreservesV03Behavior(t *testing.T) {
 	transport, broker := newRangeGateBroker()
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 	enc := encounter.New(context.Background(), "room-chain-player", broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 	)
 	require.NoError(t, enc.InitRoom(2, 1, "empty"))
 	left := core.HexFromPosition(spatial.Position{X: 0, Y: 0})
@@ -132,7 +132,7 @@ func TestBoundsCanvasNPCActionPreservesV03BoundaryBehavior(t *testing.T) {
 	snapshot.ActiveIdx = 0
 	snapshot.Round = 1
 	loaded, err := encounter.LoadFromData(context.Background(), snapshot, broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 4, damageType: damageSlashing}),
 	)
 	require.NoError(t, err)
 	require.NoError(t, loaded.NPCAct(context.Background(), gobEntityID))

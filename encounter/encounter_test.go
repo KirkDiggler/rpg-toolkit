@@ -86,7 +86,7 @@ func (s *EncounterSuite) TestNPCAct_LoudErrorOnEmptyDataJSON() {
 		},
 	}
 	e, err := encounter.LoadFromData(context.Background(), data, s.broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: "slashing"}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: "slashing"}))
 	s.Require().NoError(err)
 
 	err = e.NPCAct(context.Background(), "goblin-1")

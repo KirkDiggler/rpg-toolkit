@@ -174,8 +174,8 @@ func drainSub(sub *encounter.Subscription, timeout time.Duration) {
 
 // --- Wave 2.11c integration tests ---
 
-// busCapturingResolver is a CombatResolver test double that records the
-// EventBus it receives on each ResolveAttack call. Used to verify the
+// busCapturingResolver is a StrikeResolver test double that records the
+// EventBus it receives on each ResolveStrike call. Used to verify the
 // encounter SDK passes the same bus instance across multiple attacks.
 type busCapturingResolver struct {
 	callCount atomic.Int32
@@ -183,10 +183,10 @@ type busCapturingResolver struct {
 	damage    int
 }
 
-func (r *busCapturingResolver) ResolveAttack(input encounter.AttackInput) (*encounter.AttackOutcome, error) {
+func (r *busCapturingResolver) ResolveStrike(input encounter.StrikeInput) (*encounter.StrikeOutcome, error) {
 	r.callCount.Add(1)
 	r.buses = append(r.buses, input.EventBus)
-	return &encounter.AttackOutcome{
+	return &encounter.StrikeOutcome{
 		Hit:        true,
 		AttackRoll: 15,
 		TargetAC:   10,
@@ -227,7 +227,7 @@ func (s *ConditionPersistenceSuite) TearDownTest() {
 func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttacks() {
 	resolver := &busCapturingResolver{damage: 3}
 	enc := encounter.New(context.Background(), "enc-bus-test", s.broker,
-		encounter.WithCombatResolver(resolver),
+		encounter.WithStrikeResolver(resolver),
 	)
 
 	aliceSub, err := s.broker.Subscribe("enc-bus-test", "alice")
@@ -293,7 +293,7 @@ func (s *ConditionPersistenceSuite) TestSlice_ConditionStatePersistsAcrossAttack
 func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRoundTrip() {
 	resolver := &busCapturingResolver{damage: 2}
 	enc := encounter.New(context.Background(), "enc-rt-test", s.broker,
-		encounter.WithCombatResolver(resolver),
+		encounter.WithStrikeResolver(resolver),
 	)
 
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
@@ -322,7 +322,7 @@ func (s *ConditionPersistenceSuite) TestSlice_ReactionReadinessPersistsThroughRo
 	var restored encounter.Data
 	s.Require().NoError(json.Unmarshal(raw, &restored))
 	enc2, err := encounter.LoadFromData(context.Background(), &restored, s.broker,
-		encounter.WithCombatResolver(resolver),
+		encounter.WithStrikeResolver(resolver),
 	)
 	s.Require().NoError(err)
 

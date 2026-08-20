@@ -215,7 +215,7 @@ func TestTakeAction_MeleeAttackBeyondReach_Rejected(t *testing.T) {
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 
 	enc := encounter.New(context.Background(), "enc-rg-melee-distant", broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
@@ -243,7 +243,7 @@ func TestTakeAction_MeleeAttackAtReach_Succeeds(t *testing.T) {
 	defer func() { _ = broker.Close(); _ = transport.Close() }()
 
 	enc := encounter.New(context.Background(), "enc-rg-melee-adjacent", broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
@@ -292,7 +292,7 @@ func hydrateWeaponWielder(
 	require.NoError(t, err)
 
 	enc := encounter.New(context.Background(), core.EncounterID(id), broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,
@@ -311,7 +311,7 @@ func hydrateWeaponWielder(
 	var data encounter.Data
 	require.NoError(t, json.Unmarshal(raw, &data))
 	loaded, err := encounter.LoadFromData(context.Background(), &data, broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	require.NoError(t, err)
 	endTurnUntilActive(t, loaded, aliceEntityID)
@@ -439,7 +439,7 @@ func TestNPCAct_HydratedMonster_OutOfReachCapturedAttack_SkipsWithoutWedging(t *
 	require.NoError(t, err)
 
 	enc := encounter.New(context.Background(), "enc-rg-npc-hydrated-skip", broker,
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 8, damageType: damageSlashing}),
 	)
 	require.NoError(t, enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: alicePlayerID, EntityID: aliceEntityID,

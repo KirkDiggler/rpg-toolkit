@@ -78,7 +78,7 @@ func (s *EncounterEndConditionSweepSuite) TestKillingBlow_ExitCombat_IdempotentO
 	// must be skipped without error.
 	enc := encounter.New(s.ctx, "enc-exit-combat-flat-seat", s.broker,
 		encounter.WithRoller(fixedMaxRoller{}),
-		encounter.WithCombatResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
+		encounter.WithStrikeResolver(alwaysHitResolver{damage: 999, damageType: damageSlashing}))
 	s.Require().NoError(enc.AddPlayer(encounter.PlayerInput{
 		PlayerID: bobPlayerID, EntityID: bobEntityID,
 		Position: encountercore.Hex{}, SightRange: 10,
