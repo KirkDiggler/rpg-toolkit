@@ -104,12 +104,13 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:   input.attackerID,
-		TargetID:     targetID,
-		Components:   []dnd5eEvents.DamageComponent{weaponComp},
-		IsCritical:   input.isCritical,
-		HasAdvantage: input.hasAdvantage,
-		AbilityUsed:  input.abilityUsed,
+		AttackerID:       input.attackerID,
+		TargetID:         targetID,
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		WeaponDamageType: weaponDamageType,
+		IsCritical:       input.isCritical,
+		HasAdvantage:     input.hasAdvantage,
+		AbilityUsed:      input.abilityUsed,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -121,6 +122,27 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 	}
 
 	return modifiedChain.Execute(s.ctx, damageEvent)
+}
+
+func (s *SneakAttackTestSuite) TestSneakAttackUsesMarkedWeaponType() {
+	sneak := NewSneakAttackCondition(SneakAttackInput{
+		CharacterID: "rogue-1",
+		Level:       1,
+		Roller:      s.roller,
+	})
+	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
+
+	finalEvent, err := s.executeDamageChain(damageChainInput{
+		attackerID:       "rogue-1",
+		abilityUsed:      abilities.DEX,
+		hasAdvantage:     true,
+		componentType:    damage.Slashing,
+		weaponDamageType: damage.Fire,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(finalEvent.Components, 2)
+	s.Equal(damage.Fire, finalEvent.Components[1].DamageType)
 }
 
 // executeDamageChainSimple is a convenience wrapper for simple test cases

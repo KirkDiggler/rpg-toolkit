@@ -204,7 +204,7 @@ func (s *SneakAttackCondition) onDamageChain(
 			FinalDiceRolls:    sneakDice,
 			Rerolls:           nil,
 			FlatBonus:         0,
-			DamageType:        primary.DamageType, // Sneak attack uses the marked primary weapon type
+			DamageType:        e.WeaponDamageType, // Sneak attack uses the marked primary weapon type
 			IsCritical:        event.IsCritical,
 		})
 		return e, nil

@@ -65,10 +65,11 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	// Normally off-hand attacks don't add ability modifier to damage
 	// But with Two-Weapon Fighting, they do
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID:      "fighter-1",
-		TargetID:        "goblin-1",
-		IsOffHandAttack: true, // This is an off-hand attack
-		AbilityModifier: 3,    // STR or DEX modifier to add
+		AttackerID:       "fighter-1",
+		TargetID:         "goblin-1",
+		WeaponDamageType: damage.Fire,
+		IsOffHandAttack:  true, // This is an off-hand attack
+		AbilityModifier:  3,    // STR or DEX modifier to add
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
@@ -76,7 +77,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 				OriginalDiceRolls: []int{4},
 				FinalDiceRolls:    []int{4},
 				FlatBonus:         0, // No ability modifier added yet
-				DamageType:        damage.Fire,
+				DamageType:        damage.Slashing,
 			},
 		},
 		IsCritical: true,

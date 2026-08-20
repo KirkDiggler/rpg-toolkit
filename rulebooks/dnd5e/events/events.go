@@ -296,48 +296,55 @@ func (e *AttackChainEvent) IsCancelled() bool {
 
 // DamageChainEvent represents damage flowing through the modifier chain
 type DamageChainEvent struct {
-	AttackerID      string
-	TargetID        string
-	Components      []DamageComponent // All damage sources; each component owns its damage type.
-	IsCritical      bool              // Double damage dice on crit
-	HasAdvantage    bool              // True if attacker had advantage on the attack roll
-	AbilityUsed     abilities.Ability // Which ability was used (str, dex, etc.)
-	WeaponRef       *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
-	IsOffHandAttack bool              // True for bonus action off-hand attacks (two-weapon fighting)
-	AbilityModifier int               // The ability modifier (STR/DEX) for this attack
-	IsMelee         bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
+	AttackerID       string
+	TargetID         string
+	Components       []DamageComponent // All damage sources; each component owns its damage type.
+	WeaponDamageDice string            // Marked primary weapon dice (e.g., "1d8").
+	WeaponDamageType damage.Type       // Marked primary weapon damage type.
+	IsCritical       bool              // Double damage dice on crit
+	HasAdvantage     bool              // True if attacker had advantage on the attack roll
+	AbilityUsed      abilities.Ability // Which ability was used (str, dex, etc.)
+	WeaponRef        *core.Ref         // Reference to the weapon used (for off-hand detection, etc.)
+	IsOffHandAttack  bool              // True for bonus action off-hand attacks (two-weapon fighting)
+	AbilityModifier  int               // The ability modifier (STR/DEX) for this attack
+	IsMelee          bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
 }
 
 // DamageChainInput contains the facts used to construct a DamageChainEvent.
-// Components are the authoritative typed damage; attack-specific primary
-// metadata belongs to the marked component rather than the event envelope.
+// Components remain the authoritative typed damage; the primary fields exist
+// only for rules that explicitly inherit a marked weapon pool's dice or type.
 type DamageChainInput struct {
-	AttackerID      string
-	TargetID        string
-	Components      []DamageComponent
-	IsCritical      bool
-	HasAdvantage    bool
-	AbilityUsed     abilities.Ability
-	WeaponRef       *core.Ref
-	IsOffHandAttack bool
-	AbilityModifier int
-	IsMelee         bool
+	AttackerID       string
+	TargetID         string
+	Components       []DamageComponent
+	WeaponDamageDice string
+	WeaponDamageType damage.Type
+	IsCritical       bool
+	HasAdvantage     bool
+	AbilityUsed      abilities.Ability
+	WeaponRef        *core.Ref
+	IsOffHandAttack  bool
+	AbilityModifier  int
+	IsMelee          bool
 }
 
-// NewDamageChainEvent constructs a damage-chain event. Primary weapon facts,
-// when needed by a modifier, are read from the marked DamageComponent.
+// NewDamageChainEvent constructs a damage-chain event with explicit primary
+// weapon metadata. It does not derive a damage type from Components because a
+// multi-pool attack has no event-wide damage type.
 func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
 	return &DamageChainEvent{
-		AttackerID:      input.AttackerID,
-		TargetID:        input.TargetID,
-		Components:      input.Components,
-		IsCritical:      input.IsCritical,
-		HasAdvantage:    input.HasAdvantage,
-		AbilityUsed:     input.AbilityUsed,
-		WeaponRef:       input.WeaponRef,
-		IsOffHandAttack: input.IsOffHandAttack,
-		AbilityModifier: input.AbilityModifier,
-		IsMelee:         input.IsMelee,
+		AttackerID:       input.AttackerID,
+		TargetID:         input.TargetID,
+		Components:       input.Components,
+		WeaponDamageDice: input.WeaponDamageDice,
+		WeaponDamageType: input.WeaponDamageType,
+		IsCritical:       input.IsCritical,
+		HasAdvantage:     input.HasAdvantage,
+		AbilityUsed:      input.AbilityUsed,
+		WeaponRef:        input.WeaponRef,
+		IsOffHandAttack:  input.IsOffHandAttack,
+		AbilityModifier:  input.AbilityModifier,
+		IsMelee:          input.IsMelee,
 	}
 }
 

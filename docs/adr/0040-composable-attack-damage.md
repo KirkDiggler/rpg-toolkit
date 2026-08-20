@@ -64,6 +64,24 @@ no ability selection has no marked pool and a zero ability modifier. Unknown
 properties, malformed notation, empty collections, and unrecognised damage
 types are rejected before any pool is rolled.
 
+### Narrow primary-weapon metadata
+
+`DamageChainEvent` carries two narrow facts about the marked primary weapon
+pool: `WeaponDamageDice string` and `WeaponDamageType damage.Type`.
+`DamageChainInput` carries the same fields, and `NewDamageChainEvent` copies
+them verbatim. They are metadata for rules that explicitly inherit the marked
+pool; `Components` remain the authoritative typed damage and there is no
+event-wide damage type.
+
+Rage, Sneak Attack, Brutal Critical, Dueling, and Two-Weapon Fighting inherit
+their appended damage component's type from `WeaponDamageType`. Brutal
+Critical parses `WeaponDamageDice` for the extra die size. Martial Arts and
+Great Weapon Fighting continue to locate and mutate the exact component marked
+with `AddsAttackAbilityModifier`; when Martial Arts replaces that component's
+dice, it updates `WeaponDamageDice` alongside it so the metadata remains
+coherent. No singular `WeaponDamage` field or event-wide `DamageType` is
+retained as a compatibility alias.
+
 ### Critical-hit and flat-modifier rules
 
 - A pool's dice are crit-eligible by default.

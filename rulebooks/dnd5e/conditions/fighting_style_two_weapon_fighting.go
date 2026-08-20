@@ -143,7 +143,7 @@ func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 			FinalDiceRolls:    nil,
 			Rerolls:           nil,
 			FlatBonus:         e.AbilityModifier,
-			DamageType:        primary.DamageType,
+			DamageType:        e.WeaponDamageType,
 			IsCritical:        false,
 		})
 		return e, nil

@@ -82,8 +82,9 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 
 	// Create damage chain event
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "fighter-1",
-		TargetID:   "goblin-1",
+		AttackerID:       "fighter-1",
+		TargetID:         "goblin-1",
+		WeaponDamageType: damage.Fire,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
@@ -91,7 +92,7 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 				OriginalDiceRolls: []int{6},
 				FinalDiceRolls:    []int{6},
 				FlatBonus:         3,
-				DamageType:        damage.Fire,
+				DamageType:        damage.Slashing,
 			},
 		},
 		IsCritical: true,

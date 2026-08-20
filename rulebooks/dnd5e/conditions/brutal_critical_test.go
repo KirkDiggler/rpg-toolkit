@@ -75,10 +75,12 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID: attackerID,
-		TargetID:   "goblin-1",
-		Components: []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
-		IsCritical: isCritical,
+		AttackerID:       attackerID,
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp, abilityComp},
+		WeaponDamageDice: weaponDamage,
+		WeaponDamageType: damage.Slashing,
+		IsCritical:       isCritical,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -259,9 +261,11 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 
 	// Use a greataxe (1d12)
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		Dice:              "1d12",
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		// The marked metadata is authoritative; the component deliberately
+		// carries a different notation to catch component-based parsing.
+		Dice:              "1d4",
 		OriginalDiceRolls: []int{8, 11}, // 2d12 for crit
 		FinalDiceRolls:    []int{8, 11},
 		DamageType:        damage.Slashing,
@@ -269,10 +273,12 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "barbarian-1",
-		TargetID:   "goblin-1",
-		Components: []dnd5eEvents.DamageComponent{weaponComp},
-		IsCritical: true,
+		AttackerID:       "barbarian-1",
+		TargetID:         "goblin-1",
+		Components:       []dnd5eEvents.DamageComponent{weaponComp},
+		WeaponDamageDice: "1d12",
+		WeaponDamageType: damage.Fire,
+		IsCritical:       true,
 	}
 
 	chain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -289,6 +295,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 	brutalComp := finalEvent.Components[1]
 	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
 	s.Equal([]int{10}, brutalComp.FinalDiceRolls, "Should roll extra d12 for greataxe")
+	s.Equal(damage.Fire, brutalComp.DamageType, "Brutal Critical inherits marked weapon type")
 }
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalRemoveUnsubscribes() {

@@ -206,6 +206,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 
 			// Replace only the component carrying the canonical primary marker.
 			component.Dice = martialArtsDice
+			e.WeaponDamageDice = martialArtsDice
 			component.OriginalDiceRolls = append([]int(nil), newRolls...)
 			component.FinalDiceRolls = append([]int(nil), newRolls...)
 			component.IsCritical = times == 2

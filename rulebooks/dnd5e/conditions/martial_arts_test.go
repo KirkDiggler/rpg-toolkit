@@ -180,6 +180,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 						DamageType: "bludgeoning",
 					},
 				},
+				WeaponDamageDice: "1d1",
 				IsCritical:  false,
 				AbilityUsed: abilities.STR,
 				WeaponRef:   refs.Weapons.UnarmedStrike(),
@@ -197,6 +198,8 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 
 			// Verify weapon damage dice were updated
 			s.Equal(tc.expectedDice, finalEvent.Components[0].Dice)
+			s.Equal(tc.expectedDice, finalEvent.WeaponDamageDice,
+				"marked weapon metadata must follow the exact component replacement")
 
 			// Verify weapon component has new rolls
 			weaponComponent := &finalEvent.Components[0]

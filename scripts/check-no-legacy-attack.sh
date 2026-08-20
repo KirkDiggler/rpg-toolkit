@@ -55,7 +55,12 @@ if rg -n 'damage_dice|damage_type|damage_bonus|KnockdownDC|Scimitar(Config|Actio
   exit 1
 fi
 
-if sed -n '/^type DamageChainEvent struct {/,/^}/p' rulebooks/dnd5e/events/events.go | rg -n '^[[:space:]]*(WeaponDamage|DamageType)[[:space:]]'; then
-  echo 'legacy event-wide damage metadata remains' >&2
-  exit 1
-fi
+# Canonical WeaponDamageDice and WeaponDamageType are narrow marked-primary
+# metadata and are explicitly allowed. Reject only the removed singular
+# WeaponDamage field or event-wide DamageType field in both chain envelopes.
+for chain_type in DamageChainEvent DamageChainInput; do
+  if sed -n "/^type ${chain_type} struct {/,/^}/p" rulebooks/dnd5e/events/events.go | rg -n '^[[:space:]]*(WeaponDamage|DamageType)[[:space:]]'; then
+    echo "legacy event-wide damage metadata remains in ${chain_type}" >&2
+    exit 1
+  fi
+done
