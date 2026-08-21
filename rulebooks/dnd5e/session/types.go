@@ -263,9 +263,17 @@ type MemberOutcome struct {
 // Seen is what the sight channel knows about a subject: the cell it occupies,
 // dungeon-absolute — the same frame every other position on this seam speaks.
 //
-// Present exactly when the sighting that carries it was produced by sight;
-// nil for every other channel. A memory (CurrentVia empty) keeps the Seen it
-// last had — the last-known cell a client draws a faded marker on.
+// On [Sighting], present exactly when the sighting was produced by sight;
+// nil for every other channel, gated on Holding.Channel. A memory (CurrentVia
+// empty) keeps the Seen it last had — the last-known cell a client draws a
+// faded marker on.
+//
+// On [Report] this is weaker (Copilot review, PR #1159): intel.Report carries
+// no Channel of its own, so a Report's Seen is inferred by decoding its
+// payload rather than gated on provenance — see projectReportSeen's own
+// comment in convert.go. It is not yet an authoritative "this was sight"
+// discriminator on a Report the way it is on a Sighting; do not treat it as
+// one until a second channel exists to prove the distinction matters.
 //
 // ADR-0041: channel-keyed typed sub-structs on Sighting/Report. A future
 // channel (hearing, tremorsense) gets its own sub-struct with the facts that
@@ -674,6 +682,14 @@ type Report struct {
 	// Seen is the sight channel's own typed knowledge, carried the same way
 	// [Sighting.Seen] is — first contact and a held sighting are the same
 	// fact in the same shape.
+	//
+	// UNLIKE Sighting.Seen, this is not gated on channel provenance: Report
+	// (unlike Holding) carries no Channel field, so this is populated by
+	// decoding the payload and checking whether it parses, not by asking
+	// what channel produced it. See [Seen]'s own doc and projectReportSeen
+	// in convert.go. Do not read a non-nil Seen here as proof the report
+	// came from sight — today it always does, because sight is the only
+	// channel this codebase surveils with, not because this field checked.
 	Seen *Seen `json:"seen,omitempty"`
 
 	// Payload is what the observer learned, encoded by the composition.

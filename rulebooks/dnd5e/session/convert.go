@@ -395,10 +395,11 @@ func projectDiscovery(in *intel.SurveilOutput) Discovery {
 // codebase and always passes intel.Sight. The day a second channel starts
 // calling Surveil, an undecodable payload here stops meaning "not sight" and
 // starts meaning "channel this SDK has not typed yet OR truly bad bytes" —
-// indistinguishable from here. TestReportSeenIsNilForAPayloadDecodeWouldEatQuietly
-// below documents the risk rather than closing it: closing it needs
-// SurveilOutput (or the percept it is built from) to carry its own channel,
-// which is a play/intel change outside this PR's scope.
+// indistinguishable from here.
+// TestProjectReportSeenCannotDistinguishSightFromALookalikePayload
+// (seen_internal_test.go) documents the risk rather than closing it: closing
+// it needs SurveilOutput (or the percept it is built from) to carry its own
+// channel, which is a play/intel change outside this PR's scope.
 func projectReportSeen(payload []byte) *Seen {
 	pos, ok := encounter.DecodeSightPayload(payload)
 	if !ok {

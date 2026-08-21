@@ -61,12 +61,31 @@ type Sighting struct {
 `Report` carries `Seen` the same way, so first contact and a held sighting
 are the same fact in the same shape.
 
+> **Implementation note, added during #1157/PR #1159 (Copilot review):**
+> `Sighting.Seen` gates on real channel provenance — `intel.Holding` carries a
+> `Channel` field, so `Seen` is nil for anything that is not literally
+> sight-channel testimony. `Report.Seen` cannot do the same today:
+> `intel.Report`/`intel.SurveilOutput` carry no channel of their own — a
+> `Surveil` call is scoped to one channel, but that channel is not threaded
+> onto each `Report` it returns — so `Report.Seen` is populated by decoding
+> the payload and checking whether it parses as a sight payload, not by
+> asking what channel produced it. That is equivalent to the real check only
+> because sight is the only channel any composition in this codebase calls
+> `Surveil` with today. Closing the gap needs `SurveilOutput` (or the percept
+> it is built from) to carry its own channel — a `play/intel` change outside
+> this PR's scope, tracked as a known limitation rather than silently
+> papered over.
+
 Mechanics follow ADR-0040 and rule S2: the **composition decodes its own
-encoding** — `encounter` exposes its perception typed (its own view type
-carrying `Position spatial.Position`), and session's projection copies it into
-`Seen`. Session never unmarshals payload bytes; intel stays opaque storage.
-`spatial.Position` is the existing allow-listed value type, so no inner type
-crosses the boundary.
+encoding** — `encounter` exposes its perception typed, and session's
+projection copies it into `Seen`. Session never unmarshals payload bytes;
+intel stays opaque storage. `spatial.Position` is the existing allow-listed
+value type, so no inner type crosses the boundary.
+
+> *(Shipped as `encounter.DecodeSightPayload(payload []byte) (spatial.Position,
+> bool)` rather than a retyped `View` return — smaller, and `View` keeps
+> returning `[]intel.Holding` unchanged. Either satisfies "the composition
+> decodes its own encoding"; this is the one PR #1158 built.)*
 
 Future channels add their own sub-struct (`Heard`, `Felt`, …) with the facts
 that channel actually conveys. Sight-specific facts that arrive later
