@@ -471,17 +471,33 @@ func (a *AxialHexGrid) GetPositionsInCone(origin, direction Position, length, an
 	return positions
 }
 
-// axialToCube converts an axial Position (X=Q, Y=R) to a CubeCoordinate.
-func axialToCube(pos Position) CubeCoordinate {
+// AxialToCube converts an axial Position (X=Q, Y=R) to a CubeCoordinate.
+// It is the inverse of [CubeCoordinate.ToAxial] and, with it, the ONE
+// definition of the axial basis this package speaks.
+func AxialToCube(pos Position) CubeCoordinate {
 	q := int(pos.X)
 	r := int(pos.Y)
-	return CubeCoordinate{X: q, Y: r, Z: -q - r}
+	return CubeCoordinate{X: q, Y: -q - r, Z: r}
 }
 
-// cubeToAxial converts a CubeCoordinate back to an axial Position (X=Q, Y=R).
-func cubeToAxial(c CubeCoordinate) Position {
-	return Position{X: float64(c.X), Y: float64(c.Y)}
+// ToAxial reads a cube coordinate as the axial Position (X=Q, Y=R) this
+// package hands out for hex cells: Q is cube X and R is cube Z.
+//
+// WHICH TWO AXES is not a free choice, even though the lattice cannot tell
+// (rpg-toolkit#1150). Any pair gives identical distance, neighbours and sight;
+// what differs is the PICTURE. "Pointy-top" means the R axis runs straight
+// across the screen, and the standard formula — x = √3·(q + r/2), y = 1.5·r —
+// assumes R is cube Z. Reading Y as R instead drew the reference tomb as a
+// diagonal band and survived every round-trip test in three modules. This
+// matches [OffsetCoordinateToCubeWithOrientation], which already puts the
+// authored row in Z, and is pinned by hex_axial_basis_test.go against the
+// pixel formula rather than against another conversion.
+func (c CubeCoordinate) ToAxial() Position {
+	return Position{X: float64(c.X), Y: float64(c.Z)}
 }
+
+func axialToCube(pos Position) CubeCoordinate { return AxialToCube(pos) }
+func cubeToAxial(c CubeCoordinate) Position   { return c.ToAxial() }
 
 // lerpCube linearly interpolates between two CubeCoordinates. Uses float
 // arithmetic before rounding (via roundCube) so the cube invariant is
