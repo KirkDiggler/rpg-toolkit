@@ -39,7 +39,7 @@ type CharacterAttackInput struct {
 //
 // # What compiles here, and what does not
 //
-// Only STATIC facts: the weapon's dice and damage type, whether finesse lets
+// Only STATIC facts: the weapon's canonical damage pools, whether finesse lets
 // DEX win, whether the sheet is proficient, and whether a versatile grip
 // steps the die. Every one of them is knowable before the swing and cannot
 // change between two swings of the same weapon by the same character.
@@ -105,29 +105,29 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 		attackBonus += c.ProficiencyBonus()
 	}
 
-	dice := weapon.Damage
-	if in.TwoHanded {
-		dice = weapon.VersatileDamage()
+	pools, err := weapon.DamageForGrip(in.TwoHanded)
+	if err != nil {
+		return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
 	}
 
-	return AttackProfile{
+	profile := AttackProfile{
 		Ref:         ref,
 		AttackBonus: attackBonus,
-		// The ability modifier rides the notation rather than a separate
-		// field, and that is load-bearing for critical hits: the machine
-		// doubles a crit by rolling the pool a second time and takes the flat
-		// modifier from the FIRST roll only, so "+3" inside "1d8+3" doubles
-		// the dice and not the modifier — which is exactly ADR-0036's rule.
-		DamageDice: fmt.Sprintf("%s%+d", dice, modifier),
-		DamageType: weapon.DamageType,
-		// Which ability swung. Not arithmetic — the modifier is already in the
-		// notation above — but the fact effects predicate on: Rage pays out on
-		// melee Strength attacks and needs to know this was one.
-		AbilityUsed: ability,
+		Damage:      copyDamagePools(pools),
+		// Which ability swung is the fact effects predicate on: Rage pays out
+		// on melee Strength attacks and needs to know this was one. Its
+		// arithmetic remains separately attributable in AbilityModifier.
+		AbilityUsed:     ability,
+		AbilityModifier: modifier,
 		// Weapons declare no rider. A gate on a character's attack comes from
 		// class content (a monk's Flurry), which compiles elsewhere.
 		Gate: nil,
-	}, nil
+	}
+	if err := profile.validate(); err != nil {
+		return AttackProfile{}, err
+	}
+
+	return profile, nil
 }
 
 // equippedWeapon reads the weapon out of a slot, refusing an empty or
