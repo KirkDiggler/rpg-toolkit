@@ -202,23 +202,27 @@ func orientationName(o Orientation) string {
 // question get born. It is the same function [regionAt] runs backwards.
 //
 // The conversion itself is spatial's, not this module's: offset -> cube through
-// [spatial.OffsetCoordinateToCubeWithOrientation], then cube read as axial with
-// Q = X and R = Y, which is the reading [spatial.AxialHexGrid] uses (its
-// axialToCube derives Z = -Q-R, so the two agree by construction rather than by
-// coincidence — pinned by TestOffsetAndAxialAgreeWithSpatial).
+// [spatial.OffsetCoordinateToCubeWithOrientation], then [spatial.CubeCoordinate.ToAxial]
+// reads the cube as axial — Q is cube X and R is cube Z (rpg-toolkit#1150: the
+// pair every pixel formula and [spatial.AxialHexGrid] assume). This function
+// used to rebuild that reading by hand, X and Y rather than X and Z, which is
+// the bug #1150 fixed: two definitions of the same basis, silently disagreeing.
+// There is now exactly one, and this asks for it — pinned by
+// TestOffsetAndAxialAgreeWithSpatial.
 func HexCellAt(o Orientation, col, row int) spatial.Position {
 	cube := spatial.OffsetCoordinateToCubeWithOrientation(
 		spatial.Position{X: float64(col), Y: float64(row)}, o.spatial())
 
-	return spatial.Position{X: float64(cube.X), Y: float64(cube.Y)}
+	return cube.ToAxial()
 }
 
 // hexOffsetOf is HexCellAt run backwards: the authored [col,row] a
 // dungeon-absolute cell came from.
+//
+// Axial -> cube through [spatial.AxialToCube] — the same exported basis
+// [HexCellAt] reads, run in reverse, rather than a hand-built cube triple.
 func hexOffsetOf(o Orientation, cell spatial.Position) (col, row int) {
-	q, r := int(cell.X), int(cell.Y)
-	offset := spatial.CubeCoordinate{X: q, Y: r, Z: -q - r}.
-		ToOffsetCoordinateWithOrientation(o.spatial())
+	offset := spatial.AxialToCube(cell).ToOffsetCoordinateWithOrientation(o.spatial())
 
 	return int(offset.X), int(offset.Y)
 }
@@ -270,21 +274,28 @@ func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.
 // intervals intersect in O(1). So the whole disjointness question costs
 // O(Width) or O(Height) rather than O(Width x Height).
 //
-// The key is the coordinate that does NOT shear:
+// The key is the coordinate that does NOT shear — the one [HexCellAt] reports
+// unstaggered for this orientation, under spatial's axial basis (rpg-toolkit#1150:
+// axial Q is cube X, axial R is cube Z):
 //
-//   - FLAT-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q;
-//     for a fixed column, R decreases by exactly one per row, so the run is
-//     [r(row=Height-1), r(row=0)].
-//   - POINTY-TOP is odd-r, so the authored ROW is recoverable as -(Q+R) and
-//     only Q staggers. Key by that; for a fixed row, Q increases by exactly one
-//     per column.
+//   - FLAT-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q; for
+//     a fixed column, R climbs one-for-one with row.
+//   - POINTY-TOP is odd-r, so R = row EXACTLY — the authored row needs no
+//     formula to recover, it IS R — and only Q staggers. Key by R itself; for
+//     a fixed row, Q climbs one-for-one with column.
 //
-// Those two bullets USED TO NAME THE OTHER ORIENTATION, because spatial had the
-// schemes swapped (rpg-toolkit#1141). The arithmetic below is unchanged; which
-// orientation it belongs to is what moved.
+// Neither bullet assumes which DIRECTION an axis moves as its authored
+// coordinate grows; both ends of a run are read from [HexCellAt] and sorted,
+// not derived from a sign this file would otherwise have to predict. That is
+// deliberate: #1141 swapped which orientation these two facts named, and #1150
+// changed the pointy-top key outright (it used to be recovered as -(Q+R), the
+// reading spatial's OLD, buggy axial basis produced; under the fixed basis R
+// already IS the row). A copy of the direction, baked in as which end of
+// HexCellAt's output goes first, is exactly the kind of restatement that broke
+// last time — so this asks HexCellAt twice and orders the answer, rather than
+// deciding in advance which one is smaller.
 //
-// Both facts are read off spatial's own conversion rather than assumed, and
-// pinned by TestRunsAgreeWithEnumeration, which compares this against a full
+// Pinned by TestRunsAgreeWithEnumeration, which compares this against a full
 // cell-by-cell sweep over a spread of shapes and both orientations.
 func hexRuns(r RoomInput, o Orientation) map[int][2]int {
 	runs := make(map[int][2]int, max(r.Width, r.Height))
@@ -294,7 +305,11 @@ func hexRuns(r RoomInput, o Orientation) map[int][2]int {
 		for col := 0; col < r.Width; col++ {
 			top := HexCellAt(o, col+oc, or)
 			bottom := HexCellAt(o, col+oc, r.Height-1+or)
-			runs[int(top.X)] = [2]int{int(bottom.Y), int(top.Y)}
+			lo, hi := int(top.Y), int(bottom.Y)
+			if lo > hi {
+				lo, hi = hi, lo
+			}
+			runs[int(top.X)] = [2]int{lo, hi}
 		}
 
 		return runs
@@ -303,7 +318,11 @@ func hexRuns(r RoomInput, o Orientation) map[int][2]int {
 	for row := 0; row < r.Height; row++ {
 		left := HexCellAt(o, oc, row+or)
 		right := HexCellAt(o, r.Width-1+oc, row+or)
-		runs[-(int(left.X) + int(left.Y))] = [2]int{int(left.X), int(right.X)}
+		lo, hi := int(left.X), int(right.X)
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		runs[int(left.Y)] = [2]int{lo, hi}
 	}
 
 	return runs
@@ -316,12 +335,16 @@ func hexFootprintBounds(r RoomInput, o Orientation) (qMin, qMax, rMin, rMax int)
 	for key, run := range hexRuns(r, o) {
 		var q0, q1, r0, r1 int
 		if o.Kind() == OrientationFlatTop {
+			// key is the absolute column — Q, unstaggered; the run is R's
+			// interval for that column.
 			q0, q1, r0, r1 = key, key, run[0], run[1]
 		} else {
-			// key is the authored row; the run is a Q interval, and R is
-			// -Q-row on each end.
+			// key is the absolute row, which for pointy-top under the fixed
+			// basis (rpg-toolkit#1150) IS R directly — no formula needed, R
+			// does not vary along a pointy-top row at all. The run is Q's
+			// interval for that row.
 			q0, q1 = run[0], run[1]
-			r0, r1 = -run[1]-key, -run[0]-key
+			r0, r1 = key, key
 		}
 		if first {
 			qMin, qMax, rMin, rMax = q0, q1, r0, r1

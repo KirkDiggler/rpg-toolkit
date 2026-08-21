@@ -246,8 +246,7 @@ func (p *continuityProjector) locate(member, verb string, absolute spatial.Posit
 // sharing a mistake. What it may borrow is tools/spatial's conversion, which
 // belongs to neither side of that comparison.
 func hexOffsetOfCell(cell spatial.Position) (col, row int) {
-	q, r := int(cell.X), int(cell.Y)
-	offset := spatial.CubeCoordinate{X: q, Y: r, Z: -q - r}.
+	offset := spatial.AxialToCube(cell).
 		ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 	return int(offset.X), int(offset.Y)
 }
@@ -432,29 +431,31 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	// boundary is invisible in world space.
 	require.Equal(t, []string{
 		// EVERY ABSOLUTE HERE MOVED when rpg-toolkit#1141 corrected the hex
-		// offset schemes, and every AUTHORED one stayed put -- corridor(6,5)
-		// is still corridor(6,5). That split is the reassuring part: the scene
+		// offset schemes, and again when rpg-toolkit#1150 corrected the axial
+		// basis itself (Q is cube X, R is cube Z, not cube Y) -- every
+		// AUTHORED cell stayed put throughout both fixes: corridor(6,5) is
+		// still corridor(6,5). That split is the reassuring part: the scene
 		// plays out identically and only the projection underneath it changed.
 		//
 		// The continuity this test is named for still holds and is still what
 		// the comparison enforces: one authored cell projects to ONE absolute
-		// cell everywhere in the story. corridor(9,5) is absolute(7,-12) for
-		// alice and for the goblin; vault(0,5) is absolute(8,-13) at both
+		// cell everywhere in the story. corridor(9,5) is absolute(7,5) for
+		// alice and for the goblin; vault(0,5) is absolute(8,5) at both
 		// arrivals and at the goblin's outcome; vault(0,6) survives a reload
 		// unchanged.
-		"alice start: corridor(6,5) -> absolute(4,-9)",
-		"goblin start: corridor(9,4) -> absolute(7,-11)",
-		"alice move: corridor(7,5) -> absolute(5,-10)",
-		"alice move: corridor(8,5) -> absolute(6,-11)",
-		"alice move: corridor(9,5) -> absolute(7,-12)",
-		"alice arrive via gate: vault(0,5) -> absolute(8,-13)",
-		"alice move: vault(0,6) -> absolute(7,-13)",
-		"alice reload checkpoint: vault(0,6) -> absolute(7,-13)",
-		"goblin move: corridor(9,5) -> absolute(7,-12)",
-		"goblin arrive via gate: vault(0,5) -> absolute(8,-13)",
-		"alice move: vault(1,6) -> absolute(8,-14)",
-		"alice move: vault(2,6) -> absolute(9,-15)",
-		"alice outcome: vault(2,6) -> absolute(9,-15)",
-		"goblin outcome: vault(0,5) -> absolute(8,-13)",
+		"alice start: corridor(6,5) -> absolute(4,5)",
+		"goblin start: corridor(9,4) -> absolute(7,4)",
+		"alice move: corridor(7,5) -> absolute(5,5)",
+		"alice move: corridor(8,5) -> absolute(6,5)",
+		"alice move: corridor(9,5) -> absolute(7,5)",
+		"alice arrive via gate: vault(0,5) -> absolute(8,5)",
+		"alice move: vault(0,6) -> absolute(7,6)",
+		"alice reload checkpoint: vault(0,6) -> absolute(7,6)",
+		"goblin move: corridor(9,5) -> absolute(7,5)",
+		"goblin arrive via gate: vault(0,5) -> absolute(8,5)",
+		"alice move: vault(1,6) -> absolute(8,6)",
+		"alice move: vault(2,6) -> absolute(9,6)",
+		"alice outcome: vault(2,6) -> absolute(9,6)",
+		"goblin outcome: vault(0,5) -> absolute(8,5)",
 	}, proj.transcript, "the story IS the projected continuity, told in order")
 }
