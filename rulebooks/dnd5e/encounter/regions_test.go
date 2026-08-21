@@ -398,7 +398,7 @@ func (s *RegionSuite) TestRegionAtAnswersExactlyWhatTheAuthoredGridWould() {
 		for q := -10; q <= 10; q++ {
 			for r := -10; r <= 10; r++ {
 				cell := spatial.Position{X: float64(q), Y: float64(r)}
-				offset := spatial.CubeCoordinate{X: q, Y: r, Z: -q - r}.
+				offset := spatial.AxialToCube(cell).
 					ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
 				col, row := offset.X-origin.X, offset.Y-origin.Y
 				want := col >= 0 && col < 6 && row >= 0 && row < 4

@@ -1,4 +1,4 @@
-# ADR-0040: Composable Attack Damage
+# ADR-0041: Composable Attack Damage
 
 Date: 2026-08-20
 

@@ -948,12 +948,15 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 	})
 
 	s.Run("integral negative axial target accepted", func() {
-		// Absolute cells are axial and a negative R is entirely ordinary —
-		// the reference tomb's own run from -21 to 0. What changed in
-		// rpg-toolkit#1127 is which cells a chamber HOLDS, so this names one
-		// it does: the chamber's authored column 2, row 5, which lands on
-		// axial (2,-6).
-		_, err := enc.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: 2, Y: -6}})
+		// Absolute cells are axial and a negative Q is entirely ordinary —
+		// the reference tomb's own run includes negative Q throughout. What
+		// changed in rpg-toolkit#1127 is which cells a chamber HOLDS, so this
+		// names one it does: the chamber's authored column 0, row 5, which
+		// lands on axial (-2,5) (rpg-toolkit#1150: for pointy-top R is the
+		// authored row exactly, so a room anchored at row 0 can only ever
+		// produce a negative Q, never a negative R — the axis this test
+		// exercises moved with the basis fix, the point it makes did not).
+		_, err := enc.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: -2, Y: 5}})
 		s.Require().NoError(err)
 	})
 }
@@ -985,12 +988,14 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	})
 
 	s.Run("integral negative axial position accepted", func() {
-		// The chamber's authored column 0, row 7 — axial (0,-7). See the
-		// Move counterpart for why a negative R is unremarkable.
+		// The chamber's authored column 0, row 7 — axial (-3,7)
+		// (rpg-toolkit#1150 moved this from (0,-7)). See the Move
+		// counterpart for why a negative Q, not R, is what a room anchored
+		// at row 0 can produce, and why that is unremarkable.
 		_, err := enc.Join(&encounter.JoinInput{
 			Member: "p3",
 			Kind:   encounter.KindPlayer,
-			Cell:   spatial.Position{X: 0, Y: -7},
+			Cell:   spatial.Position{X: -3, Y: 7},
 		})
 		s.Require().NoError(err)
 	})

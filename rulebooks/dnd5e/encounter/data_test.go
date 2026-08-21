@@ -126,7 +126,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// because sight stopped at a room boundary. That makes the golden strictly
 	// richer: it is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTMsInkiOjZ9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotNSwieSI6LTJ9","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-2,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":7,"y":3},"to_position":{"x":0,"y":3}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":-2}},{"id":"p1","kind":"player","cell":{"x":-13,"y":6}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTMsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotNSwieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-2,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":7,"y":3},"to_position":{"x":0,"y":3}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -1908,20 +1908,26 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 	})
 
 	s.Run("its far corner accepted", func() {
-		// authored [3,2] — the last column of the last row
-		s.Require().NoError(load(encounter.PositionData{X: 3, Y: -4}))
+		// authored [3,2] — the last column of the last row. Moved again with
+		// rpg-toolkit#1150 (axial R is cube Z, not cube Y).
+		s.Require().NoError(load(encounter.PositionData{X: 2, Y: 2}))
 	})
 
-	s.Run("a negative R inside it accepted", func() {
-		// authored [0,2]. A negative absolute coordinate is ordinary: the
+	s.Run("a negative Q inside it accepted", func() {
+		// authored [0,2]. Renamed from "a negative R" (rpg-toolkit#1150): for
+		// pointy-top under the fixed basis R IS the authored row exactly, so
+		// nothing in a room anchored at row 0 can ever produce a negative R —
+		// it is Q that staggers negative instead. The point survives the
+		// rename unchanged: a negative absolute coordinate is ordinary, the
 		// conversion from offset to axial produces them for almost every
-		// chamber, and the reference tomb's own R values run -21 to 0.
-		s.Require().NoError(load(encounter.PositionData{X: 0, Y: -2}))
+		// chamber, and the reference tomb's own Q values run negative too.
+		s.Require().NoError(load(encounter.PositionData{X: -1, Y: 2}))
 	})
 
 	s.Run("one column past the last rejected", func() {
-		// authored [4,0], which the 4-wide rectangle does not hold
-		err := load(encounter.PositionData{X: 4, Y: -2})
+		// authored [4,0], which the 4-wide rectangle does not hold. Moved
+		// with rpg-toolkit#1150.
+		err := load(encounter.PositionData{X: 4, Y: 0})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "owned by no region")
 	})
@@ -1935,8 +1941,8 @@ func (s *DataTestSuite) TestHexRoomBoundsLoad() {
 	})
 
 	s.Run("one row past the last rejected", func() {
-		// authored [0,3]
-		err := load(encounter.PositionData{X: 0, Y: -3})
+		// authored [0,3]. Moved with rpg-toolkit#1150.
+		err := load(encounter.PositionData{X: -1, Y: 3})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), "owned by no region")
 	})
@@ -1964,7 +1970,7 @@ func (s *DataTestSuite) TestHexConnectionEndpointNegativeAxialLoad() {
 			}},
 		},
 		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: -2}}, /*ROOM:"hex-a" authored [1,1]*/
+			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"hex-a" authored [1,1], moved with rpg-toolkit#1150*/
 		},
 		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
 		EverMembers: []encounter.MemberID{"p1"},
@@ -2585,10 +2591,18 @@ func (s *DataTestSuite) TestReloadedAnchoredEncounterAcceptsSameTraverse() {
 	nearSide := atlas.Doorways[0].FromCell
 	farSide := atlas.Doorways[0].ToCell
 
-	// Still worth asserting the compile did something: the absolute cells are
-	// not the authored pairs.
-	s.NotEqual(spatial.Position{X: 9, Y: 1}, nearSide, "authored [9,1] is not its own absolute cell")
-	s.NotEqual(spatial.Position{X: 0, Y: 4}, farSide, "authored [0,4] is not its own absolute cell")
+	// Still worth asserting the compile did something, but NOT by pinning
+	// "the absolute cell differs from the authored pair": rpg-toolkit#1150
+	// found that check coincidentally true under the old, buggy axial basis
+	// and coincidentally FALSE under the fixed one for this exact fixture (row
+	// 1 has zero stagger for pointy-top, so [9,1] compiles to itself) — the
+	// same fragility this test's own comment above warns hardcoded literals
+	// have, just wearing a negative assertion. Adjacency is what a compiled
+	// doorway actually promises (W3) and is basis-invariant, so that is what
+	// this checks instead.
+	canvas, cerr := enc1.Canvas()
+	s.Require().NoError(cerr)
+	s.Equal(1.0, canvas.GetGrid().Distance(nearSide, farSide), "a compiled doorway's two sides are exactly one step apart")
 
 	out1, err := enc1.Step(&encounter.StepInput{Member: "p1", To: farSide})
 	s.Require().NoError(err, "the original encounter accepts the step through the gate")

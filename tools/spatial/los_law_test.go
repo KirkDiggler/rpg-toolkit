@@ -133,7 +133,7 @@ func lawGrids() []lawGrid {
 		grid:  axial,
 		cells: axialCells,
 		centre: func(p spatial.Position) (float64, float64) {
-			return hexPixel(spatial.CubeCoordinate{X: int(p.X), Y: int(-p.X - p.Y), Z: int(p.Y)})
+			return hexPixel(spatial.AxialToCube(p))
 		},
 		half:  math.Sqrt(3) / 2,
 		tiles: true,
