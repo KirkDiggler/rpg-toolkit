@@ -79,10 +79,10 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
 - **0032** — The character package's dispatch is canonical; the encounter
   delegates rather than building a parallel registry. *Rule: default to one
   system.*
-- **0036** *(superseded by [0040-composable-attack-damage.md](0040-composable-attack-damage.md))* —
+- **0036** *(superseded by [0041-composable-attack-damage.md](0041-composable-attack-damage.md))* —
   The proposed selective-critical variant is historical; it does not describe
   the current attack damage rules.
-- **0040** — Attack damage is an ordered collection of typed pools. Exactly one
+- **0041** — Attack damage is an ordered collection of typed pools. Exactly one
   pool receives the attack ability modifier; every eligible attack die,
   including Sneak Attack, doubles on a critical unless that pool explicitly has
   `DoesNotCrit`. Resolution rolls pools, folds one chain, and applies once.
