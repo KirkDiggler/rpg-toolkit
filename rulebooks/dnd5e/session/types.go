@@ -260,12 +260,36 @@ type MemberOutcome struct {
 	Position spatial.Position `json:"position"`
 }
 
+// Seen is what the sight channel knows about a subject: the cell it occupies,
+// dungeon-absolute — the same frame every other position on this seam speaks.
+//
+// Present exactly when the sighting that carries it was produced by sight;
+// nil for every other channel. A memory (CurrentVia empty) keeps the Seen it
+// last had — the last-known cell a client draws a faded marker on.
+//
+// ADR-0041: channel-keyed typed sub-structs on Sighting/Report. A future
+// channel (hearing, tremorsense) gets its own sub-struct with the facts that
+// channel actually conveys; a sight-specific fact that arrives later
+// (lighting, distance band) belongs inside Seen, not as a new field on
+// Sighting.
+type Seen struct {
+	// Position is the sighted subject's cell, dungeon-absolute.
+	Position spatial.Position `json:"position"`
+}
+
 // Sighting is one thing an observer currently perceives.
 type Sighting struct {
 	// Subject names what is perceived.
 	Subject string `json:"subject"`
 
+	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
+	// the composition, not by this package — session never unmarshals
+	// Payload itself.
+	Seen *Seen `json:"seen,omitempty"`
+
 	// Payload is what the observer knows about it, encoded by the composition.
+	// Retained for channels the SDK has not typed; sight itself is typed
+	// through Seen above rather than asking a client to decode this.
 	Payload []byte `json:"payload,omitempty"`
 
 	// Channel is how it was perceived.
@@ -647,6 +671,12 @@ type Report struct {
 	// Subject names what was perceived.
 	Subject string `json:"subject"`
 
+	// Seen is the sight channel's own typed knowledge, carried the same way
+	// [Sighting.Seen] is — first contact and a held sighting are the same
+	// fact in the same shape.
+	Seen *Seen `json:"seen,omitempty"`
+
 	// Payload is what the observer learned, encoded by the composition.
+	// Retained for channels the SDK has not typed.
 	Payload []byte `json:"payload,omitempty"`
 }

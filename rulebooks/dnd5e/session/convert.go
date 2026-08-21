@@ -218,6 +218,7 @@ func projectSightings(in []intel.Holding) []Sighting {
 		}
 		out = append(out, Sighting{
 			Subject:    string(h.Subject),
+			Seen:       projectSeen(h.Channel, h.Payload),
 			Payload:    append([]byte(nil), h.Payload...),
 			Channel:    string(h.Channel),
 			At:         h.At,
@@ -226,6 +227,28 @@ func projectSightings(in []intel.Holding) []Sighting {
 		})
 	}
 	return out
+}
+
+// projectSeen copies the sight channel's typed knowledge into Seen (ADR-0041).
+// It is nil for every channel but sight, and nil if a sight-channel payload
+// somehow fails to decode — an impossible state today (the composition is the
+// only writer of sight payloads) that a wrong Position would be worse than
+// admitting to.
+//
+// The decode itself happens in encounter.DecodeSightPayload, not here: this
+// package never calls encoding/json on a payload. h.Channel is intel's own
+// provenance field — a holding's last accepted testimony — so a held memory
+// (CurrentVia empty) still carries the channel and payload that produced it,
+// and still gets a Seen: "a memory keeps its last Seen" (the ADR's words).
+func projectSeen(channel intel.Channel, payload []byte) *Seen {
+	if channel != intel.Sight {
+		return nil
+	}
+	pos, ok := encounter.DecodeSightPayload(payload)
+	if !ok {
+		return nil
+	}
+	return &Seen{Position: pos}
 }
 
 // projectStory drops each entry's audience roster deliberately.
@@ -346,6 +369,7 @@ func projectDiscovery(in *intel.SurveilOutput) Discovery {
 	for _, r := range in.FirstContact {
 		out.FirstContact = append(out.FirstContact, Report{
 			Subject: string(r.Subject),
+			Seen:    projectReportSeen(r.Payload),
 			Payload: append([]byte(nil), r.Payload...),
 		})
 	}
@@ -356,4 +380,29 @@ func projectDiscovery(in *intel.SurveilOutput) Discovery {
 		out.Faded = append(out.Faded, string(s))
 	}
 	return out
+}
+
+// projectReportSeen decodes first-contact's Seen the same way projectSeen
+// does, but cannot gate on channel the way projectSeen does: intel.Report
+// carries no Channel of its own — a SurveilOutput is scoped to the one
+// Channel its Surveil call used, but that channel is not threaded back onto
+// each Report inside it. So this is decode-and-see rather than a channel
+// check.
+//
+// That is equivalent to projectSeen's guard ONLY as long as sight is the only
+// channel any composition surveils with — true today, since rebuildPercepts
+// (encounter.go, refreshSight) is the sole Surveil call site in this
+// codebase and always passes intel.Sight. The day a second channel starts
+// calling Surveil, an undecodable payload here stops meaning "not sight" and
+// starts meaning "channel this SDK has not typed yet OR truly bad bytes" —
+// indistinguishable from here. TestReportSeenIsNilForAPayloadDecodeWouldEatQuietly
+// below documents the risk rather than closing it: closing it needs
+// SurveilOutput (or the percept it is built from) to carry its own channel,
+// which is a play/intel change outside this PR's scope.
+func projectReportSeen(payload []byte) *Seen {
+	pos, ok := encounter.DecodeSightPayload(payload)
+	if !ok {
+		return nil
+	}
+	return &Seen{Position: pos}
 }

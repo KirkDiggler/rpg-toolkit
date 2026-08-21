@@ -1,0 +1,117 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package session
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
+
+// seen_internal_test.go pins ADR-0041's projection: Seen is present exactly
+// when the sighting was produced by sight, and a held memory keeps its last
+// Seen (rpg-toolkit#1157).
+
+func sightPayloadBytes(t *testing.T, x, y float64) []byte {
+	t.Helper()
+	b, err := json.Marshal(encounter.SightPayload{X: x, Y: y})
+	require.NoError(t, err)
+	return b
+}
+
+// TestProjectSightingsSightChannelGetsASeen is the ordinary case: a
+// sight-channel holding decodes into Seen.Position.
+func TestProjectSightingsSightChannelGetsASeen(t *testing.T) {
+	holdings := []intel.Holding{{
+		Subject:    intel.Subject("skeleton-1"),
+		Payload:    sightPayloadBytes(t, 10, 3),
+		Channel:    intel.Sight,
+		At:         5,
+		CurrentVia: []intel.Channel{intel.Sight},
+		Status:     intel.Current,
+	}}
+
+	out := projectSightings(holdings)
+	require.Len(t, out, 1)
+	require.NotNil(t, out[0].Seen, "a sight-channel holding must carry Seen")
+	require.Equal(t, spatial.Position{X: 10, Y: 3}, out[0].Seen.Position)
+}
+
+// TestProjectSightingsNonSightChannelGetsNoSeen pins the other half: a
+// holding whose provenance channel is not sight gets no Seen, even though the
+// payload happens to be a valid SightPayload — Channel is what decides,
+// consistent with the ADR's "present exactly when the sighting was produced
+// by sight".
+func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
+	holdings := []intel.Holding{{
+		Subject:    intel.Subject("goblin-1"),
+		Payload:    sightPayloadBytes(t, 4, 4),
+		Channel:    intel.Channel("hearing"),
+		At:         5,
+		CurrentVia: []intel.Channel{intel.Channel("hearing")},
+		Status:     intel.Current,
+	}}
+
+	out := projectSightings(holdings)
+	require.Len(t, out, 1)
+	require.Nil(t, out[0].Seen, "a non-sight channel must not carry Seen, however the payload happens to decode")
+}
+
+// TestProjectSightingsHeldMemoryKeepsItsLastSeen is the ADR's own case: a
+// subject whose CurrentVia has gone empty (Status == Held, a ghost) still
+// carries the Channel and Payload of the last accepted testimony, so it still
+// gets a Seen — the last-known cell a client draws a faded marker on.
+func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
+	holdings := []intel.Holding{{
+		Subject:    intel.Subject("goblin-1"),
+		Payload:    sightPayloadBytes(t, 6, 10),
+		Channel:    intel.Sight,
+		At:         3,
+		CurrentVia: nil, // faded: no channel currently sustains it
+		Status:     intel.Held,
+	}}
+
+	out := projectSightings(holdings)
+	require.Len(t, out, 1)
+	require.NotNil(t, out[0].Seen, "a held memory must keep its last Seen")
+	require.Equal(t, spatial.Position{X: 6, Y: 10}, out[0].Seen.Position)
+}
+
+// TestProjectSeenIsNilWhenASightPayloadFailsToDecode is the defensive arm: an
+// impossible state today (the composition is the only writer of sight
+// payloads), pinned so a future regression that corrupts a sight payload
+// fails loudly as a missing Seen rather than a wrong Position.
+func TestProjectSeenIsNilWhenASightPayloadFailsToDecode(t *testing.T) {
+	got := projectSeen(intel.Sight, []byte("not json"))
+	require.Nil(t, got)
+}
+
+// TestProjectReportSeenCannotDistinguishSightFromALookalikePayload documents
+// the one soft spot in this PR, named in projectReportSeen's own comment:
+// intel.Report carries no Channel of its own, so projectReportSeen decodes
+// and checks rather than gating on Channel the way projectSeen does. That is
+// equivalent to a real channel check ONLY because sight is the only channel
+// any composition in this codebase surveils with today (rebuildPercepts is
+// the sole Surveil call site, always intel.Sight).
+//
+// This test proves the gap rather than hiding it: a payload that merely
+// LOOKS like a SightPayload — decodable as {x,y} — gets a Seen from
+// projectReportSeen with no way to ask "but was this really sight?", because
+// nothing here has a channel to ask about. The day a second channel starts
+// calling Surveil, this stops being a hypothetical and starts being a wrong
+// answer; closing it needs SurveilOutput (or the percept it is built from) to
+// carry its own channel, which is a play/intel change outside this PR.
+func TestProjectReportSeenCannotDistinguishSightFromALookalikePayload(t *testing.T) {
+	lookalike := sightPayloadBytes(t, 1, 2) // could be any future channel's bytes that
+	// happen to parse as {x,y}; today it can only actually be sight.
+
+	got := projectReportSeen(lookalike)
+	require.NotNil(t, got, "documents the gap: any {x,y}-shaped payload decodes, whatever channel actually produced it")
+	require.Equal(t, spatial.Position{X: 1, Y: 2}, got.Position)
+}
