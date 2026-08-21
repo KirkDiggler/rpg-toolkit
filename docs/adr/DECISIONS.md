@@ -133,6 +133,15 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   sharing its name — a client drew the tomb as a staircase because the two
   questions shared one word. *Rule: a wire field is named for the question the
   receiver asks, not the one the author answered.*
+- **[0041-sighting-carries-typed-channel-knowledge.md](0041-sighting-carries-typed-channel-knowledge.md)**
+  (number shared — see Numbering hazards below) — **A sighting carries what
+  its channel knows, typed per channel**: `Sighting`/`Report` gain a typed
+  `Seen{Position spatial.Position}`, present exactly when the channel is
+  sight and nil otherwise; a memory keeps its last `Seen`. The composition
+  decodes its own encoding (`encounter.DecodeSightPayload`) — session never
+  unmarshals a payload itself. *Rule: a rule a client cannot read off the
+  wire gets re-derived by experiment, once per client — the same argument
+  ADR-0040 already made about Atlas.Layout.*
 
 ---
 
@@ -162,6 +171,10 @@ The corpus has collisions. When citing a number, cite the **filename**:
 - **0019 twice** — `0019-environment-orchestrator.md` and
   `0019_dnd5e_module_registry_system.md`, and the second is *titled* "ADR-0014"
   internally.
+- **0041 twice** — `0041-composable-attack-damage.md` (combat) and
+  `0041-sighting-carries-typed-channel-knowledge.md` (session SDK): two
+  unrelated decisions landed in overlapping PR windows and both claimed the
+  next free number before either merged.
 - **0010 is missing.** Never written.
 
 ## Status fields are unreliable

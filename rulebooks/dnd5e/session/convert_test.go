@@ -159,6 +159,27 @@ func (s *ConvertTestSuite) TestEveryInnerFieldIsCarriedOrJustified() {
 	}
 }
 
+// TestSeenIsProjectedFromPayloadOnBothSightingAndReport pins ADR-0041's shape
+// outside the generic inner-field audit above, because Seen is not a
+// same-named passthrough of an intel field the way every other projected
+// field is: it is a SECOND projection of Payload, decoded by the
+// composition's own encounter.DecodeSightPayload rather than renamed from or
+// dropped in favour of it. The generic audit above already requires Payload
+// itself to survive unchanged (matched by name on intel.Holding and
+// intel.Report — see the "Sighting" pair); this states the derived half
+// explicitly, so a future reviewer does not mistake Seen's absence from the
+// renamed/omitted maps above for an oversight.
+func (s *ConvertTestSuite) TestSeenIsProjectedFromPayloadOnBothSightingAndReport() {
+	s.Contains(fieldNames(session.Sighting{}), "Seen",
+		"Sighting must carry the sight channel's typed knowledge (ADR-0041)")
+	s.Contains(fieldNames(session.Report{}), "Seen",
+		"Report must carry it too — first contact and a held sighting are the same fact")
+	s.Contains(fieldNames(session.Sighting{}), "Payload",
+		"retained for channels the SDK has not typed")
+	s.Contains(fieldNames(session.Report{}), "Payload",
+		"retained for channels the SDK has not typed")
+}
+
 // TestOmissionsStillApply keeps the exception list from outliving its reasons.
 //
 // A justified omission for a field that no longer exists is a stale comment
