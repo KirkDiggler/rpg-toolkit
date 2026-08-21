@@ -4,7 +4,7 @@ Date: 2026-01-20
 
 ## Status
 
-Superseded by [ADR-0040](0040-composable-attack-damage.md)
+Superseded by [ADR-0041](0041-composable-attack-damage.md)
 
 Companion to [ADR-0026: Damage Application via Event Chain](0026-damage-application-via-event-chain.md).
 
