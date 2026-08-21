@@ -69,15 +69,18 @@ func spreadOfChambers() []RoomInput {
 }
 
 // TestOffsetAndAxialAgreeWithSpatial pins the reading [HexCellAt] takes of
-// spatial's own cube coordinate: Q is cube.X and R is cube.Y.
+// spatial's own cube coordinate: Q is cube.X and R is cube.Z
+// (rpg-toolkit#1150 — [spatial.CubeCoordinate.ToAxial]'s definition, the ONE
+// exported reading this file used to rebuild by hand and get wrong).
 //
 // That is not the only reading available — a cube triple has three components
 // and axial keeps two — and picking the wrong pair produces cells that look
 // plausible and are somewhere else. The check is that spatial's TWO directions
 // agree: the cube it derives from an offset pair must be the cube
-// [spatial.AxialHexGrid] derives from the axial pair this hands it (its
-// axialToCube sets Z = -Q-R). So the two are the same coordinate, by
-// construction rather than by coincidence.
+// [spatial.AxialToCube] derives from the axial pair this hands it. So the two
+// are the same coordinate, by construction rather than by coincidence — and by
+// calling spatial's exported functions on both sides rather than restating
+// either one.
 func TestOffsetAndAxialAgreeWithSpatial(t *testing.T) {
 	for _, o := range bothOrientations() {
 		t.Run(string(o.Kind()), func(t *testing.T) {
@@ -87,8 +90,7 @@ func TestOffsetAndAxialAgreeWithSpatial(t *testing.T) {
 						spatial.Position{X: float64(col), Y: float64(row)}, o.spatial())
 
 					axial := HexCellAt(o, col, row)
-					q, r := int(axial.X), int(axial.Y)
-					fromAxial := spatial.CubeCoordinate{X: q, Y: r, Z: -q - r}
+					fromAxial := spatial.AxialToCube(axial)
 
 					require.Equal(t, fromOffset, fromAxial,
 						"offset [%d,%d]: the cube spatial derives from the pair an author "+
@@ -134,12 +136,14 @@ func TestRunsAgreeWithEnumeration(t *testing.T) {
 				for key, run := range hexRuns(r, o) {
 					require.LessOrEqual(t, run[0], run[1], "a run's interval must be ordered")
 					for v := run[0]; v <= run[1]; v++ {
-						// Mirrors hexRuns' contract, which swapped orientations
-						// when rpg-toolkit#1141 corrected the offset schemes.
+						// Mirrors hexRuns' contract. rpg-toolkit#1141 swapped
+						// which orientation each bullet named; rpg-toolkit#1150
+						// changed the pointy-top key itself — under the fixed
+						// axial basis R IS the authored row, no -(Q+R) needed.
 						if o.Kind() == OrientationFlatTop {
 							expanded[[2]int{key, v}] = true // key is Q, run is R
 						} else {
-							expanded[[2]int{v, -v - key}] = true // key is the row, run is Q
+							expanded[[2]int{v, key}] = true // key is R (the row), run is Q
 						}
 					}
 				}

@@ -132,7 +132,7 @@ func bruteForceLocalCells(shape spatial.GridShape, width, height int) []spatial.
 			for row := 0; row < height; row++ {
 				cube := spatial.OffsetCoordinateToCubeWithOrientation(
 					spatial.Position{X: float64(col), Y: float64(row)}, spatial.HexOrientationPointyTop)
-				cells = append(cells, spatial.Position{X: float64(cube.X), Y: float64(cube.Y)})
+				cells = append(cells, cube.ToAxial())
 			}
 		}
 
