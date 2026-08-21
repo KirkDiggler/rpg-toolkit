@@ -42,6 +42,39 @@ func TestDecodeSightPayloadRefusesWhatItDidNotEncode(t *testing.T) {
 	require.False(t, ok)
 }
 
+// TestDecodeSightPayloadRefusesValidJSONThatIsNotASightPayload is the case
+// Copilot's review of this PR named directly: a plain json.Unmarshal into
+// SightPayload treats "null" and "{}" as a no-op, leaving the zero-value
+// position and no error — which reads as "sight at the origin", the exact
+// failure mode DecodeSightPayload exists to prevent. Both must refuse.
+func TestDecodeSightPayloadRefusesValidJSONThatIsNotASightPayload(t *testing.T) {
+	_, ok := encounter.DecodeSightPayload([]byte("null"))
+	require.False(t, ok, `"null" must not decode as (0,0)`)
+
+	_, ok = encounter.DecodeSightPayload([]byte("{}"))
+	require.False(t, ok, `"{}" must not decode as (0,0)`)
+
+	_, ok = encounter.DecodeSightPayload([]byte(`{"x":1}`))
+	require.False(t, ok, "a payload naming only x must not decode with y defaulted to 0")
+
+	_, ok = encounter.DecodeSightPayload([]byte(`{"y":1}`))
+	require.False(t, ok, "a payload naming only y must not decode with x defaulted to 0")
+}
+
+// TestDecodeSightPayloadRefusesTheRoomBearingDialect is the other case
+// Copilot's review named: a sight payload written in the dialect
+// rpg-toolkit#1044 replaced — room-local coordinates alongside a "room" key
+// — must not be reinterpreted as dungeon-absolute just because x and y
+// happen to parse. data.go's refuseRoomLocalSightings refuses this same
+// dialect at load; this function must refuse it too, on the same grounds
+// (Kirk's ruling, 2026-08-17: fail loudly, no migration).
+func TestDecodeSightPayloadRefusesTheRoomBearingDialect(t *testing.T) {
+	legacy := []byte(`{"room":"hall","x":2,"y":5}`)
+
+	_, ok := encounter.DecodeSightPayload(legacy)
+	require.False(t, ok, "an unknown field beside x/y must refuse the whole payload, not decode around it")
+}
+
 // TestDecodeSightPayloadAgreesWithAViewsOwnPayload is item 5 of #1157's
 // testable cases: the typed decode and the raw payload a caller could
 // unmarshal itself must name the same cell, on a real percept the
