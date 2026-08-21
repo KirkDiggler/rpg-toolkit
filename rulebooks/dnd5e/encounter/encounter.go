@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -29,6 +30,53 @@ import (
 type SightPayload struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
+}
+
+// DecodeSightPayload decodes a sight channel's payload into the dungeon-
+// absolute position it encodes. ok is false when payload does not parse as a
+// SightPayload — the caller is holding testimony from some other channel, or
+// bytes this composition did not produce.
+//
+// This is the seam ADR-0041 asks for: the composition decodes its own
+// encoding rather than handing a caller bytes it would otherwise have to
+// unmarshal itself, re-deriving a shape that was never a contract
+// (rpg-toolkit#1157, and the same argument ADR-0040 already made about
+// Atlas.Layout). session calls this and copies the result into its own Seen;
+// it never reaches into payload with encoding/json on its own.
+//
+// STRICT on purpose (Copilot review, PR #1158). A plain json.Unmarshal into
+// SightPayload would accept "null" and "{}" as the zero-value position —
+// silently reporting "sight at the origin" for testimony that named no
+// position at all — and would accept the pre-#1044 room-bearing dialect
+// (data.go's refuseRoomLocalSightings), whose extra "room" key
+// encoding/json ignores by default while still parsing x and y as if they
+// were already dungeon-absolute. Both are wrong answers to hand back rather
+// than refuse, so X and Y must both be PRESENT — not merely zero-valued
+// after a no-op decode of "null" or "{}" — and no field beside them, known
+// or not, may appear.
+func DecodeSightPayload(payload []byte) (spatial.Position, bool) {
+	if len(payload) == 0 {
+		return spatial.Position{}, false
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.DisallowUnknownFields()
+
+	var p struct {
+		X *float64 `json:"x"`
+		Y *float64 `json:"y"`
+	}
+	if err := dec.Decode(&p); err != nil {
+		return spatial.Position{}, false
+	}
+	if p.X == nil || p.Y == nil {
+		return spatial.Position{}, false
+	}
+	if dec.More() {
+		return spatial.Position{}, false // trailing data after the one object
+	}
+
+	return spatial.Position{X: *p.X, Y: *p.Y}, true
 }
 
 // declaredEnding pairs an ending key with its trigger, in Setup order, plus
