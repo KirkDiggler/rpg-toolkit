@@ -127,7 +127,7 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   `DCHalfDamageFloorTen`) — no function arm. *Rule: a new `DCSource` case must
   cite a RAW rule; 5e already closed this set, and we inherit their closure
   rather than inventing an open one.*
-- **0040** — **The atlas says which way its hexes point**: `Atlas.Layout`
+- **0040** ([0040-atlas-carries-render-layout.md](0040-atlas-carries-render-layout.md)) — **The atlas says which way its hexes point**: `Atlas.Layout`
   (`pointy_top` / `flat_top`, present iff the grid is hex) is the render word,
   projected from the composition's authoring `Orientation` and deliberately not
   sharing its name — a client drew the tomb as a staircase because the two
