@@ -16,21 +16,80 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
-// TestRecordUsesAggregateFromTypedStrikeOutcome pins the session boundary:
-// resolution may retain typed damage evidence, but session recording writes
-// only the aggregate amount into encounter history.
+type aggregateRecordOrderAsGiven struct{}
+
+func (aggregateRecordOrderAsGiven) RollInitiative(
+	members []encounter.MemberID,
+) ([]encounter.MemberID, error) {
+	return members, nil
+}
+
+type aggregateRecordEveryoneStanding struct{}
+
+func (aggregateRecordEveryoneStanding) Standing(
+	_ []encounter.MemberID,
+) ([]encounter.MemberID, error) {
+	return nil, nil
+}
+
+type aggregateRecordEveryoneSees struct{}
+
+func (aggregateRecordEveryoneSees) Sight(
+	members []encounter.MemberID,
+) (map[encounter.MemberID]int, error) {
+	out := make(map[encounter.MemberID]int, len(members))
+	for _, member := range members {
+		out[member] = 1_000_000
+	}
+	return out, nil
+}
+
+// TestRecordUsesAggregateFromTypedStrikeOutcome pins the session boundary at
+// the real encounter recording seam: resolution may retain typed damage
+// evidence, but the story stores only the aggregate amount.
 func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	struck := resolution.StrikeOutcome{
-		Hit:    true,
-		Damage: 9,
+		Roll:     15,
+		Total:    20,
+		TargetAC: 12,
+		Hit:      true,
+		Damage:   9,
 		DamageInstances: []damage.Instance{
 			{Amount: 5, Type: damage.Slashing},
 			{Amount: 4, Type: damage.Fire},
 		},
 	}
 
-	record := recordFor(&AttackInput{Attacker: "alice", Target: "bob"}, struck)
-	require.Equal(t, 9, record.Values[encounter.ValueAmount])
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight:      aggregateRecordEveryoneSees{},
+		Standing:   aggregateRecordEveryoneStanding{},
+		Initiative: aggregateRecordOrderAsGiven{},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 4, Height: 4}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall"},
+			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall"},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	recorded, err := enc.Record(recordFor(
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck,
+	))
+	require.NoError(t, err)
+	require.NotZero(t, recorded.Seq)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: "bob"})
+	require.NoError(t, err)
+	require.NotEmpty(t, story)
+	require.JSONEq(t,
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9}`,
+		string(story[len(story)-1].Payload),
+		"the persisted encounter record carries the aggregate and no typed damage collection",
+	)
 }
 
 // halfBrokenCharacters writes the first sheet and refuses the second.
