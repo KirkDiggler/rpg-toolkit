@@ -263,10 +263,15 @@ type MemberOutcome struct {
 // Seen is what the sight channel knows about a subject: the cell it occupies,
 // dungeon-absolute — the same frame every other position on this seam speaks.
 //
-// On [Sighting], present exactly when the sighting was produced by sight;
-// nil for every other channel, gated on Holding.Channel. A memory (CurrentVia
-// empty) keeps the Seen it last had — the last-known cell a client draws a
-// faded marker on.
+// On [Sighting], present when BOTH hold: the sighting was produced by sight
+// (gated on Holding.Channel) AND the composition's payload actually decodes
+// as a sight payload (encounter.DecodeSightPayload succeeds). Nil for every
+// other channel — that is the ordinary, expected case. Nil on a sight-channel
+// holding whose payload fails to decode is NOT a legal state a caller should
+// plan for; it means the composition wrote something projectSeen cannot
+// read, which is a defect in that layer, not a case this seam is choosing to
+// represent as "no sighting". A memory (CurrentVia empty) keeps the Seen it
+// last had — the last-known cell a client draws a faded marker on.
 //
 // On [Report] this is weaker (Copilot review, PR #1159): intel.Report carries
 // no Channel of its own, so a Report's Seen is inferred by decoding its
