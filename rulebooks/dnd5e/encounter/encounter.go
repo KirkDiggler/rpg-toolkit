@@ -31,6 +31,25 @@ type SightPayload struct {
 	Y float64 `json:"y"`
 }
 
+// DecodeSightPayload decodes a sight channel's payload into the dungeon-
+// absolute position it encodes. ok is false when payload does not parse as a
+// SightPayload — the caller is holding testimony from some other channel, or
+// bytes this composition did not produce.
+//
+// This is the seam ADR-0041 asks for: the composition decodes its own
+// encoding rather than handing a caller bytes it would otherwise have to
+// unmarshal itself, re-deriving a shape that was never a contract
+// (rpg-toolkit#1157, and the same argument ADR-0040 already made about
+// Atlas.Layout). session calls this and copies the result into its own Seen;
+// it never reaches into payload with encoding/json on its own.
+func DecodeSightPayload(payload []byte) (spatial.Position, bool) {
+	var p SightPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return spatial.Position{}, false
+	}
+	return spatial.Position{X: p.X, Y: p.Y}, true
+}
+
 // declaredEnding pairs an ending key with its trigger, in Setup order, plus
 // the canvas cell a positional trigger was compiled to.
 //
