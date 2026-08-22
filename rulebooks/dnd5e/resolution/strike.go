@@ -72,17 +72,19 @@ type AttackProfile struct {
 	// AttackBonus is added to the d20.
 	AttackBonus int
 
-	// Reach is how far this melee attack reaches, in grid cells: 1 (the 5e
-	// default, and the unarmed strike's own reach) or 2 for a weapon
-	// carrying the Reach property (rpg-toolkit#1010). Ported from the
-	// retired top-level encounter module's checkReach/meleeReachForWeapon
-	// (encounter/range_gate.go), which enforced exactly this distinction
-	// before the rewrite dropped it — see that file's own history for the
-	// QA walk that found it missing everywhere.
+	// Reach is how far this melee attack reaches, in FEET: 5 (the 5e
+	// default, and the unarmed strike's own reach) or 10 for a weapon
+	// carrying the Reach property (rpg-toolkit#1010). Feet, not cells
+	// (Kirk, rpg-project#254 review) — the same unit monster.ActionData's
+	// own Reach field and monster.SpeedData already use; a cell is 5 feet,
+	// and the one place that needs cells (the reach gate, the monster
+	// turn's movement budget) converts once, at the point of comparison,
+	// rather than every producer of this field guessing at the conversion.
 	//
-	// Zero from [AttackFromMonsterAction] today, the same scope note
-	// [AttackProfile.Name] carries: a monster attacker does not yet reach a
-	// caller that gates on this (v1 compiles CHARACTER attackers only).
+	// Populated by both compilers now — [AttackFromCharacter] via
+	// [defaultMeleeReach]/[reachPropertyReach], [AttackFromMonsterAction]
+	// via the action's own authored Reach (rpg-project#254; previously
+	// silently zero for every monster action, since nothing read it).
 	// Meaningless for a ranged attack, which never compiles a profile at
 	// all (IsRanged refuses before one is built).
 	Reach int
@@ -746,6 +748,13 @@ func attackFromMelee(action monster.ActionData) (AttackProfile, error) {
 		Ref:         &ref,
 		AttackBonus: config.AttackBonus,
 		Damage:      copyDamagePools(config.Damage),
+		// The stat block's own authored reach, in cells — carried through
+		// faithfully rather than clamped or defaulted here: this compiler
+		// trusts the content the same way it already trusts AttackBonus and
+		// Damage. Previously dropped entirely (AttackProfile.Reach stayed
+		// zero for every monster melee action), which was harmless only
+		// because nothing gated a monster's attack by reach yet.
+		Reach: config.Reach,
 	}
 	if err := profile.validate(); err != nil {
 		return AttackProfile{}, err
@@ -770,6 +779,10 @@ func attackFromBite(action monster.ActionData) (AttackProfile, error) {
 		AttackBonus: config.AttackBonus,
 		Damage:      copyDamagePools(config.Damage),
 		Gate:        config.SaveGate,
+		// BiteConfig carries no configurable reach — a bite is always the
+		// fixed melee reach, the same default a plain weapon or an unarmed
+		// strike compiles to (character_attack.go's defaultMeleeReach).
+		Reach: defaultMeleeReach,
 	}
 
 	// A bite's gate is a KNOCKDOWN — that is what the stat block's

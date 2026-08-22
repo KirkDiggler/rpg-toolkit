@@ -58,7 +58,7 @@ func (s *MonsterAttackTestSuite) TestMeleePreservesCanonicalPoolsAndIntrinsicBon
 				Name:        "enchanted scimitar",
 				AttackBonus: 4,
 				Damage:      want,
-				Reach:       1,
+				Reach:       5,
 			})
 
 			profile, err := AttackFromMonsterAction(action)
@@ -70,8 +70,44 @@ func (s *MonsterAttackTestSuite) TestMeleePreservesCanonicalPoolsAndIntrinsicBon
 			s.Zero(profile.AbilityModifier)
 			s.Nil(profile.Gate)
 			s.Nil(profile.Imposes)
+			s.Equal(5, profile.Reach, "the action's own authored Reach (feet) carries onto the profile")
 		})
 	}
+}
+
+// TestMeleeReachCarriesTheAuthoredValue pins the fix: a generic melee
+// action's Reach was silently dropped — AttackProfile.Reach stayed zero
+// regardless of what the stat block authored, meaning nothing gated a
+// monster's melee attack by reach at all. A reach weapon (Reach: 10 feet,
+// e.g. a spear-wielding monster) must compile to Reach 10, not the
+// plain-weapon default.
+func (s *MonsterAttackTestSuite) TestMeleeReachCarriesTheAuthoredValue() {
+	action := s.action(refs.MonsterActions.Melee(), monsterActions.MeleeConfig{
+		Name:        "spear",
+		AttackBonus: 4,
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing}},
+		Reach:       10,
+	})
+
+	profile, err := AttackFromMonsterAction(action)
+	s.Require().NoError(err)
+	s.Equal(10, profile.Reach)
+}
+
+// TestBiteReachIsTheFixedMeleeDefault pins that a bite — which has no
+// configurable Reach field at all (BiteConfig carries none) — compiles to
+// the same fixed melee reach a plain weapon or an unarmed strike does, not
+// zero (which would refuse every monster bite at any distance once Reach
+// starts being gated).
+func (s *MonsterAttackTestSuite) TestBiteReachIsTheFixedMeleeDefault() {
+	action := s.action(refs.MonsterActions.Bite(), monsterActions.BiteConfig{
+		AttackBonus: 4,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing}},
+	})
+
+	profile, err := AttackFromMonsterAction(action)
+	s.Require().NoError(err)
+	s.Equal(defaultMeleeReach, profile.Reach)
 }
 
 func (s *MonsterAttackTestSuite) TestBitePreservesCanonicalDamageAndGate() {

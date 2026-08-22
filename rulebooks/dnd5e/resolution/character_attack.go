@@ -15,15 +15,22 @@ import (
 
 const (
 	// defaultMeleeReach is the melee reach used when the weapon carries no
-	// Reach property: 1 cell (5 ft), the 5e default and the reach of the
-	// canonical unarmed strike. Mirrors the retired top-level encounter
-	// module's defaultMeleeReachHexes (encounter/range_gate.go).
-	defaultMeleeReach = 1
+	// Reach property: 5 feet, the 5e default and the reach of the
+	// canonical unarmed strike.
+	//
+	// FEET, not cells (Kirk, rpg-project#254 review) — reach and speed are
+	// both authored in feet everywhere in this codebase's data, matching
+	// monster.ActionData.Reach and monster.SpeedData; a cell is 5 feet, and
+	// the ONE place that needs cells (session's reach gate, and the
+	// monster-turn's movement budget) converts once, at the point of
+	// comparison against Distance, rather than this compiler guessing at a
+	// conversion the gate is better placed to own.
+	defaultMeleeReach = 5
 
 	// reachPropertyReach is the melee reach a weapon with the Reach
-	// property grants: 2 cells (10 ft — glaive, halberd, spear-with-reach-
-	// variant, pike). Mirrors reachWeaponHexes in the same retired file.
-	reachPropertyReach = 2
+	// property grants: 10 feet (glaive, halberd, spear-with-reach-variant,
+	// pike) — see defaultMeleeReach's doc for the feet-not-cells note.
+	reachPropertyReach = 10
 )
 
 // CharacterAttackInput names which swing to compile.
