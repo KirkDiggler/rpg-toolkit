@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -122,30 +123,34 @@ type RecordInput struct {
 // the beat can answer "with a longsword" and "6 slashing" for every witness,
 // not only the one whose own verb response held the compiled profile.
 //
-// PLAIN STRINGS, MEANT TO BE USED LIKE MemberID IS ON THIS INPUT — BUT NOT
-// CHECKED THE WAY MemberID IS (Copilot, PR #1172). Actor and Targets are
-// validated against the roster before anything is appended
-// (`e.members[in.Actor]`); nothing here validates Ref, Name or DamageType
-// against any catalog, because this module's go.mod cannot import the one
-// that would answer whether "longsword" is real (C1). The intended values
-// are the catalog's own identifier and display label — "longsword",
-// "Longsword" — and the rulebook's own word for the damage dealt, fixed by
-// a sealed weapon/action catalog rather than composed at the call site. But
-// that is a promise about session's one caller today, not a guarantee this
-// composition enforces: a caller that handed over prose here would have it
-// copied into the shared story payload unchecked, exactly like a raw
-// narration field would. What this struct is not is a NEW hole of that
-// shape — session's Attack() is the only caller in this codebase, and it
-// only ever supplies what resolution.AttackProfile already compiled — but a
-// reader auditing this input's "no prose" claim should read this note
-// rather than the comparison to Actor/Targets alone.
+// ENFORCED, NOT MERELY TRUSTED (Copilot then Kirk, PR #1172 review — an
+// earlier version of this comment said the opposite, and that was the
+// wrong fix). Ref is validated with [core.ParseString] at Record — it must
+// be a well-formed module:type:id catalog ref, the same shape
+// refs.Weapons.*() and refs.MonsterActions.*() already produce
+// ("dnd5e:weapons:longsword", "dnd5e:monster-actions:bite"), NOT the bare
+// catalog id the wire's AttackRef.ref carries ("longsword") — session
+// extracts that bare id when it projects the wire response, and parses it
+// back out of this struct's own Ref when it decodes this beat's persisted
+// payload into a typed event body, so the two representations never drift
+// against the SAME parser. Name is checked non-empty. What core.ParseString
+// buys is SHAPE, not CONTENT: "dnd5e:weapons:nonexistent-sword" still
+// parses, because this module's go.mod cannot import the catalog that
+// would know it is not real (C1) — a caller composing prose here is
+// refused; a caller composing a plausible-looking but wrong ref is not,
+// and cannot be, without breaking the boundary this composition exists to
+// keep. DamageType stays unchecked beyond being a plain string — it is the
+// rulebook's own closed word for what was dealt, not an identifier this
+// composition has a shape to check.
 type AttackIdentity struct {
-	// Ref is the catalog ref the attack compiled from — "longsword",
-	// "unarmed-strike".
+	// Ref is the catalog ref the attack compiled from, in FULL module:type:id
+	// form — "dnd5e:weapons:longsword", "dnd5e:weapons:unarmed-strike" — and
+	// checked with core.ParseString at Record. NOT the bare id the wire
+	// speaks; see this type's own doc comment for where that gets derived.
 	Ref string
 
 	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
-	// Strike".
+	// Strike". Checked non-empty at Record.
 	Name string
 
 	// DamageType is the kind of damage the attack deals, in the rulebook's
@@ -230,8 +235,10 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know), and anything the [Standing] capability answers with — including
-// ErrNotMember for an answer naming a stranger.
+// know, or — when Attack is present — a Ref that does not parse as a
+// module:type:id catalog ref, or an empty Name), and anything the
+// [Standing] capability answers with — including ErrNotMember for an
+// answer naming a stranger.
 //
 // The input refusals all run before anything is appended, so a rejected input
 // costs the rulebook nothing. The consult does not: it runs after the beat, so a
@@ -251,6 +258,29 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	case OutcomeStruck, OutcomeMissed:
 	default:
 		return nil, fmt.Errorf("record: outcome kind %q: %w", in.Kind, ErrInvalidData)
+	}
+
+	// Attack's own strings are ENFORCED, not merely trusted (Copilot + Kirk,
+	// PR #1172 review — a promise about session's one caller was not the
+	// same thing as a guarantee this composition keeps). Ref must be a
+	// well-formed catalog ref — module:type:id, the same shape
+	// refs.Weapons.*() and refs.MonsterActions.*() already produce
+	// ("dnd5e:weapons:longsword", "dnd5e:monster-actions:bite") — checked
+	// with core.ParseString rather than a hand-rolled pattern, since that
+	// is the module's own answer to "is this a ref" and this composition
+	// already depends on core. Name must be non-empty. Neither check
+	// requires importing the weapons/monster-actions catalogs themselves
+	// (C1 stays intact): core.ParseString validates SHAPE, never CONTENT —
+	// "dnd5e:weapons:nonexistent-sword" still parses, and this composition
+	// has no way to know it is not real, which is exactly the boundary S2
+	// draws elsewhere for ids it cannot look up.
+	if in.Attack != nil {
+		if _, perr := core.ParseString(in.Attack.Ref); perr != nil {
+			return nil, fmt.Errorf("record: attack ref %q: %w: %v", in.Attack.Ref, ErrInvalidData, perr)
+		}
+		if in.Attack.Name == "" {
+			return nil, fmt.Errorf("record: attack name: %w", ErrInvalidData)
+		}
 	}
 
 	if in.Actor == "" {

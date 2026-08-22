@@ -99,7 +99,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 			encounter.ValueRoll: 20, encounter.ValueTotal: 25, encounter.ValueAgainst: 15, encounter.ValueAmount: 12,
 		},
 		Critical: true,
-		Attack:   &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+		Attack:   &encounter.AttackIdentity{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: "slashing"},
 	})
 	s.Require().NoError(err)
 
@@ -112,7 +112,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 	s.Equal(true, beat["critical"])
 	attack, ok := beat["attack"].(map[string]any)
 	s.Require().True(ok, "attack identity present in the payload")
-	s.Equal("longsword", attack["ref"])
+	s.Equal("dnd5e:weapons:longsword", attack["ref"])
 	s.Equal("Longsword", attack["name"])
 	s.Equal("slashing", attack["damage_type"])
 }
@@ -126,7 +126,7 @@ func (s *OutcomeTestSuite) TestARecordedMissCarriesNoCriticalKey() {
 
 	_, err := enc.Record(&encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
-		Attack: &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+		Attack: &encounter.AttackIdentity{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: "slashing"},
 	})
 	s.Require().NoError(err)
 
@@ -138,7 +138,7 @@ func (s *OutcomeTestSuite) TestARecordedMissCarriesNoCriticalKey() {
 	s.False(present)
 	attack, ok := beat["attack"].(map[string]any)
 	s.Require().True(ok, "a miss still names what was swung")
-	s.Equal("longsword", attack["ref"])
+	s.Equal("dnd5e:weapons:longsword", attack["ref"])
 }
 
 // TestTheTargetHearsItToo pins the audience rule.
@@ -199,6 +199,55 @@ func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 
 // TestRefusalsAreCheckedAgainstTheRoster pins that the composition validates
 // what it stamps, which is the other half of owning the record.
+// TestAttackIdentityIsValidated pins the fix for the Copilot/Kirk finding on
+// PR #1172: an earlier version of this comment merely SOFTENED the "no
+// prose" doc claim to admit Attack's strings went unchecked; Kirk's
+// correction was to enforce the claim instead. Ref must parse as a
+// module:type:id catalog ref (core.ParseString, the same shape
+// refs.Weapons.*() and refs.MonsterActions.*() already produce); Name must
+// be non-empty.
+func (s *OutcomeTestSuite) TestAttackIdentityIsValidated() {
+	s.Run("a bare id is not a catalog ref", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+		})
+		s.ErrorIs(err, encounter.ErrInvalidData, "bare ids are the wire's own AttackRef.ref form, not this input's")
+	})
+
+	s.Run("an empty ref", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "", Name: "Longsword", DamageType: "slashing"},
+		})
+		s.ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("an empty name", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "dnd5e:weapons:longsword", Name: "", DamageType: "slashing"},
+		})
+		s.ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("a well-formed ref and a name both pass", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "dnd5e:weapons:unarmed-strike", Name: "Unarmed Strike", DamageType: "bludgeoning"},
+		})
+		s.NoError(err)
+	})
+
+	s.Run("a monster-action ref shape also passes — the check is on SHAPE, not on being a weapon", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "dnd5e:monster-actions:bite", Name: "Bite", DamageType: "piercing"},
+		})
+		s.NoError(err)
+	})
+}
+
 func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 	s.Run("nil input", func() {
 		_, err := s.scene().Record(nil)
