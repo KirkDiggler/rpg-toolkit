@@ -538,6 +538,7 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		Initiative: m.initiative,
 		Standing:   scope.standing,
 		Sight:      sightSeam{},
+		TurnDriver: m.turnDriver,
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)

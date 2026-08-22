@@ -361,4 +361,14 @@ var (
 	// unqualified failure either, because the difference determines whether a
 	// retry is safe.
 	ErrSaveFailed = errors.New("save failed")
+
+	// ErrBadTurnOutcome is returned when a TurnDriver's Act answers with a
+	// TurnOutcome the seam that translates it to the composition does not
+	// recognise.
+	//
+	// Reachable, not merely defensive: TurnOutcome is this package's own
+	// vocabulary, and the day it grows a second case, an internal adapter
+	// that has not been updated to translate it hits this rather than
+	// silently treating the new outcome as Pass.
+	ErrBadTurnOutcome = errors.New("turn driver returned an unrecognised outcome")
 )

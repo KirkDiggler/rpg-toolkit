@@ -87,6 +87,7 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 		Initiative: m.initiative,
 		Standing:   m.standingFor(ctx, nil),
 		Sight:      sightSeam{},
+		TurnDriver: m.turnDriver,
 	}); err != nil {
 		// The reason as TEXT, our sentinel as the only thing to match on. A
 		// blob that will not load fails several modules deep, and every one of

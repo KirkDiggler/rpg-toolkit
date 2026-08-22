@@ -67,7 +67,7 @@ func cryptWorld(t fataler) *encounter.EncounterData {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{}, Standing: encEveryoneStanding{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "crypt", Width: 10, Height: 10, Props: occludingProps(occluders...)},
 		}},
@@ -92,7 +92,7 @@ func (s *DeathTestSuite) SetupTest() {
 	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)
@@ -478,7 +478,7 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 		fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 	}
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
 	s.Require().NoError(err)
@@ -741,7 +741,7 @@ func (m *markedCharacters) GetCharacter(ctx context.Context, id string) (*charac
 func (s *DeathTestSuite) TestTheSeamReadsOnTheCallersContext() {
 	chars := &markedCharacters{fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob"))}
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
 	s.Require().NoError(err)
@@ -799,7 +799,7 @@ func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 		broken:         "bob",
 	}
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: chars, Events: s.stream,
 	})
 	s.Require().NoError(err)

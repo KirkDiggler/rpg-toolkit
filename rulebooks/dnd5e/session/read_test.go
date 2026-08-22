@@ -30,7 +30,7 @@ func (s *ReadTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -49,7 +49,7 @@ func (s *ReadTestSuite) startWith(world *encounter.EncounterData) {
 // hexWorld is a two-room hex field with a doorway, occluders and a wall — rich
 // enough that a projection dropping any one field is visible.
 func hexWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
@@ -185,7 +185,7 @@ func (s *ReadTestSuite) TestGridProjectionCoversBothFamilies() {
 
 	square := newFakeSessions()
 	squareEnc := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, Sessions: square, Encounters: squareEnc, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: square, Encounters: squareEnc, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -299,7 +299,7 @@ func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
 // trimmedWorld builds a world whose story log has already aged past its
 // retention window, so a resume from sequence 1 can no longer be honoured.
 func trimmedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
@@ -349,7 +349,7 @@ func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
 // for the same reason TestGridProjectionCoversBothFamilies does: a projection
 // hard-coded to pointy would pass every fixture in this file.
 func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
-	flat, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	flat, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesAreFlatTop()},
 			Rooms: []encounter.RoomInput{{ID: "cell", Width: 4, Height: 4, Grid: spatial.GridShapeHex}},

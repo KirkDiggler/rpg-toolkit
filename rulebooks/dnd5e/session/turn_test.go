@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -111,37 +112,76 @@ func (s *TurnTestSuite) TestStatusNeverLearnsWhoseTurnItIs() {
 			"of a member")
 }
 
-// TestEndingATurnHandsItOn covers the write verb, including that the story
-// records it.
+// TestEndingATurnHandsItOn is rpg-toolkit#1162's headline case at the seam:
+// alice ends her turn, the ogre has no player, and this single call must not
+// return with the clock parked on it. covers the write verb, including that
+// the story records BOTH ends — hers, and the ogre's driven-through pass.
 func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 	s.fight()
 	ctx := context.Background()
 
 	out, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Equal("ogre", out.Next, "the fight moves on")
-	s.False(out.RoundWrapped, "one turn in, the round has not come round")
+	s.Equal("alice", out.Next,
+		"the ogre has no player; TurnDriver passes its turn and the round wraps straight back to her")
+	s.True(out.RoundWrapped, "two in the fight, so the ogre's driven-through pass closes the round")
 	s.NotZero(out.Seq)
 	s.Equal([]string{"encounter:world"}, out.Saved.Written)
 
 	after, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.Equal("ogre", after.Active, "and the world remembers it")
+	s.Equal("alice", after.Active, "and the world remembers it")
+	s.Equal(2, after.Round, "the driven-through pass advanced the round")
+
+	// The story carries both ends, independently addressed to their member —
+	// a client rendering "the ogre does nothing" reads it from here.
+	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	var turnEnded, ogrePassed int
+	for _, entry := range story {
+		if entry.Tags["tag"] != "clock" {
+			continue
+		}
+		var p struct {
+			Beat   string `json:"beat"`
+			Member string `json:"member"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &p))
+		if p.Beat != "turn-ended" {
+			continue
+		}
+		turnEnded++
+		if p.Member == "ogre" {
+			ogrePassed++
+		}
+	}
+	s.Equal(2, turnEnded, "alice's own end, plus the ogre's driven-through pass")
+	s.Equal(1, ogrePassed, "the story names the ogre's own pass by member")
 }
 
-// TestTheRoundComesRoundPins RoundWrapped, which is the only thing in
+// TestTheRoundComesRound pins RoundWrapped, which is the only thing in
 // EndTurnOutput a caller cannot derive by asking Turn again.
+//
+// rpg-toolkit#1162 collapsed this test's original two-call shape (end
+// alice's turn, then the ogre's, and see the SECOND one wrap) into
+// TestEndingATurnHandsItOn's single call: with only alice and the ogre in
+// the fight, the ogre has no player, so its turn is driven through in the
+// SAME call that ends alice's — there is no longer a separate "the ogre's
+// own turn ends" moment to ask this question about. See that test for the
+// wrap assertion; this one is kept to pin Round advancing past the wrap,
+// which is the fact TestEndingATurnHandsItOn's own assertions do not
+// restate on their own.
 func (s *TurnTestSuite) TestTheRoundComesRound() {
 	s.fight()
 	ctx := context.Background()
 
-	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	before, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
+	s.Equal(1, before.Round, "control: the fight opens in round 1")
 
-	last, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "ogre"})
+	last, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
-	s.True(last.RoundWrapped, "the order came back around")
-	s.Equal("alice", last.Next)
+	s.True(last.RoundWrapped)
 
 	after, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -183,7 +223,7 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 
 	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})
 	s.Require().NoError(err)

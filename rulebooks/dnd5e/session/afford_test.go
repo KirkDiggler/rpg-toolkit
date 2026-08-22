@@ -194,7 +194,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 func (s *AffordSuite) TestFreeRoamAffordsNothing() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: sessions, Encounters: encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

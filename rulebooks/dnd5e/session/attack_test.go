@@ -88,9 +88,9 @@ const duelAC = 12
 // fixture drift cannot make the two suites disagree about what was swung at.
 func duelWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
@@ -124,7 +124,7 @@ func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, 
 	encounters := &failingEncounters{fakeEncounters: s.encounters}
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: dice, Sessions: s.sessions, Encounters: encounters,
+		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -343,15 +343,15 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
@@ -409,15 +409,15 @@ func (s *AttackTestSuite) TestAnEmptyHandIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(dwarfCharacter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
@@ -448,15 +448,15 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 			{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
@@ -487,7 +487,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 	s.characters = newFakeCharacters(sheets...)
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -500,12 +500,12 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
-		Members:    placed,
-		Endings:    []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Retention:  encounter.RetentionUnbounded,
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing:  encEveryoneStanding{},
+		Field:     encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Members:   placed,
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
 	})
 	s.Require().NoError(err)
 	data := enc.ToData()

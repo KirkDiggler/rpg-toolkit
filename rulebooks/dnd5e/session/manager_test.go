@@ -215,28 +215,28 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 	}{
 		{
 			name: "sessions absent",
-			config: &session.Config{Dice: testDice{}, Encounters: newFakeEncounters(),
+			config: &session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Encounters: newFakeEncounters(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Sessions",
 		},
 		{
 			name: "encounters absent",
-			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(),
+			config: &session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(),
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Encounters",
 		},
 		{
 			name: "characters absent",
-			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Events: session.DiscardEvents{},
 			},
 			expect: "Characters",
 		},
 		{
 			name: "events absent",
-			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			config: &session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(),
 			},
 			expect: "Events",
@@ -252,6 +252,18 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 				Characters: testCharacters(), Events: session.DiscardEvents{},
 			},
 			expect: "Dice",
+		},
+		{
+			// A fight can also form — or a turn can end — with the clock
+			// landing on a member nobody plays: a host that wired everything
+			// else and forgot this one would get a working session that
+			// stalled the first time initiative rolled a monster first, or a
+			// player ended their turn ahead of one (rpg-toolkit#1162).
+			name: "turndriver absent",
+			config: &session.Config{Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+				Characters: testCharacters(), Events: session.DiscardEvents{},
+			},
+			expect: "TurnDriver",
 		},
 	}
 
@@ -289,7 +301,7 @@ func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 // being a stated decision. A nil reads as an oversight; this reads as a choice,
 // and it greps.
 func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
@@ -302,7 +314,7 @@ func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 // TestFullyWiredConstructs is the other positive control: a real stream,
 // which is what any actual game supplies.
 func (s *ManagerTestSuite) TestFullyWiredConstructs() {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),

@@ -37,7 +37,7 @@ func TestWhereSuite(t *testing.T) {
 func (s *WhereSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -111,7 +111,7 @@ func (s *WhereSuite) TestItSurvivesAReconnect() {
 	s.Require().NoError(err)
 
 	reconnected, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

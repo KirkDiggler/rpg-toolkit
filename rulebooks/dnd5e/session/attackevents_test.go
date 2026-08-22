@@ -39,7 +39,7 @@ func (s *AttackEventsTestSuite) duelWithStream(dice session.Roller) *session.Man
 	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: dice, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
 	s.Require().NoError(err)

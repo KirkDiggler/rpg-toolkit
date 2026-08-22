@@ -42,7 +42,7 @@ func TestOneMapSuite(t *testing.T) {
 // The doorway joins hall-local (5,2) — absolute (45,22) — to annex-local (0,2)
 // — absolute (46,22).
 func offsetWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
@@ -81,7 +81,7 @@ func offsetWorld(t fataler) *encounter.EncounterData {
 func (s *OneMapSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -172,7 +172,7 @@ func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
 func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: stream,
 	})
 	s.Require().NoError(err)
@@ -358,8 +358,8 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 // the origin that its ABSOLUTE cells overlap its own room-local ones.
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 10, Height: 10, Origin: spatial.Position{X: 2, Y: 3}},
 		}},
@@ -384,7 +384,7 @@ func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 func (s *OneMapSuite) shallowSession() *session.Manager {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: sessions, Encounters: encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

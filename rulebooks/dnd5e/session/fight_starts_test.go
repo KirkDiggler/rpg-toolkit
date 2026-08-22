@@ -56,7 +56,7 @@ func managerOver(t fataler, sessions *fakeSessions, encounters *fakeEncounters) 
 func managerOverRepos(
 	t fataler, sessions session.SessionRepository, encounters session.EncounterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	if err != nil {
@@ -107,7 +107,7 @@ func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInp
 	}
 	members = append(members, extra...)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 8, Height: 8, Props: occludingProps(occluders...)},
@@ -204,7 +204,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 		sessions, encounters := newFakeSessions(), newFakeEncounters()
 		dice := &sequenceDice{rolls: []int{5, 18, 11}}
 		mgr, err := session.NewManager(&session.Config{
-			Dice: dice, Sessions: sessions, Encounters: encounters,
+			Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 			Characters: testCharacters(), Events: session.DiscardEvents{},
 		})
 		s.Require().NoError(err)
@@ -240,7 +240,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 // threw away, and a fight that cannot be ordered does not half-start.
 func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 	mgr, err := session.NewManager(&session.Config{
-		Dice: brokenDice{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

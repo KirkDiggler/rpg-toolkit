@@ -31,7 +31,7 @@ func (s *MoveTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: s.stream,
 	})
@@ -43,7 +43,7 @@ func (s *MoveTestSuite) SetupTest() {
 // three steps to her east — near enough to walk onto, far enough that a walk
 // can be interrupted before reaching it.
 func corridorWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{

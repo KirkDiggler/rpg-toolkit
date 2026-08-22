@@ -93,7 +93,7 @@ func aFight(
 	scripted := append(make([]int, initiativeRolls), rolls...)
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: &sequenceDice{rolls: scripted}, Sessions: sessions, Encounters: encounters,
+		Dice: &sequenceDice{rolls: scripted}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
 	if err != nil {
@@ -101,9 +101,9 @@ func aFight(
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 		},
