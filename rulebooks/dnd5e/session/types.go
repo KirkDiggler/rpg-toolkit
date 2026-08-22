@@ -561,6 +561,11 @@ type Member struct {
 	// Kind categorises the member.
 	Kind MemberKind `json:"kind"`
 
+	// Name is the member's display name — "skeleton-1", not a ref or an id.
+	// Never empty for a member the composition can name, which is every
+	// member it can place (rpg-toolkit#1137).
+	Name string `json:"name,omitempty"`
+
 	// Position is the cell they stand on, in dungeon-absolute space.
 	//
 	// It replaced a room id, and the swap is the reshape in one field: which
@@ -656,6 +661,57 @@ type MonsterState struct {
 	// ProficiencyBonus is the monster's proficiency bonus, derived from its
 	// challenge rating.
 	ProficiencyBonus int `json:"proficiency_bonus"`
+}
+
+// DamageType names the kind of damage an attack deals: the rulebook's own
+// thirteen. Lands with rpg-toolkit#866, carried on AttackRef.
+//
+// A CLOSED SET, SO A GO TYPE A CLIENT-FACING ENUM CAN MIRROR (Kirk,
+// rpg-project#249 §6): a UI branches on it — a colour, a sound, a word in
+// the beat line ("6 slashing") — and thirteen is the whole of 5e's list,
+// sealed by the rulebook rather than open to a catalog. Compare AttackRef.Ref,
+// which is an OPEN set and stays a string.
+//
+// The string values match damage.Type's own exactly, on purpose: this type
+// exists so a host mapping onto a proto enum has something to switch on
+// without importing the rulebook's own damage package across the boundary
+// (S2), not to invent a second vocabulary for the same thirteen words.
+type DamageType string
+
+// The rulebook's thirteen damage types, mirroring damage.Type.
+const (
+	DamageAcid        DamageType = "acid"
+	DamageBludgeoning DamageType = "bludgeoning"
+	DamageCold        DamageType = "cold"
+	DamageFire        DamageType = "fire"
+	DamageForce       DamageType = "force"
+	DamageLightning   DamageType = "lightning"
+	DamageNecrotic    DamageType = "necrotic"
+	DamagePiercing    DamageType = "piercing"
+	DamagePoison      DamageType = "poison"
+	DamagePsychic     DamageType = "psychic"
+	DamageRadiant     DamageType = "radiant"
+	DamageSlashing    DamageType = "slashing"
+	DamageThunder     DamageType = "thunder"
+)
+
+// AttackRef identifies WHAT was swung — weapon identity, which this seam
+// dropped on the floor since the first swing (rpg-toolkit#866). Carried on
+// AttackOutput and on the Struck/Missed event bodies, so a beat line can say
+// "6 slashing" and "with a longsword" for every witness, not only the
+// attacker whose own verb response held the compiled profile.
+type AttackRef struct {
+	// Ref is the catalog ref the attack compiled from — "longsword",
+	// "unarmed-strike". An OPEN set, so a string: the client already maps
+	// refs to models and icons, and the catalog grows without this type
+	// changing.
+	Ref string `json:"ref"`
+
+	// Name is the catalog's display name — "Longsword", "Unarmed Strike".
+	Name string `json:"name"`
+
+	// DamageType is the kind of damage it deals. Closed set — see DamageType.
+	DamageType DamageType `json:"damage_type"`
 }
 
 // Discovery is what changed in one observer's perception.

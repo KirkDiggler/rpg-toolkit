@@ -284,6 +284,7 @@ func projectMember(in encounter.Member) Member {
 	return Member{
 		ID:       string(in.ID),
 		Kind:     MemberKind(in.Kind),
+		Name:     in.Name,
 		Position: in.Position,
 	}
 }

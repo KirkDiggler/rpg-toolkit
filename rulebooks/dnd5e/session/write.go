@@ -206,7 +206,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	placed, err := place(scope, in.Member, KindPlayer, in.Position)
+	placed, err := place(scope, in.Member, KindPlayer, ch.GetName(), in.Position)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -314,7 +314,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	scope.data.NPCs = append(scope.data.NPCs, *sheet)
 	scope.touched = true
 
-	placed, err := place(scope, in.ID, KindMonster, in.Position)
+	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -348,7 +348,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 // Setup and Load were made to share one validator so that a single mutation
 // kills the pins on both. Same reasoning, one layer up.
 func place(
-	scope *writeScope, id string, kind MemberKind, at spatial.Position,
+	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -364,6 +364,7 @@ func place(
 	placed, err := scope.enc.Join(&encounter.JoinInput{
 		Member: encounter.MemberID(id),
 		Kind:   encounter.MemberKind(kind),
+		Name:   name,
 		Cell:   at,
 	})
 	if err != nil {

@@ -36,12 +36,30 @@ func TestAttackSuite(t *testing.T) {
 	suite.Run(t, new(AttackTestSuite))
 }
 
+// unarmedFighter is armedFighter's twin with nothing equipped: the fixture
+// TestAnEmptyHandThrowsAnUnarmedStrike proves the unarmed catalog entry, not
+// a compiler gap (rpg-toolkit#1168).
+func unarmedFighter(id string) *character.Data {
+	return &character.Data{
+		ID:       id,
+		PlayerID: "player-" + id,
+		Name:     id,
+		Level:    3,
+		ClassID:  classes.Fighter,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
+		},
+		HitPoints:        24,
+		MaxHitPoints:     28,
+		ArmorClass:       16,
+		ProficiencyBonus: 2,
+	}
+}
+
 // armedFighter is a sheet that can actually swing: a longsword in the main
 // hand and the proficiency to use it.
-//
-// The shared dwarf fixture carries no weapon, which is correct for every other
-// verb and useless here — an empty hand is refused by the compiler rather than
-// falling back to an unarmed strike, deliberately.
 func armedFighter(id string) *character.Data {
 	return &character.Data{
 		ID:       id,
@@ -170,8 +188,10 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal(out.Seq, last.Seq, "AttackOutput.Seq references the recorded beat")
 	s.Equal("outcome", last.Tags["tag"])
 	s.JSONEq(
-		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8}`,
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(last.Payload))
+	s.Equal(session.AttackRef{Ref: "longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
 
 // TestAMissIsRecordedToo pins the other arm, including that a miss carries no
@@ -187,7 +207,8 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.JSONEq(
-		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12}`,
+		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
+			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(story[len(story)-1].Payload))
 }
 
@@ -403,13 +424,21 @@ func (s *AttackTestSuite) TestRefusals() {
 	s.ErrorIs(err, session.ErrNoMember)
 }
 
-// TestAnEmptyHandIsRefused pins the compiler's own gap reaching the host under
-// this package's sentinel rather than the rulebook's.
-func (s *AttackTestSuite) TestAnEmptyHandIsRefused() {
+// TestAnEmptyHandThrowsAnUnarmedStrike pins rpg-toolkit#1168 at the seam: an
+// empty main hand swings and lands with the unarmed strike's own numbers
+// rather than being refused. Exact arithmetic, the same discipline
+// TestASwingLandsAndTheStoryRecordsIt holds attack.go to: a d20 of 15 plus a
+// proficient STR 16 (+3) plus the proficiency bonus every 5e character has
+// for an unarmed strike regardless of weapon training (+2) totals 20 against
+// bob's effective AC 12 — a hit — and the damage die is 1d1, so the roll
+// script's damage entry (any value) resolves to 1 plus the +3 modifier: 4
+// bludgeoning.
+func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(dwarfCharacter("alice"), armedFighter("bob"))
+	s.characters = newFakeCharacters(unarmedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Dice: &sequenceDice{rolls: []int{15, 1}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -431,9 +460,13 @@ func (s *AttackTestSuite) TestAnEmptyHandIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	_, err = s.swing(mgr)
-	s.ErrorIs(err, session.ErrBadAttack,
-		"an unarmed character is refused rather than silently swinging for 1")
+	out, err := s.swing(mgr)
+	s.Require().NoError(err)
+	s.Equal(15, out.Roll)
+	s.Equal(20, out.Total, "15 + 3 STR + 2 proficiency (unarmed is always proficient)")
+	s.Equal(12, out.Against)
+	s.True(out.Hit)
+	s.Equal(4, out.Damage, "1d1 + 3 STR")
 }
 
 // TestASheetlessTargetIsRefusedByName covers content standing in a world that
