@@ -26,7 +26,7 @@ type ClocksTestSuite struct {
 // monster in one room.
 func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			// The goblin waits in the NEXT ROOM, which is how real content is
@@ -139,7 +139,7 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 	}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -193,7 +193,7 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 	}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 	s.Require().NoError(err)
 
 	fighting, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -227,7 +227,7 @@ func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter(
 	data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -251,7 +251,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -267,7 +267,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -293,7 +293,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data.Clock.Budgets["ghost"] = 0
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -307,7 +307,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -320,7 +320,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -340,7 +340,7 @@ func (s *ClocksTestSuite) TestABlobFromBeforeClockMembershipLoadsEveryoneOntoThe
 	data.Bubbles = nil
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 	s.Require().NoError(err)
 
 	for _, id := range []core.EntityID{alice, goblin} {
@@ -366,7 +366,7 @@ const (
 // monster in one room, plus an external ending so closure is reachable.
 func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
@@ -412,7 +412,7 @@ func (s *ClocksTestSuite) assertR6(enc *encounter.Encounter, members ...core.Ent
 		s.Require().NoError(err, "member %q must be on exactly one clock", id)
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: enc.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: enc.ToData()})
 	s.Require().NoError(err, "the persisted shape must pass the trust boundary (R6)")
 }
 
@@ -475,14 +475,13 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.NotContains(budgets, alice, "fight members are off the tick entirely")
 	s.NotContains(budgets, goblin)
 
-	// A round of combat: alice and the goblin take their turns.
+	// A round of combat: alice ends her turn, and the goblin — no player to
+	// end its own — is driven through by TurnDriver in the same call
+	// (rpg-toolkit#1162), so the round is already back to her by the time
+	// this returns.
 	et, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
-	s.Equal(goblin, et.Next)
-	s.False(et.RoundWrapped)
-	et, err = enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
-	s.Require().NoError(err)
-	s.Equal(alice, et.Next, "two in the fight, so the round wraps back to her")
+	s.Equal(alice, et.Next, "two in the fight; the goblin's pass wraps the round straight back to her")
 	s.True(et.RoundWrapped)
 	s.assertR6(enc, everyone...)
 
@@ -505,11 +504,9 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInBubble)
 
-	// Alice and the goblin take their turns again; carl closes the round he
-	// fell into, and it wraps across the grown order.
+	// Alice ends her turn; the goblin is driven through again; carl closes
+	// the round he fell into, and it wraps across the grown order.
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
-	s.Require().NoError(err)
-	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
 	s.Require().NoError(err)
 	et, err = enc.EndTurn(&encounter.EndTurnInput{Member: carl})
 	s.Require().NoError(err)
@@ -697,7 +694,7 @@ func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	wanderer := &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 5}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
@@ -770,7 +767,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 	data.Bubbles = []clock.TurnData{{}}
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInvalidData)
 }
@@ -778,28 +775,172 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 // TestAMidFightBlobRoundTrips pins that a fight survives load-act-save: the
 // composition's own Form (not a hand-written blob) produces the persisted
 // shape, and the reloaded encounter continues the same round.
+//
+// THE FIGHT IS ROUND-TRIPPED AS FORMED, WITHOUT ENDING ALICE'S TURN FIRST —
+// and that is the honest state to prove now (rpg-toolkit#1162). The goblin
+// has no player: the moment its own turn is reached, TurnDriver drives it
+// straight through rather than leaving it paused for a reload to catch, so
+// "mid-fight, goblin pending" is no longer a state this fight can be in. What
+// round-trips is a fight in progress with a PLAYER active, which is the
+// state that actually persists between a real player's turns.
 func (s *ClocksTestSuite) TestAMidFightBlobRoundTrips() {
 	enc := s.fiveMemberEncounter()
-	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
-	s.Require().NoError(err)
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: enc.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	// Reached through a member of the fight — bob is exploring next door.
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: goblin})
 	s.Require().NoError(err)
 	s.Equal(encounter.ClockTurn, out.Kind)
-	s.Equal(goblin, out.Active, "the reloaded fight is mid-round, exactly where it was")
+	s.Equal(alice, out.Active, "the reloaded fight continues with alice active, exactly where it was")
 	s.Equal(1, out.Round)
 
-	// And it keeps playing: the goblin's turn ends in the reloaded world and
-	// the round wraps back to alice, the two of them being the whole fight.
-	et, err := reloaded.EndTurn(&encounter.EndTurnInput{Member: goblin})
+	// And it keeps playing: alice's turn ends in the reloaded world, the
+	// goblin is driven through with no player of its own, and the round
+	// wraps straight back to her — the two of them being the whole fight.
+	et, err := reloaded.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 	s.Equal(alice, et.Next)
 	s.True(et.RoundWrapped)
+}
+
+// TestEndTurnDrivesAnUnplayedMemberThroughAutomatically is rpg-toolkit#1162's
+// headline case, in the composition's own vocabulary: the fighter ends her
+// turn, the skeleton (here, the goblin) has no player, and this single call
+// must not return with the clock parked on it — the defect Kirk observed
+// live, where the fight stalled forever after the player's own EndTurn.
+func (s *ClocksTestSuite) TestEndTurnDrivesAnUnplayedMemberThroughAutomatically() {
+	enc := s.fiveMemberEncounter()
+
+	et, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(alice, et.Next,
+		"the goblin has no player; TurnDriver passes its turn and the round wraps straight back to her")
+	s.True(et.RoundWrapped)
+
+	// The pass is a beat a client can render, not a silent skip: the story
+	// carries both ends, and each is independently addressed to its member.
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	var turnEnded, goblinPassed int
+	for _, entry := range story {
+		if entry.Tags["tag"] != "clock" {
+			continue
+		}
+		var p struct {
+			Beat   string `json:"beat"`
+			Member string `json:"member"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &p))
+		if p.Beat != "turn-ended" {
+			continue
+		}
+		turnEnded++
+		if p.Member == string(goblin) {
+			goblinPassed++
+		}
+	}
+	s.Equal(2, turnEnded, "alice's own end, plus the goblin's driven-through pass")
+	s.Equal(1, goblinPassed, "the story names the goblin's own pass by member, not just alice's end")
+}
+
+// monstersBeforePlayers is an Initiative capability that always seats every
+// KindMonster member ahead of every KindPlayer member, keeping each side's
+// own relative order otherwise. It exists only to construct the fight-start
+// case rpg-toolkit#1162 also has to cover: an unplayed member first in the
+// ROLLED order, which a real 5e roll can always produce and this composition
+// must not assume away.
+type monstersBeforePlayers struct {
+	kinds map[core.EntityID]encounter.MemberKind
+}
+
+func (r monstersBeforePlayers) RollInitiative(members []core.EntityID) ([]core.EntityID, error) {
+	out := make([]core.EntityID, 0, len(members))
+	for _, id := range members {
+		if r.kinds[id] == encounter.KindMonster {
+			out = append(out, id)
+		}
+	}
+	for _, id := range members {
+		if r.kinds[id] != encounter.KindMonster {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// TestFightStartDrivesAnUnplayedMemberFirstInInitiative is rpg-toolkit#1162's
+// other half: if the roll puts the skeleton first, nobody has reached the
+// fight's clock yet to end its turn for them, so the drive has to happen at
+// FORMATION too — the same driver, the same moment the clock lands on it,
+// reached this time through trigger detection rather than a player's own
+// EndTurn (see form's own doc).
+func (s *ClocksTestSuite) TestFightStartDrivesAnUnplayedMemberFirstInInitiative() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, TurnDriver: passDriver{},
+		Initiative: monstersBeforePlayers{kinds: map[core.EntityID]encounter.MemberKind{
+			alice: encounter.KindPlayer, goblin: encounter.KindMonster,
+		}},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+		},
+		// Same room: first light forms the fight immediately, with the
+		// monster seated first by the roller above.
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, out.Kind, "first light formed the fight")
+	s.Equal([]core.EntityID{goblin, alice}, out.Order, "control: the roll really did seat the goblin first")
+	s.Equal(alice, out.Active,
+		"the goblin's turn was driven through at formation; a client reading the fight-started "+
+			"beat already sees a PLAYED member active")
+	s.Equal(1, out.Round, "driving the goblin through at formation does not itself wrap a round")
+}
+
+// TestSetupRefusesAnEncounterWithNoTurnDriver mirrors
+// TestSetupRefusesAnEncounterThatCannotAskWhoIsDown (standing_test.go) for
+// the newest required capability: an encounter that cannot answer "what does
+// an unplayed member do" is refused at construction rather than discovered
+// mid-fight (rpg-toolkit#1162, ADR-0043). There is no nil-means-Pass default
+// — see the ADR for why this capability, unlike Decider, may not be silently
+// absent.
+func (s *ClocksTestSuite) TestSetupRefusesAnEncounterWithNoTurnDriver() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 8, Height: 8}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoTurnDriver)
+}
+
+// TestLoadRefusesAnEncounterWithNoTurnDriver is the other door: a reloaded
+// encounter's bubble can land on an unplayed member the moment it is
+// reconstituted, so a blob without this capability is as unusable as a Setup
+// without one.
+func (s *ClocksTestSuite) TestLoadRefusesAnEncounterWithNoTurnDriver() {
+	saved := s.twoMemberEncounter().ToData()
+
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:  saved,
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoTurnDriver)
 }
 
 func TestClocksSuite(t *testing.T) {

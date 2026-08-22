@@ -82,7 +82,7 @@ func (s *PursuitSuite) SetupTest() {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			// Alice stands at the threshold; the goblin is across the room
@@ -213,7 +213,7 @@ func (s *PursuitSuite) freeRoamWith(decider encounter.Decider) {
 
 	data := s.enc.ToData()
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Data:     data,
 		Deciders: map[encounter.MemberID]encounter.Decider{hunter: decider},
 	})

@@ -53,3 +53,13 @@ type orderAsGiven struct{}
 func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
 	return members, nil
 }
+
+// passDriver ends every unplayed member's turn with no other effect. These
+// scenes are about geometry, not monster behaviour, so an unplayed member
+// simply passes rather than this package inventing an opinion about what one
+// should do (rpg-toolkit#1162).
+type passDriver struct{}
+
+func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+	return encounter.Pass{}, nil
+}

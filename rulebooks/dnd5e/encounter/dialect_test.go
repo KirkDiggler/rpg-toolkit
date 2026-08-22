@@ -60,7 +60,7 @@ var dialectOrigin = spatial.Position{X: 30, Y: 10}
 // coordinates.
 func (s *DialectSuite) closedBlob() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 8, Height: 8, Origin: dialectOrigin},
 		}},
@@ -89,7 +89,7 @@ const aRoomBearingSighting = `{"room":"hall","x":2,"y":5}`
 // load is the host's side of the seam: hand the loader a blob and see what it says.
 func (s *DialectSuite) load(data encounter.EncounterData) error {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 	})
 	return err
 }

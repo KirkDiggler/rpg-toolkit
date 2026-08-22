@@ -152,6 +152,17 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   "backend tells dumb client what it can do." *Rule: a read that could leak a
   rule by handing over the ledger instead answers the caller's actual
   question.*
+- **0043** — **A monster's turn has a driver**: `encounter` gains a required
+  `TurnDriver` capability (alongside `Standing`/`Sight`/`Initiative`),
+  consulted synchronously whenever the active slot could land on a
+  `KindMonster` member — `EndTurn`, fight-start (`form`), and a member
+  leaving a running bubble (`Transfer`, `Exit`) — through one shared
+  `driveMonsterTurns`; v1's supplied answer is `Pass`. Kept distinct from the
+  existing `Decider` (free-roam only, optional, defaults to hold) —
+  `TurnDriver`'s absence stalls the whole bubble forever, `Decider`'s absence
+  stalls one monster harmlessly, so one may default and the other must not.
+  *Rule: a capability whose absence is locally inert may default; one whose
+  absence blocks the whole composition may not.*
 
 ---
 

@@ -193,6 +193,12 @@ type Encounter struct {
 	// — see [Sight] for why it is asked at every refresh rather than held, and
 	// why there is no default.
 	sight Sight
+
+	// turnDriver decides what a member with no player does when the clock
+	// lands on their turn. Required at both constructors, for the same reason
+	// standing and sight are, and — unlike deciders — never optional; see
+	// [TurnDriver] and ADR-0043.
+	turnDriver TurnDriver
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Step, Join) declaration order is
@@ -1290,6 +1296,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoSight)
 	}
 
+	// Required for the same reason again: a fight can form at first light
+	// with an unplayed member first in the rolled order, so an encounter that
+	// cannot answer "what does this member do" would stall before its caller
+	// does anything (rpg-toolkit#1162). Never defaulted — see ADR-0043 for
+	// why this differs from Decider, which is optional per member.
+	if in.TurnDriver == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoTurnDriver)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -1400,6 +1415,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		initiative:       in.Initiative,
 		standing:         in.Standing,
 		sight:            in.Sight,
+		turnDriver:       in.TurnDriver,
 		endings:          nil,
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),

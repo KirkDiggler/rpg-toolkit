@@ -29,7 +29,7 @@ const outcomeRoom = "yard"
 // other's sight, so nothing forms a fight before a test asks for one.
 func (s *OutcomeTestSuite) scene() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{
 			ID: outcomeRoom, Width: 12, Height: 12, Props: wallRow(6, 4, 8),
 		}}},

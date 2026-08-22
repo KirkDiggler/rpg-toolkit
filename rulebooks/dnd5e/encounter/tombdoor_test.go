@@ -67,7 +67,7 @@ var (
 
 func (s *TombDoorSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
@@ -238,7 +238,7 @@ func (s *TombDoorSuite) TestTheDoorSurvivesASave() {
 func (s *TombDoorSuite) reload(data encounter.EncounterData) *encounter.Encounter {
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 	})
 	s.Require().NoError(err)
 

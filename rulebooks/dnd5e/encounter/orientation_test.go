@@ -91,7 +91,7 @@ func hexTomb(o encounter.Orientation) encounter.FieldInput {
 
 func (s *OrientationSuite) build(field encounter.FieldInput, at spatial.Position, room string) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: "delve", Kind: encounter.KindPlayer, Room: room, Position: at},
@@ -245,7 +245,7 @@ func (s *OrientationSuite) TestTheOrientationSurvivesASave() {
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 	})
 	s.Require().NoError(err)
 
@@ -258,7 +258,7 @@ func (s *OrientationSuite) TestTheOrientationSurvivesASave() {
 		d.Field.Canvas.Orientation = ""
 		_, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: d, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-			Initiative: orderAsGiven{},
+			Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		})
 		s.Require().ErrorIs(lerr, encounter.ErrNoField)
 		s.Contains(lerr.Error(), "orientation")
@@ -269,7 +269,7 @@ func (s *OrientationSuite) TestTheOrientationSurvivesASave() {
 		d.Field.Canvas.Orientation = "sideways"
 		_, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: d, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-			Initiative: orderAsGiven{},
+			Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		})
 		s.Require().ErrorIs(lerr, encounter.ErrNoField)
 		s.Contains(lerr.Error(), "sideways")
@@ -426,7 +426,7 @@ func (s *OrientationSuite) TestASquareBlobMustNotDeclareAnOrientation() {
 	data.Field.Canvas.Orientation = "pointy"
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Contains(strings.ToLower(err.Error()), "orientation")

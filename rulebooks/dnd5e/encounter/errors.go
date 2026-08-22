@@ -218,6 +218,38 @@ var (
 	// have to invent, which rpg-toolkit#1033 forbids it to do.
 	ErrNoSight = errors.New("encounter: no sight capability")
 
+	// ErrNoTurnDriver indicates Setup or Load was given no TurnDriver
+	// capability. A member with no player can land on a fight's clock — a
+	// turn ending, or a fight forming with an unplayed member first in
+	// initiative — and this module refuses to guess what they do, exactly as
+	// it refuses to guess who is standing or how far anyone sees
+	// (rpg-toolkit#1033, rpg-toolkit#1162). Never defaulted: see ADR-0043 for
+	// why this differs from Decider, which IS optional.
+	ErrNoTurnDriver = errors.New("encounter: no turn driver capability")
+
+	// ErrNoPlayerInBubble indicates a bubble was asked to drive its unplayed
+	// members forward and found no KindPlayer member in it at all.
+	//
+	// Defensive rather than reachable through any documented path: a bubble
+	// only forms on contact between a player and something else (rpg-
+	// toolkit#964), so a player-free fight should not exist. Refused loudly
+	// here rather than looping driveMonsterTurns forever or silently ending
+	// every member's turn with nobody left to hand the clock to, in case that
+	// invariant is ever broken elsewhere.
+	ErrNoPlayerInBubble = errors.New("encounter: bubble has no player to end on")
+
+	// ErrBadTurnOutcome indicates a TurnDriver returned a TurnOutcome this
+	// version of the module does not recognise.
+	//
+	// Unreachable from any driver outside this package today: TurnOutcome is
+	// sealed on an unexported method, so nothing outside encounter can
+	// construct a value satisfying it other than Pass. It exists for the same
+	// reason ErrBadRepository exists beside ErrNotFound — a defect this
+	// module can detect should say so by name rather than proceed on a value
+	// it does not understand, the day a second TurnOutcome case is added here
+	// and some call site is not updated to handle it.
+	ErrBadTurnOutcome = errors.New("encounter: turn driver returned an unrecognised outcome")
+
 	// ErrReadOnly indicates an attempt to write to the map through the
 	// read-only view [Encounter.Canvas] hands out.
 	ErrReadOnly = errors.New("encounter: the canvas is read-only")
