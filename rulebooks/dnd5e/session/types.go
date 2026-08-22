@@ -288,12 +288,48 @@ type MemberOutcome struct {
 type Seen struct {
 	// Position is the sighted subject's cell, dungeon-absolute.
 	Position spatial.Position `json:"position"`
+
+	// Standing is whether the sighted subject is on their feet.
+	// SIGHT-CHANNEL KNOWLEDGE, not roster truth: an observer who can see a
+	// member can see whether they are standing, which is why it belongs
+	// inside Seen and not on a roster read this seam deliberately lacks.
+	// A memory (CurrentVia empty) keeps the standing it last saw, exactly
+	// as it keeps the position. Lands with rpg-toolkit#1137.
+	Standing Standing `json:"standing"`
 }
+
+// Standing says whether a member is still on their feet. Lands with
+// rpg-toolkit#1137.
+//
+// A READ, NOT A REPLAY DEPENDENCY: the composition has known the answer all
+// along — it asks the rulebook who is standing at every sight refresh — so
+// this is that answer projected onto Participant and Seen, the same
+// treatment Where gives position.
+//
+// TWO VALUES, AND NOT "DOWN". Downed is at zero hit points and out of the
+// fight; a bare "down" also reads as PRONE, a posture condition on a member
+// still acting (Kirk's ruling, rpg-toolkit#1084 — see ErrDowned).
+type Standing string
+
+const (
+	// StandingUp is on their feet, in the fight.
+	StandingUp Standing = "up"
+	// StandingDowned is at zero hit points, out of the fight — still on the
+	// map and in the roster.
+	StandingDowned Standing = "downed"
+)
 
 // Sighting is one thing an observer currently perceives.
 type Sighting struct {
 	// Subject names what is perceived.
 	Subject string `json:"subject"`
+
+	// Name is the sighted subject's display name — "skeleton-1", not a ref
+	// or an id. Beside Subject so a client labels what it draws and
+	// narrates what it sees without a second lookup. Names are not a
+	// perception question: anything an observer can sight, they can name.
+	// Lands with rpg-toolkit#1137.
+	Name string `json:"name,omitempty"`
 
 	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
 	// the composition, not by this package — session never unmarshals

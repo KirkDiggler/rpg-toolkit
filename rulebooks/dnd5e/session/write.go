@@ -211,6 +211,11 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	down, err := discoveryStanding(scope)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
@@ -219,13 +224,30 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	return &JoinOutput{
 		Member:     projectMember(placed.Member),
 		Character:  projectCharacter(ch),
-		Discovered: projectDiscoveries(placed.IntelDeltas),
+		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
+}
+
+// discoveryStanding batches a down-check over the WHOLE roster this scope's
+// encounter now holds, for projecting Discovery/Sighting's Seen.Standing
+// (rpg-toolkit#1137): a discovery's first-contact reports can name anyone
+// the observer just perceived, so the safe set to ask about is everyone,
+// asked once per verb rather than once per report.
+//
+// Fetched BEFORE commit, deliberately: a failure here must leave nothing
+// persisted (R5 atomicity), the same discipline every other pre-commit
+// check in this file already keeps.
+func discoveryStanding(scope *writeScope) (map[string]bool, error) {
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return nil, translate(err)
+	}
+	return standingSet(scope.standing, rosterIDs(roster))
 }
 
 // Spawn instantiates content that lives in code and places it as a new member.
@@ -319,6 +341,11 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
 
+	down, err := discoveryStanding(scope)
+	if err != nil {
+		return nil, fmt.Errorf("spawn: %w", err)
+	}
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
@@ -327,7 +354,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	return &SpawnOutput{
 		Member:     projectMember(placed.Member),
 		NPC:        projectMonster(sheet),
-		Discovered: projectDiscoveries(placed.IntelDeltas),
+		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
@@ -397,6 +424,15 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", translate(err))
 	}
 
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("exit: %w", translate(err))
+	}
+	down, err := standingSet(scope.standing, rosterIDs(roster))
+	if err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
+	}
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
@@ -404,7 +440,7 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 
 	return &ExitOutput{
 		Outcome:  projectMemberOutcome(left.Outcome),
-		Carry:    projectSightings(left.Carry),
+		Carry:    projectSightings(left.Carry, rosterNames(roster), down),
 		Seq:      left.Seq,
 		Closed:   projectOutcome(left.Closed),
 		Saved:    report,

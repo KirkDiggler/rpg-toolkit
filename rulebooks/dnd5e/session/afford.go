@@ -274,12 +274,25 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return &AffordOutput{Clock: ClockWorld, Declarations: []Declaration{}}, nil
 	}
 
-	// DOWNED, checked before anything else this member's clock state could
-	// answer: a downed member is spliced out of the turn order and can
-	// never be active, so NotYourTurn would eventually say so too — but
-	// Downed is the SPECIFIC fact a client renders differently ("you are
-	// down" versus "wait your turn"), and it is cheaper to ask than to let
-	// a caller infer it from never seeing their own name as active.
+	// NOT YOUR TURN, checked FIRST and cheaply — clock.Active is already in
+	// hand, no sheet touched — the same precedence Move's own gate keeps
+	// (Copilot's finding on #1171: the clock is asked before anything is
+	// loaded, so a refusal this early never reads a sheet at all). The
+	// same clock-active comparison Attack's own gate makes
+	// (rpg-toolkit#1010/#249) — announced here BEFORE a caller ever tries
+	// the verb, which is Afford's whole point.
+	if string(clock.Active) != in.Member {
+		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
+			Reason: ShortfallNotYourTurn, Text: "not your turn",
+		})}, nil
+	}
+
+	// DOWNED, asked only once we know this member is even the one the
+	// clock is waiting on: a downed member is spliced out of the turn
+	// order and can never be active, so NotYourTurn already covers a
+	// downed BYSTANDER — this is the specific fact a client renders
+	// differently ("you are down" versus "wait your turn") for the member
+	// who somehow is still active despite being down.
 	standing := m.standingFor(ctx, data)
 	down, err := standing.Standing([]encounter.MemberID{encounter.MemberID(in.Member)})
 	if err != nil {
@@ -288,15 +301,6 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	if len(down) > 0 {
 		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
 			Reason: ShortfallDowned, Text: "member is downed",
-		})}, nil
-	}
-
-	// NOT YOUR TURN, the same clock-active comparison Attack's own gate
-	// makes (rpg-toolkit#1010/#249) — announced here BEFORE a caller ever
-	// tries the verb, which is Afford's whole point.
-	if string(clock.Active) != in.Member {
-		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
-			Reason: ShortfallNotYourTurn, Text: "not your turn",
 		})}, nil
 	}
 

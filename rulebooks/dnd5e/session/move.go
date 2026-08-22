@@ -231,7 +231,18 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		}
 	}
 
-	res, err := m.runWalk(scope, in.Member, in.Path)
+	// Standing, batched once for the whole walk (rpg-toolkit#1137) and only
+	// NOW — after every gate that must refuse without touching a sheet has
+	// already passed (Copilot's own precedence finding on #1171, pinned by
+	// TestNotActiveWinsOverAffordability): a Move cannot down or revive
+	// anyone, so the answer is stable across every step's own Discovery, and
+	// asking once here beats asking once per step.
+	down, err := discoveryStanding(scope)
+	if err != nil {
+		return nil, fmt.Errorf("move: %w", err)
+	}
+
+	res, err := m.runWalk(scope, in.Member, in.Path, down)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -404,7 +415,9 @@ type walkResult struct {
 // a fight and a fight member does not free-roam — the composition would refuse
 // the next step with ErrInBubble — so stopping is a fact about the world rather
 // than a policy about perception.
-func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Position) (*walkResult, error) {
+func (m *Manager) runWalk(
+	scope *writeScope, member string, path []spatial.Position, down map[string]bool,
+) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
 	for i, cell := range path {
@@ -436,7 +449,7 @@ func (m *Manager) runWalk(scope *writeScope, member string, path []spatial.Posit
 			Position: stepped.Stepped.To,
 			Seq:      stepped.Seq,
 		})
-		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
+		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas, down))
 
 		if stepped.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:

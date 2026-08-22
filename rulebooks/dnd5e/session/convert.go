@@ -209,7 +209,7 @@ func projectStatus(in *encounter.Status) *Status {
 	return out
 }
 
-func projectSightings(in []intel.Holding) []Sighting {
+func projectSightings(in []intel.Holding, names map[string]string, down map[string]bool) []Sighting {
 	out := make([]Sighting, 0, len(in))
 	for _, h := range in {
 		via := make([]string, 0, len(h.CurrentVia))
@@ -218,7 +218,8 @@ func projectSightings(in []intel.Holding) []Sighting {
 		}
 		out = append(out, Sighting{
 			Subject:    string(h.Subject),
-			Seen:       projectSeen(h.Channel, h.Payload),
+			Name:       names[string(h.Subject)],
+			Seen:       projectSeen(h.Channel, h.Payload, down[string(h.Subject)]),
 			Payload:    append([]byte(nil), h.Payload...),
 			Channel:    string(h.Channel),
 			At:         h.At,
@@ -229,18 +230,23 @@ func projectSightings(in []intel.Holding) []Sighting {
 	return out
 }
 
-// projectSeen copies the sight channel's typed knowledge into Seen (ADR-0041).
-// It is nil for every channel but sight, and nil if a sight-channel payload
-// somehow fails to decode — an impossible state today (the composition is the
-// only writer of sight payloads) that a wrong Position would be worse than
-// admitting to.
+// projectSeen copies the sight channel's typed knowledge into Seen (ADR-0041,
+// rpg-toolkit#1137). It is nil for every channel but sight, and nil if a
+// sight-channel payload somehow fails to decode — an impossible state today
+// (the composition is the only writer of sight payloads) that a wrong
+// Position would be worse than admitting to.
 //
 // The decode itself happens in encounter.DecodeSightPayload, not here: this
 // package never calls encoding/json on a payload. h.Channel is intel's own
 // provenance field — a holding's last accepted testimony — so a held memory
 // (CurrentVia empty) still carries the channel and payload that produced it,
 // and still gets a Seen: "a memory keeps its last Seen" (the ADR's words).
-func projectSeen(channel intel.Channel, payload []byte) *Seen {
+//
+// downed is the caller's own batched Standing() answer for this subject —
+// asked once per verb over the whole roster (turn.go's own pattern), never
+// once per sighting, and passed in rather than looked up here so this stays
+// a pure projection.
+func projectSeen(channel intel.Channel, payload []byte, downed bool) *Seen {
 	if channel != intel.Sight {
 		return nil
 	}
@@ -248,7 +254,11 @@ func projectSeen(channel intel.Channel, payload []byte) *Seen {
 	if !ok {
 		return nil
 	}
-	return &Seen{Position: pos}
+	standing := StandingUp
+	if downed {
+		standing = StandingDowned
+	}
+	return &Seen{Position: pos, Standing: standing}
 }
 
 // projectStory drops each entry's audience roster deliberately.
@@ -348,7 +358,7 @@ func projectOutcome(in *encounter.Outcome) *Outcome {
 // present key means "something changed for this observer", and manufacturing
 // empty entries for everyone who happened to be in the encounter would make
 // the map's size meaningless to a caller deciding whom to notify.
-func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput) map[string]Discovery {
+func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput, down map[string]bool) map[string]Discovery {
 	if len(in) == 0 {
 		return nil
 	}
@@ -357,7 +367,7 @@ func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput) map[stri
 		if delta == nil {
 			continue
 		}
-		out[string(id)] = projectDiscovery(delta)
+		out[string(id)] = projectDiscovery(delta, down)
 	}
 	if len(out) == 0 {
 		return nil
@@ -365,12 +375,12 @@ func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput) map[stri
 	return out
 }
 
-func projectDiscovery(in *intel.SurveilOutput) Discovery {
+func projectDiscovery(in *intel.SurveilOutput, down map[string]bool) Discovery {
 	out := Discovery{}
 	for _, r := range in.FirstContact {
 		out.FirstContact = append(out.FirstContact, Report{
 			Subject: string(r.Subject),
-			Seen:    projectReportSeen(r.Payload),
+			Seen:    projectReportSeen(r.Payload, down[string(r.Subject)]),
 			Payload: append([]byte(nil), r.Payload...),
 		})
 	}
@@ -401,10 +411,14 @@ func projectDiscovery(in *intel.SurveilOutput) Discovery {
 // (seen_internal_test.go) documents the risk rather than closing it: closing
 // it needs SurveilOutput (or the percept it is built from) to carry its own
 // channel, which is a play/intel change outside this PR's scope.
-func projectReportSeen(payload []byte) *Seen {
+func projectReportSeen(payload []byte, downed bool) *Seen {
 	pos, ok := encounter.DecodeSightPayload(payload)
 	if !ok {
 		return nil
 	}
-	return &Seen{Position: pos}
+	standing := StandingUp
+	if downed {
+		standing = StandingDowned
+	}
+	return &Seen{Position: pos, Standing: standing}
 }

@@ -53,6 +53,53 @@ type TurnOutput struct {
 	// Order is the initiative order of the fight they are in, first to act
 	// first. Empty on the world clock.
 	Order []string `json:"order,omitempty"`
+
+	// Participants is the same members as Order, in the same order, each
+	// with what a bare id cannot carry: name, kind, standing, and whether
+	// they are the active one. Empty on the world clock. Order stays for
+	// the readers it already has — a new client reads this and never joins
+	// the two. Lands with rpg-toolkit#1137.
+	//
+	// NOT A ROSTER READ, and the line matters because this seam refuses one
+	// on purpose (see Manager.Where). Participants are the members of the
+	// fight the asker is IN — two sides that have, by construction, seen
+	// each other — so nothing here leaks a cell or a member the asker has
+	// not perceived. There is no position on it for that reason: where a
+	// participant stands is View's answer, gated by sight.
+	Participants []Participant `json:"participants,omitempty"`
+}
+
+// Participant is one member of the fight the asker is in, as TurnOutput
+// reports them. Lands with rpg-toolkit#1137.
+type Participant struct {
+	// Member is the member's id, as it appears in Order.
+	Member string `json:"member"`
+
+	// Name is the display name. Never empty for a member the server can
+	// name — which is every member it can list.
+	Name string `json:"name"`
+
+	// Kind categorises the member.
+	Kind MemberKind `json:"kind"`
+
+	// Standing is on their feet or downed.
+	//
+	// A DOWNED PARTICIPANT DOES NOT LINGER HERE. This mirrors Order exactly
+	// (Participants is a projection of it, never a second opinion about who
+	// belongs), and the composition splices a body out of Order the moment
+	// it notices one (encounter.noticeDown, rpg-toolkit#1078: "a body keeps
+	// no turn, and the order closes over the gap rather than holding it
+	// open"). Standing is still meaningful here, though: a member reported
+	// active or seated in an initiative order this call already trusts can
+	// still, in principle, be down for one beat before the next sight
+	// refresh notices — Where, View and Story all keep answering about a
+	// downed member regardless of whether Order still holds them.
+	Standing Standing `json:"standing"`
+
+	// Active is whether it is this member's turn. Exactly one true on the
+	// turn clock — the same member TurnOutput.Active names — so a caller
+	// marks the active row without a lookup.
+	Active bool `json:"active"`
 }
 
 // Turn reports what one member is waiting on.
@@ -85,7 +132,11 @@ func (m *Manager) Turn(ctx context.Context, in *TurnInput) (*TurnOutput, error) 
 		return nil, fmt.Errorf("turn: %w", ErrNoMemberID)
 	}
 
-	enc, err := m.open(ctx, in.Session)
+	data, err := m.loadSessionData(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("turn: %w", err)
+	}
+	enc, err := m.loadWorld(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("turn: %w", err)
 	}
@@ -95,7 +146,61 @@ func (m *Manager) Turn(ctx context.Context, in *TurnInput) (*TurnOutput, error) 
 		return nil, fmt.Errorf("turn: %w", translate(err))
 	}
 
-	return projectTurn(clock), nil
+	participants, err := m.participantsFor(ctx, data, enc, clock)
+	if err != nil {
+		return nil, fmt.Errorf("turn: %w", err)
+	}
+
+	out := projectTurn(clock)
+	out.Participants = participants
+	return out, nil
+}
+
+// participantsFor builds the Participant list a TurnOutput reports: the
+// same members Order names, each with a display name, kind, standing, and
+// whether they are the active one — what a bare id on Order cannot carry
+// (rpg-toolkit#1137). Nil on the world clock, where Order is empty too.
+func (m *Manager) participantsFor(
+	ctx context.Context, data *SessionData, enc *encounter.Encounter, clock *encounter.ClockOfOutput,
+) ([]Participant, error) {
+	if len(clock.Order) == 0 {
+		return nil, nil
+	}
+
+	roster, err := enc.Members()
+	if err != nil {
+		return nil, translate(err)
+	}
+	names := rosterNames(roster)
+	kinds := make(map[string]encounter.MemberKind, len(roster))
+	for _, member := range roster {
+		kinds[string(member.ID)] = member.Kind
+	}
+
+	// The same capability every other standing consult in this package
+	// uses (standing.go) — asked fresh, not cached, exactly as the
+	// composition's own consults are.
+	downSet, err := standingSet(m.standingFor(ctx, data), clock.Order)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Participant, 0, len(clock.Order))
+	for _, id := range clock.Order {
+		key := string(id)
+		st := StandingUp
+		if downSet[key] {
+			st = StandingDowned
+		}
+		out = append(out, Participant{
+			Member:   key,
+			Name:     names[key],
+			Kind:     MemberKind(kinds[key]),
+			Standing: st,
+			Active:   key == string(clock.Active),
+		})
+	}
+	return out, nil
 }
 
 // EndTurnInput ends one member's turn in the fight they are in.

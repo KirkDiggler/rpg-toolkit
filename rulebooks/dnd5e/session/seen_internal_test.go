@@ -37,10 +37,12 @@ func TestProjectSightingsSightChannelGetsASeen(t *testing.T) {
 		Status:     intel.Current,
 	}}
 
-	out := projectSightings(holdings)
+	out := projectSightings(holdings, nil, map[string]bool{"skeleton-1": true})
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a sight-channel holding must carry Seen")
 	require.Equal(t, spatial.Position{X: 10, Y: 3}, out[0].Seen.Position)
+	require.Equal(t, StandingDowned, out[0].Seen.Standing,
+		"the batched down-set this subject appears in projects onto Seen.Standing (rpg-toolkit#1137)")
 }
 
 // TestProjectSightingsNonSightChannelGetsNoSeen pins the other half: a
@@ -58,7 +60,7 @@ func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
 		Status:     intel.Current,
 	}}
 
-	out := projectSightings(holdings)
+	out := projectSightings(holdings, nil, nil)
 	require.Len(t, out, 1)
 	require.Nil(t, out[0].Seen, "a non-sight channel must not carry Seen, however the payload happens to decode")
 }
@@ -77,10 +79,11 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 		Status:     intel.Held,
 	}}
 
-	out := projectSightings(holdings)
+	out := projectSightings(holdings, nil, nil)
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a held memory must keep its last Seen")
 	require.Equal(t, spatial.Position{X: 6, Y: 10}, out[0].Seen.Position)
+	require.Equal(t, StandingUp, out[0].Seen.Standing, "not in the down set: reports up")
 }
 
 // TestProjectSeenIsNilWhenASightPayloadFailsToDecode is the defensive arm: an
@@ -88,7 +91,7 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 // payloads), pinned so a future regression that corrupts a sight payload
 // fails loudly as a missing Seen rather than a wrong Position.
 func TestProjectSeenIsNilWhenASightPayloadFailsToDecode(t *testing.T) {
-	got := projectSeen(intel.Sight, []byte("not json"))
+	got := projectSeen(intel.Sight, []byte("not json"), false)
 	require.Nil(t, got)
 }
 
@@ -111,7 +114,8 @@ func TestProjectReportSeenCannotDistinguishSightFromALookalikePayload(t *testing
 	lookalike := sightPayloadBytes(t, 1, 2) // could be any future channel's bytes that
 	// happen to parse as {x,y}; today it can only actually be sight.
 
-	got := projectReportSeen(lookalike)
+	got := projectReportSeen(lookalike, true)
 	require.NotNil(t, got, "documents the gap: any {x,y}-shaped payload decodes, whatever channel actually produced it")
 	require.Equal(t, spatial.Position{X: 1, Y: 2}, got.Position)
+	require.Equal(t, StandingDowned, got.Standing, "the down flag still projects even through the gap")
 }
