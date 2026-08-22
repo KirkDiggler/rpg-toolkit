@@ -359,10 +359,26 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 // no installed base — only a hand-kept fixture, which is exactly what should be
 // recreated rather than reinterpreted.
 type MemberData struct {
-	ID   MemberID      `json:"id"`
-	Kind MemberKind    `json:"kind"`
-	Name string        `json:"name,omitempty"`
-	Cell *PositionData `json:"cell"`
+	ID        MemberID         `json:"id"`
+	Kind      MemberKind       `json:"kind"`
+	Name      string           `json:"name,omitempty"`
+	Cell      *PositionData    `json:"cell"`
+	SpeedFeet int              `json:"speed_feet,omitempty"`
+	SightFeet int              `json:"sight_feet,omitempty"`
+	Actions   []ActionViewData `json:"actions,omitempty"`
+	Targeting string           `json:"targeting,omitempty"`
+}
+
+// ActionViewData is the persistent representation of an [ActionView] — a
+// member's static fact about one action, round-tripped verbatim (Kirk,
+// rpg-project#254 review: "round-tripped through ToData/LoadEncounter, as
+// encounter-owned primitives"). core.Ref already carries its own JSON tags
+// and needs no persisted twin of its own.
+type ActionViewData struct {
+	Ref       core.Ref `json:"ref"`
+	Name      string   `json:"name,omitempty"`
+	ReachFeet int      `json:"reach_feet,omitempty"`
+	Kind      string   `json:"kind,omitempty"`
 }
 
 // EndingData is the persistent representation of a declared ending.
@@ -396,10 +412,14 @@ func (e *Encounter) ToData() EncounterData {
 			continue // Not placed (shouldn't happen in valid encounter)
 		}
 		membersData = append(membersData, MemberData{
-			ID:   m.ID,
-			Kind: m.Kind,
-			Name: m.Name,
-			Cell: &PositionData{X: cell.X, Y: cell.Y},
+			ID:        m.ID,
+			Kind:      m.Kind,
+			Name:      m.Name,
+			Cell:      &PositionData{X: cell.X, Y: cell.Y},
+			SpeedFeet: m.SpeedFeet,
+			SightFeet: m.SightFeet,
+			Actions:   actionViewDataFrom(m.Actions),
+			Targeting: m.Targeting,
 		})
 	}
 
@@ -564,6 +584,34 @@ func (e *Encounter) ToData() EncounterData {
 // own doc comment. Either way, a room is never stored in fieldInput and
 // later handed to ToData while holding GridShapeGridless). The default
 // case already returns "" for it, same as any other unreachable value.
+// actionViewDataFrom converts a member's runtime [ActionView] facts to their
+// persisted twin. A nil slice stays nil rather than becoming an empty one —
+// the same "omitempty means it, not a zero-length placeholder" convention
+// every other optional slice on this data shape follows.
+func actionViewDataFrom(actions []ActionView) []ActionViewData {
+	if actions == nil {
+		return nil
+	}
+	out := make([]ActionViewData, len(actions))
+	for i, a := range actions {
+		out[i] = ActionViewData(a)
+	}
+	return out
+}
+
+// actionViewsFrom is actionViewDataFrom's inverse, restoring a member's
+// runtime [ActionView] facts from their persisted twin.
+func actionViewsFrom(data []ActionViewData) []ActionView {
+	if data == nil {
+		return nil
+	}
+	out := make([]ActionView, len(data))
+	for i, a := range data {
+		out[i] = ActionView(a)
+	}
+	return out
+}
+
 func gridShapeToData(shape spatial.GridShape) string {
 	switch shape {
 	case spatial.GridShapeHex:
@@ -642,6 +690,14 @@ type LoadEncounterInput struct {
 	// as a Setup without one (rpg-toolkit#1162, ADR-0043). Refused at the
 	// door, never guarded at the use site, and never defaulted.
 	TurnDriver TurnDriver
+
+	// Striker resolves and records a member's attack when a TurnDriver
+	// returns an Attack intent. REQUIRED, exactly as it is on SetupInput and
+	// for the same reason (rpg-project#254): a loaded encounter's bubble can
+	// land on an unplayed member ready to swing the moment it is
+	// reconstituted. Refused at the door, never guarded at the use site, and
+	// never defaulted.
+	Striker Striker
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -667,6 +723,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.TurnDriver == nil {
 		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
+	}
+	if in.Striker == nil {
+		return fmt.Errorf("load encounter: Striker is required: %w", ErrNoStriker)
 	}
 
 	return nil
@@ -1057,6 +1116,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		standing:    input.Standing,
 		sight:       input.Sight,
 		turnDriver:  input.TurnDriver,
+		striker:     input.Striker,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),
@@ -1095,9 +1155,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 
 		member := &memberRecord{
-			ID:   m.ID,
-			Kind: m.Kind,
-			Name: m.Name,
+			ID:        m.ID,
+			Kind:      m.Kind,
+			Name:      m.Name,
+			SpeedFeet: m.SpeedFeet,
+			SightFeet: m.SightFeet,
+			Actions:   actionViewsFrom(m.Actions),
+			Targeting: m.Targeting,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true

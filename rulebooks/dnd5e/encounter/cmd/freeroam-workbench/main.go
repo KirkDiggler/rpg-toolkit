@@ -34,7 +34,9 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -103,7 +105,7 @@ func solidPillar(x, y float64) encounter.PropInput {
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
-		TurnDriver: passUnplayedTurns{},
+		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two chambers do not
 			// cover — the fiction is the mountain they were cut from, and the
@@ -553,7 +555,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: passUnplayedTurns{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -619,14 +621,16 @@ func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, err
 	return nil, nil
 }
 
-// passUnplayedTurns is the workbench's TurnDriver capability: an unplayed
-// member's turn ends with no other effect. The workbench demonstrates free
-// roam and sight, not monster behaviour, so this says the least interesting
-// true thing rather than the module defaulting it (rpg-toolkit#1162).
-type passUnplayedTurns struct{}
+// noAttacksExpected is the workbench's Striker capability. The workbench
+// demonstrates free roam and sight, not combat — its TurnDriver is
+// [encounter.PassDriver], which never returns an Attack intent — so this is
+// never actually called; it exists only because the capability is required
+// (rpg-toolkit#1033, rpg-project#254) and says so honestly rather than
+// returning a fabricated hit.
+type noAttacksExpected struct{}
 
-func (passUnplayedTurns) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
-	return encounter.Pass{}, nil
+func (noAttacksExpected) Strike(context.Context, *encounter.Encounter, encounter.MemberID, encounter.MemberID, core.Ref) error {
+	return errors.New("workbench: no driver here ever attacks")
 }
 
 // torchAndDarkvision is the workbench's Sight capability, and it is the one

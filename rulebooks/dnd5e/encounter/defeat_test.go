@@ -381,7 +381,7 @@ func (s *DefeatSuite) TestOnlyTheDecidedFightEnds() {
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       data,
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Sight: everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 	})
 	s.Require().NoError(err)

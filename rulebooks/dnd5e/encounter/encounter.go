@@ -199,6 +199,11 @@ type Encounter struct {
 	// standing and sight are, and — unlike deciders — never optional; see
 	// [TurnDriver] and ADR-0043.
 	turnDriver TurnDriver
+
+	// striker resolves and records an [Attack] intent a TurnDriver returns.
+	// Required at both constructors for the same reason turnDriver is; see
+	// [Striker].
+	striker Striker
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Step, Join) declaration order is
@@ -1305,6 +1310,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoTurnDriver)
 	}
 
+	// Required for the same reason again, one seam over: a TurnDriver can
+	// decide to attack the moment a fight forms, so an encounter that
+	// cannot resolve that swing would stall on it or silently drop it
+	// (rpg-project#254). Never defaulted — see [Striker]'s own doc.
+	if in.Striker == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoStriker)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -1416,6 +1429,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		standing:         in.Standing,
 		sight:            in.Sight,
 		turnDriver:       in.TurnDriver,
+		striker:          in.Striker,
 		endings:          nil,
 		retention:        normalizeRetention(in.Retention),
 		fieldInput:       deepCopyRoomInputs(in.Field.Rooms),
@@ -1480,9 +1494,13 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 
 		member := &memberRecord{
-			ID:   mi.ID,
-			Kind: mi.Kind,
-			Name: mi.Name,
+			ID:        mi.ID,
+			Kind:      mi.Kind,
+			Name:      mi.Name,
+			SpeedFeet: mi.SpeedFeet,
+			SightFeet: mi.SightFeet,
+			Actions:   mi.Actions,
+			Targeting: mi.Targeting,
 		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
@@ -1630,11 +1648,15 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 
 	region, _ := e.RegionAt(cell)
 	return Member{
-		ID:       record.ID,
-		Kind:     record.Kind,
-		Name:     record.Name,
-		Region:   region,
-		Position: cell,
+		ID:        record.ID,
+		Kind:      record.Kind,
+		Name:      record.Name,
+		Region:    region,
+		Position:  cell,
+		SpeedFeet: record.SpeedFeet,
+		SightFeet: record.SightFeet,
+		Actions:   record.Actions,
+		Targeting: record.Targeting,
 	}, nil
 }
 
@@ -2411,9 +2433,13 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 
 	// Register the member
 	member := &memberRecord{
-		ID:   in.Member,
-		Kind: in.Kind,
-		Name: in.Name,
+		ID:        in.Member,
+		Kind:      in.Kind,
+		Name:      in.Name,
+		SpeedFeet: in.SpeedFeet,
+		SightFeet: in.SightFeet,
+		Actions:   in.Actions,
+		Targeting: in.Targeting,
 	}
 	e.members[in.Member] = member
 	e.everMembers[in.Member] = true // Track in everMembers

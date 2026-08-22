@@ -64,7 +64,7 @@ func (s *KillingBlowSuite) apart(standing encounter.Standing) *encounter.Encount
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{

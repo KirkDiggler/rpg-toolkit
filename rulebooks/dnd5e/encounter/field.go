@@ -343,6 +343,76 @@ type MemberInput struct {
 	// Players must not have a Decider; passing one for a player will fail validation.
 	// Deciders are NOT persisted; they are re-registered at load.
 	Decider Decider
+
+	// SpeedFeet is how far this member can move on their own turn, in FEET
+	// (Kirk, rpg-project#254 review) — a character's walking speed, or a
+	// monster's SpeedData.Walk. Filled for every kind, the same MEMBER fact
+	// [Name] already is, not a monster-only field: a future driver for a
+	// disconnected player shares this exact seam. Zero is legal and means
+	// this member never moves on its own turn — true of every player today,
+	// whose movement is driven by [Encounter.Step] under a live hand, not by
+	// a [TurnDriver]'s Move intent.
+	SpeedFeet int
+
+	// SightFeet is how far this member can see, in FEET, before light and
+	// line-of-sight are applied — 120 for a character (this rulebook's
+	// stated default absent a stated number) or a monster's
+	// SensesData.Darkvision when the stat block sets one. A STATIC base
+	// fact, filled once at Join/Spawn — [Sight] still runs the full
+	// light-and-LOS-aware answer at every percept refresh; this is what a
+	// [Sight] implementation reads instead of reloading the sheet or stat
+	// block on every single refresh, the same static/dynamic split
+	// [Sight]'s own doc draws between "what changed" and "what this
+	// composition was told."
+	SightFeet int
+
+	// Actions are this member's own static facts about what it can do on
+	// its turn: a character's equipped weapon's swing (and the unarmed
+	// strike when no weapon is equipped), or a monster's authored
+	// [monster.ActionData]. Static join-time facts, the same species as
+	// Name (rpg-toolkit#1137) — this module cannot import the rulebook
+	// (C1), so every field on [ActionView] is carried and never
+	// interpreted, exactly as [Member.Name] already is.
+	Actions []ActionView
+
+	// Targeting is a monster's target-selection strategy, in the
+	// rulebook's own words — "closest", "lowest-health", "lowest-ac" — and
+	// the only field on this member fact that is NOT filled for every
+	// kind: empty for a player, who is never asked to choose a target
+	// autonomously (today; a future disconnected-player driver would read
+	// this the same way a monster's does). Opaque here (C1): this
+	// composition carries the string and never branches on it.
+	Targeting string
+}
+
+// ActionView is a static fact about one action a member can take — an
+// encounter-owned primitive, the same species as [Member.Name] and
+// [AttackIdentity.DamageType]: this composition carries it and never
+// interprets it, per C1 (this module's go.mod cannot import the rulebook,
+// so it cannot know what a Ref like "dnd5e:monster_actions:melee" means, or
+// what a Kind string like "melee" means).
+type ActionView struct {
+	// Ref identifies this action's implementation to whoever compiles an
+	// attack from it later — resolution's AttackFromMonsterAction, or a
+	// character's equipped-weapon compiler. Opaque here.
+	Ref core.Ref
+
+	// Name is this action's display name — "Shortsword", "Bite" — carried
+	// forward from the rulebook's own authoring, exactly as [Member.Name]
+	// is.
+	Name string
+
+	// ReachFeet is how far this action reaches, in FEET (Kirk,
+	// rpg-project#254 review — a cell is 5 feet; see [CellsFromFeet]). The
+	// ONE place that compares this against a grid Distance converts once,
+	// via CellsFromFeet, rather than this record guessing at a conversion.
+	ReachFeet int
+
+	// Kind is this action's category, in the rulebook's own words —
+	// "melee", "ranged", "unarmed" — opaque to this composition and never
+	// branched on here, the same [AttackIdentity.DamageType] precedent
+	// Name already follows.
+	Kind string
 }
 
 // Trigger is an interface for ending conditions.
@@ -431,6 +501,15 @@ type SetupInput struct {
 	// — see ADR-0043 for why this capability, unlike Decider, may not be
 	// silently absent.
 	TurnDriver TurnDriver
+
+	// Striker resolves and records a member's attack when a [TurnDriver]
+	// returns an [Attack] intent (rpg-project#254). REQUIRED, for the same
+	// reason TurnDriver is and at the same door: a fight can form with an
+	// unplayed member ready to swing the moment it forms, so an encounter
+	// that cannot resolve that swing would stall or silently drop it.
+	// Refused at construction (ErrNoStriker). There is no default — see
+	// [Striker]'s own doc.
+	Striker Striker
 
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
@@ -528,10 +607,20 @@ type Member struct {
 	// field IS this frame (rpg-toolkit#1106). Room above names the authored
 	// chamber whose footprint holds this cell.
 	Position spatial.Position
+
+	// SpeedFeet, SightFeet, Actions and Targeting are this member's static
+	// facts, carried forward verbatim from [MemberInput]/[JoinInput] — see
+	// those fields' own docs. Read by a [TurnDriver] through [MonsterView],
+	// which projects the same record plus the turn's own dynamic parts
+	// (Seen, Budget).
+	SpeedFeet int
+	SightFeet int
+	Actions   []ActionView
+	Targeting string
 }
 
-// memberRecord is what the composition stores about a member: identity and
-// kind, and nothing spatial at all.
+// memberRecord is what the composition stores about a member: identity,
+// kind, and the static member facts — never anything spatial.
 //
 // Deliberately NOT their cell — the canvas holds that, and duplicating it here
 // would create a second truth that the verbs would have to keep in step. Not
@@ -539,10 +628,23 @@ type Member struct {
 // chamber a member stands in is a question the field answers from their cell,
 // and the copy this record used to carry had to be mutated by hand on every
 // crossing.
+//
+// SpeedFeet, SightFeet, Actions and Targeting joined Name here for the same
+// reason Name did (rpg-toolkit#1137): static join-time facts, the same
+// species whether the member is a player or a monster (Kirk, rpg-project#254
+// review — "MemberInput/memberRecord carries MEMBER facts, filled for every
+// kind"), round-tripped through ToData/LoadEncounter as encounter-owned
+// primitives (core.Ref, string, int) rather than imported rulebook types
+// (C1). No parallel monster-only struct: Targeting is the only field of the
+// four that is not filled for a player, and it is simply empty for one.
 type memberRecord struct {
-	ID   MemberID
-	Kind MemberKind
-	Name string
+	ID        MemberID
+	Kind      MemberKind
+	Name      string
+	SpeedFeet int
+	SightFeet int
+	Actions   []ActionView
+	Targeting string
 }
 
 // Status represents the encounter's open/closed state.
@@ -771,6 +873,17 @@ type JoinInput struct {
 	// Players must not have a Decider; passing one for a player will fail
 	// validation. Deciders are NOT persisted; they are re-registered at load.
 	Decider Decider
+
+	// SpeedFeet, SightFeet, Actions and Targeting are this member's static
+	// facts — see [MemberInput]'s own fields of the same name for the full
+	// doc. A joiner arriving mid-scene carries them exactly as an authored
+	// one does; the caller who loaded the sheet or spawned the monster
+	// already knows them (rpg-toolkit#1101's own argument for Name, one
+	// field further).
+	SpeedFeet int
+	SightFeet int
+	Actions   []ActionView
+	Targeting string
 }
 
 // JoinOutput reports the results of a successful join.

@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -298,35 +300,272 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 			break
 		}
 
-		outcome, derr := e.turnDriver.Act(activeID)
+		seq, roundWrapped, derr := e.driveOneMonsterTurn(bubble, active, m)
 		if derr != nil {
 			return wrapped, lastSeq, fmt.Errorf("drive monster turns %q: %w", activeID, derr)
 		}
-
-		switch outcome.(type) {
-		case Pass:
-			out, eerr := bubble.End(&clock.EndInput{Actor: active})
-			if eerr != nil {
-				return wrapped, lastSeq, fmt.Errorf("drive monster turns %q: %w", activeID, eerr)
-			}
-			wrapped = wrapped || out.RoundWrapped
-
-			seq, berr := e.appendClockBeat(map[string]interface{}{
-				"beat":   "turn-ended",
-				"member": string(activeID),
-				"next":   out.Next,
-			})
-			if berr != nil {
-				return wrapped, lastSeq, fmt.Errorf("drive monster turns append beat: %w", berr)
-			}
-			lastSeq = seq
-		default:
-			return wrapped, lastSeq, fmt.Errorf(
-				"drive monster turns %q: driver returned %T: %w", activeID, outcome, ErrBadTurnOutcome)
-		}
+		wrapped = wrapped || roundWrapped
+		lastSeq = seq
 	}
 
 	return wrapped, lastSeq, nil
+}
+
+// driveOneMonsterTurn runs ONE unplayed member's whole turn: build view →
+// Act → execute → repeat until [Pass] or the budget is spent, then end the
+// turn. Returns the sequence of the terminating "turn-ended" beat.
+//
+// THE BUDGET IS ONE ATTACK PLUS THE MEMBER'S OWN SPEED, IN FEET (Kirk,
+// rpg-project#254 review). A driver is asked again after every executed
+// intent — an Attack that lands still leaves movement to spend, a Move that
+// only closes half the distance still leaves the attack unspent — and the
+// inner loop is bounded (attacksLeft + movement-in-cells + one terminating
+// call) so a driver that never returns Pass cannot spin this forever.
+//
+// A DRIVER'S OWN Go ERROR ABORTS THE WHOLE CALL, exactly as it always has —
+// see [TurnDriver.Act]'s doc. A syntactically valid but unexecutable intent
+// does NOT: it is [ErrBadIntent], and this member's turn simply ends as
+// [Pass] would, so the caller's own verb (EndTurn, form) still succeeds.
+// This is the asymmetry the brief calls for: a driver malfunction is this
+// module's problem, a bad decision is the driver's own business, and only
+// one of those should cost the whole call.
+func (e *Encounter) driveOneMonsterTurn(
+	bubble *clock.Turn, active core.EntityID, m *memberRecord,
+) (seq uint64, roundWrapped bool, err error) {
+	activeID := MemberID(active)
+
+	round, rerr := bubble.Round()
+	if rerr != nil {
+		return 0, false, fmt.Errorf("round: %w", rerr)
+	}
+
+	budget := TurnBudget{AttacksLeft: 1, MovementFeet: m.SpeedFeet}
+
+	// See the function doc: bounded so a misbehaving driver cannot spin the
+	// caller. +2 covers one attack and the terminating Pass a well-behaved
+	// driver returns once it has nothing left; the rest is however many
+	// cells this member could ever afford to ask for one at a time.
+	innerBound := 2 + CellsFromFeet(budget.MovementFeet)
+
+	for j := 0; j < innerBound; j++ {
+		view, verr := e.buildMonsterView(m, budget, round)
+		if verr != nil {
+			return 0, false, fmt.Errorf("view: %w", verr)
+		}
+
+		intent, derr := e.turnDriver.Act(view)
+		if derr != nil {
+			return 0, false, fmt.Errorf("act: %w", derr)
+		}
+
+		done, dexecerr := e.executeTurnIntent(activeID, m, view, intent, &budget)
+		if dexecerr != nil {
+			return 0, false, fmt.Errorf("execute: %w", dexecerr)
+		}
+		if done {
+			break
+		}
+	}
+
+	out, eerr := bubble.End(&clock.EndInput{Actor: active})
+	if eerr != nil {
+		return 0, false, fmt.Errorf("end: %w", eerr)
+	}
+
+	seq, berr := e.appendClockBeat(map[string]interface{}{
+		"beat":   "turn-ended",
+		"member": string(activeID),
+		"next":   out.Next,
+	})
+	if berr != nil {
+		return 0, false, fmt.Errorf("append beat: %w", berr)
+	}
+	return seq, out.RoundWrapped, nil
+}
+
+// executeTurnIntent runs one Act call's answer and reports whether this
+// member's turn is over — [Pass], an [ErrBadIntent]-refused [Attack] or
+// [Move], or a [Move] that made no progress at all all end the turn the same
+// way; a successful [Attack] or [Move] leaves it running so the driver is
+// asked again against the updated budget and view.
+//
+// budget is mutated in place: the one thing every branch here shares is that
+// what it spends must be visible to the NEXT buildMonsterView call, and a
+// return value the caller has to remember to feed back in is exactly the
+// kind of two-truths bug this composition's own field.go doc warns against
+// elsewhere.
+func (e *Encounter) executeTurnIntent(
+	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
+) (done bool, err error) {
+	switch it := intent.(type) {
+	case Pass:
+		return true, nil
+
+	case Attack:
+		if !attackIsInReach(view, it) || budget.AttacksLeft <= 0 {
+			// ErrBadIntent: not a driver malfunction (see the type's own
+			// doc) — this member's turn simply ends, exactly like Pass.
+			return true, nil
+		}
+
+		// context.Background() rather than a threaded caller context: no
+		// verb on this composition accepts one today (EndTurn, form, Step —
+		// see this module's CLAUDE.md, "play/* leaves take no
+		// context.Context"), and Striker is the first capability that does,
+		// by the brief's own design. Plumbing a context through every
+		// verb between a host's request and here is a bigger change than
+		// this slice asks for; the day Striker's own implementation needs
+		// cancellation propagated from the host, that is the day to revisit
+		// this rather than the day to speculatively add it everywhere now.
+		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
+			return false, fmt.Errorf("strike: %w", serr)
+		}
+		budget.AttacksLeft = 0
+		return false, nil
+
+	case Move:
+		cellsAffordable := CellsFromFeet(budget.MovementFeet)
+		if len(it.Path) == 0 || len(it.Path) > cellsAffordable {
+			// ErrBadIntent: a driver asking for more than its own budget, or
+			// for nothing at all (that is what Pass is for) — this member's
+			// turn ends rather than executing a path it did not fully ask
+			// for.
+			return true, nil
+		}
+
+		at := uint64(e.clock.ToData().HighWater)
+		audience := e.rosterIDs()
+		moved := 0
+		for _, cell := range it.Path {
+			action, stepped := e.stepTo(m, cell)
+			if !stepped {
+				// The same silent-refusal contract stepTo already has for
+				// the pump: a wall stops the WALK, not the turn — whatever
+				// cells succeeded before it are kept (rpg-project#254,
+				// "the same refusals a player's walk meets").
+				break
+			}
+			if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
+				return false, fmt.Errorf("move beat: %w", berr)
+			}
+			moved++
+		}
+		budget.MovementFeet -= moved * FeetPerCell
+
+		if moved > 0 {
+			// Refreshed once for the whole intent, not per cell — the same
+			// batching Pump uses for its own multi-member tick, and what
+			// makes the NEXT buildMonsterView call in this same turn see
+			// where this member actually ended up. A straggler this move
+			// brings into contact JOINS the running bubble rather than
+			// starting a second one (trigger.go's classify: "a fight
+			// already running is joined, not started again") — the one-
+			// bubble policy is not at risk here.
+			if _, _, serr := e.refreshSight(audience); serr != nil {
+				return false, fmt.Errorf("refresh sight: %w", serr)
+			}
+		}
+
+		// Zero cells succeeded: the driver asked for a path that could not
+		// even start from here. Ending the turn rather than re-asking
+		// avoids spinning on a request that will not succeed differently
+		// next time this same view is built.
+		return moved == 0, nil
+
+	default:
+		return false, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
+	}
+}
+
+// attackIsInReach reports whether intent's target is a currently Seen,
+// Standing member within intent's own Action's reach.
+//
+// A SINGLE MAP LOOKUP DOES BOTH CHECKS AT ONCE, deliberately: SeenMember's
+// InReach is only ever populated for THIS member's own [MonsterView.Actions]
+// (see [Encounter.buildMonsterView]), so a Ref that does not name one of
+// this member's own actions is simply absent from the map — Go's zero value
+// for a missing key is false, which is exactly "not in reach" for an action
+// this member does not have. No separate "is this even my action" check is
+// needed because there is no way to reach true without it also being true.
+func attackIsInReach(view MonsterView, intent Attack) bool {
+	for _, sm := range view.Seen {
+		if sm.ID != intent.Target {
+			continue
+		}
+		return sm.Standing && sm.InReach[intent.Action]
+	}
+	return false
+}
+
+// buildMonsterView projects member's own static facts, its currently active
+// sight intel, and the turn's remaining budget into the shape a [TurnDriver]
+// is allowed to see — the same anti-wall-hack contract [Decider]'s Snapshot
+// keeps (C2), extended to a turn's own questions.
+func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round int) (MonsterView, error) {
+	ownCell, err := e.cellOf(m)
+	if err != nil {
+		return MonsterView{}, fmt.Errorf("position: %w", err)
+	}
+
+	down, err := e.standingNow()
+	if err != nil {
+		return MonsterView{}, fmt.Errorf("standing: %w", err)
+	}
+
+	// The member's own holdings and nothing else (C2) — the same call
+	// Pump's own Decider consult makes for a Snapshot, one seam over.
+	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
+	if err != nil {
+		return MonsterView{}, fmt.Errorf("held by: %w", err)
+	}
+
+	var seen []SeenMember
+	for _, h := range holdings {
+		// Sight channel, ACTIVELY sustained only (intel.Current) — a stale
+		// "held" memory (intel.Held, a ghost: known but not currently
+		// sustained) is not something this member can act on this turn, so
+		// it is excluded here rather than left for a driver to filter.
+		if h.Channel != intel.Sight || h.Status != intel.Current {
+			continue
+		}
+		subjectID := MemberID(h.Subject)
+		other, ok := e.members[subjectID]
+		if !ok {
+			continue
+		}
+		pos, ok := DecodeSightPayload(h.Payload)
+		if !ok {
+			continue
+		}
+
+		dist := e.Distance(ownCell, pos)
+		inReach := make(map[core.Ref]bool, len(m.Actions))
+		for _, a := range m.Actions {
+			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.ReachFeet))
+		}
+
+		seen = append(seen, SeenMember{
+			ID:       subjectID,
+			Kind:     other.Kind,
+			Standing: !down[subjectID],
+			Position: pos,
+			Distance: dist,
+			InReach:  inReach,
+		})
+	}
+	// C8: a driver asked twice against unchanged data must see the same
+	// order, not whatever order the intel map happened to range in.
+	sort.Slice(seen, func(i, j int) bool { return seen[i].ID < seen[j].ID })
+
+	return MonsterView{
+		Self:      m.ID,
+		Position:  ownCell,
+		Actions:   m.Actions,
+		Targeting: m.Targeting,
+		Seen:      seen,
+		Budget:    budget,
+		Round:     round,
+	}, nil
 }
 
 // driveIfStillRunning calls driveMonsterTurns on bubble if it still holds any

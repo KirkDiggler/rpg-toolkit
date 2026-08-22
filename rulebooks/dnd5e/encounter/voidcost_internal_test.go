@@ -134,7 +134,7 @@ func benchSightRefreshOn(b *testing.B, field FieldInput, rooms, dim, members int
 	}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight: benchSight{1 << 20}, Standing: benchStanding{}, Initiative: benchRoller{}, TurnDriver: passDriver{},
+		Sight: benchSight{1 << 20}, Standing: benchStanding{}, Initiative: benchRoller{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field:   field,
 		Members: mi,
 		Endings: []EndingInput{{Key: "done", Trigger: TriggerExternal{}}},

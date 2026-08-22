@@ -31,7 +31,7 @@ const namesRoom = "hall"
 func namesScene(members []encounter.MemberInput) (*encounter.Encounter, error) {
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
@@ -121,7 +121,7 @@ func (s *NamesTestSuite) TestNameRoundTripsThroughPersistence() {
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
-		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, TurnDriver: passDriver{}, Striker: passStriker{},
 	})
 	s.Require().NoError(err)
 

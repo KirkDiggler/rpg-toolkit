@@ -17,7 +17,13 @@ package dungeonspec_test
 // exporting them to share here would put a test-only surface on a published
 // module.
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+import (
+	"context"
+	"errors"
+
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+)
 
 // unlimitedSight is far enough that no scene here is bounded by it.
 const unlimitedSight = 1_000_000
@@ -60,6 +66,18 @@ func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.Me
 // should do (rpg-toolkit#1162).
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
+}
+
+// noAttacksExpected is this package's Striker capability. These scenes are
+// about geometry, not combat, and passDriver never returns an Attack intent
+// — so this is never actually called; it exists only because the
+// capability is required (rpg-toolkit#1033, rpg-project#254).
+type noAttacksExpected struct{}
+
+func (noAttacksExpected) Strike(
+	context.Context, *encounter.Encounter, encounter.MemberID, encounter.MemberID, core.Ref,
+) error {
+	return errors.New("dungeonspec_test: no scene here ever attacks")
 }

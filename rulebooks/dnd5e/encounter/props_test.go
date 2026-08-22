@@ -87,7 +87,7 @@ func (s *PropsSuite) chamber(ref string, blocksMovement, blocksSight *bool) *enc
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
@@ -186,7 +186,7 @@ func (s *PropsSuite) TestCandlesAreThereAndInNobodysWay() {
 // as "a pillar and a statue are the same cell".
 func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
@@ -227,7 +227,7 @@ func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 func (s *PropsSuite) TestAPropMustSayWhatItDoes() {
 	build := func(p encounter.PropInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{{
@@ -280,7 +280,7 @@ func (s *PropsSuite) TestAPropSurvivesASave() {
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 	})
 	s.Require().NoError(err)
 
@@ -318,7 +318,7 @@ func (s *PropsSuite) TestAnOldBlobsOccludersAreRefusedLoudly() {
 
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Contains(err.Error(), "occluders",
@@ -341,7 +341,7 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 		mutate(&data.Field.Rooms[0])
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
-			Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		})
 		return err
 	}
@@ -373,7 +373,7 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() {
 	solid := true
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{{
