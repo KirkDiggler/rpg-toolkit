@@ -66,11 +66,11 @@ type executedAction struct {
 // that knows it is a phantom.
 //
 // Validation order (R5 atomicity): nil input → empty member → closed → not a
-// member → in a fight → the step itself. Returns ErrNilInput, ErrNoMember,
-// ErrClosed, ErrNotMember, ErrInBubble for a member mid-fight (free roam is a
-// world-clock verb), or ErrBadPlacement — for a cell no authored room owns
-// (void is not floor), for a wall in the way, or for any other placement the
-// canvas refuses.
+// member → the turn gate → the step itself. Returns ErrNilInput, ErrNoMember,
+// ErrClosed, ErrNotMember, ErrNotActive for a bubble member whose turn it is
+// not (rpg-toolkit#1169), or ErrBadPlacement — for a cell no authored room
+// owns (void is not floor), for a wall in the way, or for any other placement
+// the canvas refuses.
 func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("step: %w", ErrNilInput)
@@ -89,16 +89,24 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step: %w", ErrNotMember)
 	}
 
-	// The same world-clock gate every free-roam verb carries. A member caught
-	// in a bubble acts through the fight's own turn structure — there is no
-	// in-fight movement verb yet, and until there is, a fight member cannot
-	// move at all rather than moving outside initiative.
+	// The turn gate (rpg-toolkit#1169, ADR-0044). A member on the world
+	// clock has no bubble and reaches the step below unconditionally, same
+	// as always. A member IN a bubble moves through their OWN turn now
+	// rather than never — but only theirs: the fight's turn structure is
+	// what a bubble member acts through, and for everyone but the member
+	// the clock is waiting on, that structure says wait, not walk.
 	bubble, err := e.bubbleFor(in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("step: %w", err)
 	}
 	if bubble != nil {
-		return nil, fmt.Errorf("step: member %q: %w", in.Member, ErrInBubble)
+		active, aerr := bubble.Active()
+		if aerr != nil {
+			return nil, fmt.Errorf("step: %w", aerr)
+		}
+		if MemberID(active) != in.Member {
+			return nil, fmt.Errorf("step: member %q: %w", in.Member, ErrNotActive)
+		}
 	}
 
 	action, err := e.stepMember(member, in.To)
