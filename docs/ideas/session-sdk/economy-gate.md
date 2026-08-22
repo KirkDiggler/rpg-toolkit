@@ -30,10 +30,13 @@ movement is the keyed capacity (`combat.CapacityMovement`) already
 reserved for it, priced per call (5 ft/cell, computed outside the profile
 per the addendum's row-four discipline) and charged through the same
 `combat.Pay` the ruling's foundation already established. First half —
-`encounter.Step`'s turn-clock gate — is
-[#1170](https://github.com/KirkDiggler/rpg-toolkit/pull/1170); the session
-half that actually calls `combat.Pay` before a walk follows in a second
-PR, and fork (d) is fully retired once both land.
+`encounter.Step`'s turn-clock gate — merged as
+[#1170](https://github.com/KirkDiggler/rpg-toolkit/pull/1170)
+(`encounter/v0.30.1`); the session half that actually calls `combat.Pay`
+before a walk and charges the whole requested path — refused whole,
+naming the currency in feet, before any step — is
+[#1171](https://github.com/KirkDiggler/rpg-toolkit/pull/1171). Fork (d) is
+fully retired once #1171 merges.
 
 [census]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326154182
 [supp]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326242250
