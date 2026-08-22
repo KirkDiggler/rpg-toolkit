@@ -597,11 +597,20 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	s.Require().Equal("alice", turn.Active, "alice is first registered — first in initiative")
 
 	// bob swinging at the skeleton while it is alice's turn, not his.
+	before := s.characters.asked["bob"]
 	_, err = mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "bob", Target: "skel-1",
 	})
 	s.ErrorIs(err, session.ErrNotYourTurn)
 	s.Contains(err.Error(), "bob")
+
+	// Copilot's finding on PR #1174: the turn gate must be asked before
+	// compileAttack ever loads bob's sheet — the same precedence Move's own
+	// gate keeps (Copilot on #1171) and Afford's DOWNED-vs-NOT_YOUR_TURN
+	// ordering keeps (TestNotActiveWinsOverAffordability's own claim,
+	// asked here of Attack instead of Move).
+	s.Equal(before, s.characters.asked["bob"],
+		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
 }
 
 // TestASheetlessTargetIsRefusedByName covers content standing in a world that

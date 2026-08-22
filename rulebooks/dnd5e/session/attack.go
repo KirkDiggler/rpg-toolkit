@@ -169,6 +169,22 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
 	}
 
+	// NOT YOUR TURN, checked FIRST among the fact-about-this-member
+	// refusals and before anything touches character storage — the same
+	// precedence Move's own gate keeps (Copilot's finding on #1171,
+	// repeated by Copilot here on #1174: this compiled and loaded a sheet
+	// via compileAttack before checking whose turn it was). Free roam asks
+	// nothing here — there is no active member to compare against — which
+	// is the same clock read priceSwing makes below for a different
+	// question.
+	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Attacker)})
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", translate(err))
+	}
+	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Attacker {
+		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
+	}
+
 	// A downed member does not swing. Asked AFTER the roster checks, so naming somebody
 	// who is not here is still ErrNoMember — being down is a fact about a
 	// member, and it means nothing about an ID that is not one. Asked about the
@@ -192,20 +208,6 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	sheet, profile, err := m.compileAttack(ctx, in.Attacker)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	// NOT YOUR TURN, asked once the attack has compiled so the refusal
-	// still reflects a real swing rather than one that could not have
-	// happened anyway. Free roam asks nothing here — there is no active
-	// member to compare against — which mirrors Move's own turn gate
-	// (rpg-toolkit#1169) and is the same clock read priceSwing makes
-	// below for a different question.
-	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Attacker)})
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", translate(err))
-	}
-	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Attacker {
-		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
 	}
 
 	// NO TARGET IN REACH, before pricing: a swing this seam is about to

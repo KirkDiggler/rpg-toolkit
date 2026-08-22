@@ -260,7 +260,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Member   string           `json:"member"`
 			Position spatial.Position `json:"position"`
 		}
-		if json.Unmarshal(payload, &p) != nil {
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
 			return nil
 		}
 		return MovedBody{Member: p.Member, To: p.Position}
@@ -269,7 +269,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			Member string `json:"member"`
 			Next   string `json:"next"`
 		}
-		if json.Unmarshal(payload, &p) != nil {
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" || p.Next == "" {
 			return nil
 		}
 		return TurnEndedBody{Member: p.Member, Next: p.Next}
@@ -277,7 +277,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		var p struct {
 			Order []string `json:"order"`
 		}
-		if json.Unmarshal(payload, &p) != nil {
+		if json.Unmarshal(payload, &p) != nil || len(p.Order) == 0 {
 			return nil
 		}
 		return FightStartedBody{Members: p.Order}
@@ -285,7 +285,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		var p struct {
 			Cause string `json:"cause"`
 		}
-		if json.Unmarshal(payload, &p) != nil {
+		if json.Unmarshal(payload, &p) != nil || p.Cause == "" {
 			return nil
 		}
 		return FightEndedBody{Cause: DissolveKind(p.Cause)}
@@ -297,7 +297,7 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		var p struct {
 			Member string `json:"member"`
 		}
-		if json.Unmarshal(payload, &p) != nil {
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
 			return nil
 		}
 		return DownedBody{Member: p.Member}
@@ -337,7 +337,12 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 		Critical bool       `json:"critical"`
 		Attack   beatAttack `json:"attack"`
 	}
-	if json.Unmarshal(payload, &p) != nil || len(p.Targets) == 0 {
+	if json.Unmarshal(payload, &p) != nil ||
+		p.Actor == "" || len(p.Targets) != 1 || p.Attack.Ref == "" {
+		// EXACTLY one target, not merely "at least one": recordFor's own
+		// shape always writes one for an attack (attack.go), so a payload
+		// naming zero or several is not a shape this decoder recognises
+		// rather than an ambiguous one to guess at (Copilot, PR #1174).
 		return nil
 	}
 	if wantAmount {

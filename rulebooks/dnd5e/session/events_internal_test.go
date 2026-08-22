@@ -107,3 +107,52 @@ func TestTheSeamSaysDownedWhereTheCompositionSaysDown(t *testing.T) {
 	require.NotEqual(t, string(EventDowned), string(encounter.OutcomeDown),
 		"these two must not be aligned: see kindFor, and rpg-toolkit#1084")
 }
+
+// TestBodyForRefusesAMissingRequiredField pins the fix for Copilot's finding
+// on PR #1174: json.Unmarshal does not fail when a struct's fields are
+// simply absent from the payload, so bodyFor (and structBody, its own arm
+// for struck/missed) must check for the required fields explicitly rather
+// than trusting a successful Unmarshal alone — an incomplete beat must
+// leave Body nil, not populate it with zero-valued fields that read as
+// real answers ("" for a member id, an empty AttackRef).
+func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
+	cases := []struct {
+		name string
+		kind EventKind
+		json string
+	}{
+		{"moved with no member", EventMoved, `{"beat":"moved","position":{"x":1,"y":2}}`},
+		{"turn-ended with no next", EventTurnEnded, `{"beat":"turn-ended","member":"alice"}`},
+		{"turn-ended with no member", EventTurnEnded, `{"beat":"turn-ended","next":"bob"}`},
+		{"bubble-formed with an empty order", EventFightStarted, `{"beat":"bubble-formed","order":[]}`},
+		{"bubble-dissolved with no cause", EventFightEnded, `{"beat":"bubble-dissolved"}`},
+		{"down with no member", EventDowned, `{"beat":"down"}`},
+		{"struck with no actor", EventStruck, `{"beat":"struck","targets":["bob"],"attack":{"ref":"longsword"}}`},
+		{"struck with no targets", EventStruck, `{"beat":"struck","actor":"alice","attack":{"ref":"longsword"}}`},
+		{"struck with two targets", EventStruck, `{"beat":"struck","actor":"alice","targets":["bob","carol"],"attack":{"ref":"longsword"}}`},
+		{"struck with no attack ref", EventStruck, `{"beat":"struck","actor":"alice","targets":["bob"]}`},
+		{"missed with no actor", EventMissed, `{"beat":"missed","targets":["bob"],"attack":{"ref":"longsword"}}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+			require.Equal(t, tc.kind, kind, "the KIND is still correctly identified from the declared beat")
+			require.Nil(t, body, "but the body is nil rather than populated with zero-valued fields")
+		})
+	}
+}
+
+// TestBodyForAcceptsACompleteBeat is the companion pin: every field the
+// case above found missing, present, produces a typed body — the stricter
+// check must not have overreached into refusing valid beats.
+func TestBodyForAcceptsACompleteBeat(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`))
+	require.Equal(t, EventStruck, kind)
+	require.Equal(t, StruckBody{
+		Attacker: "alice", Target: "bob", Roll: 15, Total: 20, Against: 12, Damage: 8,
+		Attack: AttackRef{Ref: "longsword", Name: "Longsword", DamageType: DamageSlashing},
+	}, body)
+}
