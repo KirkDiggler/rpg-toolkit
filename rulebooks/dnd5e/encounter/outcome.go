@@ -122,23 +122,20 @@ type RecordInput struct {
 // the beat can answer "with a longsword" and "6 slashing" for every witness,
 // not only the one whose own verb response held the compiled profile.
 //
-// PLAIN STRINGS, MEANT TO BE USED LIKE MemberID IS ON THIS INPUT — BUT NOT
-// CHECKED THE WAY MemberID IS (Copilot, PR #1172). Actor and Targets are
-// validated against the roster before anything is appended
-// (`e.members[in.Actor]`); nothing here validates Ref, Name or DamageType
-// against any catalog, because this module's go.mod cannot import the one
-// that would answer whether "longsword" is real (C1). The intended values
-// are the catalog's own identifier and display label — "longsword",
-// "Longsword" — and the rulebook's own word for the damage dealt, fixed by
-// a sealed weapon/action catalog rather than composed at the call site. But
-// that is a promise about session's one caller today, not a guarantee this
-// composition enforces: a caller that handed over prose here would have it
-// copied into the shared story payload unchecked, exactly like a raw
-// narration field would. What this struct is not is a NEW hole of that
-// shape — session's Attack() is the only caller in this codebase, and it
-// only ever supplies what resolution.AttackProfile already compiled — but a
-// reader auditing this input's "no prose" claim should read this note
-// rather than the comparison to Actor/Targets alone.
+// PLAIN STRINGS, MEANT TO BE USED LIKE MemberID IS ON THIS INPUT — CHECKED
+// FOR PRESENCE THE WAY MemberID IS, BUT NOT FOR MEANING (Copilot, PR #1172).
+// [Encounter.Record] refuses ErrInvalidData when Ref or Name is empty, the
+// same as it refuses an empty Actor — that is the minimum this composition
+// CAN check without a catalog. It does not, and cannot, validate that Ref or
+// Name names anything real, or that DamageType is one of the rulebook's own
+// words: this module's go.mod cannot import the catalog that would answer
+// whether "longsword" is real (C1). The intended values are the catalog's
+// own identifier and display label — "longsword", "Longsword" — and the
+// rulebook's own word for the damage dealt, fixed by a sealed weapon/action
+// catalog rather than composed at the call site, and it is session — which
+// already depends on that package — that maps DamageType onto a closed Go
+// type. The composition guarantees presence; the rulebook guarantees
+// meaning.
 type AttackIdentity struct {
 	// Ref is the catalog ref the attack compiled from — "longsword",
 	// "unarmed-strike".
@@ -230,8 +227,9 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know), and anything the [Standing] capability answers with — including
-// ErrNotMember for an answer naming a stranger.
+// know, or an Attack whose Ref or Name is empty), and anything the
+// [Standing] capability answers with — including ErrNotMember for an answer
+// naming a stranger.
 //
 // The input refusals all run before anything is appended, so a rejected input
 // costs the rulebook nothing. The consult does not: it runs after the beat, so a
@@ -307,6 +305,12 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		payload["critical"] = in.Critical
 	}
 	if in.Attack != nil {
+		if in.Attack.Ref == "" {
+			return nil, fmt.Errorf("record: attack ref: %w", ErrInvalidData)
+		}
+		if in.Attack.Name == "" {
+			return nil, fmt.Errorf("record: attack name: %w", ErrInvalidData)
+		}
 		payload["attack"] = map[string]string{
 			"ref":         in.Attack.Ref,
 			"name":        in.Attack.Name,

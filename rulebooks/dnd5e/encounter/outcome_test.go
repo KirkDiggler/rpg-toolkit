@@ -179,17 +179,20 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // Critical is a bool — nothing to narrate. Attack is a pointer to
 // [encounter.AttackIdentity], meant to carry a catalog-owned identifier or
 // the rulebook's own closed word for what happened ("longsword",
-// "slashing") — not free text a caller composes for effect. Unlike Actor
-// and Targets, this input does NOT validate those fields against any
-// catalog (AttackIdentity's own doc, updated after Copilot's review on
-// PR #1172, says so plainly): the guarantee is a promise about session's
-// one caller, which only ever supplies what an already-compiled attack
-// profile named, not something this composition enforces. Widening
-// RecordInput to accept it was still the right call — it widens what a
-// caller can IDENTIFY, the same category Actor/Targets already occupy, not
-// what a caller can SAY — but "no prose" here is a narrower, softer claim
-// than it is for the validated fields beside it, and this test's list
-// growing is not evidence of the stronger one.
+// "slashing") — not free text a caller composes for effect. Record refuses
+// an Attack whose Ref or Name is empty (ErrInvalidData) — the same presence
+// floor Actor and Targets are already held to; see
+// TestRefusalsAreCheckedAgainstTheRoster. What it still cannot do is
+// validate that Ref or Name names anything real, or that DamageType is one
+// of the rulebook's own words: this module's go.mod cannot import the
+// catalog that would answer that (C1), so that half of the promise is
+// about session's one caller — which only ever supplies what an
+// already-compiled attack profile named — not something this composition
+// enforces. Widening RecordInput to accept Attack was still the right
+// call — it widens what a caller can IDENTIFY, the same category
+// Actor/Targets already occupy, not what a caller can SAY — and "no prose"
+// here now holds for presence exactly as it does for the fields beside it;
+// only meaning is still the rulebook's to guarantee.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{"Kind", "Actor", "Targets", "Values", "Critical", "Attack"},
 		structFieldNames(encounter.RecordInput{}),
@@ -248,6 +251,37 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 			Kind: encounter.OutcomeStruck, Actor: alice,
 		})
 		s.ErrorIs(err, encounter.ErrClosed)
+	})
+}
+
+// TestAnAttackWithNoRefOrNameIsRefused pins the minimum Record CAN check
+// about AttackIdentity without a catalog: Ref and Name are non-empty, held
+// to the same floor as Actor. What names is real, and what DamageType
+// means, stays the rulebook's to guarantee (AttackIdentity's own doc) —
+// this is presence, not meaning.
+func (s *OutcomeTestSuite) TestAnAttackWithNoRefOrNameIsRefused() {
+	s.Run("empty ref", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Name: "Longsword", DamageType: "slashing"},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("empty name", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{Ref: "longsword", DamageType: "slashing"},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("both empty", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Attack: &encounter.AttackIdentity{},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	})
 }
 
