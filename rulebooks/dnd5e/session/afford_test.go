@@ -87,7 +87,7 @@ func (s *AffordSuite) TestAffordableMeansAttackWillNotRefuse() {
 
 	out := s.afford()
 	s.Equal(session.ClockTurn, out.Clock)
-	s.Require().Len(out.Declarations, 1)
+	s.Require().Len(out.Declarations, 2, "attack and move (rpg-toolkit#1169)")
 
 	decl := out.Declarations[0]
 	s.Equal(session.VerbAttack, decl.Verb)
@@ -111,7 +111,7 @@ func (s *AffordSuite) TestUnaffordableMeansAttackRefusesWithTheSameShortfall() {
 	s.Require().True(first.Hit)
 
 	out := s.afford()
-	s.Require().Len(out.Declarations, 1)
+	s.Require().Len(out.Declarations, 2, "attack and move (rpg-toolkit#1169)")
 	decl := out.Declarations[0]
 	s.False(decl.Affordable, "nothing left to buy a second swing")
 	s.NotEmpty(decl.Shortfall, "false carries a reason")
@@ -181,7 +181,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 	s.nextTurn()
 
 	out := s.afford()
-	s.Require().Len(out.Declarations, 1)
+	s.Require().Len(out.Declarations, 2, "attack and move (rpg-toolkit#1169)")
 	s.True(out.Declarations[0].Affordable, "a new turn buys a new swing")
 	s.Equal(session.SlotAction, out.Declarations[0].Slot)
 }

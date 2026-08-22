@@ -218,15 +218,21 @@ var (
 	// is unusable, and the repair is upstream of anything a caller can retry.
 	ErrInvalidWorld = errors.New("invalid encounter data")
 
-	// ErrInBubble is returned when a member is asked to free-roam while they
-	// are in a fight. Movement inside a fight goes through its turn structure,
-	// which this SDK does not surface yet.
+	// ErrInBubble is returned when a verb requires its member NOT be in a
+	// running bubble and they are.
+	//
+	// NOT MOVE'S OWN REFUSAL ANY MORE (rpg-toolkit#1169): the active member of
+	// a fight may walk on the turn clock now, priced and gated by whose turn
+	// it is (ErrNotYourTurn) rather than refused outright. What survives here
+	// are the composition's own Form/Transfer-shaped refusals translated
+	// unchanged — naming a member already in a fight, or attempting to enter
+	// one that is already running (#963's one-bubble-per-encounter policy).
 	//
 	// It became reachable with rpg-toolkit#964: a fight now starts by itself,
-	// so a walk can end with the walker in one, and the very next Move is
-	// refused. Before that a member could only enter a fight by a caller
-	// deciding to start one, which nothing in this package ever did — the
-	// sentinel had no path to a host and so did not exist.
+	// so a walk could end with the walker in one and (then) the very next Move
+	// was refused by it. Before that a member could only enter a fight by a
+	// caller deciding to start one, which nothing in this package ever did —
+	// the sentinel had no path to a host and so did not exist.
 	ErrInBubble = errors.New("member is in a fight")
 
 	// ErrNotInFight is returned when a verb needs the member to be in a fight
@@ -236,6 +242,17 @@ var (
 	// exactly one kind of time: the two errors are how a caller learns which
 	// one they guessed wrong about.
 	ErrNotInFight = errors.New("member is not in a fight")
+
+	// ErrNotYourTurn is returned when a verb needs its member to be the
+	// CURRENT active member of the fight they are in, and they are not.
+	//
+	// TWO VERBS SHARE THIS REFUSAL (rpg-toolkit#1169): EndTurn naming someone
+	// whose turn it is not, and Move asking a bubble member who is not the one
+	// the clock is waiting on to walk. Translated from the composition's own
+	// encounter.ErrNotActive rather than left to cross the boundary unnamed
+	// (S2) — see translate. Distinct from ErrNotInFight: this member IS in the
+	// fight, just not up right now.
+	ErrNotYourTurn = errors.New("not your turn")
 
 	// ErrNoCause is returned when a verb that must say WHY is not told.
 	//
@@ -307,7 +324,8 @@ var (
 
 	// ErrCannotAfford is returned when an actor cannot pay for what they
 	// declared: a second swing in a turn that bought only one, a level-5
-	// fighter's third, an action after the action was spent.
+	// fighter's third, an action after the action was spent, or a walk longer
+	// than the turn's remaining movement (rpg-toolkit#1169).
 	//
 	// THIS IS A FACT ABOUT THE GAME, not about the code, and that is the whole
 	// reason it is separate from ErrBadCost. A player who has run out of actions
@@ -319,6 +337,9 @@ var (
 	// The message NAMES THE CURRENCY that ran out — "action: 1 needed, 0 left" —
 	// because a refusal a client cannot explain is a refusal that reads as a bug.
 	// A host may show it or match the sentinel and say it in its own words.
+	// Move's own refusal composes its own "ft"-suffixed text rather than
+	// [combat.SpendProfile]'s unitless one — see [movementShortfall] — but the
+	// YES/NO answer both come from is the same [combat.Pay] call either way.
 	//
 	// It is a FIGHT's refusal. The action economy exists only in combat, so a
 	// member on the world clock is charged nothing and can never see this.

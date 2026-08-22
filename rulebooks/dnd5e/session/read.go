@@ -372,6 +372,14 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrInBubble)
 	case errors.Is(err, encounter.ErrNoBubble):
 		return fmt.Errorf("%w", ErrNotInFight)
+	case errors.Is(err, encounter.ErrNotActive):
+		// Two producers, one arm (rpg-toolkit#1169): EndTurn's own refusal for
+		// the wrong member, and now Step's — the active-member gate that lets
+		// a fight member walk at all. Before this arm existed, EndTurn's
+		// refusal reached a caller as the LEAF play/clock.ErrNotActive,
+		// unnamed at every boundary it crossed; naming it here closes that
+		// for both callers at once rather than leaving Move to rediscover it.
+		return fmt.Errorf("%w", ErrNotYourTurn)
 	default:
 		return err
 	}

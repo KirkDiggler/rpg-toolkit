@@ -58,11 +58,15 @@ func (s *DissolveTestSuite) TestTheDeadEndIsClosed() {
 	s.fight()
 	ctx := context.Background()
 
-	// The dead end, before it is closed.
-	_, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 3}},
-	})
-	s.Require().ErrorIs(err, session.ErrInBubble, "a fight member does not free-roam")
+	// The dead end, before it is closed: alice is on the turn clock, and
+	// Transfer to the world clock still refuses a member already in a bubble
+	// — the only way off it while the fight runs is through Dissolve. (A
+	// direct Move no longer proves this on its own since rpg-toolkit#1169:
+	// the active member of a bubble may still walk, on the turn clock, at a
+	// cost — see move_test.go's own turn-clock suite.)
+	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(session.ClockTurn, turn.Clock, "a fight member is on the turn clock, not free to roam")
 
 	out, err := s.mgr.Dissolve(ctx, &session.DissolveInput{
 		Session: "sess", Member: "alice", Cause: session.ByDecision(),

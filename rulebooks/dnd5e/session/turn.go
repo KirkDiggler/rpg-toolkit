@@ -138,10 +138,11 @@ type EndTurnOutput struct {
 // anything if one clock were privileged.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, ErrNotInFight, ErrClosed, or ErrSaveFailed with
-// a populated report. Ending a turn that is not yours is refused by the clock
-// itself, and that refusal passes through wrapped rather than being flattened
-// into a sentinel this package invented — see translate.
+// ErrNoEncounter, ErrNoMember, ErrNotInFight, ErrNotYourTurn, ErrClosed, or
+// ErrSaveFailed with a populated report. Ending a turn that is not yours is
+// refused by the clock itself and translated to ErrNotYourTurn — the same
+// sentinel Move's own turn gate produces (rpg-toolkit#1169) — rather than
+// left unnamed; see translate.
 func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("endturn: %w", ErrNilInput)

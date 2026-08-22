@@ -16,7 +16,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -165,6 +164,26 @@ func (m *memCharacters) SaveCharacter(_ context.Context, data *character.Data) e
 // Note what is NOT here: speed. It is derived from race when the character is
 // reconstituted, which is why the transcript printing 25 is evidence the load
 // really happened rather than evidence a map lookup returned something.
+// aliceTheFighter registers alice's own sheet. She had none until
+// rpg-toolkit#1169: nothing before Move's own turn-clock pricing ever needed
+// to load a member's character for a verb this demo calls on her, so the gap
+// was invisible — a fixture that only ever spawned her onto the encounter's
+// roster, never into the Characters store Attack and now Move both read.
+func aliceTheFighter() *character.Data {
+	return &character.Data{
+		ID:               "alice",
+		PlayerID:         "player-alice",
+		Name:             "Alice",
+		Level:            3,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Fighter,
+		HitPoints:        24,
+		MaxHitPoints:     28,
+		ArmorClass:       16,
+	}
+}
+
 func bobTheDwarf() *character.Data {
 	return &character.Data{
 		ID:               "bob",
@@ -199,8 +218,10 @@ func drive(out *bytes.Buffer) error {
 	mgr, err := session.NewManager(&session.Config{Dice: loadedDice{},
 		Sessions:   &memSessions{byID: map[string]*session.SessionData{}},
 		Encounters: &memEncounters{byID: map[string]*encounter.EncounterData{}},
-		Characters: &memCharacters{byID: map[string]*character.Data{"bob": bobTheDwarf()}},
-		Events:     &printStream{out: out},
+		Characters: &memCharacters{
+			byID: map[string]*character.Data{"alice": aliceTheFighter(), "bob": bobTheDwarf()},
+		},
+		Events: &printStream{out: out},
 		// The workbench demonstrates verbs a human drives; nothing in it
 		// gives a monster a real behavior yet, so an unplayed member simply
 		// passes (rpg-toolkit#1162).
@@ -336,15 +357,20 @@ func drive(out *bytes.Buffer) error {
 		fmt.Fprintf(out, "   caught unaware: %v\n", crossed.Formed.Surprised)
 	}
 
-	fmt.Fprintln(out, "\n== and she cannot simply walk away ==")
+	fmt.Fprintln(out, "\n== alice can still act, on her own turn ==")
 	// Cells on the map: alice arrived at the vault's (0,1) local, which is
-	// (6,1) with the vault anchored at (6,0). She tries to step deeper in.
+	// (6,1) with the vault anchored at (6,0). She steps deeper in — on the
+	// turn clock now, a walk spends movement rather than being refused
+	// outright (rpg-toolkit#1169), and it is still her turn: she leads the
+	// vault fight's own initiative order.
 	vaultPath := []spatial.Position{{X: 7, Y: 1}, {X: 7, Y: 2}}
-	_, err = mgr.Move(ctx, &session.MoveInput{
+	aliceWalk, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "crypt-run", Member: "alice", Path: vaultPath,
 	})
-	fmt.Fprintf(out, "   free roam refused for a fight member: %v\n",
-		errors.Is(err, session.ErrInBubble))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "   she walks %d step(s) into the vault, on her own turn\n", len(aliceWalk.Steps))
 
 	// Bob is not in it. A fight is localized to the members who are in contact,
 	// so the rest of the party keeps exploring while it runs.
