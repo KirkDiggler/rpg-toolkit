@@ -323,6 +323,14 @@ type MemberInput struct {
 	// Kind is the member's category (player or monster).
 	Kind MemberKind
 
+	// Name is the member's display name — "skeleton-1", not a ref or an id
+	// (rpg-toolkit#1137). Optional: a caller that leaves it empty gets a
+	// member this composition can still place and reference exactly as
+	// before this field existed; the empty string simply carries forward to
+	// [Member.Name]. Supplying one is the author's business, not this
+	// composition's to invent.
+	Name string
+
 	// Room is the ID of the room where the member is placed.
 	Room string
 
@@ -483,6 +491,12 @@ type Member struct {
 	ID   MemberID
 	Kind MemberKind
 
+	// Name is the member's display name — "skeleton-1", not a ref or an id.
+	// Carried forward from [JoinInput.Name]/[MemberInput.Name] verbatim;
+	// this composition neither invents nor validates it. Empty for a member
+	// whose caller never supplied one (rpg-toolkit#1137).
+	Name string
+
 	// Region is the named cell set that holds Position — DERIVED, not stored.
 	// A member's cell is the canvas's to know and the authored footprints
 	// decide which region that cell falls in, so keeping a region label on the
@@ -528,6 +542,7 @@ type Member struct {
 type memberRecord struct {
 	ID   MemberID
 	Kind MemberKind
+	Name string
 }
 
 // Status represents the encounter's open/closed state.
@@ -736,6 +751,13 @@ type JoinInput struct {
 
 	// Kind is the member's category (player or monster).
 	Kind MemberKind
+
+	// Name is the member's display name — "skeleton-1", not a ref or an id
+	// (rpg-toolkit#1137). Optional, for the same reason [MemberInput.Name]
+	// is: the caller who loaded the sheet already knows it (a character's
+	// CharacterState.Name, a spawned monster's MonsterState.Name), and this
+	// composition only carries it forward for a cold read to project later.
+	Name string
 
 	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
 	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.

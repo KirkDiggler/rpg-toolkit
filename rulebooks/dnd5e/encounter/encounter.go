@@ -1482,6 +1482,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		member := &memberRecord{
 			ID:   mi.ID,
 			Kind: mi.Kind,
+			Name: mi.Name,
 		}
 		e.members[mi.ID] = member
 		e.everMembers[mi.ID] = true // Track in everMembers
@@ -1631,9 +1632,27 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 	return Member{
 		ID:       record.ID,
 		Kind:     record.Kind,
+		Name:     record.Name,
 		Region:   region,
 		Position: cell,
 	}, nil
+}
+
+// Distance reports the grid distance between two dungeon-absolute cells, in
+// the same units this composition's own reach and sight checks use — cube
+// distance on a hex field, Chebyshev on a square one (rpg-toolkit#1010).
+//
+// EXPOSED RATHER THAN LEFT INTERNAL, deliberately minimally: session needs to
+// gate Attack on weapon reach and price Afford's per-target declarations the
+// same way, and the alternative is a host re-deriving hex math from Atlas
+// data it was never meant to carry grid semantics through (S2's spirit
+// extended to arithmetic, not only types) — see refreshSight's own call to
+// e.canvas.GetGrid().Distance for the internal precedent this mirrors. It
+// takes cells rather than member IDs because every caller with a reach
+// question already has both positions in hand (a roster read, a Sighting),
+// and a second roster lookup here would be a redundant one.
+func (e *Encounter) Distance(a, b spatial.Position) float64 {
+	return e.canvas.GetGrid().Distance(a, b)
 }
 
 // cellOf reads a member's cell off the canvas, which is the only place that
@@ -2394,6 +2413,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	member := &memberRecord{
 		ID:   in.Member,
 		Kind: in.Kind,
+		Name: in.Name,
 	}
 	e.members[in.Member] = member
 	e.everMembers[in.Member] = true // Track in everMembers

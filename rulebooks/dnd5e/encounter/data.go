@@ -361,6 +361,7 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 type MemberData struct {
 	ID   MemberID      `json:"id"`
 	Kind MemberKind    `json:"kind"`
+	Name string        `json:"name,omitempty"`
 	Cell *PositionData `json:"cell"`
 }
 
@@ -397,6 +398,7 @@ func (e *Encounter) ToData() EncounterData {
 		membersData = append(membersData, MemberData{
 			ID:   m.ID,
 			Kind: m.Kind,
+			Name: m.Name,
 			Cell: &PositionData{X: cell.X, Y: cell.Y},
 		})
 	}
@@ -1095,6 +1097,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		member := &memberRecord{
 			ID:   m.ID,
 			Kind: m.Kind,
+			Name: m.Name,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true

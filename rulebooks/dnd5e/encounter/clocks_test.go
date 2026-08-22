@@ -854,6 +854,7 @@ func (s *ClocksTestSuite) TestEndTurnDrivesAnUnplayedMemberThroughAutomatically(
 		var p struct {
 			Beat   string `json:"beat"`
 			Member string `json:"member"`
+			Next   string `json:"next"`
 		}
 		s.Require().NoError(json.Unmarshal(entry.Payload, &p))
 		if p.Beat != "turn-ended" {
@@ -863,6 +864,11 @@ func (s *ClocksTestSuite) TestEndTurnDrivesAnUnplayedMemberThroughAutomatically(
 		if p.Member == string(goblin) {
 			goblinPassed++
 		}
+		// Next is what makes "goblin-1's turn" a moment a bystander can
+		// render from the SAME beat that ended the turn before it, rather
+		// than the client inferring who acts next from the order it
+		// separately holds (rpg-toolkit#249, TurnEnded.next on the wire).
+		s.NotEmpty(p.Next, "beat %+v carries who acts next", p)
 	}
 	s.Equal(2, turnEnded, "alice's own end, plus the goblin's driven-through pass")
 	s.Equal(1, goblinPassed, "the story names the goblin's own pass by member, not just alice's end")

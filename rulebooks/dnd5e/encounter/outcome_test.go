@@ -85,6 +85,62 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	s.Equal(float64(9), beat["amount"])
 }
 
+// TestARecordedStrikeCarriesWhatWasSwung pins rpg-toolkit#866/#941's half of
+// Record: Critical and Attack are carried into the beat's payload exactly as
+// the numeric Values already are, so a witness who was not the one swinging
+// still learns what hit — a longsword, dealing slashing — from the SAME beat
+// everyone else reads, not from a second channel only the attacker sees.
+func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
+	enc := s.scene()
+
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+		Values: map[encounter.OutcomeValue]int{
+			encounter.ValueRoll: 20, encounter.ValueTotal: 25, encounter.ValueAgainst: 15, encounter.ValueAmount: 12,
+		},
+		Critical: true,
+		Attack:   &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	s.Equal(true, beat["critical"])
+	attack, ok := beat["attack"].(map[string]any)
+	s.Require().True(ok, "attack identity present in the payload")
+	s.Equal("longsword", attack["ref"])
+	s.Equal("Longsword", attack["name"])
+	s.Equal("slashing", attack["damage_type"])
+}
+
+// TestARecordedMissCarriesNoCriticalKey pins that a miss's payload never
+// says "critical" at all — a whiff cannot crit, so there is nothing to
+// answer false about, unlike a hit where false is itself a meaningful
+// answer.
+func (s *OutcomeTestSuite) TestARecordedMissCarriesNoCriticalKey() {
+	enc := s.scene()
+
+	_, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
+		Attack: &encounter.AttackIdentity{Ref: "longsword", Name: "Longsword", DamageType: "slashing"},
+	})
+	s.Require().NoError(err)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
+	s.Require().NoError(err)
+	var beat map[string]any
+	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	_, present := beat["critical"]
+	s.False(present)
+	attack, ok := beat["attack"].(map[string]any)
+	s.Require().True(ok, "a miss still names what was swung")
+	s.Equal("longsword", attack["ref"])
+}
+
 // TestTheTargetHearsItToo pins the audience rule.
 //
 // An outcome is not secret. A fight is localized, but it is not private: a
@@ -112,14 +168,24 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // The reason the composition owns its record is that a reader can trust what
 // is in it. An append taking free bytes would have kept the transcript in one
 // place and given that up — any caller could narrate at other players through
-// it. So RecordInput has NO string field: the kind is a closed enum, members
+// it. So RecordInput has NO PROSE field: the kind is a closed enum, members
 // are IDs checked against the roster, values are integers under closed keys.
 //
 // This test reads the type rather than exercising it, because the guarantee is
 // structural: prose is not filtered here, it is INEXPRESSIBLE, and the day
 // someone adds a Description field this fails and says why.
+//
+// CRITICAL AND ATTACK ARE THE ARGUMENT (rpg-toolkit#866, rpg-toolkit#941).
+// Critical is a bool — nothing to narrate. Attack is a pointer to
+// [encounter.AttackIdentity], and every field inside it is the same kind of
+// value Actor and Targets already are: a catalog-owned identifier or the
+// rulebook's own closed word for what happened ("longsword", "slashing"),
+// fixed by a sealed weapon/action catalog the rulebook trusts — never a
+// sentence a caller composes. Neither widens what a caller can say; both
+// widen what a caller can identify, which RecordInput already does for who
+// acted and who was targeted.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
-	s.Equal([]string{"Kind", "Actor", "Targets", "Values"},
+	s.Equal([]string{"Kind", "Actor", "Targets", "Values", "Critical", "Attack"},
 		structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")
