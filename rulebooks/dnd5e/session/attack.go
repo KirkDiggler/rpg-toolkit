@@ -195,7 +195,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// actor's swing costs — which is a question about a sheet, and this is where
 	// the sheets are. Nothing persistent or wire-shaped assumed attacks were
 	// free, and nothing had to migrate.
-	price, err := m.priceSwing(ctx, scope, in.Attacker, sheet)
+	price, err := m.priceSwing(ctx, scope.enc, in.Attacker, sheet)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}

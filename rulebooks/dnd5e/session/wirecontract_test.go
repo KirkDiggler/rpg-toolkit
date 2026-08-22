@@ -67,3 +67,25 @@ func TestFalseIsAnAnswerOnTheWire(t *testing.T) {
 		require.Equal(t, "false", string(wire.Walls[0][field]))
 	}
 }
+
+// TestEmptyDeclarationsIsAnAnswerOnTheWire is TestFalseIsAnAnswerOnTheWire's
+// own claim asked of a LIST rather than a bool: on the world clock,
+// AffordOutput.Declarations is empty because the economy does not apply, not
+// because nobody set the field. `omitempty` on a slice drops the key on nil
+// exactly the way it drops a bool on false, and a non-Go client reading a
+// missing "declarations" key cannot tell "the world clock, honestly empty"
+// from "an older server that never had this field" or "a bug that forgot to
+// set it". So the empty case still marshals the key, as "[]" rather than a
+// missing entry or "null".
+func TestEmptyDeclarationsIsAnAnswerOnTheWire(t *testing.T) {
+	out := session.AffordOutput{Clock: session.ClockWorld, Declarations: []session.Declaration{}}
+
+	raw, err := json.Marshal(out)
+	require.NoError(t, err)
+
+	var wire map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	require.Contains(t, wire, "declarations",
+		"the world clock's empty answer must still be a key on the wire: %s", raw)
+	require.JSONEq(t, "[]", string(wire["declarations"]))
+}
