@@ -98,7 +98,12 @@ type Declaration struct {
 	// use — "action: 1 needed, 0 left" — because a client that cannot repeat
 	// a refusal in the player's own words has been handed a boolean and
 	// nothing else. Empty when Affordable.
-	Shortfall string `json:"shortfall,omitempty"`
+	//
+	// NO OMITEMPTY, for the same reason Affordable has none: an empty string
+	// beside affordable:true is itself the answer ("nothing ran out"), not
+	// the absence of one, and a non-Go client reading a missing key cannot
+	// tell that from "the server didn't say".
+	Shortfall string `json:"shortfall"`
 }
 
 // AffordOutput is what one member can still declare this turn.
@@ -109,8 +114,12 @@ type AffordOutput struct {
 	Clock ClockKind `json:"clock"`
 
 	// Declarations is one entry per verb the seam prices, empty on the world
-	// clock. v1 prices Attack alone.
-	Declarations []Declaration `json:"declarations,omitempty"`
+	// clock — where empty IS the answer rather than a shorter way of asking
+	// again, so it is never omitted from the wire either: the same
+	// false-vs-absent law types.go keeps for every bool at this seam applies
+	// here to the list itself. A non-Go client must read "declarations": [],
+	// not a missing key that reads as "the server didn't say".
+	Declarations []Declaration `json:"declarations"`
 }
 
 // Afford reports what one member can still declare this turn: which of the
@@ -194,7 +203,10 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return nil, fmt.Errorf("afford: %w", translate(err))
 	}
 	if ClockKind(clock.Kind) != ClockTurn {
-		return &AffordOutput{Clock: ClockWorld}, nil
+		// A non-nil, empty slice: the world clock's Declarations marshals as
+		// "[]", never "null" — the same reason above applies to the wire
+		// shape as much as the tag.
+		return &AffordOutput{Clock: ClockWorld, Declarations: []Declaration{}}, nil
 	}
 
 	data, err := m.fetchCharacterData(ctx, "member", in.Member)
@@ -207,7 +219,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// reconstitution would bring. See compileAttack's own comment.
 	sheet, err := character.Load(ctx, data)
 	if err != nil {
-		return nil, fmt.Errorf("member %q: %w: %v", in.Member, ErrBadCharacter, err)
+		return nil, fmt.Errorf("afford: member %q: %w: %v", in.Member, ErrBadCharacter, err)
 	}
 
 	price, err := m.priceSwing(ctx, enc, in.Member, sheet)
