@@ -545,13 +545,25 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.ReachFeet))
 		}
 
+		// Path stops ADJACENT rather than walking onto the sighting's own
+		// occupied cell (Kirk, rpg-project#254 review) — the full route
+		// pathTo computes ends AT pos, so dropping its last element is the
+		// nearest cell that route reaches this sighting from. One BFS per
+		// sighting, every Act call — see the field's own doc for why that
+		// cost is accepted rather than deferred behind a lazy capability.
+		var path []spatial.Position
+		if full, ok := e.pathTo(ownCell, pos); ok && len(full) > 0 {
+			path = full[:len(full)-1]
+		}
+
 		seen = append(seen, SeenMember{
-			ID:       subjectID,
-			Kind:     other.Kind,
-			Standing: !down[subjectID],
-			Position: pos,
-			Distance: dist,
-			InReach:  inReach,
+			ID:            subjectID,
+			Kind:          other.Kind,
+			Standing:      !down[subjectID],
+			Position:      pos,
+			DistanceCells: dist,
+			InReach:       inReach,
+			Path:          path,
 		})
 	}
 	// C8: a driver asked twice against unchanged data must see the same
@@ -566,9 +578,6 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Seen:      seen,
 		Budget:    budget,
 		Round:     round,
-		PathTo: func(to spatial.Position) ([]spatial.Position, bool) {
-			return e.pathTo(ownCell, to)
-		},
 	}, nil
 }
 
