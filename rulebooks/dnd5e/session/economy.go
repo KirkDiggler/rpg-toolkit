@@ -84,12 +84,16 @@ type swingPrice struct {
 // is above this seam — and it must not be discovered then. It is named here
 // rather than left to be found.
 //
+// It takes the encounter rather than a *writeScope so a read verb can call it
+// too ([Manager.Afford] does): pricing a swing commits nothing on its own, and
+// a signature that could only be handed a write scope would say otherwise.
+//
 // Returns ErrNoMember, ErrNoCharacter, ErrBadCharacter, ErrBadRepository, or
 // ErrBadCost.
 func (m *Manager) priceSwing(
-	ctx context.Context, scope *writeScope, attacker string, sheet *character.Character,
+	ctx context.Context, enc *encounter.Encounter, attacker string, sheet *character.Character,
 ) (*swingPrice, error) {
-	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(attacker)})
+	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(attacker)})
 	if err != nil {
 		return nil, translate(err)
 	}

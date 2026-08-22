@@ -142,6 +142,16 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   unmarshals a payload itself. *Rule: a rule a client cannot read off the
   wire gets re-derived by experiment, once per client — the same argument
   ADR-0040 already made about Atlas.Layout.*
+- **0042** — **`Afford` answers in declarations, not remaining currencies**:
+  `Manager.Afford` reports one `Declaration{Verb, Slot, Affordable,
+  Shortfall}` per verb the seam prices (v1: Attack only) rather than the raw
+  ledger, so a client never has to know that a swing costs an action or that
+  Extra Attack banks capacity to answer "can I do this". It prices through the
+  identical `priceSwing` -> `combat.Pay` path `Attack`'s door pays, on a sheet
+  loaded fresh and never saved — never a second copy of the arithmetic. Kirk:
+  "backend tells dumb client what it can do." *Rule: a read that could leak a
+  rule by handing over the ledger instead answers the caller's actual
+  question.*
 
 ---
 
