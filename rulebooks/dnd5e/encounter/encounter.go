@@ -1351,6 +1351,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		if m.Kind == KindPlayer && m.Decider != nil {
 			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNoMember)
 		}
+
+		// SpeedFeet, SightFeet and each action's ReachFeet are feet-
+		// denominated facts CellsFromFeet divides by FeetPerCell — a
+		// negative one is not a shorter distance, it is a caller defect
+		// (Copilot, PR #1187), and would otherwise produce a nonsense
+		// budget or reach at the exact moment a monster's turn needs one.
+		if err := validateMemberFacts(m.ID, m.SpeedFeet, m.SightFeet, m.Actions); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
 	}
 
 	// The field must say what its void is. Construction DATA rather than a
@@ -2403,6 +2412,16 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// Players cannot carry deciders (design law C2)
 	if in.Kind == KindPlayer && in.Decider != nil {
 		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member, ErrNoMember)
+	}
+
+	// See NewEncounter's own call to validateMemberFacts for why — ASKED
+	// BEFORE any mutation (canvas.PlaceEntity below is the first one),
+	// unlike NewEncounter's construction-in-a-local-that-only-escapes-on-
+	// success safety net: Join mutates a LIVE *Encounter, so an invalid
+	// fact caught after PlaceEntity would need to roll a placement back
+	// rather than simply never having made one (Copilot, PR #1187).
+	if err := validateMemberFacts(in.Member, in.SpeedFeet, in.SightFeet, in.Actions); err != nil {
+		return nil, fmt.Errorf("join: %w", err)
 	}
 
 	// Hex fields require integral axial cells (interim tools/spatial#926

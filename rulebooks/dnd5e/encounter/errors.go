@@ -272,7 +272,7 @@ var (
 	// this module can detect should say so by name rather than proceed on a
 	// value it does not understand, the day a fourth TurnIntent case is added
 	// here and some call site is not updated to handle it.
-	ErrBadTurnOutcome = errors.New("encounter: turn driver returned an unrecognised outcome")
+	ErrBadTurnOutcome = errors.New("encounter: turn driver returned an unrecognised intent")
 
 	// ErrNoStriker indicates Setup or Load was given no Striker capability.
 	// A member with no player can be handed an Attack intent the moment a

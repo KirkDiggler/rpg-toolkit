@@ -4,6 +4,8 @@
 package encounter
 
 import (
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -413,6 +415,29 @@ type ActionView struct {
 	// branched on here, the same [AttackIdentity.DamageType] precedent
 	// Name already follows.
 	Kind string
+}
+
+// validateMemberFacts rejects a negative SpeedFeet, SightFeet, or any
+// action's ReachFeet — the three feet-denominated member facts
+// [CellsFromFeet] divides by [FeetPerCell] (Copilot, PR #1187 review). A
+// negative one is not a shorter distance; it is a caller defect that would
+// otherwise produce a nonsense movement budget or reach the moment a
+// monster's turn asks [MonsterView.Budget] or [SeenMember.InReach] for one.
+// Callers ask this BEFORE any mutation — see [Encounter.Join]'s own call for
+// why that ordering matters there specifically.
+func validateMemberFacts(id MemberID, speedFeet, sightFeet int, actions []ActionView) error {
+	if speedFeet < 0 {
+		return fmt.Errorf("member %s: speed %d feet is negative: %w", id, speedFeet, ErrNoMember)
+	}
+	if sightFeet < 0 {
+		return fmt.Errorf("member %s: sight %d feet is negative: %w", id, sightFeet, ErrNoMember)
+	}
+	for _, a := range actions {
+		if a.ReachFeet < 0 {
+			return fmt.Errorf("member %s: action %q reach %d feet is negative: %w", id, a.Ref, a.ReachFeet, ErrNoMember)
+		}
+	}
+	return nil
 }
 
 // Trigger is an interface for ending conditions.

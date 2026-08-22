@@ -585,9 +585,12 @@ func (e *Encounter) ToData() EncounterData {
 // later handed to ToData while holding GridShapeGridless). The default
 // case already returns "" for it, same as any other unreachable value.
 // actionViewDataFrom converts a member's runtime [ActionView] facts to their
-// persisted twin. A nil slice stays nil rather than becoming an empty one —
-// the same "omitempty means it, not a zero-length placeholder" convention
-// every other optional slice on this data shape follows.
+// persisted twin. A nil slice stays nil rather than becoming an allocated
+// empty one (Copilot, PR #1187 review: `omitempty` already treats the two
+// identically on the wire — len()==0 either way — so this is not a wire
+// distinction; it is a plain no-op-for-the-common-case allocation avoidance,
+// and keeps a round-tripped nil equal to its original by reflect.DeepEqual
+// rather than becoming a spurious non-nil empty slice).
 func actionViewDataFrom(actions []ActionView) []ActionViewData {
 	if actions == nil {
 		return nil

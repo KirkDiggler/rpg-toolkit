@@ -483,3 +483,62 @@ func (s *MonsterTurnTestSuite) TestRefusingStrikerFailsLoudly() {
 	err := (encounter.RefusingStriker{}).Strike(context.Background(), nil, goblin, alice, testMeleeAction)
 	s.Require().ErrorIs(err, encounter.ErrRefusingStriker)
 }
+
+// TestSetupRejectsANegativeMemberFact and TestJoinRejectsANegativeMemberFact
+// pin Copilot's PR #1187 review finding: SpeedFeet, SightFeet and an
+// action's ReachFeet are feet CellsFromFeet divides by FeetPerCell, and a
+// negative one is a caller defect this composition catches at the door
+// rather than letting it produce a nonsense budget or reach later.
+func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
+	base := func(mutate func(*encounter.MemberInput)) *encounter.SetupInput {
+		mi := encounter.MemberInput{
+			ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 1, Y: 1},
+			SpeedFeet: 30, SightFeet: 60,
+			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5}},
+		}
+		mutate(&mi)
+		return &encounter.SetupInput{
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{},
+			Field: encounter.FieldInput{
+				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+				Rooms:  []encounter.RoomInput{{ID: room1, Width: 8, Height: 8}},
+			},
+			Members: []encounter.MemberInput{mi},
+			Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		}
+	}
+
+	s.Run("negative speed", func() {
+		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.SpeedFeet = -5 }))
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+	s.Run("negative sight", func() {
+		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.SightFeet = -5 }))
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+	s.Run("negative action reach", func() {
+		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.Actions[0].ReachFeet = -5 }))
+		s.Require().ErrorIs(err, encounter.ErrNoMember)
+	})
+}
+
+// TestJoinRejectsANegativeMemberFactBeforeMutating pins that Join validates
+// BEFORE placing the entity — unlike Setup's construct-in-a-local safety
+// net, Join mutates a LIVE encounter, so a rejected Join must leave no
+// half-placed entity behind (Copilot's suppressed PR #1187 comment).
+func (s *MonsterTurnTestSuite) TestJoinRejectsANegativeMemberFactBeforeMutating() {
+	enc := s.adjacentSkeletonEncounter(passDriver{}, passStriker{})
+
+	_, err := enc.Join(&encounter.JoinInput{
+		Member: "wolf", Kind: encounter.KindMonster, Cell: spatial.Position{X: 5, Y: 5},
+		SpeedFeet: -10,
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoMember)
+
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		s.NotEqual(core.EntityID("wolf"), m.ID, "the rejected join left no half-placed entity behind")
+	}
+}
