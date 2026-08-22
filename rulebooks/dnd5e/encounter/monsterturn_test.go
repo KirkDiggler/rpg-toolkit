@@ -542,3 +542,79 @@ func (s *MonsterTurnTestSuite) TestJoinRejectsANegativeMemberFactBeforeMutating(
 		s.NotEqual(core.EntityID("wolf"), m.ID, "the rejected join left no half-placed entity behind")
 	}
 }
+
+// TestPathToWalksAroundAWall pins the new [MonsterView.PathTo] capability
+// (rpg-project#254 follow-up to #1187): behavior.Basic needs "one step along
+// the shortest path toward the target" without computing hex math itself or
+// touching the live *Encounter (the anti-wall-hack contract C2 already
+// enforces for a driver) — so the composition hands it a narrow, view-scoped
+// closure instead. This fixture places a wall between the monster and its
+// target so a straight-line step would fail, and asserts the returned path
+// actually goes AROUND it.
+func (s *MonsterTurnTestSuite) TestPathToWalksAroundAWall() {
+	// A 5x3 room. A wall spans the room's middle column (x=2) except at
+	// y=0, leaving exactly one gap to route through.
+	//
+	//   x: 0 1 2 3 4
+	// y=0: .  .  .  .  .   <- gap
+	// y=1: .  .  #  .  .
+	// y=2: .  .  #  .  .
+	wall := []spatial.Boundary{
+		{From: spatial.Position{X: 2, Y: 1}, To: spatial.Position{X: 3, Y: 1}, BlocksMovement: true},
+		{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 3, Y: 2}, BlocksMovement: true},
+	}
+	driver := &scriptedDriver{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 5, Height: 3, Boundaries: wall}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1)
+	view := driver.calls[0]
+	s.Require().NotNil(view.PathTo, "a driver gets a path helper, not raw hex math to do itself")
+
+	path, ok := view.PathTo(spatial.Position{X: 4, Y: 2})
+	s.Require().True(ok)
+	s.Require().NotEmpty(path)
+	s.Equal(spatial.Position{X: 4, Y: 2}, path[len(path)-1], "the path ends at the requested cell")
+
+	// The path must route through the one gap at y=0 — asserting it never
+	// crosses x=2 at y=1 or y=2 is the same as asserting it went around,
+	// not through, the wall.
+	for _, p := range path {
+		if p.X == 2 {
+			s.Equal(0.0, p.Y, "the only legal crossing of the wall column is the gap at y=0: %+v", path)
+		}
+	}
+}
+
+// TestPathToReportsNoPathWhenTheTargetIsUnreachable pins the ok=false case:
+// a target cell no authored floor holds.
+func (s *MonsterTurnTestSuite) TestPathToReportsNoPathWhenTheTargetIsUnreachable() {
+	driver := &scriptedDriver{}
+	enc := s.adjacentSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	view := driver.calls[0]
+	_, ok := view.PathTo(spatial.Position{X: 999, Y: 999})
+	s.False(ok)
+}

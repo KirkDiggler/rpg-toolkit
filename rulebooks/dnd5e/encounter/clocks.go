@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ClockKind names which kind of clock a member is on.
@@ -565,7 +566,89 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Seen:      seen,
 		Budget:    budget,
 		Round:     round,
+		PathTo: func(to spatial.Position) ([]spatial.Position, bool) {
+			return e.pathTo(ownCell, to)
+		},
 	}, nil
+}
+
+// pathTo computes the shortest path from `from` to `to` over this
+// composition's own floor and walls — a plain breadth-first search, which
+// is exact (not merely a heuristic) here because every edge this module's
+// grids offer costs exactly one cell (Chebyshev on a square grid, cube
+// distance on a hex one); there is no weighted-edge case for A* to earn its
+// keep over. Returns the path EXCLUDING `from` and INCLUDING `to`, or
+// ok=false when `to` is not floor or no floor-connected route reaches it.
+//
+// DOES NOT CONSULT OCCUPANCY, deliberately: this answers "how would the
+// geometry let me get there", the same question a player planning a route
+// asks before checking whether someone is standing in the doorway. A cell
+// another member currently occupies still refuses at actual step time
+// (stepMember's own CanPlaceEntity gate), and driveMonsterTurns already
+// treats a mid-move refusal as "stop the walk, keep the turn running" —
+// exactly the shape a transient occupant should have, not a permanently
+// unreachable cell a stale path would have to be recomputed around.
+//
+// NEIGHBOURS ARE VISITED IN A FIXED ORDER (C8): map iteration has none, and
+// a driver asked twice against unchanged geometry must get the same answer
+// both times, not merely an equally-short one.
+func (e *Encounter) pathTo(from, to spatial.Position) ([]spatial.Position, bool) {
+	if _, owned := e.RegionAt(to); !owned {
+		return nil, false
+	}
+	if from == to {
+		return nil, true
+	}
+
+	grid := e.canvas.GetGrid()
+	visited := map[spatial.Position]bool{from: true}
+	prev := make(map[spatial.Position]spatial.Position)
+	queue := []spatial.Position{from}
+
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+
+		neighbors := grid.GetNeighbors(cur)
+		sort.Slice(neighbors, func(i, j int) bool {
+			if neighbors[i].X != neighbors[j].X {
+				return neighbors[i].X < neighbors[j].X
+			}
+			return neighbors[i].Y < neighbors[j].Y
+		})
+
+		for _, n := range neighbors {
+			if visited[n] {
+				continue
+			}
+			if _, owned := e.RegionAt(n); !owned {
+				continue
+			}
+			if e.canvas.IsBoundaryMovementBlocked(cur, n) {
+				continue
+			}
+			visited[n] = true
+			prev[n] = cur
+			if n == to {
+				queue = nil
+				break
+			}
+			queue = append(queue, n)
+		}
+	}
+
+	if !visited[to] {
+		return nil, false
+	}
+
+	var path []spatial.Position
+	for at := to; at != from; at = prev[at] {
+		path = append(path, at)
+	}
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+	return path, true
 }
 
 // driveIfStillRunning calls driveMonsterTurns on bubble if it still holds any

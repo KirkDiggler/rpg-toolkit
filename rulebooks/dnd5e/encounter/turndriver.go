@@ -103,6 +103,28 @@ type MonsterView struct {
 	// the sighting lapses.
 	Seen []SeenMember
 
+	// PathTo is one step "toward there" made whole: the complete shortest
+	// path from this member's own Position to the requested cell, computed
+	// against this composition's own walls, doors and floor — the same
+	// geometry [Encounter.Step] enforces — DUNGEON-ABSOLUTE, first element
+	// the first step to take, last element the requested cell itself. ok is
+	// false when no path exists (an unreachable target, an unowned cell).
+	//
+	// A CLOSURE, NOT A LIVE *Encounter (rpg-project#254) — the same
+	// anti-wall-hack reason [Decider]'s own Snapshot carries no live
+	// reference either: a driver may ask this one narrow question ("how do
+	// I get from here to there") and nothing else, never touch the map or
+	// another member's raw state directly. Bound once, at this view's own
+	// build time, to this member's own Position — a driver wanting an
+	// updated path after moving gets one the same way it gets an updated
+	// Position: by being asked again next Act call.
+	//
+	// "expose a path helper from encounter, don't compute hex math in
+	// behavior" (the brief) is what this exists to satisfy: rulebooks/dnd5e/
+	// behavior's Basic driver calls this rather than reimplementing grid
+	// traversal.
+	PathTo func(to spatial.Position) (path []spatial.Position, ok bool)
+
 	// Budget is what remains of this member's turn.
 	Budget TurnBudget
 
