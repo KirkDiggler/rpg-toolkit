@@ -714,6 +714,100 @@ type AttackRef struct {
 	DamageType DamageType `json:"damage_type"`
 }
 
+// ShortfallReason names WHY a declaration is unaffordable, as a value a UI
+// can act on rather than prose it can only repeat. Lands with
+// rpg-toolkit#1010 (reach) and the structured Shortfall it carries.
+//
+// Each value is one of the refusals the matching verb would give, named
+// here BEFORE the refusal — the same promise Afford has always made,
+// extended from the economy to the turn and to reach. A client greys a
+// target for NoTargetInReach and dims a shape for NoBudget; it never
+// parses Text to tell them apart.
+type ShortfallReason string
+
+const (
+	// ShortfallNoBudget is the currency running out — what Attack refuses
+	// as ErrCannotAfford ("action: 1 needed, 0 left"). Currency, Needed and
+	// Left are populated.
+	ShortfallNoBudget ShortfallReason = "no_budget"
+
+	// ShortfallNotYourTurn is it not being this member's turn — what
+	// Attack, Move and EndTurn refuse as ErrNotYourTurn.
+	ShortfallNotYourTurn ShortfallReason = "not_your_turn"
+
+	// ShortfallNoTargetInReach is nothing to swing at within reach — what
+	// Attack refuses as ErrOutOfReach (rpg-toolkit#1010). The one shortfall
+	// that arrives on a declaration with no Target: when no candidate is
+	// in reach, Afford still says so, once, rather than saying nothing.
+	ShortfallNoTargetInReach ShortfallReason = "no_target_in_reach"
+
+	// ShortfallDowned is the member being downed and unable to act — what
+	// the verbs refuse as ErrDowned.
+	ShortfallDowned ShortfallReason = "downed"
+
+	// ShortfallUnreadable is the rulebook being unable to compile this
+	// member's price — the sheet is unreadable (ErrBadAttack for anything
+	// but an empty hand, which compiles to the unarmed strike instead,
+	// rpg-toolkit#1168). Afford reports it rather than failing the read,
+	// so the rest of the declarations still arrive.
+	ShortfallUnreadable ShortfallReason = "unreadable"
+)
+
+// Currency names which of a turn's budgets a NO_BUDGET shortfall ran out
+// of. Lands with the structured Shortfall (rpg-project#249).
+//
+// This is the economy's word for what ran out — it is NOT Slot, although
+// three values coincide. Slot says which shape a declaration LIGHTS;
+// Currency says which ledger a refusal DRAINED, and movement is a ledger
+// with no shape. The two are kept separate so a client that lights shapes
+// never has to treat feet as a fourth one.
+type Currency string
+
+const (
+	// CurrencyAction is the standard action.
+	CurrencyAction Currency = "action"
+	// CurrencyBonus is the bonus action.
+	CurrencyBonus Currency = "bonus"
+	// CurrencyReaction is the reaction.
+	CurrencyReaction Currency = "reaction"
+	// CurrencyMovement is feet, not a count — Needed and Left on a MOVEMENT
+	// shortfall are in feet, at the server's five per cell.
+	CurrencyMovement Currency = "movement"
+)
+
+// Shortfall is the structured reason a declaration cannot be paid for.
+// Lands with rpg-toolkit#1010 as the seam's own answer to "why not."
+//
+// STRUCTURED SO THE UI CAN ACT ON IT; TEXT STAYS FOR NARRATION. The string
+// form alone ("action: 1 needed, 0 left") is enough to repeat a refusal in
+// the player's own words and not enough to do anything else with it —
+// Reason is what it branches on, Currency/Needed/Left are the figures it
+// shows, and Text is what it says. The three agree by construction: Text is
+// rendered from the other four, never the reverse.
+type Shortfall struct {
+	// Reason is what kind of refusal this is. Always set.
+	Reason ShortfallReason `json:"reason"`
+
+	// Currency is which ledger ran out. Set for NoBudget; empty for every
+	// other reason, which has no currency to name.
+	Currency Currency `json:"currency,omitempty"`
+
+	// Needed is how much the verb costs, in that currency's unit (feet for
+	// MOVEMENT, a count otherwise). Meaningful for NoBudget; zero
+	// otherwise.
+	Needed int `json:"needed,omitempty"`
+
+	// Left is how much is left. Meaningful for NoBudget; zero otherwise —
+	// and a real zero, which is the usual case.
+	Left int `json:"left,omitempty"`
+
+	// Text is the refusal in the SDK's own words — "action: 1 needed, 0
+	// left", "movement: 20 ft needed, 15 ft left", "not your turn", "no
+	// target in reach". The same text Declaration.Shortfall carries and the
+	// same text the verb's own refusal error would.
+	Text string `json:"text"`
+}
+
 // Discovery is what changed in one observer's perception.
 //
 // Three disjoint lists rather than a single "here is everything you now

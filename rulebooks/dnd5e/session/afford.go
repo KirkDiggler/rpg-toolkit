@@ -108,7 +108,41 @@ type Declaration struct {
 	// beside affordable:true is itself the answer ("nothing ran out"), not
 	// the absence of one, and a non-Go client reading a missing key cannot
 	// tell that from "the server didn't say".
+	//
+	// KEPT FOR OLDER READERS; SUPERSEDED BY Why. This is the same text as
+	// Why.Text — a producer that sets one sets both (rpg-toolkit#1010). A
+	// new reader takes Why, the structured form it can branch on, and never
+	// this.
 	Shortfall string `json:"shortfall"`
+
+	// Target is the candidate this declaration prices, for VerbAttack. ONE
+	// DECLARATION PER TARGET IN REACH (rpg-project#249 §6, Kirk): Afford
+	// gates each candidate through the same reach check Attack refuses
+	// with (melee one cell, the reach property two; ranged stays refused
+	// as today, rpg-toolkit#1010) and emits one declaration for each
+	// target that passes. That list IS the client's "enemies in reach"
+	// highlight — reach is never computed client-side, it is read off
+	// these. When NO candidate is in reach the seam still answers, once: a
+	// single ATTACK declaration with Affordable false, Why.Reason
+	// ShortfallNoTargetInReach, and this field unset.
+	//
+	// A POINTER, not an omitted empty string: a MOVE declaration has no
+	// target at all, and the no-target-in-reach ATTACK declaration has
+	// none either — neither is a target whose id happens to be empty.
+	//
+	// Further strikes are FURTHER DECLARATIONS of this same shape, not new
+	// fields: a monk's Martial Arts bonus strike is
+	// {VerbAttack, SlotBonus, target}; an off-hand swing and a flurry
+	// likewise. Nil for VerbMove.
+	Target *string `json:"target,omitempty"`
+
+	// Why is the structured reason this is unaffordable, present exactly
+	// when Affordable is false — the same presence law Remaining keeps for
+	// "this verb carries no such number": absence beside Affordable true is
+	// itself the answer ("nothing ran out"). Carries the same text
+	// Shortfall does, plus the reason and the figures a UI acts on.
+	// Lands with rpg-toolkit#1010.
+	Why *Shortfall `json:"why,omitempty"`
 
 	// Remaining is how much of this verb's own currency is left, in the
 	// currency's natural unit — feet, for Move (rpg-toolkit#1169).

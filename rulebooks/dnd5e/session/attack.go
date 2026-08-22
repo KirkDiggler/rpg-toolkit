@@ -194,6 +194,29 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
+	// NOT YOUR TURN, asked once the attack has compiled so the refusal
+	// still reflects a real swing rather than one that could not have
+	// happened anyway. Free roam asks nothing here — there is no active
+	// member to compare against — which mirrors Move's own turn gate
+	// (rpg-toolkit#1169) and is the same clock read priceSwing makes
+	// below for a different question.
+	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Attacker)})
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", translate(err))
+	}
+	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Attacker {
+		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
+	}
+
+	// NO TARGET IN REACH, before pricing: a swing this seam is about to
+	// refuse for distance must not first charge the actor for it.
+	// rpg-toolkit#1010 — melee one cell, the Reach property two, read off
+	// the profile [compileAttack] just built rather than re-deriving a
+	// weapon's own rule here.
+	if err := refuseOutOfReach(scope.enc, roster, in.Attacker, in.Target, profile.Reach); err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+
 	// THE ONE PLACE A SPEND GOES, and it is the place its own comment predicted.
 	// The economy turned out not to need a machine above this call: the ruling
 	// (docs/ideas/session-sdk/economy-gate.md) put the price on Input as DATA and

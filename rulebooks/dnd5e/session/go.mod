@@ -10,7 +10,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.97.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.30.2-0.20260822090354-20689f95d426
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.2-0.20260822090901-fc1ee3ba5a34
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.2-0.20260822092020-0a649305420b
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
 )

@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -467,6 +468,140 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.Equal(12, out.Against)
 	s.True(out.Hit)
 	s.Equal(4, out.Damage, "1d1 + 3 STR")
+}
+
+// reachWorld is duelWorld's shape with the distance between alice and bob
+// under the caller's control, so a test can put the target just inside or
+// just outside a weapon's reach without touching sight range at all —
+// encEveryoneSees keeps the two in contact (and so in one fight) regardless
+// of how far apart they stand, which is what lets this fixture isolate
+// reach from perception.
+func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 20, Height: 20}}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: bobAt},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	if err != nil {
+		t.Fatalf("building the reach world: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// TestOutOfReachIsRefused pins rpg-toolkit#1010 at the seam: a target beyond
+// the weapon's reach is refused before anything is priced or resolved, even
+// though the two are in the same fight (encEveryoneSees keeps them in
+// contact regardless of distance — reach is a different question from
+// sight).
+func (s *AttackTestSuite) TestOutOfReachIsRefused() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	// A longsword reaches 1 cell; bob stands 4 away.
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: reachWorld(s.T(), spatial.Position{X: 5, Y: 1}),
+	})
+	s.Require().NoError(err)
+
+	_, err = s.swing(mgr)
+	s.ErrorIs(err, session.ErrOutOfReach)
+	s.Contains(err.Error(), "bob")
+}
+
+// TestReachPropertyExtendsToTwoCells pins the other half: a weapon carrying
+// the Reach property swings at 2 cells, where a plain longsword could not.
+func (s *AttackTestSuite) TestReachPropertyExtendsToTwoCells() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	glaiveAlice := armedFighter("alice")
+	glaiveAlice.Inventory = []character.InventoryItemData{
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Glaive), Quantity: 1},
+	}
+	glaiveAlice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Glaive)}
+	s.characters = newFakeCharacters(glaiveAlice, armedFighter("bob"))
+	mgr, err := session.NewManager(&session.Config{
+		Dice: &sequenceDice{rolls: []int{2, 1}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: reachWorld(s.T(), spatial.Position{X: 3, Y: 1}),
+	})
+	s.Require().NoError(err)
+
+	_, err = s.swing(mgr)
+	s.Require().NoError(err, "a glaive reaches 2 cells; bob stands 2 away")
+}
+
+// TestNotYourTurnIsRefused pins the third refusal Afford is supposed to
+// announce ahead of time: only the fight's active member swings.
+//
+// TWO REAL PLAYERS is what makes "not alice's turn" observable at all — two
+// players standing near each other never form a fight on their own (contact
+// is a hostile-sides question), so this borrows move_turnclock_test.go's own
+// fixture shape: alice and bob start in the hall, a skeleton spawns adjacent
+// and pulls all three into one bubble, initiative order [alice, bob,
+// skel-1]. Bob — seated but not active — is refused for trying to act out of
+// turn, distinctly from being out of reach or unable to pay.
+func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 5, Y: 5}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	s.Require().NoError(err)
+	data := enc.ToData()
+
+	ctx := context.Background()
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+	s.Require().NoError(err)
+
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 2, Y: 1},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(spawned.Formed, "arriving in plain sight must start a fight")
+
+	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal("alice", turn.Active, "alice is first registered — first in initiative")
+
+	// bob swinging at the skeleton while it is alice's turn, not his.
+	_, err = mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "bob", Target: "skel-1",
+	})
+	s.ErrorIs(err, session.ErrNotYourTurn)
+	s.Contains(err.Error(), "bob")
 }
 
 // TestASheetlessTargetIsRefusedByName covers content standing in a world that
