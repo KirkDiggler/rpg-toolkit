@@ -92,6 +92,18 @@ type turnDriverSeam struct {
 // impossibility. Refused by name (ErrBadTurnOutcome) rather than silently
 // treated as a pass, which would let an unrecognised outcome quietly become a
 // different one.
+//
+// BOTH Pass AND *Pass MATCH, deliberately (Copilot, PR #1166).
+// isTurnOutcome() has a value receiver — matching this package's and
+// encounter's other sealed vocabularies, none of which use a pointer
+// receiver for a marker method — and Go's method-set rule promotes a value
+// receiver to the pointer's method set too: *Pass satisfies TurnOutcome
+// exactly as Pass does, whether this switch admits it or not. A host
+// returning &Pass{} — the idiomatic Go shape for "construct and return a
+// value" — is not naming an unrecognised outcome; it is naming Pass through
+// a spelling Go's own type system already allows. Matching only the value
+// would not catch a genuinely unrecognised outcome, only reject a legal
+// spelling of the recognised one.
 func (s turnDriverSeam) Act(member encounter.MemberID) (encounter.TurnOutcome, error) {
 	outcome, err := s.driver.Act(string(member))
 	if err != nil {
@@ -99,7 +111,7 @@ func (s turnDriverSeam) Act(member encounter.MemberID) (encounter.TurnOutcome, e
 	}
 
 	switch outcome.(type) {
-	case Pass:
+	case Pass, *Pass:
 		return encounter.Pass{}, nil
 	default:
 		return nil, fmt.Errorf("turn driver %q: %w: %T", member, ErrBadTurnOutcome, outcome)

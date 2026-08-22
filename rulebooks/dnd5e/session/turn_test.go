@@ -218,6 +218,49 @@ func (s *TurnTestSuite) TestEndingSomebodyElsesTurnIsRefused() {
 // correct by the delivery rule and useless in practice. A client rendering a
 // turn tracker needs to know the turn ended, and "something happened" is not
 // that.
+// pointerPass is a TurnDriver that returns &session.Pass{} rather than
+// session.Pass{} — the idiomatic Go shape for "construct and return a value"
+// — and the exact shape Copilot's review on PR #1166 found the seam
+// rejecting as an unrecognised outcome.
+type pointerPass struct{}
+
+func (pointerPass) Act(string) (session.TurnOutcome, error) {
+	return &session.Pass{}, nil
+}
+
+// TestAPointerPassDrivesThroughTheSameAsAValue pins the fix: a host TurnDriver
+// that returns &Pass{} must be driven through exactly like one that returns
+// Pass{}. Both spellings satisfy TurnOutcome — isTurnOutcome has a value
+// receiver, and Go's method-set rule promotes a value receiver to the
+// pointer's method set too — so the seam has to agree with the type system
+// rather than second-guess it.
+func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
+	ctx := context.Background()
+	// Fresh stores rather than the suite's own s.sessions/s.encounters — this
+	// scene stands alone, so it gets alice and the ogre with nobody else's
+	// "sess" session sharing the same encounter ID underneath it.
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: pointerPass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Characters: testCharacters(), Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "ptr", Encounter: "world", World: ambushWorld(s.T()),
+	})
+	s.Require().NoError(err)
+	_, err = mgr.Move(ctx, &session.MoveInput{
+		Session: "ptr", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+	})
+	s.Require().NoError(err)
+
+	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "ptr", Member: "alice"})
+	s.Require().NoError(err, "&Pass{} must drive the ogre through exactly like Pass{} does")
+	s.Equal("alice", out.Next)
+	s.True(out.RoundWrapped)
+}
+
 func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 	s.fight()
 
