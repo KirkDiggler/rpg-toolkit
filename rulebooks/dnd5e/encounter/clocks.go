@@ -520,6 +520,22 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
 
+	// bestReachCells is the farthest this member's own actions can reach,
+	// in cells — the arithmetic max of authored ReachFeet values, not a
+	// rules opinion about which action is "best" in play (this module
+	// still cannot import the rulebook, C1: it takes the number, not the
+	// meaning). Floored at 1 (5 feet, a bare cell) even for a member with
+	// no actions at all: the floor is a SPATIAL fact independent of combat
+	// capability — nobody's own Path should ever walk onto another
+	// member's occupied cell, whether or not this member has anything to
+	// do once it arrives.
+	bestReachCells := 1
+	for _, a := range m.Actions {
+		if c := CellsFromFeet(a.ReachFeet); c > bestReachCells {
+			bestReachCells = c
+		}
+	}
+
 	var seen []SeenMember
 	for _, h := range holdings {
 		// Sight channel, ACTIVELY sustained only (intel.Current) — a stale
@@ -545,15 +561,36 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.ReachFeet))
 		}
 
-		// Path stops ADJACENT rather than walking onto the sighting's own
-		// occupied cell (Kirk, rpg-project#254 review) — the full route
-		// pathTo computes ends AT pos, so dropping its last element is the
-		// nearest cell that route reaches this sighting from. One BFS per
-		// sighting, every Act call — see the field's own doc for why that
-		// cost is accepted rather than deferred behind a lazy capability.
+		// Path ends on the NEAREST cell (to this member's own position)
+		// from which the sighting is within bestReachCells — the full
+		// route pathTo computes walks all the way onto pos itself, and
+		// every cell along a shortest route gets monotonically closer, so
+		// the first cell (from the start) satisfying the reach test is
+		// exactly the stopping point a driver wants: not one step farther
+		// than necessary, and never onto the sighting's own occupied cell
+		// (Kirk, rpg-project#254 review — this also removes the "already
+		// in reach, don't bother moving" workaround behavior.Basic carried
+		// before this truncation existed). One BFS per sighting, every Act
+		// call — see the field's own doc for why that cost is accepted
+		// rather than deferred behind a lazy capability.
+		//
+		// ALREADY WITHIN REACH IS CHECKED FIRST, SEPARATELY, rather than
+		// folded into the scan below: when dist already satisfies
+		// bestReachCells, the "first in-reach cell" the naive scan would
+		// find is pathTo's own final element — the sighting's own occupied
+		// cell — since a member exactly bestReachCells away has no
+		// intermediate cell between itself and the target to stop at
+		// instead. That is precisely the cell this field must never name.
 		var path []spatial.Position
-		if full, ok := e.pathTo(ownCell, pos); ok && len(full) > 0 {
-			path = full[:len(full)-1]
+		if dist > float64(bestReachCells) {
+			if full, ok := e.pathTo(ownCell, pos); ok {
+				for i, cell := range full {
+					if e.Distance(cell, pos) <= float64(bestReachCells) {
+						path = full[:i+1]
+						break
+					}
+				}
+			}
 		}
 
 		seen = append(seen, SeenMember{
