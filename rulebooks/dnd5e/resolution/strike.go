@@ -746,6 +746,13 @@ func attackFromMelee(action monster.ActionData) (AttackProfile, error) {
 		Ref:         &ref,
 		AttackBonus: config.AttackBonus,
 		Damage:      copyDamagePools(config.Damage),
+		// The stat block's own authored reach, in cells — carried through
+		// faithfully rather than clamped or defaulted here: this compiler
+		// trusts the content the same way it already trusts AttackBonus and
+		// Damage. Previously dropped entirely (AttackProfile.Reach stayed
+		// zero for every monster melee action), which was harmless only
+		// because nothing gated a monster's attack by reach yet.
+		Reach: config.Reach,
 	}
 	if err := profile.validate(); err != nil {
 		return AttackProfile{}, err
@@ -770,6 +777,10 @@ func attackFromBite(action monster.ActionData) (AttackProfile, error) {
 		AttackBonus: config.AttackBonus,
 		Damage:      copyDamagePools(config.Damage),
 		Gate:        config.SaveGate,
+		// BiteConfig carries no configurable reach — a bite is always the
+		// fixed melee reach, the same default a plain weapon or an unarmed
+		// strike compiles to (character_attack.go's defaultMeleeReach).
+		Reach: defaultMeleeReach,
 	}
 
 	// A bite's gate is a KNOCKDOWN — that is what the stat block's
