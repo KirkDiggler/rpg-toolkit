@@ -177,13 +177,19 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 //
 // CRITICAL AND ATTACK ARE THE ARGUMENT (rpg-toolkit#866, rpg-toolkit#941).
 // Critical is a bool — nothing to narrate. Attack is a pointer to
-// [encounter.AttackIdentity], and every field inside it is the same kind of
-// value Actor and Targets already are: a catalog-owned identifier or the
-// rulebook's own closed word for what happened ("longsword", "slashing"),
-// fixed by a sealed weapon/action catalog the rulebook trusts — never a
-// sentence a caller composes. Neither widens what a caller can say; both
-// widen what a caller can identify, which RecordInput already does for who
-// acted and who was targeted.
+// [encounter.AttackIdentity], meant to carry a catalog-owned identifier or
+// the rulebook's own closed word for what happened ("longsword",
+// "slashing") — not free text a caller composes for effect. Unlike Actor
+// and Targets, this input does NOT validate those fields against any
+// catalog (AttackIdentity's own doc, updated after Copilot's review on
+// PR #1172, says so plainly): the guarantee is a promise about session's
+// one caller, which only ever supplies what an already-compiled attack
+// profile named, not something this composition enforces. Widening
+// RecordInput to accept it was still the right call — it widens what a
+// caller can IDENTIFY, the same category Actor/Targets already occupy, not
+// what a caller can SAY — but "no prose" here is a narrower, softer claim
+// than it is for the validated fields beside it, and this test's list
+// growing is not evidence of the stronger one.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{"Kind", "Actor", "Targets", "Values", "Critical", "Attack"},
 		structFieldNames(encounter.RecordInput{}),
