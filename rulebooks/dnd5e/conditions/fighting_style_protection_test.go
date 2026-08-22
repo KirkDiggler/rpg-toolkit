@@ -41,7 +41,7 @@ type fakeProtectionOwner struct {
 }
 
 func (f *fakeProtectionOwner) HasShieldEquipped() bool { return f.hasShield }
-func (f *fakeProtectionOwner) InCombat() bool           { return true }
+func (f *fakeProtectionOwner) InCombat() bool          { return true }
 
 func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
 	if slot == coreCombat.ActionReaction {
@@ -50,11 +50,11 @@ func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
 	return 0
 }
 
-func (f *fakeProtectionOwner) CapacityLeft(_ combat.CapacityType) int          { return 0 }
-func (f *fakeProtectionOwner) PoolLeft(_ coreResources.ResourceKey) int        { return 0 }
-func (f *fakeProtectionOwner) SpendCapacity(_ combat.CapacityType, _ int)      {}
-func (f *fakeProtectionOwner) SpendPool(_ coreResources.ResourceKey, _ int)    {}
-func (f *fakeProtectionOwner) BankCapacity(_ combat.CapacityType, _ int)       {}
+func (f *fakeProtectionOwner) CapacityLeft(_ combat.CapacityType) int       { return 0 }
+func (f *fakeProtectionOwner) PoolLeft(_ coreResources.ResourceKey) int     { return 0 }
+func (f *fakeProtectionOwner) SpendCapacity(_ combat.CapacityType, _ int)   {}
+func (f *fakeProtectionOwner) SpendPool(_ coreResources.ResourceKey, _ int) {}
+func (f *fakeProtectionOwner) BankCapacity(_ combat.CapacityType, _ int)    {}
 
 func (f *fakeProtectionOwner) SpendSlots(slot coreCombat.ActionType, n int) {
 	if slot == coreCombat.ActionReaction {

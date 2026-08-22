@@ -77,7 +77,7 @@ type fakeProtectionOwner struct {
 }
 
 func (f *fakeProtectionOwner) HasShieldEquipped() bool { return f.hasShield }
-func (f *fakeProtectionOwner) InCombat() bool           { return true }
+func (f *fakeProtectionOwner) InCombat() bool          { return true }
 
 func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
 	if slot == coreCombat.ActionReaction {
