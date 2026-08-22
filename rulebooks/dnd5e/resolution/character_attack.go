@@ -178,6 +178,20 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 // is what tells the caller to force proficiency rather than ask the sheet
 // for a grant no sheet has.
 //
+// GENUINELY EMPTY IS NOT THE SAME STATE AS UNREADABLE, and conflating them
+// was a real bug caught in review (Copilot + Kirk, PR #1173): the sheet's
+// own [character.Character.GetEquippedSlot] answers nil for TWO different
+// reasons — nothing named in the slot at all, and a slot naming an item
+// that is not (or no longer) in inventory, which is a corrupt or
+// inconsistent sheet rather than an empty hand. Only the first compiles to
+// unarmed; the second stays ErrBadAttack, per the design's own rule
+// (rpg-project#249 §2: "ErrBadAttack only for unreadable sheets"). The two
+// are told apart by reading the slot's raw item id first — via
+// [character.Character.ToData], the same snapshot every other public
+// accessor on this sheet is built from — rather than adding a new
+// accessor to the character package for a question this compiler alone
+// asks.
+//
 // Still refuses by name for a caller mistake (no slot named at all) and for
 // a slot the rulebook cannot read as a weapon — equipped but not a weapon,
 // which an empty hand is not.
@@ -186,10 +200,19 @@ func equippedWeapon(c *character.Character, slot character.InventorySlot) (weapo
 		return nil, false, fmt.Errorf("%w: no equipment slot named", ErrBadAttack)
 	}
 
-	equipped := c.GetEquippedSlot(slot)
-	if equipped == nil {
+	itemID := c.ToData().EquipmentSlots.Get(slot)
+	if itemID == "" {
+		// Nothing named in the slot at all — the rule, not a gap.
 		w := weapons.SpecialWeapons[weapons.UnarmedStrike]
 		return &w, true, nil
+	}
+
+	equipped := c.GetEquippedSlot(slot)
+	if equipped == nil {
+		// The slot names an item, but the sheet cannot produce it — a
+		// corrupt or inconsistent record, not an empty hand.
+		return nil, false, fmt.Errorf(
+			"%w: %q names item %q, which is not in inventory", ErrBadAttack, slot, itemID)
 	}
 
 	weapon = equipped.AsWeapon()

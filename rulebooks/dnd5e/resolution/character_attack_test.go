@@ -619,6 +619,24 @@ func (s *CharacterAttackTestSuite) TestRefusesWhatItCannotCompile() {
 // verbatim: "you can always attack you would just punch but can still
 // attack." An empty main hand is not a gap in what the compiler can read —
 // it is the rule — so it compiles a real profile rather than refusing.
+// TestACorruptSlotStaysErrBadAttack pins the fix for a real bug Copilot and
+// Kirk both caught in review (rpg-toolkit#1173): GetEquippedSlot answers
+// nil for TWO different reasons — nothing named in the slot at all, and a
+// slot naming an item that is not in inventory (a corrupt or inconsistent
+// sheet) — and treating both as "empty hand, throw a punch" would silently
+// paper over the second, which the design rules should stay ErrBadAttack
+// ("ErrBadAttack only for unreadable sheets", rpg-project#249 §2).
+func (s *CharacterAttackTestSuite) TestACorruptSlotStaysErrBadAttack() {
+	sheet := s.heroSheet(nil, nil)
+	// EquipmentSlots names an item that was never added to Inventory —
+	// the inconsistency GetEquippedSlot cannot resolve.
+	sheet.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: "phantom-blade"}
+
+	_, err := AttackFromCharacter(s.load(sheet), s.mainHand())
+	s.Require().ErrorIs(err, ErrBadAttack)
+	s.Contains(err.Error(), "phantom-blade", "names what the slot claimed, for whoever debugs the corrupt record")
+}
+
 func (s *CharacterAttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	// No proficiency GRANT covers "unarmed strike" — 5e never issues one,
 	// because everybody already has it — so this sheet's weapon
