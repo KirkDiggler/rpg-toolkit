@@ -242,6 +242,22 @@ func (PassDriver) Act(MonsterView) (TurnIntent, error) {
 	return Pass{}, nil
 }
 
+// RefusingStriker is a Striker for construction-only worlds: an encounter
+// built to hold members and geometry but never actually driven through a
+// turn — rpg-api's placement probes, a template's own acceptance test, any
+// scene a host constructs only to inspect. Calling Strike on one is a HOST
+// BUG, not a legal outcome a caller should ever see recover: a driven turn
+// that reaches this means some TurnDriver decided to attack in a world with
+// nothing that can carry it out, and the honest answer is a named error
+// rather than a silently fabricated hit — the same reasoning [PassDriver]'s
+// own doc gives for existing at all (rpg-toolkit#1167), one capability over.
+type RefusingStriker struct{}
+
+// Strike always fails with ErrRefusingStriker.
+func (RefusingStriker) Strike(context.Context, *Encounter, MemberID, MemberID, core.Ref) error {
+	return ErrRefusingStriker
+}
+
 // Striker resolves and records one member's attack against another.
 //
 // SUPPLIED, NEVER DEFAULTED (rpg-toolkit#1033), for the same reason every

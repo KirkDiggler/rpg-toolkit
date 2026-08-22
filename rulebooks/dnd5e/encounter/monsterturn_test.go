@@ -473,3 +473,13 @@ func (s *MonsterTurnTestSuite) TestMemberFactsRoundTripThroughToDataAndLoadEncou
 	}
 	s.True(found)
 }
+
+// TestRefusingStrikerFailsLoudly pins the construction-only-world Striker: a
+// driven turn that reaches it is a host bug (an encounter never meant to run
+// EndTurn/form at all — a placement probe, a template's acceptance test),
+// and the honest answer is a named error rather than a silently fabricated
+// hit.
+func (s *MonsterTurnTestSuite) TestRefusingStrikerFailsLoudly() {
+	err := (encounter.RefusingStriker{}).Strike(context.Background(), nil, goblin, alice, testMeleeAction)
+	s.Require().ErrorIs(err, encounter.ErrRefusingStriker)
+}

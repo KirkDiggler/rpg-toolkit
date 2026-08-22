@@ -285,6 +285,13 @@ var (
 	// turn end without the swing its driver decided on ever landing.
 	ErrNoStriker = errors.New("encounter: no striker capability")
 
+	// ErrRefusingStriker is what [RefusingStriker.Strike] always returns:
+	// a driven turn reached a Striker built for a construction-only world
+	// (rpg-api's placement probes, a template's own acceptance test) — a
+	// host bug, since nothing should ever call EndTurn/form against such a
+	// world, not a legal outcome any caller is meant to recover from.
+	ErrRefusingStriker = errors.New("encounter: RefusingStriker: a driven turn reached a construction-only world")
+
 	// ErrBadIntent indicates a TurnDriver returned a syntactically valid
 	// TurnIntent this composition cannot execute: an Attack naming a target
 	// that is not currently Seen, not Standing, or out of the named
