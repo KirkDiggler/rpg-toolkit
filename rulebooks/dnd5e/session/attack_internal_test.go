@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -76,8 +77,15 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// A minimal but real profile — Ref and Name non-empty, per
+	// rpg-toolkit#1172/#1175: Record refuses an Attack whose Ref or Name is
+	// empty. This test is about damage aggregation, not attack identity, so
+	// the profile is otherwise bare; DamageType stays unchecked and empty is
+	// still a legal answer for it.
+	profile := resolution.AttackProfile{Ref: refs.Weapons.Longsword(), Name: "Longsword"}
+
 	recorded, err := enc.Record(recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck, resolution.AttackProfile{},
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, profile,
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)
@@ -87,7 +95,7 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	require.NotEmpty(t, story)
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
-			`"critical":false,"attack":{"ref":"","name":"","damage_type":""}}`,
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":""}}`,
 		string(story[len(story)-1].Payload),
 		"the persisted encounter record carries the aggregate and no typed damage collection",
 	)
