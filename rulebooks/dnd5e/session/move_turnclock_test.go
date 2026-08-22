@@ -230,6 +230,40 @@ func (s *MoveTurnClockSuite) TestNotActiveMoveIsRefusedWithTheNamedSentinel() {
 	s.Equal(spatial.Position{X: 1, Y: 1}, s.where("alice"))
 }
 
+// TestNotActiveWinsOverAffordability is the precedence Copilot caught on
+// #1171: a member who is both out of turn AND asking for an unaffordable
+// path must be told the TRUE reason, not the currency one Pay would also
+// have refused with. Move asks the clock before it ever loads a sheet or
+// prices anything, so the sheet is never touched at all — asserted directly
+// against the fake repository's own call count, not inferred from the error
+// alone.
+func (s *MoveTurnClockSuite) TestNotActiveWinsOverAffordability() {
+	ctx := context.Background()
+
+	ended, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal("bob", ended.Next, "control: it is now genuinely bob's turn")
+
+	before := s.characters.asked["alice"]
+
+	// A path far longer than alice's whole 30-foot speed — if the turn gate
+	// were checked AFTER pricing, or not at all, this would be refused with
+	// ErrCannotAfford naming a currency shortfall instead.
+	_, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{
+			{X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}, {X: 1, Y: 5},
+			{X: 1, Y: 6}, {X: 1, Y: 7}, {X: 1, Y: 8},
+		},
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrNotYourTurn)
+	s.NotErrorIs(err, session.ErrCannotAfford, "the wrong reason must not also be true of this refusal")
+
+	s.Equal(before, s.characters.asked["alice"],
+		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
+}
+
 // TestWorldClockMoveNeverTouchesTheEconomy is the brief's fifth case: free
 // roam is untouched. Reuses corridorWorld/MoveTestSuite's own fixture (alice
 // alone, never in a fight) rather than a fixture of this suite's own, so the

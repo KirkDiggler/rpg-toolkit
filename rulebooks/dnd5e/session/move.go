@@ -174,28 +174,55 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	// A downed member does not walk. Asked after the path is VALIDATED and before a single
-	// cell is entered, which is where R5 puts every other refusal: the path is
-	// validated whole first, so naming a member who is not here or a route that
-	// is not a walk still answers what it always answered, and a walk this
-	// refuses has moved nobody.
+	// Whose turn it is is asked FIRST among the fact-about-this-member
+	// refusals — before downed, before anything is priced, before any sheet
+	// is loaded at all (Copilot finding on #1171). If it is not your turn,
+	// nothing else about you is this call's business yet: encounter.Step's
+	// own gate would eventually refuse a non-active bubble member's first
+	// step with ErrNotActive regardless, but by then refuseIfDown and
+	// priceWalk would both already have loaded a sheet, and combat.Pay might
+	// already have refused with a MISLEADING currency shortfall — a
+	// non-active member low on movement would be told "movement: X ft
+	// needed" instead of "not your turn", naming the wrong reason. This is
+	// not a second copy of Step's rule: it is the same fact, ClockOf, that
+	// Manager.Turn and priceWalk already read for their own purposes, read
+	// once more here before anything else touches this member at all.
+	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("move: %w", translate(err))
+	}
+	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Member {
+		return nil, fmt.Errorf("move: %w", ErrNotYourTurn)
+	}
+
+	// A downed member does not walk. Asked after the path is VALIDATED and
+	// the TURN GATE has passed, and before a single cell is entered, which is
+	// where R5 puts every other refusal: naming a member who is not here, a
+	// route that is not a walk, or a member whose turn has not come still
+	// answers what it always answered, and a walk this refuses has moved
+	// nobody.
 	//
-	// Inside a fight this never fires, because a member in a bubble is refused
-	// the verb outright. It is free roam that needed it — there is no turn
-	// order there to have already taken the walker out.
+	// REACHABLE INSIDE A FIGHT NOW, unlike before rpg-toolkit#1169: a bubble
+	// member used to be refused the verb outright, so a downed one could
+	// never reach this check from here. The active member can now walk, and
+	// nothing in the composition splices a downed member out of initiative on
+	// its own (rpg-toolkit#1077's own ruling) — so this is exactly where a
+	// downed member whose turn the clock IS waiting on still gets refused.
 	if err = refuseIfDown(scope, "member", in.Member); err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	cost, err := m.priceWalk(ctx, scope, in.Member, len(in.Path))
+	cost, err := m.priceWalk(ctx, scope, in.Member, clock, len(in.Path))
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
 	// THE ONE PLACE A SPEND GOES for this verb, mirroring Attack's own comment
-	// at its call site: nil profile means free roam or a non-character member,
-	// and combat.Pay treats a nil profile as a free action by its own contract
-	// (see [combat.SpendProfile]), so this branch is a shortcut rather than a
+	// at its call site: nil profile means FREE ROAM ONLY — priceWalk refuses
+	// with ErrNoCharacter/ErrBadCharacter for anyone else on the turn clock it
+	// cannot load, rather than silently pricing them as free. combat.Pay
+	// treats a nil profile as a free action by its own contract (see
+	// [combat.SpendProfile]), so this branch is a shortcut rather than a
 	// second free-action path.
 	if cost.profile != nil {
 		if err := combat.Pay(cost.sheet, cost.profile); err != nil {
@@ -259,17 +286,22 @@ type walkCost struct {
 // shape, adapted to a currency priced by the CALL rather than compiled once
 // per actor.
 //
+// clock is the caller's OWN ClockOf read, passed in rather than re-fetched:
+// [Manager.Move] already reads it to gate on whose turn it is before this is
+// ever called, and a second read here would ask the composition the same
+// question twice in one verb.
+//
 // # Free roam charges nothing, the same ruling priceSwing states
 //
 // [combat.Ledger] opens with InCombat and refuses every payment from a holder
 // who is not in one, so a walk off the turn clock is priced nothing rather
-// than being handed a cost the gate would refuse outright. A member the
-// session holds no character sheet for — a monster, reachable only if a host
-// calls this verb for one, since the pump moves monsters through
-// [encounter.Encounter]'s own silent stepTo and never through this seam — is
-// priced nothing for the same reason [Manager.Afford] already lets that case
-// speak for itself: ErrNoCharacter is refused by the load below rather than
-// silently priced as free.
+// than being handed a cost the gate would refuse outright — this is the ONLY
+// case that returns a nil profile. A member the session holds no character
+// sheet for — a monster, reachable only if a host calls this verb for one,
+// since the pump moves monsters through [encounter.Encounter]'s own silent
+// stepTo and never through this seam — is NOT priced nothing: it is refused,
+// by the load below, exactly the way [Manager.Afford] already lets that case
+// speak for itself rather than silently treating it as free.
 //
 // # What a path costs is the path's business, never the profile's
 //
@@ -288,14 +320,10 @@ type walkCost struct {
 // that ignites it, and the other finds it already lit. See readyForTurn's own
 // comment for why the session is the layer that has to do this at all.
 //
-// Returns ErrNoMember, ErrNoCharacter, ErrBadCharacter, or ErrBadCost.
+// Returns ErrNoCharacter, ErrBadCharacter, or ErrBadCost.
 func (m *Manager) priceWalk(
-	ctx context.Context, scope *writeScope, member string, cells int,
+	ctx context.Context, scope *writeScope, member string, clock *encounter.ClockOfOutput, cells int,
 ) (*walkCost, error) {
-	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(member)})
-	if err != nil {
-		return nil, translate(err)
-	}
 	if ClockKind(clock.Kind) != ClockTurn {
 		return &walkCost{}, nil
 	}
