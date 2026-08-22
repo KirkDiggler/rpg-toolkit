@@ -159,13 +159,19 @@ var (
 	// ErrInBubble is returned when a verb requires its member NOT be in a
 	// running bubble and they are: Form names a member already in a fight
 	// (rejected, never silently merged — merging is a Merge-verb decision
-	// that arrives with multiple bubbles), Form is called while this
+	// that arrives with multiple bubbles), or Form is called while this
 	// encounter's one allowed bubble is already running (#963 policy: one
 	// bubble per encounter, so fights stay linear and the party stays
-	// together), Transfer names ClockTurn for a member already in the
-	// fight, or Step is asked to free-roam a member who is
-	// mid-fight — a fight member acts through the bubble's own turn
-	// structure, never by stepping around it.
+	// together).
+	//
+	// NOT Step's own refusal for a mid-fight member any more
+	// (rpg-toolkit#1169): the active member of a bubble moves through
+	// Step exactly as a free-roaming member does, spending movement
+	// through the turn clock rather than around it. What a bubble member
+	// still cannot do is free-roam OUT of the fight — Transfer still
+	// refuses ClockTurn for a member already in one — and what a
+	// NON-active bubble member cannot do is move at all, which is
+	// ErrNotActive's refusal, not this one.
 	ErrInBubble = errors.New("already in a bubble")
 
 	// ErrNoBubble is returned when a verb requires a running bubble and
@@ -173,6 +179,21 @@ var (
 	// Transfer-to-world, EndTurn, or Dissolve names a member who is on the
 	// world clock — there is no bubble to leave, act in, or dissolve.
 	ErrNoBubble = errors.New("no bubble")
+
+	// ErrNotActive is returned when a verb requires its member to be the
+	// CURRENT active member of their bubble and they are not: EndTurn
+	// naming someone whose turn it is not, or (rpg-toolkit#1169) Step
+	// asked to move a bubble member who is not the one the clock is
+	// waiting on.
+	//
+	// TWO VERBS SHARE THIS REFUSAL, which is why it is named at all. Before
+	// Step could ever produce it, EndTurn's identical rejection reached a
+	// caller unnamed — play/clock's own ErrNotActive, surfacing through
+	// this package's exported signatures with no translation (a real S2
+	// gap, closed here rather than left for a second caller to rediscover).
+	// The leaf sentinel does not cross this boundary any more than any
+	// other leaf's does: this is the one a host matches on.
+	ErrNotActive = errors.New("not the active member")
 
 	// ErrBadClock is returned when TransferInput.To names neither
 	// ClockWorld nor ClockTurn. Direction is load-bearing on a transfer —

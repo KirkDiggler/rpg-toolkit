@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -647,13 +648,14 @@ type EndTurnOutput struct {
 // it.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember, ErrNotMember, ErrNoBubble
-// (the member is not in a fight), the bubble's own rejection when it is not
-// this member's turn (clock.ErrNotActive, with no state change), and
-// whatever driveMonsterTurns can return (ErrNoPlayerInBubble,
-// ErrBadTurnOutcome, or a TurnDriver's own error) if an unplayed member
-// follows. A driver error here means NOTHING this call did is persisted —
-// not even the acting member's own end — since nothing is saved until the
-// caller's commit; see driveMonsterTurns's own doc.
+// (the member is not in a fight), ErrNotActive when it is not this member's
+// turn (with no state change — translated from play/clock's own sentinel,
+// rpg-toolkit#1169, the same refusal Step now shares), and whatever
+// driveMonsterTurns can return (ErrNoPlayerInBubble, ErrBadTurnOutcome, or a
+// TurnDriver's own error) if an unplayed member follows. A driver error here
+// means NOTHING this call did is persisted — not even the acting member's
+// own end — since nothing is saved until the caller's commit; see
+// driveMonsterTurns's own doc.
 func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("end turn: %w", ErrNilInput)
@@ -677,6 +679,14 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 
 	out, err := bubble.End(&clock.EndInput{Actor: core.EntityID(in.Member)})
 	if err != nil {
+		// play/clock's own sentinel is translated here, not passed through —
+		// the same discipline every other leaf-module error crossing this
+		// boundary already keeps, and until now the one refusal that had not
+		// (rpg-toolkit#1169): a host could only ever have matched on
+		// clock.ErrNotActive, two layers down.
+		if errors.Is(err, clock.ErrNotActive) {
+			return nil, fmt.Errorf("end turn %q: %w", in.Member, ErrNotActive)
+		}
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, err)
 	}
 

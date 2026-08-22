@@ -318,12 +318,18 @@ func (s *DefeatSuite) TestSurvivorsExploreAgain() {
 	down := &downList{}
 	enc := s.trio(down)
 
-	_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
-	s.Require().ErrorIs(err, encounter.ErrInBubble, "control: mid-fight, she is not free to walk")
+	// control: mid-fight, on the turn clock. alice is trio's sole player,
+	// so — rpg-toolkit#1169 — she is also always the fight's active member
+	// (goblin and wolf, both unplayed, are driven through the instant
+	// either would be active) and her own step succeeds through the turn
+	// gate rather than being blocked by it. What being "in a fight" still
+	// means for her is answered by ClockOf, not by Step refusing her.
+	s.Require().Equal(encounter.ClockTurn, s.clockOf(enc, alice), "control: she is in the fight")
 
 	down.down = []encounter.MemberID{goblin, wolf}
-	_, err = enc.Pump(&encounter.PumpInput{})
+	_, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "control: the fight is over")
 
 	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
 	s.Require().NoError(err, "the fight is over, so the walk is hers again")

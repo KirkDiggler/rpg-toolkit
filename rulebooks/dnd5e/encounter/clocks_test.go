@@ -499,10 +499,11 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	s.Equal(alice, joined.Active, "falling in does not steal the active turn")
 
 	// And having fallen in, carl is the fight's now — free-roam movement is
-	// no longer his to make.
+	// no longer his to make, and it is not his turn either (alice is still
+	// active): rpg-toolkit#1169 refuses him ErrNotActive, not ErrInBubble.
 	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 8}})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrInBubble)
+	s.ErrorIs(err, encounter.ErrNotActive)
 
 	// Alice ends her turn; the goblin is driven through again; carl closes
 	// the round he fell into, and it wraps across the grown order.
@@ -628,7 +629,8 @@ func (s *ClocksTestSuite) TestEndTurnRejections() {
 
 		_, err := enc.EndTurn(&encounter.EndTurnInput{Member: goblin})
 		s.Require().Error(err)
-		s.ErrorIs(err, clock.ErrNotActive)
+		s.ErrorIs(err, encounter.ErrNotActive, "rpg-toolkit#1169: translated, not the leaf sentinel")
+		s.NotErrorIs(err, clock.ErrNotActive, "the leaf sentinel must not cross this boundary (S2)")
 
 		still, cerr := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
 		s.Require().NoError(cerr)
@@ -671,20 +673,40 @@ func (s *ClocksTestSuite) TestClockVerbsRejectAClosedEncounter() {
 func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 	enc := s.fiveMemberEncounter()
 
-	_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 2, Y: 1}})
+	// alice is the fight's ACTIVE member (order [alice, goblin], and
+	// nothing drives a player through) — rpg-toolkit#1169 means her own
+	// step is no longer refused for merely being in the bubble. It is the
+	// GOBLIN, whose turn it is not, that free-roaming is still refused for.
+	_, err := enc.Step(&encounter.StepInput{Member: goblin, To: spatial.Position{X: 6, Y: 6}})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrInBubble)
+	s.ErrorIs(err, encounter.ErrNotActive)
 
 	// The gate outranks the step itself: this cell is out of bounds for the
-	// whole field, and the answer is still "you are fighting", not "that is
-	// not a cell".
-	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 500, Y: 500}})
+	// whole field, and the answer is still "it is not your turn", not
+	// "that is not a cell".
+	_, err = enc.Step(&encounter.StepInput{Member: goblin, To: spatial.Position{X: 500, Y: 500}})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrInBubble)
+	s.ErrorIs(err, encounter.ErrNotActive)
 
 	// Everyone else's world is still running.
 	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 7}})
 	s.Require().NoError(err)
+}
+
+// TestTheActiveFightMemberCanStep is rpg-toolkit#1169's headline claim at
+// the composition layer: the member whose turn it is moves through Step
+// exactly as a free-roaming member does, no longer refused for merely being
+// in the bubble.
+func (s *ClocksTestSuite) TestTheActiveFightMemberCanStep() {
+	enc := s.fiveMemberEncounter()
+
+	turn, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(alice, turn.Active, "control: alice really is the one the clock is waiting on")
+
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 2, Y: 1}})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 2, Y: 1}, out.Stepped.To)
 }
 
 // TestPumpDoesNotThinkForAFightMonster pins the other half of coexistence:

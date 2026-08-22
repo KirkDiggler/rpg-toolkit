@@ -476,6 +476,9 @@ func (s *StepSuite) TestAStepRefusesAClosedEncounter() {
 // player stroll out of a fight.
 func (s *StepSuite) TestAStepRefusesAFightMember() {
 	// In sight of each other from first light, which starts the fight.
+	// orderAsGiven keeps the roster order, so alice — a player, first in —
+	// is Active and the goblin is not: rpg-toolkit#1169 refuses HIS step
+	// now, not hers (see TestAnActiveFightMemberSteps for hers).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: stepField(),
@@ -490,9 +493,31 @@ func (s *StepSuite) TestAStepRefusesAFightMember() {
 	s.Require().NoError(err)
 
 	_, err = enc.Step(&encounter.StepInput{
-		Member: alice, To: stepAbs(stepWestOrigin, spatial.Position{X: 2, Y: 1})})
+		Member: goblin, To: stepAbs(stepWestOrigin, spatial.Position{X: 5, Y: 4})})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrInBubble)
+	s.ErrorIs(err, encounter.ErrNotActive)
+}
+
+// TestAnActiveFightMemberSteps is the other half: the member the clock is
+// actually waiting on moves through Step like anyone else.
+func (s *StepSuite) TestAnActiveFightMemberSteps() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Field: stepField(),
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
+				Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
+				Position: spatial.Position{X: 4, Y: 4}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	out, err := enc.Step(&encounter.StepInput{
+		Member: alice, To: stepAbs(stepWestOrigin, spatial.Position{X: 2, Y: 1})})
+	s.Require().NoError(err)
+	s.Equal(stepAbs(stepWestOrigin, spatial.Position{X: 2, Y: 1}), out.Stepped.To)
 }
 
 // TestGridReportsTheFieldsFamily covers the cheap read the seam needs in place
