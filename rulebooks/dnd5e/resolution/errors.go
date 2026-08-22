@@ -87,9 +87,12 @@ var (
 	// room refuses. The world is the caller's to hand over intact.
 	ErrBadWorld = errors.New("resolution: world data is unusable")
 
-	// ErrBadAttack indicates an action this build cannot read as an attack.
-	// Refused by name rather than treated as a generic swing, because guessing
-	// an attack bonus is how a stat block starts lying again.
+	// ErrBadAttack indicates an action this build cannot read as an attack —
+	// an unknown weapon ref, a slot holding something that is not a weapon,
+	// or an equipment slot whose entry names an item that is not in
+	// inventory (see equippedWeapon in character_attack.go). Refused by
+	// name rather than treated as a generic swing, because guessing an
+	// attack bonus is how a stat block starts lying again.
 	ErrBadAttack = errors.New("resolution: unreadable attack")
 
 	// ErrNoCombatant indicates a strike naming somebody who was not passed in.

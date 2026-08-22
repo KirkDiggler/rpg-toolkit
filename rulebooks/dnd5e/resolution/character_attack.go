@@ -100,7 +100,13 @@ type CharacterAttackInput struct {
 //
 // ErrBadAttack still stands for what it always meant beyond that one case: a
 // sheet the rulebook cannot read — an unknown weapon ref, a slot holding
-// something that is not a weapon at all.
+// something that is not a weapon at all, or a slot whose entry names an item
+// that is not in inventory. That last one matters precisely because it looks
+// like the empty-hand case from the outside: both end with
+// [character.Character.GetEquippedSlot] returning nil. Only one of them is a
+// character choosing to fight bare-handed; the other is a record this
+// rulebook cannot trust, and conflating the two would compile a corrupt
+// sheet into a perfectly ordinary swing. See [equippedWeapon].
 func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (AttackProfile, error) {
 	if c == nil {
 		return AttackProfile{}, fmt.Errorf("%w: no character to compile", ErrNilInput)
@@ -188,8 +194,20 @@ func equippedWeapon(c *character.Character, slot character.InventorySlot) (weapo
 
 	equipped := c.GetEquippedSlot(slot)
 	if equipped == nil {
-		w := weapons.SpecialWeapons[weapons.UnarmedStrike]
-		return &w, true, nil
+		// GetEquippedSlot returning nil conflates two states this compiler must
+		// not: a slot with no entry at all — a genuinely empty hand, which 5e
+		// says is always an unarmed strike (rpg-toolkit#1168, see "An empty
+		// hand is not a refusal" above) — and a slot whose entry names an item
+		// that is not in inventory, which is an UNREADABLE SHEET, not an empty
+		// hand. Reading the slot entry directly (rather than trusting the
+		// resolved *EquippedItem) is what tells the two apart.
+		itemID := c.ToData().EquipmentSlots.Get(slot)
+		if itemID == "" {
+			w := weapons.SpecialWeapons[weapons.UnarmedStrike]
+			return &w, true, nil
+		}
+		return nil, false, fmt.Errorf(
+			"%w: %q names %q which is not in the inventory", ErrBadAttack, slot, itemID)
 	}
 
 	weapon = equipped.AsWeapon()

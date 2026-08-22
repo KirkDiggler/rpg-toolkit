@@ -644,6 +644,24 @@ func (s *CharacterAttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.Equal(5, profile.AttackBonus)
 }
 
+// TestACorruptSlotStaysErrBadAttack pins the other half of rpg-toolkit#1168's
+// fix: only a slot with NO entry in EquipmentSlots is an empty hand. A slot
+// whose entry NAMES an item that is not in inventory is a sheet this
+// rulebook cannot read, and must stay ErrBadAttack rather than being folded
+// into the same unarmed-strike substitution TestAnEmptyHandThrowsAnUnarmedStrike
+// pins — a corrupt record and a bare fist are not the same fact, even though
+// [character.Character.GetEquippedSlot] returns nil for both (design §2:
+// "ErrBadAttack only for unreadable sheets").
+func (s *CharacterAttackTestSuite) TestACorruptSlotStaysErrBadAttack() {
+	sheet := s.heroSheet(nil, nil)
+	sheet.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: "phantom-blade"}
+
+	_, err := AttackFromCharacter(s.load(sheet), s.mainHand())
+	s.Require().ErrorIs(err, ErrBadAttack)
+	s.Contains(err.Error(), "phantom-blade", "names what the slot claimed, for whoever debugs the corrupt record")
+	s.Contains(err.Error(), "not in the inventory")
+}
+
 // TestReach pins rpg-toolkit#1010's compiler half: a plain melee weapon
 // reaches 1 cell, a weapon carrying the Reach property reaches 2, and an
 // unarmed strike reaches 1 — the same numbers the retired top-level
