@@ -110,6 +110,13 @@ type MonsterView struct {
 	// the first step to take, last element the requested cell itself. ok is
 	// false when no path exists (an unreachable target, an unowned cell).
 	//
+	// ok TRUE WITH AN EMPTY path IS A LEGAL ANSWER (Copilot, PR #1189
+	// review): requesting a path to the cell this member is already
+	// standing on has nothing to walk, so path is nil rather than
+	// containing that one cell redundantly. A caller must check len(path)
+	// before indexing it, not rely on ok alone — [behavior.Basic]'s own
+	// call does exactly this ("ok && len(path) > 0").
+	//
 	// A CLOSURE, NOT A LIVE *Encounter (rpg-project#254) — the same
 	// anti-wall-hack reason [Decider]'s own Snapshot carries no live
 	// reference either: a driver may ask this one narrow question ("how do

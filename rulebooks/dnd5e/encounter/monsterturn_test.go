@@ -595,14 +595,21 @@ func (s *MonsterTurnTestSuite) TestPathToWalksAroundAWall() {
 	s.Require().NotEmpty(path)
 	s.Equal(spatial.Position{X: 4, Y: 2}, path[len(path)-1], "the path ends at the requested cell")
 
-	// The path must route through the one gap at y=0 — asserting it never
-	// crosses x=2 at y=1 or y=2 is the same as asserting it went around,
-	// not through, the wall.
+	// The path must cross the wall column through its one gap (Copilot, PR
+	// #1189 review: a cell with X==2 is not itself illegal to visit — (2,1)
+	// and (2,2) sit on the near side of the wall and are legal to stand on,
+	// just not to cross FROM at that row — so asserting every X==2 cell has
+	// Y==0 is stricter than the actual rule and would fail a valid shortest
+	// path that happens to touch the near side). What the wall's existence
+	// actually requires is that SOME step in the path uses the gap itself;
+	// assert that positively instead.
+	usedTheGap := false
 	for _, p := range path {
-		if p.X == 2 {
-			s.Equal(0.0, p.Y, "the only legal crossing of the wall column is the gap at y=0: %+v", path)
+		if p == (spatial.Position{X: 2, Y: 0}) || p == (spatial.Position{X: 3, Y: 0}) {
+			usedTheGap = true
 		}
 	}
+	s.True(usedTheGap, "the path must cross the wall column through its one gap at y=0: %+v", path)
 }
 
 // TestPathToReportsNoPathWhenTheTargetIsUnreachable pins the ok=false case:
