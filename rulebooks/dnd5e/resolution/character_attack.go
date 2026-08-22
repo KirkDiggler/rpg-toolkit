@@ -73,14 +73,16 @@ type CharacterAttackInput struct {
 // brackets, no long-range disadvantage, and prone's interaction reverses at
 // distance. Compiler and machine both grow when that arrives.
 //
-// No unarmed strike. An empty slot is refused rather than falling back to the
-// catalog's unarmed weapon, because a silent 1d1 fallback is how a character
-// who dropped their sword keeps "attacking" and nobody notices. Monk martial
-// arts dice are a future compiler's business.
+// Monk martial arts dice — an upgraded unarmed die keyed to level — are a
+// future compiler's business; this one always compiles the catalog's plain
+// 1d1 (see "An empty hand is not a refusal" below, rpg-toolkit#1168).
 //
-// Reach and adjacency are unenforced, exactly as for the bite: the strike
-// does not check distance at all. One shared, named gap, not one this case
-// adds.
+// Reach and adjacency are UNENFORCED BY THIS COMPILER AND THE STRIKE MACHINE
+// IT FEEDS — the profile now carries Reach (rpg-toolkit#1010), but nothing
+// here checks a target's distance against it; that gate lives above this
+// seam, in whatever caller has both combatants' positions (session.Attack).
+// The strike itself still does not check distance at all, exactly as for
+// the bite.
 //
 // # An empty hand is not a refusal
 //
