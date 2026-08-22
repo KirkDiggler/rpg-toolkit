@@ -596,6 +596,14 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 		require.ErrorIs(t, err, ErrNoSight)
 	})
 
+	t.Run("no turn driver", func(t *testing.T) {
+		err := (&Input{
+			Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+			Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		}).Validate()
+		require.ErrorIs(t, err, ErrNoTurnDriver)
+	})
+
 	t.Run("no roller", func(t *testing.T) {
 		err := (&Input{
 			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},

@@ -52,7 +52,7 @@ var (
 	//
 	// Nothing in this package consults it, for ErrNoStanding's reason: the
 	// world is loaded here, one interaction runs, and it is read back out as
-	// data — this package never calls EndTurn, Transfer or Exit, so the
+	// data — this package never calls EndTurn, form, Transfer or Exit, so the
 	// question this capability answers is never put. Carried rather than
 	// invented, because a package that answered "it passes" on the caller's
 	// behalf would be deciding a rule it cannot see, the same way ErrNoStanding
