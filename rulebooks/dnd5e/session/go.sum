@@ -16,12 +16,12 @@ github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0 h1:CefHnp1Cuk9BrIxWcrrAE+q
 github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0/go.mod h1:URY6tA/joFr1iUmw7QHVFN5lzV9Aa214ygGmCGXk5dE=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 h1:MtAEpVskb0lfb+oXO8xGrSQsDoHZdQ/kjdjh7b9IOdY=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1/go.mod h1:wsyJmmf1X0iLFGy5Iyy5sUoZhXZQvuYVsKdXfc4b/T4=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.97.1-0.20260822112137-5a0b707a2b04 h1:DDAtwWYscIQzw4iZO4r9jQL6Oik4woMHxxY7vkUFYB8=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.97.1-0.20260822112137-5a0b707a2b04/go.mod h1:DimIKXyoLKh2S3LO0FZBHaB5QBq4biIgVoQ0FekbXnY=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.97.1-0.20260822114920-58a946928e6b h1:VhWUcRPT8SfISGSP9rVxPZLz6+xWy5Dp1hxdL0t1lb8=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.97.1-0.20260822114920-58a946928e6b/go.mod h1:DimIKXyoLKh2S3LO0FZBHaB5QBq4biIgVoQ0FekbXnY=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.30.2-0.20260822095344-9e268587e077 h1:A7RSob5tVwwO/J82HOTgveyOKoROWrpLhec3oOfgZOY=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.30.2-0.20260822095344-9e268587e077/go.mod h1:X2jxN8n3qhWAeicXEKXx6KUH3IjiwJTSYDkAY+aF7qw=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.3-0.20260822112316-3d589135e06a h1:kdtcjAeAJOHE9nqV9vmOKOg95NPuB1zSWxbV3rpRnJU=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.3-0.20260822112316-3d589135e06a/go.mod h1:ItzmNxVuASAigkJokYm0bfDNOpgP7fuqnM/JR38h8xM=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.3-0.20260822115009-bb32ccb27a7e h1:C39BDfpAXG2/GBC5jtyI/AxpmsahysjR53Z1nrSGp8w=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.3-0.20260822115009-bb32ccb27a7e/go.mod h1:tl3ZPUkO+K+J57dFGrX3bxkCpG3dvHpUlG006e6Hu5I=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0 h1:FzCB2NbNS/BMRuKwEr8GRnadWJvdYermOs3smTd8Ss0=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0/go.mod h1:3SZFDKtQWXwplGyRfUDSsdrGH25Etkm62BdZig0Q3rY=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

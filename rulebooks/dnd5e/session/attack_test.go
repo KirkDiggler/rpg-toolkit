@@ -219,6 +219,87 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 		"an armed Dueling-eligible fighter's swing must not depend on a GameContext the session stack never installs")
 }
 
+// protectionBlob is the persisted Protection fighting style condition.
+func (s *AttackTestSuite) protectionBlob(id string) json.RawMessage {
+	raw, err := (&conditions.FightingStyleProtectionCondition{CharacterID: id}).ToJSON()
+	s.Require().NoError(err)
+
+	return raw
+}
+
+// protectorFighter is armedFighter equipped with a shield in the off hand
+// and the Protection fighting style chosen.
+func (s *AttackTestSuite) protectorFighter(id string) *character.Data {
+	sheet := armedFighter(id)
+	sheet.Inventory = append(sheet.Inventory, character.InventoryItemData{
+		Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1,
+	})
+	sheet.EquipmentSlots[character.SlotOffHand] = string(armor.Shield)
+	sheet.Conditions = []json.RawMessage{s.protectionBlob(id)}
+	return sheet
+}
+
+// TestProtectionReactsToANearbyAllysAttackOnTheSessionStack pins
+// rpg-toolkit#1178's second half, Copilot's finding on PR #1179: a
+// two-member world never exercises Protection's shield/reaction branch at
+// all (both of onAttackChain's exclusions — "not my own attack", "not an
+// attack on me" — trivially pass or fail with only an attacker and a
+// target), so the first fix's claim that "no caller exercises it" was
+// false. A THIRD member changes that: carol attacks bob while alice (the
+// protector, carrying a shield and the Protection style) stands adjacent
+// to bob. alice is neither carol nor bob, so both exclusions clear and
+// Protection's full eligibility path — shield equipped, reaction
+// available, both read off alice's own live sheet via SetOwner rather
+// than a gamectx registry — actually runs.
+//
+// No gamectx.WithGameContext is installed anywhere in this test, matching
+// the real session stack. Before the owner-based fix this failed exactly
+// like the two-member Dueling case; after it, the swing resolves AND
+// Protection's disadvantage still applies — "behaves as before", the
+// mechanic is not merely uncrashed but still working.
+func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionStack() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+
+	alice := s.protectorFighter("alice") // the protector
+	bob := armedFighter("bob")           // carol's target, standing beside alice
+	carol := armedFighter("carol")       // the attacker — neither alice nor bob
+
+	s.characters = newFakeCharacters(alice, bob, carol)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},   // adjacent to alice
+			{ID: "carol", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 3, Y: 1}}, // adjacent to bob, in melee reach
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	world := enc.ToData()
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: &world,
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "carol", Target: "bob",
+	})
+	s.Require().NoError(err,
+		"a third member's Protection condition must not depend on a GameContext the session stack never installs")
+}
+
 // TestASwingLandsAndTheStoryRecordsIt is the headline: a rules machine runs
 // through the seam, and what it produced reaches both the caller and the
 // transcript.
