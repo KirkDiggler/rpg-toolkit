@@ -11,8 +11,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -159,6 +161,62 @@ func (s *AttackTestSuite) swing(mgr *session.Manager) (*session.AttackOutput, er
 	return mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
 	})
+}
+
+// duelingBlob is the persisted Dueling fighting style condition, so the
+// fighter has actually chosen it rather than merely being eligible for it.
+func (s *AttackTestSuite) duelingBlob(id string) json.RawMessage {
+	raw, err := (&conditions.FightingStyleDuelingCondition{CharacterID: id}).ToJSON()
+	s.Require().NoError(err)
+
+	return raw
+}
+
+// TestAnArmedDuelingFighterResolvesOnTheSessionStack pins rpg-toolkit#1178.
+//
+// Dueling's damage-chain fold used to decide eligibility by live-querying a
+// gamectx.CharacterRegistry — a global lookup the OLD encounter module
+// installed and the session stack never does; resolution installs exactly
+// one gamectx registry (WithRoom, for prone's range predicate) and
+// deliberately nothing else (resolution/doc.go). So a fighter who chose
+// Dueling and swings a one-handed melee weapon with an empty or shielded off
+// hand — precisely the sheet shape this test builds — crashed every armed
+// swing with gamectx.ErrNoGameContext, while an unarmed swing by the same
+// character resolved fine (nothing in the unarmed path reaches Dueling's
+// predicate the same way). This is the live blocker reported against
+// rpg-api's session stack.
+//
+// No gamectx.WithGameContext is installed anywhere in this test, exactly
+// like the real session stack — that absence is the point being pinned.
+func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+
+	alice := armedFighter("alice")
+	alice.Inventory = append(alice.Inventory, character.InventoryItemData{
+		Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1,
+	})
+	alice.EquipmentSlots[character.SlotOffHand] = string(armor.Shield)
+	alice.Conditions = []json.RawMessage{s.duelingBlob("alice")}
+
+	s.characters = newFakeCharacters(alice, armedFighter("bob"))
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob",
+	})
+	s.Require().NoError(err,
+		"an armed Dueling-eligible fighter's swing must not depend on a GameContext the session stack never installs")
 }
 
 // TestASwingLandsAndTheStoryRecordsIt is the headline: a rules machine runs
