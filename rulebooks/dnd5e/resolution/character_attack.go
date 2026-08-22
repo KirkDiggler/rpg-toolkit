@@ -6,6 +6,7 @@ package resolution
 import (
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -170,12 +171,54 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 		// Weapons declare no rider. A gate on a character's attack comes from
 		// class content (a monk's Flurry), which compiles elsewhere.
 		Gate: nil,
+		// Static equipment facts a predicate like Dueling decides eligibility
+		// from (rpg-toolkit#1178) — knowable here, from the sheet, and never
+		// re-derived live from a registry.
+		TwoHanded:        in.TwoHanded || weapon.HasProperty(weapons.PropertyTwoHanded),
+		OffHandWeaponRef: otherHandWeaponRef(c, in.Slot),
 	}
 	if err := profile.validate(); err != nil {
 		return AttackProfile{}, err
 	}
 
 	return profile, nil
+}
+
+// otherHandWeaponRef reports the weapon, if any, occupying the hand OTHER
+// than the one a swing compiled from — nil when that hand is empty or holds
+// something that is not a weapon (a shield, most often).
+//
+// Unlike equippedWeapon, this draws no unarmed-strike distinction: "nothing
+// to swing" and "nothing occupying the other hand" are different questions,
+// and only the first one is a rule (rpg-toolkit#1168). This is purely a
+// static equipment fact for a chain-fold predicate like Dueling to read off
+// the compiled profile instead of a live gamectx lookup (rpg-toolkit#1178).
+// A slot naming an item that turns out not to be in inventory reads the
+// same as an empty slot here — conservatively "no weapon" either way — since
+// that distinction (rpg-toolkit#1173) is equippedWeapon's concern for the
+// hand actually being swung, not this one's for the other hand.
+func otherHandWeaponRef(c *character.Character, slot character.InventorySlot) *core.Ref {
+	var other character.InventorySlot
+	switch slot {
+	case character.SlotMainHand:
+		other = character.SlotOffHand
+	case character.SlotOffHand:
+		other = character.SlotMainHand
+	default:
+		return nil
+	}
+
+	equipped := c.GetEquippedSlot(other)
+	if equipped == nil {
+		return nil
+	}
+
+	w := equipped.AsWeapon()
+	if w == nil {
+		return nil
+	}
+
+	return refs.Weapons.ByID(string(w.ID))
 }
 
 // equippedWeapon reads the weapon out of a slot: what is equipped there, or

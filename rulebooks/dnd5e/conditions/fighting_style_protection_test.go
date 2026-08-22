@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -27,6 +29,39 @@ type protectionTestEntity struct {
 
 func (e *protectionTestEntity) GetID() string            { return e.id }
 func (e *protectionTestEntity) GetType() core.EntityType { return core.EntityType(e.kind) }
+
+// fakeProtectionOwner is the minimal combat.Ledger + HasShieldEquipped
+// implementation Protection's owner interface needs (rpg-toolkit#1178) —
+// enough to prove eligibility and consumption without gamectx or a full
+// *character.Character.
+type fakeProtectionOwner struct {
+	hasShield bool
+	reactions int
+	spent     []coreCombat.ActionType
+}
+
+func (f *fakeProtectionOwner) HasShieldEquipped() bool { return f.hasShield }
+func (f *fakeProtectionOwner) InCombat() bool          { return true }
+
+func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
+	if slot == coreCombat.ActionReaction {
+		return f.reactions
+	}
+	return 0
+}
+
+func (f *fakeProtectionOwner) CapacityLeft(_ combat.CapacityType) int       { return 0 }
+func (f *fakeProtectionOwner) PoolLeft(_ coreResources.ResourceKey) int     { return 0 }
+func (f *fakeProtectionOwner) SpendCapacity(_ combat.CapacityType, _ int)   {}
+func (f *fakeProtectionOwner) SpendPool(_ coreResources.ResourceKey, _ int) {}
+func (f *fakeProtectionOwner) BankCapacity(_ combat.CapacityType, _ int)    {}
+
+func (f *fakeProtectionOwner) SpendSlots(slot coreCombat.ActionType, n int) {
+	if slot == coreCombat.ActionReaction {
+		f.reactions -= n
+	}
+	f.spent = append(f.spent, slot)
+}
 
 type FightingStyleProtectionTestSuite struct {
 	suite.Suite
@@ -65,8 +100,18 @@ func (s *FightingStyleProtectionTestSuite) TestApplyAndRemove() {
 	s.False(protection.IsApplied())
 }
 
+// TestImposesDisadvantageOnNearbyAlly pins rpg-toolkit#1178's Protection
+// fix: shield and reaction eligibility now come from the owner handed over
+// at attach time (SetOwner), read the same way combat.Pay/CanPay already
+// read a ledger — not a gamectx.CharacterRegistry. Only positions still
+// come from gamectx (WithRoom), which resolution.Resolve genuinely does
+// install. Team-lead's exact reproduction shape: three participants
+// (protector + ally + monster), the ally is attacked, not the protector.
 func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly() {
 	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+
+	owner := &fakeProtectionOwner{hasShield: true, reactions: 1}
+	protection.SetOwner(owner)
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -88,28 +133,15 @@ func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly()
 	err = room.PlaceEntity(ally, spatial.Position{X: 6, Y: 5}) // Adjacent
 	s.Require().NoError(err)
 
-	// Set up character registry with shield and reaction
-	registry := gamectx.NewBasicCharacterRegistry()
-	shield := &gamectx.EquippedWeapon{
-		ID:       "shield-1",
-		Name:     "Shield",
-		Slot:     "off_hand",
-		IsShield: true,
-	}
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{shield})
-	registry.Add("fighter-1", weapons)
+	// Positions are the one thing this condition still reads from gamectx —
+	// no CharacterRegistry, no GameContext installed at all.
+	ctx := gamectx.WithRoom(s.ctx, room)
 
-	// Add action economy with reaction available
-	actionEconomy := combat.NewActionEconomy()
-	registry.AddActionEconomy("fighter-1", actionEconomy)
-
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
-	ctx = gamectx.WithRoom(ctx, room)
-
-	// Create attack chain event - melee attack on ally
+	// Create attack chain event - melee attack on ally, by a THIRD
+	// combatant (neither the protector nor the target) — this is exactly
+	// the shape Copilot flagged as reachable on the session stack: three
+	// or more participants, someone other than the protector attacking
+	// someone other than the protector.
 	attackEvent := dnd5eEvents.AttackChainEvent{
 		AttackerID:        "goblin-1",
 		TargetID:          "ally-1", // Attacking ally, not fighter
@@ -131,6 +163,62 @@ func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly()
 	// Should have disadvantage imposed
 	s.Len(finalEvent.DisadvantageSources, 1)
 	s.Len(finalEvent.ReactionsConsumed, 1)
+
+	// And the reaction is actually spent on the owner's own ledger.
+	s.Equal(0, owner.reactions, "the reaction was actually debited")
+	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, owner.spent)
+}
+
+// TestNoShieldMeansNoProtection pins that a missing shield refuses
+// eligibility before ever touching gamectx.RequireRoom — no room is
+// installed in this test at all, and the condition must never reach for
+// one when the shield check alone already disqualifies it.
+func (s *FightingStyleProtectionTestSuite) TestNoShieldMeansNoProtection() {
+	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection.SetOwner(&fakeProtectionOwner{hasShield: false, reactions: 1})
+
+	err := protection.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1", IsMelee: true,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	s.Require().NoError(err)
+
+	s.Empty(finalEvent.DisadvantageSources)
+}
+
+// TestNoReactionMeansNoProtection mirrors the shield case for the other
+// half of eligibility.
+func (s *FightingStyleProtectionTestSuite) TestNoReactionMeansNoProtection() {
+	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection.SetOwner(&fakeProtectionOwner{hasShield: true, reactions: 0})
+
+	err := protection.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID: "goblin-1", TargetID: "ally-1", IsMelee: true,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	s.Require().NoError(err)
+
+	s.Empty(finalEvent.DisadvantageSources)
 }
 
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
@@ -160,6 +248,43 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
 
 	// No disadvantage - can't protect self
 	s.Empty(finalEvent.DisadvantageSources)
+}
+
+// TestDoesNotTriggerOnOwnAttack pins rpg-toolkit#1178's Protection half:
+// the condition used to exclude only "target is me" and never "attacker is
+// me", so it fired on the protector's OWN melee attacks — which reached
+// gamectx.RequireCharacters below, a dependency the session stack never
+// satisfies. No gamectx.WithGameContext is installed in this test at all;
+// if the exclusion regresses, this test fails with ErrNoGameContext rather
+// than a wrong disadvantage count, which is the honest failure for what
+// broke live.
+func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
+	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+
+	err := protection.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	// The protector attacking someone else — never a reaction to their own swing.
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "fighter-1",
+		TargetID:          "goblin-1",
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	s.Require().NoError(err, "the protector's own attack must never reach the gamectx-dependent branch")
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	s.Require().NoError(err)
+
+	s.Empty(finalEvent.DisadvantageSources, "Protection is a reaction to someone ELSE's attack, never my own")
+	s.Empty(finalEvent.ReactionsConsumed)
 }
 
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectAgainstRangedAttacks() {

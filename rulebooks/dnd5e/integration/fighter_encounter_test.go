@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -65,6 +66,36 @@ type mockFighterCharacter struct {
 	maxHitPoints     int
 	armorClass       int
 	conditions       []dnd5eEvents.ConditionBehavior
+}
+
+// fakeProtectionOwner is the minimal combat.Ledger + HasShieldEquipped
+// implementation Protection's owner interface needs (rpg-toolkit#1178) —
+// enough to prove eligibility and consumption without gamectx.
+type fakeProtectionOwner struct {
+	hasShield bool
+	reactions int
+}
+
+func (f *fakeProtectionOwner) HasShieldEquipped() bool { return f.hasShield }
+func (f *fakeProtectionOwner) InCombat() bool          { return true }
+
+func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
+	if slot == coreCombat.ActionReaction {
+		return f.reactions
+	}
+	return 0
+}
+
+func (f *fakeProtectionOwner) CapacityLeft(_ combat.CapacityType) int       { return 0 }
+func (f *fakeProtectionOwner) PoolLeft(_ coreResources.ResourceKey) int     { return 0 }
+func (f *fakeProtectionOwner) SpendCapacity(_ combat.CapacityType, _ int)   {}
+func (f *fakeProtectionOwner) SpendPool(_ coreResources.ResourceKey, _ int) {}
+func (f *fakeProtectionOwner) BankCapacity(_ combat.CapacityType, _ int)    {}
+
+func (f *fakeProtectionOwner) SpendSlots(slot coreCombat.ActionType, n int) {
+	if slot == coreCombat.ActionReaction {
+		f.reactions -= n
+	}
 }
 
 func (m *mockFighterCharacter) GetID() string                                  { return m.id }
@@ -413,17 +444,12 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		s.T().Log("║  FIGHTER DUELING: +2 Damage One-Handed                           ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Set up weapons for the fighter (rapier in main hand, nothing in off hand)
-		mainHand := &gamectx.EquippedWeapon{
-			ID:          "rapier-1",
-			WeaponID:    weapons.Rapier,
-			Name:        "Rapier",
-			Slot:        "main_hand",
-			IsMelee:     true,
-			IsTwoHanded: false,
-		}
-		weaponSet := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
-		s.registry.Add(s.fighter.GetID(), weaponSet)
+		// rpg-toolkit#1178: Dueling no longer asks a gamectx.CharacterRegistry
+		// what is equipped — it reads IsMelee/TwoHanded/OffHandWeaponRef off
+		// the event itself, the same static facts the attack compiler already
+		// knew. No registry setup needed for this weapon shape (rapier main
+		// hand, empty off hand) any more; IsMelee: true below is the whole of
+		// it.
 
 		// Apply Dueling fighting style
 		dueling := conditions.NewFightingStyleDuelingCondition(s.fighter.GetID())
@@ -436,6 +462,8 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
 			AbilityUsed: abilities.STR,
+			WeaponRef:   refs.Weapons.Rapier(),
+			IsMelee:     true,
 			Components: []dnd5eEvents.DamageComponent{
 				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{6}, FinalDiceRolls: []int{6}, DamageType: damage.Piercing},
 			},
@@ -823,7 +851,11 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 		s.T().Log("║  FIGHTER PROTECTION: Disadvantage on Attacks vs Adjacent Ally   ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
+		// rpg-toolkit#1178: shield and reaction eligibility now come from the
+		// owner handed over at attach time (SetOwner), not gamectx.
+
 		protection := conditions.NewFightingStyleProtectionCondition(s.fighter.GetID())
+		protection.SetOwner(&fakeProtectionOwner{hasShield: true, reactions: 1})
 		err := protection.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = protection.Remove(s.ctx, s.bus) }()
@@ -832,21 +864,8 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 		ally := &mockFighterCharacter{id: "ally-1", name: "Ally"}
 		_ = s.room.PlaceEntity(ally, spatial.Position{X: 3, Y: 2}) // Adjacent to fighter
 
-		// Set up fighter with a shield and reaction available
-		shield := &gamectx.EquippedWeapon{
-			ID:       "shield-1",
-			Name:     "Shield",
-			Slot:     "off_hand",
-			IsShield: true,
-		}
-		weaponSet := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{shield})
-		s.registry.Add(s.fighter.GetID(), weaponSet)
-
-		// Add action economy with reaction available
-		actionEconomy := combat.NewActionEconomy()
-		s.registry.AddActionEconomy(s.fighter.GetID(), actionEconomy)
-
-		// Update context with room
+		// Positions are the one thing this condition still reads from
+		// gamectx — no CharacterRegistry, no GameContext installed at all.
 		ctx := gamectx.WithRoom(s.ctx, s.room)
 
 		// Create melee attack against the ally (not the fighter)

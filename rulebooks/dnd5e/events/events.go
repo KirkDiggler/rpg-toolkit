@@ -119,6 +119,30 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// OwnerAware is an opt-in a [ConditionBehavior] implements when it needs a
+// live view of its OWN character's sheet — equipment, action economy — to
+// decide eligibility, instead of reaching for a context-installed registry
+// (rpg-toolkit#1178: gamectx.GameContext is a registry the session stack
+// never installs, and Protection's shield/reaction check depended on one).
+//
+// The owner is handed as `any` rather than a concrete type because this
+// package sits BENEATH character and monster in the import graph — a
+// condition cannot import either without a cycle. SetOwner is called with
+// whatever attached this condition (today, always a *character.Character);
+// a condition that needs one type-asserts it against its own narrow,
+// structurally-satisfied interface (see FightingStyleProtectionCondition
+// for the pattern: combat.Ledger, the same ledger Pay/CanPay already read,
+// plus whatever else it needs). An owner of the wrong shape is silently
+// ignored rather than an error — the same "nothing to do" default every
+// other unmet eligibility check in this package already takes.
+type OwnerAware interface {
+	// SetOwner hands over this condition's own character. Called once, at
+	// attach time, before Apply — never from inside a chain fold, because a
+	// live registry lookup at fold time is exactly what this interface
+	// exists to replace.
+	SetOwner(owner any)
+}
+
 // ActionBehavior represents a grantable action.
 // This interface is defined in the events package to avoid import cycles
 // between events and actions packages. The actions package implements this
@@ -308,6 +332,24 @@ type DamageChainEvent struct {
 	IsOffHandAttack  bool              // True for bonus action off-hand attacks (two-weapon fighting)
 	AbilityModifier  int               // The ability modifier (STR/DEX) for this attack
 	IsMelee          bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
+
+	// TwoHanded says this swing is being made with both hands on the
+	// weapon — either the weapon itself requires it, or a versatile weapon
+	// was gripped that way. A STATIC fact of the swing, compiled once by
+	// the attack compiler rather than read live off a character registry
+	// (rpg-toolkit#1178, docs/ideas/session-sdk/attack-profile-seam.md):
+	// it cannot change between the attack roll and the damage roll of the
+	// same swing.
+	TwoHanded bool
+
+	// OffHandWeaponRef names the weapon, if any, occupying the attacker's
+	// OTHER hand from the one that just swung — nil when that hand is
+	// empty or holds something that is not a weapon (a shield, most
+	// often). Like TwoHanded, this is a static equipment fact the compiler
+	// already knows, carried onto the event the same way WeaponRef already
+	// is, so a predicate like Dueling's decides eligibility from the event
+	// alone rather than a live gamectx lookup.
+	OffHandWeaponRef *core.Ref
 }
 
 // DamageChainInput contains the facts used to construct a DamageChainEvent.
@@ -326,6 +368,8 @@ type DamageChainInput struct {
 	IsOffHandAttack  bool
 	AbilityModifier  int
 	IsMelee          bool
+	TwoHanded        bool
+	OffHandWeaponRef *core.Ref
 }
 
 // NewDamageChainEvent constructs a damage-chain event with explicit primary
@@ -345,6 +389,8 @@ func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
 		IsOffHandAttack:  input.IsOffHandAttack,
 		AbilityModifier:  input.AbilityModifier,
 		IsMelee:          input.IsMelee,
+		TwoHanded:        input.TwoHanded,
+		OffHandWeaponRef: input.OffHandWeaponRef,
 	}
 }
 
