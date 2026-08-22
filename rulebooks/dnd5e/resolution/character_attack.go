@@ -68,6 +68,24 @@ type CharacterAttackInput struct {
 // Reach and adjacency are unenforced, exactly as for the bite: the strike
 // does not check distance at all. One shared, named gap, not one this case
 // adds.
+//
+// # An empty hand is not a refusal
+//
+// It used to be: an empty main hand refused with ErrBadAttack, on the
+// argument that a silent fallback is how a character who dropped their
+// sword keeps "attacking" and nobody notices. That argument proved too
+// much. The 5e rule is that an unarmed strike is always available — Kirk's
+// ruling, verbatim: "you can always attack you would just punch but can
+// still attack" (rpg-toolkit#1168) — so a compiler that refused it was not
+// guarding against a silent fallback, it was refusing a real swing. See
+// [equippedWeapon] for where the substitution happens; proficiency for it
+// is forced below rather than asked of [character.Character.IsProficientWith],
+// because nothing on a sheet grants "unarmed strike" as a trained weapon and
+// every 5e character is proficient with it regardless.
+//
+// ErrBadAttack still stands for what it always meant beyond that one case: a
+// sheet the rulebook cannot read — an unknown weapon ref, a slot holding
+// something that is not a weapon at all.
 func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (AttackProfile, error) {
 	if c == nil {
 		return AttackProfile{}, fmt.Errorf("%w: no character to compile", ErrNilInput)
@@ -76,7 +94,7 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 		return AttackProfile{}, fmt.Errorf("%w: no attack input", ErrNilInput)
 	}
 
-	weapon, err := equippedWeapon(c, in.Slot)
+	weapon, unarmed, err := equippedWeapon(c, in.Slot)
 	if err != nil {
 		return AttackProfile{}, err
 	}
@@ -99,9 +117,11 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 
 	// Proficiency is a fact about the sheet, not about the swing: a character
 	// wielding a weapon they were never trained on adds their ability modifier
-	// and nothing else.
+	// and nothing else. An unarmed strike is the one exception the rulebook
+	// itself grants everybody — see the doc comment above — so it is never
+	// asked of IsProficientWith, which has no grant to answer with.
 	attackBonus := modifier
-	if c.IsProficientWith(weapon) {
+	if unarmed || c.IsProficientWith(weapon) {
 		attackBonus += c.ProficiencyBonus()
 	}
 
@@ -112,6 +132,7 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 
 	profile := AttackProfile{
 		Ref:         ref,
+		Name:        weapon.Name,
 		AttackBonus: attackBonus,
 		Damage:      copyDamagePools(pools),
 		// Which ability swung is the fact effects predicate on: Rage pays out
@@ -130,24 +151,32 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 	return profile, nil
 }
 
-// equippedWeapon reads the weapon out of a slot, refusing an empty or
-// non-weapon slot by name.
-func equippedWeapon(c *character.Character, slot character.InventorySlot) (*weapons.Weapon, error) {
+// equippedWeapon reads the weapon out of a slot: what is equipped there, or
+// the catalog's unarmed strike when nothing is — the rule, not a gap
+// (rpg-toolkit#1168). unarmed is true only in that substitution case, which
+// is what tells the caller to force proficiency rather than ask the sheet
+// for a grant no sheet has.
+//
+// Still refuses by name for a caller mistake (no slot named at all) and for
+// a slot the rulebook cannot read as a weapon — equipped but not a weapon,
+// which an empty hand is not.
+func equippedWeapon(c *character.Character, slot character.InventorySlot) (weapon *weapons.Weapon, unarmed bool, err error) {
 	if slot == "" {
-		return nil, fmt.Errorf("%w: no equipment slot named", ErrBadAttack)
+		return nil, false, fmt.Errorf("%w: no equipment slot named", ErrBadAttack)
 	}
 
 	equipped := c.GetEquippedSlot(slot)
 	if equipped == nil {
-		return nil, fmt.Errorf("%w: nothing equipped in %q", ErrBadAttack, slot)
+		w := weapons.SpecialWeapons[weapons.UnarmedStrike]
+		return &w, true, nil
 	}
 
-	weapon := equipped.AsWeapon()
+	weapon = equipped.AsWeapon()
 	if weapon == nil {
-		return nil, fmt.Errorf("%w: %q holds no weapon", ErrBadAttack, slot)
+		return nil, false, fmt.Errorf("%w: %q holds no weapon", ErrBadAttack, slot)
 	}
 
-	return weapon, nil
+	return weapon, false, nil
 }
 
 // attackAbility picks the ability a melee weapon swings with: Strength,

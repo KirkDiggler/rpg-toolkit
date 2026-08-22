@@ -60,6 +60,15 @@ type AttackProfile struct {
 	// the swing.
 	Ref *core.Ref
 
+	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
+	// Strike" — carried alongside it so a caller reporting what was swung
+	// (a beat line, a struck/missed event) never has to look the ref back
+	// up in a catalog of its own (rpg-toolkit#866). Populated by
+	// [AttackFromCharacter]; empty from [AttackFromMonsterAction] today —
+	// monster attackers do not yet reach a caller that reports this
+	// (v1 compiles CHARACTER attackers only, session.Attack's own doc).
+	Name string
+
 	// AttackBonus is added to the d20.
 	AttackBonus int
 

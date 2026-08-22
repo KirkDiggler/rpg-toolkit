@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -584,14 +585,16 @@ func (s *CharacterAttackTestSuite) TestRefusesWhatItCannotCompile() {
 		s.Require().Equal(3, profile.AbilityModifier)
 	})
 
-	s.Run("an empty slot, rather than a silent unarmed strike", func() {
-		sheet := s.heroSheet([]proficiencies.Weapon{proficiencies.WeaponMartial}, nil)
-		_, err := AttackFromCharacter(s.load(sheet), s.mainHand())
-		s.Require().ErrorIs(err, ErrBadAttack)
-	})
-
-	s.Run("a slot holding nothing this build calls a weapon", func() {
+	s.Run("armor equipped where a weapon was asked for, not an empty hand", func() {
+		// Distinct from the empty-slot case below: something IS equipped in
+		// the slot, and it is not something this build calls a weapon — the
+		// case ErrBadAttack still covers (rpg-toolkit#1168 only changed what
+		// an EMPTY slot compiles to).
 		sheet := s.heroSheet([]proficiencies.Weapon{proficiencies.WeaponMartial}, equippedLongsword)
+		sheet.Inventory = append(sheet.Inventory, character.InventoryItemData{
+			Type: shared.EquipmentTypeArmor, ID: string(armor.Leather), Quantity: 1,
+		})
+		sheet.EquipmentSlots[character.SlotArmor] = string(armor.Leather)
 		_, err := AttackFromCharacter(s.load(sheet), &CharacterAttackInput{Slot: character.SlotArmor})
 		s.Require().ErrorIs(err, ErrBadAttack)
 	})
@@ -610,4 +613,46 @@ func (s *CharacterAttackTestSuite) TestRefusesWhatItCannotCompile() {
 		_, err = AttackFromCharacter(s.load(sheet), nil)
 		s.Require().ErrorIs(err, ErrNilInput)
 	})
+}
+
+// TestAnEmptyHandThrowsAnUnarmedStrike pins rpg-toolkit#1168, Kirk's ruling
+// verbatim: "you can always attack you would just punch but can still
+// attack." An empty main hand is not a gap in what the compiler can read —
+// it is the rule — so it compiles a real profile rather than refusing.
+func (s *CharacterAttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
+	// No proficiency GRANT covers "unarmed strike" — 5e never issues one,
+	// because everybody already has it — so this sheet's weapon
+	// proficiencies stay empty on purpose: a profile that still adds the
+	// proficiency bonus below proves the bonus came from the rule this test
+	// pins, not from a grant the fixture forgot to omit.
+	sheet := s.heroSheet(nil, nil)
+
+	profile, err := AttackFromCharacter(s.load(sheet), s.mainHand())
+	s.Require().NoError(err)
+
+	s.Require().NotNil(profile.Ref)
+	s.Equal(string(weapons.UnarmedStrike), string(profile.Ref.ID))
+	s.Equal("Unarmed Strike", profile.Name)
+	s.Require().Len(profile.Damage, 1)
+	s.Equal("1d1", profile.Damage[0].Dice)
+	s.Equal(damage.Bludgeoning, profile.Damage[0].Type)
+
+	// STR 16 -> +3 modifier, PLUS the proficiency bonus (2) despite no
+	// weapon-proficiency grant naming it: the rule, not IsProficientWith.
+	s.Equal(abilities.STR, profile.AbilityUsed)
+	s.Equal(3, profile.AbilityModifier)
+	s.Equal(5, profile.AttackBonus)
+}
+
+// TestAnEmptyOffHandAlsoThrowsAnUnarmedStrike pins that the substitution is
+// about the SLOT being empty, not specifically the main hand — the rule
+// this compiles is "an empty hand punches," and this compiler already
+// takes any slot as data (off-hand swings are a compiler-level gap named
+// elsewhere, not this one).
+func (s *CharacterAttackTestSuite) TestAnEmptyOffHandAlsoThrowsAnUnarmedStrike() {
+	sheet := s.heroSheet(nil, nil)
+
+	profile, err := AttackFromCharacter(s.load(sheet), &CharacterAttackInput{Slot: character.SlotOffHand})
+	s.Require().NoError(err)
+	s.Equal(string(weapons.UnarmedStrike), string(profile.Ref.ID))
 }
