@@ -293,6 +293,7 @@ func (m *Manager) loadWorldWithBaseline(
 		Initiative: m.initiative,
 		Standing:   standing,
 		Sight:      sightSeam{},
+		TurnDriver: m.turnDriver,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot

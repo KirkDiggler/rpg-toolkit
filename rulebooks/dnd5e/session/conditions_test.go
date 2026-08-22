@@ -72,7 +72,7 @@ func (s *ConditionsTestSuite) SetupSubTest() { s.SetupTest() }
 func (s *ConditionsTestSuite) managerOverStores(
 	sessions *fakeSessions, encounters *fakeEncounters, characters *fakeCharacters,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})

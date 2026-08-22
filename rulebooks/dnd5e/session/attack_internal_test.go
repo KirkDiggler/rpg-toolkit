@@ -63,7 +63,7 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight:      aggregateRecordEveryoneSees{},
 		Standing:   aggregateRecordEveryoneStanding{},
-		Initiative: aggregateRecordOrderAsGiven{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 4, Height: 4}},

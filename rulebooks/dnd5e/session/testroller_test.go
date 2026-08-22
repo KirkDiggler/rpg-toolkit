@@ -84,3 +84,15 @@ type encEveryoneStanding struct{}
 func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
 	return nil, nil
 }
+
+// encPassDriver is the TurnDriver capability the authored-world fixtures
+// build with: every unplayed member always passes. Same reasoning as
+// encEveryoneStanding — construction-only, and the session under test
+// supplies its own at each of its own load sites (session.Pass wrapped in
+// turnDriverSeam), so this fake must stay dumb enough that no test can
+// accidentally lean on it for an answer.
+type encPassDriver struct{}
+
+func (encPassDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+	return encounter.Pass{}, nil
+}

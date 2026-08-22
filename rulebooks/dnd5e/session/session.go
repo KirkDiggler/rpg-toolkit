@@ -74,6 +74,17 @@ type Config struct {
 	// roller mandatory, and for the same reason: refuse at the door, never
 	// guard at the use site.
 	Dice Roller
+
+	// TurnDriver decides what a member with no player does when a fight's
+	// clock lands on their turn. Required.
+	//
+	// A fight can form — or a turn can end — with the clock landing on a
+	// member nobody plays: initiative rolled the monster first, or the human
+	// ahead of it just ended their own turn. What that member does is a game
+	// rule, so it is asked for rather than assumed, exactly as Dice is
+	// (rpg-toolkit#1162). Wire session.Pass{} for v1's whole behavior — every
+	// unplayed member's turn ends the moment the clock reaches it.
+	TurnDriver TurnDriver
 }
 
 // Manager is the host's single point of contact with the toolkit.
@@ -90,6 +101,7 @@ type Manager struct {
 	characters CharacterRepository
 	events     EventStream
 	initiative encounter.InitiativeRoller
+	turnDriver encounter.TurnDriver
 
 	// dice is the host's randomness, kept as well as wrapped: the initiative
 	// seam needs it wrapped for the composition, and a resolution machine
@@ -124,6 +136,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Characters", cfg.Characters != nil},
 		{"Events", cfg.Events != nil},
 		{"Dice", cfg.Dice != nil},
+		{"TurnDriver", cfg.TurnDriver != nil},
 	}
 	for _, dep := range required {
 		if !dep.present {
@@ -138,5 +151,6 @@ func NewManager(cfg *Config) (*Manager, error) {
 		events:     cfg.Events,
 		initiative: initiativeSeam{dice: cfg.Dice},
 		dice:       cfg.Dice,
+		turnDriver: turnDriverSeam{driver: cfg.TurnDriver},
 	}, nil
 }

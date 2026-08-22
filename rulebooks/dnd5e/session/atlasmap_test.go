@@ -39,7 +39,7 @@ func TestAtlasMapSuite(t *testing.T) {
 // order pin written against it passes with the sorting deleted, which is
 // exactly what the first version of this file did.
 func backwardsWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
@@ -66,7 +66,7 @@ func backwardsWorld(t fataler) *encounter.EncounterData {
 
 func (s *AtlasMapSuite) SetupTest() {
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

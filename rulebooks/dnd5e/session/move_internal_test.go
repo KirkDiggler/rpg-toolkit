@@ -20,7 +20,7 @@ import (
 // identical either way, and only a test aimed at the reasoning can say why the
 // deletion was safe rather than lucky.
 
-// walkOrderAsGiven and walkEveryoneStanding are the two capabilities every
+// walkOrderAsGiven and walkEveryoneStanding are two of the capabilities every
 // encounter needs, in their most boring form. The external test package has its
 // own; these tests are internal and cannot see them.
 type walkOrderAsGiven struct{}
@@ -35,6 +35,16 @@ func (walkEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.Member
 	return nil, nil
 }
 
+// passDriver is the third: every unplayed member always passes. Shared across
+// this package's internal test files (attack_internal_test.go included)
+// rather than "walk"-prefixed, since it answers the same boring question
+// regardless of which internal verb's test needs an encounter built.
+type passDriver struct{}
+
+func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+	return encounter.Pass{}, nil
+}
+
 // walkWorld is two rooms of DIFFERENT sizes, anchored away from the origin.
 // Different sizes on purpose: the grid this seam builds used to take the
 // walker's own room's span, so a fixture whose rooms agree could not tell a
@@ -43,7 +53,7 @@ func walkWorld(t *testing.T, family spatial.GridShape) *encounter.Encounter {
 	t.Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: sightSeam{},
-		Initiative: walkOrderAsGiven{}, Standing: walkEveryoneStanding{},
+		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: canvasFor(family), Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 4, Height: 4, Grid: family, Origin: spatial.Position{X: 30, Y: 40}},
 			{ID: "annex", Width: 12, Height: 12, Grid: family, Origin: spatial.Position{X: 60, Y: 40}},

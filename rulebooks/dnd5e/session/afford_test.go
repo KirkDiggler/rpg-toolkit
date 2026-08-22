@@ -55,16 +55,16 @@ func (s *AffordSuite) swing() (*session.AttackOutput, error) {
 	})
 }
 
-// nextTurn is economy_test.go's own: both ends of the round are ended
-// deliberately, since a round only advances when the order comes back around.
+// nextTurn is economy_test.go's own: ONE end, not two — rpg-toolkit#1162.
+// The skeleton has no player, so ending alice's own turn drives the
+// skeleton's through in the same call; a second, explicit EndTurn for the
+// skeleton would be refused, since its turn already ended.
 func (s *AffordSuite) nextTurn() {
 	s.T().Helper()
 	ctx := context.Background()
 
-	for _, who := range []string{"alice", "skeleton"} {
-		_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: who})
-		s.Require().NoError(err, "ending %s's turn", who)
-	}
+	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err, "ending alice's turn")
 }
 
 // storedEconomy reads alice's persisted action economy, the same read
@@ -194,7 +194,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 func (s *AffordSuite) TestFreeRoamAffordsNothing() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, Sessions: sessions, Encounters: encounters,
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

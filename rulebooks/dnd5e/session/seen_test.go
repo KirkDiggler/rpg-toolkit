@@ -47,7 +47,7 @@ func TestSeenTestSuite(t *testing.T) {
 func (s *SeenTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
@@ -86,7 +86,7 @@ func squareSeamWalls(atX, rows, doorRow int) []spatial.Boundary {
 // absolute (9,3) — where nothing but the doorway can put it in sight.
 func skeletonBehindADoor(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, Standing: encEveryoneStanding{},
+		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{

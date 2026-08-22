@@ -32,7 +32,7 @@ func Example_theSession() {
 	ctx := context.Background()
 
 	// The host's entire integration: two stores.
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
@@ -133,7 +133,7 @@ func Example_theSession() {
 // (rpg-toolkit#964), so what reaches the host is news rather than a question.
 func Example_theFightThatStartsItself() {
 	ctx := context.Background()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{},
+	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
@@ -182,7 +182,7 @@ func (panicFataler) Fatalf(format string, args ...any) {
 // authoredTomb is content, not a live encounter: the blob a host would have
 // sitting in storage from an authoring pipeline.
 func authoredTomb() *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{

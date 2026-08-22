@@ -93,7 +93,7 @@ func aFight(
 	scripted := append(make([]int, initiativeRolls), rolls...)
 
 	mgr, err := session.NewManager(&session.Config{
-		Dice: &sequenceDice{rolls: scripted}, Sessions: sessions, Encounters: encounters,
+		Dice: &sequenceDice{rolls: scripted}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
 	if err != nil {
@@ -101,9 +101,9 @@ func aFight(
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
-		Initiative: encOrderAsGiven{},
-		Standing:   encEveryoneStanding{},
-		Field:      encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Standing: encEveryoneStanding{},
+		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
 		Members: []encounter.MemberInput{
 			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
 		},
@@ -155,17 +155,17 @@ func (s *EconomySuite) swing() (*session.AttackOutput, error) {
 
 // nextTurn takes the fight all the way round to alice again.
 //
-// Both ends are ended deliberately: a round advances when the order comes back
-// around, so ending only alice's turn leaves the round where it was and the
-// bank exactly as spent.
+// ONE END, NOT TWO — rpg-toolkit#1162. The skeleton has no player: ending
+// alice's own turn now drives the skeleton's through in the same call
+// (ADR-0043), so a second, explicit EndTurn for the skeleton is refused —
+// its turn already ended, and alice is active again by the time this
+// returns.
 func (s *EconomySuite) nextTurn() {
 	s.T().Helper()
 	ctx := context.Background()
 
-	for _, who := range []string{"alice", "skeleton"} {
-		_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: who})
-		s.Require().NoError(err, "ending %s's turn", who)
-	}
+	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err, "ending alice's turn")
 
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)

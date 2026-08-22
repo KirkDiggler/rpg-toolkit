@@ -90,6 +90,16 @@ func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.Membe
 	return m, nil
 }
 
+// encPassDriver is this construction's TurnDriver: every unplayed member
+// passes. Matched to session.Pass, the workbench's own answer, for the same
+// reason encEveryoneStanding is matched to session's — the scene reads the
+// same however it is entered.
+type encPassDriver struct{}
+
+func (encPassDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+	return encounter.Pass{}, nil
+}
+
 // memSessions is a SessionRepository over a map. Get-by-id and put-by-id is
 // the whole interface (S12), which is why this is six lines rather than a
 // schema.
@@ -191,6 +201,10 @@ func drive(out *bytes.Buffer) error {
 		Encounters: &memEncounters{byID: map[string]*encounter.EncounterData{}},
 		Characters: &memCharacters{byID: map[string]*character.Data{"bob": bobTheDwarf()}},
 		Events:     &printStream{out: out},
+		// The workbench demonstrates verbs a human drives; nothing in it
+		// gives a monster a real behavior yet, so an unplayed member simply
+		// passes (rpg-toolkit#1162).
+		TurnDriver: session.Pass{},
 	})
 	if err != nil {
 		return err
@@ -375,7 +389,7 @@ func drive(out *bytes.Buffer) error {
 // gate between them, anchored so the doorway's endpoints are adjacent in
 // absolute space.
 func authoredCrypt() (*encounter.EncounterData, error) {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		// Governs THIS construction only: once session loads the world it
 		// supplies its own sight seam, so the walk below runs on session's

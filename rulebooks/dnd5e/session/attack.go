@@ -214,6 +214,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
 		Sight:        sightSeam{},
+		TurnDriver:   m.turnDriver,
 		Cost:         price.cost,
 		Machine: resolution.NewStrike(&resolution.StrikeInput{
 			AttackerID: in.Attacker,
