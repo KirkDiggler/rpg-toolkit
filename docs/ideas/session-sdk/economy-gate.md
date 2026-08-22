@@ -20,6 +20,21 @@ reasoning that produced it.
 
 **Verified against** `main` at `b3287ae`.
 
+**Update, 2026-08-22 — fork (d) retiring (rpg-toolkit#1169).** The movement
+addendum's fork (d) said "nothing charges movement in v1" because no
+in-fight movement verb existed to charge. Kirk's direction ("take turn,
+move maybe, end turn, monster takes turn") pulls that verb in now rather
+than waiting for the reaction wave the addendum expected. This is the "new
+slice (E8)" the addendum named, not a re-litigation of the ruling above:
+movement is the keyed capacity (`combat.CapacityMovement`) already
+reserved for it, priced per call (5 ft/cell, computed outside the profile
+per the addendum's row-four discipline) and charged through the same
+`combat.Pay` the ruling's foundation already established. First half —
+`encounter.Step`'s turn-clock gate — is
+[#1170](https://github.com/KirkDiggler/rpg-toolkit/pull/1170); the session
+half that actually calls `combat.Pay` before a walk follows in a second
+PR, and fork (d) is fully retired once both land.
+
 [census]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326154182
 [supp]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326242250
 [move]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326344695

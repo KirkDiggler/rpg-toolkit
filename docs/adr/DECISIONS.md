@@ -163,18 +163,6 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   stalls one monster harmlessly, so one may default and the other must not.
   *Rule: a capability whose absence is locally inert may default; one whose
   absence blocks the whole composition may not.*
-- **0044** — **Move on the turn clock**: `encounter.Step` relaxes its
-  blanket in-bubble refusal to "in a bubble AND not the active member",
-  naming that refusal for the first time (`ErrNotActive` /
-  session's `ErrNotYourTurn`) and retroactively giving `EndTurn`'s own
-  identical, previously-unnamed refusal the same sentinel. `session.Move`
-  prices a requested path at 5 ft/cell, computed per call rather than
-  compiled per sheet, and charges it through the same `combat.Pay` gate
-  attacks already use — retiring the economy-gate ruling's "fork (d)"
-  (movement costs nothing in v1). `Afford` gains `VerbMove` and an
-  optional `Declaration.Remaining` (feet), present only for Move. *Rule:
-  a refusal two verbs both produce is exactly the moment an unnamed
-  sentinel stops being free.*
 
 ---
 

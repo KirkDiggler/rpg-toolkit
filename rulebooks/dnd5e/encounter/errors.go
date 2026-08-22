@@ -166,12 +166,14 @@ var (
 	//
 	// NOT Step's own refusal for a mid-fight member any more
 	// (rpg-toolkit#1169): the active member of a bubble moves through
-	// Step exactly as a free-roaming member does, spending movement
-	// through the turn clock rather than around it. What a bubble member
-	// still cannot do is free-roam OUT of the fight — Transfer still
-	// refuses ClockTurn for a member already in one — and what a
-	// NON-active bubble member cannot do is move at all, which is
-	// ErrNotActive's refusal, not this one.
+	// Step exactly as a free-roaming member does. This package does not
+	// price or spend movement — there is no CapacityMovement use
+	// anywhere in encounter. session.Move is the caller responsible for
+	// paying before it calls Step; that pricing is a follow-up PR, not
+	// this one. What a bubble member still cannot do is free-roam OUT of
+	// the fight — Transfer still refuses ClockTurn for a member already
+	// in one — and what a NON-active bubble member cannot do is move at
+	// all, which is ErrNotActive's refusal, not this one.
 	ErrInBubble = errors.New("already in a bubble")
 
 	// ErrNoBubble is returned when a verb requires a running bubble and
