@@ -149,10 +149,13 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 func TestBodyForAcceptsACompleteBeat(t *testing.T) {
 	kind, body := decodeBeat([]byte(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`))
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`))
 	require.Equal(t, EventStruck, kind)
 	require.Equal(t, StruckBody{
 		Attacker: "alice", Target: "bob", Roll: 15, Total: 20, Against: 12, Damage: 8,
+		// The WIRE's AttackRef.Ref is the bare id, derived from the beat's
+		// own full "dnd5e:weapons:longsword" (rpg-toolkit#1172) — toRef's
+		// own job, pinned here alongside the rest of the decode.
 		Attack: AttackRef{Ref: "longsword", Name: "Longsword", DamageType: DamageSlashing},
 	}, body)
 }

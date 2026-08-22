@@ -190,7 +190,7 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal("outcome", last.Tags["tag"])
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(last.Payload))
 	s.Equal(session.AttackRef{Ref: "longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
@@ -209,7 +209,7 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	s.Require().NoError(err)
 	s.JSONEq(
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
-			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
+			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(story[len(story)-1].Payload))
 }
 

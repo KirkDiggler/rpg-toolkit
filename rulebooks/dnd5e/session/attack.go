@@ -328,6 +328,20 @@ func attackRefFor(profile resolution.AttackProfile) AttackRef {
 	return ref
 }
 
+// fullRefFor is attackRefFor's own sibling for the ONE consumer that does
+// not want the wire's bare id: encounter.AttackIdentity.Ref, which
+// encounter.Record validates as a full module:type:id catalog ref
+// (rpg-toolkit#1172, Kirk's correction on the Copilot review — the
+// invariant is enforced there, not merely trusted here). profile.Ref is
+// already the *core.Ref resolution.AttackFromCharacter compiled, so this
+// is its own String(), not a second construction of the same value.
+func fullRefFor(profile resolution.AttackProfile) string {
+	if profile.Ref == nil {
+		return ""
+	}
+	return profile.Ref.String()
+}
+
 // reportUnrecorded turns a failure AFTER the sheets landed into one a caller can
 // repair from, and leaves every other failure exactly as it was.
 //
@@ -446,7 +460,9 @@ func recordFor(
 		Targets:  []encounter.MemberID{encounter.MemberID(in.Target)},
 		Values:   values,
 		Critical: struck.Critical,
-		Attack:   &encounter.AttackIdentity{Ref: ref.Ref, Name: ref.Name, DamageType: string(ref.DamageType)},
+		Attack: &encounter.AttackIdentity{
+			Ref: fullRefFor(profile), Name: ref.Name, DamageType: string(ref.DamageType),
+		},
 	}
 }
 

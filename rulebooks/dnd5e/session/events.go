@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -311,14 +312,31 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 // beatAttack is the wire shape Record's payload writes an attack identity
 // as (attack.go's recordFor) — decoded here rather than re-derived, since
 // this package is the one that wrote it in the first place.
+// beatAttack is the wire shape Record's payload writes an attack identity
+// as (attack.go's recordFor). Ref here is the FULL module:type:id catalog
+// ref encounter.Record validates (rpg-toolkit#1172) — "dnd5e:weapons:
+// longsword" — NOT the bare id the wire's own AttackRef.ref speaks; toRef
+// is where that gets derived, with the SAME parser Record itself validated
+// it with.
 type beatAttack struct {
 	Ref        string `json:"ref"`
 	Name       string `json:"name"`
 	DamageType string `json:"damage_type"`
 }
 
+// toRef derives the wire's AttackRef — bare id, display name, damage type
+// — from the beat's own full ref. A ref that fails to parse (unreachable
+// from a beat this package itself wrote, since Record already validated
+// it at write time; reachable only from a hand-built or corrupted payload)
+// leaves the wire Ref empty rather than failing the whole body: Attacker,
+// Target, Roll and the rest are still meaningful even when the weapon
+// identity did not decode, matching bodyFor's own best-effort contract.
 func (a beatAttack) toRef() AttackRef {
-	return AttackRef{Ref: a.Ref, Name: a.Name, DamageType: DamageType(a.DamageType)}
+	ref := AttackRef{Name: a.Name, DamageType: DamageType(a.DamageType)}
+	if parsed, err := core.ParseString(a.Ref); err == nil {
+		ref.Ref = string(parsed.ID)
+	}
+	return ref
 }
 
 // structBody decodes a struck or missed outcome beat's shared fields.

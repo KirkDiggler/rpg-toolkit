@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -76,8 +77,21 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// A real profile, not the zero value: encounter.Record now validates
+	// Attack.Ref as a well-formed catalog ref (rpg-toolkit#1172), and
+	// session.Attack always hands over what a real compiled AttackProfile
+	// named — the zero value this test used to pass was never a shape a
+	// live swing could produce.
+	profile := resolution.AttackProfile{
+		Ref:  &core.Ref{Module: "dnd5e", Type: "weapons", ID: "longsword"},
+		Name: "Longsword",
+		Damage: []damage.Damage{
+			{Dice: "1d8", Type: damage.Slashing},
+		},
+	}
+
 	recorded, err := enc.Record(recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck, resolution.AttackProfile{},
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, profile,
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)
@@ -87,7 +101,7 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	require.NotEmpty(t, story)
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
-			`"critical":false,"attack":{"ref":"","name":"","damage_type":""}}`,
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(story[len(story)-1].Payload),
 		"the persisted encounter record carries the aggregate and no typed damage collection",
 	)
