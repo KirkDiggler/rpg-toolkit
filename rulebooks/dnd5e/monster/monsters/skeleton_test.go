@@ -68,6 +68,34 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 	s.Assert().True(hasShortbow, "should have shortbow action")
 }
 
+// TestShortswordReachIsOneCell pins the fix for a data bug: the shortsword
+// was authored with Reach: 5 — five CELLS (25 feet, MeleeConfig's own doc
+// comment: "in hexes, typically 1 (5ft) or 2 (10ft reach)") — for a plain,
+// non-reach melee weapon that should be 1 cell (5ft), the same reach every
+// other one-handed weapon compiles to. Harmless while nothing read
+// AttackProfile.Reach for a monster action; live and wrong the moment the
+// monster's turn (rpg-toolkit#254) starts gating attacks by it — a skeleton
+// four cells from its target would attack without ever closing the
+// distance, which is exactly backwards from the tomb fixture's "walks
+// toward you, then attacks."
+func (s *SkeletonTestSuite) TestShortswordReachIsOneCell() {
+	skeleton := NewSkeleton("skeleton-1")
+
+	var shortsword monster.ActionData
+	for _, action := range skeleton.Actions() {
+		if action.GetID() == "shortsword" {
+			shortsword = action.ToData()
+		}
+	}
+	s.Require().NotEmpty(shortsword.Config, "shortsword action must be found")
+
+	var config struct {
+		Reach int `json:"reach"`
+	}
+	s.Require().NoError(json.Unmarshal(shortsword.Config, &config))
+	s.Equal(1, config.Reach)
+}
+
 func (s *SkeletonTestSuite) TestSkeletonTraits() {
 	skeleton := NewSkeleton("skeleton-1")
 	s.Require().NotNil(skeleton)
