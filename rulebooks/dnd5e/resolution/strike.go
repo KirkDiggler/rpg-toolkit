@@ -140,6 +140,24 @@ type AttackProfile struct {
 	// compiler's job: the wolf's KnockdownDC becomes both the gate and prone in
 	// the same place, rather than the DC here and the meaning in the machine.
 	Imposes Consequence
+
+	// TwoHanded says this swing is being made with both hands on the
+	// weapon. A static fact of the grip and the weapon, threaded onto the
+	// damage chain event the same way AbilityUsed already is — this is the
+	// seam's own precedent (see AbilityUsed's doc above), exercised for
+	// rpg-toolkit#1178: Dueling's eligibility used to be decided by a live
+	// gamectx.CharacterRegistry lookup the session stack never satisfies;
+	// moving the static half of that decision here let Dueling's own
+	// predicate read it off the event instead, the same way Rage does.
+	TwoHanded bool
+
+	// OffHandWeaponRef names the weapon, if any, occupying the attacker's
+	// OTHER hand from the one this profile compiled — nil when that hand
+	// is empty or holds something that is not a weapon (a shield, most
+	// often). Also additive for rpg-toolkit#1178, and also a static
+	// equipment fact rather than something a chain-fold predicate should
+	// have to ask a live registry for.
+	OffHandWeaponRef *core.Ref
 }
 
 // validate refuses a profile that cannot drive a strike, naming what is
@@ -513,6 +531,11 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		AbilityUsed:     m.in.Attack.AbilityUsed,
 		AbilityModifier: m.in.Attack.AbilityModifier,
 		WeaponRef:       m.in.Attack.Ref,
+		// Static equipment facts the compiler already knew (rpg-toolkit#1178)
+		// — Dueling's predicate decides eligibility from these rather than a
+		// live gamectx lookup, the same way Rage decides from AbilityUsed.
+		TwoHanded:        m.in.Attack.TwoHanded,
+		OffHandWeaponRef: m.in.Attack.OffHandWeaponRef,
 	}), m.afterDamageChain), nil
 }
 
