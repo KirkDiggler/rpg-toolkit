@@ -12,6 +12,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
+const (
+	// defaultMeleeReach is the melee reach used when the weapon carries no
+	// Reach property: 1 cell (5 ft), the 5e default and the reach of the
+	// canonical unarmed strike. Mirrors the retired top-level encounter
+	// module's defaultMeleeReachHexes (encounter/range_gate.go).
+	defaultMeleeReach = 1
+
+	// reachPropertyReach is the melee reach a weapon with the Reach
+	// property grants: 2 cells (10 ft — glaive, halberd, spear-with-reach-
+	// variant, pike). Mirrors reachWeaponHexes in the same retired file.
+	reachPropertyReach = 2
+)
+
 // CharacterAttackInput names which swing to compile.
 //
 // The grip is the caller's to state rather than the compiler's to infer. A
@@ -130,10 +143,16 @@ func AttackFromCharacter(c *character.Character, in *CharacterAttackInput) (Atta
 		return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
 	}
 
+	reach := defaultMeleeReach
+	if weapon.HasProperty(weapons.PropertyReach) {
+		reach = reachPropertyReach
+	}
+
 	profile := AttackProfile{
 		Ref:         ref,
 		Name:        weapon.Name,
 		AttackBonus: attackBonus,
+		Reach:       reach,
 		Damage:      copyDamagePools(pools),
 		// Which ability swung is the fact effects predicate on: Rage pays out
 		// on melee Strength attacks and needs to know this was one. Its

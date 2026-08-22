@@ -644,6 +644,32 @@ func (s *CharacterAttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.Equal(5, profile.AttackBonus)
 }
 
+// TestReach pins rpg-toolkit#1010's compiler half: a plain melee weapon
+// reaches 1 cell, a weapon carrying the Reach property reaches 2, and an
+// unarmed strike reaches 1 — the same numbers the retired top-level
+// encounter module's checkReach enforced (encounter/range_gate.go) before
+// this rewrite dropped the check everywhere.
+func (s *CharacterAttackTestSuite) TestReach() {
+	s.Run("a plain melee weapon reaches 1 cell", func() {
+		profile := s.compile(s.martialHero(), s.mainHand())
+		s.Equal(1, profile.Reach)
+	})
+
+	s.Run("a weapon with the Reach property reaches 2 cells", func() {
+		sheet := s.heroSheet(
+			[]proficiencies.Weapon{proficiencies.WeaponMartial},
+			map[character.InventorySlot]string{character.SlotMainHand: string(weapons.Glaive)},
+		)
+		profile := s.compile(sheet, s.mainHand())
+		s.Equal(2, profile.Reach)
+	})
+
+	s.Run("an unarmed strike reaches 1 cell", func() {
+		profile := s.compile(s.heroSheet(nil, nil), s.mainHand())
+		s.Equal(1, profile.Reach)
+	})
+}
+
 // TestAnEmptyOffHandAlsoThrowsAnUnarmedStrike pins that the substitution is
 // about the SLOT being empty, not specifically the main hand — the rule
 // this compiles is "an empty hand punches," and this compiler already
