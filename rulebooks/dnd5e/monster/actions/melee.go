@@ -20,7 +20,12 @@ type MeleeConfig struct {
 	Name        string          `json:"name"`         // e.g., "shortsword", "greataxe"
 	AttackBonus int             `json:"attack_bonus"` // e.g., +4
 	Damage      []damage.Damage `json:"damage"`
-	Reach       int             `json:"reach"` // in hexes, typically 1 (5ft) or 2 (10ft reach)
+	// Reach is in FEET (Kirk, rpg-project#254 review) — typically 5 (one
+	// cell, the standard melee reach) or 10 (the Reach property, two
+	// cells). This comment previously said "in hexes", which was the
+	// actual bug: the data (skeleton's shortsword at 5, for instance) was
+	// always authored correctly, in feet.
+	Reach int `json:"reach"`
 }
 
 // MeleeAction implements a generic melee weapon attack.

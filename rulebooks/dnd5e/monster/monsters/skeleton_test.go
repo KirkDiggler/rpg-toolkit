@@ -68,6 +68,30 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 	s.Assert().True(hasShortbow, "should have shortbow action")
 }
 
+// TestShortswordReachIsStandardMeleeReach pins that the shortsword's
+// authored Reach (5) is correct — it is FEET (Kirk, rpg-project#254
+// review), not cells/hexes as MeleeConfig.Reach's doc comment used to
+// claim (that comment was the actual bug, fixed alongside this test). 5
+// feet is the standard one-handed melee reach every non-reach weapon
+// compiles to; a shortsword has no Reach property, so it gets no more.
+func (s *SkeletonTestSuite) TestShortswordReachIsStandardMeleeReach() {
+	skeleton := NewSkeleton("skeleton-1")
+
+	var shortsword monster.ActionData
+	for _, action := range skeleton.Actions() {
+		if action.GetID() == "shortsword" {
+			shortsword = action.ToData()
+		}
+	}
+	s.Require().NotEmpty(shortsword.Config, "shortsword action must be found")
+
+	var config struct {
+		Reach int `json:"reach"`
+	}
+	s.Require().NoError(json.Unmarshal(shortsword.Config, &config))
+	s.Equal(5, config.Reach, "feet, the standard one-handed melee reach")
+}
+
 func (s *SkeletonTestSuite) TestSkeletonTraits() {
 	skeleton := NewSkeleton("skeleton-1")
 	s.Require().NotNil(skeleton)
