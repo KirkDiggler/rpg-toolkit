@@ -38,6 +38,11 @@ type Verb string
 const (
 	// VerbAttack is [Manager.Attack]: swinging a weapon at another member.
 	VerbAttack Verb = "attack"
+
+	// VerbMove is [Manager.Move]: walking along a path while on the turn
+	// clock. Free-roam movement is not priced and so never appears here —
+	// see [Manager.Afford]'s own doc.
+	VerbMove Verb = "move"
 )
 
 // Slot names which of a turn's three economy shapes a [Declaration] draws
@@ -104,6 +109,22 @@ type Declaration struct {
 	// the absence of one, and a non-Go client reading a missing key cannot
 	// tell that from "the server didn't say".
 	Shortfall string `json:"shortfall"`
+
+	// Remaining is how much of this verb's own currency is left, in the
+	// currency's natural unit — feet, for Move (rpg-toolkit#1169).
+	//
+	// PRESENT ONLY WHERE THE NUMBER MEANS SOMETHING BEYOND CAN-OR-CANNOT.
+	// Attack's declaration has never needed one — a swing either happens or
+	// it does not — but a client walking Move wants to bound its own path
+	// preview to the server's real number rather than re-deriving a
+	// character's speed itself, which is exactly the calculation the
+	// Boundary Rule keeps off the client. Nil for VerbAttack.
+	//
+	// A POINTER, not an omitted zero: false-vs-absent for an int rather than
+	// a bool (types.go's law, generalised) — Remaining:0 is a real answer
+	// (nothing left this turn) and must not collide with "this verb carries
+	// no such number at all".
+	Remaining *int `json:"remaining,omitempty"`
 }
 
 // AffordOutput is what one member can still declare this turn.
@@ -124,7 +145,10 @@ type AffordOutput struct {
 
 // Afford reports what one member can still declare this turn: which of the
 // seam's gated verbs they could pay for right now, and — when they cannot —
-// the same currency-naming text a refused [Manager.Attack] would carry.
+// the same currency-naming text a refused [Manager.Attack] or [Manager.Move]
+// would carry. Move's own declaration (VerbMove, rpg-toolkit#1169) reports
+// Remaining rather than a fixed price, since a walk's cost depends on a path
+// this read is never given — see [affordMove].
 //
 // # The gap this closes
 //
@@ -229,19 +253,47 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 
 	// price.cost is never nil here: priceSwing returns a nil cost only when
 	// the member is on the world clock, already ruled out above.
-	decl := Declaration{Verb: VerbAttack, Slot: slotOf(price.cost.Profile)}
+	attack := Declaration{Verb: VerbAttack, Slot: slotOf(price.cost.Profile)}
 
 	// Charged against the sheet THIS CALL loaded, which is handed to nobody
 	// else and never saved (see the doc comment above). combat.Pay is the
 	// SAME gate the door pays a real swing through, so a payment that
 	// succeeds or fails here answers exactly as Attack's would.
 	if payErr := combat.Pay(sheet, price.cost.Profile); payErr != nil {
-		decl.Shortfall = payErr.Error()
+		attack.Shortfall = payErr.Error()
 	} else {
-		decl.Affordable = true
+		attack.Affordable = true
 	}
 
-	return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{decl}}, nil
+	// affordMove reads the SAME sheet, already readied for this turn by
+	// priceSwing's own call above — never a second ready, which would
+	// re-seed a bank the attack declaration just read. Safe to share: an
+	// attack's profile never names CapacityMovement, so paying it above
+	// cannot have moved what affordMove is about to read.
+	return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{attack, affordMove(sheet)}}, nil
+}
+
+// affordMove reports what this member could still spend on movement this
+// turn, off the sheet [Manager.Afford] already loaded and readied above.
+//
+// UNLIKE ATTACK, movement has no fixed price to try paying: what a specific
+// walk costs is a fact about the PATH ([Manager.priceWalk]), and Afford is
+// asked before any path is chosen. So this answers the question Afford CAN
+// answer without one. Remaining is the actual feet left — the number a
+// client bounds its own path preview against — and Affordable answers only
+// whether ANY movement at all is still possible: one cell, five feet, the
+// smallest unit this grid has. Shortfall, when it applies, says so in the
+// same "ft" words [movementShortfall] gives a refused Move, minus a "needed"
+// side this read has no specific request to name.
+func affordMove(sheet *character.Character) Declaration {
+	left := sheet.CapacityLeft(combat.CapacityMovement)
+	decl := Declaration{Verb: VerbMove, Slot: SlotNone, Remaining: &left}
+	if left >= 5 {
+		decl.Affordable = true
+		return decl
+	}
+	decl.Shortfall = fmt.Sprintf("movement: %d ft left", left)
+	return decl
 }
 
 // slotOf reads which of a turn's three slots a compiled price draws from, if

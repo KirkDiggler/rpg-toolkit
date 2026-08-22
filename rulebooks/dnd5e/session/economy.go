@@ -70,19 +70,22 @@ type swingPrice struct {
 // name per EndTurn and the round wraps when it comes back around — so the
 // round IS that member's turn number. Nothing is guessed.
 //
-// # Speed is the honest half-measure, and it is inert in v1
+// # Speed is the honest half-measure, and it stayed one once movement started reading it
 //
 // [character.RefreshForTurnInput] wants the speed a turn seeds AFTER conditions
 // have had their say, and this package has no such number: it can read the
 // sheet's base walking speed and nothing else. So the seeded MovementRemaining
 // is wrong on any hasted or slowed character.
 //
-// It is shipped anyway, deliberately, because in v1 NOTHING READS IT: movement
-// costs nothing (the ruling's fork (d)), so no profile names CapacityMovement
-// and no path spends it. The day movement is charged, this is the line that has
-// to grow a real answer — a speed computed where conditions can be asked, which
-// is above this seam — and it must not be discovered then. It is named here
-// rather than left to be found.
+// It was shipped anyway, deliberately, when nothing read it: movement cost
+// nothing (the ruling's fork (d)), so no profile named CapacityMovement and no
+// path spent it, and this line was named as the one that would have to grow a
+// real answer the day that changed. That day is rpg-toolkit#1169:
+// [Manager.priceWalk] now spends exactly the MovementRemaining this call
+// seeds, through the identical [combat.Pay] gate a swing pays through. The
+// haste/slow gap is unchanged and still real — a speed computed where
+// conditions can be asked is still above this seam — but it is no longer
+// theoretical, and the day it is closed this comment is where to start.
 //
 // It takes the encounter rather than a *writeScope so a read verb can call it
 // too ([Manager.Afford] does): pricing a swing commits nothing on its own, and

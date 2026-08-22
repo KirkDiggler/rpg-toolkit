@@ -357,14 +357,17 @@ func (s *DeathTestSuite) TestTheSurvivorWalksAgain() {
 	s.startCrypt()
 	s.spawnSkeleton()
 
-	_, blocked := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
-	})
-	s.Require().ErrorIs(blocked, session.ErrInBubble, "control: mid-fight, she is not free to walk")
+	// Control: mid-fight, she is on the turn clock, not free-roaming — a
+	// direct blocked Move no longer proves this alone since rpg-toolkit#1169,
+	// which lets the active member of a bubble still walk on the turn clock,
+	// at a cost. See move_test.go's own turn-clock suite for that behavior.
+	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(session.ClockTurn, turn.Clock, "control: mid-fight, she is on the turn clock")
 
 	s.swingUntilTheSkeletonFalls()
 
-	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
 	})
 	s.Require().NoError(err, "the fight is over, so the walk is hers again")

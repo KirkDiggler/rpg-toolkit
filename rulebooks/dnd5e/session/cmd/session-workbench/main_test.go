@@ -36,12 +36,12 @@ func TestWorkbenchRuns(t *testing.T) {
 
 		// A fight that starts itself, end to end. Each of these is a different
 		// claim, and any one regressing would leave the others still true:
-		"a fight starts, in order [alice skel-1 wight]", // contact at the doorway starts it, unasked
-		"free roam refused for a fight member: true",    // and a fighter stops free-roaming
-		"bob walks on regardless, 1 step(s)",            // while everyone not in it carries on
+		"a fight starts, in order [alice skel-1 wight]",       // contact at the doorway starts it, unasked
+		"she walks 2 step(s) into the vault, on her own turn", // the active member still walks (rpg-toolkit#1169)
+		"bob walks on regardless, 1 step(s)",                  // while everyone not in it carries on
 
 		`ended by "withdraw"`,
-		"alice at (6,1)", // she is where the fight stopped her, and it persisted
+		"alice at (7,2)", // she is where her own turn's walk left her, and it persisted
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("workbench output missing %q\nfull output:\n%s", want, got)

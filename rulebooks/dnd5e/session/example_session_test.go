@@ -5,7 +5,6 @@ package session_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -159,16 +158,23 @@ func Example_theFightThatStartsItself() {
 	fmt.Printf("stopped after %d/%d: a fight starts, in order %v\n",
 		len(out.Steps), len(path), out.Formed.Order)
 
-	// She cannot simply walk on: she is in the fight, and free roam is for
-	// members who are not. The refusal is the composition's, translated.
-	_, err = mgr.Move(ctx, &session.MoveInput{
+	// She is not free to WANDER — Transfer to the world clock is still refused
+	// while a bubble holds her — but it is her own turn (she is the fight's
+	// first name in initiative), so Move still lets her walk: on the turn
+	// clock a walk spends movement rather than being refused outright
+	// (rpg-toolkit#1169). This cell costs 5 of the feet her speed banked at
+	// the top of the fight.
+	out, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "run", Member: "alice", Path: []spatial.Position{{X: 2, Y: 3}},
 	})
-	fmt.Printf("walking on is refused: %v\n", errors.Is(err, session.ErrInBubble))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("she can still walk on her own turn: %d step(s)\n", len(out.Steps))
 
 	// Output:
 	// stopped after 2/4: a fight starts, in order [alice ogre]
-	// walking on is refused: true
+	// she can still walk on her own turn: 1 step(s)
 }
 
 // panicFataler adapts the test fixtures for use from an Example, which has no

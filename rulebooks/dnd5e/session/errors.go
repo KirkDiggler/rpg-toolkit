@@ -237,6 +237,17 @@ var (
 	// one they guessed wrong about.
 	ErrNotInFight = errors.New("member is not in a fight")
 
+	// ErrNotYourTurn is returned when a verb needs its member to be the
+	// CURRENT active member of the fight they are in, and they are not.
+	//
+	// TWO VERBS SHARE THIS REFUSAL (rpg-toolkit#1169): EndTurn naming someone
+	// whose turn it is not, and Move asking a bubble member who is not the one
+	// the clock is waiting on to walk. Translated from the composition's own
+	// encounter.ErrNotActive rather than left to cross the boundary unnamed
+	// (S2) — see translate. Distinct from ErrNotInFight: this member IS in the
+	// fight, just not up right now.
+	ErrNotYourTurn = errors.New("not your turn")
+
 	// ErrNoCause is returned when a verb that must say WHY is not told.
 	//
 	// Ending a fight is the one that has it: a fight ends either because
@@ -307,7 +318,8 @@ var (
 
 	// ErrCannotAfford is returned when an actor cannot pay for what they
 	// declared: a second swing in a turn that bought only one, a level-5
-	// fighter's third, an action after the action was spent.
+	// fighter's third, an action after the action was spent, or a walk longer
+	// than the turn's remaining movement (rpg-toolkit#1169).
 	//
 	// THIS IS A FACT ABOUT THE GAME, not about the code, and that is the whole
 	// reason it is separate from ErrBadCost. A player who has run out of actions
@@ -319,6 +331,9 @@ var (
 	// The message NAMES THE CURRENCY that ran out — "action: 1 needed, 0 left" —
 	// because a refusal a client cannot explain is a refusal that reads as a bug.
 	// A host may show it or match the sentinel and say it in its own words.
+	// Move's own refusal composes its own "ft"-suffixed text rather than
+	// [combat.SpendProfile]'s unitless one — see [movementShortfall] — but the
+	// YES/NO answer both come from is the same [combat.Pay] call either way.
 	//
 	// It is a FIGHT's refusal. The action economy exists only in combat, so a
 	// member on the world clock is charged nothing and can never see this.
