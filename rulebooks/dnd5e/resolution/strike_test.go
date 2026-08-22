@@ -105,9 +105,10 @@ func (s *StrikeTestSuite) wolfBite() monster.ActionData {
 // hero; otherwise it stands three cells away — the two sides of prone's range
 // split.
 func (s *StrikeTestSuite) world(secondWolfAt spatial.Position) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
@@ -195,7 +196,7 @@ func (s *StrikeTestSuite) strike(attacker string, roller *scriptedRoller) Machin
 func (s *StrikeTestSuite) resolve(
 	world encounter.EncounterData, hero *character.Data, machine Machine,
 ) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
@@ -329,7 +330,7 @@ func (s *StrikeTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 		return &scriptedRoller{single: hitRoll, pair: []int{hitRoll, hitRoll}}
 	}
 
-	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	forward, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: s.hero(s.raging())},
@@ -340,7 +341,7 @@ func (s *StrikeTestSuite) TestRegistrationsDoNotDependOnInputOrder() {
 	})
 	s.Require().NoError(err)
 
-	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	reversed, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Monster: s.wolf(secondWolfID)},
@@ -366,7 +367,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	surf := newSurface(events.NewEventBus())
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: world, Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Data: world, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 	})
 	s.Require().NoError(err)
@@ -459,7 +460,7 @@ func (s *StrikeTestSuite) TestStrikePublishesPostAttackRollForSubscribers() {
 // strikeMachine.afterDamage: the topic is an instruction to one listener and a
 // notification to another, which is slice 2's classification to make.
 func (s *StrikeTestSuite) TestAMonsterTargetTakesItsDamageOnce() {
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: s.world(spatial.Position{X: 5, Y: 4}),
 		Participants: []Participant{
 			{Character: s.hero()},
@@ -550,7 +551,7 @@ func (s *StrikeTestSuite) resolveWith(
 		second = secondWolf[0]
 	}
 
-	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world,
 		Participants: []Participant{
 			{Character: hero},
@@ -887,7 +888,7 @@ func (s *StrikeTestSuite) TestCanceledAdvantageRollsStraightAndDoesNotGrantSneak
 		}},
 	}
 	roller := scripted(15, 4)
-	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: s.world(spatial.Position{X: 8, Y: 5}),
 		Participants: []Participant{
 			{Character: s.hero(sneak)},
@@ -944,9 +945,10 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	s.Require().NoError(err)
 	s.Require().Nil(attack.Gate, "a plain weapon declares no rider")
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
@@ -956,7 +958,7 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	})
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: enc.ToData(),
 		Participants: []Participant{
 			{Character: s.hero()},
@@ -998,9 +1000,10 @@ const scoutID = "scout-1"
 // deciding a rule" (ADR-0038).
 func (s *StrikeTestSuite) spreadWorld(secondWolfRoom string, secondWolfAt spatial.Position) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-1", Width: 10, Height: 10},
 				{ID: "room-2", Width: 10, Height: 10, Origin: spatial.Position{X: 12}},
@@ -1050,7 +1053,7 @@ func (s *StrikeTestSuite) resolveSpread(
 	world encounter.EncounterData, hero *character.Data, machine Machine,
 ) (*Output, error) {
 	return Resolve(s.ctx, &Input{
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight:  everyoneSeesTheWholeMap{},
 		Roller: dice.NewRoller(),
 		World:  world,
@@ -1149,22 +1152,29 @@ func (s *StrikeTestSuite) TestAWolfInTheNextChamberIsSixtyFeetAwayNotOneCell() {
 //
 // So the field's grid family is not decoration here: it decides the rule.
 //
-// The first wolf stands at axial (-5,-5) for a second reason. A hex grid is
-// origin-CENTERED — a span of ten reaches [-5,4] on each axis — where a square
-// grid of the same width reaches [0,9]. So the two families need different span
-// arithmetic to hold the same field, and a member at the hex field's own corner
-// is the only thing that can tell a correct hex span from a square one applied
-// to a hex grid. (Mutation M8; nobody stood out there until it survived.)
+// The first wolf stands at the field's own opposite corner (9,9) for a second
+// reason. A hex ROOM's authored (room-local) span is zero-based — [0,Width) on
+// each axis, the same as square (localIsInRoom, orientation.go) — even though
+// the field's absolute frame is origin-centred axial once compiled; a member
+// at the room's own edge is the only thing that can tell that bounds check
+// from one that quietly clipped the corner. (Mutation M8; nobody stood out
+// there until it survived. Coordinates updated for rpg-project#227's
+// room-local/absolute reshape: authoring moved to zero-based room-local cells
+// after this test predated it — see localIsInRoom's own doc.)
 func (s *StrikeTestSuite) hexWorld() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
+		// Orientation is required for a hex field but arbitrary here: axial
+		// distance (what this test measures) is the same six neighbours either
+		// way (ADR-0040) — only rendering cares which way the hexes point.
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10, Grid: spatial.GridShapeHex}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesAreFlatTop()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10, Grid: spatial.GridShapeHex}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 0}},
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: -5, Y: -5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 9, Y: 9}},
 			{ID: secondWolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},

@@ -77,9 +77,10 @@ func walledWorld(t *testing.T) encounter.EncounterData {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
 				{ID: "room-1", Width: 10, Height: 8, Boundaries: seam},
 				{ID: "room-2", Width: 10, Height: 8, Origin: spatial.Position{X: 10}},
@@ -110,7 +111,7 @@ func runProbe(t *testing.T, world encounter.EncounterData, participants []Partic
 
 	probe := &worldProbe{}
 	out, err := Resolve(context.Background(), &Input{
-		Initiative: orderAsGiven{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight:        everyoneSeesTheWholeMap{},
 		Roller:       dice.NewRoller(),
 		World:        world,

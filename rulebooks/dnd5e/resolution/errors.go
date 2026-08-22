@@ -44,6 +44,21 @@ var (
 	// rule about light it cannot see (rpg-toolkit#1111, rpg-toolkit#1033).
 	ErrNoSight = errors.New("resolution: no sight capability")
 
+	// ErrNoTurnDriver indicates an interaction given no way to decide what an
+	// unplayed member does when a fight's clock lands on their turn. The
+	// composition requires one to load at all, the same way it requires an
+	// initiative roller, a standing capability and a sight capability
+	// (rpg-toolkit#1162).
+	//
+	// Nothing in this package consults it, for ErrNoStanding's reason: the
+	// world is loaded here, one interaction runs, and it is read back out as
+	// data — this package never calls EndTurn, form, Transfer or Exit, so the
+	// question this capability answers is never put. Carried rather than
+	// invented, because a package that answered "it passes" on the caller's
+	// behalf would be deciding a rule it cannot see, the same way ErrNoStanding
+	// and ErrNoSight already refuse to guess.
+	ErrNoTurnDriver = errors.New("resolution: no turn driver capability")
+
 	// ErrNoMachine indicates an interaction with nothing to resolve. Distinct
 	// from a machine that finishes immediately, which is legal.
 	ErrNoMachine = errors.New("resolution: no machine")

@@ -98,9 +98,10 @@ func (s *EffectiveACTestSuite) defenseStyle() json.RawMessage {
 }
 
 func (s *EffectiveACTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
@@ -120,7 +121,7 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 	attack, err := AttackFromMonsterAction(data.Actions[0])
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.world(),
 		Participants: []Participant{{Character: hero}, {Monster: data}},
 		Machine: NewStrike(&StrikeInput{
@@ -188,9 +189,10 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	attack, err := AttackFromMonsterAction(data.Actions[0])
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
@@ -200,7 +202,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	})
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        enc.ToData(),
 		Participants: []Participant{{Monster: data}, {Monster: second}},
 		Machine: NewStrike(&StrikeInput{

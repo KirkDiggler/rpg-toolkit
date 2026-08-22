@@ -68,6 +68,18 @@ func (everyoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, 
 	return nil, nil
 }
 
+// passDriver is the deterministic TurnDriver every fixture wires.
+//
+// The composition requires one to load at all (rpg-toolkit#1162), and this
+// package never consults it — it carries the caller's capability across a
+// round trip through the world, exactly like Standing and Sight above. So the
+// fixtures hand over the one answer that changes nothing.
+type passDriver struct{}
+
+func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+	return encounter.Pass{}, nil
+}
+
 // unlimitedSight is the range these fixtures hand out. Further than the longest
 // sightline any field in this package draws, because light is not this
 // package's subject — and stated as a number rather than left to a default,
