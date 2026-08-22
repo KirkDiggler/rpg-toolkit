@@ -548,9 +548,123 @@ type Event struct {
 	// Kind names what happened.
 	Kind EventKind `json:"kind"`
 
-	// Payload is the kind-specific body, encoded by this package.
+	// Payload is the kind-specific body, encoded by this package. REMAINS
+	// FOR KINDS NOT YET TYPED — a client reads Body and never decodes this,
+	// not as a fallback, not for a field it wishes were typed (rpg-toolkit#941).
 	Payload []byte `json:"payload,omitempty"`
+
+	// Body is the beat, typed: a sealed interface with one struct per kind
+	// that has one, decoded from the SAME payload this package already
+	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil for
+	// a kind with no typed body member (JOINED, EXITED, ENDED,
+	// SCENE_OPENED, TICK, UNKNOWN) and for a beat this build's decoder does
+	// not recognise — see decodeBeat.
+	Body EventBody `json:"-"`
 }
+
+// EventBody is the beat, typed — a sealed interface with one struct per
+// kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
+// MissedBody, FightStartedBody, FightEndedBody, MovedBody. Sealed the way
+// DissolveCause is (dissolve.go) and for the same reason: a caller matches
+// on it with a type switch, and a second implementation declared outside
+// this package would be indistinguishable from these to anyone reading the
+// switch.
+//
+// ONE-TO-ONE WITH EventKind where a body exists (rpg-toolkit#941). A kind
+// with no body member here leaves Event.Body nil and is read from Kind
+// alone.
+type EventBody interface {
+	// isEventBody seals the set.
+	isEventBody()
+}
+
+// TurnEndedBody is EventTurnEnded's typed body: a member's turn ended and
+// the order moved on. Also "X's turn" as a moment — one of these per driven
+// member, so a monster's turn is a visible beat rather than a gap between
+// two of a player's.
+type TurnEndedBody struct {
+	// Member is whose turn ended.
+	Member string `json:"member"`
+	// Next is whose turn it is now.
+	Next string `json:"next"`
+}
+
+func (TurnEndedBody) isEventBody() {}
+
+// DownedBody is EventDowned's typed body: who is at zero hit points and out
+// of the fight. Who, and nothing else — see EventDowned's own doc for why
+// hit points are not here.
+type DownedBody struct {
+	Member string `json:"member"`
+}
+
+func (DownedBody) isEventBody() {}
+
+// StruckBody is EventStruck's typed body: an attack landed. The numbers
+// AttackOutput gives the attacker, here for every witness, plus what was
+// swung.
+type StruckBody struct {
+	Attacker string `json:"attacker"`
+	Target   string `json:"target"`
+	// Roll is the d20 as rolled.
+	Roll int `json:"roll"`
+	// Total is the roll plus everything the attack chain added.
+	Total int `json:"total"`
+	// Against is the number the total had to reach.
+	Against int `json:"against"`
+	// Damage is what was dealt. Never zero on a Struck; a miss is a Missed.
+	Damage int `json:"damage"`
+	// Attack is what was swung — ref, name, damage type.
+	Attack   AttackRef `json:"attack"`
+	Critical bool      `json:"critical"`
+}
+
+func (StruckBody) isEventBody() {}
+
+// MissedBody is EventMissed's typed body: an attack did not land. A
+// separate body from StruckBody rather than one with a Damage of zero — a
+// whiff is a different animation, sound and sentence — and it carries no
+// damage field at all so "missed for 0" cannot be said.
+type MissedBody struct {
+	Attacker string    `json:"attacker"`
+	Target   string    `json:"target"`
+	Roll     int       `json:"roll"`
+	Total    int       `json:"total"`
+	Against  int       `json:"against"`
+	Attack   AttackRef `json:"attack"`
+}
+
+func (MissedBody) isEventBody() {}
+
+// FightStartedBody is EventFightStarted's typed body: two sides came into
+// contact and a fight began. Delivered to every member of the encounter, in
+// or out of the fight.
+type FightStartedBody struct {
+	// Members is the fight's members in initiative order, first to act
+	// first.
+	Members []string `json:"members"`
+}
+
+func (FightStartedBody) isEventBody() {}
+
+// FightEndedBody is EventFightEnded's typed body: a fight dissolved and its
+// members returned to free roam. Cause says why, in the same enum
+// DissolveOutput.Cause speaks.
+type FightEndedBody struct {
+	Cause DissolveKind `json:"cause"`
+}
+
+func (FightEndedBody) isEventBody() {}
+
+// MovedBody is EventMoved's typed body: a member stepped to a new cell.
+// One body per step — a walk of four cells is four of these, each with its
+// own Event.Seq.
+type MovedBody struct {
+	Member string           `json:"member"`
+	To     spatial.Position `json:"to"`
+}
+
+func (MovedBody) isEventBody() {}
 
 // SaveReport names which aggregates were persisted by a verb and which were
 // not.

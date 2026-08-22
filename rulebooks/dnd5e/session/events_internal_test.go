@@ -11,9 +11,18 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
+// testKindOf is decodeBeat's own Kind half, isolated for the tests below
+// that pin kindFor's mapping without caring what bodyFor makes of the rest
+// of the payload (rpg-toolkit#941 split decodeBeat's old single-return
+// kindOf into kindFor + bodyFor; these pins moved with it).
+func testKindOf(payload string) EventKind {
+	kind, _ := decodeBeat([]byte(payload))
+	return kind
+}
+
 // TestAnUnrecognisedBeatStaysUnknown pins the mapper's default arm.
 //
-// Pinned HERE, against kindOf directly, rather than through a verb — because no
+// Pinned HERE, against kindFor directly, rather than through a verb — because no
 // verb can produce it. Every beat the composition emits today has a case, which
 // is the point of rpg-toolkit#1038; the arm exists for the beat a LATER
 // composition adds, and there is no honest way to drive that from this side of
@@ -26,11 +35,11 @@ import (
 // composition ship a beat this version has never heard of without older clients
 // losing their place.
 func TestAnUnrecognisedBeatStaysUnknown(t *testing.T) {
-	require.Equal(t, EventUnknown, kindOf([]byte(`{"beat":"transmogrified"}`)),
+	require.Equal(t, EventUnknown, testKindOf(`{"beat":"transmogrified"}`),
 		"a beat this version does not know is delivered, not dropped")
-	require.Equal(t, EventUnknown, kindOf([]byte(`{"actor":"alice"}`)),
+	require.Equal(t, EventUnknown, testKindOf(`{"actor":"alice"}`),
 		"and so is a beat with no name at all")
-	require.Equal(t, EventUnknown, kindOf([]byte(`not json`)),
+	require.Equal(t, EventUnknown, testKindOf(`not json`),
 		"including a payload this package cannot even parse")
 }
 
@@ -39,11 +48,11 @@ func TestAnUnrecognisedBeatStaysUnknown(t *testing.T) {
 //
 // The seam-level pins drive real scenes and are the evidence that matters —
 // attackevents_test.go for the two swings, death_test.go for the third. This
-// asks the narrower question those cannot: does kindOf's literal still equal
+// asks the narrower question those cannot: does kindFor's literal still equal
 // the composition's own constant?
 //
 // It is BUILT FROM the composition's constants rather than from strings typed
-// twice, and that is the whole strength of it. kindOf matches on literals, so a
+// twice, and that is the whole strength of it. kindFor matches on literals, so a
 // rename upstream degrades every event of that kind to EventUnknown with
 // nothing failing — the silent failure its own doc warns about. A test that
 // also spelled the literal out would keep passing through exactly that change.
@@ -66,7 +75,7 @@ func TestTheOutcomeBeatsAreTheCompositionsOwnStrings(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.kind), func(t *testing.T) {
 			require.Equal(t, tc.want,
-				kindOf([]byte(`{"beat":"`+string(tc.kind)+`","member":"goblin"}`)))
+				testKindOf(`{"beat":"`+string(tc.kind)+`","member":"goblin"}`))
 		})
 	}
 }
@@ -84,7 +93,7 @@ func TestTheOutcomeBeatsAreTheCompositionsOwnStrings(t *testing.T) {
 //     asserting the CONSTANT alone would not have noticed it changing.
 //   - The composition keeps "down", because that kind is persisted in every
 //     stored world. Renaming it there is a migration; translating here is a
-//     line in kindOf.
+//     line in kindFor.
 //
 // The third assertion is the one that earns its keep. Both single-value rows
 // pass happily if somebody aligns the two — that is the tidy-looking change
@@ -96,5 +105,5 @@ func TestTheSeamSaysDownedWhereTheCompositionSaysDown(t *testing.T) {
 	require.Equal(t, encounter.OutcomeKind("down"), encounter.OutcomeDown,
 		"the composition's persisted kind, deliberately left alone")
 	require.NotEqual(t, string(EventDowned), string(encounter.OutcomeDown),
-		"these two must not be aligned: see kindOf, and rpg-toolkit#1084")
+		"these two must not be aligned: see kindFor, and rpg-toolkit#1084")
 }

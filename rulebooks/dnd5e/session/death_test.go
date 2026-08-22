@@ -294,6 +294,26 @@ func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 	s.Equal(session.ClockWorld, turn.Clock, "alice is free-roaming again, and nobody asked for that")
 }
 
+// TestDownedAndFightEndedCarryTypedBodies pins rpg-toolkit#941's other pair:
+// the killing blow's own consequences — the body, and the fight ending it —
+// reach a client as DownedBody and FightEndedBody, not as payload a client
+// decodes itself.
+func (s *DeathTestSuite) TestDownedAndFightEndedCarryTypedBodies() {
+	s.dropTheSkeleton()
+
+	downed := s.eventsOfKind(session.EventDowned)
+	s.Require().NotEmpty(downed)
+	body, ok := downed[0].Body.(session.DownedBody)
+	s.Require().True(ok, "got %T", downed[0].Body)
+	s.Equal("skeleton", body.Member)
+
+	ended := s.eventsOfKind(session.EventFightEnded)
+	s.Require().NotEmpty(ended)
+	endedBody, ok := ended[0].Body.(session.FightEndedBody)
+	s.Require().True(ok, "got %T", ended[0].Body)
+	s.Equal(session.DissolveByDefeat, endedBody.Cause)
+}
+
 // TestTheBeatOrderReachesTheClientAsCauseThenEffect is the composition's
 // ordering law arriving where a table actually reads it.
 //
