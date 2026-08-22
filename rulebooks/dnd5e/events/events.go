@@ -308,6 +308,24 @@ type DamageChainEvent struct {
 	IsOffHandAttack  bool              // True for bonus action off-hand attacks (two-weapon fighting)
 	AbilityModifier  int               // The ability modifier (STR/DEX) for this attack
 	IsMelee          bool              // True for melee attacks, false for ranged (mirrors AttackChainEvent.IsMelee)
+
+	// TwoHanded says this swing is being made with both hands on the
+	// weapon — either the weapon itself requires it, or a versatile weapon
+	// was gripped that way. A STATIC fact of the swing, compiled once by
+	// the attack compiler rather than read live off a character registry
+	// (rpg-toolkit#1178, docs/ideas/session-sdk/attack-profile-seam.md):
+	// it cannot change between the attack roll and the damage roll of the
+	// same swing.
+	TwoHanded bool
+
+	// OffHandWeaponRef names the weapon, if any, occupying the attacker's
+	// OTHER hand from the one that just swung — nil when that hand is
+	// empty or holds something that is not a weapon (a shield, most
+	// often). Like TwoHanded, this is a static equipment fact the compiler
+	// already knows, carried onto the event the same way WeaponRef already
+	// is, so a predicate like Dueling's decides eligibility from the event
+	// alone rather than a live gamectx lookup.
+	OffHandWeaponRef *core.Ref
 }
 
 // DamageChainInput contains the facts used to construct a DamageChainEvent.
@@ -326,6 +344,8 @@ type DamageChainInput struct {
 	IsOffHandAttack  bool
 	AbilityModifier  int
 	IsMelee          bool
+	TwoHanded        bool
+	OffHandWeaponRef *core.Ref
 }
 
 // NewDamageChainEvent constructs a damage-chain event with explicit primary
@@ -345,6 +365,8 @@ func NewDamageChainEvent(input DamageChainInput) *DamageChainEvent {
 		IsOffHandAttack:  input.IsOffHandAttack,
 		AbilityModifier:  input.AbilityModifier,
 		IsMelee:          input.IsMelee,
+		TwoHanded:        input.TwoHanded,
+		OffHandWeaponRef: input.OffHandWeaponRef,
 	}
 }
 

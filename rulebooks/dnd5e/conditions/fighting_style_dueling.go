@@ -15,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -109,8 +108,16 @@ func (f *FightingStyleDuelingCondition) loadJSON(data json.RawMessage) error {
 }
 
 // onDamageChain adds +2 to damage when wielding one-handed melee weapon with no off-hand weapon.
+//
+// Eligibility reads entirely off the folded event, the same way
+// [conditions.RagingCondition] does — no live character-registry lookup
+// (rpg-toolkit#1178). Every fact it needs (IsMelee, TwoHanded,
+// OffHandWeaponRef) is a STATIC equipment fact the attack compiler already
+// knew before the swing, carried onto the event exactly like WeaponRef and
+// AbilityUsed already are; see DamageChainEvent's own doc for why those
+// facts belong there rather than behind a context-installed registry.
 func (f *FightingStyleDuelingCondition) onDamageChain(
-	ctx context.Context,
+	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
@@ -119,37 +126,20 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Get character registry from context
-	registry, err := gamectx.RequireCharacters(ctx)
-	if err != nil {
-		return c, err
-	}
-
-	// Get character weapons
-	weapons := registry.GetCharacterWeapons(f.CharacterID)
-	if weapons == nil {
-		return c, nil
-	}
-
 	// Check Dueling eligibility:
-	// 1. Must have a main hand weapon
-	// 2. Main hand weapon must be melee and not two-handed
-	// 3. Must NOT have an off-hand weapon (shields are OK)
-	mainHand := weapons.MainHand()
-	if mainHand == nil {
+	// 1. This swing must be melee
+	// 2. Must not be gripped two-handed
+	// 3. Must NOT have an off-hand weapon (shields are OK — OffHandWeaponRef
+	//    is nil for a shield, since a shield is not a weapon)
+	if !event.IsMelee {
 		return c, nil
 	}
 
-	if !mainHand.IsMelee {
+	if event.TwoHanded {
 		return c, nil
 	}
 
-	if mainHand.IsTwoHanded {
-		return c, nil
-	}
-
-	offHand := weapons.OffHand()
-	if offHand != nil {
+	if event.OffHandWeaponRef != nil {
 		return c, nil
 	}
 

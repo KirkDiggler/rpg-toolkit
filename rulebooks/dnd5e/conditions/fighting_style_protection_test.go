@@ -162,6 +162,43 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
 	s.Empty(finalEvent.DisadvantageSources)
 }
 
+// TestDoesNotTriggerOnOwnAttack pins rpg-toolkit#1178's Protection half:
+// the condition used to exclude only "target is me" and never "attacker is
+// me", so it fired on the protector's OWN melee attacks — which reached
+// gamectx.RequireCharacters below, a dependency the session stack never
+// satisfies. No gamectx.WithGameContext is installed in this test at all;
+// if the exclusion regresses, this test fails with ErrNoGameContext rather
+// than a wrong disadvantage count, which is the honest failure for what
+// broke live.
+func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
+	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+
+	err := protection.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	// The protector attacking someone else — never a reaction to their own swing.
+	attackEvent := dnd5eEvents.AttackChainEvent{
+		AttackerID:        "fighter-1",
+		TargetID:          "goblin-1",
+		IsMelee:           true,
+		AttackBonus:       5,
+		TargetAC:          15,
+		CriticalThreshold: 20,
+	}
+
+	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
+	attacks := dnd5eEvents.AttackChain.On(s.bus)
+	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	s.Require().NoError(err, "the protector's own attack must never reach the gamectx-dependent branch")
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	s.Require().NoError(err)
+
+	s.Empty(finalEvent.DisadvantageSources, "Protection is a reaction to someone ELSE's attack, never my own")
+	s.Empty(finalEvent.ReactionsConsumed)
+}
+
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectAgainstRangedAttacks() {
 	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
 

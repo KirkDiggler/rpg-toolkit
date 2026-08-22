@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -55,6 +54,10 @@ func (s *FightingStyleDuelingTestSuite) TestApplyAndRemove() {
 	s.False(dueling.IsApplied())
 }
 
+// TestAddsDamageWithOneHandedWeapon pins rpg-toolkit#1178's fix: eligibility
+// now reads entirely off the folded event — no gamectx.GameContext is
+// installed anywhere in this test, which is the point being pinned (the
+// old version of this test built one via gamectx.NewGameContext).
 func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	dueling := conditions.NewFightingStyleDuelingCondition("fighter-1")
 
@@ -62,29 +65,12 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	s.Require().NoError(err)
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-	// Create character registry with one-handed melee weapon, no off-hand
-	registry := gamectx.NewBasicCharacterRegistry()
-	mainHand := &gamectx.EquippedWeapon{
-		ID:          "longsword-1",
-		Name:        "Longsword",
-		Slot:        "main_hand",
-		IsShield:    false,
-		IsTwoHanded: false,
-		IsMelee:     true,
-	}
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
-	registry.Add("fighter-1", weapons)
-
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
-
-	// Create damage chain event
+	// A one-handed melee weapon, no off-hand weapon: eligible.
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
 		WeaponDamageType: damage.Fire,
+		IsMelee:          true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
@@ -98,13 +84,13 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 		IsCritical: true,
 	}
 
-	// Execute through damage chain
+	// Execute through damage chain — plain context, no gamectx installed.
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
 
 	// Should have 2 components: weapon + dueling bonus
@@ -121,28 +107,12 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 	s.Require().NoError(err)
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-	// Create character registry with two-handed weapon
-	registry := gamectx.NewBasicCharacterRegistry()
-	mainHand := &gamectx.EquippedWeapon{
-		ID:          "greatsword-1",
-		Name:        "Greatsword",
-		Slot:        "main_hand",
-		IsShield:    false,
-		IsTwoHanded: true, // Two-handed
-		IsMelee:     true,
-	}
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
-	registry.Add("fighter-1", weapons)
-
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
-
-	// Create damage chain event
+	// A two-handed grip disqualifies Dueling regardless of the weapon.
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		IsMelee:    true,
+		TwoHanded:  true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
@@ -155,13 +125,12 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 		},
 	}
 
-	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
 
 	// Should only have 1 component (no dueling bonus for two-handed)
@@ -175,36 +144,13 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 	s.Require().NoError(err)
 	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
 
-	// Create character registry with dual wielding
-	registry := gamectx.NewBasicCharacterRegistry()
-	mainHand := &gamectx.EquippedWeapon{
-		ID:          "shortsword-1",
-		Name:        "Shortsword",
-		Slot:        "main_hand",
-		IsShield:    false,
-		IsTwoHanded: false,
-		IsMelee:     true,
-	}
-	offHand := &gamectx.EquippedWeapon{
-		ID:          "shortsword-2",
-		Name:        "Shortsword",
-		Slot:        "off_hand",
-		IsShield:    false,
-		IsTwoHanded: false,
-		IsMelee:     true,
-	}
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
-	registry.Add("fighter-1", weapons)
-
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
-
-	// Create damage chain event
+	// A weapon in the off hand (dual wielding) disqualifies Dueling.
+	offHandRef := refs.Weapons.Shortsword()
 	damageEvent := &dnd5eEvents.DamageChainEvent{
-		AttackerID: "fighter-1",
-		TargetID:   "goblin-1",
+		AttackerID:       "fighter-1",
+		TargetID:         "goblin-1",
+		IsMelee:          true,
+		OffHandWeaponRef: offHandRef,
 		Components: []dnd5eEvents.DamageComponent{
 			{
 				Source:            dnd5eEvents.DamageSourceWeapon,
@@ -217,17 +163,56 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 		},
 	}
 
-	// Execute through damage chain
 	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 	damages := dnd5eEvents.DamageChain.On(s.bus)
-	modifiedChain, err := damages.PublishWithChain(ctx, damageEvent, damageChain)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
 	s.Require().NoError(err)
 
 	// Should only have 1 component (no dueling bonus when dual wielding)
 	s.Len(finalEvent.Components, 1)
+}
+
+// TestDoesNotAddWithShieldInOffHand pins the "shields are OK" half: a shield
+// in the off hand is not a weapon, so OffHandWeaponRef stays nil and Dueling
+// still applies — this is precisely the sheet shape (longsword + shield)
+// that reproduced rpg-toolkit#1178 live.
+func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
+	dueling := conditions.NewFightingStyleDuelingCondition("fighter-1")
+
+	err := dueling.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		IsMelee:    true,
+		// OffHandWeaponRef intentionally nil — a shield is not a weapon.
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				OriginalDiceRolls: []int{8},
+				FinalDiceRolls:    []int{8},
+				FlatBonus:         3,
+				DamageType:        damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	s.Len(finalEvent.Components, 2, "a shield in the off hand still leaves Dueling eligible")
+	s.Equal(2, finalEvent.Components[1].FlatBonus)
 }
 
 func (s *FightingStyleDuelingTestSuite) TestToJSON() {

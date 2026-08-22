@@ -413,17 +413,12 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		s.T().Log("║  FIGHTER DUELING: +2 Damage One-Handed                           ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Set up weapons for the fighter (rapier in main hand, nothing in off hand)
-		mainHand := &gamectx.EquippedWeapon{
-			ID:          "rapier-1",
-			WeaponID:    weapons.Rapier,
-			Name:        "Rapier",
-			Slot:        "main_hand",
-			IsMelee:     true,
-			IsTwoHanded: false,
-		}
-		weaponSet := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
-		s.registry.Add(s.fighter.GetID(), weaponSet)
+		// rpg-toolkit#1178: Dueling no longer asks a gamectx.CharacterRegistry
+		// what is equipped — it reads IsMelee/TwoHanded/OffHandWeaponRef off
+		// the event itself, the same static facts the attack compiler already
+		// knew. No registry setup needed for this weapon shape (rapier main
+		// hand, empty off hand) any more; IsMelee: true below is the whole of
+		// it.
 
 		// Apply Dueling fighting style
 		dueling := conditions.NewFightingStyleDuelingCondition(s.fighter.GetID())
@@ -436,6 +431,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
 			AbilityUsed: abilities.STR,
+			IsMelee:     true,
 			Components: []dnd5eEvents.DamageComponent{
 				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{6}, FinalDiceRolls: []int{6}, DamageType: damage.Piercing},
 			},

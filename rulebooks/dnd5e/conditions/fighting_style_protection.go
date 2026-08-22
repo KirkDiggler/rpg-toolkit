@@ -111,11 +111,26 @@ func (f *FightingStyleProtectionCondition) loadJSON(data json.RawMessage) error 
 }
 
 // onAttackChain imposes disadvantage on attacks against nearby allies when using shield and reaction.
+//
+// rpg-toolkit#1178: this used to fire on the protector's OWN outgoing
+// attacks too, because it excluded only "target is me" and never "attacker
+// is me" — but Protection is a REACTION to someone else's attack (the doc
+// comment above says so: "a creature ... attacks a target other than
+// you"), never a response to your own swing. That gap put every armed
+// attack by a Protection-wielding character on the code path below, which
+// depends on gamectx.RequireCharacters — a live registry the session stack
+// never installs — turning an unrelated eligibility bug into a crash on
+// every one of that character's own attacks.
 func (f *FightingStyleProtectionCondition) onAttackChain(
 	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+	// Never a reaction to my own attack.
+	if event.AttackerID == f.CharacterID {
+		return c, nil
+	}
+
 	// Only triggers for attacks on OTHER creatures (not self)
 	if event.TargetID == f.CharacterID {
 		return c, nil
@@ -126,7 +141,19 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Check if we have shield equipped
+	// Check if we have shield equipped.
+	//
+	// STILL gamectx-dependent, and deliberately not fixed here: unlike the
+	// self-attack exclusion above, this is genuinely third-party dynamic
+	// state — this method is asking about a DIFFERENT character than the
+	// attacker or target (the protector, who is neither), and a reaction's
+	// availability changes mid-interaction as other reactions get spent.
+	// Neither fact can ride the attacker/target-shaped chain event the way
+	// Dueling's equipment facts now do. This condition only reaches this
+	// line for a genuine "protect an ally" attempt (never the protector's
+	// own attack, after the fix above), which no current caller exercises
+	// — tracked as remaining work under rpg-toolkit#1178 rather than
+	// rushed into the fix that closed it.
 	registry, err := gamectx.RequireCharacters(ctx)
 	if err != nil {
 		return c, err
