@@ -975,6 +975,26 @@ func (c *Character) GetEquippedSlot(slot InventorySlot) *EquippedItem {
 	return nil
 }
 
+// HasShieldEquipped reports whether a shield occupies either hand slot.
+//
+// A static equipment fact a condition like Protection ("you must be
+// wielding a shield") reads off its own live sheet at fold time — part of
+// rpg-toolkit#1178's move away from a context-installed gamectx registry.
+// Checking both hands rather than assuming off-hand-only matches
+// GetEquippedSlot's own indifference to which hand a caller names.
+func (c *Character) HasShieldEquipped() bool {
+	for _, slot := range [...]InventorySlot{SlotMainHand, SlotOffHand} {
+		equipped := c.GetEquippedSlot(slot)
+		if equipped == nil {
+			continue
+		}
+		if a := equipped.AsArmor(); a != nil && a.Category == armor.CategoryShield {
+			return true
+		}
+	}
+	return false
+}
+
 // EquipItem equips an inventory item to the specified slot, enforcing
 // two-handed weapon occupancy (rpg-toolkit#811): a two-handed weapon
 // always claims main hand and clears the off hand; equipping into the off

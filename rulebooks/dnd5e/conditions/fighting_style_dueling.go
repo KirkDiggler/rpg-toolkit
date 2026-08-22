@@ -127,10 +127,22 @@ func (f *FightingStyleDuelingCondition) onDamageChain(
 	}
 
 	// Check Dueling eligibility:
-	// 1. This swing must be melee
-	// 2. Must not be gripped two-handed
-	// 3. Must NOT have an off-hand weapon (shields are OK — OffHandWeaponRef
+	// 1. This swing must be an actual weapon — Dueling requires "wielding a
+	//    melee weapon", and the catalog's unarmed strike is not one, even
+	//    though it compiles through the same melee/damage machinery
+	//    (rpg-toolkit#1168, caught by Copilot on PR #1179 as a regression
+	//    from moving this check off a live registry: the old
+	//    gamectx.CharacterRegistry lookup never listed the unarmed strike
+	//    as a "weapon" in the first place, so this exclusion was implicit
+	//    before and needs to be explicit now).
+	// 2. This swing must be melee
+	// 3. Must not be gripped two-handed
+	// 4. Must NOT have an off-hand weapon (shields are OK — OffHandWeaponRef
 	//    is nil for a shield, since a shield is not a weapon)
+	if event.WeaponRef == nil || event.WeaponRef.Equals(refs.Weapons.UnarmedStrike()) {
+		return c, nil
+	}
+
 	if !event.IsMelee {
 		return c, nil
 	}

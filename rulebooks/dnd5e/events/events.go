@@ -119,6 +119,30 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// OwnerAware is an opt-in a [ConditionBehavior] implements when it needs a
+// live view of its OWN character's sheet — equipment, action economy — to
+// decide eligibility, instead of reaching for a context-installed registry
+// (rpg-toolkit#1178: gamectx.GameContext is a registry the session stack
+// never installs, and Protection's shield/reaction check depended on one).
+//
+// The owner is handed as `any` rather than a concrete type because this
+// package sits BENEATH character and monster in the import graph — a
+// condition cannot import either without a cycle. SetOwner is called with
+// whatever attached this condition (today, always a *character.Character);
+// a condition that needs one type-asserts it against its own narrow,
+// structurally-satisfied interface (see FightingStyleProtectionCondition
+// for the pattern: combat.Ledger, the same ledger Pay/CanPay already read,
+// plus whatever else it needs). An owner of the wrong shape is silently
+// ignored rather than an error — the same "nothing to do" default every
+// other unmet eligibility check in this package already takes.
+type OwnerAware interface {
+	// SetOwner hands over this condition's own character. Called once, at
+	// attach time, before Apply — never from inside a chain fold, because a
+	// live registry lookup at fold time is exactly what this interface
+	// exists to replace.
+	SetOwner(owner any)
+}
+
 // ActionBehavior represents a grantable action.
 // This interface is defined in the events package to avoid import cycles
 // between events and actions packages. The actions package implements this

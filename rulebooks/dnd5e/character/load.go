@@ -144,6 +144,13 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 	for _, effect := range pending {
 		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
 
+		// A condition that wants its own live sheet — rather than a
+		// context-installed registry — gets it here, before Apply subscribes
+		// it to anything (rpg-toolkit#1178).
+		if aware, ok := effect.behavior.(dnd5eEvents.OwnerAware); ok {
+			aware.SetOwner(c)
+		}
+
 		if err := effect.behavior.Apply(ctx, effectBus); err != nil {
 			// Undo whatever the failed Apply managed to subscribe.
 			_ = effect.behavior.Remove(ctx, effectBus)

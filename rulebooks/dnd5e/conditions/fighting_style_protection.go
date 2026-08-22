@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -25,6 +27,17 @@ type FightingStyleProtectionData struct {
 	CharacterID string    `json:"character_id"`
 }
 
+// protectionOwner is the minimal, structurally-satisfied view of the
+// protector's OWN live sheet this condition needs — shield equipped, and
+// the same action-economy ledger [combat.Pay]/[combat.CanPay] already read
+// (rpg-toolkit#1178). A *character.Character satisfies this without
+// `conditions` importing `character` (which would cycle — character already
+// imports conditions to load them); see [dnd5eEvents.OwnerAware].
+type protectionOwner interface {
+	combat.Ledger
+	HasShieldEquipped() bool
+}
+
 // FightingStyleProtectionCondition imposes disadvantage on attacks against adjacent allies.
 // When a creature you can see attacks a target other than you that is within 5 feet of you,
 // you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield.
@@ -32,10 +45,26 @@ type FightingStyleProtectionCondition struct {
 	CharacterID     string
 	subscriptionIDs []string
 	bus             events.EventBus
+	owner           protectionOwner
 }
 
 // Ensure FightingStyleProtectionCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleProtectionCondition)(nil)
+
+// Ensure FightingStyleProtectionCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*FightingStyleProtectionCondition)(nil)
+
+// SetOwner hands this condition its own character's live sheet, read the
+// same way [combat.Pay] already does, in place of a context-installed
+// gamectx registry (rpg-toolkit#1178). An owner that does not satisfy
+// [protectionOwner] is ignored: the condition simply never finds itself
+// eligible, the same "nothing to do" default every other unmet check here
+// already takes.
+func (f *FightingStyleProtectionCondition) SetOwner(owner any) {
+	if o, ok := owner.(protectionOwner); ok {
+		f.owner = o
+	}
+}
 
 // NewFightingStyleProtectionCondition creates a new Protection fighting style condition.
 func NewFightingStyleProtectionCondition(characterID string) *FightingStyleProtectionCondition {
@@ -141,41 +170,25 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Check if we have shield equipped.
-	//
-	// STILL gamectx-dependent, and deliberately not fixed here: unlike the
-	// self-attack exclusion above, this is genuinely third-party dynamic
-	// state — this method is asking about a DIFFERENT character than the
-	// attacker or target (the protector, who is neither), and a reaction's
-	// availability changes mid-interaction as other reactions get spent.
-	// Neither fact can ride the attacker/target-shaped chain event the way
-	// Dueling's equipment facts now do. This condition only reaches this
-	// line for a genuine "protect an ally" attempt (never the protector's
-	// own attack, after the fix above), which no current caller exercises
-	// — tracked as remaining work under rpg-toolkit#1178 rather than
-	// rushed into the fix that closed it.
-	registry, err := gamectx.RequireCharacters(ctx)
-	if err != nil {
-		return c, err
-	}
-
-	weapons := registry.GetCharacterWeapons(f.CharacterID)
-	if weapons == nil {
+	// Must be wielding a shield — read off this character's own live sheet,
+	// handed over at attach time (rpg-toolkit#1178), never a
+	// context-installed registry.
+	if f.owner == nil || !f.owner.HasShieldEquipped() {
 		return c, nil
 	}
 
-	// Must be wielding a shield
-	if !weapons.HasShield() {
+	// Must have a reaction available — the same ledger combat.Pay/CanPay
+	// already read, so "can I react" is answered the identical way
+	// everywhere in this rulebook it is asked.
+	if f.owner.SlotsLeft(coreCombat.ActionReaction) <= 0 {
 		return c, nil
 	}
 
-	// Check if we have reaction available
-	actionEconomy := registry.GetCharacterActionEconomy(f.CharacterID)
-	if actionEconomy == nil || !actionEconomy.CanUseReaction() {
-		return c, nil
-	}
-
-	// Check if we're within 5 feet of the target
+	// Check if we're within 5 feet of the target. Positions are genuinely
+	// world state no single character's sheet carries, so this stays on
+	// [gamectx.RequireRoom] — the one registry resolution.Resolve DOES
+	// install (for prone's range predicate), and the only one this
+	// condition still needs.
 	room, err := gamectx.RequireRoom(ctx)
 	if err != nil {
 		return c, err
@@ -210,10 +223,10 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 			Reason:      "protection_fighting_style",
 		})
 
-		// Actually consume the reaction
-		if useErr := actionEconomy.UseReaction(); useErr != nil {
-			return e, rpgerr.Wrap(useErr, "failed to consume reaction for protection")
-		}
+		// Actually consume the reaction. SpendSlots never refuses — the
+		// eligibility check above already ran, and Ledger's own contract
+		// (combat/gate.go) is that a debit past a passed check cannot fail.
+		f.owner.SpendSlots(coreCombat.ActionReaction, 1)
 
 		return e, nil
 	}

@@ -69,6 +69,7 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
+		WeaponRef:        refs.Weapons.Longsword(),
 		WeaponDamageType: damage.Fire,
 		IsMelee:          true,
 		Components: []dnd5eEvents.DamageComponent{
@@ -111,6 +112,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		WeaponRef:  refs.Weapons.Greatsword(),
 		IsMelee:    true,
 		TwoHanded:  true,
 		Components: []dnd5eEvents.DamageComponent{
@@ -149,6 +151,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID:       "fighter-1",
 		TargetID:         "goblin-1",
+		WeaponRef:        refs.Weapons.Shortsword(),
 		IsMelee:          true,
 		OffHandWeaponRef: offHandRef,
 		Components: []dnd5eEvents.DamageComponent{
@@ -189,6 +192,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 	damageEvent := &dnd5eEvents.DamageChainEvent{
 		AttackerID: "fighter-1",
 		TargetID:   "goblin-1",
+		WeaponRef:  refs.Weapons.Longsword(),
 		IsMelee:    true,
 		// OffHandWeaponRef intentionally nil — a shield is not a weapon.
 		Components: []dnd5eEvents.DamageComponent{
@@ -213,6 +217,87 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 
 	s.Len(finalEvent.Components, 2, "a shield in the off hand still leaves Dueling eligible")
 	s.Equal(2, finalEvent.Components[1].FlatBonus)
+}
+
+// TestDoesNotAddWithUnarmedStrike pins Copilot's finding on PR #1179: moving
+// eligibility off a live registry silently dropped an exclusion the OLD
+// gamectx.CharacterRegistry never had to state, because it never listed the
+// catalog's unarmed strike as a "weapon" to begin with. Dueling requires
+// wielding an actual melee weapon (rpg-toolkit#1168's unarmed strike is a
+// rule substitute for one, not one) — IsMelee alone cannot tell the two
+// apart, since an unarmed swing compiles as melee too.
+func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithUnarmedStrike() {
+	dueling := conditions.NewFightingStyleDuelingCondition("fighter-1")
+
+	err := dueling.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		WeaponRef:  refs.Weapons.UnarmedStrike(),
+		IsMelee:    true,
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				OriginalDiceRolls: []int{1},
+				FinalDiceRolls:    []int{1},
+				FlatBonus:         3,
+				DamageType:        damage.Bludgeoning,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	s.Len(finalEvent.Components, 1, "no Dueling bonus for a bare-fisted swing")
+}
+
+// TestDoesNotAddWithNoWeaponRef pins the nil half of the same exclusion — a
+// swing that names no weapon at all is at least as unarmed as one that
+// names the catalog's unarmed strike explicitly, and must not default to
+// eligible.
+func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithNoWeaponRef() {
+	dueling := conditions.NewFightingStyleDuelingCondition("fighter-1")
+
+	err := dueling.Apply(s.ctx, s.bus)
+	s.Require().NoError(err)
+	defer func() { _ = dueling.Remove(s.ctx, s.bus) }()
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: "fighter-1",
+		TargetID:   "goblin-1",
+		WeaponRef:  nil,
+		IsMelee:    true,
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:            dnd5eEvents.DamageSourceWeapon,
+				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+				OriginalDiceRolls: []int{6},
+				FinalDiceRolls:    []int{6},
+				FlatBonus:         3,
+				DamageType:        damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	damages := dnd5eEvents.DamageChain.On(s.bus)
+	modifiedChain, err := damages.PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	s.Len(finalEvent.Components, 1, "no weapon named means no Dueling bonus")
 }
 
 func (s *FightingStyleDuelingTestSuite) TestToJSON() {
