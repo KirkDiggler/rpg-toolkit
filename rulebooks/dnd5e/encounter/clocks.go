@@ -167,7 +167,13 @@ func (e *Encounter) leaveAnyClock(id MemberID) error {
 		if _, rerr := bubble.Remove(&clock.RemoveInput{ID: core.EntityID(id)}); rerr != nil {
 			return rerr
 		}
-		return e.dropBubbleIfIdle(bubble)
+		if derr := e.dropBubbleIfIdle(bubble); derr != nil {
+			return derr
+		}
+		// The exiting member may have been active; see driveIfStillRunning
+		// (rpg-toolkit#1162) — Exit reaches this the same as a mid-fight
+		// Transfer does.
+		return e.driveIfStillRunning(bubble)
 	}
 	_, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)})
 	return lerr
@@ -230,6 +236,131 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, err
 		return 0, err
 	}
 	return out.Seq, nil
+}
+
+// driveMonsterTurns advances bubble past every consecutive member with no
+// player, starting from its current Active member, stopping at the first
+// KindPlayer member.
+//
+// THE SINGLE CHOKE POINT both EndTurn and form route through, so "who acts
+// for a member nobody plays" has exactly one answer regardless of which
+// moment discovers it — a turn ending, or a fight forming with an unplayed
+// member first in initiative (rpg-toolkit#1162, ADR-0043).
+//
+// v1's TurnDriver has exactly one outcome (Pass), so every step here is
+// bubble.End plus the same "turn-ended" beat EndTurn's own acting-member step
+// already produces — the story and the EventTurnEnded stream need no new
+// vocabulary to show a monster's pass. wrapped is true if ANY step in the
+// chain wrapped the round, and lastSeq is the final beat's sequence; a caller
+// that wants every intermediate beat already has it through Story's ordinary
+// baseline-and-fan-out mechanism.
+//
+// A DRIVER ERROR ABORTS THE WHOLE CALL — including whatever the caller
+// already did before invoking this (EndTurn's own bubble.End for the acting
+// member, form's bubble construction). Nothing here needs to roll that back
+// by hand: this SDK's load-mutate-save shape means nothing is persisted until
+// the verb's own commit, so an error return simply discards the in-memory
+// encounter and leaves the stored world exactly as it was. This mirrors
+// Pump's rule for Decider errors ("aborts atomically... no clock advance, no
+// moves, no beats") using the mechanism this seam already has.
+// bubbleHasPlayer reports whether any member of order has a player.
+func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
+	for _, id := range order {
+		if m, ok := e.members[MemberID(id)]; ok && m.Kind == KindPlayer {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, err error) {
+	order, err := bubble.Order()
+	if err != nil {
+		return false, 0, fmt.Errorf("drive monster turns: %w", err)
+	}
+
+	if !e.bubbleHasPlayer(order) {
+		return false, 0, fmt.Errorf("drive monster turns: %w", ErrNoPlayerInBubble)
+	}
+
+	// Bounded by the order's own length: driving past every member once is
+	// the most this loop could ever legitimately need, and hasPlayer above
+	// already guarantees it terminates well before then.
+	for i := 0; i < len(order); i++ {
+		active, aerr := bubble.Active()
+		if aerr != nil {
+			return wrapped, lastSeq, fmt.Errorf("drive monster turns: %w", aerr)
+		}
+		activeID := MemberID(active)
+		m, ok := e.members[activeID]
+		if !ok || m.Kind == KindPlayer {
+			break
+		}
+
+		outcome, derr := e.turnDriver.Act(activeID)
+		if derr != nil {
+			return wrapped, lastSeq, fmt.Errorf("drive monster turns %q: %w", activeID, derr)
+		}
+
+		switch outcome.(type) {
+		case Pass:
+			out, eerr := bubble.End(&clock.EndInput{Actor: active})
+			if eerr != nil {
+				return wrapped, lastSeq, fmt.Errorf("drive monster turns %q: %w", activeID, eerr)
+			}
+			wrapped = wrapped || out.RoundWrapped
+
+			seq, berr := e.appendClockBeat(map[string]interface{}{
+				"beat":   "turn-ended",
+				"member": string(activeID),
+			})
+			if berr != nil {
+				return wrapped, lastSeq, fmt.Errorf("drive monster turns append beat: %w", berr)
+			}
+			lastSeq = seq
+		default:
+			return wrapped, lastSeq, fmt.Errorf(
+				"drive monster turns %q: driver returned %T: %w", activeID, outcome, ErrBadTurnOutcome)
+		}
+	}
+
+	return wrapped, lastSeq, nil
+}
+
+// driveIfStillRunning calls driveMonsterTurns on bubble if it still holds any
+// members after whatever removal the caller just made — a no-op if that
+// removal emptied it (the fight is over, not stuck) and a no-op if the
+// member left active already has a player.
+//
+// THE SECOND CHOKE POINT, alongside EndTurn and form: a member leaving a
+// bubble mid-fight (Transfer to the world clock, or Exit) can hand the active
+// slot to whoever was next in the order, exactly as ending a turn does — and
+// if that member has no player, the fight would stall on them just as surely
+// (rpg-toolkit#1162). Both callers reach this through the SAME
+// driveMonsterTurns, so there remains exactly one place that decides what an
+// unplayed member does.
+func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) error {
+	order, err := bubble.Order()
+	if err != nil {
+		return fmt.Errorf("drive if still running: %w", err)
+	}
+	if len(order) == 0 {
+		return nil
+	}
+
+	// UNLIKE EndTurn and form, a player-free bubble IS reachable here: Exit
+	// (and Transfer to the world clock) can drain a fight's last player one
+	// member at a time, leaving a fight of monsters alone as a legitimate,
+	// tolerated intermediate state — TestADrainedBubbleIsPruned pins exactly
+	// this ("a fight of one is still a fight"). Nobody is left to hand a
+	// driven-through turn back to, so this is a no-op rather than the defect
+	// ErrNoPlayerInBubble names for EndTurn/form's unreachable case.
+	if !e.bubbleHasPlayer(order) {
+		return nil
+	}
+
+	_, _, err = e.driveMonsterTurns(bubble)
+	return err
 }
 
 // FormInput carries the rulebook-rolled initiative order a new bubble starts
@@ -354,6 +485,17 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
 	}
+
+	// If initiative rolled an unplayed member first, nobody has reached this
+	// fight's clock yet to end their turn for them — the fight-start half of
+	// rpg-toolkit#1162. Driven AFTER the formation beat, deliberately: a
+	// reader replaying the story must see the fight announced before anyone's
+	// turn inside it can end, and a client reading FIGHT_STARTED sees a
+	// PLAYED member active by the time this verb returns either way.
+	if _, _, derr := e.driveMonsterTurns(bubble); derr != nil {
+		return nil, fmt.Errorf("form: %w", derr)
+	}
+
 	return &FormOutput{Seq: seq}, nil
 }
 
@@ -445,6 +587,13 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		if derr := e.dropBubbleIfIdle(bubble); derr != nil {
 			return nil, fmt.Errorf("transfer %q prune bubble: %w", in.Member, derr)
 		}
+		// The departing member may have been active; whoever inherited the
+		// slot is driven forward if they have no player (rpg-toolkit#1162) —
+		// this is how noticeDown's splice of a fallen body stays safe, since
+		// it reaches this same branch through Transfer.
+		if derr := e.driveIfStillRunning(bubble); derr != nil {
+			return nil, fmt.Errorf("transfer %q: %w", in.Member, derr)
+		}
 	default:
 		return nil, fmt.Errorf("transfer %q to %q: %w", in.Member, in.To, ErrBadClock)
 	}
@@ -470,24 +619,41 @@ type EndTurnInput struct {
 
 // EndTurnOutput reports who acts next and whether the round wrapped.
 type EndTurnOutput struct {
-	// Next is whose turn it now is in the same bubble.
+	// Next is whose turn it now is in the same bubble — ALWAYS a member with
+	// a player. If the clock would otherwise have landed on one or more
+	// unplayed members, this call already drove them forward via TurnDriver
+	// before returning (rpg-toolkit#1162): the caller never receives a Next
+	// nobody can act for.
 	Next MemberID
 
-	// RoundWrapped is true when this end closed the round — the order
+	// RoundWrapped is true when this end, OR any unplayed member's pass this
+	// call drove through on the way to Next, closed the round — the order
 	// cycled back to its first member and the bubble's round advanced.
 	RoundWrapped bool
 
-	// Seq is the story sequence of the turn-ended beat.
+	// Seq is the story sequence of the LAST beat this call recorded — its own
+	// turn-ended beat, or the final unplayed member's pass beat if any were
+	// driven. Every beat in between is in the story too; a caller that wants
+	// each one reads Story from its own baseline, the same way every other
+	// verb's fan-out works.
 	Seq uint64
 }
 
-// EndTurn advances the fight past the member's turn. This is the bubble's
-// own advancement — the world clock is untouched, and members outside the
-// fight never appear in it.
+// EndTurn advances the fight past the member's turn — and past every
+// consecutive member after them with no player, so the turn this call hands
+// back to its caller is always somebody who can actually receive it
+// (rpg-toolkit#1162, ADR-0043). This is the bubble's own advancement — the
+// world clock is untouched, and members outside the fight never appear in
+// it.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember, ErrNotMember, ErrNoBubble
-// (the member is not in a fight), and the bubble's own rejection when it is
-// not this member's turn (clock.ErrNotActive, with no state change).
+// (the member is not in a fight), the bubble's own rejection when it is not
+// this member's turn (clock.ErrNotActive, with no state change), and
+// whatever driveMonsterTurns can return (ErrNoPlayerInBubble,
+// ErrBadTurnOutcome, or a TurnDriver's own error) if an unplayed member
+// follows. A driver error here means NOTHING this call did is persisted —
+// not even the acting member's own end — since nothing is saved until the
+// caller's commit; see driveMonsterTurns's own doc.
 func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("end turn: %w", ErrNilInput)
@@ -521,9 +687,35 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("end turn append beat: %w", err)
 	}
+
+	next := MemberID(out.Next)
+	wrapped := out.RoundWrapped
+	lastSeq := seq
+
+	// If the clock landed on a member with no player, drive them (and any
+	// consecutive unplayed members after them) forward before this verb
+	// returns — rpg-toolkit#1162. The caller learns the truth about who is
+	// actually waiting on THEM in one round trip; the intervening passes ride
+	// the story and the event stream as their own turn-ended beats.
+	if m, ok := e.members[next]; ok && m.Kind != KindPlayer {
+		moreWrapped, moreSeq, derr := e.driveMonsterTurns(bubble)
+		if derr != nil {
+			return nil, fmt.Errorf("end turn %q: %w", in.Member, derr)
+		}
+		wrapped = wrapped || moreWrapped
+		if moreSeq != 0 {
+			lastSeq = moreSeq
+		}
+		active, aerr := bubble.Active()
+		if aerr != nil {
+			return nil, fmt.Errorf("end turn %q: %w", in.Member, aerr)
+		}
+		next = MemberID(active)
+	}
+
 	return &EndTurnOutput{
-		Next:         MemberID(out.Next),
-		RoundWrapped: out.RoundWrapped,
-		Seq:          seq,
+		Next:         next,
+		RoundWrapped: wrapped,
+		Seq:          lastSeq,
 	}, nil
 }

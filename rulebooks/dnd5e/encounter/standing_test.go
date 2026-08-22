@@ -61,8 +61,8 @@ func (s *deathScene) scene(standing encounter.Standing, members ...encounter.Mem
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Sight:      everyoneSeesTheWholeMap{}, Standing: standing,
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
@@ -177,7 +177,7 @@ func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.Member
 // — a default would be this module deciding a rule it is not allowed to know.
 func (s *StandingSuite) TestSetupRefusesAnEncounterThatCannotAskWhoIsDown() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},
 		}},
@@ -198,7 +198,7 @@ func (s *StandingSuite) TestLoadRefusesAnEncounterThatCannotAskWhoIsDown() {
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       saved,
-		Initiative: orderAsGiven{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 	})
 
 	s.Require().ErrorIs(err, encounter.ErrNoStanding)
@@ -213,8 +213,8 @@ func (s *StandingSuite) TestALoadedEncounterAsksToo() {
 	down := &downList{down: []encounter.MemberID{goblin}}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       saved,
-		Initiative: orderAsGiven{},
-		Sight:      everyoneSeesTheWholeMap{}, Standing: down,
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: down,
 	})
 	s.Require().NoError(err)
 	s.Require().Equal([]encounter.MemberID{alice, goblin, wolf}, s.orderOf(enc, alice),
@@ -414,8 +414,8 @@ func (s *StandingSuite) TestTheStorySaysItOnce() {
 // composition still says down).
 func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Sight:      everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 		Retention: 4,
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12},

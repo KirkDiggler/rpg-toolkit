@@ -632,6 +632,14 @@ type LoadEncounterInput struct {
 	// refresh, so a blob that comes back without one is as unusable as a Setup
 	// without one. Refused at the door, never guarded at the use site.
 	Sight Sight
+
+	// TurnDriver decides what a member with no player does when the fight's
+	// clock lands on their turn. REQUIRED, exactly as it is on SetupInput: a
+	// loaded encounter's bubble can land on an unplayed member the moment it
+	// is reconstituted, so a blob that comes back without one is as unusable
+	// as a Setup without one (rpg-toolkit#1162, ADR-0043). Refused at the
+	// door, never guarded at the use site, and never defaulted.
+	TurnDriver TurnDriver
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -654,6 +662,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Sight == nil {
 		return fmt.Errorf("load encounter: Sight is required: %w", ErrNoSight)
+	}
+	if in.TurnDriver == nil {
+		return fmt.Errorf("load encounter: TurnDriver is required: %w", ErrNoTurnDriver)
 	}
 
 	return nil
@@ -1043,6 +1054,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		initiative:  input.Initiative,
 		standing:    input.Standing,
 		sight:       input.Sight,
+		turnDriver:  input.TurnDriver,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),

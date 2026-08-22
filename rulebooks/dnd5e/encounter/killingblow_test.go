@@ -64,8 +64,8 @@ func (s *KillingBlowSuite) apart(standing encounter.Standing) *encounter.Encount
 	s.T().Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{},
-		Sight:      everyoneSeesTheWholeMap{}, Standing: standing,
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: cryptID, Width: 12, Height: 12, Props: wallRow(6, 0, 11)},
@@ -214,32 +214,54 @@ func (s *KillingBlowSuite) TestTheSpliceLeavesTheRoundWhereItWas() {
 }
 
 // TestABodyRemovedOnItsOwnTurnLeavesSomebodyActive is the same removal at the
-// one moment it could strand a fight: the member being spliced is the member
-// whose turn it is.
+// one moment it USED TO be able to strand a fight: the member spliced out is
+// the member whose turn it is.
 //
-// Whatever the answer is, it has to be SOMEBODY still in the order — a fight
-// whose active member is a body nobody can act for is a fight that cannot be
-// advanced, and EndTurn is the verb that would have to unstick it.
+// rpg-toolkit#1162 changed what "the member whose turn it is" can even BE.
+// Before it, a monster could hold the active slot indefinitely — nothing
+// drove its turn forward — so a body dying while active for a monster was a
+// real, reachable state, and this test used to reach it with the trio
+// fixture's single player. It no longer can: EndTurn now drives any unplayed
+// member through before returning (ADR-0043), so Active is never a monster
+// at rest between calls. What CAN still happen — and is the case this test
+// now proves — is the splice itself handing the active slot to an unplayed
+// member: a PLAYER dies while active, a monster is next in the (now
+// shortened) order, and driveIfStillRunning has to catch that or the fight
+// stalls one call later than it used to.
 func (s *KillingBlowSuite) TestABodyRemovedOnItsOwnTurnLeavesSomebodyActive() {
 	down := &downList{}
-	enc := s.trio(down)
+	// Two players either side of a monster apiece, so removing the SECOND
+	// player while active hands the slot to a monster rather than wrapping
+	// straight back to a player — the case driveIfStillRunning exists for.
+	enc := s.scene(down,
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 0, Y: 0}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Room: cryptID, Position: spatial.Position{X: 1, Y: 0}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 2, Y: 0}},
+		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Room: cryptID, Position: spatial.Position{X: 3, Y: 0}},
+	)
+	// Trigger detection sorts the roster for determinism rather than keeping
+	// authoring order, so the actual order is read back rather than assumed.
+	order := s.orderOf(enc, alice)
+	s.Require().Equal([]encounter.MemberID{alice, bob, goblin, wolf}, order,
+		"pinning the order this test's reasoning below depends on")
 
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 	before, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
 	s.Require().NoError(err)
-	s.Require().Equal(goblin, before.Active, "control: the goblin is up")
+	s.Require().Equal(bob, before.Active, "control: bob is up, no monster between alice and him")
 
-	down.down = []encounter.MemberID{goblin}
-	_, err = s.blow(enc, goblin)
+	down.down = []encounter.MemberID{bob}
+	_, err = s.blow(enc, bob)
 	s.Require().NoError(err)
 
 	after, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
 	s.Require().NoError(err)
-	s.Equal([]encounter.MemberID{alice, wolf}, after.Order)
-	s.Equal(wolf, after.Active,
-		"the turn passes to whoever stood behind the body, rather than rewinding to the top")
-	s.Equal(before.Round, after.Round, "and the round does not restart")
+	s.Equal([]encounter.MemberID{alice, goblin, wolf}, after.Order)
+	s.Equal(alice, after.Active,
+		"the wolf inherited the slot bob left, has no player, and was driven straight through — "+
+			"wrapping the round back to alice rather than stranding the fight on it")
+	s.Equal(before.Round+1, after.Round, "the wolf's driven-through pass closed the round")
 
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: after.Active})
 	s.Require().NoError(err, "and the fight can still be advanced")

@@ -26,7 +26,7 @@ import (
 // all exercised by the same tests that already cover Cells/Props.
 func validAtlasOrderingSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
@@ -66,7 +66,7 @@ func validAtlasOrderingSetup() *encounter.SetupInput {
 // a point off in empty space (#929 T3 fix round item 5).
 func validAtlasVoidGapSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms: []encounter.RoomInput{
@@ -87,7 +87,7 @@ func validAtlasVoidGapSetup() *encounter.SetupInput {
 // IsValidPosition without any Origin arithmetic in the way.
 func singleRoomSetup(shape spatial.GridShape, width, height int) *encounter.SetupInput {
 	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: orientationFor(shape)},
 			Rooms:  []encounter.RoomInput{{ID: "solo", Width: width, Height: height, Grid: shape}},
@@ -400,7 +400,7 @@ func (s *EncounterTestSuite) TestAtlasIdenticalAfterReload() {
 
 	data := enc1.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data})
 	s.Require().NoError(err)
 
 	atlas2, err := enc2.Atlas()

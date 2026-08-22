@@ -28,7 +28,7 @@ import (
 // save. With it, the defect is loud: ErrInvalidData, never a guess.
 func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 		Field: FieldInput{
 			Canvas: CanvasInput{Void: VoidIsOpaque()},
 			Rooms:  []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
@@ -72,7 +72,7 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
 			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque()}, Rooms: []RoomInput{
 				{ID: "r1", Width: 8, Height: 8, Boundaries: sealedSeam(7, 8)},
 				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
@@ -175,4 +175,30 @@ func sealedSeam(atX, height int) []spatial.Boundary {
 		}
 	}
 	return out
+}
+
+// TestFormRefusesAPlayerFreeBubble pins driveMonsterTurns's defensive check
+// via form: a fight with no player in it at all has nobody to ever hand the
+// clock back to, and rpg-toolkit#1162 refuses loudly (ErrNoPlayerInBubble)
+// rather than looping forever or silently ending every member's turn.
+//
+// UNREACHABLE THROUGH TRIGGER DETECTION in the running game — a bubble only
+// forms on contact between a player and something else — so this drives
+// form directly, the same white-box reason TestFormRejections does.
+func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
+	enc, err := NewEncounter(&SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque()}, Rooms: []RoomInput{
+			{ID: "r1", Width: 8, Height: 8},
+		}},
+		Members: []MemberInput{
+			{ID: "goblin", Kind: KindMonster, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "wolf", Kind: KindMonster, Room: "r1", Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	_, err = enc.form(&FormInput{Order: []MemberID{"goblin", "wolf"}})
+	require.ErrorIs(t, err, ErrNoPlayerInBubble)
 }

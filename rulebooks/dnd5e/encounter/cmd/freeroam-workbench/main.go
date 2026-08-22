@@ -103,6 +103,7 @@ func solidPillar(x, y float64) encounter.PropInput {
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
+		TurnDriver: passUnplayedTurns{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two chambers do not
 			// cover — the fiction is the mountain they were cut from, and the
@@ -552,7 +553,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: passUnplayedTurns{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -616,6 +617,16 @@ type rollAllStanding struct{}
 
 func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
 	return nil, nil
+}
+
+// passUnplayedTurns is the workbench's TurnDriver capability: an unplayed
+// member's turn ends with no other effect. The workbench demonstrates free
+// roam and sight, not monster behaviour, so this says the least interesting
+// true thing rather than the module defaulting it (rpg-toolkit#1162).
+type passUnplayedTurns struct{}
+
+func (passUnplayedTurns) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+	return encounter.Pass{}, nil
 }
 
 // torchAndDarkvision is the workbench's Sight capability, and it is the one

@@ -415,6 +415,15 @@ type SetupInput struct {
 	// per-light-source.
 	Sight Sight
 
+	// TurnDriver decides what a member with no player does when the fight's
+	// clock lands on their turn (rpg-toolkit#1162). REQUIRED — a fight can
+	// form at first light with an unplayed member first in initiative, so an
+	// encounter that cannot answer this would stall before its caller does
+	// anything. Refused at construction (ErrNoTurnDriver). There is no default
+	// — see ADR-0043 for why this capability, unlike Decider, may not be
+	// silently absent.
+	TurnDriver TurnDriver
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.
