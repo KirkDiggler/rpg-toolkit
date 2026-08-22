@@ -60,8 +60,32 @@ type AttackProfile struct {
 	// the swing.
 	Ref *core.Ref
 
+	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
+	// Strike" — carried alongside it so a caller reporting what was swung
+	// (a beat line, a struck/missed event) never has to look the ref back
+	// up in a catalog of its own (rpg-toolkit#866). Populated by
+	// [AttackFromCharacter]; empty from [AttackFromMonsterAction] today —
+	// monster attackers do not yet reach a caller that reports this
+	// (v1 compiles CHARACTER attackers only, session.Attack's own doc).
+	Name string
+
 	// AttackBonus is added to the d20.
 	AttackBonus int
+
+	// Reach is how far this melee attack reaches, in grid cells: 1 (the 5e
+	// default, and the unarmed strike's own reach) or 2 for a weapon
+	// carrying the Reach property (rpg-toolkit#1010). Ported from the
+	// retired top-level encounter module's checkReach/meleeReachForWeapon
+	// (encounter/range_gate.go), which enforced exactly this distinction
+	// before the rewrite dropped it — see that file's own history for the
+	// QA walk that found it missing everywhere.
+	//
+	// Zero from [AttackFromMonsterAction] today, the same scope note
+	// [AttackProfile.Name] carries: a monster attacker does not yet reach a
+	// caller that gates on this (v1 compiles CHARACTER attackers only).
+	// Meaningless for a ranged attack, which never compiles a profile at
+	// all (IsRanged refuses before one is built).
+	Reach int
 
 	// Damage is the ordered set of canonical damage pools declared by the
 	// weapon or monster action. Dice notation remains pure NdM; intrinsic
