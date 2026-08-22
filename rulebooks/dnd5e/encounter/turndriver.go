@@ -131,11 +131,11 @@ type SeenMember struct {
 	// Position is where they were last actively sighted, DUNGEON-ABSOLUTE.
 	Position spatial.Position
 
-	// Distance is the grid distance from this monster's OWN position to
-	// this sighting, in CELLS — the same unit [Encounter.Distance] answers
-	// in, computed once so a driver never needs to ask the encounter for it
-	// directly.
-	Distance float64
+	// DistanceCells is the grid distance from this monster's OWN position
+	// to this sighting, in CELLS — the same unit [Encounter.Distance]
+	// answers in, computed once so a driver never needs to ask the
+	// encounter for it directly.
+	DistanceCells float64
 
 	// InReach maps each of THIS MONSTER'S OWN action refs (see
 	// [MonsterView.Actions]) to whether this sighting is within that
@@ -143,6 +143,29 @@ type SeenMember struct {
 	// feet to cells itself (see [ActionView.ReachFeet]'s doc for why that
 	// conversion belongs here, once, rather than on every driver).
 	InReach map[core.Ref]bool
+
+	// Path is the shortest route from this monster's OWN position toward
+	// this sighting, computed against this composition's own walls, doors
+	// and floor — the same geometry [Encounter.Step] enforces —
+	// DUNGEON-ABSOLUTE, first element the first step to take. STOPS
+	// ADJACENT rather than walking onto the sighting's own occupied cell:
+	// the last element is the nearest cell the shortest route reaches this
+	// sighting from, one cell short of Position itself. Empty when this
+	// sighting is unreachable OR already adjacent — a driver checking
+	// InReach before consulting Path (as [behavior.Basic] does) never
+	// needs to tell the two apart, since "already adjacent" already means
+	// "in reach" for any action with at least a 5-foot (one-cell) reach.
+	//
+	// DATA, NOT A LIVE CAPABILITY (Kirk, rpg-project#254 review — supersedes
+	// an earlier closure-based design this PR shipped and walked back):
+	// MonsterView must stay loggable, replayable and fixture-buildable
+	// (rpg-project#235's Debug Feed journey; the monster-ai brainstorm's
+	// "perception is data, the decision layer never reaches live state") —
+	// a func field breaks all three. Computed once per Seen member, per
+	// Act call — ONE BFS PER SIGHTING, not one for the chosen target alone;
+	// noted here as the acknowledged cost of keeping this a plain value
+	// rather than a lazy callback.
+	Path []spatial.Position
 }
 
 // TurnBudget is what remains of a member's turn.

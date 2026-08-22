@@ -193,7 +193,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewCarriesStaticFactsAndSeen() {
 	s.Equal(encounter.KindPlayer, seen.Kind)
 	s.True(seen.Standing)
 	s.Equal(spatial.Position{X: 2, Y: 2}, seen.Position)
-	s.InDelta(1.0, seen.Distance, 0.001, "adjacent cells are 1 cell apart")
+	s.InDelta(1.0, seen.DistanceCells, 0.001, "adjacent cells are 1 cell apart")
 	s.True(seen.InReach[testMeleeAction], "1 cell is within a 5-foot (1-cell) reach")
 }
 
@@ -541,4 +541,123 @@ func (s *MonsterTurnTestSuite) TestJoinRejectsANegativeMemberFactBeforeMutating(
 	for _, m := range members {
 		s.NotEqual(core.EntityID("wolf"), m.ID, "the rejected join left no half-placed entity behind")
 	}
+}
+
+// seenFor finds subject's own SeenMember entry in view.Seen, failing the
+// test if absent.
+func (s *MonsterTurnTestSuite) seenFor(view encounter.MonsterView, subject encounter.MemberID) encounter.SeenMember {
+	s.T().Helper()
+	for _, sm := range view.Seen {
+		if sm.ID == subject {
+			return sm
+		}
+	}
+	s.Require().Fail("not in Seen", "%q", subject)
+	return encounter.SeenMember{}
+}
+
+// TestSeenMemberPathWalksAroundAWall pins [SeenMember.Path] (rpg-project#254
+// review: MonsterView must stay DATA — loggable, replayable,
+// fixture-buildable, per rpg-project#235's Debug Feed journey and the
+// monster-ai brainstorm's "the decision layer never reaches live state" —
+// so this is precomputed per sighting rather than a callback behavior.Basic
+// invokes). This fixture places a wall between the monster and its target
+// so a straight-line step would fail, and asserts the returned path
+// actually goes AROUND it, stopping adjacent rather than on the target's
+// own occupied cell.
+func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
+	// A 5x3 room. A wall spans the room's middle column (x=2) except at
+	// y=0, leaving exactly one gap to route through.
+	//
+	//   x: 0 1 2 3 4
+	// y=0: .  .  .  .  .   <- gap
+	// y=1: .  .  #  .  .
+	// y=2: .  .  #  .  .
+	wall := []spatial.Boundary{
+		{From: spatial.Position{X: 2, Y: 1}, To: spatial.Position{X: 3, Y: 1}, BlocksMovement: true},
+		{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 3, Y: 2}, BlocksMovement: true},
+	}
+	driver := &scriptedDriver{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 5, Height: 3, Boundaries: wall}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1)
+	aliceSeen := s.seenFor(driver.calls[0], alice)
+	s.Require().NotEmpty(aliceSeen.Path)
+	s.NotEqual(spatial.Position{X: 4, Y: 2}, aliceSeen.Path[len(aliceSeen.Path)-1],
+		"the path stops ADJACENT to alice, not on her own occupied cell")
+
+	// The path must cross the wall column through its one gap (a cell with
+	// X==2 is not itself illegal to visit — (2,1) and (2,2) sit on the near
+	// side of the wall and are legal to stand on, just not to cross FROM at
+	// that row — so what the wall's existence actually requires is that
+	// SOME step in the path uses the gap itself).
+	usedTheGap := false
+	for _, p := range aliceSeen.Path {
+		if p == (spatial.Position{X: 2, Y: 0}) || p == (spatial.Position{X: 3, Y: 0}) {
+			usedTheGap = true
+		}
+	}
+	s.True(usedTheGap, "the path must cross the wall column through its one gap at y=0: %+v", aliceSeen.Path)
+}
+
+// TestSeenMemberPathIsEmptyWhenSightedButUnreachable pins the case Sight
+// and walkability disagree on: two floor regions separated by a void gap
+// wide enough that no walkable route bridges them, with the void itself
+// transparent to sight — a sighting nothing in [MonsterView.Seen]'s own
+// InReach/Standing fields would otherwise mark as unusual, and exactly the
+// case Path must be able to say "cannot get there" about without also
+// claiming the sighting itself is bogus.
+func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachable() {
+	driver := &scriptedDriver{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		Field: encounter.FieldInput{
+			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
+			// of void between the two rooms is still not floor for either
+			// — nothing walkable bridges them.
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsTransparent()},
+			Rooms: []encounter.RoomInput{
+				{ID: room1, Width: 2, Height: 2},
+				{ID: room2, Width: 2, Height: 2, Origin: spatial.Position{X: 6, Y: 0}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 0},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1)
+	aliceSeen := s.seenFor(driver.calls[0], alice)
+	s.Empty(aliceSeen.Path, "seen across the gap, but nothing walkable reaches her")
 }
