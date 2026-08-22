@@ -63,9 +63,10 @@ func (s *DeclaredConsequenceTestSuite) biteProfile() AttackProfile {
 // world places the hero and the wolf three cells apart — far enough that
 // prone's range predicate stays out of these cases.
 func (s *DeclaredConsequenceTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
@@ -106,7 +107,7 @@ func (s *DeclaredConsequenceTestSuite) hero() *character.Data {
 }
 
 func (s *DeclaredConsequenceTestSuite) resolve(machine Machine) (*Output, error) {
-	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	return Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: s.world(),
 		Participants: []Participant{
 			{Character: s.hero()},

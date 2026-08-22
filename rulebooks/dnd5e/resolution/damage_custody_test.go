@@ -62,7 +62,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 	attack, err := AttackFromMonsterAction(data.Actions[0])
 	s.Require().NoError(err)
 
-	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: data}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
@@ -166,7 +166,7 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 		damage.Damage{Dice: "1d6", Type: damage.Acid},
 	)
 	target := monsters.NewWolf(secondWolfID).ToData()
-	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
@@ -194,9 +194,10 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 // Real content, and the case a synthetic subscriber cannot pin: a raging
 // barbarian takes half from the wolf's piercing bite.
 func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamageType() {
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
@@ -218,7 +219,7 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 	}).ToJSON()
 	s.Require().NoError(err)
 
-	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World: world.ToData(),
 		Participants: []Participant{
 			{Character: s.ragingHero(raging)},
@@ -325,9 +326,10 @@ func (s *DamageCustodyTestSuite) addFlatOnBus(bus events.EventBus, amount int, t
 // it keeps a character's AC chain out of the arithmetic under test, and the
 // damage fold is the same fold whoever is swinging.
 func (s *DamageCustodyTestSuite) roomWith(attacker, target encounter.MemberID) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: attacker, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},

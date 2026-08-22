@@ -141,6 +141,18 @@ type Input struct {
 	// fine. Validate has answered ErrNoRoller ever since; only this line had
 	// not caught up.
 	Roller dice.Roller
+
+	// TurnDriver decides what a member with no player does when a fight's
+	// clock lands on their turn. REQUIRED.
+	//
+	// Carried, never consulted — the same shape as Standing and Sight, and for
+	// the same reason: this package loads the world, runs one interaction, and
+	// reads it back out as data, so it never calls EndTurn, form, Transfer or
+	// Exit itself. The composition still refuses to load without one
+	// (rpg-toolkit#1162), and answering on the caller's behalf — "it passes" —
+	// would be this package deciding a rule it holds no opinion on. So it is
+	// handed over, the way Deciders, Initiative, Standing and Sight above are.
+	TurnDriver encounter.TurnDriver
 }
 
 // Validate reports whether this input describes a resolvable interaction.
@@ -168,6 +180,9 @@ func (in *Input) Validate() error {
 	}
 	if in.Sight == nil {
 		return ErrNoSight
+	}
+	if in.TurnDriver == nil {
+		return ErrNoTurnDriver
 	}
 	if in.Roller == nil {
 		return ErrNoRoller
@@ -277,6 +292,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Initiative: in.Initiative,
 		Standing:   in.Standing,
 		Sight:      in.Sight,
+		TurnDriver: in.TurnDriver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
