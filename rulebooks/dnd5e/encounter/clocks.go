@@ -314,6 +314,7 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 			seq, berr := e.appendClockBeat(map[string]interface{}{
 				"beat":   "turn-ended",
 				"member": string(activeID),
+				"next":   out.Next,
 			})
 			if berr != nil {
 				return wrapped, lastSeq, fmt.Errorf("drive monster turns append beat: %w", berr)
@@ -693,6 +694,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	seq, err := e.appendClockBeat(map[string]interface{}{
 		"beat":   "turn-ended",
 		"member": string(in.Member),
+		"next":   out.Next,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("end turn append beat: %w", err)

@@ -102,6 +102,60 @@ type RecordInput struct {
 	// Values are the numbers, under names from the closed set. Absent is
 	// legal — a kind that carries no numbers is a kind, not an error.
 	Values map[OutcomeValue]int
+
+	// Critical says whether this outcome was a critical hit. Meaningful only
+	// for OutcomeStruck — a miss cannot crit — and false (the zero value) is
+	// the ordinary case rather than an omission.
+	Critical bool
+
+	// Attack names what was swung, when this outcome is an attack. Present
+	// for OutcomeStruck/OutcomeMissed, nil otherwise (rpg-toolkit#866,
+	// rpg-toolkit#941). Every field is meant to be a catalog-owned
+	// identifier the caller read off an already-compiled attack profile —
+	// see AttackIdentity's own doc for exactly what this input does and
+	// does not check about that.
+	Attack *AttackIdentity
+}
+
+// AttackIdentity names what was swung — ref, display name, and damage type —
+// carried on a [RecordInput] whose Kind is OutcomeStruck or OutcomeMissed so
+// the beat can answer "with a longsword" and "6 slashing" for every witness,
+// not only the one whose own verb response held the compiled profile.
+//
+// PLAIN STRINGS, MEANT TO BE USED LIKE MemberID IS ON THIS INPUT — BUT NOT
+// CHECKED THE WAY MemberID IS (Copilot, PR #1172). Actor and Targets are
+// validated against the roster before anything is appended
+// (`e.members[in.Actor]`); nothing here validates Ref, Name or DamageType
+// against any catalog, because this module's go.mod cannot import the one
+// that would answer whether "longsword" is real (C1). The intended values
+// are the catalog's own identifier and display label — "longsword",
+// "Longsword" — and the rulebook's own word for the damage dealt, fixed by
+// a sealed weapon/action catalog rather than composed at the call site. But
+// that is a promise about session's one caller today, not a guarantee this
+// composition enforces: a caller that handed over prose here would have it
+// copied into the shared story payload unchecked, exactly like a raw
+// narration field would. What this struct is not is a NEW hole of that
+// shape — session's Attack() is the only caller in this codebase, and it
+// only ever supplies what resolution.AttackProfile already compiled — but a
+// reader auditing this input's "no prose" claim should read this note
+// rather than the comparison to Actor/Targets alone.
+type AttackIdentity struct {
+	// Ref is the catalog ref the attack compiled from — "longsword",
+	// "unarmed-strike".
+	Ref string
+
+	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
+	// Strike".
+	Name string
+
+	// DamageType is the kind of damage the attack deals, in the rulebook's
+	// own words — "slashing", "bludgeoning". A string here, not a closed
+	// encounter-level enum: this module's go.mod cannot import the damage
+	// package that owns that vocabulary (C1), so the value is carried
+	// through exactly as Actor and Targets already are, and it is
+	// session — which already depends on that package — that maps it onto
+	// a closed Go type.
+	DamageType string
 }
 
 // RecordOutput reports where the outcome landed in the story.
@@ -241,6 +295,23 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	}
 	for _, name := range names {
 		payload[string(name)] = in.Values[name]
+	}
+
+	// Critical is only ever true for a struck outcome — a miss cannot crit —
+	// but it is written unconditionally rather than only when true: false
+	// beside a hit is itself the answer ("not a critical"), the same
+	// false-vs-absent law the wire seam keeps for its own bools, and a typed
+	// reader downstream must not have to treat a missing key as a third
+	// state.
+	if in.Kind == OutcomeStruck {
+		payload["critical"] = in.Critical
+	}
+	if in.Attack != nil {
+		payload["attack"] = map[string]string{
+			"ref":         in.Attack.Ref,
+			"name":        in.Attack.Name,
+			"damage_type": in.Attack.DamageType,
+		}
 	}
 
 	beatBytes, err := json.Marshal(payload)
