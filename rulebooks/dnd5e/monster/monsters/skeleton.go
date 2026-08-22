@@ -36,7 +36,7 @@ func NewSkeleton(id string) *monster.Monster {
 		Name:        "shortsword",
 		AttackBonus: 4, // +2 DEX + 2 proficiency
 		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
-		Reach:       1, // one cell (5ft) — a shortsword has no Reach property
+		Reach:       5, // feet — a shortsword has no Reach property
 	})))
 
 	// Shortbow ranged attack
