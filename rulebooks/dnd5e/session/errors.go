@@ -322,6 +322,21 @@ var (
 	// semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
 
+	// ErrOutOfReach is returned when Attack names a target further from the
+	// attacker than the compiled weapon's reach permits: one cell for a
+	// melee weapon, two for one carrying the Reach property
+	// (rpg-toolkit#1010). A ranged weapon stays refused as today —
+	// AttackFromCharacter refuses it before a profile with a Reach exists
+	// to check.
+	//
+	// Afford's per-target ATTACK declarations are this same gate asked
+	// ahead of time: a target this seam would refuse with ErrOutOfReach is
+	// a target no declaration names. When no candidate is in reach at all,
+	// Afford still answers once — a single declaration naming no target,
+	// Affordable false, Why.Reason ShortfallNoTargetInReach — rather than
+	// an empty list a client could mistake for "nothing to ask about yet."
+	ErrOutOfReach = errors.New("no target in reach")
+
 	// ErrCannotAfford is returned when an actor cannot pay for what they
 	// declared: a second swing in a turn that bought only one, a level-5
 	// fighter's third, an action after the action was spent, or a walk longer

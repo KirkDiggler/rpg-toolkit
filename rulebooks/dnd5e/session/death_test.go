@@ -294,6 +294,26 @@ func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 	s.Equal(session.ClockWorld, turn.Clock, "alice is free-roaming again, and nobody asked for that")
 }
 
+// TestDownedAndFightEndedCarryTypedBodies pins rpg-toolkit#941's other pair:
+// the killing blow's own consequences — the body, and the fight ending it —
+// reach a client as DownedBody and FightEndedBody, not as payload a client
+// decodes itself.
+func (s *DeathTestSuite) TestDownedAndFightEndedCarryTypedBodies() {
+	s.dropTheSkeleton()
+
+	downed := s.eventsOfKind(session.EventDowned)
+	s.Require().NotEmpty(downed)
+	body, ok := downed[0].Body.(session.DownedBody)
+	s.Require().True(ok, "got %T", downed[0].Body)
+	s.Equal("skeleton", body.Member)
+
+	ended := s.eventsOfKind(session.EventFightEnded)
+	s.Require().NotEmpty(ended)
+	endedBody, ok := ended[0].Body.(session.FightEndedBody)
+	s.Require().True(ok, "got %T", ended[0].Body)
+	s.Equal(session.DissolveByDefeat, endedBody.Cause)
+}
+
 // TestTheBeatOrderReachesTheClientAsCauseThenEffect is the composition's
 // ordering law arriving where a table actually reads it.
 //
@@ -574,6 +594,46 @@ func (s *DeathTestSuite) TestAKillingBlowAboutADownedMemberIsStillLegal() {
 // Downed, not dead — the distinction has teeth. Zero hit points has no exit in
 // v1, but the name does not claim the character is gone, and when death saves
 // arrive these reads are what a client renders them from.
+// TestADownedMemberIsSplicedOutOfParticipantsToo pins that Participants
+// mirrors Order EXACTLY, including a fact Order already held before this
+// feature: the composition splices a downed member out of the turn order
+// the moment it notices them (encounter.noticeDown, rpg-toolkit#1078 — "a
+// body keeps no turn, and the order closes over the gap rather than
+// holding it open"). Participant is a projection of Order, not a second
+// opinion about who belongs in it, so it does not re-add what the
+// composition removed.
+//
+// TWO SKELETONS, deliberately: dropping the last standing member of a side
+// dissolves the bubble entirely (TestTheLastOneDownedEndsTheFightByDefeat),
+// which would leave nothing for THIS test to read Participants off of. A
+// second skeleton keeps the fight alive with the first one down inside it.
+func (s *DeathTestSuite) TestADownedMemberIsSplicedOutOfParticipantsToo() {
+	s.startCrypt()
+	s.spawnSkeleton()
+
+	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
+		Session: "sess", ID: "skeleton-2", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 2, Y: 2},
+	})
+	s.Require().NoError(err)
+
+	s.swingUntilTheSkeletonFalls()
+
+	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal(session.ClockTurn, turn.Clock, "skeleton-2 is still standing; the fight must still be running")
+	s.NotContains(turn.Order, "skeleton", "the composition already spliced the body out (rpg-toolkit#1078)")
+
+	for _, p := range turn.Participants {
+		s.NotEqual("skeleton", p.Member, "Participants must not re-add what Order does not hold")
+	}
+
+	// The downed member is still a MEMBER, still answerable — just not a
+	// PARTICIPANT in this fight's rotation any more.
+	_, err = s.mgr.Where(context.Background(), &session.WhereInput{Session: "sess", Member: "skeleton"})
+	s.Require().NoError(err, "a downed member is still a member, on the map and answerable")
+}
+
 func (s *DeathTestSuite) TestTheReadsStayOpenToTheDowned() {
 	s.duelAtZero()
 	ctx := context.Background()

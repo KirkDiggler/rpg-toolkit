@@ -283,3 +283,51 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 	s.Positive(kinds[session.EventTurnEnded], "the turn ending is a kind, not a mystery")
 	s.Zero(kinds[session.EventUnknown], "and nothing else in this verb is one either")
 }
+
+// TestTurnCarriesParticipants pins rpg-toolkit#1137: a cold client reading
+// Turn learns names, kinds, standing and who is active from the SAME read
+// that already gave it Order — no second lookup, no roster read this seam
+// otherwise refuses to offer.
+func (s *TurnTestSuite) TestTurnCarriesParticipants() {
+	// SetupTest already started ambushWorld — alice and the ogre, neither
+	// carrying a Name (buildAmbush's own fixture predates rpg-toolkit#1137).
+	// That is fine: the point of this test is the PROJECTION reaching
+	// Participant correctly, not the authoring, so Name is asserted as
+	// empty rather than faked.
+	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Formed, "the scene must actually put them in a fight")
+
+	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Len(turn.Participants, len(turn.Order), "Participants mirrors Order one for one")
+
+	byID := make(map[string]session.Participant, len(turn.Participants))
+	for _, p := range turn.Participants {
+		byID[p.Member] = p
+	}
+
+	alice, ok := byID["alice"]
+	s.Require().True(ok)
+	s.Equal(session.KindPlayer, alice.Kind)
+	s.Equal(session.StandingUp, alice.Standing)
+	s.Empty(alice.Name, "this fixture never authored one — see the comment above")
+
+	ogre, ok := byID["ogre"]
+	s.Require().True(ok)
+	s.Equal(session.KindMonster, ogre.Kind)
+	s.Equal(session.StandingUp, ogre.Standing)
+
+	// Exactly one Active, and it is the same member TurnOutput.Active names.
+	activeCount := 0
+	for _, p := range turn.Participants {
+		if p.Active {
+			activeCount++
+			s.Equal(turn.Active, p.Member)
+		}
+	}
+	s.Equal(1, activeCount)
+}

@@ -141,3 +141,60 @@ func (s *AttackEventsTestSuite) TestTheSwingLeavesNothingUnknown() {
 			"beat at seq %d reached %s unnamed", event.Seq, event.Recipient)
 	}
 }
+
+// bodiesAtSeq is kindsAtSeq's own twin for Body: the typed value each
+// recipient's event carries for one story sequence.
+func (s *AttackEventsTestSuite) bodiesAtSeq(seq uint64) map[string]session.EventBody {
+	out := map[string]session.EventBody{}
+	for _, event := range s.stream.published {
+		if event.Seq != seq {
+			continue
+		}
+		out[event.Recipient] = event.Body
+	}
+	return out
+}
+
+// TestAHitCarriesATypedBody pins rpg-toolkit#941/#866 at the stream: a
+// witness who is NOT the attacker — bob, reading his own struck event —
+// gets the SAME numbers and weapon identity AttackOutput gave alice, from
+// StruckBody rather than from decoding Payload by hand.
+func (s *AttackEventsTestSuite) TestAHitCarriesATypedBody() {
+	mgr := s.duelWithStream(&sequenceDice{rolls: []int{15, 5}})
+
+	out := s.swing(mgr)
+	s.Require().True(out.Hit)
+
+	bodies := s.bodiesAtSeq(out.Seq)
+	for _, recipient := range []string{"alice", "bob"} {
+		body, ok := bodies[recipient].(session.StruckBody)
+		s.Require().True(ok, "%s's event carries a StruckBody, got %T", recipient, bodies[recipient])
+		s.Equal("alice", body.Attacker)
+		s.Equal("bob", body.Target)
+		s.Equal(out.Roll, body.Roll)
+		s.Equal(out.Total, body.Total)
+		s.Equal(out.Against, body.Against)
+		s.Equal(out.Damage, body.Damage)
+		s.Equal(out.Critical, body.Critical)
+		s.Equal(out.Attack, body.Attack, "the SAME weapon identity AttackOutput reported")
+	}
+}
+
+// TestAMissCarriesATypedBody is the hit's own twin: MissedBody, with no
+// Damage or Critical field to even get wrong.
+func (s *AttackEventsTestSuite) TestAMissCarriesATypedBody() {
+	mgr := s.duelWithStream(&sequenceDice{rolls: []int{2, 5}})
+
+	out := s.swing(mgr)
+	s.Require().False(out.Hit)
+
+	bodies := s.bodiesAtSeq(out.Seq)
+	body, ok := bodies["bob"].(session.MissedBody)
+	s.Require().True(ok, "bob's event carries a MissedBody, got %T", bodies["bob"])
+	s.Equal("alice", body.Attacker)
+	s.Equal("bob", body.Target)
+	s.Equal(out.Roll, body.Roll)
+	s.Equal(out.Total, body.Total)
+	s.Equal(out.Against, body.Against)
+	s.Equal(out.Attack, body.Attack)
+}

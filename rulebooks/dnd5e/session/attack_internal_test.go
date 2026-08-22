@@ -77,7 +77,7 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	require.NoError(t, err)
 
 	recorded, err := enc.Record(recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck,
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, resolution.AttackProfile{},
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)
@@ -86,7 +86,8 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, story)
 	require.JSONEq(t,
-		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9}`,
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
+			`"critical":false,"attack":{"ref":"","name":"","damage_type":""}}`,
 		string(story[len(story)-1].Payload),
 		"the persisted encounter record carries the aggregate and no typed damage collection",
 	)

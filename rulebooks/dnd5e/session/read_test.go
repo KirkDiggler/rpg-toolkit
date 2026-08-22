@@ -378,3 +378,28 @@ func (s *ReadTestSuite) TestASquareAtlasHasNoLayout() {
 	s.Require().NoError(err)
 	s.Empty(atlas.Layout, "square grids have no hex layout; the field is absent, not defaulted")
 }
+
+// TestViewCarriesNameAndStanding pins rpg-toolkit#1137's perception half:
+// a sighted subject's display name and whether they are on their feet ride
+// along on the SAME read that already answers "what do I see" — no second
+// lookup, and no roster read this seam otherwise refuses to offer.
+func (s *ReadTestSuite) TestViewCarriesNameAndStanding() {
+	mgr, _, _, characters := aFight(s.T(), armedFighter("alice"), nil)
+	s.mgr = mgr
+	s.characters = characters
+
+	sightings, err := s.mgr.View(context.Background(),
+		&session.ViewInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+
+	var skeleton *session.Sighting
+	for i := range sightings {
+		if sightings[i].Subject == "skeleton" {
+			skeleton = &sightings[i]
+		}
+	}
+	s.Require().NotNil(skeleton, "alice must currently see the skeleton aFight spawned adjacent to her")
+	s.NotEmpty(skeleton.Name, "a spawned monster's catalog display name projects onto Sighting.Name")
+	s.Require().NotNil(skeleton.Seen, "a live sight-channel sighting carries Seen")
+	s.Equal(session.StandingUp, skeleton.Seen.Standing, "nothing has touched it yet")
+}

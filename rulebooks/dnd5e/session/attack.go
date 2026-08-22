@@ -60,6 +60,12 @@ type AttackOutput struct {
 
 	// Delivery names what reached the event stream.
 	Delivery DeliveryReport `json:"delivery"`
+
+	// Attack is what was swung — ref, name and damage type. The beat line's
+	// "6 slashing" and "with a longsword" come from here; the numbers above
+	// crossed the seam from the first swing and the weapon that produced
+	// them did not, until now (rpg-toolkit#866).
+	Attack AttackRef `json:"attack"`
 }
 
 // Attack swings one member's weapon at another and records what happened.
@@ -163,6 +169,22 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
 	}
 
+	// NOT YOUR TURN, checked FIRST among the fact-about-this-member
+	// refusals and before anything touches character storage — the same
+	// precedence Move's own gate keeps (Copilot's finding on #1171,
+	// repeated by Copilot here on #1174: this compiled and loaded a sheet
+	// via compileAttack before checking whose turn it was). Free roam asks
+	// nothing here — there is no active member to compare against — which
+	// is the same clock read priceSwing makes below for a different
+	// question.
+	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Attacker)})
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", translate(err))
+	}
+	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Attacker {
+		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
+	}
+
 	// A downed member does not swing. Asked AFTER the roster checks, so naming somebody
 	// who is not here is still ErrNoMember — being down is a fact about a
 	// member, and it means nothing about an ID that is not one. Asked about the
@@ -185,6 +207,15 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 
 	sheet, profile, err := m.compileAttack(ctx, in.Attacker)
 	if err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+
+	// NO TARGET IN REACH, before pricing: a swing this seam is about to
+	// refuse for distance must not first charge the actor for it.
+	// rpg-toolkit#1010 — melee one cell, the Reach property two, read off
+	// the profile [compileAttack] just built rather than re-deriving a
+	// weapon's own rule here.
+	if err := refuseOutOfReach(scope.enc, roster, in.Attacker, in.Target, profile.Reach); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
@@ -251,7 +282,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 
 	// And now the beat, on a world whose sheets say what the swing did — see the
 	// godoc for why this is not the other way round.
-	recorded, err := scope.enc.Record(recordFor(in, struck))
+	recorded, err := scope.enc.Record(recordFor(in, struck, profile))
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -271,7 +302,30 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Seq:      recorded.Seq,
 		Saved:    report,
 		Delivery: delivery,
+		Attack:   attackRefFor(profile),
 	}, nil
+}
+
+// attackRefFor projects a compiled attack profile's identity onto the wire
+// shape — ref, name, damage type — carried on AttackOutput and, via
+// [encounter.AttackIdentity], on the Struck/Missed beat every witness reads
+// (rpg-toolkit#866).
+//
+// The damage type reported is the FIRST declared pool's, which is every
+// weapon this compiler produces today (rulebooks/dnd5e/resolution's
+// AttackFromCharacter names no weapon with a second damage pool). A weapon
+// that ever declares two would need this to say which one the beat line
+// means, and that decision belongs beside the day such a weapon compiles,
+// not guessed at here.
+func attackRefFor(profile resolution.AttackProfile) AttackRef {
+	ref := AttackRef{Name: profile.Name}
+	if profile.Ref != nil {
+		ref.Ref = string(profile.Ref.ID)
+	}
+	if len(profile.Damage) > 0 {
+		ref.DamageType = DamageType(profile.Damage[0].Type)
+	}
+	return ref
 }
 
 // reportUnrecorded turns a failure AFTER the sheets landed into one a caller can
@@ -371,7 +425,9 @@ func translateResolution(err error) error {
 // Champion's 19–20 — produces a critical hit at roll:19 that this beat cannot
 // tell from an ordinary one. THAT is the caller that earns recorded crit
 // vocabulary, and when it arrives this comment is where to start.
-func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.RecordInput {
+func recordFor(
+	in *AttackInput, struck resolution.StrikeOutcome, profile resolution.AttackProfile,
+) *encounter.RecordInput {
 	values := map[encounter.OutcomeValue]int{
 		encounter.ValueRoll:    struck.Roll,
 		encounter.ValueTotal:   struck.Total,
@@ -382,11 +438,15 @@ func recordFor(in *AttackInput, struck resolution.StrikeOutcome) *encounter.Reco
 		kind = encounter.OutcomeStruck
 		values[encounter.ValueAmount] = struck.Damage
 	}
+
+	ref := attackRefFor(profile)
 	return &encounter.RecordInput{
-		Kind:    kind,
-		Actor:   encounter.MemberID(in.Attacker),
-		Targets: []encounter.MemberID{encounter.MemberID(in.Target)},
-		Values:  values,
+		Kind:     kind,
+		Actor:    encounter.MemberID(in.Attacker),
+		Targets:  []encounter.MemberID{encounter.MemberID(in.Target)},
+		Values:   values,
+		Critical: struck.Critical,
+		Attack:   &encounter.AttackIdentity{Ref: ref.Ref, Name: ref.Name, DamageType: string(ref.DamageType)},
 	}
 }
 

@@ -387,22 +387,16 @@ func (s *SentinelSuite) TestEndingATurnWhileFreeRoaming() {
 	s.refusedInOurVocabulary(err, session.ErrNotInFight)
 }
 
-// TestASwingWithAnEmptyHand is the resolution module's headline case, and the
-// reason the second list above exists.
-//
-// A character with nothing in the main hand is refused rather than falling back
-// to an unarmed strike, which makes this the first refusal any host meets that
-// comes from the rules rather than from the map — a party member who unequipped
-// and forgot, or a sheet seeded without a weapon. The compiler asks resolution
-// to read the attack off the sheet, resolution says it cannot, and its sentinel
-// rode out under ours.
-func (s *SentinelSuite) TestASwingWithAnEmptyHand() {
-	mgr := s.armedDuel(newFakeCharacters(dwarfCharacter("alice"), armedFighter("bob")))
+// TestASwingWithAnEmptyHandIsNotRefused pins the other side of rpg-toolkit#1168
+// at this seam: a character with nothing in the main hand swings anyway — an
+// unarmed strike, the rule rather than a gap — so this is no longer among the
+// refusals a host meets from the rules. See attack_test.go's
+// TestAnEmptyHandThrowsAnUnarmedStrike for the numbers.
+func (s *SentinelSuite) TestASwingWithAnEmptyHandIsNotRefused() {
+	mgr := s.armedDuel(newFakeCharacters(unarmedFighter("alice"), armedFighter("bob")))
 
 	err := s.swing(mgr)
-	s.refusedInOurVocabulary(err, session.ErrBadAttack)
-	s.Contains(err.Error(), "alice",
-		"and the refusal still names who could not swing")
+	s.NoError(err)
 }
 
 // TestOneSheetStoredUnderTwoNames drives the resolution module's own validation

@@ -38,6 +38,24 @@ naming the currency in feet, before any step — is
 [#1171](https://github.com/KirkDiggler/rpg-toolkit/pull/1171). Fork (d) is
 fully retired once #1171 merges.
 
+**Update, 2026-08-22 — Afford prices per target, still one gate call
+(rpg-project#249, the combat-turn contract).** Reach (rpg-toolkit#1010) adds
+candidates to what `Afford` reports for `VerbAttack` — one `Declaration` per
+sighted member within the compiled weapon's reach, rather than the single
+declaration this ruling's foundation shipped with. That is a fan-out over
+the ANSWER, not a second gate: `combat.Pay` is still called exactly ONCE per
+`Afford` call, against the sheet this call loaded, and the resulting
+affordable/shortfall is shared across every target declaration — reach
+decides the LIST, the economy decides ONE affordable-or-not for all of it.
+Paying per candidate was considered and rejected outright: the second call
+would see the ledger as if the first had already spent it, since `Pay`
+mutates. The `Shortfall` this ruling's `payAtTheDoor` produces is also now
+structured (`Reason`/`Currency`/`Needed`/`Left`, not only `Text`), read off
+the SAME `SlotsLeft`/`CapacityLeft` state the gate's own check consults —
+never by parsing the gate's error string. Neither change touches E1–E3's
+foundation; both are the session-side seam this doc always said would keep
+growing on top of it.
+
 [census]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326154182
 [supp]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326242250
 [move]: https://github.com/KirkDiggler/rpg-toolkit/issues/1035#issuecomment-5326344695

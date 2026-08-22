@@ -305,3 +305,57 @@ func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 	s.Equal(session.ClockWorld, direct.Clock)
 	s.Empty(direct.Declarations, "empty, not zero — the economy does not apply on the world clock at all")
 }
+
+// TestMovedTurnEndedAndFightStartedCarryTypedBodies pins rpg-toolkit#941 for
+// the three beat families this fixture's own setup and Move already produce:
+// the spawn that pulled everyone into one bubble (FightStartedBody, in
+// initiative order), a step of the walk (MovedBody), and ending alice's turn
+// (TurnEndedBody). Bob — a real player, next in initiative — is NOT
+// Pass-driven through automatically the way skel-1 would be, so this is
+// exactly one turn-ended BEAT, delivered once per recipient (three events,
+// one beat).
+func (s *MoveTurnClockSuite) TestMovedTurnEndedAndFightStartedCarryTypedBodies() {
+	ctx := context.Background()
+
+	started := s.eventsOfKind(session.EventFightStarted)
+	s.Require().NotEmpty(started, "the spawn in SetupTest already formed the bubble")
+	fsBody, ok := started[0].Body.(session.FightStartedBody)
+	s.Require().True(ok, "got %T", started[0].Body)
+	s.Equal([]string{"alice", "bob", "skel-1"}, fsBody.Members)
+
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+	})
+	s.Require().NoError(err)
+
+	moved := s.eventsOfKind(session.EventMoved)
+	s.Require().NotEmpty(moved)
+	movedBody, ok := moved[0].Body.(session.MovedBody)
+	s.Require().True(ok, "got %T", moved[0].Body)
+	s.Equal("alice", movedBody.Member)
+	s.Equal(spatial.Position{X: 1, Y: 2}, movedBody.To)
+
+	ended, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal("bob", ended.Next)
+
+	turnEnded := s.eventsOfKind(session.EventTurnEnded)
+	s.Require().Len(turnEnded, 3, "one beat, delivered once per member of the encounter")
+	first, ok := turnEnded[0].Body.(session.TurnEndedBody)
+	s.Require().True(ok, "got %T", turnEnded[0].Body)
+	s.Equal("alice", first.Member)
+	s.Equal("bob", first.Next)
+}
+
+// eventsOfKind collects everything of one kind published across this
+// suite's stream — MoveTurnClockSuite's own copy of DeathTestSuite's helper,
+// since the two suites do not share a base.
+func (s *MoveTurnClockSuite) eventsOfKind(kind session.EventKind) []session.Event {
+	var out []session.Event
+	for _, event := range s.stream.published {
+		if event.Kind == kind {
+			out = append(out, event)
+		}
+	}
+	return out
+}

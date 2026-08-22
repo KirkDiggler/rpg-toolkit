@@ -5,12 +5,15 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // AffordInput asks what one member can still declare this turn.
@@ -108,7 +111,41 @@ type Declaration struct {
 	// beside affordable:true is itself the answer ("nothing ran out"), not
 	// the absence of one, and a non-Go client reading a missing key cannot
 	// tell that from "the server didn't say".
+	//
+	// KEPT FOR OLDER READERS; SUPERSEDED BY Why. This is the same text as
+	// Why.Text — a producer that sets one sets both (rpg-toolkit#1010). A
+	// new reader takes Why, the structured form it can branch on, and never
+	// this.
 	Shortfall string `json:"shortfall"`
+
+	// Target is the candidate this declaration prices, for VerbAttack. ONE
+	// DECLARATION PER TARGET IN REACH (rpg-project#249 §6, Kirk): Afford
+	// gates each candidate through the same reach check Attack refuses
+	// with (melee one cell, the reach property two; ranged stays refused
+	// as today, rpg-toolkit#1010) and emits one declaration for each
+	// target that passes. That list IS the client's "enemies in reach"
+	// highlight — reach is never computed client-side, it is read off
+	// these. When NO candidate is in reach the seam still answers, once: a
+	// single ATTACK declaration with Affordable false, Why.Reason
+	// ShortfallNoTargetInReach, and this field unset.
+	//
+	// A POINTER, not an omitted empty string: a MOVE declaration has no
+	// target at all, and the no-target-in-reach ATTACK declaration has
+	// none either — neither is a target whose id happens to be empty.
+	//
+	// Further strikes are FURTHER DECLARATIONS of this same shape, not new
+	// fields: a monk's Martial Arts bonus strike is
+	// {VerbAttack, SlotBonus, target}; an off-hand swing and a flurry
+	// likewise. Nil for VerbMove.
+	Target *string `json:"target,omitempty"`
+
+	// Why is the structured reason this is unaffordable, present exactly
+	// when Affordable is false — the same presence law Remaining keeps for
+	// "this verb carries no such number": absence beside Affordable true is
+	// itself the answer ("nothing ran out"). Carries the same text
+	// Shortfall does, plus the reason and the figures a UI acts on.
+	// Lands with rpg-toolkit#1010.
+	Why *Shortfall `json:"why,omitempty"`
 
 	// Remaining is how much of this verb's own currency is left, in the
 	// currency's natural unit — feet, for Move (rpg-toolkit#1169).
@@ -217,7 +254,11 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return nil, fmt.Errorf("afford: %w", ErrNoMemberID)
 	}
 
-	enc, err := m.open(ctx, in.Session)
+	data, err := m.loadSessionData(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("afford: %w", err)
+	}
+	enc, err := m.loadWorld(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}
@@ -233,17 +274,53 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return &AffordOutput{Clock: ClockWorld, Declarations: []Declaration{}}, nil
 	}
 
-	data, err := m.fetchCharacterData(ctx, "member", in.Member)
+	// NOT YOUR TURN, checked FIRST and cheaply — clock.Active is already in
+	// hand, no sheet touched — the same precedence Move's own gate keeps
+	// (Copilot's finding on #1171: the clock is asked before anything is
+	// loaded, so a refusal this early never reads a sheet at all). The
+	// same clock-active comparison Attack's own gate makes
+	// (rpg-toolkit#1010/#249) — announced here BEFORE a caller ever tries
+	// the verb, which is Afford's whole point.
+	if string(clock.Active) != in.Member {
+		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
+			Reason: ShortfallNotYourTurn, Text: "not your turn",
+		})}, nil
+	}
+
+	// DOWNED, asked only once we know this member is even the one the
+	// clock is waiting on: a downed member is spliced out of the turn
+	// order and can never be active, so NotYourTurn already covers a
+	// downed BYSTANDER — this is the specific fact a client renders
+	// differently ("you are down" versus "wait your turn") for the member
+	// who somehow is still active despite being down.
+	standing := m.standingFor(ctx, data)
+	down, err := standing.Standing([]encounter.MemberID{encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}
-	// Bus-free, the same loader priceSwing's own caller (compileAttack) reads
-	// the economy through: the action economy is plain sheet data in v1, not
-	// condition-driven, so nothing here needs the conditions a bus-attached
-	// reconstitution would bring. See compileAttack's own comment.
-	sheet, err := character.Load(ctx, data)
+	if len(down) > 0 {
+		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
+			Reason: ShortfallDowned, Text: "member is downed",
+		})}, nil
+	}
+
+	// UNREADABLE: the same compile Attack's own door runs, so the two
+	// cannot disagree about whether a swing exists to price at all
+	// (rpg-toolkit#1168's other half — ADR-0042 scoped this out, amended
+	// here). ErrBadCharacter (no sheet, or bytes that will not
+	// reconstitute) stays a hard failure, exactly as before: there is no
+	// sheet to answer ANYTHING about, attack or movement. ErrBadAttack —
+	// a sheet that loads fine but names a weapon this build cannot
+	// compile — becomes a declaration instead of a failed read, so the
+	// rest of a UI's turn panel still renders.
+	sheet, profile, err := m.compileAttack(ctx, in.Member)
 	if err != nil {
-		return nil, fmt.Errorf("afford: member %q: %w: %v", in.Member, ErrBadCharacter, err)
+		if errors.Is(err, ErrBadAttack) {
+			return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
+				Reason: ShortfallUnreadable, Text: err.Error(),
+			})}, nil
+		}
+		return nil, fmt.Errorf("afford: %w", err)
 	}
 
 	price, err := m.priceSwing(ctx, enc, in.Member, sheet)
@@ -253,24 +330,114 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 
 	// price.cost is never nil here: priceSwing returns a nil cost only when
 	// the member is on the world clock, already ruled out above.
-	attack := Declaration{Verb: VerbAttack, Slot: slotOf(price.cost.Profile)}
+	slot := slotOf(price.cost.Profile)
 
-	// Charged against the sheet THIS CALL loaded, which is handed to nobody
-	// else and never saved (see the doc comment above). combat.Pay is the
-	// SAME gate the door pays a real swing through, so a payment that
-	// succeeds or fails here answers exactly as Attack's would.
+	// Charged ONCE against the sheet THIS CALL loaded, which is handed to
+	// nobody else and never saved (see the doc comment above). combat.Pay is
+	// the SAME gate Attack's door pays through, so a payment that succeeds
+	// or fails here answers exactly as Attack's would — and it answers the
+	// SAME way for every target below: affordability is an economy
+	// question, not a geometry one, so it is asked once and shared rather
+	// than re-paid per candidate (which would also double-spend the sheet
+	// this call loaded).
+	affordable := true
+	var why *Shortfall
 	if payErr := combat.Pay(sheet, price.cost.Profile); payErr != nil {
-		attack.Shortfall = payErr.Error()
-	} else {
-		attack.Affordable = true
+		affordable = false
+		sf := shortfallForPay(sheet, price.cost.Profile, slot)
+		why = &sf
 	}
+
+	roster, err := enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("afford: %w", translate(err))
+	}
+	positions := rosterPositions(roster)
+
+	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("afford: %w", translate(err))
+	}
+
+	attackDecls := attackDeclarationsFor(enc, positions, holdings, in.Member, slot, profile.Reach, affordable, why)
 
 	// affordMove reads the SAME sheet, already readied for this turn by
 	// priceSwing's own call above — never a second ready, which would
-	// re-seed a bank the attack declaration just read. Safe to share: an
+	// re-seed a bank the attack declarations just read. Safe to share: an
 	// attack's profile never names CapacityMovement, so paying it above
 	// cannot have moved what affordMove is about to read.
-	return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{attack, affordMove(sheet)}}, nil
+	return &AffordOutput{
+		Clock:        ClockTurn,
+		Declarations: append(attackDecls, affordMove(sheet)),
+	}, nil
+}
+
+// blockedDeclarations answers both of a turn's verbs the same way, for a
+// reason that blocks the whole turn rather than one price: downed, not your
+// turn, or a sheet this build cannot compile. Neither verb's own numbers
+// mean anything against a member who cannot act at all, so both report the
+// SAME Shortfall rather than one going on to compute a real (and
+// misleading) answer for the other.
+func blockedDeclarations(why Shortfall) []Declaration {
+	return []Declaration{
+		{Verb: VerbAttack, Slot: SlotNone, Affordable: false, Shortfall: why.Text, Why: &why},
+		{Verb: VerbMove, Slot: SlotNone, Affordable: false, Shortfall: why.Text, Why: &why},
+	}
+}
+
+// attackDeclarationsFor builds one ATTACK declaration per candidate the
+// member currently, live, perceives (holdings whose CurrentVia is
+// non-empty — a memory of somebody no longer in sight is not somebody this
+// member could swing at right now) and who stands within reach. Every
+// declaration shares the SAME affordable/why the economy already decided;
+// what varies per declaration is only the target and whether reach passed.
+//
+// NO CANDIDATE IN REACH IS STILL AN ANSWER (rpg-toolkit#1010, rpg-project#249
+// §6): a single declaration with no Target, Affordable false and
+// Why.Reason ShortfallNoTargetInReach — never an empty list, which a client
+// could mistake for "nothing to ask about yet" rather than "nothing is
+// close enough."
+func attackDeclarationsFor(
+	enc *encounter.Encounter, positions map[string]spatial.Position, holdings []intel.Holding,
+	member string, slot Slot, reach int, affordable bool, why *Shortfall,
+) []Declaration {
+	from := positions[member]
+
+	var out []Declaration
+	for _, h := range holdings {
+		subject := string(h.Subject)
+		if subject == member || len(h.CurrentVia) == 0 {
+			continue
+		}
+		to, ok := positions[subject]
+		if !ok || !inReach(enc, from, to, reach) {
+			continue
+		}
+		target := subject
+		out = append(out, Declaration{
+			Verb: VerbAttack, Slot: slot, Target: &target, Affordable: affordable, Why: why,
+			Shortfall: shortfallText(why),
+		})
+	}
+
+	if len(out) == 0 {
+		noTarget := Shortfall{Reason: ShortfallNoTargetInReach, Text: "no target in reach"}
+		return []Declaration{{
+			Verb: VerbAttack, Slot: slot, Affordable: false,
+			Shortfall: noTarget.Text, Why: &noTarget,
+		}}
+	}
+	return out
+}
+
+// shortfallText reads Why.Text, or the empty string for a nil Why — the
+// same value Declaration.Shortfall has always carried, kept in step with
+// Why by construction rather than set separately at each call site.
+func shortfallText(why *Shortfall) string {
+	if why == nil {
+		return ""
+	}
+	return why.Text
 }
 
 // affordMove reports what this member could still spend on movement this
@@ -292,8 +459,84 @@ func affordMove(sheet *character.Character) Declaration {
 		decl.Affordable = true
 		return decl
 	}
-	decl.Shortfall = fmt.Sprintf("movement: %d ft left", left)
+	why := Shortfall{
+		Reason: ShortfallNoBudget, Currency: CurrencyMovement,
+		// Needed names the smallest step this grid has (five feet, one
+		// cell) rather than a specific request's cost: unlike Attack's
+		// fixed action price, a walk's cost is a fact about a PATH this
+		// read is never given (Declaration.Remaining's own doc), so
+		// "needed" can only say how much the least possible move would
+		// take.
+		Needed: 5, Left: left,
+		Text: fmt.Sprintf("movement: %d ft left", left),
+	}
+	decl.Shortfall = why.Text
+	decl.Why = &why
 	return decl
+}
+
+// currencyOfSlot maps a lit shape onto the ledger word a NoBudget shortfall
+// names — the same three values Slot and Currency coincide on (types.go's
+// own note on why they are still two enums).
+func currencyOfSlot(slot Slot) Currency {
+	switch slot {
+	case SlotAction:
+		return CurrencyAction
+	case SlotBonus:
+		return CurrencyBonus
+	case SlotReaction:
+		return CurrencyReaction
+	default:
+		return ""
+	}
+}
+
+// shortfallForPay determines the structured reason a compiled price could
+// not be paid, read off the SAME ledger state combat.Pay's own check
+// consults — SlotsLeft/CapacityLeft, never by parsing the text Pay's error
+// carries (rpg-toolkit#1010).
+//
+// SLOT FIRST, AND USUALLY ONLY. slot is the declaration's own answer to
+// "which shape does this price light" (slotOf) — the same SpendProfile,
+// asked the same way — and it covers the whole of v1's reachable economy:
+// costOfSwing's own folding (asOnePayment) means a capacity shortfall
+// always resurfaces as the action slot being spent already, so a profile
+// that draws SlotNone (a purely banked swing) never actually runs out in a
+// way this build can produce. That branch is still handled, defensively,
+// rather than assumed away.
+func shortfallForPay(sheet *character.Character, profile *combat.SpendProfile, slot Slot) Shortfall {
+	if profile == nil {
+		return Shortfall{Reason: ShortfallNoBudget, Text: "action cannot be paid for"}
+	}
+
+	switch slot {
+	case SlotAction:
+		return slotShortfall(sheet, coreCombat.ActionStandard, currencyOfSlot(slot), profile.Slots[coreCombat.ActionStandard])
+	case SlotBonus:
+		return slotShortfall(sheet, coreCombat.ActionBonus, currencyOfSlot(slot), profile.Slots[coreCombat.ActionBonus])
+	case SlotReaction:
+		return slotShortfall(sheet, coreCombat.ActionReaction, currencyOfSlot(slot), profile.Slots[coreCombat.ActionReaction])
+	}
+
+	for key, amount := range profile.Capacity {
+		if left := sheet.CapacityLeft(key); left < amount {
+			return Shortfall{
+				Reason: ShortfallNoBudget, Needed: amount, Left: left,
+				Text: fmt.Sprintf("%s: %d needed, %d left", key, amount, left),
+			}
+		}
+	}
+	return Shortfall{Reason: ShortfallNoBudget, Text: "action cannot be paid for"}
+}
+
+// slotShortfall reads one per-turn slot's own state into a Shortfall —
+// currencyOfSlot's figures, filled in.
+func slotShortfall(sheet *character.Character, slotKey coreCombat.ActionType, currency Currency, needed int) Shortfall {
+	left := sheet.SlotsLeft(slotKey)
+	return Shortfall{
+		Reason: ShortfallNoBudget, Currency: currency, Needed: needed, Left: left,
+		Text: fmt.Sprintf("%s: %d needed, %d left", slotKey, needed, left),
+	}
 }
 
 // slotOf reads which of a turn's three slots a compiled price draws from, if

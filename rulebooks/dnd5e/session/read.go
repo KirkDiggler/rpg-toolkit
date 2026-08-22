@@ -167,7 +167,11 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 	if in.Member == "" {
 		return nil, fmt.Errorf("view: %w", ErrNoMemberID)
 	}
-	enc, err := m.open(ctx, in.Session)
+	data, err := m.loadSessionData(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("view: %w", err)
+	}
+	enc, err := m.loadWorld(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", err)
 	}
@@ -177,7 +181,19 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 		return nil, fmt.Errorf("view: %w", translate(err))
 	}
 
-	return projectSightings(holdings), nil
+	// Names and standing, batched over the whole roster rather than per
+	// sighting (rpg-toolkit#1137) — the observer might hold a sighting for
+	// anyone in it, live or memory.
+	roster, err := enc.Members()
+	if err != nil {
+		return nil, fmt.Errorf("view: %w", translate(err))
+	}
+	down, err := standingSet(m.standingFor(ctx, data), rosterIDs(roster))
+	if err != nil {
+		return nil, fmt.Errorf("view: %w", err)
+	}
+
+	return projectSightings(holdings, rosterNames(roster), down), nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

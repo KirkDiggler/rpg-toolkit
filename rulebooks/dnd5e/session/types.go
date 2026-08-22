@@ -288,12 +288,48 @@ type MemberOutcome struct {
 type Seen struct {
 	// Position is the sighted subject's cell, dungeon-absolute.
 	Position spatial.Position `json:"position"`
+
+	// Standing is whether the sighted subject is on their feet.
+	// SIGHT-CHANNEL KNOWLEDGE, not roster truth: an observer who can see a
+	// member can see whether they are standing, which is why it belongs
+	// inside Seen and not on a roster read this seam deliberately lacks.
+	// A memory (CurrentVia empty) keeps the standing it last saw, exactly
+	// as it keeps the position. Lands with rpg-toolkit#1137.
+	Standing Standing `json:"standing"`
 }
+
+// Standing says whether a member is still on their feet. Lands with
+// rpg-toolkit#1137.
+//
+// A READ, NOT A REPLAY DEPENDENCY: the composition has known the answer all
+// along — it asks the rulebook who is standing at every sight refresh — so
+// this is that answer projected onto Participant and Seen, the same
+// treatment Where gives position.
+//
+// TWO VALUES, AND NOT "DOWN". Downed is at zero hit points and out of the
+// fight; a bare "down" also reads as PRONE, a posture condition on a member
+// still acting (Kirk's ruling, rpg-toolkit#1084 — see ErrDowned).
+type Standing string
+
+const (
+	// StandingUp is on their feet, in the fight.
+	StandingUp Standing = "up"
+	// StandingDowned is at zero hit points, out of the fight — still on the
+	// map and in the roster.
+	StandingDowned Standing = "downed"
+)
 
 // Sighting is one thing an observer currently perceives.
 type Sighting struct {
 	// Subject names what is perceived.
 	Subject string `json:"subject"`
+
+	// Name is the sighted subject's display name — "skeleton-1", not a ref
+	// or an id. Beside Subject so a client labels what it draws and
+	// narrates what it sees without a second lookup. Names are not a
+	// perception question: anything an observer can sight, they can name.
+	// Lands with rpg-toolkit#1137.
+	Name string `json:"name,omitempty"`
 
 	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
 	// the composition, not by this package — session never unmarshals
@@ -512,9 +548,123 @@ type Event struct {
 	// Kind names what happened.
 	Kind EventKind `json:"kind"`
 
-	// Payload is the kind-specific body, encoded by this package.
+	// Payload is the kind-specific body, encoded by this package. REMAINS
+	// FOR KINDS NOT YET TYPED — a client reads Body and never decodes this,
+	// not as a fallback, not for a field it wishes were typed (rpg-toolkit#941).
 	Payload []byte `json:"payload,omitempty"`
+
+	// Body is the beat, typed: a sealed interface with one struct per kind
+	// that has one, decoded from the SAME payload this package already
+	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil for
+	// a kind with no typed body member (JOINED, EXITED, ENDED,
+	// SCENE_OPENED, TICK, UNKNOWN) and for a beat this build's decoder does
+	// not recognise — see decodeBeat.
+	Body EventBody `json:"-"`
 }
+
+// EventBody is the beat, typed — a sealed interface with one struct per
+// kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
+// MissedBody, FightStartedBody, FightEndedBody, MovedBody. Sealed the way
+// DissolveCause is (dissolve.go) and for the same reason: a caller matches
+// on it with a type switch, and a second implementation declared outside
+// this package would be indistinguishable from these to anyone reading the
+// switch.
+//
+// ONE-TO-ONE WITH EventKind where a body exists (rpg-toolkit#941). A kind
+// with no body member here leaves Event.Body nil and is read from Kind
+// alone.
+type EventBody interface {
+	// isEventBody seals the set.
+	isEventBody()
+}
+
+// TurnEndedBody is EventTurnEnded's typed body: a member's turn ended and
+// the order moved on. Also "X's turn" as a moment — one of these per driven
+// member, so a monster's turn is a visible beat rather than a gap between
+// two of a player's.
+type TurnEndedBody struct {
+	// Member is whose turn ended.
+	Member string `json:"member"`
+	// Next is whose turn it is now.
+	Next string `json:"next"`
+}
+
+func (TurnEndedBody) isEventBody() {}
+
+// DownedBody is EventDowned's typed body: who is at zero hit points and out
+// of the fight. Who, and nothing else — see EventDowned's own doc for why
+// hit points are not here.
+type DownedBody struct {
+	Member string `json:"member"`
+}
+
+func (DownedBody) isEventBody() {}
+
+// StruckBody is EventStruck's typed body: an attack landed. The numbers
+// AttackOutput gives the attacker, here for every witness, plus what was
+// swung.
+type StruckBody struct {
+	Attacker string `json:"attacker"`
+	Target   string `json:"target"`
+	// Roll is the d20 as rolled.
+	Roll int `json:"roll"`
+	// Total is the roll plus everything the attack chain added.
+	Total int `json:"total"`
+	// Against is the number the total had to reach.
+	Against int `json:"against"`
+	// Damage is what was dealt. Never zero on a Struck; a miss is a Missed.
+	Damage int `json:"damage"`
+	// Attack is what was swung — ref, name, damage type.
+	Attack   AttackRef `json:"attack"`
+	Critical bool      `json:"critical"`
+}
+
+func (StruckBody) isEventBody() {}
+
+// MissedBody is EventMissed's typed body: an attack did not land. A
+// separate body from StruckBody rather than one with a Damage of zero — a
+// whiff is a different animation, sound and sentence — and it carries no
+// damage field at all so "missed for 0" cannot be said.
+type MissedBody struct {
+	Attacker string    `json:"attacker"`
+	Target   string    `json:"target"`
+	Roll     int       `json:"roll"`
+	Total    int       `json:"total"`
+	Against  int       `json:"against"`
+	Attack   AttackRef `json:"attack"`
+}
+
+func (MissedBody) isEventBody() {}
+
+// FightStartedBody is EventFightStarted's typed body: two sides came into
+// contact and a fight began. Delivered to every member of the encounter, in
+// or out of the fight.
+type FightStartedBody struct {
+	// Members is the fight's members in initiative order, first to act
+	// first.
+	Members []string `json:"members"`
+}
+
+func (FightStartedBody) isEventBody() {}
+
+// FightEndedBody is EventFightEnded's typed body: a fight dissolved and its
+// members returned to free roam. Cause says why, in the same enum
+// DissolveOutput.Cause speaks.
+type FightEndedBody struct {
+	Cause DissolveKind `json:"cause"`
+}
+
+func (FightEndedBody) isEventBody() {}
+
+// MovedBody is EventMoved's typed body: a member stepped to a new cell.
+// One body per step — a walk of four cells is four of these, each with its
+// own Event.Seq.
+type MovedBody struct {
+	Member string           `json:"member"`
+	To     spatial.Position `json:"to"`
+}
+
+func (MovedBody) isEventBody() {}
 
 // SaveReport names which aggregates were persisted by a verb and which were
 // not.
@@ -560,6 +710,11 @@ type Member struct {
 
 	// Kind categorises the member.
 	Kind MemberKind `json:"kind"`
+
+	// Name is the member's display name — "skeleton-1", not a ref or an id.
+	// Never empty for a member the composition can name, which is every
+	// member it can place (rpg-toolkit#1137).
+	Name string `json:"name,omitempty"`
 
 	// Position is the cell they stand on, in dungeon-absolute space.
 	//
@@ -656,6 +811,151 @@ type MonsterState struct {
 	// ProficiencyBonus is the monster's proficiency bonus, derived from its
 	// challenge rating.
 	ProficiencyBonus int `json:"proficiency_bonus"`
+}
+
+// DamageType names the kind of damage an attack deals: the rulebook's own
+// thirteen. Lands with rpg-toolkit#866, carried on AttackRef.
+//
+// A CLOSED SET, SO A GO TYPE A CLIENT-FACING ENUM CAN MIRROR (Kirk,
+// rpg-project#249 §6): a UI branches on it — a colour, a sound, a word in
+// the beat line ("6 slashing") — and thirteen is the whole of 5e's list,
+// sealed by the rulebook rather than open to a catalog. Compare AttackRef.Ref,
+// which is an OPEN set and stays a string.
+//
+// The string values match damage.Type's own exactly, on purpose: this type
+// exists so a host mapping onto a proto enum has something to switch on
+// without importing the rulebook's own damage package across the boundary
+// (S2), not to invent a second vocabulary for the same thirteen words.
+type DamageType string
+
+// The rulebook's thirteen damage types, mirroring damage.Type.
+const (
+	DamageAcid        DamageType = "acid"
+	DamageBludgeoning DamageType = "bludgeoning"
+	DamageCold        DamageType = "cold"
+	DamageFire        DamageType = "fire"
+	DamageForce       DamageType = "force"
+	DamageLightning   DamageType = "lightning"
+	DamageNecrotic    DamageType = "necrotic"
+	DamagePiercing    DamageType = "piercing"
+	DamagePoison      DamageType = "poison"
+	DamagePsychic     DamageType = "psychic"
+	DamageRadiant     DamageType = "radiant"
+	DamageSlashing    DamageType = "slashing"
+	DamageThunder     DamageType = "thunder"
+)
+
+// AttackRef identifies WHAT was swung — weapon identity, which this seam
+// dropped on the floor since the first swing (rpg-toolkit#866). Carried on
+// AttackOutput and on the Struck/Missed event bodies, so a beat line can say
+// "6 slashing" and "with a longsword" for every witness, not only the
+// attacker whose own verb response held the compiled profile.
+type AttackRef struct {
+	// Ref is the catalog ref the attack compiled from — "longsword",
+	// "unarmed-strike". An OPEN set, so a string: the client already maps
+	// refs to models and icons, and the catalog grows without this type
+	// changing.
+	Ref string `json:"ref"`
+
+	// Name is the catalog's display name — "Longsword", "Unarmed Strike".
+	Name string `json:"name"`
+
+	// DamageType is the kind of damage it deals. Closed set — see DamageType.
+	DamageType DamageType `json:"damage_type"`
+}
+
+// ShortfallReason names WHY a declaration is unaffordable, as a value a UI
+// can act on rather than prose it can only repeat. Lands with
+// rpg-toolkit#1010 (reach) and the structured Shortfall it carries.
+//
+// Each value is one of the refusals the matching verb would give, named
+// here BEFORE the refusal — the same promise Afford has always made,
+// extended from the economy to the turn and to reach. A client greys a
+// target for NoTargetInReach and dims a shape for NoBudget; it never
+// parses Text to tell them apart.
+type ShortfallReason string
+
+const (
+	// ShortfallNoBudget is the currency running out — what Attack refuses
+	// as ErrCannotAfford ("action: 1 needed, 0 left"). Currency, Needed and
+	// Left are populated.
+	ShortfallNoBudget ShortfallReason = "no_budget"
+
+	// ShortfallNotYourTurn is it not being this member's turn — what
+	// Attack, Move and EndTurn refuse as ErrNotYourTurn.
+	ShortfallNotYourTurn ShortfallReason = "not_your_turn"
+
+	// ShortfallNoTargetInReach is nothing to swing at within reach — what
+	// Attack refuses as ErrOutOfReach (rpg-toolkit#1010). The one shortfall
+	// that arrives on a declaration with no Target: when no candidate is
+	// in reach, Afford still says so, once, rather than saying nothing.
+	ShortfallNoTargetInReach ShortfallReason = "no_target_in_reach"
+
+	// ShortfallDowned is the member being downed and unable to act — what
+	// the verbs refuse as ErrDowned.
+	ShortfallDowned ShortfallReason = "downed"
+
+	// ShortfallUnreadable is the rulebook being unable to compile this
+	// member's price — the sheet is unreadable (ErrBadAttack for anything
+	// but an empty hand, which compiles to the unarmed strike instead,
+	// rpg-toolkit#1168). Afford reports it rather than failing the read,
+	// so the rest of the declarations still arrive.
+	ShortfallUnreadable ShortfallReason = "unreadable"
+)
+
+// Currency names which of a turn's budgets a NO_BUDGET shortfall ran out
+// of. Lands with the structured Shortfall (rpg-project#249).
+//
+// This is the economy's word for what ran out — it is NOT Slot, although
+// three values coincide. Slot says which shape a declaration LIGHTS;
+// Currency says which ledger a refusal DRAINED, and movement is a ledger
+// with no shape. The two are kept separate so a client that lights shapes
+// never has to treat feet as a fourth one.
+type Currency string
+
+const (
+	// CurrencyAction is the standard action.
+	CurrencyAction Currency = "action"
+	// CurrencyBonus is the bonus action.
+	CurrencyBonus Currency = "bonus"
+	// CurrencyReaction is the reaction.
+	CurrencyReaction Currency = "reaction"
+	// CurrencyMovement is feet, not a count — Needed and Left on a MOVEMENT
+	// shortfall are in feet, at the server's five per cell.
+	CurrencyMovement Currency = "movement"
+)
+
+// Shortfall is the structured reason a declaration cannot be paid for.
+// Lands with rpg-toolkit#1010 as the seam's own answer to "why not."
+//
+// STRUCTURED SO THE UI CAN ACT ON IT; TEXT STAYS FOR NARRATION. The string
+// form alone ("action: 1 needed, 0 left") is enough to repeat a refusal in
+// the player's own words and not enough to do anything else with it —
+// Reason is what it branches on, Currency/Needed/Left are the figures it
+// shows, and Text is what it says. The three agree by construction: Text is
+// rendered from the other four, never the reverse.
+type Shortfall struct {
+	// Reason is what kind of refusal this is. Always set.
+	Reason ShortfallReason `json:"reason"`
+
+	// Currency is which ledger ran out. Set for NoBudget; empty for every
+	// other reason, which has no currency to name.
+	Currency Currency `json:"currency,omitempty"`
+
+	// Needed is how much the verb costs, in that currency's unit (feet for
+	// MOVEMENT, a count otherwise). Meaningful for NoBudget; zero
+	// otherwise.
+	Needed int `json:"needed,omitempty"`
+
+	// Left is how much is left. Meaningful for NoBudget; zero otherwise —
+	// and a real zero, which is the usual case.
+	Left int `json:"left,omitempty"`
+
+	// Text is the refusal in the SDK's own words — "action: 1 needed, 0
+	// left", "movement: 20 ft needed, 15 ft left", "not your turn", "no
+	// target in reach". The same text Declaration.Shortfall carries and the
+	// same text the verb's own refusal error would.
+	Text string `json:"text"`
 }
 
 // Discovery is what changed in one observer's perception.
