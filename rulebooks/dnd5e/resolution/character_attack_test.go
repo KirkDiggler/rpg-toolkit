@@ -663,28 +663,30 @@ func (s *CharacterAttackTestSuite) TestACorruptSlotStaysErrBadAttack() {
 }
 
 // TestReach pins rpg-toolkit#1010's compiler half: a plain melee weapon
-// reaches 1 cell, a weapon carrying the Reach property reaches 2, and an
-// unarmed strike reaches 1 — the same numbers the retired top-level
+// reaches 5 feet, a weapon carrying the Reach property reaches 10, and an
+// unarmed strike reaches 5 — the same numbers the retired top-level
 // encounter module's checkReach enforced (encounter/range_gate.go) before
-// this rewrite dropped the check everywhere.
+// this rewrite dropped the check everywhere. Feet, not cells (Kirk,
+// rpg-project#254 review) — see [defaultMeleeReach]'s doc for why the
+// conversion to cells lives at the reach gate instead of here.
 func (s *CharacterAttackTestSuite) TestReach() {
-	s.Run("a plain melee weapon reaches 1 cell", func() {
+	s.Run("a plain melee weapon reaches 5 feet", func() {
 		profile := s.compile(s.martialHero(), s.mainHand())
-		s.Equal(1, profile.Reach)
+		s.Equal(5, profile.Reach)
 	})
 
-	s.Run("a weapon with the Reach property reaches 2 cells", func() {
+	s.Run("a weapon with the Reach property reaches 10 feet", func() {
 		sheet := s.heroSheet(
 			[]proficiencies.Weapon{proficiencies.WeaponMartial},
 			map[character.InventorySlot]string{character.SlotMainHand: string(weapons.Glaive)},
 		)
 		profile := s.compile(sheet, s.mainHand())
-		s.Equal(2, profile.Reach)
+		s.Equal(10, profile.Reach)
 	})
 
-	s.Run("an unarmed strike reaches 1 cell", func() {
+	s.Run("an unarmed strike reaches 5 feet", func() {
 		profile := s.compile(s.heroSheet(nil, nil), s.mainHand())
-		s.Equal(1, profile.Reach)
+		s.Equal(5, profile.Reach)
 	})
 }
 

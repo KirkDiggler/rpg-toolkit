@@ -58,7 +58,7 @@ func (s *MonsterAttackTestSuite) TestMeleePreservesCanonicalPoolsAndIntrinsicBon
 				Name:        "enchanted scimitar",
 				AttackBonus: 4,
 				Damage:      want,
-				Reach:       1,
+				Reach:       5,
 			})
 
 			profile, err := AttackFromMonsterAction(action)
@@ -70,7 +70,7 @@ func (s *MonsterAttackTestSuite) TestMeleePreservesCanonicalPoolsAndIntrinsicBon
 			s.Zero(profile.AbilityModifier)
 			s.Nil(profile.Gate)
 			s.Nil(profile.Imposes)
-			s.Equal(1, profile.Reach, "the action's own authored Reach carries onto the profile")
+			s.Equal(5, profile.Reach, "the action's own authored Reach (feet) carries onto the profile")
 		})
 	}
 }
@@ -78,20 +78,20 @@ func (s *MonsterAttackTestSuite) TestMeleePreservesCanonicalPoolsAndIntrinsicBon
 // TestMeleeReachCarriesTheAuthoredValue pins the fix: a generic melee
 // action's Reach was silently dropped — AttackProfile.Reach stayed zero
 // regardless of what the stat block authored, meaning nothing gated a
-// monster's melee attack by reach at all. A reach weapon (Reach: 2, e.g.
-// a spear-wielding monster) must compile to Reach 2, not the plain-weapon
-// default.
+// monster's melee attack by reach at all. A reach weapon (Reach: 10 feet,
+// e.g. a spear-wielding monster) must compile to Reach 10, not the
+// plain-weapon default.
 func (s *MonsterAttackTestSuite) TestMeleeReachCarriesTheAuthoredValue() {
 	action := s.action(refs.MonsterActions.Melee(), monsterActions.MeleeConfig{
 		Name:        "spear",
 		AttackBonus: 4,
 		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing}},
-		Reach:       2,
+		Reach:       10,
 	})
 
 	profile, err := AttackFromMonsterAction(action)
 	s.Require().NoError(err)
-	s.Equal(2, profile.Reach)
+	s.Equal(10, profile.Reach)
 }
 
 // TestBiteReachIsTheFixedMeleeDefault pins that a bite — which has no
