@@ -231,6 +231,44 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 	}
 }
 
+// TestAnUnplayedMemberFirstInInitiativeIsAlreadyDrivenPastFightStart is
+// rpg-toolkit#1162's other headline case, at the session seam: if the roll
+// puts the ogre first, nobody has reached the fight's clock yet to end its
+// turn for them — the caller only just learned the fight exists — so the
+// drive has to have already happened by the time this Move call returns.
+//
+// The ogre wins initiative here on the dice alone (1 vs 20), the same
+// mechanism TestTheDiceDecideTheOrder pins, so this is not a different fight-
+// forming path: it is the ordinary one, with the roll that used to be able to
+// strand it.
+func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDrivenPastFightStart() {
+	dice := &sequenceDice{rolls: []int{1, 20}} // alice, then ogre — alphabetical asking order
+	mgr, err := session.NewManager(&session.Config{
+		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: ambushWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	out, err := mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice",
+		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Formed)
+	s.Equal([]string{"ogre", "alice"}, out.Formed.Order, "control: the ogre really did win initiative")
+
+	turn, err := mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Equal("alice", turn.Active,
+		"the ogre's turn was driven through at formation; the caller sees a PLAYED member active "+
+			"in the very first read after Formed, with no EndTurn of its own required to reach it")
+	s.Equal(1, turn.Round, "driving the ogre through at formation does not itself wrap a round")
+}
+
 // TestADiceFailureAbortsTheFight pins that a host whose randomness is down gets
 // a refused verb rather than a wrong fight.
 //
