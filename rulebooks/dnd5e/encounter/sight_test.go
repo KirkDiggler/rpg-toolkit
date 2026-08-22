@@ -86,7 +86,7 @@ func cells(from, to spatial.Position) int {
 // thing deciding percepts is sight.
 func (s *SightSuite) theLongRow(sight encounter.Sight) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -190,7 +190,7 @@ func (s *SightSuite) TestTheEdgeOfYourSightIsInsideIt() {
 // before it — would pass every other test in this file.
 func (s *SightSuite) TestSightIsStillGeometryFirst() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: &sightList{fallback: darkvision}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: &sightList{fallback: darkvision}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -245,7 +245,7 @@ func (s *SightSuite) TestTheConeStillNarrows() {
 		}}, marks...)
 
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: &sightList{fallback: generous}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: &sightList{fallback: generous}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field:   tombField(),
 			Members: members,
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -348,7 +348,7 @@ func (s *SightSuite) TestTheFarSightedSpotTheShortSightedAndSurpriseThem() {
 
 	scene := func(sight encounter.Sight) *encounter.Encounter {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -409,7 +409,7 @@ func (s *SightSuite) TestTheFarSightedSpotTheShortSightedAndSurpriseThem() {
 func TestASceneThatDoesNotSayHowFarAnyoneCanSeeIsRefused(t *testing.T) {
 	t.Run("setup", func(t *testing.T) {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -423,7 +423,7 @@ func TestASceneThatDoesNotSayHowFarAnyoneCanSeeIsRefused(t *testing.T) {
 
 	t.Run("load", func(t *testing.T) {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -434,7 +434,7 @@ func TestASceneThatDoesNotSayHowFarAnyoneCanSeeIsRefused(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: enc.ToData(),
+			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: enc.ToData(),
 		})
 		require.Error(t, err)
 		require.ErrorIs(t, err, encounter.ErrNoSight)

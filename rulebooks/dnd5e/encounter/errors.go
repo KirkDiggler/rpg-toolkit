@@ -261,17 +261,51 @@ var (
 	// invariant is ever broken elsewhere.
 	ErrNoPlayerInBubble = errors.New("encounter: bubble has no player to end on")
 
-	// ErrBadTurnOutcome indicates a TurnDriver returned a TurnOutcome this
-	// version of the module does not recognise.
+	// ErrBadTurnOutcome indicates a TurnDriver returned a TurnIntent this
+	// version of the module does not recognise — a value outside the sealed
+	// Pass/Attack/Move vocabulary.
 	//
-	// Unreachable from any driver outside this package today: TurnOutcome is
+	// Unreachable from any driver outside this package today: TurnIntent is
 	// sealed on an unexported method, so nothing outside encounter can
-	// construct a value satisfying it other than Pass. It exists for the same
-	// reason ErrBadRepository exists beside ErrNotFound — a defect this
-	// module can detect should say so by name rather than proceed on a value
-	// it does not understand, the day a second TurnOutcome case is added here
-	// and some call site is not updated to handle it.
-	ErrBadTurnOutcome = errors.New("encounter: turn driver returned an unrecognised outcome")
+	// construct a value satisfying it other than these three. It exists for
+	// the same reason ErrBadRepository exists beside ErrNotFound — a defect
+	// this module can detect should say so by name rather than proceed on a
+	// value it does not understand, the day a fourth TurnIntent case is added
+	// here and some call site is not updated to handle it.
+	ErrBadTurnOutcome = errors.New("encounter: turn driver returned an unrecognised intent")
+
+	// ErrNoStriker indicates Setup or Load was given no Striker capability.
+	// A member with no player can be handed an Attack intent the moment a
+	// fight forms — a turn ending, or a fight forming with an unplayed
+	// member first in initiative — and this module refuses to guess how a
+	// strike resolves, exactly as it refuses to guess who is standing, how
+	// far anyone sees, or what an unplayed member does at all
+	// (rpg-toolkit#1033, rpg-toolkit#1162, rpg-project#254). Never
+	// defaulted: a Striker that silently did nothing would let a monster's
+	// turn end without the swing its driver decided on ever landing.
+	ErrNoStriker = errors.New("encounter: no striker capability")
+
+	// ErrRefusingStriker is what [RefusingStriker.Strike] always returns:
+	// a driven turn reached a Striker built for a construction-only world
+	// (rpg-api's placement probes, a template's own acceptance test) — a
+	// host bug, since nothing should ever call EndTurn/form against such a
+	// world, not a legal outcome any caller is meant to recover from.
+	ErrRefusingStriker = errors.New("encounter: RefusingStriker: a driven turn reached a construction-only world")
+
+	// ErrBadIntent indicates a TurnDriver returned a syntactically valid
+	// TurnIntent this composition cannot execute: an Attack naming a target
+	// that is not currently Seen, not Standing, or out of the named
+	// action's reach; an Attack naming an action Ref that is not among the
+	// member's own [MonsterView.Actions]; or a Move whose path this member
+	// cannot afford against its remaining movement budget.
+	//
+	// NOT A DRIVER MALFUNCTION (compare the plain Go error [TurnDriver.Act]
+	// itself can return, which aborts the caller's whole verb). A bad
+	// intent is a bad DECISION, not a broken driver: it simply ends this
+	// member's turn exactly as [Pass] would, and the caller's own verb
+	// (EndTurn, form) still succeeds — see [Encounter.driveMonsterTurns]'s
+	// own doc for why this asymmetry is deliberate (rpg-project#254).
+	ErrBadIntent = errors.New("encounter: turn driver returned an intent this composition cannot execute")
 
 	// ErrReadOnly indicates an attempt to write to the map through the
 	// read-only view [Encounter.Canvas] hands out.

@@ -138,7 +138,7 @@ func tombAt(origin spatial.Position, x, y int) spatial.Position {
 // them. Nothing about rooms can tell them apart.
 func (s *CanvasSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
@@ -300,7 +300,7 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 		"the old blob still PARSES — that is exactly why the refusal has to be by name")
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Data: data,
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data,
 	})
 	require.Error(t, err, "a room-local placement must not load as an absolute one")
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
@@ -325,7 +325,7 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 func TestASquareFieldMustFitOneGrid(t *testing.T) {
 	setup := func(origin spatial.Position) *encounter.SetupInput {
 		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5, Origin: origin}},
@@ -357,7 +357,7 @@ func TestASquareFieldMustFitOneGrid(t *testing.T) {
 // and this check never rejects one.
 func TestAHexFieldNeedsNoSuchLaw(t *testing.T) {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
@@ -394,7 +394,7 @@ func TestPropsAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
@@ -421,7 +421,7 @@ func TestPropsAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
 func TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
 	setup := func(b spatial.Boundary) *encounter.SetupInput {
 		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
 				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 				Rooms: []encounter.RoomInput{

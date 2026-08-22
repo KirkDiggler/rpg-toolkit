@@ -28,7 +28,7 @@ import (
 // save. With it, the defect is loud: ErrInvalidData, never a guess.
 func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: FieldInput{
 			Canvas: CanvasInput{Void: VoidIsOpaque()},
 			Rooms:  []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
@@ -72,7 +72,7 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque()}, Rooms: []RoomInput{
 				{ID: "r1", Width: 8, Height: 8, Boundaries: sealedSeam(7, 8)},
 				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
@@ -187,7 +187,7 @@ func sealedSeam(atX, height int) []spatial.Boundary {
 // form directly, the same white-box reason TestFormRejections does.
 func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque()}, Rooms: []RoomInput{
 			{ID: "r1", Width: 8, Height: 8},
 		}},
@@ -201,4 +201,47 @@ func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 
 	_, err = enc.form(&FormInput{Order: []MemberID{"goblin", "wolf"}})
 	require.ErrorIs(t, err, ErrNoPlayerInBubble)
+}
+
+// rogueTurnIntent is a TurnIntent this package's own switch cannot possibly
+// have a case for — constructible only from inside this package, since
+// TurnIntent is sealed on an unexported method (ADR-0038's practice for
+// sealed vocabularies at this seam). It exists to reach ErrBadTurnOutcome's
+// one white-box path, the same reason rogueTurnOutcome-style fixtures exist
+// beside every other sealed vocabulary in this module.
+type rogueTurnIntent struct{}
+
+func (rogueTurnIntent) isTurnIntent() {}
+
+// rogueDriver always returns the sealed vocabulary's own defect.
+type rogueDriver struct{}
+
+func (rogueDriver) Act(MonsterView) (TurnIntent, error) {
+	return rogueTurnIntent{}, nil
+}
+
+// TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome pins the
+// sealed vocabulary's own defensive net: TurnIntent is sealed so nothing
+// OUTSIDE this package can construct a fourth case, but a value satisfying
+// the interface from INSIDE it (a future case added here without every call
+// site catching up) must fail loudly rather than silently fall through
+// driveMonsterTurns' switch.
+func TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome(t *testing.T) {
+	enc, err := NewEncounter(&SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: rogueDriver{}, Striker: passStriker{},
+		Field: FieldInput{
+			Canvas: CanvasInput{Void: VoidIsOpaque()},
+			Rooms:  []RoomInput{{ID: "room-1", Width: 8, Height: 8}},
+		},
+		Members: []MemberInput{
+			{ID: "alice", Kind: KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: KindMonster, Room: "room-1", Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	_, err = enc.EndTurn(&EndTurnInput{Member: "alice"})
+	require.ErrorIs(t, err, ErrBadTurnOutcome)
 }

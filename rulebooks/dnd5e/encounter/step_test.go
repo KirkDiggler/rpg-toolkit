@@ -102,7 +102,7 @@ func stepField() encounter.FieldInput {
 // the only thing that happens.
 func (s *StepSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -358,7 +358,7 @@ func (s *StepSuite) TestAStepAndAMonsterStepAgreeOnWhatIsCrossable() {
 // "nobody has seen anybody".
 func (s *StepSuite) sceneWithMonster(at spatial.Position, decider encounter.Decider) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
@@ -389,7 +389,7 @@ func (s *StepSuite) whereIn(enc *encounter.Encounter, id encounter.MemberID) spa
 func (s *StepSuite) TestAStepFiresAReachedPositionEnding() {
 	target := spatial.Position{X: 4, Y: 2}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -413,7 +413,7 @@ func (s *StepSuite) TestAStepFiresAReachedPositionEnding() {
 // against where the member landed, not where they left.
 func (s *StepSuite) TestACrossingFiresAReachedPositionEndingOnTheFarSide() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -480,7 +480,7 @@ func (s *StepSuite) TestAStepRefusesAFightMember() {
 	// is Active and the goblin is not: rpg-toolkit#1169 refuses HIS step
 	// now, not hers (see TestAnActiveFightMemberSteps for hers).
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -502,7 +502,7 @@ func (s *StepSuite) TestAStepRefusesAFightMember() {
 // actually waiting on moves through Step like anyone else.
 func (s *StepSuite) TestAnActiveFightMemberSteps() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
@@ -538,7 +538,7 @@ func (s *StepSuite) TestGridReportsTheFieldsFamily() {
 // square case.
 func (s *StepSuite) TestGridReportsAHexFieldAsHex() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Rooms: []encounter.RoomInput{
 			{ID: stepWest, Width: 6, Height: 6, Grid: spatial.GridShapeHex,
 				Origin: stepWestOrigin},
