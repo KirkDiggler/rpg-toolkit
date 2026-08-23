@@ -147,24 +147,28 @@ type SeenMember struct {
 	// Path is the shortest route from this monster's OWN position toward
 	// this sighting, computed against this composition's own walls, doors
 	// and floor — the same geometry [Encounter.Step] enforces —
-	// DUNGEON-ABSOLUTE, first element the first step to take. STOPS
-	// ADJACENT rather than walking onto the sighting's own occupied cell:
-	// the last element is the nearest cell the shortest route reaches this
-	// sighting from, one cell short of Position itself. Empty when this
-	// sighting is unreachable OR already adjacent — a driver checking
-	// InReach before consulting Path (as [behavior.Basic] does) never
-	// needs to tell the two apart, since "already adjacent" already means
-	// "in reach" for any action with at least a 5-foot (one-cell) reach.
+	// DUNGEON-ABSOLUTE, first element the first step to take.
 	//
-	// DATA, NOT A LIVE CAPABILITY (Kirk, rpg-project#254 review — supersedes
-	// an earlier closure-based design this PR shipped and walked back):
-	// MonsterView must stay loggable, replayable and fixture-buildable
-	// (rpg-project#235's Debug Feed journey; the monster-ai brainstorm's
-	// "perception is data, the decision layer never reaches live state") —
-	// a func field breaks all three. Computed once per Seen member, per
-	// Act call — ONE BFS PER SIGHTING, not one for the chosen target alone;
-	// noted here as the acknowledged cost of keeping this a plain value
-	// rather than a lazy callback.
+	// ENDS ON THE NEAREST CELL (to this member's own position — the fewest
+	// steps, never one more than necessary) FROM WHICH THIS SIGHTING IS
+	// WITHIN REACH of this member's own longest-reaching action (Kirk,
+	// rpg-project#254 review): NEVER the sighting's own occupied cell, and
+	// never farther than the shortest route needs. A driver moving along
+	// Path therefore never has to separately check InReach before issuing
+	// a Move — Path itself already stops exactly where InReach would turn
+	// true. Empty in two cases a caller does not need to tell apart: no
+	// walkable route exists, or this member is already within reach
+	// without moving at all (Distance already <= its own best reach).
+	//
+	// DATA, NOT A LIVE CAPABILITY (supersedes an earlier closure-based
+	// design this PR shipped and walked back): MonsterView must stay
+	// loggable, replayable and fixture-buildable (rpg-project#235's Debug
+	// Feed journey; the monster-ai brainstorm's "perception is data, the
+	// decision layer never reaches live state") — a func field breaks all
+	// three. Computed once per Seen member, per Act call — ONE BFS PER
+	// SIGHTING, not one for the chosen target alone; noted here as the
+	// acknowledged cost of keeping this a plain value rather than a lazy
+	// callback.
 	Path []spatial.Position
 }
 

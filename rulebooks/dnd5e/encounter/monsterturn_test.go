@@ -661,3 +661,118 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 	aliceSeen := s.seenFor(driver.calls[0], alice)
 	s.Empty(aliceSeen.Path, "seen across the gap, but nothing walkable reaches her")
 }
+
+// TestSeenMemberPathStopsAtTheMemberOwnLongestReachNotJustAdjacent pins the
+// reach-aware stopping distance (Kirk, rpg-project#254 review): a monster
+// with a 10-foot reach weapon (2 cells) should stop TWO cells from its
+// target, not walk needlessly to melee-adjacent — Path already ends
+// wherever InReach would turn true, so a driver never has to check InReach
+// before consulting Path.
+func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReachNotJustAdjacent() {
+	reachWeapon := core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "reach"}
+	driver := &scriptedDriver{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 3}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 6, Y: 0},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{{Ref: reachWeapon, Name: "Glaive", ReachFeet: 10, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1)
+	aliceSeen := s.seenFor(driver.calls[0], alice)
+	s.Require().NotEmpty(aliceSeen.Path)
+	last := aliceSeen.Path[len(aliceSeen.Path)-1]
+	s.InDelta(2.0, enc.Distance(last, spatial.Position{X: 0, Y: 0}), 0.001,
+		"a 10-foot (2-cell) reach stops 2 cells out, not adjacent: %+v", aliceSeen.Path)
+}
+
+// TestSeenMemberPathIsEmptyWhenAlreadyWithinReach is the bug the
+// end-to-end behavior.Basic test found: a member already at exactly
+// bestReachCells' distance (no earlier cell to stop at before the
+// target's own) must not return a one-element Path onto the target's own
+// cell — Path must be empty, matching its own documented contract ("empty
+// ... or this member is already within reach without moving at all").
+func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenAlreadyWithinReach() {
+	driver := &scriptedDriver{}
+	enc := s.adjacentSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1, "an in-reach attack ends the goblin's turn in one Act call")
+	aliceSeen := s.seenFor(driver.calls[0], alice)
+	s.True(aliceSeen.InReach[testMeleeAction], "control: alice really is in reach at the start")
+	s.Empty(aliceSeen.Path, "already in reach — nothing to walk onto her cell for")
+}
+
+// TestSeenMemberPathFindsTheNearestInRangeCellNotJustTheRouteToTarget pins
+// Copilot's PR #1191 review: a route to the target's own cell and a route
+// to "any cell within reach of the target" are different questions the
+// moment a wall makes them different. This fixture puts a cell right next
+// to the monster's own starting position that is GEOMETRICALLY within a
+// generous reach (InReach is distance-only, matching 5e's own reach rule —
+// walls do not extend it) but is nowhere near the walking route the wall
+// forces toward the target's own cell. The nearest WALKABLE in-range cell
+// is one step away; the naive "truncate the route to the target" approach
+// would instead walk most of the way around the wall before ever
+// mentioning it.
+func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJustTheRouteToTarget() {
+	longReach := core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "long-reach"}
+	// A 5x3 room. A wall spans the column between x=1 and x=2 at y=0 and
+	// y=1, leaving the bottom row (y=2) as the only gap.
+	//
+	//   x: 0 1 | 2 3 4
+	// y=0: .  . | .  .  .
+	// y=1: .  . | .  .  .
+	// y=2: .  .   .  .  .   <- gap
+	wall := []spatial.Boundary{
+		{From: spatial.Position{X: 1, Y: 0}, To: spatial.Position{X: 2, Y: 0}, BlocksMovement: true},
+		{From: spatial.Position{X: 1, Y: 1}, To: spatial.Position{X: 2, Y: 1}, BlocksMovement: true},
+	}
+	driver := &scriptedDriver{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 5, Height: 3, Boundaries: wall}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 0}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 0},
+				SpeedFeet: 60, Targeting: "closest",
+				// 15 feet (3 cells) — deliberately generous so the cell
+				// right beside the monster's own start (1 step away,
+				// Chebyshev distance 3 from alice) is already in range,
+				// making the detour-vs-shortcut distinction unambiguous.
+				Actions: []encounter.ActionView{{Ref: longReach, Name: "Whip", ReachFeet: 15, Kind: "melee"}},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(driver.calls, 1, "the first Act call already finds a target in range, one step away")
+	aliceSeen := s.seenFor(driver.calls[0], alice)
+	s.Equal([]spatial.Position{{X: 1, Y: 0}}, aliceSeen.Path,
+		"the nearest WALKABLE in-range cell is one step away, not several steps around the wall")
+}

@@ -520,6 +520,22 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
 
+	// bestReachCells is the farthest this member's own actions can reach,
+	// in cells — the arithmetic max of authored ReachFeet values, not a
+	// rules opinion about which action is "best" in play (this module
+	// still cannot import the rulebook, C1: it takes the number, not the
+	// meaning). Floored at 1 (5 feet, a bare cell) even for a member with
+	// no actions at all: the floor is a SPATIAL fact independent of combat
+	// capability — nobody's own Path should ever walk onto another
+	// member's occupied cell, whether or not this member has anything to
+	// do once it arrives.
+	bestReachCells := 1
+	for _, a := range m.Actions {
+		if c := CellsFromFeet(a.ReachFeet); c > bestReachCells {
+			bestReachCells = c
+		}
+	}
+
 	var seen []SeenMember
 	for _, h := range holdings {
 		// Sight channel, ACTIVELY sustained only (intel.Current) — a stale
@@ -545,16 +561,31 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.ReachFeet))
 		}
 
-		// Path stops ADJACENT rather than walking onto the sighting's own
-		// occupied cell (Kirk, rpg-project#254 review) — the full route
-		// pathTo computes ends AT pos, so dropping its last element is the
-		// nearest cell that route reaches this sighting from. One BFS per
+		// Path ends on the NEAREST WALKABLE cell (to this member's own
+		// position — the shortest route BY STEPS, not "however far along
+		// the route to pos happens to land") from which the sighting is
+		// within bestReachCells (Kirk, rpg-project#254 review — this also
+		// removes the "already in reach, don't bother moving" workaround
+		// behavior.Basic carried before this truncation existed).
+		//
+		// SEARCHED AS ITS OWN GOAL, NOT TRUNCATED FROM A ROUTE TO pos
+		// (Copilot, PR #1191 review): a route to pos and a route to "any
+		// cell within reach of pos" are different questions the moment a
+		// movement-blocking boundary makes them different — a
+		// geometrically closer in-range cell can be a walkable dead end
+		// relative to the far side of a wall, reachable in fewer steps
+		// than continuing on toward pos itself, and InReach never checked
+		// walkability to begin with (it is distance-only, matching 5e's
+		// own reach rule). bfsShortestPath's goal predicate stops the
+		// search the moment ANY cell — including this member's own
+		// starting position, handling "already in reach" for free — is
+		// within bestReachCells of pos, which is the actual nearest
+		// walkable answer rather than a proxy for it. One BFS per
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
-		var path []spatial.Position
-		if full, ok := e.pathTo(ownCell, pos); ok && len(full) > 0 {
-			path = full[:len(full)-1]
-		}
+		path, _ := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
+			return e.Distance(cell, pos) <= float64(bestReachCells)
+		})
 
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
@@ -601,11 +632,27 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 // NEIGHBOURS ARE VISITED IN A FIXED ORDER (C8): map iteration has none, and
 // a driver asked twice against unchanged geometry must get the same answer
 // both times, not merely an equally-short one.
-func (e *Encounter) pathTo(from, to spatial.Position) ([]spatial.Position, bool) {
-	if _, owned := e.RegionAt(to); !owned {
-		return nil, false
-	}
-	if from == to {
+// bfsShortestPath is the search engine [Encounter.buildMonsterView]'s
+// reach-aware Path runs on: a breadth-first search from `from` over this
+// composition's own floor and
+// walls, stopping at the first cell — in BFS DISCOVERY order, which is
+// shortest-distance-from-`from` order — satisfying `goal`. goal(from)
+// itself is checked first: a caller whose own starting cell already
+// satisfies the goal gets an EMPTY path with ok=true, not a one-element
+// path naming its own position.
+//
+// Exact (not a heuristic): every edge this module's grids offer costs
+// exactly one cell (Chebyshev on a square grid, cube distance on a hex
+// one), so BFS IS shortest-path here — there is no weighted-edge case for
+// A* to earn its keep over. Returns the path EXCLUDING `from` and
+// INCLUDING the first cell satisfying goal, or ok=false when no reachable
+// cell ever does.
+//
+// NEIGHBOURS ARE VISITED IN A FIXED ORDER (C8): map iteration has none,
+// and a driver asked twice against unchanged geometry must get the same
+// answer both times, not merely an equally-short one.
+func (e *Encounter) bfsShortestPath(from spatial.Position, goal func(spatial.Position) bool) ([]spatial.Position, bool) {
+	if goal(from) {
 		return nil, true
 	}
 
@@ -614,7 +661,10 @@ func (e *Encounter) pathTo(from, to spatial.Position) ([]spatial.Position, bool)
 	prev := make(map[spatial.Position]spatial.Position)
 	queue := []spatial.Position{from}
 
-	for len(queue) > 0 {
+	var found spatial.Position
+	ok := false
+
+	for len(queue) > 0 && !ok {
 		cur := queue[0]
 		queue = queue[1:]
 
@@ -638,20 +688,21 @@ func (e *Encounter) pathTo(from, to spatial.Position) ([]spatial.Position, bool)
 			}
 			visited[n] = true
 			prev[n] = cur
-			if n == to {
-				queue = nil
+			if goal(n) {
+				found = n
+				ok = true
 				break
 			}
 			queue = append(queue, n)
 		}
 	}
 
-	if !visited[to] {
+	if !ok {
 		return nil, false
 	}
 
 	var path []spatial.Position
-	for at := to; at != from; at = prev[at] {
+	for at := found; at != from; at = prev[at] {
 		path = append(path, at)
 	}
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
