@@ -938,9 +938,13 @@ func (e *Encounter) rosterIDs() []MemberID {
 type beatClass int
 
 const (
-	// subjectBeat concerns specific members: struck, missed, downed, moved,
-	// joined. subjects is the actor and targets (moved: the mover; joined:
-	// the joiner).
+	// subjectBeat concerns specific members: struck, missed, down, moved,
+	// joined — and a door, whose own state change is a member-adjacent
+	// fact too, not a table-wide one. subjects is the actor and targets
+	// (moved: the mover; joined: the joiner; a door beat passes none —
+	// see setDoorState's own doc, the shelf's one early adopter, which
+	// already carries a precomputed, perception-shaped audience of its
+	// own rather than one this function derives).
 	subjectBeat beatClass = iota
 	// bubbleBeat concerns a fight's clock: formed, turn-ended, transferred,
 	// dissolved. subjects is the bubble's current members.
