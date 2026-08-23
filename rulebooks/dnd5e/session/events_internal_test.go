@@ -127,6 +127,8 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 		{"bubble-formed with an empty order", EventFightStarted, `{"beat":"bubble-formed","order":[]}`},
 		{"bubble-dissolved with no cause", EventFightEnded, `{"beat":"bubble-dissolved"}`},
 		{"down with no member", EventDowned, `{"beat":"down"}`},
+		{"joined with no member", EventJoined, `{"beat":"joined"}`},
+		{"exited with no member", EventExited, `{"beat":"exited"}`},
 		{"struck with no actor", EventStruck, `{"beat":"struck","targets":["bob"],"attack":{"ref":"longsword"}}`},
 		{"struck with no targets", EventStruck, `{"beat":"struck","actor":"alice","attack":{"ref":"longsword"}}`},
 		{"struck with two targets", EventStruck, `{"beat":"struck","actor":"alice","targets":["bob","carol"],"attack":{"ref":"longsword"}}`},
@@ -155,4 +157,28 @@ func TestBodyForAcceptsACompleteBeat(t *testing.T) {
 		Attacker: "alice", Target: "bob", Roll: 15, Total: 20, Against: 12, Damage: 8,
 		Attack: AttackRef{Ref: "longsword", Name: "Longsword", DamageType: DamageSlashing},
 	}, body)
+}
+
+// TestJoinedAndExitedBodiesCarryTheMember pins bodyFor's newest arms
+// (rpg-project#260 slice 4, item 2): the encounter composition's join/exit
+// beats already carry "member" (encounter.go's Join and Exit), so this is
+// the same decode-from-payload shape every other typed body uses — no new
+// field on the wire, only a typed name for what was already there.
+func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		kind EventKind
+		want EventBody
+	}{
+		{"joined", `{"beat":"joined","member":"erin"}`, EventJoined, JoinedBody{Member: "erin"}},
+		{"exited", `{"beat":"exited","member":"erin"}`, EventExited, ExitedBody{Member: "erin"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+			require.Equal(t, tc.kind, kind)
+			require.Equal(t, tc.want, body)
+		})
+	}
 }
