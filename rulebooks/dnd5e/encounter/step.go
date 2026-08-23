@@ -110,7 +110,9 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step: %w", err)
 	}
 
-	audience := e.rosterIDs()
+	// subjectBeat, subject is the mover — v1 still sends everyone
+	// (audienceFor's doc).
+	audience := e.audienceFor(subjectBeat, in.Member)
 	at := uint64(e.clock.ToData().HighWater)
 
 	// The beat BEFORE the sight refresh: the step is the cause, anything

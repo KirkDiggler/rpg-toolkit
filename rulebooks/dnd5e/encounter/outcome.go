@@ -323,15 +323,12 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		return nil, fmt.Errorf("record: outcome payload: %w", err)
 	}
 
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		memberIDs = append(memberIDs, id)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
-
+	// subjectBeat, subjects are the actor and targets — v1 still sends
+	// everyone (audienceFor's doc).
+	subjects := append([]MemberID{in.Actor}, targets...)
 	appended, err := e.appendBeat(&record.AppendInput{
 		At:       uint64(e.clock.ToData().HighWater),
-		Audience: memberIDs,
+		Audience: e.audienceFor(subjectBeat, subjects...),
 		Tags:     map[string]string{"tag": "outcome"},
 		Payload:  beatBytes,
 	})
