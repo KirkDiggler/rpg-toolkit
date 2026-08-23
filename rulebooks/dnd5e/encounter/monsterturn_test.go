@@ -873,3 +873,130 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 	s.True(sawStruck, "the killing blow itself is on the record: %+v", beats)
 	s.True(sawDissolved, "and so is the fight it ended: %+v", beats)
 }
+
+// killEveryoneStandingDriver attacks the first standing, in-reach seen
+// member (Seen is sorted by ID — C8 — so this is deterministic), or closes
+// on the nearest standing seen member's own precomputed Path when none is
+// yet in reach, or passes when nobody standing remains. The shape a hostile
+// monster's own AI takes when a fresh target comes into reach mid-turn — no
+// caller-declared script, so the ONLY thing standing between "one attack"
+// and "attack everyone available" is this composition's own budget.
+type killEveryoneStandingDriver struct {
+	action core.Ref
+}
+
+func (d killEveryoneStandingDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
+	for _, sm := range view.Seen {
+		if sm.Standing && sm.InReach[d.action] {
+			return encounter.Attack{Target: sm.ID, Action: d.action}, nil
+		}
+	}
+	for _, sm := range view.Seen {
+		if sm.Standing && len(sm.Path) > 0 {
+			return encounter.Move{Path: sm.Path}, nil
+		}
+	}
+	return encounter.Pass{}, nil
+}
+
+// TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn is the RED
+// repro for the defect found writing rpg-project#257's two-player proof
+// (rpg-toolkit#1205): a driven monster that downs ONE of two players
+// WITHOUT deciding the fight (the other still stands) must still get
+// exactly the one attack plus speed its own turn is budgeted — never a
+// second, undocumented turn.
+//
+// alice stands adjacent to goblin (in reach at rest); bob stands two cells
+// off (one move short of reach). killEveryoneStandingDriver, given the
+// chance, attacks whoever it can reach — alice first (Seen's own ID sort),
+// then would close on and strike bob too if driveOneMonsterTurn's budget
+// ever restarted mid-turn.
+//
+// Root cause (traced, not guessed): [Encounter.noticeDown], on downing
+// alice — the fight not yet decided, bob still standing — calls
+// [Encounter.Transfer](alice, ClockWorld) to splice her out. Transfer's
+// ClockWorld case unconditionally calls driveIfStillRunning(bubble), whose
+// own doc names its actual job: "the departing member may have been
+// active; whoever inherited the slot is driven forward if they have no
+// player" (rpg-toolkit#1162). alice is NOT the active member here — goblin
+// is, mid-Strike, mid-driveOneMonsterTurn, budget not yet spent —
+// driveIfStillRunning does not check that, asks bubble.Active(), finds
+// goblin (nothing has ended ITS turn), and re-enters driveMonsterTurns: a
+// brand-new driveOneMonsterTurn(goblin) call, nested inside the still-
+// running outer one, with a completely fresh TurnBudget{AttacksLeft:1,
+// MovementFeet:speed}.
+//
+// killerStriker marks EVERY struck target down unconditionally (its own
+// doc), so bob's own strike — if the bug lets it happen — also decides the
+// fight and dissolves the bubble; asserted against directly rather than
+// inferred, so this test is unambiguous about what "the bug" produced.
+func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn() {
+	standing := &downList{}
+	driver := killEveryoneStandingDriver{action: testMeleeAction}
+	inner := &scriptedStriker{kind: encounter.OutcomeStruck}
+	striker := &killerStriker{scriptedStriker: inner, standing: standing}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: striker,
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 5}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 4, Y: 5},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{
+					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
+				},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// alice's own turn, first in the order (orderAsGiven preserves Members'
+	// literal order): nothing to drive, both other members are a player and
+	// a not-yet-active monster.
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	// bob's own turn ends and hands to goblin — driven, entirely inside
+	// this one call.
+	et, err := enc.EndTurn(&encounter.EndTurnInput{Member: bob})
+	s.Require().NoError(err, "a driven turn that downs a teammate without deciding the fight must not abort the caller's own EndTurn")
+
+	// The core claim: exactly one attack. Two IS the bug this test pins RED
+	// against.
+	s.Require().Len(inner.calls, 1,
+		"goblin's own turn is budgeted for exactly one attack — a second Strike call means a second, undocumented turn happened")
+	s.Equal(alice, inner.calls[0].Target, "the one attack goblin gets lands on alice — Seen's own ID sort puts her first")
+
+	// bob was never touched: not attacked, not marked down.
+	s.NotContains(standing.down, bob, "bob must never be struck by a turn budgeted for one attack against someone already in reach")
+
+	// Movement spent across the WHOLE driven-turn call — including any
+	// nested re-entry — must never exceed what ONE turn's own speed
+	// affords. A single well-behaved move (one cell, closing on alice's own
+	// adjacency needs none) costs at most 5 of goblin's 30 feet here; the
+	// bug's own nested budget would spend MORE by restarting movement
+	// alongside a second attack it should never have been offered.
+	var movedCells int
+	for _, b := range s.clockBeats(enc, alice) {
+		if b["beat"] == "moved" && b["member"] == string(goblin) {
+			movedCells++
+		}
+	}
+	s.LessOrEqual(movedCells*5, 30, "goblin's own turn must not spend more feet than its own 30-foot speed affords")
+
+	// The fight is still running, with bob still in it: alice's down did
+	// not decide it, and goblin's own turn — however many attacks it
+	// should have gotten — ends normally and hands back to whoever is next.
+	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: bob})
+	s.Require().NoError(err)
+	s.Equal(encounter.ClockTurn, clockOf.Kind, "bob is untouched and the fight he is in must still be running")
+	s.Equal(bob, et.Next, "goblin's own turn-ended wraps the two-member order (alice spliced) straight back to bob")
+}
