@@ -66,7 +66,7 @@ func cryptWorld(t fataler) *encounter.EncounterData {
 		occluders = append(occluders, spatial.Position{X: 5, Y: float64(y)})
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "crypt", Width: 10, Height: 10, Props: occludingProps(occluders...)},

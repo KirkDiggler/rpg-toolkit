@@ -117,6 +117,22 @@ var omitted = map[string]string{
 	"encounter.Member.Region":        "a region id; the seam reports the cell instead",
 	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
 
+	// SpeedFeet, SightFeet, Actions and Targeting (rpg-project#254) are a
+	// member's static facts for the ONE consumer that reads them: a
+	// TurnDriver, through session.MonsterView — already fully projected
+	// there (see projectMonsterView). A roster listing is a different
+	// question ("who is here, and where"), asked by every caller of Join,
+	// Spawn, Where and View alike, and stuffing four fields only a turn's
+	// own driver ever reads into every one of those would be noise for
+	// clients that never drive a turn. The data is carried; this is a
+	// choice about WHICH projection carries it.
+	"encounter.Member.SpeedFeet": "a TurnDriver-facing fact; MonsterView.Budget.MovementFeet is the turn's " +
+		"own derived answer, and a raw speed a roster listing has no use for",
+	"encounter.Member.SightFeet": "a TurnDriver-facing fact; it gates which members even appear in " +
+		"MonsterView.Seen, and a roster listing has no use for the raw range itself",
+	"encounter.Member.Actions":   "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Actions",
+	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
+
 	// A doorway's endpoints kept their meaning and lost their qualifier: on one
 	// map there is no second pair of From/To fields naming rooms to
 	// distinguish these from.

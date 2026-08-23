@@ -224,7 +224,7 @@ func (s *TurnTestSuite) TestEndingSomebodyElsesTurnIsRefused() {
 // rejecting as an unrecognised outcome.
 type pointerPass struct{}
 
-func (pointerPass) Act(string) (session.TurnOutcome, error) {
+func (pointerPass) Act(session.MonsterView) (session.TurnIntent, error) {
 	return &session.Pass{}, nil
 }
 

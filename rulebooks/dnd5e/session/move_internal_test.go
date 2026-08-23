@@ -41,7 +41,7 @@ func (walkEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.Member
 // regardless of which internal verb's test needs an encounter built.
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
 }
 
@@ -52,7 +52,7 @@ func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
 func walkWorld(t *testing.T, family spatial.GridShape) *encounter.Encounter {
 	t.Helper()
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: sightSeam{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: &sightSeam{},
 		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: canvasFor(family), Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 4, Height: 4, Grid: family, Origin: spatial.Position{X: 30, Y: 40}},

@@ -267,8 +267,13 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 }
 
 // loadWorld fetches and reconstitutes the encounter a session points at.
+//
+// A construction-only Striker (rpg-project#254), exactly as StartSession's
+// own validation load uses: every caller reaching here is a READ verb (open,
+// and View directly) that never drives a turn, so a driven turn landing here
+// at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
-	enc, _, _, err := m.loadWorldWithBaseline(ctx, data)
+	enc, _, _, err := m.loadWorldWithBaseline(ctx, data, encounter.RefusingStriker{}, &sightSeam{})
 	return enc, err
 }
 
@@ -286,8 +291,16 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // ([refuseIfDown]). Built once per verb and handed back rather than rebuilt at
 // each use, so there is exactly one answer to "which sheets is this call
 // reading" for the whole call.
+//
+// sight is PRE-ALLOCATED BY THE CALLER, empty, and populated here from the
+// blob this function fetches — the same chicken-and-egg [strikerSeam] solves
+// for Striker, one capability over (rpg-project#254). A write verb's caller
+// keeps its own reference to the same pointer afterward, because [place]
+// needs to add a member THIS SAME call is about to place before that
+// member's own Join asks Sight about it; a read verb's caller passes a
+// throwaway that nothing reaches again.
 func (m *Manager) loadWorldWithBaseline(
-	ctx context.Context, data *SessionData,
+	ctx context.Context, data *SessionData, striker encounter.Striker, sight *sightSeam,
 ) (*encounter.Encounter, uint64, encounter.Standing, error) {
 	encID := data.Encounter
 
@@ -303,13 +316,19 @@ func (m *Manager) loadWorldWithBaseline(
 			"%q: GetEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
 
+	sight.members = append(sight.members, world.Members...)
+
 	standing := m.standingFor(ctx, data)
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
 		Standing:   standing,
-		Sight:      sightSeam{},
+		Sight:      sight,
 		TurnDriver: m.turnDriver,
+		// The caller says which: a real one bound to a write verb's own
+		// scope, or RefusingStriker{} for a read that must never drive a
+		// turn. See [Manager.loadWorld] and [Manager.openForWrite].
+		Striker: striker,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot

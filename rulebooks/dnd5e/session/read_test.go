@@ -49,7 +49,7 @@ func (s *ReadTestSuite) startWith(world *encounter.EncounterData) {
 // hexWorld is a two-room hex field with a doorway, occluders and a wall — rich
 // enough that a projection dropping any one field is visible.
 func hexWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Rooms: []encounter.RoomInput{
@@ -299,7 +299,7 @@ func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
 // trimmedWorld builds a world whose story log has already aged past its
 // retention window, so a resume from sequence 1 can no longer be honoured.
 func trimmedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
 		Members: []encounter.MemberInput{
@@ -349,7 +349,7 @@ func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
 // for the same reason TestGridProjectionCoversBothFamilies does: a projection
 // hard-coded to pointy would pass every fixture in this file.
 func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
-	flat, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	flat, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesAreFlatTop()},
 			Rooms: []encounter.RoomInput{{ID: "cell", Width: 4, Height: 4, Grid: spatial.GridShapeHex}},

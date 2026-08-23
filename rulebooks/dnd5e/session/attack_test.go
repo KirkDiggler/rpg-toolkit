@@ -108,7 +108,7 @@ const duelAC = 12
 // duel delivered to a real stream rather than discarded. One world, so a
 // fixture drift cannot make the two suites disagree about what was swung at.
 func duelWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
@@ -266,7 +266,7 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 
 	s.characters = newFakeCharacters(alice, bob, carol)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
@@ -509,7 +509,7 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
@@ -583,7 +583,7 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
@@ -616,7 +616,7 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 // of how far apart they stand, which is what lets this fixture isolate
 // reach from perception.
 func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
@@ -705,7 +705,7 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
@@ -769,7 +769,7 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 	})
 	s.Require().NoError(err)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
@@ -815,7 +815,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 			Position: spatial.Position{X: float64(i + 1), Y: 1},
 		})
 	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:  encEveryoneStanding{},
 		Field:     encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},

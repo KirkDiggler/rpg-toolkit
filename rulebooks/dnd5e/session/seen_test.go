@@ -85,7 +85,7 @@ func squareSeamWalls(atX, rows, doorRow int) []spatial.Boundary {
 // along the shared edge. skeleton-1 stands well inside hall at local (3,3) —
 // absolute (9,3) — where nothing but the doorway can put it in sight.
 func skeletonBehindADoor(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{},
 		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},

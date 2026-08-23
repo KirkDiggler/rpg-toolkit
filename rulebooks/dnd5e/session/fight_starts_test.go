@@ -107,7 +107,7 @@ func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInp
 	}
 	members = append(members, extra...)
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
 			{ID: "hall", Width: 8, Height: 8, Props: occludingProps(occluders...)},

@@ -86,8 +86,14 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 		Data:       *in.World,
 		Initiative: m.initiative,
 		Standing:   m.standingFor(ctx, nil),
-		Sight:      sightSeam{},
+		Sight:      &sightSeam{members: append([]encounter.MemberData(nil), in.World.Members...)},
 		TurnDriver: m.turnDriver,
+		// A construction-only Striker (rpg-project#254), the same reason
+		// the capability just above it is built over no session record: no
+		// session exists yet, and this load is validation only — its
+		// result is discarded, and a driven turn reaching it would be a
+		// bug in this package rather than anything a caller did.
+		Striker: encounter.RefusingStriker{},
 	}); err != nil {
 		// The reason as TEXT, our sentinel as the only thing to match on. A
 		// blob that will not load fails several modules deep, and every one of

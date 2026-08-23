@@ -239,12 +239,13 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
+	world := scope.enc.ToData()
 	out, err := resolution.Resolve(ctx, &resolution.Input{
-		World:        scope.enc.ToData(),
+		World:        world,
 		Participants: cast,
 		Initiative:   m.initiative,
 		Standing:     scope.standing,
-		Sight:        sightSeam{},
+		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   m.turnDriver,
 		Cost:         price.cost,
 		Machine: resolution.NewStrike(&resolution.StrikeInput{

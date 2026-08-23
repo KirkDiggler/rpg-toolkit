@@ -100,7 +100,7 @@ func aFight(
 		t.Fatalf("building manager: %v", err)
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Sight: encEveryoneSees{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
