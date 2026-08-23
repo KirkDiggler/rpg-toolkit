@@ -257,6 +257,12 @@ func (s *EventsTestSuite) TestDepartingMemberHearsTheirOwnExit() {
 // joining and leaving, and "movement" covers both a step and a doorway
 // crossing. Switching on the tag would collapse pairs of opposite events into
 // one kind, and a client cannot narrate an arrival and a departure the same way.
+//
+// It also pins JoinedBody/ExitedBody (rpg-project#260 slice 4): every
+// recipient's Join event carries JoinedBody.Member == the joiner, and every
+// recipient's Exit event carries ExitedBody.Member == the leaver — not just
+// the actor's own copy, since the beat is fanned out to the whole audience by
+// one producer (projectEntry) and live/catch-up must agree.
 func (s *EventsTestSuite) TestKindsComeFromTheBeatNotTheTag() {
 	s.start()
 	ctx := context.Background()
@@ -278,12 +284,32 @@ func (s *EventsTestSuite) TestKindsComeFromTheBeatNotTheTag() {
 	s.NotContains(joined, session.EventExited,
 		"joining and leaving share a tag and must not share a kind")
 
+	s.Require().NotEmpty(s.stream.published, "the join beat must have fanned out to someone")
+	for _, e := range s.stream.published {
+		if e.Kind != session.EventJoined {
+			continue
+		}
+		body, ok := e.Body.(session.JoinedBody)
+		s.Require().True(ok, "recipient %s: EventJoined must carry JoinedBody", e.Recipient)
+		s.Equal("erin", body.Member, "recipient %s: JoinedBody names the joiner", e.Recipient)
+	}
+
 	s.stream.published = nil
 	_, err = s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "erin"})
 	s.Require().NoError(err)
 	exited := s.kinds()
 	s.Contains(exited, session.EventExited)
 	s.NotContains(exited, session.EventJoined)
+
+	s.Require().NotEmpty(s.stream.published, "the exit beat must have fanned out to someone")
+	for _, e := range s.stream.published {
+		if e.Kind != session.EventExited {
+			continue
+		}
+		body, ok := e.Body.(session.ExitedBody)
+		s.Require().True(ok, "recipient %s: EventExited must carry ExitedBody", e.Recipient)
+		s.Equal("erin", body.Member, "recipient %s: ExitedBody names the leaver", e.Recipient)
+	}
 }
 
 func (s *EventsTestSuite) kinds() []session.EventKind {
