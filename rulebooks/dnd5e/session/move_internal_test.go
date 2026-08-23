@@ -85,12 +85,18 @@ func TestTheAdjacencyGridIsSpanIndependent(t *testing.T) {
 	grid, err := gridOf(walkWorld(t))
 	require.NoError(t, err)
 
-	// Far outside adjacencySpan, in both regions and in the void between them.
-	require.True(t, grid.IsAdjacent(spatial.Position{X: 31, Y: 41}, spatial.Position{X: 32, Y: 40}),
-		"a step along the other axis, deep inside the hall")
-	require.True(t, grid.IsAdjacent(spatial.Position{X: 64, Y: 47}, spatial.Position{X: 65, Y: 47}),
+	// Far outside adjacencySpan, in both regions. The grid speaks AXIAL, so
+	// the authored [col,row] pairs the fixture paints are converted the one
+	// way everything else is (the composition's HexCellAt) before they are
+	// asked about — two cells on one authored row are always neighbours.
+	at := func(col, row int) spatial.Position {
+		return encounter.HexCellAt(encounter.HexesArePointyTop(), col, row)
+	}
+	require.True(t, grid.IsAdjacent(at(31, 41), at(32, 41)),
+		"a step east deep inside the hall")
+	require.True(t, grid.IsAdjacent(at(64, 47), at(65, 47)),
 		"and one deep inside the annex, whose span is three times the hall's")
-	require.False(t, grid.IsAdjacent(spatial.Position{X: 31, Y: 41}, spatial.Position{X: 33, Y: 41}),
+	require.False(t, grid.IsAdjacent(at(31, 41), at(33, 41)),
 		"two cells apart is still two cells apart")
 }
 
