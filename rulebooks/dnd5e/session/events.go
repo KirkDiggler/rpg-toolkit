@@ -275,6 +275,22 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return MovedBody{Member: p.Member, To: p.Position}
+	case EventJoined:
+		var p struct {
+			Member string `json:"member"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
+			return nil
+		}
+		return JoinedBody{Member: p.Member}
+	case EventExited:
+		var p struct {
+			Member string `json:"member"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Member == "" {
+			return nil
+		}
+		return ExitedBody{Member: p.Member}
 	case EventTurnEnded:
 		var p struct {
 			Member string `json:"member"`
@@ -313,8 +329,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		}
 		return DownedBody{Member: p.Member}
 	default:
-		// EventJoined, EventExited, EventEnded, EventSceneOpened, EventTick:
-		// no body member exists for these — see EventBody's own doc.
+		// EventEnded, EventSceneOpened, EventTick: no body member exists for
+		// these — see EventBody's own doc.
 		return nil
 	}
 }

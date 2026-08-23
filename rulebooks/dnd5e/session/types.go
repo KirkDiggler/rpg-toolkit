@@ -587,15 +587,16 @@ type Event struct {
 	// Body is the beat, typed: a sealed interface with one struct per kind
 	// that has one, decoded from the SAME payload this package already
 	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil for
-	// a kind with no typed body member (JOINED, EXITED, ENDED,
-	// SCENE_OPENED, TICK, UNKNOWN) and for a beat this build's decoder does
-	// not recognise — see decodeBeat.
+	// a kind with no typed body member (ENDED, SCENE_OPENED, TICK, UNKNOWN)
+	// and for a beat this build's decoder does not recognise — see
+	// decodeBeat.
 	Body EventBody `json:"-"`
 }
 
 // EventBody is the beat, typed — a sealed interface with one struct per
 // kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
-// MissedBody, FightStartedBody, FightEndedBody, MovedBody. Sealed the way
+// MissedBody, FightStartedBody, FightEndedBody, MovedBody, JoinedBody,
+// ExitedBody. Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
 // this package would be indistinguishable from these to anyone reading the
@@ -696,6 +697,24 @@ type MovedBody struct {
 }
 
 func (MovedBody) isEventBody() {}
+
+// JoinedBody is EventJoined's typed body: who entered the encounter. The
+// same member the beat's audience already includes (Join's own memberIDs),
+// carried here so a client rendering the beat does not have to cross-reference
+// Event.Recipient to learn who arrived.
+type JoinedBody struct {
+	Member string `json:"member"`
+}
+
+func (JoinedBody) isEventBody() {}
+
+// ExitedBody is EventExited's typed body: who left the encounter. See
+// JoinedBody's own doc — the same reasoning, the opposite beat.
+type ExitedBody struct {
+	Member string `json:"member"`
+}
+
+func (ExitedBody) isEventBody() {}
 
 // SaveReport names which aggregates were persisted by a verb and which were
 // not.
