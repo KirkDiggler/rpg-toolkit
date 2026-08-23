@@ -50,13 +50,15 @@ var (
 	westOrigin = spatial.Position{X: 20, Y: 10}
 	eastOrigin = spatial.Position{X: 26, Y: 10}
 
-	westThreshold = spatial.Position{X: 25, Y: 13}
-	eastThreshold = spatial.Position{X: 26, Y: 13}
+	// The verbs speak absolute AXIAL cells, so the authored pairs are
+	// converted through the one conversion rather than written out.
+	westThreshold = cellAt(25, 13)
+	eastThreshold = cellAt(26, 13)
 
 	// Just inside the east chamber and off the doorway's row: the wall is
 	// between it and the goblin's cell, which is the only thing in this fixture
 	// that can hide anybody.
-	eastCorner = spatial.Position{X: 27, Y: 14}
+	eastCorner = cellAt(27, 14)
 )
 
 // pursuitSeamWall is the west chamber's east wall, open at the doorway row.
@@ -64,21 +66,17 @@ var (
 // nothing for anybody to hide behind — which is the honest consequence of the
 // field being one canvas (rpg-toolkit#1106), and the reason this fixture has to
 // say where its walls are instead of relying on a room boundary to imply them.
-func pursuitSeamWall() []spatial.Boundary { return squareSeamWall(5, 6, 3) }
+func pursuitSeamWall() []spatial.Boundary { return seamWallRows(25, 10, 6, 13) }
 
 func (s *PursuitSuite) SetupTest() {
 	field := encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: westID, Width: 6, Height: 6, Origin: westOrigin,
-				Boundaries: pursuitSeamWall()},
-			{ID: eastID, Width: 6, Height: 6, Origin: eastOrigin},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion(westID, int(westOrigin.X), int(westOrigin.Y), 6, 6),
+			rectRegion(eastID, int(eastOrigin.X), int(eastOrigin.Y), 6, 6),
 		},
-		Connections: []encounter.ConnectionInput{{
-			ID: gateway, From: westID, To: eastID,
-			FromPosition: spatial.Position{X: 5, Y: 3},
-			ToPosition:   spatial.Position{X: 0, Y: 3},
-		}},
+		Walls: pursuitSeamWall(),
+		Doors: []encounter.DoorInput{openDoorway(gateway, 25, 13, 26, 13)},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -87,11 +85,9 @@ func (s *PursuitSuite) SetupTest() {
 		Members: []encounter.MemberInput{
 			// Alice stands at the threshold; the goblin is across the room
 			// with a clear line to her, so first light makes them mutual.
-			{ID: hunted, Kind: encounter.KindPlayer, Room: westID,
-				Position: spatial.Position{X: 5, Y: 3}},
-			{ID: hunter, Kind: encounter.KindMonster, Room: westID,
-				Position: spatial.Position{X: 1, Y: 3},
-				Decider:  &pursuitDecider{doorways: doorwaysFrom(field), target: hunted}},
+			{ID: hunted, Kind: encounter.KindPlayer, Position: spatial.Position{X: 25, Y: 13}},
+			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13},
+				Decider: &pursuitDecider{doorways: doorwaysFrom(field), target: hunted}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -133,7 +129,8 @@ func (s *PursuitSuite) TestTheHuntCrossesTheDoorwayWithoutKnowingItIsOne() {
 	// She steps through the opening — one step, to the cell on the other side.
 	out, err := s.enc.Step(&encounter.StepInput{Member: hunted, To: eastThreshold})
 	s.Require().NoError(err)
-	s.Equal(gateway, out.Crossing, "the doorway is named, and decides nothing")
+	s.Require().Len(out.Doors, 1, "the door is named, and decides nothing")
+	s.Equal(encounter.DoorID(gateway), out.Doors[0].ID)
 
 	status, at = s.sightOf(hunter, hunted)
 	s.Require().Equal("current", status, "standing in the opening, she is still in plain sight")
@@ -175,7 +172,7 @@ func (s *PursuitSuite) TestAStepIntoTheVoidIsRefusedInSilence() {
 	s.Require().NoError(err, "an impossible step is not an error")
 	s.True(decider.called, "and the refusal happened in stepTo, not by never being asked")
 	s.Empty(out.MonsterMoves)
-	s.Equal(spatial.Position{X: 21, Y: 13}, s.whereIs(hunter), "so nobody moved")
+	s.Equal(cellAt(21, 13), s.whereIs(hunter), "so nobody moved")
 }
 
 // TestAStepThroughTheWallIsRefused is the case coordinates alone cannot rule
@@ -188,14 +185,14 @@ func (s *PursuitSuite) TestAStepIntoTheVoidIsRefusedInSilence() {
 func (s *PursuitSuite) TestAStepThroughTheWallIsRefused() {
 	// The east chamber's cell one row ABOVE the doorway: adjacent to the west
 	// chamber's own (25,12) in absolute space, with the seam wall between them.
-	decider := &onceStepDecider{to: spatial.Position{X: 26, Y: 12}}
+	decider := &onceStepDecider{to: cellAt(26, 12)}
 	s.freeRoamWith(decider)
 
 	out, err := s.enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err, "walking into a wall is not an error either")
 	s.True(decider.called, "and it really was asked")
 	s.Empty(out.MonsterMoves, "the wall refused the step")
-	s.Equal(spatial.Position{X: 21, Y: 13}, s.whereIs(hunter), "so the goblin stayed put")
+	s.Equal(cellAt(21, 13), s.whereIs(hunter), "so the goblin stayed put")
 }
 
 // freeRoamWith puts the hunter back on the world clock with the given decider,

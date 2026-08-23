@@ -54,25 +54,21 @@ func TestTombWatch(t *testing.T) {
 	// this scene used to have: spatial v0.9.1 leans around a lone pillar
 	// (see testwalls_test.go), and this crypt needs a sightline that really
 	// cannot get through.
-	goblinPatrol := &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}}
+	goblinPatrol := &patrolDecider{positions: []spatial.Position{cellAt(7, 10), cellAt(6, 10)}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: cryptRoom, Width: 12, Height: 12,
-				Props: wallRow(6, 5, 7),
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: bella, Kind: encounter.KindPlayer, Room: cryptRoom, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: cryptRoom,
-				Position: spatial.Position{X: 6, Y: 10}, Decider: goblinPatrol},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bella, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}, Decider: goblinPatrol},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
-				Room: cryptRoom, Position: spatial.Position{X: 11, Y: 11}}},
+				Position: spatial.Position{X: 11, Y: 11}}},
 			{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}},
 		},
 	})
@@ -93,35 +89,35 @@ func TestTombWatch(t *testing.T) {
 	// ---- Beat 2: the watch -----------------------------------------
 	// Alice advances to (2,6) to watch; the world moves on her action:
 	// the pump ticks and the goblin takes its first patrol step to (7,10).
-	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 2, Y: 6}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(2, 6)})
 	require.NoError(t, err, "beat 2: alice advances")
 	pumpOut, err := enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 2: her activity pumps the clock")
 	require.Equal(t, uint64(1), pumpOut.Tick, "beat 2: the exploration clock ticks once")
 	_, p := seen(t, enc, alice, goblin)
-	require.Equal(t, 7.0, p.X, "beat 2: alice's view tracks the patrol step to (7,10)")
+	require.Equal(t, cellAt(7, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 2: alice's view tracks the patrol step to (7,10)")
 
 	// A second pump brings the goblin back to (6,10) — directly behind
 	// the wall, setting up the ghost.
 	_, err = enc.Pump(&encounter.PumpInput{})
 	require.NoError(t, err, "beat 2: the watch continues")
 	_, p = seen(t, enc, alice, goblin)
-	require.Equal(t, 6.0, p.X, "beat 2: the goblin returns to (6,10), still in alice's sight from (2,6)")
+	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 2: the goblin returns to (6,10), still in alice's sight from (2,6)")
 
 	// ---- Beat 3: the ghost forms -----------------------------------
 	// Alice slips to (6,2): the wall now sits square on the
 	// vertical line between her and the goblin at (6,10). Both lose
 	// sight of each other — and both keep a ghost at last-seen.
-	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 6, Y: 2}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(6, 2)})
 	require.NoError(t, err, "beat 3: alice slips behind the wall")
 
 	st, p = seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Held, st, "beat 3: alice's sight of the goblin fades — the ghost forms")
-	require.Equal(t, spatial.Position{X: 6, Y: 10}, spatial.Position{X: p.X, Y: p.Y},
+	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y},
 		"beat 3: her ghost holds the goblin at last-seen (6,10)")
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 3: the goblin loses her too — symmetric")
-	require.Equal(t, 2.0, p.X, "beat 3: its ghost of alice is at (2,6) — it never saw her arrive at (6,2)")
+	require.Equal(t, cellAt(2, 6), spatial.Position{X: p.X, Y: p.Y}, "beat 3: its ghost of alice is at (2,6) — it never saw her arrive at (6,2)")
 	st, _ = seen(t, enc, bella, goblin)
 	require.Equal(t, intel.Current, st, "beat 3: bella, off the blocked file, still sees the goblin plainly")
 
@@ -134,14 +130,14 @@ func TestTombWatch(t *testing.T) {
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
-			goblin: &patrolDecider{positions: []spatial.Position{{X: 7, Y: 10}, {X: 6, Y: 10}}},
+			goblin: &patrolDecider{positions: []spatial.Position{cellAt(7, 10), cellAt(6, 10)}},
 		}})
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
 	enc = enc2 // the reload IS the encounter now
 
 	st, p = seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Held, st, "beat 4: the ghost survived the reload")
-	require.Equal(t, 10.0, p.Y, "beat 4: still at last-seen (6,10) — loading never re-derives sight")
+	require.Equal(t, cellAt(6, 10), spatial.Position{X: p.X, Y: p.Y}, "beat 4: still at last-seen (6,10) — loading never re-derives sight")
 	st, _ = seen(t, enc, bella, goblin)
 	require.Equal(t, intel.Current, st, "beat 4: bella's live sight survived too")
 
@@ -150,7 +146,7 @@ func TestTombWatch(t *testing.T) {
 	joinOut, err := enc.Join(&encounter.JoinInput{
 		Member: cormac,
 		Kind:   encounter.KindPlayer,
-		Cell:   spatial.Position{X: 10, Y: 2},
+		Cell:   cellAt(10, 2),
 	})
 	require.NoError(t, err, "beat 5: cormac joins the delve")
 	require.NotZero(t, joinOut.Seq, "beat 5: his arrival is a story beat")
@@ -170,14 +166,14 @@ func TestTombWatch(t *testing.T) {
 	// the campaign holds for her return.
 	exitOut, err := enc.Exit(&encounter.ExitInput{Member: bella})
 	require.NoError(t, err, "beat 6: bella departs")
-	require.Equal(t, spatial.Position{X: 3, Y: 2},
+	require.Equal(t, cellAt(3, 2),
 		spatial.Position{X: exitOut.Outcome.Position.X, Y: exitOut.Outcome.Position.Y},
 		"beat 6: her carry-forward records where she left")
 	require.NotEmpty(t, exitOut.Carry, "beat 6: and what she believed — her holdings travel with her")
 
 	st, p = seen(t, enc, goblin, bella)
 	require.Equal(t, intel.Held, st, "beat 6: the goblin's sight of bella fades to a ghost")
-	require.Equal(t, 3.0, p.X, "beat 6: at the door where it last saw her")
+	require.Equal(t, cellAt(3, 2), spatial.Position{X: p.X, Y: p.Y}, "beat 6: at the door where it last saw her")
 
 	story, err := enc.Story(&encounter.StoryInput{Audience: bella})
 	require.NoError(t, err, "beat 6: the departed can still read the story (everMembers)")
@@ -187,7 +183,7 @@ func TestTombWatch(t *testing.T) {
 	// Alice crosses the crypt and finds the stairs down. The declared
 	// ending fires; the encounter closes with the Outcome the campaign
 	// consumes.
-	moveOut, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 11, Y: 11}})
+	moveOut, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(11, 11)})
 	require.NoError(t, err, "beat 7: alice reaches the stairs")
 	require.NotNil(t, moveOut.Outcome, "beat 7: the ending fires in the Move's own output")
 	require.Equal(t, endingStairs, moveOut.Outcome.Ending)
@@ -200,7 +196,7 @@ func TestTombWatch(t *testing.T) {
 
 	for name, verb := range map[string]func() error{
 		"Move": func() error {
-			_, e := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
+			_, e := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 1)})
 			return e
 		},
 		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
@@ -208,7 +204,7 @@ func TestTombWatch(t *testing.T) {
 			_, e := enc.Join(&encounter.JoinInput{
 				Member: "late",
 				Kind:   encounter.KindPlayer,
-				Cell:   spatial.Position{X: 1, Y: 1},
+				Cell:   cellAt(1, 1),
 			})
 			return e
 		},
@@ -264,17 +260,14 @@ func TestTombWatch(t *testing.T) {
 			kind = encounter.KindMonster
 		}
 		sequelMembers = append(sequelMembers, encounter.MemberInput{
-			ID: mo.ID, Kind: kind, Room: mo.Region, Position: mo.Position,
+			ID: mo.ID, Kind: kind, Position: mo.Position,
 		})
 	}
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: cryptRoom, Width: 12, Height: 12,
-				Props: wallRow(6, 5, 7),
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),
 		},
 		Members: sequelMembers,
 		Endings: []encounter.EndingInput{{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}}},

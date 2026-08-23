@@ -33,10 +33,8 @@ func namesScene(members []encounter.MemberInput) (*encounter.Encounter, error) {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: namesRoom, Width: 10, Height: 10,
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(namesRoom, 0, 0, 10, 10)},
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -48,8 +46,8 @@ func namesScene(members []encounter.MemberInput) (*encounter.Encounter, error) {
 // authored with into the read shape.
 func (s *NamesTestSuite) TestSetupMemberCarriesName() {
 	enc, err := namesScene([]encounter.MemberInput{
-		{ID: alice, Kind: encounter.KindPlayer, Name: "Aldric", Room: namesRoom, Position: spatial.Position{X: 1, Y: 1}},
-		{ID: goblin, Kind: encounter.KindMonster, Name: "skeleton-1", Room: namesRoom, Position: spatial.Position{X: 5, Y: 5}},
+		{ID: alice, Kind: encounter.KindPlayer, Name: "Aldric", Position: spatial.Position{X: 1, Y: 1}},
+		{ID: goblin, Kind: encounter.KindMonster, Name: "skeleton-1", Position: spatial.Position{X: 5, Y: 5}},
 	})
 	s.Require().NoError(err)
 
@@ -71,7 +69,7 @@ func (s *NamesTestSuite) TestSetupMemberCarriesName() {
 // business, not this composition's to invent or demand.
 func (s *NamesTestSuite) TestSetupMemberNameIsOptional() {
 	enc, err := namesScene([]encounter.MemberInput{
-		{ID: alice, Kind: encounter.KindPlayer, Room: namesRoom, Position: spatial.Position{X: 1, Y: 1}},
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 	})
 	s.Require().NoError(err)
 
@@ -86,7 +84,7 @@ func (s *NamesTestSuite) TestSetupMemberNameIsOptional() {
 // into the roster exactly as an authored member's name does.
 func (s *NamesTestSuite) TestJoinCarriesNameForward() {
 	enc, err := namesScene([]encounter.MemberInput{
-		{ID: goblin, Kind: encounter.KindMonster, Name: "skeleton-1", Room: namesRoom, Position: spatial.Position{X: 5, Y: 5}},
+		{ID: goblin, Kind: encounter.KindMonster, Name: "skeleton-1", Position: spatial.Position{X: 5, Y: 5}},
 	})
 	s.Require().NoError(err)
 
@@ -112,8 +110,8 @@ func (s *NamesTestSuite) TestJoinCarriesNameForward() {
 // golden JSON already holds every other member field to.
 func (s *NamesTestSuite) TestNameRoundTripsThroughPersistence() {
 	enc, err := namesScene([]encounter.MemberInput{
-		{ID: alice, Kind: encounter.KindPlayer, Name: "Aldric", Room: namesRoom, Position: spatial.Position{X: 1, Y: 1}},
-		{ID: goblin, Kind: encounter.KindMonster, Name: "skeleton-1", Room: namesRoom, Position: spatial.Position{X: 5, Y: 5}},
+		{ID: alice, Kind: encounter.KindPlayer, Name: "Aldric", Position: spatial.Position{X: 1, Y: 1}},
+		{ID: goblin, Kind: encounter.KindMonster, Name: "skeleton-1", Position: spatial.Position{X: 5, Y: 5}},
 	})
 	s.Require().NoError(err)
 
@@ -148,17 +146,21 @@ func TestDistanceSuite(t *testing.T) {
 	suite.Run(t, new(DistanceTestSuite))
 }
 
-// TestDistanceOnSquareIsChebyshev pins a known square-grid distance: two
-// cells one diagonal step apart are distance 1, matching SquareGrid's own
-// Chebyshev metric — the reason a melee weapon's reach is meaningful as "1"
-// on this grid family at all.
-func (s *DistanceTestSuite) TestDistanceOnSquareIsChebyshev() {
+// TestDistanceIsTheGridsOwn pins a known hex distance: the same cube metric
+// SightFeet and reach are measured in, exposed so a host can gate a weapon's
+// reach without re-deriving hex math from Atlas data. Two cells one hex step
+// apart are distance 1 whichever of the six ways they touch, and a straight
+// run of four authored columns on one row is four.
+func (s *DistanceTestSuite) TestDistanceIsTheGridsOwn() {
 	enc, err := namesScene([]encounter.MemberInput{
-		{ID: alice, Kind: encounter.KindPlayer, Room: namesRoom, Position: spatial.Position{X: 4, Y: 4}},
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 4}},
 	})
 	s.Require().NoError(err)
 
-	s.Equal(1.0, enc.Distance(spatial.Position{X: 4, Y: 4}, spatial.Position{X: 5, Y: 5}))
-	s.Equal(4.0, enc.Distance(spatial.Position{X: 1, Y: 1}, spatial.Position{X: 5, Y: 1}))
-	s.Equal(0.0, enc.Distance(spatial.Position{X: 4, Y: 4}, spatial.Position{X: 4, Y: 4}))
+	s.Equal(1.0, enc.Distance(cellAt(4, 4), cellAt(5, 4)), "east")
+	s.Equal(1.0, enc.Distance(cellAt(4, 4), cellAt(4, 5)), "south-west under odd-r, for an even row")
+	s.Equal(2.0, enc.Distance(spatial.Position{X: 4, Y: 4}, spatial.Position{X: 5, Y: 5}),
+		"an axial (+1,+1) is NOT a neighbour: that is the diagonal Chebyshev gets wrong")
+	s.Equal(4.0, enc.Distance(cellAt(1, 1), cellAt(5, 1)))
+	s.Equal(0.0, enc.Distance(cellAt(4, 4), cellAt(4, 4)))
 }

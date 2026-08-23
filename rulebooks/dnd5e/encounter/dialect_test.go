@@ -61,13 +61,13 @@ var dialectOrigin = spatial.Position{X: 30, Y: 10}
 func (s *DialectSuite) closedBlob() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "hall", Width: 8, Height: 8, Origin: dialectOrigin},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{
+			rectRegion("hall", int(dialectOrigin.X), int(dialectOrigin.Y), 8, 8),
 		}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 3}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 5}},
-			{ID: "carl", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 4, Y: 4}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: dialectOrigin.Add(spatial.Position{X: 2, Y: 3})},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: dialectOrigin.Add(spatial.Position{X: 2, Y: 5})},
+			{ID: "carl", Kind: encounter.KindPlayer, Position: dialectOrigin.Add(spatial.Position{X: 4, Y: 4})},
 		},
 		Endings:   []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,

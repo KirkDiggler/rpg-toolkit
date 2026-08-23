@@ -67,9 +67,17 @@ const (
 func propTrue() *bool  { t := true; return &t }
 func propFalse() *bool { f := false; return &f }
 
-// propAbs is a chamber-local cell in the dungeon's absolute frame.
-func propAbs(x, y float64) spatial.Position {
+// propSeat is a chamber-local cell as AUTHORED — the anchor plus the pair,
+// in offset columns and rows.
+func propSeat(x, y float64) spatial.Position {
 	return spatial.Position{X: x, Y: y}.Add(propsOrigin)
+}
+
+// propAbs is the same cell in the dungeon's absolute AXIAL frame, which is
+// what every verb takes and the map reports.
+func propAbs(x, y float64) spatial.Position {
+	seat := propSeat(x, y)
+	return cellAt(int(seat.X), int(seat.Y))
 }
 
 // chamber is one room with a three-cell run of the same prop standing across
@@ -80,7 +88,7 @@ func (s *PropsSuite) chamber(ref string, blocksMovement, blocksSight *bool) *enc
 	for y := propRunTop; y < propRunTop+propRunLen; y++ {
 		props = append(props, encounter.PropInput{
 			Ref:               ref,
-			At:                spatial.Position{X: propAtX, Y: float64(y)},
+			At:                propSeat(propAtX, float64(y)),
 			BlocksMovement:    blocksMovement,
 			BlocksLineOfSight: blocksSight,
 		})
@@ -89,14 +97,13 @@ func (s *PropsSuite) chamber(ref string, blocksMovement, blocksSight *bool) *enc
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: "crypt", Width: 12, Height: 8, Origin: propsOrigin, Props: props,
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
+			Props:   props,
 		},
 		Members: []encounter.MemberInput{
-			{ID: delver, Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 2, Y: 4}},
-			{ID: beyond, Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 8, Y: 4}},
+			{ID: delver, Kind: encounter.KindPlayer, Position: propSeat(2, 4)},
+			{ID: beyond, Kind: encounter.KindPlayer, Position: propSeat(8, 4)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -177,8 +184,7 @@ func (s *PropsSuite) TestCandlesAreThereAndInNobodysWay() {
 
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
-	s.Require().Len(atlas.Regions, 1)
-	s.Require().Len(atlas.Regions[0].Props, propRunLen,
+	s.Require().Len(atlas.Props, propRunLen,
 		"and they are on the map, which is the whole reason a prop that does nothing exists")
 }
 
@@ -188,19 +194,17 @@ func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: "tomb", Width: 12, Height: 8, Origin: propsOrigin,
-				Props: []encounter.PropInput{
-					{Ref: "dnd5e:props:statue-reaper", At: spatial.Position{X: 1, Y: 1},
-						BlocksMovement: propTrue(), BlocksLineOfSight: propTrue()},
-					{Ref: "dnd5e:props:altar", At: spatial.Position{X: 9, Y: 3},
-						BlocksMovement: propTrue(), BlocksLineOfSight: propFalse()},
-				},
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("tomb", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
+			Props: []encounter.PropInput{
+				{Ref: "dnd5e:props:statue-reaper", At: propSeat(1, 1),
+					BlocksMovement: propTrue(), BlocksLineOfSight: propTrue()},
+				{Ref: "dnd5e:props:altar", At: propSeat(9, 3),
+					BlocksMovement: propTrue(), BlocksLineOfSight: propFalse()},
+			},
 		},
 		Members: []encounter.MemberInput{
-			{ID: delver, Kind: encounter.KindPlayer, Room: "tomb", Position: spatial.Position{X: 4, Y: 6}},
+			{ID: delver, Kind: encounter.KindPlayer, Position: propSeat(4, 6)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -208,9 +212,8 @@ func (s *PropsSuite) TestTheMapSaysWHICHThingIsWhere() {
 
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
-	s.Require().Len(atlas.Regions, 1)
-	props := atlas.Regions[0].Props
-	s.Require().Len(props, 2, "declaration order, the ordering a room's contents have always promised")
+	props := atlas.Props
+	s.Require().Len(props, 2, "sorted by cell, the one order every list on the map shares")
 
 	s.Equal("dnd5e:props:statue-reaper", props[0].Ref)
 	s.Equal(propAbs(1, 1), props[0].At, "absolute, like everything else the map reports")
@@ -229,21 +232,19 @@ func (s *PropsSuite) TestAPropMustSayWhatItDoes() {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{{
-					ID: "crypt", Width: 12, Height: 8, Origin: propsOrigin,
-					Props: []encounter.PropInput{p},
-				}},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
+				Props:   []encounter.PropInput{p},
 			},
 			Members: []encounter.MemberInput{
-				{ID: delver, Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 2, Y: 4}},
+				{ID: delver, Kind: encounter.KindPlayer, Position: propSeat(2, 4)},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
 		return err
 	}
 
-	at := spatial.Position{X: 5, Y: 4}
+	at := propSeat(5, 4)
 
 	s.Run("no movement answer", func() {
 		err := build(encounter.PropInput{Ref: "dnd5e:props:pillar", At: at, BlocksLineOfSight: propTrue()})
@@ -270,13 +271,12 @@ func (s *PropsSuite) TestAPropSurvivesASave() {
 	enc := s.chamber("dnd5e:props:coffin", propTrue(), propFalse())
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Rooms, 1)
-	s.Require().Len(data.Field.Rooms[0].Props, propRunLen)
-	s.Equal("dnd5e:props:coffin", data.Field.Rooms[0].Props[0].Ref)
-	s.Require().NotNil(data.Field.Rooms[0].Props[0].BlocksMovement)
-	s.True(*data.Field.Rooms[0].Props[0].BlocksMovement)
-	s.Require().NotNil(data.Field.Rooms[0].Props[0].BlocksLineOfSight)
-	s.False(*data.Field.Rooms[0].Props[0].BlocksLineOfSight)
+	s.Require().Len(data.Field.Props, propRunLen)
+	s.Equal("dnd5e:props:coffin", data.Field.Props[0].Ref)
+	s.Require().NotNil(data.Field.Props[0].BlocksMovement)
+	s.True(*data.Field.Props[0].BlocksMovement)
+	s.Require().NotNil(data.Field.Props[0].BlocksLineOfSight)
+	s.False(*data.Field.Props[0].BlocksLineOfSight)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
@@ -289,10 +289,12 @@ func (s *PropsSuite) TestAPropSurvivesASave() {
 	s.Require().ErrorIs(err, encounter.ErrBadPlacement, "and still solid")
 }
 
-// TestAnOldBlobsOccludersAreRefusedLoudly — the #1053/#1068 precedent. A room
-// whose walls were occluders must not load as a room with none: that is a party
-// dropped into a dungeon whose blockers silently vanished, reported as success.
-func (s *PropsSuite) TestAnOldBlobsOccludersAreRefusedLoudly() {
+// TestAnOldBlobsRoomsAreRefusedLoudly — the #1053/#1068 precedent, applied
+// to the room chain (rpg-project#256). A field whose floor was rooms must not
+// load as a field with no regions: that is a party dropped into a dungeon
+// whose floor silently vanished, reported as "no regions" with nothing to say
+// which dialect the blob is written in.
+func (s *PropsSuite) TestAnOldBlobsRoomsAreRefusedLoudly() {
 	enc := s.chamber("dnd5e:props:pillar", propTrue(), propTrue())
 
 	raw, err := json.Marshal(enc.ToData())
@@ -302,13 +304,14 @@ func (s *PropsSuite) TestAnOldBlobsOccludersAreRefusedLoudly() {
 	s.Require().NoError(json.Unmarshal(raw, &generic))
 
 	field, _ := generic["field"].(map[string]any)
-	rooms, _ := field["rooms"].([]any)
-	s.Require().NotEmpty(rooms)
-	room, _ := rooms[0].(map[string]any)
+	s.Require().NotEmpty(field["regions"])
 
-	// Rewind the room to the dialect that had no answers in it.
-	delete(room, "props")
-	room["occluders"] = []any{map[string]any{"x": 25.0, "y": 13.0}}
+	// Rewind the field to the dialect that described the floor as rooms.
+	delete(field, "regions")
+	field["rooms"] = []any{map[string]any{
+		"id": "crypt", "width": 12.0, "height": 8.0, "grid": "hex",
+		"origin": map[string]any{"x": 20.0, "y": 10.0},
+	}}
 
 	rewound, err := json.Marshal(generic)
 	s.Require().NoError(err)
@@ -321,8 +324,9 @@ func (s *PropsSuite) TestAnOldBlobsOccludersAreRefusedLoudly() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Contains(err.Error(), "occluders",
+	s.Contains(err.Error(), "rooms",
 		"named, so whoever holds the blob knows which dialect it is written in")
+	s.Contains(err.Error(), "rpg-project#256", "and which change to recreate it for")
 }
 
 // TestAPersistedPropMustSayWhatItDoesToo — the load seam's half of
@@ -335,10 +339,10 @@ func (s *PropsSuite) TestAnOldBlobsOccludersAreRefusedLoudly() {
 // encounter IS. Both mutants that defaulted a missing persisted answer survived
 // the battery until this test existed.
 func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
-	loadWith := func(mutate func(*encounter.RoomData)) error {
+	loadWith := func(mutate func(*encounter.PropData)) error {
 		enc := s.chamber("dnd5e:props:pillar", propTrue(), propTrue())
 		data := enc.ToData()
-		mutate(&data.Field.Rooms[0])
+		mutate(&data.Field.Props[0])
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
 			Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
@@ -347,14 +351,14 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 	}
 
 	s.Run("no movement answer", func() {
-		err := loadWith(func(r *encounter.RoomData) { r.Props[0].BlocksMovement = nil })
+		err := loadWith(func(p *encounter.PropData) { p.BlocksMovement = nil })
 		s.Require().ErrorIs(err, encounter.ErrNoField)
 		s.Contains(err.Error(), "blocks_movement")
 		s.Contains(err.Error(), "dnd5e:props:pillar", "named, so the blob's owner can find it")
 	})
 
 	s.Run("no sight answer", func() {
-		err := loadWith(func(r *encounter.RoomData) { r.Props[0].BlocksLineOfSight = nil })
+		err := loadWith(func(p *encounter.PropData) { p.BlocksLineOfSight = nil })
 		s.Require().ErrorIs(err, encounter.ErrNoField)
 		s.Contains(err.Error(), "blocks_line_of_sight")
 	})
@@ -363,7 +367,7 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 // TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon is T6 review M4's
 // guarantee, asked of a field the caller holds by POINTER.
 //
-// deepCopyRoomInputs promised the persistence source never aliases caller-owned
+// compileField promises the persistence source never aliases caller-owned
 // state, and copying the Props slice looked like it kept that promise — the
 // elements are copied, after all. But a prop's two answers are pointers, so the
 // copies pointed straight back at the caller's bools: flipping one afterwards
@@ -375,19 +379,17 @@ func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() 
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: "crypt", Width: 12, Height: 8, Origin: propsOrigin,
-				Props: []encounter.PropInput{{
-					Ref:               "dnd5e:props:pillar",
-					At:                spatial.Position{X: 5, Y: 4},
-					BlocksMovement:    &solid,
-					BlocksLineOfSight: &solid,
-				}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
+			Props: []encounter.PropInput{{
+				Ref:               "dnd5e:props:pillar",
+				At:                propSeat(5, 4),
+				BlocksMovement:    &solid,
+				BlocksLineOfSight: &solid,
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: delver, Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 2, Y: 4}},
+			{ID: delver, Kind: encounter.KindPlayer, Position: propSeat(2, 4)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	}
@@ -399,12 +401,12 @@ func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() 
 	solid = false
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Rooms[0].Props, 1)
-	s.Require().NotNil(data.Field.Rooms[0].Props[0].BlocksMovement)
-	s.True(*data.Field.Rooms[0].Props[0].BlocksMovement,
+	s.Require().Len(data.Field.Props, 1)
+	s.Require().NotNil(data.Field.Props[0].BlocksMovement)
+	s.True(*data.Field.Props[0].BlocksMovement,
 		"the dungeon was built with a solid pillar and saves one")
-	s.Require().NotNil(data.Field.Rooms[0].Props[0].BlocksLineOfSight)
-	s.True(*data.Field.Rooms[0].Props[0].BlocksLineOfSight)
+	s.Require().NotNil(data.Field.Props[0].BlocksLineOfSight)
+	s.True(*data.Field.Props[0].BlocksLineOfSight)
 
 	// And the encounter that is actually running never wavered.
 	_, err = enc.Step(&encounter.StepInput{Member: delver, To: propAbs(5, 4)})
@@ -418,11 +420,11 @@ func (s *PropsSuite) TestASavedPropIsNotAliasedByTheSnapshot() {
 	enc := s.chamber("dnd5e:props:coffin", propTrue(), propFalse())
 
 	first := enc.ToData()
-	*first.Field.Rooms[0].Props[0].BlocksMovement = false
-	*first.Field.Rooms[0].Props[0].BlocksLineOfSight = true
+	*first.Field.Props[0].BlocksMovement = false
+	*first.Field.Props[0].BlocksLineOfSight = true
 
 	second := enc.ToData()
-	s.True(*second.Field.Rooms[0].Props[0].BlocksMovement,
+	s.True(*second.Field.Props[0].BlocksMovement,
 		"a second snapshot must not carry the first one's edits")
-	s.False(*second.Field.Rooms[0].Props[0].BlocksLineOfSight)
+	s.False(*second.Field.Props[0].BlocksLineOfSight)
 }

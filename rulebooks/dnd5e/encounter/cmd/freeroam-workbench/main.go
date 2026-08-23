@@ -74,8 +74,10 @@ func (p *patrol) Decide(_ encounter.Snapshot) (encounter.Intent, error) {
 }
 
 func goblinPatrol() *patrol {
+	// Waypoints are authored [col,row] pairs; a decider speaks absolute
+	// axial cells, so each is converted once here.
 	return &patrol{route: []spatial.Position{
-		{X: 7, Y: 10}, {X: 8, Y: 9}, {X: 7, Y: 8}, {X: 6, Y: 9}, {X: 6, Y: 10},
+		cellAt(7, 10), cellAt(8, 9), cellAt(7, 8), cellAt(6, 9), cellAt(6, 10),
 	}}
 }
 
@@ -107,164 +109,217 @@ func dungeonSetup() *encounter.SetupInput {
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
 		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{},
 		Field: encounter.FieldInput{
-			// You cannot see across the space the crypt's two chambers do not
+			// You cannot see across the space the crypt's two regions do not
 			// cover — the fiction is the mountain they were cut from, and the
 			// declaration is the effect (rpg-toolkit#1116). There IS such
-			// space:
-			// the ossuary is half the crypt's height, so the canvas's
-			// north-east corner — x 12..19, y 6..11 — belongs to no chamber.
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{
-					ID: cryptID, Width: cryptSize, Height: cryptSize,
-					Props: []encounter.PropInput{
-						solidPillar(6, 6), solidPillar(5, 6),
-					},
-				},
-				{
-					// Anchored immediately east of the crypt (#929): the
-					// passage's endpoints, crypt (11,0) and ossuary local
-					// (0,0)+Origin(12,0)=(12,0), are Chebyshev-adjacent
-					// (W3), and the rooms' absolute footprints — crypt
-					// x:[0,11], ossuary x:[12,19] — stay disjoint (W2).
-					// Before this Origin existed, both rooms defaulted to
-					// (0,0) and W2 rejected the field outright — the
-					// workbench crashed on startup (`setup: newencounter:
-					// room "crypt" and room "ossuary" overlap at absolute
-					// cell (0, 0): no field`) until this fix.
-					ID: ossuaryID, Width: ossuaryW, Height: ossuaryH,
-					Origin: spatial.Position{X: 12, Y: 0},
-					Props:  []encounter.PropInput{solidPillar(4, 3)},
-				},
+			// space: the ossuary is half the crypt's height, so the canvas's
+			// north-east corner belongs to no region. Every [col,row] below is
+			// pointy-top offset, the frame a designer draws in; the
+			// composition converts once (rpg-project#256).
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: layout},
+			Regions: []encounter.RegionInput{
+				rectRegion(cryptID, 0, 0, cryptSize, cryptSize),
+				// Painted immediately east of the crypt: columns 12..19.
+				rectRegion(ossuaryID, cryptSize, 0, ossuaryW, ossuaryH),
 			},
-			Connections: []encounter.ConnectionInput{
-				{
-					ID: passageID, From: cryptID, To: ossuaryID,
-					FromPosition: spatial.Position{X: 11, Y: 0},
-					ToPosition:   spatial.Position{X: 0, Y: 0},
-				},
+			Props: []encounter.PropInput{
+				solidPillar(6, 6), solidPillar(5, 6),
+				solidPillar(cryptSize+4, 3),
 			},
+			// The seam between the two regions is walled except for the
+			// passage on row 0 — a wall is an edge somebody draws now, and
+			// the open door standing in the gap is what a step names.
+			Walls: seamWall(cryptSize-1, cryptSize, 0, ossuaryH),
+			Doors: []encounter.DoorInput{{
+				ID:    passageID,
+				Edges: []encounter.DoorEdge{{From: cellAt(cryptSize-1, 0), To: cellAt(cryptSize, 0)}},
+				State: encounter.DoorIsOpen(),
+			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: "bella", Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: "goblin", Kind: encounter.KindMonster, Room: cryptID,
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: "bella", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
+			{ID: "goblin", Kind: encounter.KindMonster,
 				Position: spatial.Position{X: 6, Y: 10}, Decider: goblinPatrol()},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: cryptID, Position: spatial.Position{X: 11, Y: 11}}},
+				Position: spatial.Position{X: 11, Y: 11}}},
 			{Key: "withdrew", Trigger: encounter.TriggerExternal{}},
 		},
 	}
+}
+
+// layout is the one orientation this workbench draws in.
+var layout = encounter.HexesArePointyTop()
+
+// cellAt is the absolute axial cell an authored [col,row] pair names under
+// the workbench's layout — the same conversion the composition runs.
+func cellAt(col, row int) spatial.Position { return encounter.HexCellAt(layout, col, row) }
+
+// offsetOf is cellAt run backwards, for drawing: the [col,row] an absolute
+// cell sits at on a pointy-top screen.
+func offsetOf(cell spatial.Position) (col, row int) {
+	o := spatial.AxialToCube(cell).ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+	return int(o.X), int(o.Y)
+}
+
+// rectRegion paints a w x h rectangle of authored cells with its top-left at
+// [col,row]: the shape a terminal can draw.
+func rectRegion(id string, col, row, w, h int) encounter.RegionInput {
+	cells := make([]spatial.Position, 0, w*h)
+	for r := 0; r < h; r++ {
+		for c := 0; c < w; c++ {
+			cells = append(cells, spatial.Position{X: float64(col + c), Y: float64(row + r)})
+		}
+	}
+	return encounter.RegionInput{ID: id, Name: id, Cells: cells, Archetype: "crypt", Lighting: &encounter.Lighting{Intensity: 1}}
+}
+
+// seamWall is every crossing between column west and west+1 over rows
+// [0,rows), minus the straight crossing on the gap row — asked of the grid,
+// since a hex's crossings stagger and a parity table would be a second
+// answer to which cells touch.
+func seamWall(west, east, gap, rows int) []spatial.Boundary {
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
+	var out []spatial.Boundary
+	for row := 0; row < rows; row++ {
+		for _, dr := range []int{-1, 0, 1} {
+			to := row + dr
+			if to < 0 || to >= rows || (dr == 0 && row == gap) {
+				continue
+			}
+			if grid.Distance(cellAt(west, row), cellAt(east, to)) != 1 {
+				continue
+			}
+			out = append(out, spatial.Boundary{
+				From: spatial.Position{X: float64(west), Y: float64(row)}, To: spatial.Position{X: float64(east), Y: float64(to)},
+				BlocksMovement: true, BlocksLineOfSight: true,
+			})
+		}
+	}
+	return out
 }
 
 func newCrypt() (*encounter.Encounter, error) {
 	return encounter.NewEncounter(dungeonSetup())
 }
 
-// roomByID finds a room's data by ID — nil if the field has no such
-// room (a defect the caller should treat as "nothing to render").
-func roomByID(data encounter.EncounterData, room string) *encounter.RoomData {
-	for i := range data.Field.Rooms {
-		if data.Field.Rooms[i].ID == room {
-			return &data.Field.Rooms[i]
+// pane is one region's authored bounding box, which is what a terminal
+// can draw: the columns and rows its cells span, and the cells themselves.
+type pane struct {
+	colMin, rowMin, width, height int
+	floor                         map[[2]int]bool
+}
+
+// paneOf reads a region's cells off the persisted field. Nil if the field
+// has no such region (a defect the caller should treat as "nothing to
+// render").
+func paneOf(data encounter.EncounterData, region string) *pane {
+	for _, r := range data.Field.Regions {
+		if r.ID != region || len(r.Cells) == 0 {
+			continue
 		}
+		p := &pane{colMin: int(r.Cells[0].X), rowMin: int(r.Cells[0].Y), floor: map[[2]int]bool{}}
+		colMax, rowMax := p.colMin, p.rowMin
+		for _, c := range r.Cells {
+			col, row := int(c.X), int(c.Y)
+			p.floor[[2]int{col, row}] = true
+			p.colMin, colMax = min(p.colMin, col), max(colMax, col)
+			p.rowMin, rowMax = min(p.rowMin, row), max(rowMax, row)
+		}
+		p.width, p.height = colMax-p.colMin+1, rowMax-p.rowMin+1
+		return p
 	}
 	return nil
 }
 
-// worldGrid renders ground truth for ONE room — the HOST's view, which is
-// exactly what a game server holds. The panes stay room-scoped because a
+// blank is the pane with its floor drawn as '.' and everything else as ' '.
+func (p *pane) blank() []string {
+	rows := make([]string, p.height)
+	for r := range rows {
+		row := make([]byte, p.width)
+		for c := range row {
+			row[c] = ' '
+			if p.floor[[2]int{p.colMin + c, p.rowMin + r}] {
+				row[c] = '.'
+			}
+		}
+		rows[r] = string(row)
+	}
+	return rows
+}
+
+// mark draws one absolute cell on the pane, or nothing if it is off it.
+func (p *pane) mark(grid []string, cell spatial.Position, ch byte) {
+	col, row := offsetOf(cell)
+	set(grid, float64(col-p.colMin), float64(row-p.rowMin), ch)
+}
+
+// props draws the field's props that fall on this pane.
+func (p *pane) props(grid []string, data encounter.EncounterData) {
+	for _, o := range data.Field.Props {
+		set(grid, o.At.X-float64(p.colMin), o.At.Y-float64(p.rowMin), '#')
+	}
+}
+
+// worldGrid renders ground truth for ONE region — the HOST's view, which is
+// exactly what a game server holds. The panes stay region-scoped because a
 // terminal is small, not because sight is: since rpg-toolkit#1106 a belief
-// grid may hold sightings in the chamber next door, which this pane drops.
-func worldGrid(data encounter.EncounterData, members []encounter.Member, room string) []string {
-	r := roomByID(data, room)
-	if r == nil {
+// grid may hold sightings in the region next door, which this pane drops.
+func worldGrid(data encounter.EncounterData, members []encounter.Member, region string) []string {
+	p := paneOf(data, region)
+	if p == nil {
 		return nil
 	}
-	grid := blankGrid(r.Width, r.Height)
-	for _, o := range r.Props {
-		set(grid, o.At.X, o.At.Y, '#')
-	}
-	origin := roomOrigin(r)
+	grid := p.blank()
+	p.props(grid, data)
 	for _, m := range members {
-		if m.Region != room {
+		if m.Region != region {
 			continue
 		}
-		local := m.Position.Subtract(origin)
-		set(grid, local.X, local.Y, initialOf(string(m.ID), true))
+		p.mark(grid, m.Position, initialOf(string(m.ID), true))
 	}
-	if room == cryptID {
+	if region == cryptID {
 		set(grid, 11, 11, '>')
 	}
 	return grid
 }
 
-// beliefGrid renders one member's intel, scoped to the room they
-// currently stand in: what they currently see in capitals, their
-// ghosts in lowercase at last-seen (a ghost held from a room the
-// member has since left renders nowhere — this grid only shows their
-// present room). Their own position comes from world truth (you
-// always know where you stand).
+// beliefGrid renders one member's intel, scoped to the region they
+// currently stand in: what they currently see in capitals, their ghosts in
+// lowercase at last-seen (a ghost held from a region the member has since
+// left renders nowhere — this grid only shows their present region). Their
+// own position comes from world truth (you always know where you stand).
 func beliefGrid(
 	enc *encounter.Encounter, data encounter.EncounterData, members []encounter.Member,
-	who core.EntityID, room string,
+	who core.EntityID, region string,
 ) ([]string, error) {
 	view, err := enc.View(&encounter.ViewInput{Member: who})
 	if err != nil {
 		return nil, err
 	}
-	r := roomByID(data, room)
-	if r == nil {
+	p := paneOf(data, region)
+	if p == nil {
 		return nil, nil
 	}
-	// The room's anchor, needed because everything the encounter reports is
-	// dungeon-absolute while this pane draws a single chamber in its own local
-	// frame.
-	origin := roomOrigin(r)
-
-	grid := blankGrid(r.Width, r.Height)
-	for _, o := range r.Props {
-		set(grid, o.At.X, o.At.Y, '#')
-	}
+	grid := p.blank()
+	p.props(grid, data)
 	for _, h := range view {
-		var p encounter.SightPayload
-		if err := json.Unmarshal(h.Payload, &p); err != nil {
+		var sp encounter.SightPayload
+		if err := json.Unmarshal(h.Payload, &sp); err != nil {
 			continue
 		}
-		// Sight payloads are dungeon-absolute; this pane draws ONE room, so
-		// bring them back into its local frame and skip anything outside it.
-		local := spatial.Position{X: p.X, Y: p.Y}.Subtract(origin)
-		if local.X < 0 || local.Y < 0 || int(local.X) >= r.Width || int(local.Y) >= r.Height {
-			continue
-		}
-		set(grid, local.X, local.Y, initialOf(string(h.Subject), h.Status == intel.Current))
+		// Sight payloads are dungeon-absolute; mark drops anything off
+		// this pane.
+		p.mark(grid, spatial.Position{X: sp.X, Y: sp.Y}, initialOf(string(h.Subject), h.Status == intel.Current))
 	}
 	for _, m := range members {
 		if m.ID == who {
-			local := m.Position.Subtract(origin)
-			set(grid, local.X, local.Y, '@')
+			p.mark(grid, m.Position, '@')
 		}
 	}
 	return grid, nil
-}
-
-// roomOrigin reads a persisted room's anchor. Origin is required at load, so a
-// nil pointer means the caller built this RoomData by hand.
-func roomOrigin(r *encounter.RoomData) spatial.Position {
-	if r == nil || r.Origin == nil {
-		return spatial.Position{}
-	}
-	return spatial.Position{X: r.Origin.X, Y: r.Origin.Y}
-}
-
-func blankGrid(w, h int) []string {
-	rows := make([]string, h)
-	for y := range rows {
-		rows[y] = strings.Repeat(".", w)
-	}
-	return rows
 }
 
 func set(grid []string, x, y float64, ch byte) {
@@ -328,76 +383,51 @@ func printStatus(enc *encounter.Encounter) {
 	}
 }
 
-// atlasDistanceGrid returns a throwaway grid of the given family, valid
-// ONLY as a Distance calculator over ABSOLUTE positions — Distance
-// depends solely on the two positions passed to it, never on the grid's
-// own bounds (SquareGrid.Distance and AxialHexGrid.Distance's own
-// implementations), so any instance of the right family computes the
-// correct distance between two dungeon-absolute doorway cells (#929 T5).
-// regionExtent is the rectangle a region covers, in the columns and rows it
-// was authored in — the arithmetic AtlasRegion's doc comment describes, which
-// is all the Atlas hands out now that it no longer enumerates cells
-// (rpg-toolkit#1108).
-//
-// ONE ARITHMETIC FOR BOTH FAMILIES since rpg-toolkit#1127: a chamber is the
-// rectangle somebody drew, so it runs from its anchor for Width columns and
-// Height rows whichever grid it is on. For a SQUARE field those columns and
-// rows are the absolute axes and this rectangle is a footprint in world space,
-// which is what printAtlas labels it. For a hex one they are not — the
-// absolute cells are what encounter.HexCellAt makes of each pair under
-// Atlas.Orientation, and the footprint is a sheared parallelogram no pair of
-// intervals describes. This workbench's dungeon is square, so the label is
-// honest for what it actually prints; a hex workbench would have to say
-// "columns" and "rows" and mean it.
-func regionExtent(r encounter.AtlasRegion) (colMin, colMax, rowMin, rowMax float64) {
-	return r.Origin.X, r.Origin.X + float64(r.Width) - 1,
-		r.Origin.Y, r.Origin.Y + float64(r.Height) - 1
-}
-
-func atlasDistanceGrid(family spatial.GridShape) spatial.Grid {
-	if family == spatial.GridShapeHex {
-		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 100000, SpanHeight: 100000})
-	}
-	return spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 100000, Height: 100000})
-}
-
-// printAtlas renders the dungeon in world space (#929 T5): every room
-// placed at its absolute footprint, and every doorway's kissing pair —
-// the two absolute cells a connection joins, and the distance between
-// them (always 1 for anything the composition actually constructed; W3
-// guarantees it) — made visible. This is the one property the web
-// client renders by: the room boundary is invisible in world space.
+// printAtlas renders the dungeon in world space: every region's cells as a
+// count and an authored extent, every door's crossing as the two absolute
+// cells it joins and the distance between them (always 1 for anything the
+// composition constructed; an edge joins adjacent cells by law).
 func printAtlas(enc *encounter.Encounter) {
 	atlas, err := enc.Atlas()
 	if err != nil {
 		fmt.Println("  atlas:", err)
 		return
 	}
-	fmt.Println("  ATLAS — the dungeon in absolute space")
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 100000, SpanHeight: 100000})
+	fmt.Printf("  ATLAS — the dungeon in absolute space (%d floor cells, %s)\n", len(atlas.Cells), atlas.Orientation.Kind())
 	for _, r := range atlas.Regions {
-		qMin, qMax, rMin, rMax := regionExtent(r)
-		fmt.Printf("    region %-10s origin (%g,%g)  %dx%d  absolute x:[%g,%g] y:[%g,%g]\n",
-			r.ID, r.Origin.X, r.Origin.Y, r.Width, r.Height, qMin, qMax, rMin, rMax)
+		colMin, colMax, rowMin, rowMax := regionExtent(r)
+		fmt.Printf("    region %-10s %3d cells  %-8s lit %.2f  columns %d..%d rows %d..%d\n",
+			r.ID, len(r.Cells), r.Archetype, r.Lighting.Intensity, colMin, colMax, rowMin, rowMax)
 	}
 	for _, d := range atlas.Doorways {
-		var family spatial.GridShape
-		for _, r := range atlas.Regions {
-			if r.ID == d.From {
-				family = r.Grid
-			}
-		}
-		dist := atlasDistanceGrid(family).Distance(d.FromCell, d.ToCell)
-		fmt.Printf("    doorway %-10s %s(%g,%g) absolute -- %s(%g,%g) absolute  distance %g — they kiss\n",
-			d.Connection, d.From, d.FromCell.X, d.FromCell.Y, d.To, d.ToCell.X, d.ToCell.Y, dist)
+		fmt.Printf("    doorway %-10s (%g,%g) -- (%g,%g)  distance %g — they kiss\n",
+			d.Door, d.From.X, d.From.Y, d.To.X, d.To.Y, grid.Distance(d.From, d.To))
 	}
+}
+
+// regionExtent is the authored columns and rows a region's cells span — read
+// back off the absolute cells, since the Atlas speaks axial.
+func regionExtent(r encounter.AtlasRegion) (colMin, colMax, rowMin, rowMax int) {
+	for i, c := range r.Cells {
+		col, row := offsetOf(c)
+		if i == 0 {
+			colMin, colMax, rowMin, rowMax = col, col, row, row
+			continue
+		}
+		colMin, colMax = min(colMin, col), max(colMax, col)
+		rowMin, rowMax = min(rowMin, row), max(rowMax, row)
+	}
+	return colMin, colMax, rowMin, rowMax
 }
 
 const legend = `  @ you   A/B/C capitals: seen NOW   a/b/g lowercase: ghost at last-seen
   # pillar/sarcophagus   > the stairs down (reach them and the encounter closes)
-  doorway "passage": (11,0) <-> (12,0) on the map — step from one to the
-  other like any other cell; the view flips to whichever chamber you land in`
+  doorway "passage": [11,0] <-> [12,0] on the map — step from one to the
+  other like any other cell; the view flips to whichever region you land in
+  every <x> <y> you type is a column and row as drawn; the world speaks axial`
 
-const commands = `  step <name> <x> <y>   walk one cell (dungeon-absolute; the world holds
+const commands = `  step <name> <x> <y>   walk one cell (column, row as drawn; the world holds
                         still — you pump it)
   pump                  a tick passes: the goblin patrols, sights refresh
   view <name>           world truth beside <name>'s beliefs
@@ -452,17 +482,17 @@ func main() {
 			}
 		case "step":
 			if len(args) != 4 {
-				fmt.Println("  step <name> <x> <y>   (dungeon-absolute)")
+				fmt.Println("  step <name> <x> <y>   (column, row as drawn)")
 				continue
 			}
 			x, y := num(args[2]), num(args[3])
-			out, err := enc.Step(&encounter.StepInput{Member: core.EntityID(args[1]), To: spatial.Position{X: x, Y: y}})
+			out, err := enc.Step(&encounter.StepInput{Member: core.EntityID(args[1]), To: cellAt(int(x), int(y))})
 			if err != nil {
 				fmt.Println(" ", err)
 				continue
 			}
-			if out.Crossing != "" {
-				fmt.Printf("  through %s\n", out.Crossing)
+			for _, d := range out.Doors {
+				fmt.Printf("  through %s (%s)\n", d.ID, d.State)
 			}
 			showView(enc, core.EntityID(args[1]))
 			if out.Outcome != nil {
@@ -492,7 +522,7 @@ func main() {
 			}
 			_, err := enc.Join(&encounter.JoinInput{
 				Member: core.EntityID(args[1]), Kind: encounter.KindPlayer,
-				Cell: spatial.Position{X: num(args[2]), Y: num(args[3])},
+				Cell: cellAt(int(num(args[2])), int(num(args[3]))),
 			})
 			if err != nil {
 				fmt.Println(" ", err)

@@ -64,11 +64,9 @@ func (s *deathScene) scene(standing encounter.Standing, members ...encounter.Mem
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: cryptID, Width: 12, Height: 12},
-		}},
-		Members: members,
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
+		Members:   members,
+		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err)
 
@@ -81,13 +79,9 @@ func (s *deathScene) pair(standing encounter.Standing) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
-		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Room: cryptID,
-			Position: spatial.Position{X: 0, Y: 2}},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Room: cryptID,
-			Position: spatial.Position{X: 0, Y: 10},
-			Decider: &patrolDecider{positions: []spatial.Position{
-				{X: 1, Y: 10}, {X: 0, Y: 10},
-			}}},
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10},
+			Decider: &patrolDecider{positions: []spatial.Position{cellAt(1, 10), cellAt(0, 10)}}},
 	)
 }
 
@@ -97,12 +91,9 @@ func (s *deathScene) trio(standing encounter.Standing) *encounter.Encounter {
 	s.T().Helper()
 
 	return s.scene(standing,
-		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Room: cryptID,
-			Position: spatial.Position{X: 0, Y: 2}},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Room: cryptID,
-			Position: spatial.Position{X: 0, Y: 10}},
-		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Room: cryptID,
-			Position: spatial.Position{X: 2, Y: 10}},
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 10}},
 	)
 }
 
@@ -178,11 +169,9 @@ func (s *deathScene) beatsOf(enc *encounter.Encounter, audience encounter.Member
 func (s *StandingSuite) TestSetupRefusesAnEncounterThatCannotAskWhoIsDown() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: cryptID, Width: 12, Height: 12},
-		}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -417,12 +406,10 @@ func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Sight: everyoneSeesTheWholeMap{}, Standing: &downList{down: []encounter.MemberID{goblin}},
 		Retention: 4,
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: cryptID, Width: 12, Height: 12},
-		}},
+		Field:     encounter.FieldInput{Canvas: openAir(), Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 0, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: cryptID, Position: spatial.Position{X: 0, Y: 10}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -497,7 +484,7 @@ func (s *StandingSuite) TestThePumpTicksThenNotices() {
 func (s *StandingSuite) TestACorpseIsStillOnTheMapAndInTheRoster() {
 	enc := s.pair(&downList{down: []encounter.MemberID{goblin}})
 
-	s.Equal(spatial.Position{X: 0, Y: 10}, s.positionOf(enc, goblin),
+	s.Equal(cellAt(0, 10), s.positionOf(enc, goblin),
 		"still on the map, at the cell it fell on")
 
 	_, err := enc.Record(&encounter.RecordInput{

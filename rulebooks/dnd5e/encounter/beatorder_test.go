@@ -54,10 +54,11 @@ const beatOrderRoom = "hall"
 // It was a single pillar until spatial v0.9.1, which leans around a lone
 // obstacle — see testwalls_test.go. The scenes are unchanged; what changed is
 // that the set has to be something a sightline genuinely cannot get past.
-func wallRoom() encounter.RoomInput {
-	return encounter.RoomInput{
-		ID: beatOrderRoom, Width: 12, Height: 12,
-		Props: wallRow(6, 4, 8),
+func wallRoom() encounter.FieldInput {
+	return encounter.FieldInput{
+		Canvas:  openAir(),
+		Regions: []encounter.RegionInput{rectRegion(beatOrderRoom, 0, 0, 12, 12)},
+		Props:   wallRow(6, 4, 8),
 	}
 }
 
@@ -81,11 +82,11 @@ func (s *BeatOrderTestSuite) beatKinds(enc *encounter.Encounter, audience encoun
 func (s *BeatOrderTestSuite) TestSetupOpensBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{wallRoom()}},
+		Field: wallRoom(),
 		Members: []encounter.MemberInput{
 			// Both clear of the wall's span: they see each other at first light.
-			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 0, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: beatOrderRoom, Position: spatial.Position{X: 0, Y: 10}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -104,23 +105,16 @@ func (s *BeatOrderTestSuite) TestAStepThroughADoorwayBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "door1", From: room1, To: room2,
-					FromPosition: spatial.Position{X: 9, Y: 5},
-					ToPosition:   spatial.Position{X: 0, Y: 5}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomWall(),
+			Doors: []encounter.DoorInput{openDoorway("door1", 9, 5, 10, 5)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 9, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 5}},
 			// OFF the doorway's row: with one canvas, a monster standing in
 			// the opening's line would be seen from room1 at first light and
 			// this scene would open as a fight (rpg-toolkit#1106).
-			{ID: goblin, Kind: encounter.KindMonster, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 11, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -128,9 +122,10 @@ func (s *BeatOrderTestSuite) TestAStepThroughADoorwayBeforeItFights() {
 
 	// The far side of the doorway, in dungeon-absolute cells: room2 local
 	// (0,5) anchored at (10,0).
-	out, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 10, Y: 5}})
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(10, 5)})
 	s.Require().NoError(err)
-	s.Equal("door1", out.Crossing, "the doorway is named, and decides nothing")
+	s.Require().Len(out.Doors, 1, "the door is named, and decides nothing")
+	s.Equal(encounter.DoorID("door1"), out.Doors[0].ID)
 	s.Require().NotNil(out.Formed, "she walks into the chamber the goblin is standing in")
 	s.Greater(out.Formed.Seq, out.Seq, "she goes through the door, THEN the fight starts")
 
@@ -146,7 +141,7 @@ func (s *BeatOrderTestSuite) TestAStepThroughADoorwayBeforeItFights() {
 func (s *BeatOrderTestSuite) TestStepBeforeItFights() {
 	enc := s.blockedScene()
 
-	out, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 2}})
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 2)})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "stepping into the open puts her in contact")
 	s.Greater(out.Formed.Seq, out.Seq, "she steps, THEN the fight starts")
@@ -159,7 +154,7 @@ func (s *BeatOrderTestSuite) TestStepBeforeItFights() {
 // own beats are the tick frame AND the action inside it, so both precede the
 // fight the action caused.
 func (s *BeatOrderTestSuite) TestPumpBeforeItFights() {
-	enc := s.blockedScene(&patrolDecider{positions: []spatial.Position{{X: 0, Y: 10}}})
+	enc := s.blockedScene(&patrolDecider{positions: []spatial.Position{cellAt(0, 10)}})
 
 	out, err := enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
@@ -179,7 +174,7 @@ func (s *BeatOrderTestSuite) TestJoinBeforeItFights() {
 
 	out, err := enc.Join(&encounter.JoinInput{
 		Member: cormac, Kind: encounter.KindPlayer,
-		Cell: spatial.Position{X: 0, Y: 2},
+		Cell: cellAt(0, 2),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "he lands in the open, in the goblin's sight")
@@ -198,19 +193,15 @@ func (s *BeatOrderTestSuite) TestOpenDoorOpensBeforeItFights() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "near", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0},
-					Boundaries: seamWallExcept(2, 3, 1)},
-				{ID: "far", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("near", 0, 0, 3, 3), rectRegion("far", 3, 0, 3, 3)}, Walls: seamWallExcept(2, 3, 1),
 			Doors: []encounter.DoorInput{{
 				ID: shutDoor, Edges: doorEdgesAcross(2, 1), State: encounter.DoorIsClosed(),
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: "near", Position: spatial.Position{X: 2, Y: 1}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: "far", Position: spatial.Position{X: 0, Y: 1}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -232,8 +223,7 @@ func (s *BeatOrderTestSuite) TestOpenDoorOpensBeforeItFights() {
 // the one that follows. An optional decider drives the goblin for the Pump pin.
 func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encounter.Encounter {
 	monster := encounter.MemberInput{
-		ID: goblin, Kind: encounter.KindMonster, Room: beatOrderRoom,
-		Position: spatial.Position{X: 6, Y: 10},
+		ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10},
 	}
 	if len(decider) > 0 {
 		monster.Decider = decider[0]
@@ -241,9 +231,9 @@ func (s *BeatOrderTestSuite) blockedScene(decider ...encounter.Decider) *encount
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{wallRoom()}},
+		Field: wallRoom(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: beatOrderRoom, Position: spatial.Position{X: 6, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
 			monster,
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},

@@ -67,12 +67,10 @@ func (s *KillingBlowSuite) apart(standing encounter.Standing) *encounter.Encount
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing,
 		Retention: encounter.RetentionUnbounded,
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: cryptID, Width: 12, Height: 12, Props: wallRow(6, 0, 11)},
-		}},
+		Field:     encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(cryptID, 0, 0, 12, 12)}, Props: wallRow(6, 0, 11)},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: cryptID, Position: spatial.Position{X: 2, Y: 10}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 10}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -234,10 +232,10 @@ func (s *KillingBlowSuite) TestABodyRemovedOnItsOwnTurnLeavesSomebodyActive() {
 	// player while active hands the slot to a monster rather than wrapping
 	// straight back to a player — the case driveIfStillRunning exists for.
 	enc := s.scene(down,
-		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 0, Y: 0}},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Room: cryptID, Position: spatial.Position{X: 1, Y: 0}},
-		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Room: cryptID, Position: spatial.Position{X: 2, Y: 0}},
-		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Room: cryptID, Position: spatial.Position{X: 3, Y: 0}},
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 0}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 0}},
+		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 0}},
 	)
 	// Trigger detection sorts the roster for determinism rather than keeping
 	// authoring order, so the actual order is read back rather than assumed.

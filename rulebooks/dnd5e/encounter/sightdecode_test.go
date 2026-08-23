@@ -84,13 +84,12 @@ func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: core.EntityID("skeleton-1"), Kind: encounter.KindMonster, Room: "hall",
-				Position: spatial.Position{X: 5, Y: 6}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("skeleton-1"), Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -114,5 +113,5 @@ func TestDecodeSightPayloadAgreesWithAViewsOwnPayload(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, spatial.Position{X: raw.X, Y: raw.Y}, pos,
 		"the typed decode must name the same cell as the raw payload")
-	require.Equal(t, spatial.Position{X: 5, Y: 6}, pos, "and that cell is really where the skeleton stands")
+	require.Equal(t, cellAt(5, 6), pos, "and that cell is really where the skeleton stands")
 }

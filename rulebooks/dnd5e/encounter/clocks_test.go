@@ -28,7 +28,7 @@ func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			// The goblin waits in the NEXT ROOM, which is how real content is
 			// authored and is the only way to open a scene that is not
 			// already a fight: sight is symmetric and unlimited within a room,
@@ -36,18 +36,15 @@ func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 			// first light (rpg-toolkit#964). These tests drive the clock verbs
 			// against a fight they start themselves, so the scene has to begin
 			// as free roam.
-			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
-				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room2, Position: spatial.Position{X: 7, Y: 7}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 17, Y: 7}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
-				Room: room1, Position: spatial.Position{X: 0, Y: 0},
+				Position: spatial.Position{X: 0, Y: 0},
 			}},
 		},
 	})
@@ -368,11 +365,8 @@ func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
-				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 		},
 		// The split party, which is now a SCENE rather than a sequence of
 		// calls: alice walks into the goblin's room and the two of them are a
@@ -381,15 +375,15 @@ func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 		// caller-driven Form any more — and it forms it LOCALIZED, around the
 		// members who actually noticed each other (rpg-toolkit#964).
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: carl, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 8, Y: 8}},
-			{ID: dana, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 9, Y: 8}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 13, Y: 2}},
+			{ID: carl, Kind: encounter.KindPlayer, Position: spatial.Position{X: 18, Y: 8}},
+			{ID: dana, Kind: encounter.KindPlayer, Position: spatial.Position{X: 19, Y: 8}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
-				Room: room1, Position: spatial.Position{X: 0, Y: 0},
+				Position: spatial.Position{X: 0, Y: 0},
 			}},
 			{Key: "called", Trigger: encounter.TriggerExternal{}},
 		},
@@ -463,7 +457,7 @@ func (s *ClocksTestSuite) TestDOS2SplitPartyThroughTheComposition() {
 	// movement driving Advance directly — the leaf's own accrual model —
 	// is not wired into Move yet; Pump is the composition's accrual
 	// mechanism today, and the pin here is WHO accrues, not how much.)
-	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 7}})
+	_, err = enc.Step(&encounter.StepInput{Member: carl, To: cellAt(18, 7)})
 	s.Require().NoError(err)
 	_, err = enc.Pump(&encounter.PumpInput{})
 	s.Require().NoError(err)
@@ -689,7 +683,7 @@ func (s *ClocksTestSuite) TestAFightMemberCannotFreeRoam() {
 	s.ErrorIs(err, encounter.ErrNotActive)
 
 	// Everyone else's world is still running.
-	_, err = enc.Step(&encounter.StepInput{Member: carl, To: spatial.Position{X: 18, Y: 7}})
+	_, err = enc.Step(&encounter.StepInput{Member: carl, To: cellAt(18, 7)})
 	s.Require().NoError(err)
 }
 
@@ -718,16 +712,16 @@ func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		// Same room, so they see each other at first light and the fight
 		// forms — which is the state this test is about. The goblin's decider
 		// is willing; the world simply is not the thing that consults it any
 		// more.
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}, Decider: wanderer},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}, Decider: wanderer},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "called", Trigger: encounter.TriggerExternal{}},
@@ -912,14 +906,14 @@ func (s *ClocksTestSuite) TestFightStartDrivesAnUnplayedMemberFirstInInitiative(
 			alice: encounter.KindPlayer, goblin: encounter.KindMonster,
 		}},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		// Same room: first light forms the fight immediately, with the
 		// monster seated first by the roller above.
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 7, Y: 7}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -946,11 +940,11 @@ func (s *ClocksTestSuite) TestSetupRefusesAnEncounterWithNoTurnDriver() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 8, Height: 8}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 8, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 	})

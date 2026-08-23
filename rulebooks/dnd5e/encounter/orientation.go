@@ -9,69 +9,31 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// orientation.go is A CHAMBER IS THE RECTANGLE SOMEBODY DREW
-// (rpg-toolkit#1127).
+// orientation.go is WHICH WAY THE HEXES POINT (rpg-toolkit#1127,
+// rpg-project#256).
 //
-// # What was wrong
-//
-// A hex room's Width and Height were read as an AXIAL span — a rhombus, and an
-// origin-centred one. Authors do not draw rhombi. Every authored dungeon in
-// this project is a run of rectangular chambers in OFFSET coordinates
-// ([col,row] pairs), and an offset rectangle SHEARS when it becomes axial: its
-// cells stay a contiguous, non-overlapping set, but the smallest rhombus
-// containing them is strictly bigger than they are.
-//
-// Measured on the reference tomb's own three chambers (6, 10 and 12 columns
-// wide, 8 rows tall, laid left to right), against the constructor:
-//
-//   - NEITHER ORIENTATION BUILT. `room "entrance" and room "hall" overlap at
-//     absolute cell (1, -4)`, pointy-top and flat-top alike, because W2
-//     compared origin-centred spans and those intersect where the chambers do
-//     not. So Kirk's ruling that "flat and pointy top are both valid and should
-//     be settable" was not merely awkward to honour: neither was reachable.
-//
-//   - With W2 disabled, so the footprint itself is observable, the two
-//     readings turn out to disagree about nearly every cell. Of the 224 cells
-//     the author drew, 25 are inside the rhombi under pointy-top and 24 under
-//     flat-top. 88% of what RegionAt then called floor was somewhere nobody
-//     drew, and 199 of the 224 drawn cells were not floor at all.
-//
-// With the mask: 224 cells drawn, 224 reported floor, nothing phantom and
-// nothing missing, in BOTH orientations. That is what this file delivers, and
-// TestTheFloorIsExactlyWhatWasDrawn is where it is pinned.
-//
-// # The mask is a FUNCTION, not a set
-//
-// Nothing here stores a cell list, and that answers the first of the two
-// questions Kirk's ruling (4) on rpg-toolkit#1105 left riding on the floor mask
-// ("computed per load, or persisted?"). A cell is floor iff converting it back
-// to offset space lands inside [0,Width) x [0,Height): one conversion and two
-// comparisons, O(1), derived from four numbers RoomData already carries —
-// width, height, origin, and the field's orientation. There is no cell list on
-// the wire and none in memory.
-//
-// It is not free, and the price is VOID. A chamber's cells are a sheared
-// parallelogram and the canvas holding it is an origin-centred axial span, so
-// the span is far larger than the floor: the tomb's canvas is 90.5% void
-// pointy-top and 93.5% flat-top, where the rhombus reading's was 43.2%. Void
-// costs no memory — nothing is allocated per cell — but it IS what
-// [Encounter.IsLineOfSightBlocked] scans under [VoidIsOpaque], which is why
-// voidcost_internal_test.go measures its worst case on this shape.
-//
-// The second question ("does it belong in tools/spatial?") answers itself the
-// same way: there is no new grid type here. spatial already owns both
-// directions of the offset<->cube conversion, and this is the composition
-// asking them. What lives here is the RULE about which cells a chamber owns,
-// and that rule's other half is [regionAt] — a second answer to "who owns this
-// cell" is exactly what region.go exists to prevent.
+// Every authored cell in a field is an OFFSET [col,row] pair, and an offset
+// pair means nothing until the orientation is known: the same [2,3] is a
+// different hex under each layout, with different neighbours. The declaration
+// lives here, and [HexCellAt] — the ONE conversion from the authored frame to
+// the absolute axial cells the canvas runs on — lives beside it.
 //
 // # Why the composition is allowed to know this
 //
-// Orientation looks like a rendering fact, and it is not. The composition
-// already knows the grid FAMILY — square versus hex is a thing it holds and
-// reasons with — and pointy versus flat is the same species one level finer:
-// how the grid is laid out, which is what a grid IS. It is not fiction and not
-// a picture; it is the difference between two cells being neighbours and not.
+// Orientation looks like a rendering fact, and it is not. Pointy versus flat
+// is how the grid is laid out, which is what a grid IS. It is not fiction and
+// not a picture; it is the difference between two cells being neighbours and
+// not — the reason a wall authored as the same [col,row] pair is a legal edge
+// under one layout and a refusal under the other.
+//
+// # There is exactly one conversion, and it is not reversible here
+//
+// The room chain needed both directions: authored cells were rectangles, so
+// the mask converted an absolute cell BACK to offset space to bounds-check it.
+// A region lists its cells, so the mask is a map lookup and the reverse
+// conversion is gone (rpg-toolkit#1141 and #1150 were both bugs in having two
+// readings of one basis). What remains is HexCellAt, asked by compileField
+// and by nothing else.
 
 // OrientationKind names which way a field's hexes point, in the form the blob
 // carries it. See [Orientation].
@@ -87,27 +49,13 @@ const (
 	OrientationFlatTop OrientationKind = "flat"
 )
 
-// Orientation is which way a hex field's cells point: a closed set, sealed the
+// Orientation is which way a field's cells point: a closed set, sealed the
 // way [Void] and [DoorState] are and for the same reason.
 //
-// # Required exactly where it means something
-//
-// A HEX field must declare one, and a SQUARE field must not. Both halves are
-// refusals rather than one being a default, and the second is the interesting
-// one: a square grid has no orientation, so a square field that declares one
-// has an author believing something that cannot be true about their own
-// dungeon. Ignoring it would be this module deciding that a statement with no
-// meaning is harmless, which is the same move as inventing a default — see
-// [Void]'s doc comment for the argument at length.
-//
-// # What it decides
-//
-// Every authored cell in a hex field is an OFFSET [col,row] pair, and an offset
-// pair means nothing until the orientation is known: the same [2,3] is a
-// different hex under each layout, with different neighbours. So this is not a
-// presentational preference — it is the frame every other coordinate in the
-// field is written in, which is why it is construction data and why it
-// round-trips through persistence.
+// REQUIRED on every field. Every authored cell is an offset [col,row] pair
+// that means nothing until this is known, so it is construction data and
+// round-trips through persistence; a field that does not declare one is
+// refused (ErrNoField) rather than read under a guess.
 //
 // It does NOT change any distance, adjacency or sight rule. Those run on cube
 // coordinates, which are orientation-free; spatial's AxialHexGrid carries no
@@ -149,24 +97,14 @@ func (flatTop) Kind() OrientationKind           { return OrientationFlatTop }
 func (flatTop) spatial() spatial.HexOrientation { return spatial.HexOrientationFlatTop }
 
 // orientationFromData resolves the persisted word back to the declaration it
-// names, or reports that a square field carries one it should not.
+// names.
 //
 // Refusals by name and loud, per the standing precedent (rpg-toolkit#1053/#1068:
-// fail loudly, no migration). An ABSENT word on a hex field is a blob written
-// before the field declared anything, and loading it under a guess would read
-// every stored cell in the wrong frame — a dungeon drawn correctly and played
+// fail loudly, no migration). An ABSENT word is a blob written before the
+// field declared anything, and loading it under a guess would read every
+// stored cell in the wrong frame — a dungeon drawn correctly and played
 // wrong. An UNKNOWN word is a dialect this build does not speak.
-func orientationFromData(shape spatial.GridShape, name string) (Orientation, error) {
-	if shape != spatial.GridShapeHex {
-		if name != "" {
-			return nil, fmt.Errorf(
-				"a square field declares orientation %q, and a square grid has none (canvas.orientation): %w",
-				name, ErrNoField)
-		}
-
-		return nil, nil
-	}
-
+func orientationFromData(name string) (Orientation, error) {
 	switch OrientationKind(name) {
 	case OrientationPointyTop:
 		return HexesArePointyTop(), nil
@@ -174,7 +112,7 @@ func orientationFromData(shape spatial.GridShape, name string) (Orientation, err
 		return HexesAreFlatTop(), nil
 	case "":
 		return nil, fmt.Errorf(
-			"hex field does not say which way its hexes point (canvas.orientation): %w", ErrNoField)
+			"field does not say which way its hexes point (canvas.orientation): %w", ErrNoField)
 	default:
 		return nil, fmt.Errorf(
 			"field declares orientation %q, which this build does not know (canvas.orientation): %w",
@@ -182,13 +120,8 @@ func orientationFromData(shape spatial.GridShape, name string) (Orientation, err
 	}
 }
 
-// orientationName renders a declaration for persistence, or empty for a square
-// field.
+// orientationName renders a declaration for persistence.
 func orientationName(o Orientation) string {
-	if o == nil {
-		return ""
-	}
-
 	return string(o.Kind())
 }
 
@@ -199,7 +132,7 @@ func orientationName(o Orientation) string {
 // into a field has to put things where the author said, and "where the author
 // said" is an offset pair — so the conversion cannot be private to this package
 // without every caller reimplementing it, which is how two answers to one
-// question get born. It is the same function [regionAt] runs backwards.
+// question get born. Inside this package, compileField is the only caller.
 //
 // The conversion itself is spatial's, not this module's: offset -> cube through
 // [spatial.OffsetCoordinateToCubeWithOrientation], then [spatial.CubeCoordinate.ToAxial]
@@ -214,282 +147,4 @@ func HexCellAt(o Orientation, col, row int) spatial.Position {
 		spatial.Position{X: float64(col), Y: float64(row)}, o.spatial())
 
 	return cube.ToAxial()
-}
-
-// hexOffsetOf is HexCellAt run backwards: the authored [col,row] a
-// dungeon-absolute cell came from.
-//
-// Axial -> cube through [spatial.AxialToCube] — the same exported basis
-// [HexCellAt] reads, run in reverse, rather than a hand-built cube triple.
-func hexOffsetOf(o Orientation, cell spatial.Position) (col, row int) {
-	offset := spatial.AxialToCube(cell).ToOffsetCoordinateWithOrientation(o.spatial())
-
-	return int(offset.X), int(offset.Y)
-}
-
-// footprintHolds reports whether a room owns a dungeon-absolute cell — THE
-// MASK, and the only implementation of it.
-//
-// For a SQUARE field this is the rectangle it always was, asked through the
-// room's own grid so square behaviour is untouched by any of this. For a HEX
-// field it is the authored offset rectangle: convert the cell back to offset
-// space and check the bounds. Note what is NOT here — no rhombus, no
-// axisBounds, no origin-centred span. Those were the approximation.
-//
-// The origin is subtracted in OFFSET space for hex, which is the other half of
-// the same change: a chamber's anchor says where its rectangle starts, in the
-// columns and rows the author counts in. Anchoring in axial would put the
-// shear back, one level up.
-func footprintHolds(r RoomInput, o Orientation, grid spatial.Grid, cell spatial.Position) bool {
-	if r.Grid != spatial.GridShapeHex {
-		local := cell.Subtract(r.Origin)
-
-		return isIntegralHexCell(grid, local) && grid.IsValidPosition(local)
-	}
-
-	// A fractional axial position is not a cell at all, and no chamber holds
-	// one (interim tools/spatial#926 enforcement). Asked here rather than in
-	// regionAt so that turning an absolute cell into a room's own frame
-	// happens in exactly ONE function — see TestRegionOwnershipIsAskedInOneFunction.
-	if !isIntegralHexCell(grid, cell) {
-		return false
-	}
-
-	col, row := hexOffsetOf(o, cell)
-	col -= int(r.Origin.X)
-	row -= int(r.Origin.Y)
-
-	return col >= 0 && col < r.Width && row >= 0 && row < r.Height
-}
-
-// hexRuns decomposes a hex chamber's footprint into contiguous runs, which is
-// what lets W2 and the canvas bounds be computed WITHOUT enumerating cells.
-//
-// # Why runs rather than a cell set
-//
-// maxFieldCells allows four million cells, so "build both footprints and
-// intersect" is a real cost on a legal field, paid at every construction. But a
-// sheared rectangle is not shapeless: along one axis it decomposes into
-// contiguous intervals, one per authored column (flat) or row (pointy), and two
-// intervals intersect in O(1). So the whole disjointness question costs
-// O(Width) or O(Height) rather than O(Width x Height).
-//
-// The key is the coordinate that does NOT shear — the one [HexCellAt] reports
-// unstaggered for this orientation, under spatial's axial basis (rpg-toolkit#1150:
-// axial Q is cube X, axial R is cube Z):
-//
-//   - FLAT-TOP is odd-q, so Q = col exactly and only R staggers. Key by Q; for
-//     a fixed column, R climbs one-for-one with row.
-//   - POINTY-TOP is odd-r, so R = row EXACTLY — the authored row needs no
-//     formula to recover, it IS R — and only Q staggers. Key by R itself; for
-//     a fixed row, Q climbs one-for-one with column.
-//
-// Neither bullet assumes which DIRECTION an axis moves as its authored
-// coordinate grows; both ends of a run are read from [HexCellAt] and sorted,
-// not derived from a sign this file would otherwise have to predict. That is
-// deliberate: #1141 swapped which orientation these two facts named, and #1150
-// changed the pointy-top key outright (it used to be recovered as -(Q+R), the
-// reading spatial's OLD, buggy axial basis produced; under the fixed basis R
-// already IS the row). A copy of the direction, baked in as which end of
-// HexCellAt's output goes first, is exactly the kind of restatement that broke
-// last time — so this asks HexCellAt twice and orders the answer, rather than
-// deciding in advance which one is smaller.
-//
-// Pinned by TestRunsAgreeWithEnumeration, which compares this against a full
-// cell-by-cell sweep over a spread of shapes and both orientations.
-func hexRuns(r RoomInput, o Orientation) map[int][2]int {
-	runs := make(map[int][2]int, max(r.Width, r.Height))
-
-	oc, or := int(r.Origin.X), int(r.Origin.Y)
-	if o.Kind() == OrientationFlatTop {
-		for col := 0; col < r.Width; col++ {
-			top := HexCellAt(o, col+oc, or)
-			bottom := HexCellAt(o, col+oc, r.Height-1+or)
-			lo, hi := int(top.Y), int(bottom.Y)
-			if lo > hi {
-				lo, hi = hi, lo
-			}
-			runs[int(top.X)] = [2]int{lo, hi}
-		}
-
-		return runs
-	}
-
-	for row := 0; row < r.Height; row++ {
-		left := HexCellAt(o, oc, row+or)
-		right := HexCellAt(o, r.Width-1+oc, row+or)
-		lo, hi := int(left.X), int(right.X)
-		if lo > hi {
-			lo, hi = hi, lo
-		}
-		runs[int(left.Y)] = [2]int{lo, hi}
-	}
-
-	return runs
-}
-
-// hexFootprintBounds returns a hex chamber's absolute axial bounding box, from
-// its runs rather than from an assumed rhombus.
-func hexFootprintBounds(r RoomInput, o Orientation) (qMin, qMax, rMin, rMax int) {
-	first := true
-	for key, run := range hexRuns(r, o) {
-		var q0, q1, r0, r1 int
-		if o.Kind() == OrientationFlatTop {
-			// key is the absolute column — Q, unstaggered; the run is R's
-			// interval for that column.
-			q0, q1, r0, r1 = key, key, run[0], run[1]
-		} else {
-			// key is the absolute row, which for pointy-top under the fixed
-			// basis (rpg-toolkit#1150) IS R directly — no formula needed, R
-			// does not vary along a pointy-top row at all. The run is Q's
-			// interval for that row.
-			q0, q1 = run[0], run[1]
-			r0, r1 = key, key
-		}
-		if first {
-			qMin, qMax, rMin, rMax = q0, q1, r0, r1
-			first = false
-			continue
-		}
-		qMin, qMax = min(qMin, q0), max(qMax, q1)
-		rMin, rMax = min(rMin, r0), max(rMax, r1)
-	}
-
-	return
-}
-
-// hexFootprintsOverlap reports whether two hex chambers share a cell — W2, on
-// the authored shape rather than on the box that contains it.
-//
-// THIS IS WHAT MAKES FLAT-TOP CONSTRUCTIBLE. The interval test on bounding
-// boxes is exact for a rectangle and merely conservative for a sheared one, and
-// "conservative" here meant refusing the reference tomb outright: its chambers
-// share no cell in either orientation (measured: 0 shared cells across all three
-// pairs, union exactly 224) while their flat-top boxes intersect.
-func hexFootprintsOverlap(a, b RoomInput, o Orientation) bool {
-	runsA, runsB := hexRuns(a, o), hexRuns(b, o)
-	if len(runsB) < len(runsA) {
-		runsA, runsB = runsB, runsA
-	}
-
-	for key, ra := range runsA {
-		rb, shared := runsB[key]
-		if !shared {
-			continue
-		}
-		if ra[0] <= rb[1] && rb[0] <= ra[1] {
-			return true
-		}
-	}
-
-	return false
-}
-
-// absoluteOf projects an authored room-local cell onto the canvas.
-//
-// THERE IS EXACTLY ONE OF THESE, and that is the point. rpg-toolkit#1106
-// deleted a function of this name for a good reason — it was a RUNTIME bridge,
-// run on every query, and the wave's whole argument was that a field should
-// stop projecting a world model it already has. This is the other kind: it runs
-// at CONSTRUCTION only, spending the anchor once, exactly as
-// RoomInput.Origin's doc comment says an origin is spent. No verb calls it.
-//
-// For a SQUARE room, local plus origin, which is what it always was. For a HEX
-// room, both the local cell and the origin are counted in OFFSET columns and
-// rows — the frame an author writes in — and the sum is converted once. Adding
-// in axial instead would put the shear back one level up: two chambers anchored
-// six columns apart would land at axial distances that vary by row, and the
-// seam between them would stop being a straight line.
-func absoluteOf(r RoomInput, o Orientation, local spatial.Position) spatial.Position {
-	if r.Grid != spatial.GridShapeHex {
-		return local.Add(r.Origin)
-	}
-
-	return HexCellAt(o, int(local.X)+int(r.Origin.X), int(local.Y)+int(r.Origin.Y))
-}
-
-// localIsInRoom reports whether an authored room-local cell is inside its
-// chamber — the bounds check that used to be the room grid's.
-//
-// A hex room's grid is a spatial.AxialHexGrid whose bounds are an
-// origin-centred axial span, and that is no longer what a chamber is, so asking
-// it would refuse every legal offset cell of a chamber anchored anywhere but
-// the middle of nowhere. Square still asks the grid, because for square the
-// grid's rectangle IS the chamber and nothing about that changed.
-func localIsInRoom(r RoomInput, grids map[string]spatial.Grid, local spatial.Position) bool {
-	if r.Grid != spatial.GridShapeHex {
-		grid, ok := grids[r.ID]
-
-		return ok && grid.IsValidPosition(local)
-	}
-
-	return local.X >= 0 && local.X < float64(r.Width) &&
-		local.Y >= 0 && local.Y < float64(r.Height)
-}
-
-// roomByID returns the room with the given ID, or a zero RoomInput.
-//
-// The zero value is deliberate rather than an error return: every caller here
-// has already had its room name validated (an unknown room is a construction
-// defect refused long before this), so a not-found is unreachable and returning
-// an error would be a branch no test could reach and no caller could act on.
-func roomByID(rooms []RoomInput, id string) RoomInput {
-	for _, r := range rooms {
-		if r.ID == id {
-			return r
-		}
-	}
-
-	return RoomInput{}
-}
-
-// fieldGridShape reports the grid family a field is drawn on.
-//
-// ANY hex room makes this a hex field, rather than reading the family off the
-// first room, and that is about ERROR ORDER rather than about grids. W1 gives
-// every room in a valid field the same family, so on a valid field the two
-// readings are identical. On an INVALID one they differ, and reading the first
-// room would make a field of [square, hex] answer "square" and get refused for
-// declaring an orientation — burying the real defect, which is that it mixes
-// families, under a complaint about a field that is not square either. Asking
-// "is there a hex room here" lets a mixed field satisfy this check and reach
-// W1, which is the rule that has something useful to say about it.
-//
-// An empty field answers square, and is refused a moment later for being empty.
-func fieldGridShape(rooms []RoomInput) spatial.GridShape {
-	for _, r := range rooms {
-		if r.Grid == spatial.GridShapeHex {
-			return spatial.GridShapeHex
-		}
-	}
-
-	return spatial.GridShapeSquare
-}
-
-// fieldOrientation checks a declared orientation against the field it describes.
-//
-// The mirror of [orientationFromData] for the Setup seam, where the declaration
-// arrives typed rather than as a word. Both seams end at the same two rules —
-// a hex field must declare one, a square field must not — because #929 T2's
-// standing arrangement is that Load routes through the SAME validators Setup
-// uses rather than a parallel reimplementation, and two copies of a rule are
-// two rules waiting to disagree.
-func fieldOrientation(rooms []RoomInput, declared Orientation) (Orientation, error) {
-	if fieldGridShape(rooms) != spatial.GridShapeHex {
-		if declared != nil {
-			return nil, fmt.Errorf(
-				"a square field declares orientation %q, and a square grid has none "+
-					"(FieldInput.Canvas.Orientation): %w", declared.Kind(), ErrNoField)
-		}
-
-		return nil, nil
-	}
-
-	if declared == nil {
-		return nil, fmt.Errorf(
-			"hex field does not say which way its hexes point "+
-				"(FieldInput.Canvas.Orientation): %w", ErrNoField)
-	}
-
-	return declared, nil
 }

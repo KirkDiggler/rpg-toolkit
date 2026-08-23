@@ -81,12 +81,11 @@ func (benchRoller) RollInitiative(members []MemberID) ([]MemberID, error) { retu
 // leaves a one-cell gap between each pair. `anchor` shifts the whole field off
 // the canvas origin, which is how a single-chamber field gets a void margin.
 func benchField(rooms, dim, stride, anchor int, void Void) FieldInput {
-	ri := make([]RoomInput, rooms)
+	ri := make([]RegionInput, rooms)
 	for i := range ri {
-		ri[i] = RoomInput{ID: fmt.Sprintf("r%d", i), Width: dim, Height: dim,
-			Origin: spatial.Position{X: float64(anchor + i*stride), Y: float64(anchor)}}
+		ri[i] = rectRegion(fmt.Sprintf("r%d", i), anchor+i*stride, anchor, dim, dim)
 	}
-	return FieldInput{Canvas: CanvasInput{Void: void}, Rooms: ri}
+	return FieldInput{Canvas: CanvasInput{Void: void, Orientation: HexesArePointyTop()}, Regions: ri}
 }
 
 // hexTombField is the REFERENCE TOMB'S OWN SHAPE, in the family the game
@@ -103,14 +102,13 @@ func benchField(rooms, dim, stride, anchor int, void Void) FieldInput {
 // like.
 func hexTombField(void Void, o Orientation) FieldInput {
 	widths := []int{6, 10, 12}
-	ri := make([]RoomInput, len(widths))
+	ri := make([]RegionInput, len(widths))
 	col := 0
 	for i, w := range widths {
-		ri[i] = RoomInput{ID: fmt.Sprintf("r%d", i), Grid: spatial.GridShapeHex,
-			Width: w, Height: 8, Origin: spatial.Position{X: float64(col), Y: 0}}
+		ri[i] = rectRegion(fmt.Sprintf("r%d", i), col, 0, w, 8)
 		col += w
 	}
-	return FieldInput{Canvas: CanvasInput{Void: void, Orientation: o}, Rooms: ri}
+	return FieldInput{Canvas: CanvasInput{Void: void, Orientation: o}, Regions: ri}
 }
 
 // benchSightRefresh times one full percept rebuild over the whole roster, which
@@ -118,6 +116,12 @@ func hexTombField(void Void, o Orientation) FieldInput {
 func benchSightRefresh(b *testing.B, rooms, dim, stride, anchor, members int, void Void) {
 	b.Helper()
 	benchSightRefreshOn(b, benchField(rooms, dim, stride, anchor, void), rooms, dim, members)
+}
+
+// anchorOf is the authored column a bench region starts at: the first cell
+// it lists, since rectRegion paints row-major from the corner.
+func anchorOf(field FieldInput, region int) int {
+	return int(field.Regions[region].Cells[0].X)
 }
 
 // benchSightRefreshOn is benchSightRefresh over a field somebody else built —
@@ -129,8 +133,7 @@ func benchSightRefreshOn(b *testing.B, field FieldInput, rooms, dim, members int
 	mi := make([]MemberInput, members)
 	for i := range mi {
 		mi[i] = MemberInput{ID: MemberID(fmt.Sprintf("m%d", i)), Kind: KindPlayer,
-			Room:     fmt.Sprintf("r%d", i%rooms),
-			Position: spatial.Position{X: float64(i % dim), Y: float64((i / dim) % dim)}}
+			Position: spatial.Position{X: float64(anchorOf(field, i%rooms) + i%dim), Y: float64((i / dim) % dim)}}
 	}
 
 	enc, err := NewEncounter(&SetupInput{

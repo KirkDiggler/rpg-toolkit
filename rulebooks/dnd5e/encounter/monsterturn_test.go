@@ -96,13 +96,13 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDr
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker,
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 3, Y: 2},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
 					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
@@ -125,13 +125,13 @@ func (s *MonsterTurnTestSuite) farSkeletonEncounter(driver encounter.TurnDriver,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker,
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 6, Y: 2},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
 					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
@@ -179,7 +179,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewCarriesStaticFactsAndSeen() {
 	view := driver.calls[0]
 
 	s.Equal(goblin, view.Self)
-	s.Equal(spatial.Position{X: 3, Y: 2}, view.Position)
+	s.Equal(cellAt(3, 2), view.Position)
 	s.Equal("closest", view.Targeting)
 	s.Require().Len(view.Actions, 1)
 	s.Equal(testMeleeAction, view.Actions[0].Ref)
@@ -192,7 +192,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewCarriesStaticFactsAndSeen() {
 	s.Equal(alice, seen.ID)
 	s.Equal(encounter.KindPlayer, seen.Kind)
 	s.True(seen.Standing)
-	s.Equal(spatial.Position{X: 2, Y: 2}, seen.Position)
+	s.Equal(cellAt(2, 2), seen.Position)
 	s.InDelta(1.0, seen.DistanceCells, 0.001, "adjacent cells are 1 cell apart")
 	s.True(seen.InReach[testMeleeAction], "1 cell is within a 5-foot (1-cell) reach")
 }
@@ -278,7 +278,7 @@ func (s *MonsterTurnTestSuite) TestAttackOnAnUnseenTargetEndsTheTurnWithoutAbort
 // new position and the spent movement budget.
 func (s *MonsterTurnTestSuite) TestMoveWalksTowardTheTargetAndUpdatesTheView() {
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{
-		encounter.Move{Path: []spatial.Position{{X: 5, Y: 2}, {X: 4, Y: 2}}},
+		encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2)}},
 	}}
 	enc := s.farSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
 
@@ -286,8 +286,8 @@ func (s *MonsterTurnTestSuite) TestMoveWalksTowardTheTargetAndUpdatesTheView() {
 	s.Require().NoError(err)
 
 	s.Require().Len(driver.calls, 2, "move, then a second Act call that passes")
-	s.Equal(spatial.Position{X: 6, Y: 2}, driver.calls[0].Position, "the view BEFORE the move is the starting cell")
-	s.Equal(spatial.Position{X: 4, Y: 2}, driver.calls[1].Position, "both cells of the path executed")
+	s.Equal(cellAt(6, 2), driver.calls[0].Position, "the view BEFORE the move is the starting cell")
+	s.Equal(cellAt(4, 2), driver.calls[1].Position, "both cells of the path executed")
 	s.Equal(30, driver.calls[0].Budget.MovementFeet)
 	s.Equal(20, driver.calls[1].Budget.MovementFeet, "2 cells at 5 feet each spent from the 30-foot budget")
 
@@ -299,7 +299,7 @@ func (s *MonsterTurnTestSuite) TestMoveWalksTowardTheTargetAndUpdatesTheView() {
 			goblinPos = m.Position
 		}
 	}
-	s.Equal(spatial.Position{X: 4, Y: 2}, goblinPos)
+	s.Equal(cellAt(4, 2), goblinPos)
 
 	beats := s.clockBeats(enc, alice)
 	var moved int
@@ -320,7 +320,7 @@ func (s *MonsterTurnTestSuite) TestMoveExceedingTheBudgetEndsTheTurnWithoutAbort
 	// The goblin's 30-foot speed affords 6 cells; ask for 7.
 	path := make([]spatial.Position, 7)
 	for i := range path {
-		path[i] = spatial.Position{X: float64(6 - i), Y: 2}
+		path[i] = cellAt(6-i, 2)
 	}
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{encounter.Move{Path: path}}}
 	enc := s.farSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
@@ -333,7 +333,7 @@ func (s *MonsterTurnTestSuite) TestMoveExceedingTheBudgetEndsTheTurnWithoutAbort
 	s.Require().NoError(err)
 	for _, m := range members {
 		if m.ID == goblin {
-			s.Equal(spatial.Position{X: 6, Y: 2}, m.Position, "an over-budget move never starts")
+			s.Equal(cellAt(6, 2), m.Position, "an over-budget move never starts")
 		}
 	}
 }
@@ -358,7 +358,7 @@ func (s *MonsterTurnTestSuite) TestMoveIntoVoidStopsPartwayWithoutEndingTheTurn(
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{
 		// The room is 10x10 (cells 0..9); (12,2) is outside it — void, not
 		// floor. (5,2) is the one cell of progress this path can make.
-		encounter.Move{Path: []spatial.Position{{X: 5, Y: 2}, {X: 12, Y: 2}}},
+		encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(12, 2)}},
 	}}
 	enc := s.farSkeletonEncounter(driver, &scriptedStriker{kind: encounter.OutcomeMissed})
 
@@ -366,7 +366,7 @@ func (s *MonsterTurnTestSuite) TestMoveIntoVoidStopsPartwayWithoutEndingTheTurn(
 	s.Require().NoError(err)
 
 	s.Require().Len(driver.calls, 2, "the partial move does not end the turn; the driver is asked again")
-	s.Equal(spatial.Position{X: 5, Y: 2}, driver.calls[1].Position, "the successful cell was kept")
+	s.Equal(cellAt(5, 2), driver.calls[1].Position, "the successful cell was kept")
 	s.Equal(25, driver.calls[1].Budget.MovementFeet, "only the ONE cell that succeeded was spent")
 }
 
@@ -416,11 +416,11 @@ func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoStriker() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 8, Height: 8}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 8, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -492,7 +492,7 @@ func (s *MonsterTurnTestSuite) TestRefusingStrikerFailsLoudly() {
 func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 	base := func(mutate func(*encounter.MemberInput)) *encounter.SetupInput {
 		mi := encounter.MemberInput{
-			ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 1, Y: 1},
+			ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1},
 			SpeedFeet: 30, SightFeet: 60,
 			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5}},
 		}
@@ -501,8 +501,8 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 			TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms:  []encounter.RoomInput{{ID: room1, Width: 8, Height: 8}},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 8, 8)},
 			},
 			Members: []encounter.MemberInput{mi},
 			Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -531,7 +531,7 @@ func (s *MonsterTurnTestSuite) TestJoinRejectsANegativeMemberFactBeforeMutating(
 	enc := s.adjacentSkeletonEncounter(passDriver{}, passStriker{})
 
 	_, err := enc.Join(&encounter.JoinInput{
-		Member: "wolf", Kind: encounter.KindMonster, Cell: spatial.Position{X: 5, Y: 5},
+		Member: "wolf", Kind: encounter.KindMonster, Cell: cellAt(5, 5),
 		SpeedFeet: -10,
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoMember)
@@ -573,22 +573,24 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	// y=0: .  .  .  .  .   <- gap
 	// y=1: .  .  #  .  .
 	// y=2: .  .  #  .  .
-	wall := []spatial.Boundary{
-		{From: spatial.Position{X: 2, Y: 1}, To: spatial.Position{X: 3, Y: 1}, BlocksMovement: true},
-		{From: spatial.Position{X: 2, Y: 2}, To: spatial.Position{X: 3, Y: 2}, BlocksMovement: true},
+	// Every crossing between columns 2 and 3 — the straight ones and the
+	// staggered ones a hex has — except the straight crossing on row 0.
+	wall := seamWallRows(2, 0, 3, 0)
+	for i := range wall {
+		wall[i].BlocksLineOfSight = false // a low wall: it stops a step, not a sighting
 	}
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 5, Height: 3, Boundaries: wall}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 5, 3)}, Walls: wall,
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 2}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 2},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
 			},
@@ -603,7 +605,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	s.Require().Len(driver.calls, 1)
 	aliceSeen := s.seenFor(driver.calls[0], alice)
 	s.Require().NotEmpty(aliceSeen.Path)
-	s.NotEqual(spatial.Position{X: 4, Y: 2}, aliceSeen.Path[len(aliceSeen.Path)-1],
+	s.NotEqual(cellAt(4, 2), aliceSeen.Path[len(aliceSeen.Path)-1],
 		"the path stops ADJACENT to alice, not on her own occupied cell")
 
 	// The path must cross the wall column through its one gap (a cell with
@@ -613,7 +615,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	// SOME step in the path uses the gap itself).
 	usedTheGap := false
 	for _, p := range aliceSeen.Path {
-		if p == (spatial.Position{X: 2, Y: 0}) || p == (spatial.Position{X: 3, Y: 0}) {
+		if p == (cellAt(2, 0)) || p == (cellAt(3, 0)) {
 			usedTheGap = true
 		}
 	}
@@ -636,16 +638,13 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
 			// of void between the two rooms is still not floor for either
 			// — nothing walkable bridges them.
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsTransparent()},
-			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 2, Height: 2},
-				{ID: room2, Width: 2, Height: 2, Origin: spatial.Position{X: 6, Y: 0}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 2, 2), rectRegion(room2, 6, 0, 2, 2)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 0}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 0},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 0},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
 			},
@@ -675,13 +674,13 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 3}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 3)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 6, Y: 0},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 0},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{{Ref: reachWeapon, Name: "Glaive", ReachFeet: 10, Kind: "melee"}},
 			},
@@ -697,7 +696,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 	aliceSeen := s.seenFor(driver.calls[0], alice)
 	s.Require().NotEmpty(aliceSeen.Path)
 	last := aliceSeen.Path[len(aliceSeen.Path)-1]
-	s.InDelta(2.0, enc.Distance(last, spatial.Position{X: 0, Y: 0}), 0.001,
+	s.InDelta(2.0, enc.Distance(last, cellAt(0, 0)), 0.001,
 		"a 10-foot (2-cell) reach stops 2 cells out, not adjacent: %+v", aliceSeen.Path)
 }
 
@@ -740,22 +739,24 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 	// y=0: .  . | .  .  .
 	// y=1: .  . | .  .  .
 	// y=2: .  .   .  .  .   <- gap
-	wall := []spatial.Boundary{
-		{From: spatial.Position{X: 1, Y: 0}, To: spatial.Position{X: 2, Y: 0}, BlocksMovement: true},
-		{From: spatial.Position{X: 1, Y: 1}, To: spatial.Position{X: 2, Y: 1}, BlocksMovement: true},
+	// Every crossing between columns 1 and 2, straight and staggered, except
+	// the straight crossing on row 2.
+	wall := seamWallRows(1, 0, 3, 2)
+	for i := range wall {
+		wall[i].BlocksLineOfSight = false // a low wall: it stops a step, not a sighting
 	}
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 5, Height: 3, Boundaries: wall}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 5, 3)}, Walls: wall,
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 0}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 0, Y: 0},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 0},
 				SpeedFeet: 60, Targeting: "closest",
 				// 15 feet (3 cells) — deliberately generous so the cell
 				// right beside the monster's own start (1 step away,
@@ -773,7 +774,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 
 	s.Require().Len(driver.calls, 1, "the first Act call already finds a target in range, one step away")
 	aliceSeen := s.seenFor(driver.calls[0], alice)
-	s.Equal([]spatial.Position{{X: 1, Y: 0}}, aliceSeen.Path,
+	s.Equal([]spatial.Position{cellAt(1, 0)}, aliceSeen.Path,
 		"the nearest WALKABLE in-range cell is one step away, not several steps around the wall")
 }
 
@@ -832,13 +833,13 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker,
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 3, Y: 2},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
 					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
@@ -939,14 +940,14 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker,
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  openAir(),
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 4, Y: 5},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 5},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
 					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},

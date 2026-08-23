@@ -26,20 +26,16 @@ import (
 // respectively (same package).
 func TestVaultChase(t *testing.T) {
 	// ---- The set -----------------------------------------------------
-	// Two rooms, one gate. DELIBERATELY asymmetric endpoints (T1 review
-	// lesson): FromPosition {9,5} in the corridor, ToPosition {0,5} in
-	// the vault — a from/to mix-up would be observable.
+	// Two regions, one gate: an open door standing in the crossing from the
+	// corridor's [9,5] to the vault's [10,5] (rpg-project#256 — a doorway is
+	// the door standing in it).
 	const (
 		corridorRoom    = "corridor"
 		vaultRoom       = "vault"
 		gateConnection  = "gate"
 		sanctuaryEnding = "sanctuary"
 	)
-	gate := encounter.ConnectionInput{
-		ID: gateConnection, From: corridorRoom, To: vaultRoom,
-		FromPosition: spatial.Position{X: 9, Y: 5},
-		ToPosition:   spatial.Position{X: 0, Y: 5},
-	}
+	gate := openDoorway(gateConnection, 9, 5, 10, 5)
 
 	// The corridor's east wall, open at the gate's row. Without it the two
 	// chambers share an open edge ten cells wide: the field is one canvas
@@ -62,25 +58,17 @@ func TestVaultChase(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: corridorRoom, Width: 10, Height: 10, Boundaries: corridorWall},
-				// Anchored immediately east of the corridor (#929 T1): the
-				// gate's endpoints (9,5) and (0,5)+(10,0)=(10,5) are
-				// Chebyshev-adjacent (W3), and the rooms' absolute
-				// footprints (x:[0,9] vs x:[10,19]) stay disjoint (W2).
-				{ID: vaultRoom, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{gate},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(corridorRoom, 0, 0, 10, 10), rectRegion(vaultRoom, 10, 0, 10, 10)}, Walls: corridorWall,
+			Doors: []encounter.DoorInput{gate},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: corridorRoom, Position: spatial.Position{X: 2, Y: 5}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: corridorRoom,
-				Position: spatial.Position{X: 2, Y: 8}, Decider: pursuit},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}, Decider: pursuit},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: sanctuaryEnding, Trigger: encounter.TriggerReachedPosition{
-				Room: vaultRoom, Position: spatial.Position{X: 8, Y: 8}}},
+				Position: spatial.Position{X: 18, Y: 8}}}, // the vault's own [8,8], anchored at [10,0]
 		},
 	})
 	require.NoError(t, err, "beat 1: the corridor assembles")
@@ -102,17 +90,18 @@ func TestVaultChase(t *testing.T) {
 
 	// ---- Beat 2: to the threshold, and through it ----------------------
 	// Alice crosses to the gate, then slips through it into the vault.
-	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 9, Y: 5}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(9, 5)})
 	require.NoError(t, err, "beat 2: alice crosses to the gate")
 
-	travOut, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 10, Y: 5}})
+	travOut, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(10, 5)})
 	require.NoError(t, err, "beat 2: she slips through the gate")
-	require.Equal(t, gateConnection, travOut.Crossing, "beat 2: the doorway is named, and decides nothing")
-	require.Equal(t, spatial.Position{X: 10, Y: 5}, travOut.Stepped.To, "beat 2: vault-local (0,5) on the map")
+	require.Len(t, travOut.Doors, 1, "beat 2: the door is named, and decides nothing")
+	require.Equal(t, encounter.DoorID(gateConnection), travOut.Doors[0].ID)
+	require.Equal(t, cellAt(10, 5), travOut.Stepped.To, "beat 2: vault-local (0,5) on the map")
 
 	// She doesn't linger in the opening — she moves deeper into the vault,
 	// toward (but not yet at) sanctuary, and out of the gate's line.
-	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 14, Y: 8}})
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(14, 8)})
 	require.NoError(t, err, "beat 2: she moves deeper into the vault")
 
 	// The ghost forms — for BOTH of them, symmetrically. Note WHERE: the last
@@ -121,8 +110,7 @@ func TestVaultChase(t *testing.T) {
 	// takes the wall to hide her (rpg-toolkit#1106).
 	st, p := seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 2: the goblin's sight of alice fades — the wall took her")
-	require.Equal(t, 10.0, p.X, "beat 2: at the gate's far cell, the last place it saw her")
-	require.Equal(t, 5.0, p.Y)
+	require.Equal(t, cellAt(10, 5), spatial.Position{X: p.X, Y: p.Y}, "beat 2: at the gate's far cell, the last place it saw her")
 	st, _ = seen(t, enc, alice, goblin)
 	require.Equal(t, intel.Held, st, "beat 2: alice loses the goblin too — symmetric")
 
@@ -142,7 +130,7 @@ func TestVaultChase(t *testing.T) {
 
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Held, st, "beat 3: the ghost survived the reload")
-	require.Equal(t, 10.0, p.X, "beat 3: still at the gate's far cell — loading never re-derives sight")
+	require.Equal(t, cellAt(10, 5), spatial.Position{X: p.X, Y: p.Y}, "beat 3: still at the gate's far cell — loading never re-derives sight")
 
 	// ---- Beat 4: the pursuit through the gate ---------------------------
 	// One pump: the goblin walks to the ghost's last-seen cell, which is on
@@ -156,21 +144,20 @@ func TestVaultChase(t *testing.T) {
 	// The arrival cell on the MAP: vault-local (0,5) through the vault's
 	// (10,0) anchor. The same cell the movement beat carries — one movement
 	// cannot be reported in two frames (rpg-toolkit#1062).
-	require.Equal(t, spatial.Position{X: 10, Y: 5}, pumpOut1.MonsterMoves[0].To)
+	require.Equal(t, cellAt(10, 5), pumpOut1.MonsterMoves[0].To)
 
 	// It's in her chamber now — this pump's own refreshSight already shows
 	// her Current again, where she stopped in beat 2.
 	st, p = seen(t, enc, goblin, alice)
 	require.Equal(t, intel.Current, st, "beat 4: the goblin holds alice Current again, having come through the gate")
-	require.Equal(t, 14.0, p.X, "beat 4: vault-local (4,8), anchored at (10,0) — one map")
-	require.Equal(t, 8.0, p.Y)
+	require.Equal(t, cellAt(14, 8), spatial.Position{X: p.X, Y: p.Y}, "beat 4: vault-local (4,8), anchored at (10,0) — one map")
 
 	// ---- Beat 5: sanctuary, in the far room ------------------------------
 	// Alice reaches the shrine before the goblin closes the distance. The
 	// declared ending fires in the VAULT — a room the corridor-side setup
 	// never mentioned directly; the ending only knows the room by name.
 	// The vault is anchored at (10,0), so its own (8,8) is (18,8) on the map.
-	moveOut, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 18, Y: 8}})
+	moveOut, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(18, 8)})
 	require.NoError(t, err, "beat 5: alice reaches sanctuary")
 	require.NotNil(t, moveOut.Outcome, "beat 5: the ending fires in the Move's own output")
 	require.Equal(t, sanctuaryEnding, moveOut.Outcome.Ending)
@@ -189,11 +176,11 @@ func TestVaultChase(t *testing.T) {
 	// Dungeon-absolute (#1068): the vault is anchored at (10,0), so her
 	// vault-local (8,8) is (18,8) on the map — the same frame every other
 	// cell in this scene is reported in.
-	require.Equal(t, spatial.Position{X: 18, Y: 8}, aliceOutcome.Position)
+	require.Equal(t, cellAt(18, 8), aliceOutcome.Position)
 	// The goblin made it across the threshold too — the outcome reflects
 	// where it TRULY stands, in the vault, not its pre-chase corridor spot.
 	require.Equal(t, encounter.RegionID(vaultRoom), goblinOutcome.Region, "beat 5: the outcome reflects the region the goblin finished in")
-	require.Equal(t, spatial.Position{X: 10, Y: 5}, goblinOutcome.Position, "vault-local (0,5) anchored at (10,0)")
+	require.Equal(t, cellAt(10, 5), goblinOutcome.Position, "vault-local (0,5) anchored at (10,0)")
 
 	status, err := enc.Status()
 	require.NoError(t, err)
@@ -203,7 +190,7 @@ func TestVaultChase(t *testing.T) {
 	// A closed encounter rejects every mutating verb.
 	for name, verb := range map[string]func() error{
 		"Step": func() error {
-			_, e := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 1, Y: 1}})
+			_, e := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 1)})
 			return e
 		},
 		"Pump": func() error { _, e := enc.Pump(&encounter.PumpInput{}); return e },
@@ -211,7 +198,7 @@ func TestVaultChase(t *testing.T) {
 			_, e := enc.Join(&encounter.JoinInput{
 				Member: "late",
 				Kind:   encounter.KindPlayer,
-				Cell:   spatial.Position{X: 11, Y: 1}, // the vault, anchored at (10,0)
+				Cell:   cellAt(11, 1), // the vault, anchored at (10,0)
 			})
 			return e
 		},

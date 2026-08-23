@@ -50,14 +50,10 @@ func (s *DefeatSuite) quartet(standing encounter.Standing) *encounter.Encounter 
 	s.T().Helper()
 
 	return s.scene(standing,
-		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Room: cryptID,
-			Position: spatial.Position{X: 0, Y: 2}},
-		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Room: cryptID,
-			Position: spatial.Position{X: 1, Y: 2}},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Room: cryptID,
-			Position: spatial.Position{X: 0, Y: 10}},
-		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Room: cryptID,
-			Position: spatial.Position{X: 2, Y: 10}},
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
+		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}},
+		encounter.MemberInput{ID: wolf, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 10}},
 	)
 }
 

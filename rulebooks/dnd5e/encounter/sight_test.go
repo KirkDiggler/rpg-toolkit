@@ -89,12 +89,9 @@ func (s *SightSuite) theLongRow(sight encounter.Sight) *encounter.Encounter {
 		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow)}},
-			{ID: carol, Kind: encounter.KindPlayer, Room: tombChamber,
-				Position: spatial.Position{X: 11, Y: float64(tombDoorRow)}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
+			{ID: bob, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 5, tombDoorRow)},
+			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombChamberOrigin, 11, tombDoorRow)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -193,10 +190,8 @@ func (s *SightSuite) TestSightIsStillGeometryFirst() {
 		Sight: &sightList{fallback: darkvision}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
-			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow - 1)}},
-			{ID: dave, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow - 1)}},
+			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow-1)},
+			{ID: dave, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow-1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -229,8 +224,7 @@ func (s *SightSuite) TestTheConeStillNarrows() {
 		id := core.EntityID(fmt.Sprintf("mark-%d", y))
 		ids = append(ids, id)
 		marks = append(marks, encounter.MemberInput{
-			ID: id, Kind: encounter.KindPlayer, Room: tombChamber,
-			Position: spatial.Position{X: 1, Y: float64(y)},
+			ID: id, Kind: encounter.KindPlayer, Position: tombSeat(tombChamberOrigin, 1, y),
 		})
 	}
 
@@ -240,8 +234,7 @@ func (s *SightSuite) TestTheConeStillNarrows() {
 
 	seenFrom := func(back int) int {
 		members := append([]encounter.MemberInput{{
-			ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
-			Position: spatial.Position{X: float64(9 - back), Y: float64(tombDoorRow)},
+			ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 9-back, tombDoorRow),
 		}}, marks...)
 
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -351,10 +344,8 @@ func (s *SightSuite) TestTheFarSightedSpotTheShortSightedAndSurpriseThem() {
 			Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-					Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
-				{ID: goblin, Kind: encounter.KindMonster, Room: tombChamber,
-					Position: spatial.Position{X: 6, Y: float64(tombDoorRow)}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
+				{ID: goblin, Kind: encounter.KindMonster, Position: tombSeat(tombChamberOrigin, 6, tombDoorRow)},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
@@ -412,8 +403,7 @@ func TestASceneThatDoesNotSayHowFarAnyoneCanSeeIsRefused(t *testing.T) {
 			Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-					Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})
@@ -426,8 +416,7 @@ func TestASceneThatDoesNotSayHowFarAnyoneCanSeeIsRefused(t *testing.T) {
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: tombField(),
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-					Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 0, tombDoorRow)},
 			},
 			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		})

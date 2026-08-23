@@ -22,13 +22,13 @@ func threePlayerMonsterBubble(t *testing.T) *Encounter {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: FieldInput{
-			Canvas: CanvasInput{Void: VoidIsOpaque()},
-			Rooms:  []RoomInput{{ID: "room-1", Width: 8, Height: 8}},
+			Canvas:  openAir(),
+			Regions: []RegionInput{rectRegion("room-1", 0, 0, 8, 8)},
 		},
 		Members: []MemberInput{
-			{ID: "alice", Kind: KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: KindPlayer, Room: "room-1", Position: spatial.Position{X: 2, Y: 1}},
-			{ID: "goblin", Kind: KindMonster, Room: "room-1", Position: spatial.Position{X: 3, Y: 1}},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 3, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 	})

@@ -67,32 +67,47 @@ var (
 	stepDoorEastLocal = spatial.Position{X: 0, Y: 3}
 )
 
-// abs projects a room-local cell the way the fixture's own anchors say it
-// should be — derived from the origins above rather than written out, so a
-// changed anchor cannot leave a stale literal passing.
-func stepAbs(origin, local spatial.Position) spatial.Position {
+// stepSeat is the AUTHORED absolute cell a chamber-local pair names — the
+// chamber's anchor plus the pair, in offset columns and rows, which is what a
+// MemberInput seat or a TriggerReachedPosition target is written in.
+func stepSeat(origin, local spatial.Position) spatial.Position {
 	return local.Add(origin)
 }
 
-// stepSeamWall is the west chamber's east wall: an edge from each of its own
-// last-column cells to the cell beyond it, every row but the doorway's. The far
-// endpoint belongs to the EAST chamber, which is exactly the thing a room could
-// not say before the field became one canvas.
-func stepSeamWall() []spatial.Boundary { return squareSeamWall(5, 6, int(stepDoorWestLocal.Y)) }
+// stepAbs is the dungeon-absolute AXIAL cell the same pair names — what every
+// verb takes and reports. Derived from the anchors above through the one
+// conversion rather than written out, so a changed anchor cannot leave a
+// stale literal passing.
+func stepAbs(origin, local spatial.Position) spatial.Position {
+	seat := stepSeat(origin, local)
+	return cellAt(int(seat.X), int(seat.Y))
+}
 
-// stepField is the shared set, optionally with a decider driving the goblin.
+// stepSeamWall is the wall along the seam between the two chambers: every
+// crossing from the west chamber's last column to the east chamber's first,
+// every row but the doorway's.
+func stepSeamWall() []spatial.Boundary {
+	return seamWallRows(int(stepWestOrigin.X)+5, int(stepWestOrigin.Y), 6, int(stepWestOrigin.Y)+int(stepDoorWestLocal.Y))
+}
+
+// stepField is the shared set: two chambers, a walled seam, and an OPEN door
+// standing in the one crossing the wall leaves — so a step through it can
+// name what it went through (rpg-project#256: a doorway is the door standing
+// in it, and the connection list that used to name one is gone).
 func stepField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: stepWest, Width: 6, Height: 6, Origin: stepWestOrigin,
-				Boundaries: stepSeamWall()},
-			{ID: stepEast, Width: 6, Height: 6, Origin: stepEastOrigin},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion(stepWest, int(stepWestOrigin.X), int(stepWestOrigin.Y), 6, 6),
+			rectRegion(stepEast, int(stepEastOrigin.X), int(stepEastOrigin.Y), 6, 6),
 		},
-		Connections: []encounter.ConnectionInput{{
-			ID: stepDoor, From: stepWest, To: stepEast,
-			FromPosition: stepDoorWestLocal,
-			ToPosition:   stepDoorEastLocal,
+		Walls: stepSeamWall(),
+		Doors: []encounter.DoorInput{{
+			ID: stepDoor,
+			Edges: []encounter.DoorEdge{{
+				From: stepAbs(stepWestOrigin, stepDoorWestLocal), To: stepAbs(stepEastOrigin, stepDoorEastLocal),
+			}},
+			State: encounter.DoorIsOpen(),
 		}},
 	}
 }
@@ -105,8 +120,7 @@ func (s *StepSuite) SetupTest() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
-				Position: spatial.Position{X: 5, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: stepSeat(stepWestOrigin, spatial.Position{X: 5, Y: 2})},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -163,7 +177,7 @@ func (s *StepSuite) TestAStepWithinARoomIsAMove() {
 	s.Equal(alice, out.Stepped.Member)
 	s.Equal(from, out.Stepped.From, "where she was, on the map")
 	s.Equal(to, out.Stepped.To, "where she is, on the map")
-	s.Empty(out.Crossing, "no doorway was involved")
+	s.Empty(out.Doors, "no door was involved")
 	s.Equal(to, s.standsAt(alice), "and the roster agrees")
 
 	beat := s.lastBeat(alice)
@@ -193,12 +207,13 @@ func (s *StepSuite) TestAStepThroughADoorwayIsJustAStep() {
 
 	s.Equal(threshold, out.Stepped.From)
 	s.Equal(farSide, out.Stepped.To)
-	s.Equal(stepDoor, out.Crossing, "and the verb says which doorway carried it")
+	s.Require().Len(out.Doors, 1, "and the verb says which door carried it")
+	s.Equal(encounter.DoorID(stepDoor), out.Doors[0].ID)
 	s.Equal(farSide, s.standsAt(alice))
 
 	beat := s.lastBeat(alice)
 	s.Equal("moved", beat["beat"], "the same beat an ordinary step writes")
-	s.Equal(stepDoor, beat["connection"], "with the doorway named beside it")
+	s.Equal([]any{stepDoor}, beat["doors"], "with the door named beside it")
 	s.Equal(farSide, s.beatCell(beat))
 }
 
@@ -222,7 +237,8 @@ func (s *StepSuite) TestADoorwayIsCrossableBothWays() {
 	// And back through the same door, against the direction it was declared in.
 	out, err := s.enc.Step(&encounter.StepInput{Member: alice, To: threshold})
 	s.Require().NoError(err)
-	s.Equal(stepDoor, out.Crossing, "the same doorway carried her home")
+	s.Require().Len(out.Doors, 1, "the same door carried her home")
+	s.Equal(encounter.DoorID(stepDoor), out.Doors[0].ID)
 	s.Equal(farSide, out.Stepped.From)
 	s.Equal(threshold, out.Stepped.To)
 	s.Equal(threshold, s.standsAt(alice))
@@ -361,8 +377,7 @@ func (s *StepSuite) sceneWithMonster(at spatial.Position, decider encounter.Deci
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
-				Position: at, Decider: decider},
+			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, at), Decider: decider},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -392,11 +407,10 @@ func (s *StepSuite) TestAStepFiresAReachedPositionEnding() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
-				Position: spatial.Position{X: 5, Y: 2}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: stepSeat(stepWestOrigin, spatial.Position{X: 5, Y: 2})},
 		},
 		Endings: []encounter.EndingInput{
-			{Key: "found-it", Trigger: encounter.TriggerReachedPosition{Room: stepWest, Position: target}},
+			{Key: "found-it", Trigger: encounter.TriggerReachedPosition{Position: stepSeat(stepWestOrigin, target)}},
 		},
 	})
 	s.Require().NoError(err)
@@ -416,12 +430,11 @@ func (s *StepSuite) TestACrossingFiresAReachedPositionEndingOnTheFarSide() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
-				Position: stepDoorWestLocal},
+			{ID: alice, Kind: encounter.KindPlayer, Position: stepSeat(stepWestOrigin, stepDoorWestLocal)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "through", Trigger: encounter.TriggerReachedPosition{
-				Room: stepEast, Position: stepDoorEastLocal}},
+				Position: stepSeat(stepEastOrigin, stepDoorEastLocal)}},
 		},
 	})
 	s.Require().NoError(err)
@@ -483,10 +496,8 @@ func (s *StepSuite) TestAStepRefusesAFightMember() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
-				Position: spatial.Position{X: 1, Y: 1}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
-				Position: spatial.Position{X: 4, Y: 4}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: stepSeat(stepWestOrigin, spatial.Position{X: 1, Y: 1})},
+			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, spatial.Position{X: 4, Y: 4})},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -505,10 +516,8 @@ func (s *StepSuite) TestAnActiveFightMemberSteps() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
-				Position: spatial.Position{X: 1, Y: 1}},
-			{ID: goblin, Kind: encounter.KindMonster, Room: stepWest,
-				Position: spatial.Position{X: 4, Y: 4}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: stepSeat(stepWestOrigin, spatial.Position{X: 1, Y: 1})},
+			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, spatial.Position{X: 4, Y: 4})},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -530,28 +539,5 @@ func (s *StepSuite) TestAnActiveFightMemberSteps() {
 func (s *StepSuite) TestGridReportsTheFieldsFamily() {
 	shape, err := s.enc.Grid()
 	s.Require().NoError(err)
-	s.Equal(spatial.GridShapeSquare, shape)
-}
-
-// TestGridReportsAHexFieldAsHex is the discriminating half: square is the zero
-// value of GridShape, so a verb that returned nothing at all would pass the
-// square case.
-func (s *StepSuite) TestGridReportsAHexFieldAsHex() {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Rooms: []encounter.RoomInput{
-			{ID: stepWest, Width: 6, Height: 6, Grid: spatial.GridShapeHex,
-				Origin: stepWestOrigin},
-		}},
-		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: stepWest,
-				Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err)
-
-	shape, err := enc.Grid()
-	s.Require().NoError(err)
-	s.Equal(spatial.GridShapeHex, shape)
+	s.Equal(spatial.GridShapeHex, shape, "every field is hex since regions replaced rooms (rpg-project#256)")
 }

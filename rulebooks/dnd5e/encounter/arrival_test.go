@@ -63,13 +63,19 @@ var (
 // arrivalField is two chambers with NO doorway and a fully sealed seam.
 func arrivalField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: arrivalVault, Width: 8, Height: 8, Origin: arrivalVaultOrigin,
-				Boundaries: squareSeamWall(7, 8)},
-			{ID: arrivalAnnex, Width: 4, Height: 8, Origin: arrivalAnnexOrigin},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion(arrivalVault, int(arrivalVaultOrigin.X), int(arrivalVaultOrigin.Y), 8, 8),
+			rectRegion(arrivalAnnex, int(arrivalAnnexOrigin.X), int(arrivalAnnexOrigin.Y), 4, 8),
 		},
+		Walls: seamWallRows(int(arrivalVaultOrigin.X)+7, int(arrivalVaultOrigin.Y), 8),
 	}
+}
+
+// vaultCell is the dungeon-absolute axial cell a vault-local pair names.
+func vaultCell(local spatial.Position) spatial.Position {
+	seat := local.Add(arrivalVaultOrigin)
+	return cellAt(int(seat.X), int(seat.Y))
 }
 
 // arrivalEncounter opens a scene whose only ending is a ReachedPosition on the
@@ -78,12 +84,12 @@ func arrivalField() encounter.FieldInput {
 // move; Join's cases need the vault empty.
 func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encounter.MemberKind) *encounter.Encounter {
 	members := []encounter.MemberInput{
-		{ID: dave, Kind: encounter.KindPlayer, Room: arrivalAnnex, Position: spatial.Position{X: 0, Y: 0}},
+		{ID: dave, Kind: encounter.KindPlayer, Position: arrivalAnnexOrigin},
 	}
 	if walker != "" {
-		w := encounter.MemberInput{ID: alice, Kind: walker, Room: arrivalVault, Position: arrivalStart}
+		w := encounter.MemberInput{ID: alice, Kind: walker, Position: arrivalStart.Add(arrivalVaultOrigin)}
 		if walker == encounter.KindMonster {
-			w.Decider = &patrolDecider{positions: []spatial.Position{arrivalTarget.Add(arrivalVaultOrigin)}}
+			w.Decider = &patrolDecider{positions: []spatial.Position{vaultCell(arrivalTarget)}}
 		}
 		members = append(members, w)
 	}
@@ -94,7 +100,7 @@ func (s *ArrivalSuite) arrivalEncounter(filter encounter.MemberID, walker encoun
 		Members: members,
 		Endings: []encounter.EndingInput{
 			{Key: "found-it", Trigger: encounter.TriggerReachedPosition{
-				Room: arrivalVault, Position: arrivalTarget, Member: filter}},
+				Position: arrivalTarget.Add(arrivalVaultOrigin), Member: filter}},
 		},
 	})
 	s.Require().NoError(err)
@@ -144,7 +150,7 @@ func (s *ArrivalSuite) TestAStepDecidesTheEndingByTheSameRules() {
 		s.Run(tc.name, func() {
 			enc := s.arrivalEncounter(filterID(tc.filter, alice), tc.kind)
 			out, err := enc.Step(&encounter.StepInput{
-				Member: alice, To: arrivalTarget.Add(arrivalVaultOrigin)})
+				Member: alice, To: vaultCell(arrivalTarget)})
 			s.Require().NoError(err)
 			s.assertFired(tc.fires, out.Outcome != nil, enc)
 		})
@@ -175,7 +181,7 @@ func (s *ArrivalSuite) TestAJoinDecidesTheEndingByTheSameRules() {
 			enc := s.arrivalEncounter(filterID(tc.filter, bob), "")
 			out, err := enc.Join(&encounter.JoinInput{
 				Member: bob, Kind: tc.kind,
-				Cell: arrivalTarget.Add(arrivalVaultOrigin),
+				Cell: vaultCell(arrivalTarget),
 			})
 			s.Require().NoError(err)
 			s.assertFired(tc.fires, out.Outcome != nil, enc)
@@ -203,14 +209,14 @@ func (s *ArrivalSuite) TestAnEndingIsOneCellNotOneColumn() {
 		s.Run(tc.name, func() {
 			enc := s.arrivalEncounter("", encounter.KindPlayer)
 			out, err := enc.Step(&encounter.StepInput{
-				Member: alice, To: tc.cell.Add(arrivalVaultOrigin)})
+				Member: alice, To: vaultCell(tc.cell)})
 			s.Require().NoError(err)
 			s.assertFired(false, out.Outcome != nil, enc)
 
 			// And from there, the tile itself still closes it — so the miss
 			// above was the cell, not the walk.
 			out, err = enc.Step(&encounter.StepInput{
-				Member: alice, To: arrivalTarget.Add(arrivalVaultOrigin)})
+				Member: alice, To: vaultCell(arrivalTarget)})
 			s.Require().NoError(err)
 			s.assertFired(true, out.Outcome != nil, enc)
 		})

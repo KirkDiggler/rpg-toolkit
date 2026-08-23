@@ -72,30 +72,7 @@ var (
 // of a shut door and the test would be measuring the gap beside the door rather
 // than the door. The wall is everything the door is not.
 func seamWallExcept(atX, height int, doorRows ...int) []spatial.Boundary {
-	isDoor := make(map[int]bool, len(doorRows))
-	for _, r := range doorRows {
-		isDoor[r] = true
-	}
-
-	out := make([]spatial.Boundary, 0, height*3)
-	for y := 0; y < height; y++ {
-		for _, dy := range []int{-1, 0, 1} {
-			to := y + dy
-			if to < 0 || to >= height {
-				continue
-			}
-			if dy == 0 && isDoor[y] {
-				continue // the door's own crossing
-			}
-			out = append(out, spatial.Boundary{
-				From:              spatial.Position{X: float64(atX), Y: float64(y)},
-				To:                spatial.Position{X: float64(atX + 1), Y: float64(to)},
-				BlocksMovement:    true,
-				BlocksLineOfSight: true,
-			})
-		}
-	}
-	return out
+	return seamWallRows(atX, 0, height, doorRows...)
 }
 
 // doorEdgesAcross returns the straight seam crossings at x=atX|atX+1 for each
@@ -103,10 +80,7 @@ func seamWallExcept(atX, height int, doorRows ...int) []spatial.Boundary {
 func doorEdgesAcross(atX int, rows ...int) []encounter.DoorEdge {
 	out := make([]encounter.DoorEdge, 0, len(rows))
 	for _, y := range rows {
-		out = append(out, encounter.DoorEdge{
-			From: spatial.Position{X: float64(atX), Y: float64(y)},
-			To:   spatial.Position{X: float64(atX + 1), Y: float64(y)},
-		})
+		out = append(out, encounter.DoorEdge{From: cellAt(atX, y), To: cellAt(atX+1, y)})
 	}
 	return out
 }
@@ -115,12 +89,8 @@ func doorEdgesAcross(atX int, rows ...int) []encounter.DoorEdge {
 // named, in the state given.
 func doorField(height int, state encounter.DoorState, id encounter.DoorID, rows ...int) encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: doorWest, Width: 3, Height: height, Origin: spatial.Position{X: 0, Y: 0},
-				Boundaries: seamWallExcept(2, height, rows...)},
-			{ID: doorEast, Width: 3, Height: height, Origin: spatial.Position{X: 3, Y: 0}},
-		},
+		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{rectRegion(doorWest, 0, 0, 3, height), rectRegion(doorEast, 3, 0, 3, height)}, Walls: seamWallExcept(2, height, rows...),
 		Doors: []encounter.DoorInput{{ID: id, Edges: doorEdgesAcross(2, rows...), State: state}},
 	}
 }
@@ -132,8 +102,8 @@ func (s *DoorSuite) doorway(state encounter.DoorState) *encounter.Encounter {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: doorField(3, state, theDoor, 1),
 		Members: []encounter.MemberInput{
-			{ID: nessa, Kind: encounter.KindPlayer, Room: doorWest, Position: spatial.Position{X: 2, Y: 1}},
-			{ID: orin, Kind: encounter.KindPlayer, Room: doorEast, Position: spatial.Position{X: 0, Y: 1}},
+			{ID: nessa, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+			{ID: orin, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -254,8 +224,7 @@ func (s *DoorSuite) TestAGateIsOneThingNotFour() {
 	blockedRows := func() []bool {
 		out := make([]bool, 0, len(gateRows))
 		for _, y := range gateRows {
-			out = append(out, canvas.IsLineOfSightBlocked(
-				spatial.Position{X: 2, Y: float64(y)}, spatial.Position{X: 3, Y: float64(y)}))
+			out = append(out, canvas.IsLineOfSightBlocked(cellAt(2, y), cellAt(3, y)))
 		}
 		return out
 	}
@@ -375,8 +344,8 @@ func (s *DoorSuite) TestADoorThatCannotBePartOfAFieldIsRefusedByName() {
 		{"two doors in one crossing", []encounter.DoorInput{
 			closedAt(theDoor, edge(2, 1, 3, 1)), closedAt(theGate, edge(3, 1, 2, 1))},
 			"could not then have one state"},
-		{"a crossing a room already walled", []encounter.DoorInput{closedAt(theDoor, edge(2, 0, 3, 0))},
-			"already drew a wall"},
+		{"a crossing already walled", []encounter.DoorInput{closedAt(theDoor, edge(2, 0, 3, 0))},
+			"already drawn"},
 		{"a lock nothing has to beat", []encounter.DoorInput{{
 			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
 			State: encounter.DoorIsLocked(encounter.Lock{})}}, "nothing has to beat"},
@@ -409,8 +378,8 @@ func (s *DoorSuite) TestAnUndirectedCrossingIsTheSameCrossingEitherWayRound() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: nessa, Kind: encounter.KindPlayer, Room: doorWest, Position: spatial.Position{X: 2, Y: 1}},
-			{ID: orin, Kind: encounter.KindPlayer, Room: doorEast, Position: spatial.Position{X: 0, Y: 1}},
+			{ID: nessa, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+			{ID: orin, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -632,14 +601,11 @@ func (s *DoorSuite) TestAStepSeveralCellsLongStillMeetsTheDoorInItsPath() {
 // single step can cross two of them.
 func threeChambers(first, second encounter.DoorState, gate1, gate2 encounter.DoorID) encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: "west", Width: 3, Height: 3, Origin: spatial.Position{X: 0, Y: 0},
-				Boundaries: seamWallExcept(2, 3, 1)},
-			{ID: "middle", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0},
-				Boundaries: seamWallExcept(2, 3, 1)},
-			{ID: "east", Width: 3, Height: 3, Origin: spatial.Position{X: 6, Y: 0}},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion("west", 0, 0, 3, 3), rectRegion("middle", 3, 0, 3, 3), rectRegion("east", 6, 0, 3, 3),
 		},
+		Walls: append(seamWallExcept(2, 3, 1), seamWallExcept(5, 3, 1)...),
 		Doors: []encounter.DoorInput{
 			{ID: gate1, Edges: doorEdgesAcross(2, 1), State: first},
 			{ID: gate2, Edges: doorEdgesAcross(5, 1), State: second},
@@ -652,7 +618,7 @@ func (s *DoorSuite) walkerIn(field encounter.FieldInput) *encounter.Encounter {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: nessa, Kind: encounter.KindPlayer, Room: "west", Position: spatial.Position{X: 0, Y: 1}},
+			{ID: nessa, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})

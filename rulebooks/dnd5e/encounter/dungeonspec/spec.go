@@ -2,31 +2,47 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package dungeonspec compiles an authored dungeon into a world the
-// composition can run (rpg-toolkit#1127).
+// composition can run (rpg-toolkit#1127, rpg-project#256).
 //
 // # Where this lives, and why it is here rather than in the host
 //
 // The yaml is content and the target is [encounter.FieldInput], so the compiler
 // could plausibly sit on either side of that seam. It sits here because the
 // toolkit owns geometry: rpg-api's own words for the arrangement it already has
-// with the old stack are that "rpg-api never computes dungeon geometry itself —
-// a key maps to a builder, and only the toolkit turns that spec into an actual
-// Space". The old stack's compiler is a subpackage of the module whose runtime
-// it feeds; this is that arrangement, one stack over.
+// are that "rpg-api never computes dungeon geometry itself — a key maps to a
+// builder, and only the toolkit turns that spec into an actual Space".
+//
+// # Version 2: the regions are the floor
+//
+// Version 1 described a dungeon as a chain of rectangular chambers and
+// generated the seam walls and doorways between them. Version 2 — the dialect
+// the dungeon builder writes (rpg-project#256) — describes the FLOOR directly:
+// named regions painted cell by cell, walls and doors as edges between adjacent
+// floor cells, everything in absolute [col,row] under one declared
+// orientation. Version 1 is deleted, not supported: a file that says
+// `version: 1` is refused by name, and the reference tomb is re-authored in
+// version 2 and compiles to the identical atlas (golden_test.go).
 //
 // # What it may not know
 //
 // This package compiles GEOMETRY and carries everything else. It resolves no
 // content: "dnd5e:monsters:skeleton" comes out the far end as the same string
-// that went in, and so does "lowest-health". That is not squeamishness — the
-// composition may not import a rulebook (design law C1, the reason Standing,
-// Sight and Decider are injected at all), and a compiler that resolved refs
-// here would drag one in. Refs become sheets one layer up, where a package may
-// import both.
+// that went in, and so does "lowest-health", and so does a region's
+// `archetype`. The composition may not import a rulebook (design law C1), and
+// a compiler that resolved refs here would drag one in. Refs become sheets one
+// layer up, where a package may import both.
 //
 // So the output is deliberately in two halves: a [encounter.FieldInput] that is
 // ready to hand to [encounter.NewEncounter] as it stands, and a roster of
 // placements that still need somebody who knows what a skeleton is.
+//
+// # Validation is path-addressed
+//
+// [Validate] reports EVERY defect it finds, each naming the YAML path of the
+// thing that is wrong (`regions[1].cells[0][3]`, `walls[3]`, `place[4].blocks_los`,
+// `start`), because the builder draws each one on the canvas at the thing it
+// names. A tool that only wants to know whether a file is a dungeon reads the
+// length of the list.
 package dungeonspec
 
 // Spec is the authored dungeon, decoded and not yet checked. Every field is
@@ -39,109 +55,138 @@ package dungeonspec
 // coffin is the reason: `blocks_los: false` is an authored exception, and a
 // plain bool would make it indistinguishable from a placement that said nothing
 // — which is how the reference tomb's one see-over-able prop would silently
-// become a wall.
+// become a wall. `start`, `lighting` and `lighting.intensity` are pointers for
+// the same reason: [0,0] and 0 are legal values an omission must not become.
 type Spec struct {
 	// Version is the dialect this file is written in. Exactly one is
-	// understood; an unknown one is refused rather than read hopefully,
-	// because a file from a dialect this build does not speak is not a file
-	// it can guess at.
+	// understood — [Version] — and any other is refused by name rather than
+	// read hopefully, version 1 included.
 	Version int `yaml:"version"`
 
-	// Key is the dungeon's identifier, used to name the doors this compile
-	// mints so two dungeons in one process cannot collide.
+	// Key is the dungeon's identifier: `[a-z0-9-]`, the file's identity, and
+	// the prefix of every door this compile mints so two dungeons in one
+	// process cannot collide.
 	Key string `yaml:"key"`
 
-	// Void is what the space between the chambers does to a sightline —
-	// "opaque" or "transparent", the words [encounter.Void] carries.
-	//
-	// REQUIRED, and this is the field most likely to be mistaken for
-	// decoration. [encounter.CanvasInput.Void] has no default by ruling, so
-	// somebody has to say it, and the only honest somebody is the author:
-	// a tomb cut from rock and an open-air ruin are the same rooms with
-	// different walls between them, and nothing in the room list can tell
-	// them apart.
-	Void string `yaml:"void"`
+	// Name is the dungeon's display title. Carried, never read.
+	Name string `yaml:"name"`
 
 	// Orientation is which way the hexes point — "pointy" or "flat".
-	//
-	// REQUIRED, because every `at:` pair in this file is an OFFSET
-	// coordinate, and an offset coordinate means nothing until the
-	// orientation is known: the same [col,row] is a different hex under each.
-	// Kirk's ruling: "flat and pointy top are both valid and should be
-	// settable."
+	// REQUIRED: every [col,row] pair in this file is an offset coordinate,
+	// and an offset coordinate means nothing until the orientation is known.
 	Orientation string `yaml:"orientation"`
 
-	// Height is how tall every chamber is, in cells. One number for the
-	// dungeon rather than one per room, which is what makes a chain of
-	// chambers share a seam at all.
-	Height int `yaml:"height"`
+	// Void is what the space between the regions does to a sightline —
+	// "opaque" or "transparent", the words [encounter.Void] carries.
+	// REQUIRED: [encounter.CanvasInput.Void] has no default by ruling.
+	Void string `yaml:"void"`
 
-	// Start is where the party comes in: an absolute [col,row] cell.
-	//
-	// REQUIRED and explicit. The dialect this replaces derived it from a
-	// chamber's `archetype: entrance`, which is the shape of defaulting
-	// rpg-toolkit#1033 forbids — a word describing what a room is FOR,
-	// silently deciding where people stand. An author who wants the party in
-	// the entrance says which cell of it.
-	//
-	// The compiler resolves which chamber holds this cell rather than being
-	// told, because it already knows: the chambers' footprints are what it
-	// just computed, and asking the author to name the room as well would be
-	// a second fact that can disagree with the first.
-	//
-	// A POINTER because [0,0] is a legal cell — the north-west corner of the
-	// first chamber — so a plain value could not tell "the author said corner"
-	// apart from "the author said nothing", and the second would silently
-	// become the first. Same argument as a prop's blocking flags, one field up.
+	// Regions are the floor: their cells' union, and nothing else.
+	Regions []RegionSpec `yaml:"regions"`
+
+	// Start is where the party comes in: an absolute [col,row] cell that
+	// must be floor. REQUIRED and explicit — version 1 derived it from an
+	// archetype, which is the shape of defaulting rpg-toolkit#1033 forbids.
 	Start *[2]int `yaml:"start"`
 
-	// Rooms are the chambers, IN LAYOUT ORDER: each one sits immediately
-	// east of the one before it. Declaration order is geometry here, not
-	// presentation.
-	Rooms []RoomSpec `yaml:"rooms"`
+	// Walls are edges between adjacent floor cells that block both movement
+	// and sight. The envelope is implied, never written: a crossing from
+	// floor into void is a crossing nobody can make.
+	Walls []EdgeSpec `yaml:"walls"`
 
-	// Connectors are the openings between neighbouring chambers.
-	Connectors []ConnectorSpec `yaml:"connectors"`
+	// Doors are one state each over one or more edges (rpg-toolkit#1123).
+	Doors []DoorSpec `yaml:"doors"`
+
+	// Place is everything standing on the floor — props, monsters, and the
+	// boss alike, routed by the ref's type segment — at ABSOLUTE cells.
+	Place []PlaceSpec `yaml:"place"`
 }
 
-// RoomSpec is one chamber.
-type RoomSpec struct {
-	// ID names the chamber, and survives the compile as the region's ID.
+// Version is the one dialect this build speaks.
+//
+// A single accepted value rather than a floor, deliberately: "version 2 or
+// later is fine" is a promise about files nobody has written yet, and the
+// standing precedent for a shape this build does not know is to refuse it by
+// name rather than read it hopefully (rpg-toolkit#1053/#1068).
+const Version = 2
+
+// RegionSpec is one named set of cells with the per-area facts it carries.
+type RegionSpec struct {
+	// ID names the region, and survives the compile as the region's ID.
 	ID string `yaml:"id"`
 
-	// Width is the chamber's horizontal extent in cells. Its height is the
-	// dungeon's.
-	Width int `yaml:"width"`
+	// Name is the region's display name. Carried, never read.
+	Name string `yaml:"name"`
 
-	// Place is everything standing in the chamber — props, monsters, and the
-	// boss alike, routed by the ref's type segment rather than by which list
-	// they were written in.
-	Place []PlaceSpec `yaml:"place,omitempty"`
+	// Archetype is the presentation profile the assets resolve — "crypt" —
+	// REQUIRED non-empty, carried unread, and NEVER a mechanic
+	// (rpg-project#256 ruling; [encounter.RegionInput.Archetype]).
+	Archetype string `yaml:"archetype"`
+
+	// Lighting is the region's light level. REQUIRED, as is its intensity.
+	Lighting *LightingSpec `yaml:"lighting"`
+
+	// Cells is the region's floor as rows of [col,row] pairs. The nesting is
+	// for diff-readability only — the builder writes one row per line so a
+	// repaint diffs as a line change — and the compiler flattens it. A cell
+	// in two regions, or twice in one, fails.
+	Cells [][][2]int `yaml:"cells"`
 }
 
-// PlaceSpec is one authored placement, room-local.
+// LightingSpec is a region's lighting block: one field today, a block so later
+// fields land beside it without reshaping the file.
+type LightingSpec struct {
+	// Intensity is the light level in [0,1]. REQUIRED — a pointer so a
+	// written 0 is distinct from nothing written.
+	Intensity *float64 `yaml:"intensity"`
+}
+
+// EdgeSpec is one crossing between two adjacent floor cells:
+// [[col,row],[col,row]]. Undirected.
+type EdgeSpec [2][2]int
+
+// DoorSpec is one door: one state over one or more edges.
+type DoorSpec struct {
+	// ID names the door within this dungeon; the compiled door is
+	// `<key>/<id>`.
+	ID string `yaml:"id"`
+
+	// Edges are the crossings the door stands in — at least one. An edge
+	// need not sit on a region seam: a door inside a region is legal.
+	Edges []EdgeSpec `yaml:"edges"`
+
+	// Locked, when present, makes the door locked behind the check it
+	// carries. Nil with Closed false is an open doorway.
+	Locked *LockSpec `yaml:"locked,omitempty"`
+
+	// Closed makes the door shut but not locked. Ignored when Locked is
+	// set — a locked door is shut by definition.
+	Closed bool `yaml:"closed,omitempty"`
+}
+
+// LockSpec is the check that opens a locked door. Both fields are carried to
+// the composition opaquely — [encounter.Lock] never inspects an ability
+// either, because "does a DEX check of 12 succeed" is a rule.
+type LockSpec struct {
+	DC      int    `yaml:"dc"`
+	Ability string `yaml:"ability"`
+	Tool    string `yaml:"tool,omitempty"`
+}
+
+// PlaceSpec is one authored placement at an ABSOLUTE cell.
 type PlaceSpec struct {
 	// Ref is content's identifier, "module:type:id". Its TYPE segment routes
 	// the placement: "props" becomes a prop, "monsters" becomes a member.
 	// Nothing else about it is read.
 	Ref string `yaml:"ref"`
 
-	// At is the room-local cell, offset [col,row].
+	// At is the absolute cell, offset [col,row]. Must be floor, and no two
+	// placements may share one.
 	At [2]int `yaml:"at"`
 
 	// BlocksMovement is whether a prop stops somebody standing there.
-	//
-	// REQUIRED on every prop, and REFUSED on anything else. The dialect this
-	// replaces read a missing value as `true`, and [encounter.PropInput]'s
-	// own doc comment names that default as the thing it drops: "a blocker
-	// nobody declared is a wall nobody drew". The composition refuses a nil
-	// pointer one layer down, so a default here would be exactly the move
-	// rpg-toolkit#1033 forbids, relocated to where it is harder to see.
-	//
-	// It costs an author two lines per prop. All four combinations are real
-	// content — a pillar blocks both, this tomb's coffin is seen over but not
-	// walked through, a curtain is the reverse, candles block neither — so
-	// there is no combination the omission could have safely stood for.
+	// REQUIRED on every prop, and REFUSED on anything else — a blocker
+	// nobody declared is a wall nobody drew ([encounter.PropInput]).
 	BlocksMovement *bool `yaml:"blocks_movement,omitempty"`
 
 	// BlocksLoS is whether a prop stops a sightline. REQUIRED on every prop
@@ -149,39 +194,10 @@ type PlaceSpec struct {
 	BlocksLoS *bool `yaml:"blocks_los,omitempty"`
 
 	// Targeting is the author's word for how a monster picks a target.
-	// Monsters only. Carried opaquely and never interpreted here: what it
-	// MEANS is a rule, and rules live in the rulebook.
+	// Monsters only. Carried opaquely and never interpreted here.
 	Targeting *string `yaml:"targeting,omitempty"`
 
 	// Boss marks the monster whose death ends things. Monsters only, and at
-	// most one per chamber.
-	//
-	// A FLAG RATHER THAN ITS OWN KEY, which is Kirk's question answered: the
-	// dialect this replaces gave a chamber a `boss:` entry beside its
-	// `place:` list, and the two then needed the same rules about cells,
-	// refs, targeting and collisions written twice. A boss is a monster with
-	// a flag. What it is FOR — which member a host watches — is a fact worth
-	// carrying, and [MonsterPlacement.Boss] carries it.
+	// most one per region.
 	Boss bool `yaml:"boss,omitempty"`
-}
-
-// ConnectorSpec is an opening between two neighbouring chambers.
-type ConnectorSpec struct {
-	From string `yaml:"from"`
-	To   string `yaml:"to"`
-
-	// Locked, when present, makes the opening a locked door rather than a
-	// gap. Nil is a gap nobody can shut.
-	Locked *LockSpec `yaml:"locked,omitempty"`
-}
-
-// LockSpec is the check that opens a locked connector.
-//
-// Both fields are carried to the composition opaquely — [encounter.Lock] never
-// inspects an ability either, because "does a DEX check of 12 succeed" is a
-// rule and the composition holds none.
-type LockSpec struct {
-	DC      int    `yaml:"dc"`
-	Ability string `yaml:"ability"`
-	Tool    string `yaml:"tool,omitempty"`
 }

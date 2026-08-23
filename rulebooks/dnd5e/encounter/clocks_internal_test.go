@@ -30,12 +30,12 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: FieldInput{
-			Canvas: CanvasInput{Void: VoidIsOpaque()},
-			Rooms:  []RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
+			Regions: []RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: []MemberInput{
-			{ID: "alice", Kind: KindPlayer, Room: "room-1", Position: spatial.Position{X: 2, Y: 2}},
-			{ID: "goblin", Kind: KindMonster, Room: "room-1", Position: spatial.Position{X: 7, Y: 7}},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 7, Y: 7}},
 		},
 		Endings: []EndingInput{
 			{Key: "called", Trigger: TriggerExternal{}},
@@ -73,18 +73,15 @@ func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque()}, Rooms: []RoomInput{
-				{ID: "r1", Width: 8, Height: 8, Boundaries: sealedSeam(7, 8)},
-				{ID: "r2", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
-			}},
+			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8), rectRegion("r2", 8, 0, 8, 8)}, Walls: sealedSeam(7, 8)},
 			Members: []MemberInput{
-				{ID: "alice", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-				{ID: "bob", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 2, Y: 1}},
-				{ID: "carl", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 3, Y: 1}},
-				{ID: "dana", Kind: KindPlayer, Room: "r1", Position: spatial.Position{X: 4, Y: 1}},
+				{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+				{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+				{ID: "carl", Kind: KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
+				{ID: "dana", Kind: KindPlayer, Position: spatial.Position{X: 4, Y: 1}},
 				// Next door, so first light does not start the fight these
 				// cases are about starting badly.
-				{ID: "goblin", Kind: KindMonster, Room: "r2", Position: spatial.Position{X: 6, Y: 6}},
+				{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 14, Y: 6}},
 			},
 			Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 		})
@@ -159,11 +156,12 @@ func TestFormRejections(t *testing.T) {
 // for the reason testwalls_test.go's squareSeamWall spells out: a square cell
 // has eight neighbours, and a wall of same-row edges leaks at every corner.
 func sealedSeam(atX, height int) []spatial.Boundary {
-	out := make([]spatial.Boundary, 0, height*3)
+	o := HexesArePointyTop()
+	out := make([]spatial.Boundary, 0, height*2)
 	for y := 0; y < height; y++ {
 		for _, dy := range []int{-1, 0, 1} {
 			to := y + dy
-			if to < 0 || to >= height {
+			if to < 0 || to >= height || adjacencyGrid.Distance(HexCellAt(o, atX, y), HexCellAt(o, atX+1, to)) != 1 {
 				continue
 			}
 			out = append(out, spatial.Boundary{
@@ -188,12 +186,10 @@ func sealedSeam(atX, height int) []spatial.Boundary {
 func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque()}, Rooms: []RoomInput{
-			{ID: "r1", Width: 8, Height: 8},
-		}},
+		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8)}},
 		Members: []MemberInput{
-			{ID: "goblin", Kind: KindMonster, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "wolf", Kind: KindMonster, Room: "r1", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "wolf", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 	})
@@ -231,12 +227,12 @@ func TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome(t *testing.T) {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: rogueDriver{}, Striker: passStriker{},
 		Field: FieldInput{
-			Canvas: CanvasInput{Void: VoidIsOpaque()},
-			Rooms:  []RoomInput{{ID: "room-1", Width: 8, Height: 8}},
+			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
+			Regions: []RegionInput{rectRegion("room-1", 0, 0, 8, 8)},
 		},
 		Members: []MemberInput{
-			{ID: "alice", Kind: KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "goblin", Kind: KindMonster, Room: "room-1", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 	})

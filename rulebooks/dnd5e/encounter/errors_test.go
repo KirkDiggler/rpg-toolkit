@@ -20,7 +20,13 @@ func TestSentinelsAreDistinct(t *testing.T) {
 		encounter.ErrClosed,
 		encounter.ErrNoField,
 		encounter.ErrBadPlacement,
-		encounter.ErrBadConnection,
+		encounter.ErrRegionEmpty,
+		encounter.ErrRegionOverlap,
+		encounter.ErrRegionArchetypeMissing,
+		encounter.ErrRegionLightingMissing,
+		encounter.ErrEdgeNotAdjacent,
+		encounter.ErrEdgeOffFloor,
+		encounter.ErrDoorEdgeOffFloor,
 		encounter.ErrInvalidData,
 	}
 

@@ -25,9 +25,14 @@ session seam above it holds no rules either.
   modules are not.
 - **Not the old `encounter` module.** The top-level `encounter/` package is the
   previous generation — `NPCAct`, `Monster.TakeTurn`, `ModeFreeRoam` /
-  `ModeTurnBased`, a wired `CombatResolver`. That stack still runs the shipped
-  game. This one is what new work builds on. They do not share a world model,
-  and there is deliberately no adapter between them.
+  `ModeTurnBased`, a wired `CombatResolver`. This one is what new work builds
+  on. They do not share a world model, and there is deliberately no adapter
+  between them.
+- **Not a room chain.** Since rpg-project#256 a dungeon is authored as
+  REGIONS — named sets of absolute `[col,row]` cells — plus walls and doors as
+  edges between adjacent floor cells. There are no rooms, origins or
+  connections; `dungeonspec` version 2 is the file format, and
+  `docs/adr/0044-regions-replace-rooms.md` is the decision.
 - **Not the host's interface.** That is `rulebooks/dnd5e/session`.
 
 ## Why it exists
@@ -53,7 +58,7 @@ type Decider interface {
 
 ```go
 type Snapshot struct {
-    Room     string          // your own current room
+    Room     string          // your own current region
     Position spatial.Position // your own position within it
     Holdings []intel.Holding  // your own held intel — nothing more
 }
@@ -217,9 +222,10 @@ other caller of the consult is a verb looking at a world something else changed.
 | `standing.go` | `Standing`, and the world noticing who is down |
 | `sight.go` | `Sight`, and how far each member can see this refresh |
 | `step.go` | one step on the map, and the one place that decides what one is |
-| `atlas.go` | the map reads — `Atlas` (every region's anchor and span, in absolute space) and `Grid` |
-| `region.go` | a room is a region: `RegionAt`, `MembersIn`, and the one ownership lookup |
-| `field.go` | rooms, connections, and the per-verb output shapes |
+| `atlas.go` | the map reads — `Atlas` (every floor cell, region, prop, wall and doorway, in absolute space) and `Grid` |
+| `region.go` | a region is a named set of cells: `RegionAt`, `Region`, `MembersIn` |
+| `compilefield.go` | the one place an authored field becomes the canvas: regions to an owner map, walls and props checked, every `[col,row]` converted once |
+| `field.go` | regions, props, walls, and the per-verb output shapes |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 
 ## Reading it

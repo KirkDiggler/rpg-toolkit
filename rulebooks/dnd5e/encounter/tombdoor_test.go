@@ -61,22 +61,21 @@ const tombdoorRow = 3
 var (
 	// delve stands in the hall with her hand on the door; the wight is one
 	// cell beyond it, in the crypt.
-	delveCell = spatial.Position{X: 15, Y: tombdoorRow}
-	wightCell = spatial.Position{X: 16, Y: tombdoorRow}
+	delveCell = cellAt(15, tombdoorRow)
+	wightCell = cellAt(16, tombdoorRow)
 )
 
 func (s *TombDoorSuite) SetupTest() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: tombdoorEntrance, Width: 6, Height: 8, Origin: spatial.Position{X: 0, Y: 0},
-					Boundaries: seamWallExcept(5, 8, tombdoorRow)},
-				{ID: tombdoorHall, Width: 10, Height: 8, Origin: spatial.Position{X: 6, Y: 0},
-					Boundaries: seamWallExcept(9, 8, tombdoorRow)},
-				{ID: tombdoorCrypt, Width: 12, Height: 8, Origin: spatial.Position{X: 16, Y: 0}},
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{
+				rectRegion(tombdoorEntrance, 0, 0, 6, 8),
+				rectRegion(tombdoorHall, 6, 0, 10, 8),
+				rectRegion(tombdoorCrypt, 16, 0, 12, 8),
 			},
+			Walls: append(seamWallExcept(5, 8, tombdoorRow), seamWallExcept(15, 8, tombdoorRow)...),
 			Doors: []encounter.DoorInput{{
 				ID:    cryptDoor,
 				Edges: doorEdgesAcross(15, tombdoorRow),
@@ -84,10 +83,8 @@ func (s *TombDoorSuite) SetupTest() {
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: delve, Kind: encounter.KindPlayer, Room: tombdoorHall,
-				Position: spatial.Position{X: 9, Y: tombdoorRow}},
-			{ID: wight, Kind: encounter.KindMonster, Room: tombdoorCrypt,
-				Position: spatial.Position{X: 0, Y: tombdoorRow}},
+			{ID: delve, Kind: encounter.KindPlayer, Position: spatial.Position{X: 15, Y: tombdoorRow}},
+			{ID: wight, Kind: encounter.KindMonster, Position: spatial.Position{X: 16, Y: tombdoorRow}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -176,7 +173,7 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 // has a gap and no door, which is what every opening in this composition was
 // before this slice. It still works, and no verb can touch it.
 func (s *TombDoorSuite) TestTheOpenDoorwayAtTheOtherSeamIsUnaffected() {
-	out, err := s.enc.Step(&encounter.StepInput{Member: delve, To: spatial.Position{X: 5, Y: tombdoorRow}})
+	out, err := s.enc.Step(&encounter.StepInput{Member: delve, To: cellAt(5, tombdoorRow)})
 	s.Require().NoError(err, "the gap at the first seam is a step like any other")
 	s.Empty(out.Doors, "and no door stands in it")
 

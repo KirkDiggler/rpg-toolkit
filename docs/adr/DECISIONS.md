@@ -163,6 +163,15 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   stalls one monster harmlessly, so one may default and the other must not.
   *Rule: a capability whose absence is locally inert may default; one whose
   absence blocks the whole composition may not.*
+- **0044** — **Regions replace rooms**: a region is a named set of absolute
+  cells carrying per-area world facts (lighting now); rooms, origins and
+  connections were the room chain's vocabulary and are gone. The floor is
+  the union of the regions' cells, walls and doors are edges between
+  adjacent floor cells, every authored `[col,row]` is converted once at
+  construction through `HexCellAt`, and `dungeonspec` version 2 is the file
+  (version 1 deleted, refused by name). `archetype` is a presentation ref
+  that never decides a mechanic. *Rule: a region is what it lists; nothing
+  about the floor is derived from a shape, an anchor, or a word.*
 
 ---
 

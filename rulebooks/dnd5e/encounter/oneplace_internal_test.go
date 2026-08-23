@@ -39,41 +39,54 @@ import (
 
 // TestRegionOwnershipIsAskedInOneFunction.
 //
-// Turning a dungeon-absolute cell into a room-local one is what asking "which
-// region owns this cell" requires, and spatial.Position.Subtract is the only
-// way this package says it. Every OTHER bounds check in the module takes a
-// room-local AUTHORING position — a connection's endpoint, an ending's target,
-// a member's placement — and asks a room grid about it in the frame it was
-// written in. None of them subtracts anything.
+// Since regions replaced rooms (rpg-project#256) there is no arithmetic left
+// in asking which region owns a cell: the answer is a map, built once at
+// construction, and READING THAT MAP is the one move a second implementation
+// cannot avoid. So: every function that indexes the owner map is named here,
+// and there are exactly two — the builder, which reads it to refuse a cell
+// painted twice (W2), and the lookup, which reads it to answer.
 //
-// So: one Subtract, one region lookup. A second implementation has to subtract
-// an origin in order to exist, and this is the test it fails.
+// This used to pin spatial.Position.Subtract, the move the room chain's mask
+// made (footprintHolds, and regionAt before it). That move is gone with the
+// origin it subtracted; the question it guarded is the same one.
 //
-// The one function is footprintHolds since rpg-toolkit#1127, and it used to be
-// regionAt — which is a move rather than an addition, and worth the sentence
-// because the slice that moved it briefly had TWO: regionAt subtracting to ask
-// about integrality, and footprintHolds subtracting to ask about ownership.
-// Two subtractions for two questions in two functions is exactly the shape this
-// test exists to catch, so both questions were put in the one place instead.
-//
-// If a legitimate second use ever appears — a delta between two cells for a
-// beat, say — the honest fix is to name it in the expected list, not to delete
-// the test. The point is that a second one becomes a decision somebody makes on
-// purpose rather than a copy that arrives unnoticed.
+// If a legitimate third reader ever appears, the honest fix is to name it in
+// the expected list, not to delete the test. The point is that a second one
+// becomes a decision somebody makes on purpose rather than a copy that
+// arrives unnoticed.
 func TestRegionOwnershipIsAskedInOneFunction(t *testing.T) {
+	readers := functionsWhoseBodyReads(t, func(n ast.Node) bool {
+		index, ok := n.(*ast.IndexExpr)
+		if !ok {
+			return false
+		}
+		sel, ok := index.X.(*ast.SelectorExpr)
+		return ok && sel.Sel.Name == "owner"
+	})
+	require.Equal(t, []string{"compileRegions", "regionOf"}, readers,
+		"region ownership must be answered in exactly one place (rpg-toolkit#1108, rpg-project#256): "+
+			"a second function reading the owner map is a second answer to which region holds a cell")
+}
+
+// TestTheOneConversionIsCalledInOnePlace.
+//
+// HexCellAt is the ONE conversion from an authored [col,row] pair to the
+// absolute axial cell it names (rpg-project#256; the rpg-toolkit#1141/#1150
+// lesson). Inside this package exactly one function may call it — the
+// field's own cellAt — so every authored coordinate goes through the same
+// door and a second reading of the basis cannot grow back.
+func TestTheOneConversionIsCalledInOnePlace(t *testing.T) {
 	callers := functionsWhoseBodyReads(t, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return false
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		return ok && sel.Sel.Name == "Subtract"
+		ident, ok := call.Fun.(*ast.Ident)
+		return ok && ident.Name == "HexCellAt"
 	})
-
-	require.Equal(t, []string{"footprintHolds"}, callers,
-		"region ownership must be answered in exactly one place (rpg-toolkit#1108): a second "+
-			"function projecting an absolute cell into a room's local frame is a second answer "+
-			"to which region holds it")
+	require.Equal(t, []string{"cellAt"}, callers,
+		"the authored frame is converted in exactly one place: a second caller of HexCellAt "+
+			"is a second place for the basis to be read differently")
 }
 
 // TestTheReachedPositionCellIsReadInOneFunction.

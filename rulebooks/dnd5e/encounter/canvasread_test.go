@@ -60,14 +60,10 @@ func (s *CanvasReadSuite) SetupTest() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow)}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
-			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow - 1)}},
-			{ID: dave, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow - 1)}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow)},
+			{ID: bob, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow)},
+			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow-1)},
+			{ID: dave, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow-1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})

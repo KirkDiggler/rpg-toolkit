@@ -3,29 +3,12 @@
 
 package dungeonspec_test
 
-// dialect_test.go is WHAT THE AUTHOR IS ALLOWED TO SAY, and what happens when
-// they say it wrong.
+// dialect_test.go is WHAT THE FILE MAY SAY (rpg-project#256, design §2).
 //
-// Decoding and structural validation are the half of this compiler that does
-// not care what a cell means. Whether a room becomes a rhombus or a cell set,
-// whether the grid is pointy or flat — none of it changes whether `width: 0` is
-// a dungeon, or whether a connector may name a room that was never declared.
-// So this file holds the rules that are true before geometry, and holds them as
-// REFUSALS: every one is a spec somebody could plausibly write, and the error
-// says which field offended.
-//
-// # Loud, always, and never repaired
-//
-// There is no lenient mode and no defaulting anywhere below. An unknown key is
-// a typo or a stale dialect, and silently dropping it is how an author's
-// intention disappears between the file and the game — the old stack's decoder
-// says the same thing in its own words and uses KnownFields(true) to mean it.
-// The same reasoning is why `void`, `orientation`, `start` and a prop's two
-// blocking answers are REQUIRED rather than derived from a theme word, a room
-// archetype, or an omission: guessing any of them here would be
-// rpg-toolkit#1033's forbidden default, relocated from the composition into the
-// compiler where it is harder to see. tombsource_test.go lists what that cost
-// the dialect it replaces.
+// Every case below is the shipping tomb with one thing changed, so each
+// refusal differs from a VALID file by exactly the thing it is about — and
+// each refusal is checked for WHERE it points, because the builder draws every
+// FieldError on the canvas at the path it names.
 
 import (
 	"strings"
@@ -38,337 +21,245 @@ import (
 
 type DialectSuite struct {
 	suite.Suite
+	tomb string
 }
 
 func TestDialectSuite(t *testing.T) {
 	suite.Run(t, new(DialectSuite))
 }
 
-// TestTheShippingTombDecodes is the acceptance case: everything below is about
-// what gets refused, and this is the one that must not be.
-func (s *DialectSuite) TestTheShippingTombDecodes() {
-	spec, err := dungeonspec.Decode([]byte(tombYAML))
-	s.Require().NoError(err)
+func (s *DialectSuite) SetupTest() { s.tomb = tombYAML(s.T()) }
 
-	s.Equal("reference-tomb", spec.Key)
-	s.Equal(8, spec.Height)
-	s.Equal("opaque", spec.Void)
-	s.Equal("pointy", spec.Orientation)
-	s.Require().Len(spec.Rooms, 3)
-	s.Equal([]int{6, 10, 12}, []int{spec.Rooms[0].Width, spec.Rooms[1].Width, spec.Rooms[2].Width})
-
-	s.Require().NotNil(spec.Start, "an omitted start and [0,0] are different facts")
-	s.Equal([2]int{1, 3}, *spec.Start, "and it says where the party comes in")
-
-	s.Require().Len(spec.Rooms[1].Place, 8, "the hall's six props and two skeletons")
-	s.Equal("lowest-health", deref(spec.Rooms[1].Place[6].Targeting))
-
-	captain := spec.Rooms[2].Place[7]
-	s.Equal("dnd5e:monsters:skeleton-captain", captain.Ref)
-	s.True(captain.Boss, "the boss is a monster with a flag, not a key of its own")
-
-	coffin := spec.Rooms[2].Place[0]
-	s.Equal("dnd5e:props:coffin", coffin.Ref)
-	s.Require().NotNil(coffin.BlocksLoS)
-	s.False(*coffin.BlocksLoS, "authored false — you see over a coffin")
-	s.Require().NotNil(coffin.BlocksMovement)
-	s.True(*coffin.BlocksMovement, "and do not walk through one")
-
-	s.Require().Len(spec.Connectors, 2)
-	s.Nil(spec.Connectors[0].Locked, "entrance to hall stands open")
-	s.Require().NotNil(spec.Connectors[1].Locked)
-	s.Equal(12, spec.Connectors[1].Locked.DC)
-	s.Equal("dex", spec.Connectors[1].Locked.Ability)
-
-	s.Require().NoError(dungeonspec.Validate(spec), "and it survives validation")
+func (s *DialectSuite) tombWith(old, new string) string {
+	s.Require().Contains(s.tomb, old, "tombWith: anchor not present in the tomb")
+	return strings.Replace(s.tomb, old, new, 1)
 }
 
-// TestADungeonMustBeOneDocumentOfKnownKeys — the decoder's own refusals, before
-// any rule about dungeons.
-func (s *DialectSuite) TestADungeonMustBeOneDocumentOfKnownKeys() {
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"empty", "", "empty"},
-		{"unknown key", tombWith("height: 8", "height: 8\nlighting: dim"), "lighting"},
-		{"a key the old dialect had", tombWith("height: 8", "height: 8\ntheme: crypt"), "theme"},
-		{"misspelled key", tombWith("height: 8", "hieght: 8"), "hieght"},
-		{"two documents", tombYAML + "\n---\nversion: 1\nkey: other\n", "one document"},
-	} {
-		s.Run(tc.name, func() {
-			_, err := dungeonspec.Decode([]byte(tc.yaml))
-			s.Require().Error(err)
-			s.Contains(strings.ToLower(err.Error()), strings.ToLower(tc.wants))
-		})
-	}
-}
-
-// TestADungeonMustSayWhatItIs is the required-and-never-defaulted set. Each of
-// these is a fact about THIS world that no rule could derive
-// (rpg-toolkit#1033), and the compiler is not allowed to pick one.
-func (s *DialectSuite) TestADungeonMustSayWhatItIs() {
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"no version", withoutLine("version: 1"), "version"},
-		{"a version this build does not speak", tombWith("version: 1", "version: 2"), "version"},
-		{"no key", withoutLine("key: reference-tomb"), "key"},
-		{"no height", withoutLine("height: 8"), "height"},
-		{"zero height", tombWith("height: 8", "height: 0"), "height"},
-
-		{"no void", withoutLine("void: opaque"), "void"},
-		{"a void nobody knows", tombWith("void: opaque", "void: soup"), "void"},
-
-		{"no orientation", withoutLine("orientation: pointy"), "orientation"},
-		{"an orientation nobody knows", tombWith("orientation: pointy", "orientation: sideways"), "orientation"},
-
-		{"no start", withoutLine("start: [1, 3]"), "start"},
-		{"a start outside the dungeon", tombWith("start: [1, 3]", "start: [28, 3]"), "start"},
-		{"a start below the floor", tombWith("start: [1, 3]", "start: [1, 8]"), "start"},
-		{"a start on top of something", tombWith("start: [1, 3]", "start: [1, 1]"), "start"},
-	} {
-		s.Run(tc.name, func() {
-			s.Require().Error(s.decodeAndValidate(tc.yaml), "this spec must be refused")
-			s.Contains(strings.ToLower(s.decodeAndValidate(tc.yaml).Error()), tc.wants)
-		})
-	}
-}
-
-// TestARoomMustBeARoom — the room list's own rules.
-func (s *DialectSuite) TestARoomMustBeARoom() {
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"no rooms", roomless, "rooms"},
-		{"empty room id", tombWith("  - id: hall", "  - id: \"\""), "id"},
-		{"duplicate room id", tombWith("  - id: tomb", "  - id: hall"), "duplicate"},
-		{"zero width", tombWith("    width: 10", "    width: 0"), "width"},
-		{"negative width", tombWith("    width: 10", "    width: -4"), "width"},
-	} {
-		s.Run(tc.name, func() {
-			err := s.decodeAndValidate(tc.yaml)
-			s.Require().Error(err)
-			s.Contains(strings.ToLower(err.Error()), tc.wants)
-		})
-	}
-}
-
-// TestAPlacementMustNameSomethingAndStandSomewhere.
-//
-// The ref's TYPE segment is what routes a placement — props become props,
-// monsters become members — so a ref that does not parse is not a thing this
-// compiler can place, and one whose type it does not recognise is not either.
-// Neither is repaired by guessing.
-func (s *DialectSuite) TestAPlacementMustNameSomethingAndStandSomewhere() {
-	const pillar = `      - { ref: "dnd5e:props:pillar", at: [2, 2], blocks_movement: true,  blocks_los: true }`
-	const solid = `blocks_movement: true, blocks_los: true`
-
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"malformed ref", tombWith(pillar, `      - { ref: "pillar", at: [2, 2], `+solid+` }`), "ref"},
-		{"unknown ref type", tombWith(pillar, `      - { ref: "dnd5e:vehicles:cart", at: [2, 2], `+solid+` }`), "vehicles"},
-		{"x outside the room", tombWith(pillar, `      - { ref: "dnd5e:props:pillar", at: [10, 2], `+solid+` }`), "at"},
-		{"y outside the room", tombWith(pillar, `      - { ref: "dnd5e:props:pillar", at: [2, 8], `+solid+` }`), "at"},
-		{"negative cell", tombWith(pillar, `      - { ref: "dnd5e:props:pillar", at: [-1, 2], `+solid+` }`), "at"},
-		{"two things on one cell", tombWith(pillar, pillar+"\n"+pillar), "same cell"},
-
-		{"targeting on a prop", tombWith(pillar,
-			`      - { ref: "dnd5e:props:pillar", at: [2, 2], `+solid+`, targeting: lowest-health }`), "targeting"},
-		{"blocks_los on a monster", tombWith(
-			`      - { ref: "dnd5e:monsters:skeleton", at: [5, 3], targeting: lowest-health }`,
-			`      - { ref: "dnd5e:monsters:skeleton", at: [5, 3], blocks_los: false }`), "blocks"},
-		{"a targeting nobody knows", tombWith("targeting: lowest-health", "targeting: whoever"), "whoever"},
-	} {
-		s.Run(tc.name, func() {
-			err := s.decodeAndValidate(tc.yaml)
-			s.Require().Error(err)
-			s.Contains(strings.ToLower(err.Error()), strings.ToLower(tc.wants))
-		})
-	}
-}
-
-// TestAPropMustSayWhatItBlocks.
-//
-// The dialect this replaces read a missing flag as "blocks", and
-// [encounter.PropInput]'s doc comment names that default as the thing it drops:
-// "a blocker nobody declared is a wall nobody drew". Every combination is real
-// content — a pillar blocks both, a coffin is seen over but not walked through,
-// a curtain is the reverse, candles are neither — so an omission has nothing
-// safe to stand for, and the composition refuses a nil pointer one layer down
-// anyway. Defaulting it here would put rpg-toolkit#1033's forbidden default
-// where the author cannot see it.
-func (s *DialectSuite) TestAPropMustSayWhatItBlocks() {
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"neither answer", tombWith(
-			`      - { ref: "dnd5e:props:candles", at: [10, 5], blocks_movement: false, blocks_los: false }`,
-			`      - { ref: "dnd5e:props:candles", at: [10, 5] }`), "blocks movement"},
-		{"only movement", tombWith(
-			`      - { ref: "dnd5e:props:candles", at: [10, 5], blocks_movement: false, blocks_los: false }`,
-			`      - { ref: "dnd5e:props:candles", at: [10, 5], blocks_movement: false }`), "line of sight"},
-		{"only sight", tombWith(
-			`      - { ref: "dnd5e:props:candles", at: [10, 5], blocks_movement: false, blocks_los: false }`,
-			`      - { ref: "dnd5e:props:candles", at: [10, 5], blocks_los: false }`), "blocks movement"},
-	} {
-		s.Run(tc.name, func() {
-			err := s.decodeAndValidate(tc.yaml)
-			s.Require().Error(err)
-			s.Contains(strings.ToLower(err.Error()), tc.wants)
-		})
-	}
-}
-
-// TestABossIsAMonsterWithAFlag.
-//
-// Folding `boss:` into `place:` is what makes the first two of these free: a
-// boss standing outside its chamber, or on top of an altar, is refused by the
-// rules every other placement already goes through. The dialect this replaces
-// had those rules written twice, once per list, which is how two answers to
-// "is this cell inside the room" eventually disagree.
-//
-// The third is the one the flag has to carry itself: "the boss" is singular,
-// and the key it replaces could not be written twice in one chamber.
-func (s *DialectSuite) TestABossIsAMonsterWithAFlag() {
-	const captain = `      - { ref: "dnd5e:monsters:skeleton-captain", at: [7, 5], targeting: closest, boss: true }`
-
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"a boss that is a prop", tombWith(captain,
-			`      - { ref: "dnd5e:props:altar", at: [7, 5], blocks_movement: true, blocks_los: true, boss: true }`),
-			"boss"},
-		{"a boss standing outside the room", tombWith(captain,
-			`      - { ref: "dnd5e:monsters:skeleton-captain", at: [30, 5], boss: true }`), "at"},
-		{"a boss on top of a prop", tombWith(captain,
-			`      - { ref: "dnd5e:monsters:skeleton-captain", at: [9, 3], boss: true }`), "same cell"},
-		{"two bosses in one chamber", tombWith(captain, captain+
-			"\n"+`      - { ref: "dnd5e:monsters:skeleton-captain", at: [7, 2], boss: true }`), "more than one boss"},
-	} {
-		s.Run(tc.name, func() {
-			err := s.decodeAndValidate(tc.yaml)
-			s.Require().Error(err)
-			s.Contains(strings.ToLower(err.Error()), strings.ToLower(tc.wants))
-		})
-	}
-}
-
-// TestAConnectorJoinsTwoDECLAREDNEIGHBOURS.
-//
-// Neighbours is the load-bearing word and it is a compile-shape rule rather
-// than a taste: the chambers are laid out in declaration order, so a connector
-// between rooms that are not next to each other names a seam that does not
-// exist. Refusing it here says so in the author's vocabulary instead of
-// producing a dungeon with a door onto solid rock.
-func (s *DialectSuite) TestAConnectorJoinsTwoDeclaredNeighbours() {
-	for _, tc := range []struct {
-		name, yaml, wants string
-	}{
-		{"a room that was never declared",
-			tombWith("  - { from: entrance, to: hall }", "  - { from: entrance, to: ossuary }"), "ossuary"},
-		{"itself",
-			tombWith("  - { from: entrance, to: hall }", "  - { from: hall, to: hall }"), "itself"},
-		{"rooms that do not touch",
-			tombWith("  - { from: entrance, to: hall }", "  - { from: entrance, to: tomb }"), "not next to"},
-		{"the same seam twice",
-			tombWith("  - { from: entrance, to: hall }",
-				"  - { from: entrance, to: hall }\n  - { from: hall, to: entrance }"), "twice"},
-		{"a lock with nothing to beat",
-			tombWith("locked: { dc: 12, ability: dex }", "locked: { dc: 0, ability: dex }"), "dc"},
-		{"a lock with no ability",
-			tombWith("locked: { dc: 12, ability: dex }", "locked: { dc: 12, ability: \"\" }"), "ability"},
-	} {
-		s.Run(tc.name, func() {
-			err := s.decodeAndValidate(tc.yaml)
-			s.Require().Error(err)
-			s.Contains(strings.ToLower(err.Error()), strings.ToLower(tc.wants))
-		})
-	}
-}
-
-// TestNothingMayStandInADoorway.
-//
-// The composition refuses a connection endpoint that sits on a prop
-// (validateConnectionInputs), so this would be caught either way — but it would
-// be caught in the COMPOSITION's vocabulary, about a cell the author never
-// wrote, after a compile they cannot see. Said here it is about the line they
-// did write.
-func (s *DialectSuite) TestNothingMayStandInADoorway() {
-	// The tomb is 8 tall, so its doorways sit at row 4 — which is why no
-	// placement in the shipping file uses that row.
-	const bones = `      - { ref: "dnd5e:props:bone-pile", at: [8, 6], blocks_movement: false, blocks_los: false }`
-	const brazier = `      - { ref: "dnd5e:props:brazier", at: [1, 1], blocks_movement: true,  blocks_los: false }`
-
-	s.Run("in the seam the connector opens through", func() {
-		err := s.decodeAndValidate(tombWith(bones,
-			`      - { ref: "dnd5e:props:bone-pile", at: [9, 4], blocks_movement: false, blocks_los: false }`))
-		s.Require().Error(err)
-		s.Contains(strings.ToLower(err.Error()), "doorway")
-	})
-
-	s.Run("but an edge with no connector through it is just a wall", func() {
-		// The entrance's WEST side opens onto nothing — the tomb's only
-		// connector from it runs east — so its column 0 is ordinary floor,
-		// doorway row or not.
-		s.Require().NoError(s.decodeAndValidate(tombWith(brazier,
-			`      - { ref: "dnd5e:props:brazier", at: [0, 4], blocks_movement: true,  blocks_los: false }`)))
-	})
-
-	s.Run("and the middle of a chamber is nobody's business", func() {
-		s.Require().NoError(s.decodeAndValidate(tombWith(bones,
-			`      - { ref: "dnd5e:props:bone-pile", at: [4, 4], blocks_movement: false, blocks_los: false }`)))
-	})
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-
-func (s *DialectSuite) decodeAndValidate(raw string) error {
+// validate decodes and validates, returning every defect's path.
+func (s *DialectSuite) validate(raw string) []dungeonspec.FieldError {
 	spec, err := dungeonspec.Decode([]byte(raw))
 	if err != nil {
-		return err
+		var verr *dungeonspec.ValidationError
+		s.Require().ErrorAs(err, &verr)
+		return verr.Errors
 	}
 	return dungeonspec.Validate(spec)
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
+func paths(errs []dungeonspec.FieldError) []string {
+	out := make([]string, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, e.Path)
 	}
-	return *s
+	return out
 }
 
-// tombWith is the shipping tomb with one line (or block) swapped, so every
-// rejection below differs from a VALID spec by exactly the thing it is about.
-func tombWith(old, new string) string {
-	if !strings.Contains(tombYAML, old) {
-		panic("tombWith: anchor not present in the tomb: " + old)
-	}
-	return strings.Replace(tombYAML, old, new, 1)
+// TestTheShippingTombDecodes is the acceptance case: everything below is about
+// a file that differs from this one by one thing.
+func (s *DialectSuite) TestTheShippingTombDecodes() {
+	spec, err := dungeonspec.Decode([]byte(s.tomb))
+	s.Require().NoError(err)
+	s.Empty(dungeonspec.Validate(spec))
+
+	s.Equal(2, spec.Version)
+	s.Equal("reference-tomb", spec.Key)
+	s.Equal("The Reference Tomb", spec.Name)
+	s.Equal("pointy", spec.Orientation)
+	s.Equal("opaque", spec.Void)
+	s.Require().NotNil(spec.Start)
+	s.Equal([2]int{1, 3}, *spec.Start)
+	s.Len(spec.Regions, 3)
+	s.Len(spec.Regions[0].Cells, 8, "eight rows")
+	s.Len(spec.Regions[0].Cells[0], 6, "six cells each")
+	s.Len(spec.Walls, 28)
+	s.Len(spec.Doors, 2)
+	s.Len(spec.Place, 18)
 }
 
-// roomless is a well-formed spec that declares no chambers — built rather than
-// carved out of the tomb, because deleting the tomb's room list by string
-// surgery leaves its connectors behind and would be testing two defects at once.
-const roomless = `
+// TestDecode_RefusesVersion1 — the deleted dialect is refused by name, not
+// parsed hopefully. A version-1 file fails twice over: its keys are unknown,
+// and its version is not this one. Both land on the author.
+func (s *DialectSuite) TestDecode_RefusesVersion1() {
+	v1 := `
 version: 1
-key: hollow
+key: reference-tomb
 void: opaque
 orientation: pointy
 height: 8
-start: [0, 0]
-rooms: []
+start: [1, 3]
+rooms:
+  - id: entrance
+    width: 6
 connectors: []
 `
-
-// withoutLine is the shipping tomb with one whole line removed.
-func withoutLine(line string) string {
-	out := make([]string, 0, 64)
-	for _, l := range strings.Split(tombYAML, "\n") {
-		if strings.TrimSpace(l) == strings.TrimSpace(line) {
-			continue
-		}
-		out = append(out, l)
+	errs := s.validate(v1)
+	s.Require().NotEmpty(errs)
+	joined := strings.Join(paths(errs), " ")
+	s.Contains(joined, "line", "unknown keys are refused at the line the decoder found them")
+	var messages []string
+	for _, e := range errs {
+		messages = append(messages, e.Message)
 	}
-	return strings.Join(out, "\n")
+	all := strings.Join(messages, "\n")
+	s.Contains(all, "height")
+	s.Contains(all, "rooms")
+	s.Contains(all, "connectors")
+
+	// And with only the version wrong, it is the version that is named.
+	errs = s.validate(s.tombWith("version: 2", "version: 1"))
+	s.Require().Len(errs, 1)
+	s.Equal("version", errs[0].Path)
+	s.Contains(errs[0].Message, "version 1")
+	s.Contains(errs[0].Message, "speaks 2")
+}
+
+// TestADungeonMustBeOneDocumentOfKnownKeys — the decoder's own refusals.
+func (s *DialectSuite) TestADungeonMustBeOneDocumentOfKnownKeys() {
+	s.Run("empty", func() {
+		errs := s.validate("")
+		s.Require().Len(errs, 1)
+		s.Contains(errs[0].Message, "empty")
+	})
+	s.Run("two documents", func() {
+		errs := s.validate(s.tomb + "\n---\n" + s.tomb)
+		s.Require().Len(errs, 1)
+		s.Contains(errs[0].Message, "one document")
+	})
+	s.Run("an unknown key", func() {
+		errs := s.validate(s.tombWith("void: opaque", "void: opaque\nheight: 8"))
+		s.Require().Len(errs, 1)
+		s.Contains(errs[0].Message, "height")
+		s.Contains(errs[0].Path, "line")
+	})
+}
+
+// TestValidate_PathsNameTheThing — the table: every refusal names the YAML
+// path of the thing that is wrong, because that is where the builder draws it.
+func (s *DialectSuite) TestValidate_PathsNameTheThing() {
+	for _, tc := range []struct {
+		name string
+		old  string
+		new  string
+		path string
+		says string
+	}{
+		{"a cell in two regions", "      - [[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0]]",
+			"      - [[6,0],[7,0],[8,0],[5,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0]]",
+			"regions[1].cells[0][3]", `already painted in region "entrance"`},
+		{"a cell painted twice in one region", "      - [[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0]]",
+			"      - [[6,0],[7,0],[8,0],[6,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0]]",
+			"regions[1].cells[0][3]", "painted twice"},
+		{"a wall between cells that do not touch", "  - [[5,3],[6,4]]", "  - [[5,3],[6,5]]",
+			"walls[7]", "not adjacent under pointy"},
+		{"a wall off the floor", "  - [[5,0],[6,0]]", "  - [[5,0],[5,-1]]",
+			"walls[0]", "not floor"},
+		{"a wall listed twice", "  - [[5,1],[6,0]]", "  - [[6,0],[5,0]]",
+			"walls[1]", "already listed at walls[0]"},
+		{"a door edge that is also a wall", "edges: [[[5,4],[6,4]]]", "edges: [[[5,3],[6,3]]]",
+			"doors[0].edges[0]", "also a wall (walls[6])"},
+		{"a prop without blocks_los", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true }`,
+			"place[0].blocks_los", "there is no default"},
+		{"a monster that says what it blocks", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, blocks_los: true }`,
+			"place[8].blocks_los", "not a prop"},
+		{"start on void", "start: [1, 3]", "start: [30, 3]", "start", "not floor"},
+		{"start on a prop", "start: [1, 3]", "start: [1, 1]", "start", "already stands"},
+		{"start missing", "start: [1, 3]\n", "", "start", "does not say"},
+		{"an intensity of 1.2", "lighting: { intensity: 0.6 }", "lighting: { intensity: 1.2 }",
+			"regions[0].lighting.intensity", "outside [0,1]"},
+		{"a lighting block with no intensity", "lighting: { intensity: 0.6 }", "lighting: {}",
+			"regions[0].lighting.intensity", "does not say"},
+		{"no lighting at all", "    lighting: { intensity: 0.6 }\n", "", "regions[0].lighting", "no default"},
+		{"a missing archetype", "    archetype: crypt\n    lighting: { intensity: 0.6 }", "    lighting: { intensity: 0.6 }",
+			"regions[0].archetype", "no archetype"},
+		{"a key that is not a slug", "key: reference-tomb", "key: Reference Tomb", "key", "[a-z0-9-]"},
+		{"an unknown void", "void: opaque", "void: fog", "void", "fog"},
+		{"an unknown orientation", "orientation: pointy", "orientation: sideways", "orientation", "sideways"},
+		{"a ref this compiler cannot place", `ref: "dnd5e:props:brazier", at: [1,1]`, `ref: "dnd5e:traps:pit", at: [1,1]`,
+			"place[0].ref", "cannot place"},
+		{"a prop on void", `ref: "dnd5e:props:brazier", at: [1,1]`, `ref: "dnd5e:props:brazier", at: [40,1]`,
+			"place[0].at", "not floor"},
+		{"two things on one cell", `ref: "dnd5e:props:brazier", at: [1,6]`, `ref: "dnd5e:props:brazier", at: [1,1]`,
+			"place[1].at", "same cell"},
+		{"a targeting word this build does not know", "targeting: lowest-health }", "targeting: lowest-helth }",
+			"place[8].targeting", "lowest-helth"},
+		{"a boss that is a prop", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, boss: true }`,
+			"place[0].boss", "not a monster"},
+		{"a lock nothing has to beat", "locked: { dc: 12, ability: dex }", "locked: { dc: 0, ability: dex }",
+			"doors[1].locked.dc", "nothing to beat"},
+		{"a lock with no ability", "locked: { dc: 12, ability: dex }", "locked: { dc: 12 }",
+			"doors[1].locked.ability", "ability"},
+		{"a door with no edges", "edges: [[[5,4],[6,4]]]", "edges: []", "doors[0].edges", "no edges"},
+		{"a door with no id", "  - id: entrance-hall\n", "  - id: \"\"\n", "doors[0].id", "no id"},
+	} {
+		s.Run(tc.name, func() {
+			errs := s.validate(s.tombWith(tc.old, tc.new))
+			s.Require().NotEmpty(errs, "the defect must be found")
+			s.Equal([]string{tc.path}, paths(errs), "exactly one defect, at the thing that is wrong")
+			s.Contains(errs[0].Message, tc.says)
+		})
+	}
+
+	s.Run("an empty region", func() {
+		empty := s.tomb
+		start := strings.Index(empty, "    cells:\n      - [[0,0]")
+		end := strings.Index(empty, "  - id: hall")
+		empty = empty[:start] + "    cells: []\n" + empty[end:]
+		errs := s.validate(empty)
+		// Every wall and prop in the entrance is off the floor now too, so
+		// the first defect is the one that caused the rest.
+		s.Require().NotEmpty(errs)
+		s.Equal("regions[0].cells", errs[0].Path)
+		s.Contains(errs[0].Message, "no cells")
+	})
+
+	s.Run("two bosses in one region", func() {
+		one := s.tombWith(`at: [13,5], targeting: lowest-health }`, `at: [13,5], targeting: lowest-health, boss: true }`)
+		s.Empty(s.validate(one), "one boss per REGION: a skeleton boss in the hall is legal beside the captain in the tomb")
+
+		two := strings.Replace(one, `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, boss: true }`, 1)
+		errs := s.validate(two)
+		s.Equal([]string{"place[9].boss"}, paths(errs), "the second boss in the hall is the one refused")
+		s.Contains(errs[0].Message, `region "hall" already names`)
+	})
+}
+
+// TestEveryDefectIsReported — all of them, not the first, because the builder
+// draws every one.
+func (s *DialectSuite) TestEveryDefectIsReported() {
+	broken := s.tombWith("void: opaque", "void: fog")
+	broken = strings.Replace(broken, "start: [1, 3]", "start: [30, 3]", 1)
+	broken = strings.Replace(broken, "lighting: { intensity: 0.6 }", "lighting: { intensity: 2 }", 1)
+
+	errs := s.validate(broken)
+	s.Equal([]string{"void", "regions[0].lighting.intensity", "start"}, paths(errs))
+
+	_, err := dungeonspec.Load([]byte(broken))
+	s.Require().ErrorIs(err, dungeonspec.ErrBadSpec)
+	s.Contains(err.Error(), "void: ")
+	s.Contains(err.Error(), "start: ")
+}
+
+// TestAWrongOrientationIsTheOnlyThingReported — every geometric check needs
+// the layout, so under an unknown one they are skipped rather than piled on.
+func (s *DialectSuite) TestAWrongOrientationIsTheOnlyThingReported() {
+	errs := s.validate(s.tombWith("orientation: pointy", "orientation: sideways"))
+	s.Equal([]string{"orientation"}, paths(errs))
+}
+
+// TestTheSameWallIsARefusalUnderTheOtherLayout — the discriminator, in the
+// file's own terms (the rpg-toolkit#1141/#1150 lesson: one formula per
+// orientation, not a swapped pair). The tomb's seam walls are drawn for
+// pointy-top. Under flat-top the 14 straight crossings still touch, and of
+// the 14 staggered ones exactly the 7 that lean UP ([5,r]-[6,r-1]) stop
+// touching while the 7 that lean DOWN ([5,r]-[6,r+1]) still do — because
+// under odd-q the odd column 5 staggers down, not up. A symmetric mistake in
+// either formula would refuse all 14 or none.
+func (s *DialectSuite) TestTheSameWallIsARefusalUnderTheOtherLayout() {
+	errs := s.validate(s.tombWith("orientation: pointy", "orientation: flat"))
+	s.Require().NotEmpty(errs)
+	for _, e := range errs {
+		s.True(strings.HasPrefix(e.Path, "walls["), "only walls are refused: %s", e.Path)
+		s.Contains(e.Message, "not adjacent under flat")
+	}
+	s.Equal([]string{"walls[1]", "walls[5]", "walls[8]", "walls[12]", "walls[15]", "walls[19]", "walls[22]", "walls[26]"}, paths(errs))
 }

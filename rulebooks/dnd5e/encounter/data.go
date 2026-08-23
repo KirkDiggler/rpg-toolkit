@@ -94,95 +94,78 @@ type MemberOutcomeData struct {
 }
 
 // FieldData is the persistent representation of the encounter's field — the
-// AUTHORED rooms and their doorways, which is construction truth and the only
-// thing worth storing: the canvas they compile into is derived from them, and a
-// derived thing that is also stored is a second truth waiting to disagree.
-// Rooms hold the composition's own descriptions (mirroring RoomInput exactly).
+// AUTHORED regions, props and walls, which is construction truth and the only
+// thing worth storing: the canvas they compile into is derived from them, and
+// a derived thing that is also stored is a second truth waiting to disagree.
+// Every field here mirrors [FieldInput] exactly (rpg-project#256).
 type FieldData struct {
-	// Canvas is what the field declared about its map — today, what the space
-	// between the authored chambers does to a sightline (rpg-toolkit#1116).
-	// REQUIRED
-	// at load, and written by ToData without omitempty, for RoomData.Origin's
-	// reason: a declaration that persisted as absence could not be told apart
-	// from a blob written before there was one.
-	Canvas      CanvasData       `json:"canvas"`
-	Rooms       []RoomData       `json:"rooms"`
-	Connections []ConnectionData `json:"connections,omitempty"`
+	// Canvas is what the field declared about its map: its void and its
+	// orientation (rpg-toolkit#1116, #1127). REQUIRED at load, both halves,
+	// and written by ToData without omitempty: a declaration that persisted
+	// as absence could not be told apart from a blob written before there
+	// was one.
+	Canvas CanvasData `json:"canvas"`
+
+	// Regions are the authored regions, in authored order. REQUIRED
+	// non-empty at load.
+	Regions []RegionData `json:"regions"`
+
+	// Props are the authored things standing on the floor, in authored
+	// order, with cells in the AUTHORED offset frame.
+	Props []PropData `json:"props,omitempty"`
+
+	// Walls are the authored walls, in authored order, with endpoints in the
+	// AUTHORED offset frame.
+	Walls []BoundaryData `json:"walls,omitempty"`
+
+	// Rooms and Connections are TOMBSTONES: the keys the room chain wrote
+	// (rpg-toolkit#1106 through #1139), kept solely so a blob carrying either
+	// is refused by name rather than loaded as a field with no regions.
+	//
+	// The precedent (rpg-toolkit#1053/#1068, Kirk's fail-loudly ruling,
+	// 2026-08-17) is that a changed shape gets a detectable name so the old
+	// dialect lands nowhere. Regions being REQUIRED already makes an old blob
+	// fail, but it would fail saying "no regions", which sends whoever reads
+	// it to the wrong place; these say which dialect the blob is in.
+	//
+	// json.RawMessage because nothing decodes them: the only question asked
+	// is whether the key was present at all.
+	Rooms       json.RawMessage `json:"rooms,omitempty"`
+	Connections json.RawMessage `json:"connections,omitempty"`
 }
 
 // CanvasData is the persistent representation of [CanvasInput].
 //
-// Void carries the declaration's own word ([VoidKind]), not an index into a
-// set: a wire form that meant "the second kind" would silently reinterpret
-// every old blob the day a third kind is added, which is RoomData.Grid's
-// reasoning applied to a younger sealed set. An absent or unknown word is
-// refused by name at load rather than defaulted — see voidFromData.
-//
-// Ambient light will land HERE when rpg-toolkit#1113 arrives, beside the void
-// it is a fact of the same species as.
+// Both fields carry the declaration's own word ([VoidKind],
+// [OrientationKind]), not an index into a set: a wire form that meant "the
+// second kind" would silently reinterpret every old blob the day a third kind
+// is added. An absent or unknown word is refused by name at load rather than
+// defaulted — see voidFromData and orientationFromData.
 type CanvasData struct {
-	Void string `json:"void"`
-
-	// Orientation is which way this field's hexes point, or empty for a
-	// square field (rpg-toolkit#1127). Carries the declaration's own word for
-	// Void's reason — a wire form meaning "the second layout" would
-	// reinterpret every old blob the day a third arrives.
-	//
-	// Omitted when empty so a square field's blob is byte-identical to what
-	// it was before orientations existed, and REQUIRED for a hex one:
-	// reloading a hex field without it would read every stored cell in the
-	// wrong frame, which is a dungeon drawn correctly and played wrong.
-	Orientation string `json:"orientation,omitempty"`
+	Void        string `json:"void"`
+	Orientation string `json:"orientation"`
 }
 
-// RoomData mirrors RoomInput exactly to persist construction inputs — true
-// again as of #929 T2 (a T1-era comment here briefly said otherwise, while
-// Origin was Setup-only). Origin is REQUIRED at load (W5): a nil pointer
-// means the field was absent from the blob (distinct from a declared
-// zero) and is rejected with ErrInvalidData naming the room — a missing
-// anchor must never silently default to (0,0), a legal position that
-// would invent placement, mirroring ConnectionData's FromPosition/ToPosition
-// precedent. ToData ALWAYS writes Origin, even the zero value (no
-// omitempty) — a declared (0,0) persists as an explicit "origin":{"x":0,"y":0},
-// never as absence, so presence itself is meaningful at load.
-// Grid is persisted as spatial's own GridType string ("hex" — tools/spatial's
-// GridTypeHex; "gridless" is a v0.2-era value no longer accepted at load,
-// #929 T2), not the GridShape iota: the iota is an in-process enumeration
-// order, not a wire contract, and would silently reinterpret old blobs if
-// spatial ever reordered it. Grid omits when empty (the square zero value)
-// so pre-v0.2 blobs and square-only encounters keep byte-identical output.
-type RoomData struct {
-	ID     string `json:"id"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Grid   string `json:"grid,omitempty"`
+// RegionData mirrors [RegionInput] exactly to persist construction inputs
+// (rpg-project#256). Cells are in the AUTHORED offset frame, as written;
+// they are converted at load through the same compileField Setup runs.
+//
+// Lighting is a pointer under the same rule PropData's flags follow: REQUIRED
+// at load, refused by name when absent, never defaulted — a region whose
+// light nobody stated is a fact this module may not invent (rpg-toolkit#1033).
+type RegionData struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name,omitempty"`
+	Cells     []PositionData `json:"cells"`
+	Archetype string         `json:"archetype"`
+	Lighting  *LightingData  `json:"lighting"`
+}
 
-	// Props are the room's authored things (rpg-toolkit#1128). Written
-	// under a NEW key, and Occluders below is why.
-	Props []PropData `json:"props,omitempty"`
-
-	// Occluders is a TOMBSTONE: the key this room's contents used to be
-	// written under, kept solely so a blob carrying it is refused by name.
-	//
-	// Renaming was not enough on its own, and that is the whole reason this
-	// field exists. The precedent (rpg-toolkit#1053/#1068, Kirk's
-	// fail-loudly ruling) is that a changed shape gets a detectable name so
-	// the old dialect lands nowhere — but "lands nowhere" only SIGNALS
-	// anything for a REQUIRED field, whose absence is then the defect.
-	// A room's contents are optional: a chamber with nothing in it is
-	// ordinary. So an old blob would have loaded clean as a room with no
-	// props, silently dropping every blocker somebody authored — a party
-	// walking through pillars in a dungeon whose load reported success.
-	// That is the exact failure mode MemberOutcomeData.Cell's rename exists
-	// to prevent, and here it needs a positive check rather than an absent
-	// one.
-	//
-	// json.RawMessage rather than the old type because nothing decodes it:
-	// the only question asked is whether the key was present at all.
-	Occluders json.RawMessage `json:"occluders,omitempty"`
-
-	Boundaries []BoundaryData `json:"boundaries,omitempty"`
-	Origin     *PositionData  `json:"origin"`
+// LightingData is the persistent representation of a [Lighting] block.
+// Intensity is a pointer so a persisted 0 and a persisted nothing are
+// different facts: REQUIRED at load, refused by name.
+type LightingData struct {
+	Intensity *float64 `json:"intensity"`
 }
 
 // PropData is the persistent representation of a [PropInput].
@@ -190,8 +173,7 @@ type RoomData struct {
 // BOTH FLAGS ARE POINTERS HERE TOO, and for the input's reason rather than a
 // mechanical mirror of it: a persisted false and a persisted nothing are
 // different facts, and a blob that lost the difference would reload a coffin
-// as decoration. Required at load, refused by name, never defaulted — the
-// same call RoomData.Origin makes for a missing anchor.
+// as decoration. Required at load, refused by name, never defaulted.
 type PropData struct {
 	Ref               string       `json:"ref"`
 	At                PositionData `json:"at"`
@@ -211,20 +193,6 @@ type BoundaryData struct {
 	To                PositionData `json:"to"`
 	BlocksMovement    bool         `json:"blocks_movement,omitempty"`
 	BlocksLineOfSight bool         `json:"blocks_line_of_sight,omitempty"`
-}
-
-// ConnectionData is the persistent representation of a connection.
-// FromPosition and ToPosition are required — ToData always populates
-// both; a nil pointer at Load means the field was absent from the
-// blob and is rejected (a connection without both endpoints has no
-// meaning, and a missing endpoint must never silently default to
-// (0,0), a legal cell that would invent topology).
-type ConnectionData struct {
-	ID           string        `json:"id"`
-	From         string        `json:"from"`
-	To           string        `json:"to"`
-	FromPosition *PositionData `json:"from_position"`
-	ToPosition   *PositionData `json:"to_position"`
 }
 
 // DoorData is the persistent representation of a door: what it is called,
@@ -383,13 +351,17 @@ type ActionViewData struct {
 
 // EndingData is the persistent representation of a declared ending.
 // Kind is one of "reached_position" or "external".
-// Room, Position, and Member are only populated for reached_position triggers.
+// At and Member are only populated for reached_position triggers.
+//
+// At is the authored offset cell under a NEW key (rpg-project#256): the old
+// "room" + room-local "position" pair lands nowhere on this shape, so a blob
+// from the room chain arrives with At nil and is refused by name rather than
+// read in the wrong frame.
 type EndingData struct {
-	Key      string        `json:"key"`
-	Kind     string        `json:"kind"`
-	Room     string        `json:"room,omitempty"`
-	Position *PositionData `json:"position,omitempty"`
-	Member   MemberID      `json:"member,omitempty"`
+	Key    string        `json:"key"`
+	Kind   string        `json:"kind"`
+	At     *PositionData `json:"at,omitempty"`
+	Member MemberID      `json:"member,omitempty"`
 }
 
 // ToData returns a persistent snapshot of this Encounter.
@@ -433,8 +405,7 @@ func (e *Encounter) ToData() EncounterData {
 		switch t := de.trigger.(type) {
 		case TriggerReachedPosition:
 			ed.Kind = "reached_position"
-			ed.Room = t.Room
-			ed.Position = &PositionData{X: t.Position.X, Y: t.Position.Y}
+			ed.At = &PositionData{X: t.Position.X, Y: t.Position.Y}
 			ed.Member = t.Member
 		case TriggerExternal:
 			ed.Kind = "external"
@@ -458,64 +429,8 @@ func (e *Encounter) ToData() EncounterData {
 		return 0
 	})
 
-	// Deep-copy field from stored inputs
-	fieldData := FieldData{
-		Canvas: CanvasData{
-			Void:        string(e.void.Kind()),
-			Orientation: orientationName(e.orientation),
-		},
-		Rooms:       make([]RoomData, len(e.fieldInput)),
-		Connections: make([]ConnectionData, len(e.connectionsInput)),
-	}
-
-	for i, ri := range e.fieldInput {
-		rd := RoomData{
-			ID:         ri.ID,
-			Width:      ri.Width,
-			Height:     ri.Height,
-			Grid:       gridShapeToData(ri.Grid),
-			Props:      make([]PropData, len(ri.Props)),
-			Boundaries: make([]BoundaryData, len(ri.Boundaries)),
-			// Always a fresh pointer, always written — even the zero value
-			// (no omitempty, RoomData's own doc comment) — so a declared
-			// origin (0,0) round-trips as explicit presence, not absence,
-			// and two ToData calls never alias the same PositionData.
-			Origin: &PositionData{X: ri.Origin.X, Y: ri.Origin.Y},
-		}
-
-		for j, p := range ri.Props {
-			// Fresh pointers, never the input's own: two ToData calls must
-			// not alias one bool, for RoomData.Origin's reason.
-			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
-			rd.Props[j] = PropData{
-				Ref:               p.Ref,
-				At:                PositionData{X: p.At.X, Y: p.At.Y},
-				BlocksMovement:    &blocksMovement,
-				BlocksLineOfSight: &blocksSight,
-			}
-		}
-
-		for j, b := range ri.Boundaries {
-			rd.Boundaries[j] = BoundaryData{
-				From:              PositionData{X: b.From.X, Y: b.From.Y},
-				To:                PositionData{X: b.To.X, Y: b.To.Y},
-				BlocksMovement:    b.BlocksMovement,
-				BlocksLineOfSight: b.BlocksLineOfSight,
-			}
-		}
-
-		fieldData.Rooms[i] = rd
-	}
-
-	for i, ci := range e.connectionsInput {
-		fieldData.Connections[i] = ConnectionData{
-			ID:           ci.ID,
-			From:         ci.From,
-			To:           ci.To,
-			FromPosition: &PositionData{X: ci.FromPosition.X, Y: ci.FromPosition.Y},
-			ToPosition:   &PositionData{X: ci.ToPosition.X, Y: ci.ToPosition.Y},
-		}
-	}
+	// Deep-copy field from the compiled field's authored inputs
+	fieldData := fieldDataFrom(e.field)
 
 	// Doors, in the records' own stable ID order (C8) — the state each is in
 	// right now, not the one it was authored in.
@@ -569,21 +484,61 @@ func (e *Encounter) ToData() EncounterData {
 	}
 }
 
-// gridShapeToData maps a room's constructed grid shape to its persisted
-// string form, reusing spatial's own GridType* constants
-// (tools/spatial/data.go) so the wire vocabulary matches spatial's own
-// persistence. Square (the zero value) maps to "" so byte-compat
-// goldens keep omitting the field entirely. No GridShapeGridless case
-// (#929 T2 second review round: deleted — write-only wire value at this
-// point, since no RoomInput this function is ever called with can hold
-// GridShapeGridless. At Setup, buildValidRoomGrids' shape-legality switch
-// rejects it explicitly (encounter.go's doc comment on that switch); at
-// Load it never even reaches that switch — gridDataToShape below rejects
-// a stored "gridless" string at the wire layer, before a RoomInput ever
-// exists, closing the load-side hole T1 left open — see gridDataToShape's
-// own doc comment. Either way, a room is never stored in fieldInput and
-// later handed to ToData while holding GridShapeGridless). The default
-// case already returns "" for it, same as any other unreachable value.
+// fieldDataFrom renders the compiled field's authored inputs for the blob —
+// every cell in the authored frame, every pointer fresh.
+func fieldDataFrom(f *field) FieldData {
+	out := FieldData{
+		Canvas: CanvasData{
+			Void:        string(f.void.Kind()),
+			Orientation: orientationName(f.orientation),
+		},
+		Regions: make([]RegionData, len(f.regions)),
+	}
+
+	for i, r := range f.regions {
+		cells := make([]PositionData, len(r.Cells))
+		for j, c := range r.Cells {
+			cells[j] = PositionData{X: c.X, Y: c.Y}
+		}
+		// Fresh pointer, always written — a declared 0 persists as an
+		// explicit value, never as absence.
+		intensity := r.Lighting.Intensity
+		out.Regions[i] = RegionData{
+			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
+			Lighting: &LightingData{Intensity: &intensity},
+		}
+	}
+
+	if len(f.props) > 0 {
+		out.Props = make([]PropData, len(f.props))
+		for i, p := range f.props {
+			// Fresh pointers, never the input's own: two ToData calls must
+			// not alias one bool.
+			blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
+			out.Props[i] = PropData{
+				Ref:               p.Ref,
+				At:                PositionData{X: p.At.X, Y: p.At.Y},
+				BlocksMovement:    &blocksMovement,
+				BlocksLineOfSight: &blocksSight,
+			}
+		}
+	}
+
+	if len(f.walls) > 0 {
+		out.Walls = make([]BoundaryData, len(f.walls))
+		for i, w := range f.walls {
+			out.Walls[i] = BoundaryData{
+				From:              PositionData{X: w.From.X, Y: w.From.Y},
+				To:                PositionData{X: w.To.X, Y: w.To.Y},
+				BlocksMovement:    w.BlocksMovement,
+				BlocksLineOfSight: w.BlocksLineOfSight,
+			}
+		}
+	}
+
+	return out
+}
+
 // actionViewDataFrom converts a member's runtime [ActionView] facts to their
 // persisted twin. A nil slice stays nil rather than becoming an allocated
 // empty one (Copilot, PR #1187 review: `omitempty` already treats the two
@@ -613,39 +568,6 @@ func actionViewsFrom(data []ActionViewData) []ActionView {
 		out[i] = ActionView(a)
 	}
 	return out
-}
-
-func gridShapeToData(shape spatial.GridShape) string {
-	switch shape {
-	case spatial.GridShapeHex:
-		return spatial.GridTypeHex
-	default:
-		return ""
-	}
-}
-
-// gridDataToShape is gridShapeToData's inverse, used at Load. Empty
-// string and the literal "square" both mean the zero-value shape —
-// ToData never emits "square" (it omits the field), but Load accepts
-// it defensively for hand-authored fixtures. An unrecognized string
-// returns ok=false so the caller can reject with a fragment naming
-// the bad value, rather than silently defaulting to square.
-//
-// "gridless" is deliberately NOT recognized (#929 T2): it was a v0.2
-// value, dropped from the shape-legality-valid set in T1 (RoomInput.Grid's
-// doc comment) — Setup has rejected it since T1, and a stored "gridless"
-// string now falls through to the same ok=false rejection any other
-// unrecognized string gets, closing the load-side hole T1 left open
-// (a stored "gridless" blob loaded successfully until this change).
-func gridDataToShape(s string) (shape spatial.GridShape, ok bool) {
-	switch s {
-	case "", spatial.GridTypeSquare:
-		return spatial.GridShapeSquare, true
-	case spatial.GridTypeHex:
-		return spatial.GridShapeHex, true
-	default:
-		return spatial.GridShapeSquare, false
-	}
 }
 
 // LoadEncounterInput carries everything LoadEncounter needs: what persisted, and
@@ -740,30 +662,20 @@ func (in *LoadEncounterInput) Validate() error {
 // ErrInvalidData every rejection below carries, which means the persisted blob
 // does not describe a valid encounter.
 //
-// Validation order (R5 — validate all before constructing): no rooms, no endings,
-// empty/reserved ending keys, duplicate ending keys (#929 hardening round E, mirroring
-// NewEncounter's identical check), kind/reached_position checks, undeclared outcome
-// ending; THEN, per room list, a wire-only ID pre-pass (empty/duplicate room ID — #929 T2
-// second review round, so a later presence error can never misname an empty/ambiguous
-// ID), grid-shape resolution (unrecognized-or-no-longer-supported string) and origin
-// presence (W5) per room; THEN room-list defects via the SAME buildValidRoomGrids Setup
-// uses: shape legality, non-integral or duplicate occluder position in any family (#929
-// T3 Opus round F2; duplicate — #929 hardening round D), W1 (one grid family per field),
-// room legality (non-positive/oversized/over-cell-
-// budget dimensions, out-of-bounds origin — maxRoomSpan/maxAnchorCoord/maxRoomCells/
-// maxFieldCells), origin legality (non-representable origin, every family), W2 (rooms
-// never overlap); THEN, per connection list, the SAME wire-only ID pre-pass and endpoint
-// presence, then connection defects via validateConnectionInputs: unknown or
-// self-referencing room, endpoint out of bounds, non-integral (hex), or on an occluder,
-// W3 (non-kissing doorway); THEN empty or duplicate member IDs, member's room not in
-// field, member cell presence (a missing cell is the pre-#1106 room-local dialect
-// announcing itself — MemberData's doc comment) then integrality (hex) then that
-// cell being owned by some authored room, ending trigger validity
-// (unknown room or unreachable position on a TriggerReachedPosition — #929 T3 Opus round
-// F5, the SAME validateEndingTriggers Setup uses), an abandoned outcome with members
-// still present, outcome member cell PRESENCE (a missing cell is the pre-#1068
-// room-local dialect announcing itself — MemberOutcomeData's doc comment) then that
-// member's room and bounds, everMembers missing a current member.
+// Validation order (R5 — validate all before constructing): no endings,
+// empty/reserved ending keys, duplicate ending keys, kind/reached_position
+// checks, undeclared outcome ending; THEN the field: the wire-only checks
+// (the room-chain tombstones, a void or orientation word that is absent or
+// unknown, a region or prop or lighting block whose REQUIRED pointer is
+// absent — concerns that exist only because the wire uses strings and
+// pointers where the construction form uses typed values), then the field
+// converted back into a [FieldInput] and handed to the SAME compileField and
+// validateDoorInputs Setup uses; THEN empty or duplicate member IDs, member
+// cell presence (a missing cell is the pre-#1106 room-local dialect
+// announcing itself — MemberData's doc comment) then integrality then that
+// cell being floor, ending trigger validity (the SAME validateEndingTriggers
+// Setup uses), an abandoned outcome with members still present, outcome
+// member cell presence then floor, everMembers missing a current member.
 //
 // One check runs OUTSIDE this up-front pass, later, during member re-placement and
 // decider re-attachment (construction has already begun by then): a player member
@@ -773,28 +685,22 @@ func (in *LoadEncounterInput) Validate() error {
 // is a real ordering asymmetry against the up-front list above; a future cleanup could
 // hoist it into the member validation loop instead.
 //
-// #929 T2: the room-list and connection validation is deliberately the SAME Setup
-// runs, not a parallel reimplementation — Setup and Load diverging on the W-laws was
-// flagged explicitly in T1 review as a drift risk. RoomData/ConnectionData convert to
-// RoomInput/ConnectionInput FIRST (the ID pre-pass, grid-string resolution, and
-// Origin/endpoint presence checks above — concerns that only exist at the wire layer,
-// since RoomInput.Grid is already typed and RoomInput.Origin is already a value, not a
-// pointer), then the converted slices are handed to
-// buildValidRoomGrids/validateConnectionInputs verbatim; every error they return is
-// wrapped once more with ErrInvalidData (multi-%w, this module's established load-error
-// style — the underlying error already carries ErrNoField/ErrBadConnection). Neither
-// shared validator's own error messages carry a verb prefix (#929 T2 second review
-// round — buildValidRoomGrids' doc comment), so this wrap is the ONLY place "load
-// encounter:" enters those messages — NewEncounter wraps the identical unprefixed
-// errors with "newencounter:" instead, at its own call sites.
+// The field validation is deliberately the SAME Setup runs, not a parallel
+// reimplementation — Setup and Load diverging on the W-laws was flagged
+// explicitly in #929 T1 review as a drift risk. Every error the shared
+// validator returns is wrapped once more with ErrInvalidData (multi-%w, this
+// module's established load-error style). The shared validator's own
+// messages carry no verb prefix, so this wrap is the ONLY place "load
+// encounter:" enters those messages — NewEncounter wraps the identical
+// unprefixed errors with "newencounter:" instead.
 //
 // Leaf loaders (clock, intel, record) are called and their rejections are wrapped.
 // Intel gets one check of its own first, because it cannot make it itself: a stored
 // sight payload naming a room is a pre-#1044 room-local frame, and intel holds
 // payloads as opaque bytes by contract — see refuseRoomLocalSightings.
-// On success, the authored rooms are compiled into the canvas via the same
-// compileCanvas Setup uses (no re-surveil), and members are re-placed at their
-// persisted absolute cells.
+// On success, the field is compiled into the canvas via the same compileCanvas
+// Setup uses (no re-surveil), and members are re-placed at their persisted
+// absolute cells.
 func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := input.Validate(); err != nil {
 		return nil, err
@@ -803,11 +709,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	data, deciders := input.Data, input.Deciders
 
 	// R5: Validate everything before constructing
-	// No rooms
-	if len(data.Field.Rooms) == 0 {
-		return nil, fmt.Errorf("load encounter: no rooms: %w: %w", ErrInvalidData, ErrNoField)
-	}
-
 	// No endings
 	if len(data.Endings) == 0 {
 		return nil, fmt.Errorf("load encounter: bad endings: %w: %w", ErrInvalidData, ErrNoEnding)
@@ -833,8 +734,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// A reached_position ending without a position would panic at
 		// construction — LoadEncounter is the trust boundary for
 		// persisted bytes and must reject, never crash (T6 review M2).
-		if ed.Kind == "reached_position" && (ed.Position == nil || ed.Room == "") {
-			return nil, fmt.Errorf("load encounter: ending %q reached_position without room/position: %w: %w", ed.Key, ErrInvalidData, ErrNoEnding)
+		if ed.Kind == "reached_position" && ed.At == nil {
+			return nil, fmt.Errorf(
+				"load encounter: ending %q reached_position has no at — a room-local target from before rpg-project#256, recreate the save: %w: %w",
+				ed.Key, ErrInvalidData, ErrNoEnding)
 		}
 	}
 
@@ -856,44 +759,18 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	// Convert the wire representation to RoomInput/ConnectionInput — the
-	// ONLY load-specific pre-validation left (grid-string resolution, W5
-	// origin presence, connection endpoint presence: concerns that exist
-	// only because the wire form uses strings and pointers where the
-	// construction form uses typed values) — then hand off to the SAME
-	// room-list and connection validation Setup uses (see this function's
-	// doc comment). Every remaining room-list/connection defect class
-	// (shape legality, W1, room legality, origin legality, W2, W3, and the
-	// existing bounds/occluder/self-connection checks) is enforced by
-	// buildValidRoomGrids/validateConnectionInputs, not duplicated here.
-
-	// What the space between the chambers does to a sightline, resolved from
-	// the word the blob carries. Refused by name when absent or unknown — a guess here
-	// would load a party into a dungeon whose walls the host never authored
-	// (rpg-toolkit#1116; the standing no-migration precedent, #1053/#1068).
-	void, err := voidFromData(data.Field.Canvas.Void)
+	// Convert the wire representation back into a FieldInput — the ONLY
+	// load-specific pre-validation left (the tombstones, word resolution,
+	// and pointer presence: concerns that exist only because the wire form
+	// uses strings and pointers where the construction form uses typed
+	// values) — then hand off to the SAME compileField and validateDoorInputs
+	// Setup uses (see this function's doc comment).
+	fieldInput, err := fieldInputFrom(data.Field)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-
-	roomInputs, err := convertRoomDataToRoomInput(data.Field.Rooms)
+	f, err := compileField(fieldInput)
 	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
-	orientation, err := orientationFromData(fieldGridShape(roomInputs), data.Field.Canvas.Orientation)
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
-	roomGrids, err := buildValidRoomGrids(roomInputs, orientation)
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
-
-	connectionInputs, err := convertConnectionDataToConnectionInput(data.Field.Connections)
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
-	if err = validateConnectionInputs(roomInputs, roomGrids, orientation, connectionInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -905,11 +782,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	if err = validateDoorInputs(roomInputs, roomGrids, orientation, doorInputs); err != nil {
+	if err = validateDoorInputs(f, doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// Validate members: no duplicates, rooms exist, positions in bounds
+	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
 	for _, m := range data.Members {
 		// Empty member IDs are unreachable (Setup and Join both reject).
@@ -934,41 +811,35 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 		cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
 
-		// Hex fields require integral axial cells, asked FIRST and named as
-		// itself — the same order and the same words Step and Join use
-		// (isIntegralHexCell). Ownership refuses a fractional hex cell
-		// too, but it would report it as "owned by no room", which sends
-		// whoever reads it to the map instead of to their arithmetic; three
-		// seams answering one defect three ways is exactly the drift #929 T2
-		// made Setup and Load share validators to avoid. W1 gives the whole
-		// field one grid family, so any room's grid answers for all of them.
-		if !isIntegralHexCell(roomGrids[roomInputs[0].ID], cell) {
+		// Integral axial cells, asked FIRST and named as itself — the same
+		// order and the same words Step and Join use (isIntegralHexCell).
+		// Ownership refuses a fractional cell too, but it would report it as
+		// "owned by no region", which sends whoever reads it to the map
+		// instead of to their arithmetic.
+		if !isIntegralHexCell(cell) {
 			return nil, fmt.Errorf("load encounter: member %q cell is not an integral axial cell: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 
-		// The cell is absolute and every room's grid speaks its own local
-		// frame, so the bounds check runs the compile backwards: some region
-		// must hold it. One check, two defects — a cell outside the field
-		// entirely, and a cell in the space BETWEEN regions, which the canvas
-		// spans but which is not floor. The SAME lookup the live verbs use
-		// (rpg-toolkit#1108); it used to be a twin that had to be kept in step
-		// by hand.
-		if _, owned := regionAt(roomInputs, roomGrids, orientation, cell); !owned {
+		// Some region must hold the cell. One check, two defects — a cell
+		// outside the field entirely, and a cell in the space BETWEEN
+		// regions, which the canvas spans but which is not floor. The SAME
+		// lookup the live verbs use (rpg-toolkit#1108).
+		if _, owned := f.regionOf(cell); !owned {
 			return nil, fmt.Errorf("load encounter: member %q cell is owned by no region: %w: %w", m.ID, ErrInvalidData, ErrBadPlacement)
 		}
 	}
 
-	// A TriggerReachedPosition ending must name a real room and reachable
-	// position — the SAME shared validator Setup uses (#929 T3 Opus round
-	// F5; validateEndingTriggers' doc comment), fed the wire endings
-	// resolved to their runtime Trigger via endingTriggerFromData — the
-	// SAME conversion the "Restore declared endings" construction below
-	// reuses, so the switch on ed.Kind exists exactly once, not twice.
+	// A TriggerReachedPosition ending must name a reachable cell — the SAME
+	// shared validator Setup uses (#929 T3 Opus round F5;
+	// validateEndingTriggers' doc comment), fed the wire endings resolved to
+	// their runtime Trigger via endingTriggerFromData — the SAME conversion
+	// the "Restore declared endings" construction below reuses, so the
+	// switch on ed.Kind exists exactly once, not twice.
 	endingInputsForValidation := make([]EndingInput, len(data.Endings))
 	for i, ed := range data.Endings {
 		endingInputsForValidation[i] = EndingInput{Key: ed.Key, Trigger: endingTriggerFromData(ed)}
 	}
-	if err := validateEndingTriggers(roomInputs, endingInputsForValidation, roomGrids); err != nil {
+	if err := validateEndingTriggers(f, endingInputsForValidation); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -995,7 +866,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			// cell against the region NAMED BESIDE IT in the blob; with the
 			// region derived rather than stored there is nothing to
 			// cross-check, only somewhere to be (rpg-toolkit#1108).
-			if _, owned := regionAt(roomInputs, roomGrids, orientation, spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); !owned {
+			if _, owned := f.regionOf(spatial.Position{X: om.Cell.X, Y: om.Cell.Y}); !owned {
 				return nil, fmt.Errorf("load encounter: outcome member %q cell is owned by no region: %w: %w", om.ID, ErrInvalidData, ErrBadPlacement)
 			}
 		}
@@ -1123,22 +994,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),
-		void:        void,
-		orientation: orientation,
+		field:       f,
 	}
 
-	// Compile the authored rooms into the canvas — the SAME compileCanvas
-	// NewEncounter runs, fed the SAME already-validated roomInputs, so a
-	// reloaded encounter's map is built by one implementation rather than a
-	// mirrored second one (#929 T2's shared-validator lesson, applied to
+	// Compile the field into the canvas — the SAME compileCanvas
+	// NewEncounter runs, on the SAME already-validated field, so a reloaded
+	// encounter's map is built by one implementation rather than a mirrored
+	// second one (#929 T2's shared-validator lesson, applied to
 	// construction).
 	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
 
-	e.canvas, err = compileCanvas(roomInputs, roomGrids, void, orientation, e.doors)
+	e.canvas, err = f.compileCanvas(e.doors)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	e.roomGrids = roomGrids
 
 	// Load leaf state (constructors always succeed after validation)
 	e.clock = loadedClock
@@ -1213,7 +1082,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// the ending-trigger validation above already ran, and compileEndings is
 	// the SAME projection Setup runs, so a reloaded encounter's endings fire on
 	// the cells the original's did.
-	e.endings = compileEndings(endingInputsForValidation, roomInputs, e.orientation)
+	e.endings = compileEndings(endingInputsForValidation, f)
 
 	// Restore outcome if present
 	if data.Outcome != nil {
@@ -1224,7 +1093,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		for i, m := range data.Outcome.Members {
 			cell := spatial.Position{X: m.Cell.X, Y: m.Cell.Y}
-			region, _ := regionAt(roomInputs, roomGrids, orientation, cell)
+			region, _ := f.regionOf(cell)
 			outcome.Members[i] = MemberOutcome{
 				ID: m.ID,
 				// The region is DERIVED from the cell, through the same
@@ -1242,23 +1111,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		e.outcome = outcome
 	}
 
-	// Store field and connections inputs for future ToData calls — the
-	// SAME roomInputs/connectionInputs already built (and validated)
-	// above, not re-converted: both were freshly allocated from data by
-	// convertRoomDataToRoomInput/convertConnectionDataToConnectionInput,
-	// never aliasing the caller's data (T6 review M4's alias-immunity
-	// requirement, pinned at this seam by TestAliasImmunityLoadEncounter).
-	// Connections are kept sorted by ID (C8 determinism — order is
-	// observable in ToData).
-	e.fieldInput = roomInputs
-	e.connectionsInput = connectionInputs
-	sort.Slice(e.connectionsInput, func(i, j int) bool { return e.connectionsInput[i].ID < e.connectionsInput[j].ID })
-
 	return e, nil
 }
 
-// endingTriggerFromData converts one persisted ending's Kind/Room/Position/
-// Member into its runtime Trigger. Shared by two call sites in
+// endingTriggerFromData converts one persisted ending's Kind/At/Member into
+// its runtime Trigger. Shared by two call sites in
 // LoadEncounter above — the ending-trigger validation (which needs it
 // early, right after roomGrids exists, so validateEndingTriggers has
 // something to check) and the "Restore declared endings" construction
@@ -1266,14 +1123,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 // conversion, not two copies of the same switch (#929 T3 Opus round F5).
 // ed.Kind is already guaranteed to be "reached_position" or "external" by
 // the key/kind checks earlier in LoadEncounter, and a "reached_position"
-// ed.Position is already guaranteed non-nil there too — both preconditions
+// ed.At is already guaranteed non-nil there too — both preconditions
 // checked before this is ever called, so no error return is needed here.
 func endingTriggerFromData(ed EndingData) Trigger {
 	switch ed.Kind {
 	case "reached_position":
 		return TriggerReachedPosition{
-			Room:     ed.Room,
-			Position: spatial.Position{X: ed.Position.X, Y: ed.Position.Y},
+			Position: spatial.Position{X: ed.At.X, Y: ed.At.Y},
 			Member:   ed.Member,
 		}
 	case "external":
@@ -1344,148 +1200,87 @@ func refuseRoomLocalSightings(data intel.Data) error {
 	return nil
 }
 
-// convertRoomDataToRoomInput converts RoomData to RoomInput, both for the
-// SAME room-list validation Setup uses (buildValidRoomGrids — see
-// LoadEncounter's doc comment) and for later storage. This is the ONLY
-// place LoadEncounter resolves the wire-only concerns that don't exist on
-// RoomInput itself: ID presence/uniqueness (a cheap pre-pass, #929 T2
-// second review round — see below), the Grid string (rejecting an
-// unrecognized value, including the no-longer-supported "gridless" —
-// gridDataToShape's doc comment), and Origin's W5 presence requirement (a
-// nil pointer means the field was absent from the blob, distinct from a
-// declared zero — RoomData's doc comment). All reject with ErrNoField,
-// matching the room-list defect vocabulary buildValidRoomGrids itself uses
-// for every OTHER room-list defect, so a caller inspecting the error chain
-// sees one consistent sentinel regardless of which check fired.
-//
-// The ID pre-pass runs as its OWN first pass over the raw wire IDs, before
-// any other conversion: without it, an empty or duplicate room ID could
-// reach the Grid/Origin checks below and produce a message naming that
-// same empty or ambiguous ID — e.g. `room "" missing origin` — instead of
-// the actual defect (the ID itself). buildValidRoomGrids ALSO checks
-// ID empty/duplicate, but only after every room in the list has already
-// survived conversion — too late to prevent THIS symptom. The pre-pass is
-// intentionally redundant with that later check for a room list that
-// passes it: its only job is to guarantee an ID-defective room never
-// reaches a presence error that would misname it.
-func convertRoomDataToRoomInput(rooms []RoomData) ([]RoomInput, error) {
-	seenIDs := make(map[string]bool, len(rooms))
-	for _, rd := range rooms {
-		if rd.ID == "" {
-			return nil, fmt.Errorf("room has empty id: %w", ErrNoField)
-		}
-		if seenIDs[rd.ID] {
-			return nil, fmt.Errorf("duplicate room %q: %w", rd.ID, ErrNoField)
-		}
-		seenIDs[rd.ID] = true
+// fieldInputFrom converts the wire field back into the construction input —
+// the ONLY place LoadEncounter resolves the wire-only concerns that do not
+// exist on [FieldInput] itself: the room-chain tombstones, the void and
+// orientation words, and a REQUIRED pointer that is absent (a region's
+// lighting block or its intensity, a prop's blocking answers). Everything
+// else a field can get wrong is compileField's, for both seams.
+func fieldInputFrom(fd FieldData) (FieldInput, error) {
+	// The tombstones, checked before anything is built — see
+	// FieldData.Rooms for why a rename alone would be the wrong message.
+	if len(fd.Rooms) > 0 || len(fd.Connections) > 0 {
+		return FieldInput{}, fmt.Errorf(
+			"field carries rooms/connections, the room-chain dialect this build does not speak: "+
+				"a field is regions, props, walls and doors now (rpg-project#256), recreate the save: %w", ErrNoField)
 	}
 
-	result := make([]RoomInput, len(rooms))
-	for i, rd := range rooms {
-		shape, ok := gridDataToShape(rd.Grid)
-		if !ok {
-			return nil, fmt.Errorf("room %q has unknown grid shape %q: %w", rd.ID, rd.Grid, ErrNoField)
-		}
-		if rd.Origin == nil {
-			return nil, fmt.Errorf("room %q missing origin: %w", rd.ID, ErrNoField)
-		}
-		// The tombstone, checked before anything is built from this room —
-		// see RoomData.Occluders for why a rename alone would have loaded
-		// this blob clean and thrown its blockers away.
-		if len(rd.Occluders) > 0 {
-			return nil, fmt.Errorf(
-				"room %q carries occluders, a dialect this build does not speak: "+
-					"a room's contents are props now, and each says its ref and what it "+
-					"blocks (rpg-toolkit#1128): %w", rd.ID, ErrNoField)
-		}
-
-		ri := RoomInput{
-			ID:         rd.ID,
-			Width:      rd.Width,
-			Height:     rd.Height,
-			Grid:       shape,
-			Props:      make([]PropInput, len(rd.Props)),
-			Boundaries: make([]spatial.Boundary, len(rd.Boundaries)),
-			Origin:     spatial.Position{X: rd.Origin.X, Y: rd.Origin.Y},
-		}
-
-		for j, pd := range rd.Props {
-			// REQUIRED at load, both of them, by name. A persisted prop that
-			// does not say what it blocks is a blob from before this module
-			// asked — loading it under a guess would put a party in a room
-			// whose blockers the host never authored (PropData).
-			if pd.BlocksMovement == nil {
-				return nil, fmt.Errorf("room %q prop %q does not say whether it blocks_movement: %w",
-					rd.ID, pd.Ref, ErrNoField)
-			}
-			if pd.BlocksLineOfSight == nil {
-				return nil, fmt.Errorf("room %q prop %q does not say whether it blocks_line_of_sight: %w",
-					rd.ID, pd.Ref, ErrNoField)
-			}
-			// Fresh pointers again: a loaded RoomInput must not alias the
-			// caller's EncounterData (snapshot immunity, both directions).
-			blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
-			ri.Props[j] = PropInput{
-				Ref:               pd.Ref,
-				At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
-				BlocksMovement:    &blocksMovement,
-				BlocksLineOfSight: &blocksSight,
-			}
-		}
-
-		for j, bd := range rd.Boundaries {
-			ri.Boundaries[j] = spatial.Boundary{
-				From:              spatial.Position{X: bd.From.X, Y: bd.From.Y},
-				To:                spatial.Position{X: bd.To.X, Y: bd.To.Y},
-				BlocksMovement:    bd.BlocksMovement,
-				BlocksLineOfSight: bd.BlocksLineOfSight,
-			}
-		}
-
-		result[i] = ri
+	// What the space between the regions does to a sightline, and which way
+	// the hexes point, resolved from the words the blob carries. Refused by
+	// name when absent or unknown — a guess here would load a party into a
+	// dungeon whose walls the host never authored (rpg-toolkit#1116; the
+	// standing no-migration precedent, #1053/#1068).
+	void, err := voidFromData(fd.Canvas.Void)
+	if err != nil {
+		return FieldInput{}, err
 	}
-	return result, nil
-}
-
-// convertConnectionDataToConnectionInput converts ConnectionData to
-// ConnectionInput, both for the SAME connection validation Setup uses
-// (validateConnectionInputs — see LoadEncounter's doc comment) and for
-// later storage. This is the ONLY place LoadEncounter resolves the
-// wire-only concerns that don't exist on ConnectionInput itself: ID
-// presence/uniqueness (a cheap pre-pass, #929 T2 second review round — same
-// reasoning as convertRoomDataToRoomInput's own pre-pass, so an endpoint-
-// presence error can never misname an empty/ambiguous connection ID) and a
-// nil FromPosition/ToPosition pointer, meaning the field was absent from
-// the blob, not merely zero-valued (ConnectionData's doc comment). Rejects
-// with ErrBadConnection, matching validateConnectionInputs' own vocabulary
-// for every other connection defect.
-func convertConnectionDataToConnectionInput(conns []ConnectionData) ([]ConnectionInput, error) {
-	seenIDs := make(map[string]bool, len(conns))
-	for _, cd := range conns {
-		if cd.ID == "" {
-			return nil, fmt.Errorf("connection has empty id: %w", ErrBadConnection)
-		}
-		if seenIDs[cd.ID] {
-			return nil, fmt.Errorf("duplicate connection %q: %w", cd.ID, ErrBadConnection)
-		}
-		seenIDs[cd.ID] = true
+	orientation, err := orientationFromData(fd.Canvas.Orientation)
+	if err != nil {
+		return FieldInput{}, err
 	}
 
-	result := make([]ConnectionInput, len(conns))
-	for i, cd := range conns {
-		if cd.FromPosition == nil {
-			return nil, fmt.Errorf("connection %q missing from_position: %w", cd.ID, ErrBadConnection)
+	in := FieldInput{
+		Canvas:  CanvasInput{Void: void, Orientation: orientation},
+		Regions: make([]RegionInput, len(fd.Regions)),
+	}
+
+	for i, rd := range fd.Regions {
+		if rd.Lighting == nil {
+			return FieldInput{}, fmt.Errorf("region %q: %w", rd.ID, ErrRegionLightingMissing)
 		}
-		if cd.ToPosition == nil {
-			return nil, fmt.Errorf("connection %q missing to_position: %w", cd.ID, ErrBadConnection)
+		if rd.Lighting.Intensity == nil {
+			return FieldInput{}, fmt.Errorf(
+				"region %q lighting block does not say its intensity (regions[].lighting.intensity): %w",
+				rd.ID, ErrNoField)
 		}
-		result[i] = ConnectionInput{
-			ID:           cd.ID,
-			From:         cd.From,
-			To:           cd.To,
-			FromPosition: spatial.Position{X: cd.FromPosition.X, Y: cd.FromPosition.Y},
-			ToPosition:   spatial.Position{X: cd.ToPosition.X, Y: cd.ToPosition.Y},
+		cells := make([]spatial.Position, len(rd.Cells))
+		for j, c := range rd.Cells {
+			cells[j] = spatial.Position{X: c.X, Y: c.Y}
+		}
+		in.Regions[i] = RegionInput{
+			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
+			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
 		}
 	}
-	return result, nil
+
+	for _, pd := range fd.Props {
+		// REQUIRED at load, both of them, by name. A persisted prop that
+		// does not say what it blocks is a blob from before this module
+		// asked — loading it under a guess would put a party in a room
+		// whose blockers the host never authored (PropData).
+		if pd.BlocksMovement == nil {
+			return FieldInput{}, fmt.Errorf("prop %q does not say whether it blocks_movement: %w", pd.Ref, ErrNoField)
+		}
+		if pd.BlocksLineOfSight == nil {
+			return FieldInput{}, fmt.Errorf("prop %q does not say whether it blocks_line_of_sight: %w", pd.Ref, ErrNoField)
+		}
+		blocksMovement, blocksSight := *pd.BlocksMovement, *pd.BlocksLineOfSight
+		in.Props = append(in.Props, PropInput{
+			Ref:               pd.Ref,
+			At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
+			BlocksMovement:    &blocksMovement,
+			BlocksLineOfSight: &blocksSight,
+		})
+	}
+
+	for _, wd := range fd.Walls {
+		in.Walls = append(in.Walls, spatial.Boundary{
+			From:              spatial.Position{X: wd.From.X, Y: wd.From.Y},
+			To:                spatial.Position{X: wd.To.X, Y: wd.To.Y},
+			BlocksMovement:    wd.BlocksMovement,
+			BlocksLineOfSight: wd.BlocksLineOfSight,
+		})
+	}
+
+	return in, nil
 }

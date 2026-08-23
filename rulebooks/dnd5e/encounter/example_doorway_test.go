@@ -30,14 +30,12 @@ import (
 // and she disappears when she steps out of its line — not when she crosses an
 // invisible boundary between two chambers.
 //
-// Every position printed here is DUNGEON-ABSOLUTE (rpg-toolkit#1044): the
-// vault is anchored at (8,0), so its own (0,4) reads as (8,4) on the map.
+// Every position printed here is DUNGEON-ABSOLUTE AXIAL (rpg-toolkit#1044,
+// rpg-project#256): the authored [col,row] pairs below are pointy-top offset
+// coordinates, and what a verb reports is the axial cell each one names — so
+// the hall's [7,4] prints as (5,4).
 func Example_theDoorway() {
-	gate := encounter.ConnectionInput{
-		ID: "gate", From: "hall", To: "vault",
-		FromPosition: spatial.Position{X: 7, Y: 4},
-		ToPosition:   spatial.Position{X: 0, Y: 4},
-	}
+	gate := openDoorway("gate", 7, 4, 8, 4)
 
 	// The hall's east wall: an edge between its own last column and the first
 	// column of the vault, every row but the gate's. Both endpoints are
@@ -47,24 +45,17 @@ func Example_theDoorway() {
 	wall := squareSeamWall(7, 8, 4)
 
 	field := encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: "hall", Width: 8, Height: 8, Boundaries: wall},
-			// Anchored immediately east of the hall (#929 T1): the gate's
-			// endpoints (7,4) and (0,4)+(8,0)=(8,4) are Chebyshev-adjacent
-			// (W3), and the rooms' absolute footprints (x:[0,7] vs x:[8,15])
-			// stay disjoint (W2).
-			{ID: "vault", Width: 8, Height: 8, Origin: spatial.Position{X: 8, Y: 0}},
-		},
-		Connections: []encounter.ConnectionInput{gate},
+		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8), rectRegion("vault", 8, 0, 8, 8)}, Walls: wall,
+		Doors: []encounter.DoorInput{gate},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 7, Y: 4}},
-			{ID: "goblin", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 4},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 4}},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 4},
 				Decider: &pursuitDecider{doorways: doorwaysFrom(field), target: "alice"}},
 		},
 		Endings: []encounter.EndingInput{
@@ -90,16 +81,16 @@ func Example_theDoorway() {
 	// One step, to the cell on the other side. Nothing about it is a crossing
 	// except the doorway's name on the way out.
 	fmt.Println("-- alice steps through the gate, and is still standing in it --")
-	out, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 8, Y: 4}})
+	out, err := enc.Step(&encounter.StepInput{Member: "alice", To: cellAt(8, 4)})
 	if err != nil {
 		fmt.Println("step:", err)
 		return
 	}
-	fmt.Println("she went through:", out.Crossing)
+	fmt.Println("she went through:", out.Doors[0].ID)
 	tell(enc, "goblin", "alice")
 
 	fmt.Println("-- she moves out of the opening, and the wall takes her --")
-	if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 10, Y: 7}}); err != nil {
+	if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: cellAt(10, 7)}); err != nil {
 		fmt.Println("step:", err)
 		return
 	}
@@ -118,13 +109,13 @@ func Example_theDoorway() {
 
 	// Output:
 	// -- first light --
-	// alice sees goblin at (2,4)
-	// goblin sees alice at (7,4)
+	// alice sees goblin at (0,4)
+	// goblin sees alice at (5,4)
 	// -- alice steps through the gate, and is still standing in it --
 	// she went through: gate
-	// goblin sees alice at (8,4)
+	// goblin sees alice at (6,4)
 	// -- she moves out of the opening, and the wall takes her --
-	// goblin holds a GHOST of alice at last-seen (8,4)
+	// goblin holds a GHOST of alice at last-seen (6,4)
 	// -- the goblin gives chase, and follows her through --
-	// goblin sees alice at (10,7)
+	// goblin sees alice at (7,7)
 }
