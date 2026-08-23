@@ -586,10 +586,12 @@ type Event struct {
 
 	// Body is the beat, typed: a sealed interface with one struct per kind
 	// that has one, decoded from the SAME payload this package already
-	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil for
-	// a kind with no typed body member (ENDED, SCENE_OPENED, TICK, UNKNOWN)
-	// and for a beat this build's decoder does not recognise — see
-	// decodeBeat.
+	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil in
+	// three cases: a kind with no typed body member (ENDED, SCENE_OPENED,
+	// TICK, UNKNOWN); a beat this build's decoder does not recognise; and a
+	// beat whose declared kind IS recognised but whose payload does not
+	// match that kind's required shape — bodyFor's own refusal rather than
+	// a zero-valued body (see TestBodyForRefusesAMissingRequiredField).
 	Body EventBody `json:"-"`
 }
 
