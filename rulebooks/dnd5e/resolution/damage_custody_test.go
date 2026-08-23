@@ -194,7 +194,7 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 // Real content, and the case a synthetic subscriber cannot pin: a raging
 // barbarian takes half from the wolf's piercing bite.
 func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamageType() {
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
@@ -326,7 +326,7 @@ func (s *DamageCustodyTestSuite) addFlatOnBus(bus events.EventBus, amount int, t
 // it keeps a character's AC chain out of the arithmetic under test, and the
 // damage fold is the same fold whoever is swinging.
 func (s *DamageCustodyTestSuite) roomWith(attacker, target encounter.MemberID) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
