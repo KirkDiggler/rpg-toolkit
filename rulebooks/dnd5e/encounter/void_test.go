@@ -378,7 +378,6 @@ func contiguousField(void encounter.Void) encounter.FieldInput {
 			}
 		}
 	}
-	_ = o
 	return encounter.FieldInput{
 		Canvas: encounter.CanvasInput{Void: void, Orientation: o},
 		Regions: []encounter.RegionInput{

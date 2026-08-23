@@ -199,7 +199,7 @@ func TestGolden_ReferenceTombV2MatchesV1Atlas(t *testing.T) {
 // TestSecondSkeletonFixtureCompiles is rpg-project#254's fixture, so slice 2
 // keeps running: the same tomb with a wall across the hall, and the second
 // skeleton behind it. The wall is the only difference, and the golden says
-// so: cells, props and doorways identical, 14 more boundaries.
+// so: cells, props and doorways identical, 15 more boundaries.
 func TestSecondSkeletonFixtureCompiles(t *testing.T) {
 	compiled, atlas := compiledAtlas(t, secondSkeletonPath)
 	got := goldenFromAtlas(atlas)
