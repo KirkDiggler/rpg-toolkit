@@ -109,7 +109,7 @@ func (s *MonsterAttackTestSuite) TestBiteNameIsNotEmpty() {
 
 	profile, err := AttackFromMonsterAction(action)
 	s.Require().NoError(err)
-	s.NotEmpty(profile.Name)
+	s.Equal("Bite", profile.Name)
 }
 
 // TestMeleeReachCarriesTheAuthoredValue pins the fix: a generic melee

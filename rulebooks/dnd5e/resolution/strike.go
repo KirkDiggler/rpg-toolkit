@@ -63,10 +63,11 @@ type AttackProfile struct {
 	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
 	// Strike" — carried alongside it so a caller reporting what was swung
 	// (a beat line, a struck/missed event) never has to look the ref back
-	// up in a catalog of its own (rpg-toolkit#866). Populated by
-	// [AttackFromCharacter]; empty from [AttackFromMonsterAction] today —
-	// monster attackers do not yet reach a caller that reports this
-	// (v1 compiles CHARACTER attackers only, session.Attack's own doc).
+	// up in a catalog of its own (rpg-toolkit#866). Populated by both
+	// compilers: [AttackFromCharacter] reads it off the equipped weapon,
+	// and [AttackFromMonsterAction] carries the stat block's own authored
+	// name through for a melee action ("shortsword", "scimitar") or
+	// reports the fixed label "Bite" for a bite, which authors none.
 	Name string
 
 	// AttackBonus is added to the d20.
