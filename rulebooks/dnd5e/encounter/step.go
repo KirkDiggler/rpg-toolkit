@@ -37,12 +37,8 @@ import (
 // works in and the frame every report speaks. There is nothing left to project.
 type executedAction struct {
 	member *memberRecord
-	// connection names the doorway this step went through, or is empty. A
-	// NAME, for narration — it grants nothing and refuses nothing.
-	connection string
-	// doors are the doors this step went through, in travel order. Unlike
-	// connection these COULD have refused the step — they just did not
-	// (rpg-toolkit#1123).
+	// doors are the doors this step went through, in travel order. These
+	// COULD have refused the step — they just did not (rpg-toolkit#1123).
 	doors []CrossedDoor
 	from  spatial.Position
 	to    spatial.Position
@@ -132,7 +128,6 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 
 	out := &StepOutput{
 		Doors:       action.doors,
-		Crossing:    action.connection,
 		IntelDeltas: intelDeltas,
 		Seq:         seq,
 		Outcome:     e.firedReachedPosition(member, action.to, at),
@@ -166,7 +161,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 	// too, and refuses it by this very check (rpg-toolkit#1108), but it would
 	// report it as "not floor" — sending a caller to the map instead of to its
 	// arithmetic.
-	if !isIntegralHexCell(e.canvas.GetGrid(), to) {
+	if !isIntegralHexCell(to) {
 		return executedAction{}, fmt.Errorf("target is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
@@ -211,12 +206,7 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		return executedAction{}, err
 	}
 
-	action := executedAction{
-		member:     member,
-		connection: e.crossingOf(from, to),
-		from:       from,
-		to:         to,
-	}
+	action := executedAction{member: member, from: from, to: to}
 	for _, door := range e.doorsAlong(from, to) {
 		action.doors = append(action.doors, CrossedDoor{ID: door.id, State: door.state.Kind()})
 	}
@@ -240,25 +230,4 @@ func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedA
 		return executedAction{}, false
 	}
 	return action, true
-}
-
-// crossingOf names the doorway joining two absolute cells, in either direction,
-// or returns empty.
-//
-// A NAME AND NOTHING MORE (rpg-toolkit#1106). Its predecessor, doorwayFrom, was
-// the permission function: false meant a step between two touching rooms was
-// refused, because a wall on a room's edge was inexpressible and the connection
-// list had to stand in for one. Walls are boundary edges on the canvas now, so
-// nothing about a step consults this — it runs AFTER the move succeeded, purely
-// so a host narrating "she slips through the gate" does not have to rediscover
-// which gate from the Atlas.
-func (e *Encounter) crossingOf(from, to spatial.Position) string {
-	for _, c := range e.connectionsInput {
-		near := absoluteOf(roomByID(e.fieldInput, c.From), e.orientation, c.FromPosition)
-		far := absoluteOf(roomByID(e.fieldInput, c.To), e.orientation, c.ToPosition)
-		if (near == from && far == to) || (far == from && near == to) {
-			return c.ID
-		}
-	}
-	return ""
 }

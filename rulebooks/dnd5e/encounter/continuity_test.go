@@ -52,17 +52,31 @@ func continuityViolation(family spatial.GridShape, positions []spatial.Position,
 	return -1
 }
 
-// vaultChaseHexGate is the connection shared by the two places this file
+// vaultChaseHexGate is the open door shared by the two places this file
 // builds the hex vault-chase decider — vaultChaseHexSetup's initial
 // construction (below) and TestVaultChaseAbsoluteContinuity's mid-chase
 // reload, which re-attaches a decider carrying the identical topology —
 // kept as its own value so both share the exact same gate without
 // re-deriving it.
-func vaultChaseHexGate() encounter.ConnectionInput {
-	return encounter.ConnectionInput{
-		ID: "gate", From: "corridor", To: "vault",
-		FromPosition: spatial.Position{X: 9, Y: 5},
-		ToPosition:   spatial.Position{X: 0, Y: 5},
+func vaultChaseHexGate() encounter.DoorInput {
+	return openDoorway("gate", 9, 5, 10, 5)
+}
+
+// chamber is this fixture's own description of a painted rectangle — the
+// anchor and span the transcript projects with, independent of the
+// composition (rpg-project#256: the composition no longer holds one).
+type chamber struct {
+	id            string
+	origin        spatial.Position
+	width, height int
+}
+
+// vaultChaseChambers is the layout this file authored, as the projector
+// reads it.
+func vaultChaseChambers() []chamber {
+	return []chamber{
+		{id: "corridor", origin: spatial.Position{X: 0, Y: 0}, width: 10, height: 10},
+		{id: "vault", origin: spatial.Position{X: 10, Y: 0}, width: 10, height: 10},
 	}
 }
 
@@ -109,20 +123,16 @@ func vaultChaseHexSeamWall() []spatial.Boundary {
 func vaultChaseHexSetup() *encounter.SetupInput {
 	gate := vaultChaseHexGate()
 	field := encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-		Rooms: []encounter.RoomInput{
-			{ID: "corridor", Width: 10, Height: 10, Grid: spatial.GridShapeHex,
-				Boundaries: vaultChaseHexSeamWall()},
-			{ID: "vault", Width: 10, Height: 10, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: 0}},
-		},
-		Connections: []encounter.ConnectionInput{gate},
+		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{rectRegion("corridor", 0, 0, 10, 10), rectRegion("vault", 10, 0, 10, 10)}, Walls: vaultChaseHexSeamWall(),
+		Doors: []encounter.DoorInput{gate},
 	}
 	pursuit := &pursuitDecider{doorways: doorwaysFrom(field), target: alice}
 	return &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 6, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 5}},
 			// One hex-step from the gate's corridor-side endpoint (9,5), and
 			// BESIDE the seam rather than in line with it. Both halves are
 			// load-bearing, and neither is arbitrary.
@@ -142,12 +152,11 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 			// loses her AT the threshold, which is what leaves the ghost on
 			// the corridor's own gate cell one step away, and what makes the
 			// decider reach for the doorway on its second think.
-			{ID: goblin, Kind: encounter.KindMonster, Room: "corridor",
-				Position: spatial.Position{X: 9, Y: 4}, Decider: pursuit},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4}, Decider: pursuit},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "sanctuary", Trigger: encounter.TriggerReachedPosition{
-				Room: "vault", Position: spatial.Position{X: 2, Y: 6}}},
+				Position: spatial.Position{X: 12, Y: 6}}}, // the vault's own [2,6]
 		},
 	}
 }
@@ -166,19 +175,19 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 type continuityProjector struct {
 	t          *testing.T
 	enc        *encounter.Encounter
-	rooms      []encounter.RoomInput
+	rooms      []chamber
 	transcript []string
 }
 
-func newContinuityProjector(t *testing.T, enc *encounter.Encounter, rooms []encounter.RoomInput) *continuityProjector {
+func newContinuityProjector(t *testing.T, enc *encounter.Encounter, rooms []chamber) *continuityProjector {
 	return &continuityProjector{t: t, enc: enc, rooms: rooms}
 }
 
 // originOf is the authored anchor of a chamber in this fixture.
 func (p *continuityProjector) originOf(room string) spatial.Position {
 	for _, r := range p.rooms {
-		if r.ID == room {
-			return r.Origin
+		if r.id == room {
+			return r.origin
 		}
 	}
 	require.FailNow(p.t, "no such room", room)
@@ -224,12 +233,12 @@ func (p *continuityProjector) locate(member, verb string, absolute spatial.Posit
 	p.t.Helper()
 	col, row := hexOffsetOfCell(absolute)
 	for _, r := range p.rooms {
-		localCol, localRow := col-int(r.Origin.X), row-int(r.Origin.Y)
-		if localCol < 0 || localCol >= r.Width || localRow < 0 || localRow >= r.Height {
+		localCol, localRow := col-int(r.origin.X), row-int(r.origin.Y)
+		if localCol < 0 || localCol >= r.width || localRow < 0 || localRow >= r.height {
 			continue
 		}
 		p.transcript = append(p.transcript, fmt.Sprintf("%s %s: %s(%d,%d) -> absolute(%g,%g)",
-			member, verb, r.ID, localCol, localRow, absolute.X, absolute.Y))
+			member, verb, r.id, localCol, localRow, absolute.X, absolute.Y))
 		return absolute
 	}
 	require.FailNow(p.t, "cell belongs to no chamber",
@@ -275,7 +284,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	enc, err := encounter.NewEncounter(vaultChaseHexSetup())
 	require.NoError(t, err, "the hex vault assembles")
 
-	proj := newContinuityProjector(t, enc, vaultChaseHexSetup().Field.Rooms)
+	proj := newContinuityProjector(t, enc, vaultChaseChambers())
 	var alicePath, goblinPath []spatial.Position
 
 	// ---- Beat 1: starting placements, mutual sight ----------------------
@@ -306,7 +315,8 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	throughTheGate := proj.project(string(alice), "arrive via gate", "vault", spatial.Position{X: 0, Y: 5})
 	travOut, err := enc.Step(&encounter.StepInput{Member: alice, To: throughTheGate})
 	require.NoError(t, err, "alice slips through the gate")
-	require.Equal(t, "gate", travOut.Crossing, "the doorway is named, and decides nothing")
+	require.Len(t, travOut.Doors, 1, "the door is named, and decides nothing")
+	require.Equal(t, encounter.DoorID("gate"), travOut.Doors[0].ID)
 	require.Equal(t, alicePath[len(alicePath)-1], travOut.Stepped.From, "the departure cell matches the last recorded move")
 	require.Equal(t, throughTheGate, travOut.Stepped.To)
 	alicePath = append(alicePath, throughTheGate)

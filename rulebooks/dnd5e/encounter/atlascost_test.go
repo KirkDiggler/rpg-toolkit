@@ -20,12 +20,10 @@ import (
 func budgetField() encounter.FieldInput {
 	const dim = 1024
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: "a", Width: dim, Height: dim, Origin: spatial.Position{X: 0, Y: 0}},
-			{ID: "b", Width: dim, Height: dim, Origin: spatial.Position{X: dim, Y: 0}},
-			{ID: "c", Width: dim, Height: dim, Origin: spatial.Position{X: 0, Y: dim}},
-			{ID: "d", Width: dim, Height: dim, Origin: spatial.Position{X: dim, Y: dim}},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion("a", 0, 0, dim, dim), rectRegion("b", dim, 0, dim, dim),
+			rectRegion("c", 0, dim, dim, dim), rectRegion("d", dim, dim, dim, dim),
 		},
 	}
 }
@@ -60,7 +58,7 @@ func TestAtlasReportsRegionsWithoutEnumeratingThem(t *testing.T) {
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: budgetField(),
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: "a", Position: spatial.Position{X: 1, Y: 1}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			},
 			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		})

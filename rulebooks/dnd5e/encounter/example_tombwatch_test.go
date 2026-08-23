@@ -47,19 +47,16 @@ func Example_theTombWatch() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: "crypt", Width: 12, Height: 12,
-				Props: wallRow(6, 5, 7),
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 2, Y: 6}},
-			{ID: "goblin", Kind: encounter.KindMonster, Room: "crypt", Position: spatial.Position{X: 6, Y: 10}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 6}},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "crypt", Position: spatial.Position{X: 11, Y: 11}}},
+				Position: spatial.Position{X: 11, Y: 11}}},
 		},
 	})
 	if err != nil {
@@ -79,7 +76,7 @@ func Example_theTombWatch() {
 	}
 
 	fmt.Println("-- alice slips behind the wall --")
-	if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 6, Y: 2}}); err != nil {
+	if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: cellAt(6, 2)}); err != nil {
 		fmt.Println("move:", err)
 		return
 	}
@@ -98,7 +95,7 @@ func Example_theTombWatch() {
 	tell(enc, "alice", "goblin")
 
 	fmt.Println("-- alice finds the stairs --")
-	out, err := enc.Step(&encounter.StepInput{Member: "alice", To: spatial.Position{X: 11, Y: 11}})
+	out, err := enc.Step(&encounter.StepInput{Member: "alice", To: cellAt(11, 11)})
 	if err != nil {
 		fmt.Println("move:", err)
 		return
@@ -108,18 +105,23 @@ func Example_theTombWatch() {
 		fmt.Printf("  %s ends at (%g,%g)\n", m.ID, m.Position.X, m.Position.Y)
 	}
 
+	// Every cell printed is the ABSOLUTE AXIAL cell a verb reports: the
+	// authored pointy-top pairs above — alice at [2,6], the goblin at
+	// [6,10], the stairs at [11,11] — read as (-1,6), (1,10) and (6,11)
+	// once converted (rpg-project#256: one conversion, at construction).
+	//
 	// Output:
 	// -- first light --
-	// alice sees goblin at (6,10)
-	// goblin sees alice at (2,6)
+	// alice sees goblin at (1,10)
+	// goblin sees alice at (-1,6)
 	// -- alice slips behind the wall --
-	// alice holds a GHOST of goblin at last-seen (6,10)
-	// goblin holds a GHOST of alice at last-seen (2,6)
+	// alice holds a GHOST of goblin at last-seen (1,10)
+	// goblin holds a GHOST of alice at last-seen (-1,6)
 	// -- the table saves and comes back tomorrow --
 	// one aggregate blob stored and reloaded
-	// alice holds a GHOST of goblin at last-seen (6,10)
+	// alice holds a GHOST of goblin at last-seen (1,10)
 	// -- alice finds the stairs --
 	// the encounter closes: "stairs"
-	//   alice ends at (11,11)
-	//   goblin ends at (6,10)
+	//   alice ends at (6,11)
+	//   goblin ends at (1,10)
 }

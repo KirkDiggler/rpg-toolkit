@@ -43,14 +43,10 @@ func (s *RegionSuite) SetupTest() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow)}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
-			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow - 1)}},
-			{ID: dave, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow - 1)}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow)},
+			{ID: bob, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow)},
+			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow-1)},
+			{ID: dave, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow-1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -98,7 +94,9 @@ func (s *RegionSuite) TestRegionAtIsTotalOverFloorAndSilentOverVoid() {
 	void := 0
 	for x := 0; x <= 30; x++ {
 		for y := 0; y <= 11; y++ {
-			cell := spatial.Position{X: float64(x), Y: float64(y)}
+			// Swept in the AUTHORED frame and asked in the absolute one, so
+			// the oracle is the rectangle the author drew.
+			cell := cellAt(x, y)
 			id, ok := s.enc.RegionAt(cell)
 
 			onFloor := y >= 4 && y <= 11 && x >= 3 && x <= 30
@@ -139,7 +137,7 @@ func (s *RegionSuite) TestRegionAtIsTotalOverFloorAndSilentOverVoid() {
 func (s *RegionSuite) TestAMemberInTheDoorwayStandsInTheRegionTheyStandOn() {
 	entranceSide := tombAt(tombEntranceOrigin, 5, tombDoorRow)
 	hallSide := tombAt(tombHallOrigin, 0, tombDoorRow)
-	s.Require().Equal(float64(1), hallSide.X-entranceSide.X, "the two endpoints are adjacent (W3)")
+	s.Require().Equal(float64(1), adjacencyDistance(entranceSide, hallSide), "the two endpoints are adjacent (W3)")
 
 	got, ok := s.enc.RegionAt(entranceSide)
 	s.Require().True(ok, "the doorway cell is floor — somebody is standing on it")
@@ -235,14 +233,12 @@ func (s *RegionSuite) TestReachingTheTombChamberClosesTheDelve() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 9, Y: float64(tombDoorRow)}},
-			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 1, Y: 1}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 9, tombDoorRow)},
+			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 1, 1)},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "the-tomb", Trigger: encounter.TriggerReachedPosition{
-				Room: tombChamber, Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}}},
+				Position: tombSeat(tombChamberOrigin, 0, tombDoorRow)}},
 		},
 	})
 	s.Require().NoError(err)
@@ -256,7 +252,8 @@ func (s *RegionSuite) TestReachingTheTombChamberClosesTheDelve() {
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Outcome, "walking into the tomb chamber closes the delve")
 	s.Equal("the-tomb", out.Outcome.Ending)
-	s.Equal(tombDoor, out.Crossing, "and it was an ordinary step through the doorway")
+	s.Require().Len(out.Doors, 1, "and it was an ordinary step through the doorway")
+	s.Equal(encounter.DoorID(tombDoor), out.Doors[0].ID)
 
 	finished := map[encounter.MemberID]encounter.RegionID{}
 	for _, mo := range out.Outcome.Members {
@@ -358,58 +355,27 @@ func (s *RegionSuite) TestAStaleRegionLabelInABlobCannotChangeTheAnswer() {
 			"nobody is in the tomb chamber, whatever the blob claimed")
 }
 
-// TestRegionAtAnswersExactlyWhatTheAuthoredGridWould, in both families, ANCHORED
-// AWAY FROM THE ORIGIN — which is the whole of what it adds.
-//
-// atlas_test.go's TestRegionMembershipMatchesIsValidPosition sweeps every
-// dimension parity against spatial's own IsValidPosition, and is the stronger
-// test of the bounds rule; its rooms sit at Origin zero, where a lookup that
-// forgot to project would pass anyway because local and absolute coincide.
-// This one sweeps a window wider than the field around a region anchored
-// somewhere else, in each family, so the projection is load-bearing.
-func (s *RegionSuite) TestRegionAtAnswersExactlyWhatTheAuthoredGridWould() {
-	s.Run("square", func() {
-		origin := spatial.Position{X: 4, Y: 6}
-		enc := s.oneRoom(spatial.GridShapeSquare, 5, 3, origin)
-		for x := -4; x <= 14; x++ {
-			for y := -4; y <= 14; y++ {
-				cell := spatial.Position{X: float64(x), Y: float64(y)}
-				local := cell.Subtract(origin)
-				want := local.X >= 0 && local.X < 5 && local.Y >= 0 && local.Y < 3
-				_, ok := enc.RegionAt(cell)
-				s.Require().Equal(want, ok, "square cell %v (local %v)", cell, local)
-			}
+// TestRegionAtAnswersExactlyWhatWasPainted sweeps a window wider than the
+// field around a region anchored away from the origin, so the one conversion
+// from the authored frame is load-bearing: the oracle is "convert this cell
+// back to offset and see whether it lands in the rectangle the author drew".
+func (s *RegionSuite) TestRegionAtAnswersExactlyWhatWasPainted() {
+	origin := spatial.Position{X: 3, Y: -2}
+	enc := s.oneRoom(6, 4, origin)
+	for q := -10; q <= 10; q++ {
+		for r := -10; r <= 10; r++ {
+			cell := spatial.Position{X: float64(q), Y: float64(r)}
+			offset := spatial.AxialToCube(cell).
+				ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+			col, row := offset.X-origin.X, offset.Y-origin.Y
+			want := col >= 0 && col < 6 && row >= 0 && row < 4
+			_, ok := enc.RegionAt(cell)
+			s.Require().Equal(want, ok, "cell %v (authored col,row %v,%v)", cell, col, row)
 		}
-	})
-
-	s.Run("hex", func() {
-		// A hex chamber is the OFFSET rectangle its author drew
-		// (rpg-toolkit#1127), anchored at its corner — so the oracle is
-		// "convert this cell back to offset and see whether it lands in the
-		// rectangle", which is the same sentence as the square case above in
-		// a frame that has to be converted into.
-		//
-		// This used to read `local.X >= -3 && local.X < 3` and so on, because
-		// a hex room's span was origin-CENTRED. That reading is what put 156
-		// cells of the reference tomb's chambers on the floor that nobody had
-		// drawn.
-		origin := spatial.Position{X: 3, Y: -2}
-		enc := s.oneRoom(spatial.GridShapeHex, 6, 4, origin)
-		for q := -10; q <= 10; q++ {
-			for r := -10; r <= 10; r++ {
-				cell := spatial.Position{X: float64(q), Y: float64(r)}
-				offset := spatial.AxialToCube(cell).
-					ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
-				col, row := offset.X-origin.X, offset.Y-origin.Y
-				want := col >= 0 && col < 6 && row >= 0 && row < 4
-				_, ok := enc.RegionAt(cell)
-				s.Require().Equal(want, ok, "hex cell %v (authored col,row %v,%v)", cell, col, row)
-			}
-		}
-	})
+	}
 }
 
-// TestAFractionalHexPositionIsNotACell pins the answer to the question a public
+// TestAFractionalPositionIsNotACell pins the answer to the question a public
 // predicate can be asked that an internal one could not.
 //
 // A hex grid's IsValidPosition bounds-checks and nothing else, so while this
@@ -419,26 +385,16 @@ func (s *RegionSuite) TestRegionAtAnswersExactlyWhatTheAuthoredGridWould() {
 // all. Before this was fixed, RegionAt answered ("only", true) for the axial
 // position below while Join refused the very same one as not a cell — two
 // answers to "is this floor", which is what region.go exists to prevent.
-//
-// Square is deliberately NOT covered by that rule: it is fractional-tolerant by
-// design, and a member standing between its cells really is in the region whose
-// span holds them.
-func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
-	hexOrigin := spatial.Position{X: 3, Y: -2}
-	hex := s.oneRoom(spatial.GridShapeHex, 6, 6, hexOrigin)
+func (s *RegionSuite) TestAFractionalPositionIsNotACell() {
+	origin := spatial.Position{X: 3, Y: -2}
+	hex := s.oneRoom(6, 6, origin)
 
-	// A REAL cell of this room, asked for in the frame the room is authored in
-	// rather than written down as an absolute literal. It used to be the
-	// literal (4,-1); that stopped being floor when rpg-toolkit#1141 corrected
-	// the offset schemes and the projection moved underneath it. What the test
-	// is about — that a fractional position is not a cell and an integral one
-	// beside it is — has nothing to do with which absolute cell that happens to
-	// be, so it no longer names one.
-	cell := encounter.HexCellAt(orientationFor(spatial.GridShapeHex),
-		int(hexOrigin.X)+3, int(hexOrigin.Y)+3)
+	// A REAL cell of this region, asked for in the frame the region is
+	// authored in rather than written down as an absolute literal.
+	cell := cellAt(int(origin.X)+3, int(origin.Y)+3)
 
 	// Half a step off a genuine cell, so it is unambiguously between cells
-	// rather than merely outside the room.
+	// rather than merely outside the region.
 	frac := spatial.Position{X: cell.X + 0.5, Y: cell.Y + 0.5}
 	_, ok := hex.RegionAt(frac)
 	s.False(ok, "a fractional axial position is not a cell, so no region holds it")
@@ -449,29 +405,19 @@ func (s *RegionSuite) TestAFractionalHexPositionIsNotACell() {
 
 	_, ok = hex.RegionAt(cell)
 	s.True(ok, "the integral cell beside it is ordinary floor")
-
-	squareOrigin := spatial.Position{X: 4, Y: 6}
-	square := s.oneRoom(spatial.GridShapeSquare, 5, 3, squareOrigin)
-	got, ok := square.RegionAt(spatial.Position{X: 5.5, Y: 7.5})
-	s.True(ok, "square is fractional-tolerant by design")
-	s.Equal(encounter.RegionID("only"), got)
 }
 
-// oneRoom opens a single-region encounter of the given family, anchored away
-// from the origin so a local coordinate cannot pass as an absolute one.
-func (s *RegionSuite) oneRoom(shape spatial.GridShape, w, h int, origin spatial.Position) *encounter.Encounter {
+// oneRoom opens a single-region encounter anchored away from the origin so a
+// local coordinate cannot pass as an absolute one.
+func (s *RegionSuite) oneRoom(w, h int, origin spatial.Position) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: orientationFor(shape)},
-			Rooms: []encounter.RoomInput{
-				{ID: "only", Width: w, Height: h, Grid: shape, Origin: origin},
-			}},
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("only", int(origin.X), int(origin.Y), w, h)},
+		},
 		Members: []encounter.MemberInput{
-			// Local (0,0) is a cell in both families, and since
-			// rpg-toolkit#1127 it is the same cell in both: the corner a
-			// chamber is counted from. Hex rooms used to be centred on it.
-			{ID: alice, Kind: encounter.KindPlayer, Room: "only", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: origin},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})

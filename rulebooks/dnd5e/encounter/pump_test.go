@@ -107,48 +107,32 @@ func (s *snapshotSpyDecider) Decide(snap encounter.Snapshot) (encounter.Intent, 
 	return encounter.IntentHold{}, nil
 }
 
-// doorwaysFrom projects a field's connections into absolute cell pairs — the
-// same thing Atlas.Doorways carries.
+// doorwaysFrom projects a field's doors into absolute cell pairs — the same
+// thing Atlas.Doorways carries.
 //
 // For fixtures that must hand a decider its map BEFORE the encounter that
 // would produce one exists. chase_test.go does it the other way round, taking
 // the real Atlas after construction, which is what a host would do; this is
-// the same arithmetic for the cases where ordering makes that awkward.
+// the same projection for the cases where ordering makes that awkward.
 func doorwaysFrom(field encounter.FieldInput) []encounter.AtlasDoorway {
-	rooms := map[string]encounter.RoomInput{}
-	for _, room := range field.Rooms {
-		rooms[room.ID] = room
-	}
-
-	out := make([]encounter.AtlasDoorway, 0, len(field.Connections))
-	for _, c := range field.Connections {
-		out = append(out, encounter.AtlasDoorway{
-			Connection: c.ID,
-			From:       c.From,
-			FromCell:   authoredCellAt(field, rooms[c.From], c.FromPosition),
-			To:         c.To,
-			ToCell:     authoredCellAt(field, rooms[c.To], c.ToPosition),
-		})
+	var out []encounter.AtlasDoorway
+	for _, d := range field.Doors {
+		for _, e := range d.Edges {
+			out = append(out, encounter.AtlasDoorway{Door: d.ID, From: e.From, To: e.To})
+		}
 	}
 	return out
 }
 
-// authoredCellAt is a fixture's own copy of the projection the composition
-// spends a room's anchor with — element-wise addition for a square room, and
-// for a hex one the authored offset column and row added FIRST and converted
-// once (rpg-toolkit#1127).
-//
-// A copy rather than a call, because the point of a fixture that builds a
-// decider's map by hand is to compare the composition's answer against
-// arithmetic done independently of it. What it borrows is tools/spatial's
-// conversion, through the exported [encounter.HexCellAt], which belongs to
-// neither side of that comparison.
-func authoredCellAt(field encounter.FieldInput, room encounter.RoomInput, local spatial.Position) spatial.Position {
-	if room.Grid != spatial.GridShapeHex {
-		return local.Add(room.Origin)
+// openDoorway is an OPEN door standing in one crossing — what a connection
+// used to be (rpg-project#256): a doorway is the door standing in it. Both
+// cells are authored [col,row] pairs, converted through the one conversion.
+func openDoorway(id encounter.DoorID, fromCol, fromRow, toCol, toRow int) encounter.DoorInput {
+	return encounter.DoorInput{
+		ID:    id,
+		Edges: []encounter.DoorEdge{{From: cellAt(fromCol, fromRow), To: cellAt(toCol, toRow)}},
+		State: encounter.DoorIsOpen(),
 	}
-	return encounter.HexCellAt(field.Canvas.Orientation,
-		int(local.X)+int(room.Origin.X), int(local.Y)+int(room.Origin.Y))
 }
 
 // onceStepDecider intends one step to a fixed absolute cell, then holds
@@ -206,11 +190,11 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 		// Standing where it last saw them, and they are not here: the only
 		// place left to look is through the door it is standing in.
 		for _, d := range p.doorways {
-			if d.FromCell == here {
-				return encounter.IntentMoveTo{To: d.ToCell}, nil
+			if d.From == here {
+				return encounter.IntentMoveTo{To: d.To}, nil
 			}
-			if d.ToCell == here {
-				return encounter.IntentMoveTo{To: d.FromCell}, nil
+			if d.To == here {
+				return encounter.IntentMoveTo{To: d.From}, nil
 			}
 		}
 		return encounter.IntentHold{}, nil
@@ -223,14 +207,13 @@ func (p *pursuitDecider) Decide(snap encounter.Snapshot) (encounter.Intent, erro
 func (s *PumpTestSuite) TestPumpDoesNotConsultExitedMonsterDecider() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 4, Y: 4}, Decider: &errorDecider{err: errors.New("must never be called")}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 4}, Decider: &errorDecider{err: errors.New("must never be called")}},
 		},
 		Endings: []encounter.EndingInput{{Key: endingStairs,
-			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+			Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}}}},
 	})
 	s.Require().NoError(err)
 	_, err = enc.Exit(&encounter.ExitInput{Member: core.EntityID("goblin")})
@@ -259,32 +242,18 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 1, Y: 1},
 					Decider:  patrol,
 				},
@@ -292,7 +261,7 @@ func (s *PumpTestSuite) TestPumpGoblinPatrols() {
 			Endings: []encounter.EndingInput{
 				{
 					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
+					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}},
 				},
 			},
 		}
@@ -359,20 +328,17 @@ func (s *PumpTestSuite) TestPumpDeciderIsolation() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{{
-					ID: room1, Width: 10, Height: 10,
-					// A wall down x=5 rather than one cell of it: spatial
-					// v0.9.1 leans around a lone obstacle, so a fixture that
-					// wants sight blocked builds a wall (testwalls_test.go).
-					Props: wallColumn(5, 4, 6),
-				}},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+				// A wall down x=5 rather than one cell of it: spatial
+				// v0.9.1 leans around a lone obstacle, so a fixture that
+				// wants sight blocked builds a wall (testwalls_test.go).
+				Props: wallColumn(5, 4, 6),
 			},
 			Members: []encounter.MemberInput{
-				{ID: aliceID, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 4, Y: 5}},
+				{ID: aliceID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 5}},
 				{
-					ID: goblinID, Kind: encounter.KindMonster, Room: room1,
-					Position: spatial.Position{X: 6, Y: 5}, Decider: spy,
+					ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 5}, Decider: spy,
 				},
 			},
 			Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -410,32 +376,18 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 5, Y: 5},
 					Decider:  errDecider,
 				},
@@ -443,7 +395,7 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 			Endings: []encounter.EndingInput{
 				{
 					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
+					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}},
 				},
 			},
 		}
@@ -490,14 +442,13 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAborts() {
 func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 4, Y: 4}, Decider: &failOnceDecider{}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 4}, Decider: &failOnceDecider{}},
 		},
 		Endings: []encounter.EndingInput{{Key: endingStairs,
-			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+			Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}}}},
 	})
 	s.Require().NoError(err)
 
@@ -515,18 +466,16 @@ func (s *PumpTestSuite) TestPumpFailedPumpAdvancesNothing() {
 func (s *PumpTestSuite) TestPumpPartialAbort() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			// "aaa-goblin" sorts before "zzz-goblin": it decides (and
 			// would move) before the erroring decider is consulted.
-			{ID: core.EntityID("aaa-goblin"), Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 4, Y: 4}, Decider: &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 6}}}},
-			{ID: core.EntityID("zzz-goblin"), Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 7, Y: 7}, Decider: &failOnceDecider{}},
+			{ID: core.EntityID("aaa-goblin"), Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 4}, Decider: &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 6}}}},
+			{ID: core.EntityID("zzz-goblin"), Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}, Decider: &failOnceDecider{}},
 		},
 		Endings: []encounter.EndingInput{{Key: endingStairs,
-			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+			Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}}}},
 	})
 	s.Require().NoError(err)
 
@@ -560,21 +509,19 @@ func (s *PumpTestSuite) TestPumpMutatingDeciderCannotCorrupt() {
 	vandal := &vandalDecider{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: core.EntityID("alice"), Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			// The vandal's victim is a MONSTER peer, not a player. Two
 			// monsters seeing each other starts no fight — classification
 			// pairs players against monsters — so the goblin keeps a real,
 			// current holding to scribble on while staying the world's to
 			// pump (rpg-toolkit#964).
-			{ID: core.EntityID("rat"), Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 6, Y: 6}},
-			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 4, Y: 4}, Decider: vandal},
+			{ID: core.EntityID("rat"), Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 6}},
+			{ID: core.EntityID("goblin"), Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 4}, Decider: vandal},
 		},
 		Endings: []encounter.EndingInput{{Key: endingStairs,
-			Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+			Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}}}},
 	})
 	s.Require().NoError(err)
 
@@ -608,32 +555,18 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 8, Y: 8},
 					Decider:  patrol,
 				},
@@ -643,7 +576,6 @@ func (s *PumpTestSuite) TestPumpMonsterOnUnfilteredStairsDontClose() {
 					// Unfiltered stairs: empty Member means players only
 					Key: endingStairs,
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 9, Y: 9},
 						Member:   "", // Empty filter = players only
 					},
@@ -675,32 +607,18 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 5, Y: 5},
 					// No Decider
 				},
@@ -708,7 +626,7 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 			Endings: []encounter.EndingInput{
 				{
 					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
+					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}},
 				},
 			},
 		}
@@ -746,12 +664,12 @@ func (s *PumpTestSuite) TestPumpMonsterWithNilDecider() {
 func (s *PumpTestSuite) TestPumpJoinedMonsterWithNilDeciderHolds() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
-			Room: room1, Position: spatial.Position{X: 9, Y: 9}}}},
+			Position: spatial.Position{X: 9, Y: 9}}}},
 	})
 	s.Require().NoError(err)
 
@@ -784,32 +702,18 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 8, Y: 8},
 					Decider:  patrol,
 				},
@@ -819,7 +723,6 @@ func (s *PumpTestSuite) TestPumpClosedEncounterViaReachedPosition() {
 					// Stairs filtered to goblin (not empty filter)
 					Key: endingStairs,
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 9, Y: 9},
 						Member:   goblinID, // Specific to goblin
 					},
@@ -864,32 +767,18 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 1, Y: 1},
 					Decider:  patrol,
 				},
@@ -897,7 +786,7 @@ func (s *PumpTestSuite) TestPumpTickBeatAndMoveBeats() {
 			Endings: []encounter.EndingInput{
 				{
 					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
+					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}},
 				},
 			},
 		}
@@ -950,39 +839,25 @@ func (s *PumpTestSuite) TestPumpClockAdvanceByOne() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 				},
 				{
 					ID:       goblinID,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 5, Y: 5},
 				},
 			},
 			Endings: []encounter.EndingInput{
 				{
 					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
+					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}},
 				},
 			},
 		}
@@ -1031,26 +906,13 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10, Boundaries: twoRoomSealedWall()},
-					{
-						ID:     room2,
-						Width:  10,
-						Height: 10,
-						Origin: spatial.Position{X: 10, Y: 0},
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       aliceID,
 					Kind:     encounter.KindPlayer,
-					Room:     room2,
 					Position: spatial.Position{X: 0, Y: 0},
 					Decider:  &patrolDecider{}, // Players cannot have deciders!
 				},
@@ -1058,7 +920,7 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 			Endings: []encounter.EndingInput{
 				{
 					Key:     endingStairs,
-					Trigger: encounter.TriggerReachedPosition{Room: room1, Position: spatial.Position{X: 9, Y: 9}},
+					Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 9, Y: 9}},
 				},
 			},
 		}
@@ -1072,18 +934,11 @@ func (s *PumpTestSuite) TestPumpPlayerWithDeciderRejected() {
 	})
 }
 
-// twoRoomDoor is the standard fixture connection for the Pump/traverse
-// tests below: room-a to room-b, DELIBERATELY asymmetric endpoints (T1
-// review lesson) so a from/to mix-up would be observable. room-b's Origin
-// (see the room-a/room-b RoomInput literals below) sits it immediately to
-// room-a's east — (9,5) and (0,5)+(10,0)=(10,5) are Chebyshev-adjacent
-// (distance 1), satisfying W3, while the rooms' absolute footprints
-// (x:[0,9] vs x:[10,19]) stay disjoint, satisfying W2 (#929 T1).
-var twoRoomDoor = encounter.ConnectionInput{
-	ID: "door1", From: "room-a", To: "room-b",
-	FromPosition: spatial.Position{X: 9, Y: 5},
-	ToPosition:   spatial.Position{X: 0, Y: 5},
-}
+// twoRoomDoor is the standard fixture doorway for the Pump/traverse tests
+// below: an OPEN door standing in the crossing from room-a's [9,5] to
+// room-b's [10,5] — adjacent cells (W3) in two regions whose footprints
+// (x:[0,9] vs x:[10,19]) stay disjoint (W2).
+var twoRoomDoor = openDoorway("door1", 9, 5, 10, 5)
 
 // twoRoomWall is room-a's east wall, open at the doorway's row. Every edge has
 // one endpoint in room-a and one in room-b, which is a sentence no room could
@@ -1104,12 +959,9 @@ func twoRoomSealedWall() []spatial.Boundary { return squareSeamWall(9, 10) }
 // the doorway's cells (9,5) and (10,5) are adjacent (W3).
 func twoRoomField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-			{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-		},
-		Connections: []encounter.ConnectionInput{twoRoomDoor},
+		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
+		Doors: []encounter.DoorInput{twoRoomDoor},
 	}
 }
 
@@ -1125,17 +977,12 @@ func (s *PumpTestSuite) TestPumpSnapshotIsOwnPlacement() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: core.EntityID("goblin-a"), Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 2, Y: 3}, Decider: spyA},
-			{ID: core.EntityID("goblin-b"), Kind: encounter.KindMonster, Room: "room-b",
-				Position: spatial.Position{X: 7, Y: 8}, Decider: spyB},
+			{ID: core.EntityID("goblin-a"), Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 3}, Decider: spyA},
+			{ID: core.EntityID("goblin-b"), Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 8}, Decider: spyB},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1177,16 +1024,11 @@ func (s *PumpTestSuite) TestAnIntendedStepCrossesADoorway() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{twoRoomDoor},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 9, Y: 5}, Decider: decider},
+			{ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 5}, Decider: decider},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1236,32 +1078,22 @@ func (s *PumpTestSuite) TestPumpReportsMovementOnTheMap() {
 	// cellar occupies absolute x:[40,49], shrine x:[50,59] — disjoint (W2) —
 	// and the door's endpoints, cellar-local (9,5) and shrine-local (0,5),
 	// land on absolute (49,25) and (50,25): adjacent cells (W3).
-	door := encounter.ConnectionInput{
-		ID: "cellar-door", From: cellar, To: shrine,
-		FromPosition: spatial.Position{X: 9, Y: 5},
-		ToPosition:   spatial.Position{X: 0, Y: 5},
-	}
+	door := openDoorway("cellar-door", 49, 25, 50, 25)
 	// Both steps are named in absolute space, which is the only space a
 	// decider has spoken since rpg-toolkit#1044: walk to the threshold, then
 	// walk to the cell beyond it.
-	patrol := &patrolDecider{positions: []spatial.Position{
-		{X: 49, Y: 25}, {X: 50, Y: 25},
-	}}
+	patrol := &patrolDecider{positions: []spatial.Position{cellAt(49, 25), cellAt(50, 25)}}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: cellar, Width: 10, Height: 10, Origin: spatial.Position{X: 40, Y: 20}},
-				{ID: shrine, Width: 10, Height: 10, Origin: spatial.Position{X: 50, Y: 20}},
-			},
-			Connections: []encounter.ConnectionInput{door},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(cellar, 40, 20, 10, 10), rectRegion(shrine, 50, 20, 10, 10)},
+			Doors:   []encounter.DoorInput{door},
 		},
 		Members: []encounter.MemberInput{
-			// cellar-local (3,5) — absolute (43,25).
-			{ID: prowler, Kind: encounter.KindMonster, Room: cellar,
-				Position: spatial.Position{X: 3, Y: 5}, Decider: patrol},
+			// cellar-local (3,5) — authored absolute [43,25].
+			{ID: prowler, Kind: encounter.KindMonster, Position: spatial.Position{X: 43, Y: 25}, Decider: patrol},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1362,17 +1194,12 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenAWallIsInTheWay() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{twoRoomDoor},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
 			// goblin is NOT on the doorway's row (the doorway is at (9,5)).
-			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 3, Y: 2}, Decider: decider},
+			{ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, Decider: decider},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1420,16 +1247,11 @@ func (s *PumpTestSuite) TestPumpDoesNotAbortWhenTheCellIsNowhere() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{twoRoomDoor},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 9, Y: 5}, Decider: decider}, // AT the real door's threshold, but names a fake one
+			{ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 5}, Decider: decider}, // AT the real door's threshold, but names a fake one
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1473,18 +1295,13 @@ func (s *PumpTestSuite) TestPumpDeciderErrorAbortsEvenWithTraversableTopology() 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{twoRoomDoor},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
 			// goblin IS at the threshold — a traverse WOULD be legal, but
 			// the decider errors before ever returning an Intent.
-			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 9, Y: 5}, Decider: &errorDecider{err: deciderErr}},
+			{ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 5}, Decider: &errorDecider{err: deciderErr}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1519,16 +1336,12 @@ func (s *PumpTestSuite) TestPumpPursuitAcrossConnection() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{twoRoomDoor},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: aliceID, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
-			{ID: goblinID, Kind: encounter.KindMonster, Room: "room-a", Position: spatial.Position{X: 8, Y: 5},
+			{ID: aliceID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 5}},
+			{ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 5},
 				Decider: &pursuitDecider{doorways: doorwaysFrom(twoRoomField()), target: aliceID}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -1629,26 +1442,20 @@ func (s *PumpTestSuite) TestPumpFullTickThenEvaluateAcrossTraverse() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{twoRoomDoor},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
 			// aaa-goblin is AT the threshold, ready to traverse onto the
 			// filtered ending below.
-			{ID: aID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 9, Y: 5},
-				Decider:  &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}},
+			{ID: aID, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 5},
+				Decider: &onceStepDecider{to: spatial.Position{X: 10, Y: 5}}},
 			// zzz-goblin has an unrelated same-room move queued.
-			{ID: bID, Kind: encounter.KindMonster, Room: "room-a",
-				Position: spatial.Position{X: 3, Y: 3}, Decider: &patrolDecider{positions: []spatial.Position{{X: 4, Y: 4}}}},
+			{ID: bID, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 3}, Decider: &patrolDecider{positions: []spatial.Position{{X: 4, Y: 4}}}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
-				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}, Member: aID}},
+				Position: spatial.Position{X: 0, Y: 5}, Member: aID}},
 		},
 	})
 	s.Require().NoError(err)
@@ -1732,18 +1539,16 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 	s.Run("control: decision order and declaration order agree", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 			Members: []encounter.MemberInput{
-				{ID: aID, Kind: encounter.KindMonster, Room: room1,
-					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
-				{ID: bID, Kind: encounter.KindMonster, Room: room1,
-					Position: spatial.Position{X: 6, Y: 6}, Decider: &patrolDecider{positions: []spatial.Position{posB}}},
+				{ID: aID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
+				{ID: bID, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 6}, Decider: &patrolDecider{positions: []spatial.Position{posB}}},
 			},
 			Endings: []encounter.EndingInput{
 				// Declared first: fires for aaa-goblin, who decides first.
-				{Key: "first", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posA, Member: aID}},
+				{Key: "first", Trigger: encounter.TriggerReachedPosition{Position: posA, Member: aID}},
 				// Declared second: fires for zzz-goblin, who decides second.
-				{Key: "second", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posB, Member: bID}},
+				{Key: "second", Trigger: encounter.TriggerReachedPosition{Position: posB, Member: bID}},
 			},
 		})
 		s.Require().NoError(err)
@@ -1757,20 +1562,18 @@ func (s *PumpTestSuite) TestPumpEndingEvaluationIsDecisionOrderNotDeclarationOrd
 	s.Run("cross: decision order dominates — the SECOND-declared ending wins", func() {
 		enc, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 			Members: []encounter.MemberInput{
 				// Same decision order (aaa first, zzz second), but now each
 				// monster's landing position fires the OTHER declared ending.
-				{ID: aID, Kind: encounter.KindMonster, Room: room1,
-					Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posB}}},
-				{ID: bID, Kind: encounter.KindMonster, Room: room1,
-					Position: spatial.Position{X: 6, Y: 6}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
+				{ID: aID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}, Decider: &patrolDecider{positions: []spatial.Position{posB}}},
+				{ID: bID, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 6}, Decider: &patrolDecider{positions: []spatial.Position{posA}}},
 			},
 			Endings: []encounter.EndingInput{
 				// Declared first: fires for zzz-goblin (posA), who decides SECOND.
-				{Key: "first", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posA, Member: bID}},
+				{Key: "first", Trigger: encounter.TriggerReachedPosition{Position: posA, Member: bID}},
 				// Declared second: fires for aaa-goblin (posB), who decides FIRST.
-				{Key: "second", Trigger: encounter.TriggerReachedPosition{Room: room1, Position: posB, Member: aID}},
+				{Key: "second", Trigger: encounter.TriggerReachedPosition{Position: posB, Member: aID}},
 			},
 		})
 		s.Require().NoError(err)
@@ -1816,11 +1619,10 @@ func (s *PumpTestSuite) TestPumpSurvivesReentrantSelfExitingDecider() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()}, {ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall()},
 		Members: []encounter.MemberInput{
-			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: goblinID, Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 4, Y: 4}, Decider: decider},
+			{ID: aliceID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 4}, Decider: decider},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1857,31 +1659,23 @@ func (s *PumpTestSuite) TestPumpStopsMovingAMonsterOnceSeen() {
 
 	// Two cells, one each side of the doorway: the goblin traverses into
 	// alice's room and is seen the moment it arrives.
-	gate := encounter.ConnectionInput{
-		ID: "door", From: room1, To: room2,
-		FromPosition: spatial.Position{X: 9, Y: 5},
-		ToPosition:   spatial.Position{X: 0, Y: 5},
-	}
+	gate := openDoorway("door", 9, 5, 10, 5)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{gate},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomWall(),
+			Doors: []encounter.DoorInput{gate},
 		},
 		Members: []encounter.MemberInput{
 			// Alice waits OFF the doorway's row, so the wall is between her and
 			// the goblin standing in the opening: with one canvas, next door is
 			// not out of sight and the opening is a window (rpg-toolkit#1106).
-			{ID: aliceID, Kind: encounter.KindPlayer, Room: room2, Position: spatial.Position{X: 3, Y: 8}},
+			{ID: aliceID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 13, Y: 8}},
 			{
-				ID: goblinID, Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 9, Y: 5},
-				Decider:  &crossThenWander{through: spatial.Position{X: 10, Y: 5}},
+				ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 5},
+				Decider: &crossThenWander{through: cellAt(10, 5)},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -1959,21 +1753,18 @@ func (s *PumpTestSuite) TestPumpDeciderHuntsLastKnownPosition() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{
-				ID: room1, Width: 10, Height: 10,
-				// A short wall, positioned so that alice is visible from the
-				// goblin where she starts and hidden where she ends up. It
-				// was a single pillar until spatial v0.9.1, which leans
-				// around one — see testwalls_test.go.
-				Props: wallColumn(5, 4, 6),
-			}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+			// A short wall, positioned so that alice is visible from the
+			// goblin where she starts and hidden where she ends up. It
+			// was a single pillar until spatial v0.9.1, which leans
+			// around one — see testwalls_test.go.
+			Props: wallColumn(5, 4, 6),
 		},
 		Members: []encounter.MemberInput{
-			{ID: aliceID, Kind: encounter.KindPlayer, Room: room1, Position: seen},
+			{ID: aliceID, Kind: encounter.KindPlayer, Position: seen},
 			{
-				ID: goblinID, Kind: encounter.KindMonster, Room: room1,
-				Position: spatial.Position{X: 6, Y: 5}, Decider: spy,
+				ID: goblinID, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 5}, Decider: spy,
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},

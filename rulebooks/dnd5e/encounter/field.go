@@ -25,150 +25,84 @@ const (
 // MemberID is an alias for core.EntityID used for clarity in member contexts.
 type MemberID = core.EntityID
 
-// RoomInput describes a room to be created.
+// Lighting is a region's light level, carried through the composition unread
+// (rpg-project#256).
 //
-// A CHAMBER IS THE RECTANGLE SOMEBODY DREW (rpg-toolkit#1127). Width and
-// Height mean the same thing in both grid families — the columns and rows of
-// the rectangle a human sees on screen — and a chamber's cells are exactly the
-// Width x Height of them. Square is the degenerate case where nothing shears.
+// ONE FIELD TODAY, a block so later fields land beside it without reshaping
+// anything. What an intensity MEANS for sight — bright, dim, dark, darkvision
+// — is a rule, and rules live in the rulebook: this composition stores the
+// number, reports it on the [Atlas], and never branches on it, exactly as it
+// carries a monster's Targeting word or a prop's Ref. It lands on the REGION
+// rather than the canvas because light is a fact about an area, not about the
+// space between areas (closes rpg-toolkit#1113 by relocation).
+type Lighting struct {
+	// Intensity is the light level in [0,1]: 0 is no light, 1 is full light.
+	// Refused outside that range at construction (ErrNoField).
+	Intensity float64
+}
+
+// RegionInput is one named set of cells — the ONLY thing that makes floor
+// (rpg-project#256).
 //
-// That sentence is worth stating because it used to be false. Width and Height
-// were read as an AXIAL span for a hex room: a rhombus, origin-centred, which
-// is not a shape anybody authors. One name meant two shapes, and the cost was
-// measured rather than argued — the reference tomb's three chambers did not
-// construct at ALL under that reading, in either orientation, and with the
-// disjointness check disabled so the footprints could be seen, 88% of what
-// [Encounter.RegionAt] called floor was somewhere nobody drew. See
-// orientation.go.
-type RoomInput struct {
-	// ID is the unique room identifier.
+// # The regions are the floor
+//
+// There is no room, no rectangle, no anchor and no connection any more. A
+// region lists the cells it owns, absolute, and the field's floor is the union
+// of every region's cells; every other cell on the canvas is void. A cell in
+// two regions is refused (W2, ErrRegionOverlap), a region with no cells is
+// refused (ErrRegionEmpty), and there is no other floor.
+//
+// This replaces [RoomInput]'s Width x Height rectangle plus Origin, and
+// [ConnectionInput] with it. A rectangle-plus-anchor was the room CHAIN's
+// vocabulary: it could only say "a box, here", and the seam between two boxes
+// had to be walled by generating edges the author never wrote. A connection
+// was the chain's way of naming the one edge it left out. With the floor
+// painted cell by cell, a wall is an edge somebody drew and a doorway is two
+// adjacent floor cells with a [DoorInput] on the edge between them — which is
+// what they always were on the canvas (rpg-toolkit#1106).
+//
+// # Every cell is an absolute offset pair
+//
+// Cells are authored as offset [col,row] under [CanvasInput.Orientation] and
+// converted ONCE, at construction, through [HexCellAt] — the one conversion in
+// this package. No caller ever adds an origin, and the room-local → absolute
+// seam (rpg-toolkit#1139) ceases to exist rather than getting fixed. Every cell
+// a VERB reports or accepts is absolute and axial.
+//
+// # What a region carries, and what it may not decide
+//
+// Archetype and Lighting are per-area world facts, carried unread. An
+// ARCHETYPE NEVER DECIDES MECHANICS — not the start, not blocking, not sight,
+// not intensity. v1's archetype chose where the party stood, which is the
+// rpg-toolkit#1033 trap (a word about what a room is FOR silently deciding
+// geometry), and it is the reason that dialect was deleted. Both are REQUIRED
+// and neither has a default, for #1033's reason in the other direction: a
+// region the assets cannot dress and a region whose light nobody stated are
+// both facts this module may not invent.
+type RegionInput struct {
+	// ID is the region's unique identifier, and the name [Encounter.RegionAt]
+	// answers with.
 	ID string
 
-	// Width is how many columns wide the chamber is — the rectangle's own
-	// horizontal dimension, in both grid families. See the type's doc
-	// comment.
-	Width int
+	// Name is the region's display name — "The Hall" — carried verbatim and
+	// never read here. Optional.
+	Name string
 
-	// Height is how many rows tall the chamber is. See the type's doc
-	// comment.
-	Height int
+	// Cells is every cell this region owns, as authored offset [col,row]
+	// pairs under the field's orientation. REQUIRED non-empty. Integral,
+	// within ±maxAnchorCoord, and no cell may appear twice here or in any
+	// other region.
+	Cells []spatial.Position
 
-	// Grid selects the room's coordinate system: GridShapeSquare (the zero
-	// value — Width x Height cells, origin (0,0), Chebyshev distance) or
-	// GridShapeHex — the only two families Setup and Load accept as of
-	// #929 T1/T2. GridShapeGridless still exists as a spatial.GridShape
-	// value but is rejected outright (shape legality — buildValidRoomGrids'
-	// doc comment in encounter.go): gridless left the composition in v0.3,
-	// the wire cannot carry a continuous room's absolute projection. The
-	// zero value keeps every pre-existing room square, so v0.1 persisted
-	// blobs without this field unmarshal to square unchanged.
-	//
-	// A GridShapeHex room is AUTHORED in offset [col,row] pairs — counted
-	// from the chamber's own corner, [0,Width) x [0,Height), exactly as a
-	// square room is — and RUNS on the axial cube coordinates the canvas and
-	// the wire speak (Position.X is Q, Position.Y is R, S = -(Q+R) derived).
-	// The two frames are not the same numbers and are not meant to be: an
-	// offset rectangle shears when it becomes axial, so a chamber's cells
-	// stay a contiguous, non-overlapping set while the smallest rhombus
-	// containing them is strictly bigger than they are.
-	//
-	// EVERY FIELD IN THIS TYPE IS IN THE AUTHORED FRAME. Origin, PropInput.At,
-	// Boundaries' endpoints, MemberInput.Position, ConnectionInput's
-	// endpoints and TriggerReachedPosition.Position are all columns and rows;
-	// every cell a VERB reports or accepts is absolute and axial. The
-	// conversion happens once, at construction, and [CanvasInput.Orientation]
-	// is the declaration it needs — an offset pair means nothing until the
-	// orientation is known, since the same [2,3] is a different hex under each
-	// layout, with different neighbours.
-	//
-	// The canvas speaking axial is a deliberate choice, not an implementation
-	// detail: the wire (and Platform's pathing) already speaks cube
-	// coordinates natively, and axial is cube's 2D projection — an IDENTITY
-	// mapping to the wire. Distance, adjacency and line of sight all run true
-	// cube math via spatial and never see an offset pair. Content, which draws
-	// rectangles, never sees an axial one.
-	Grid spatial.GridShape
+	// Archetype is the presentation profile the assets resolve for this
+	// region — "crypt" — REQUIRED non-empty, carried unread, and NEVER a
+	// mechanic. See the type's doc comment.
+	Archetype string
 
-	// Props are the things standing in this room that are not creatures —
-	// room-local at authoring, compiled onto the canvas at construction, each
-	// one registered at the absolute cell its authored column and row name.
-	// See [PropInput].
-	Props []PropInput
-
-	// Boundaries are the walls this room draws, as edges between adjacent
-	// cells — room-local at authoring, compiled through Origin onto the
-	// canvas at construction (rpg-toolkit#1106).
-	//
-	// WHICH CELLS ARE ADJACENT IS THE GRID'S ANSWER, not a pair of offsets to
-	// hardcode. In axial space a cell's +Q neighbours are (q+1,r) and
-	// (q+1,r-1) always; in the authored offset frame the answer STAGGERS with
-	// the column's parity, so a seam wall built from one hardcoded pair has a
-	// hole in every other row. Ask spatial.
-	//
-	// AN ENDPOINT MAY LIE OUTSIDE THIS ROOM, and that is the whole point.
-	// Until the field became one canvas, a boundary was registered on the
-	// room's OWN spatial room, whose grid refuses any endpoint that is not a
-	// cell of that room (tools/spatial's validateAndNormalizeBoundaryUnsafe:
-	// "boundary endpoints ... must be valid positions in this room"). So the
-	// seam between two authored chambers — the one place a dungeon most needs
-	// a wall — was the one place a wall could not be drawn, and the
-	// room-membership test in sight was standing in for every one of them.
-	//
-	// A room therefore walls its own edge by naming the cell beyond it: for a
-	// 6-wide room, {From: (5,y), To: (6,y)} is the wall along its east side,
-	// and (6,y) belongs to whatever sits next door. Compiled absolute, both
-	// endpoints must be adjacent cells the canvas holds; the canvas is the
-	// union of the field's footprints, so a wall on the field's outer rim has
-	// no cell to point at and is refused (ErrBadPlacement) rather than
-	// silently dropped.
-	Boundaries []spatial.Boundary
-
-	// Origin is this room's anchor: which column and row of the FIELD the
-	// chamber's own (0,0) corner sits at. Local plus Origin is the authored
-	// cell, and THAT is what becomes an absolute one — offset-then-convert,
-	// in that order (rpg-toolkit#1127).
-	//
-	// The order is the whole of it. For a square room the two are the same
-	// arithmetic. For a hex room, adding the anchor in AXIAL instead puts the
-	// shear back one level up: two chambers anchored six columns apart would
-	// land at axial distances that vary by row, and the seam between them
-	// would stop being a straight line. So an anchor is counted in the same
-	// columns and rows the author counts their chamber in, and there is
-	// exactly one function in this package that spends it.
-	//
-	// The zero value anchors a room at the field's own corner, which is legal
-	// on its own; in a multi-room field, leaving every Origin at its zero
-	// value collides every room there and is rejected by W2 (see
-	// NewEncounter) — there is no separate "origin required" check.
-	//
-	// Origin must be an INTEGRAL cell (X and Y both whole numbers) for
-	// EVERY grid family, square included — not just hex. W2's "rooms never
-	// overlap" promise is only sound over an integer cell lattice: two 5x5
-	// SQUARE rooms anchored at (0,0) and (0.5,0.5) have disjoint integer
-	// cell sets (a naive per-cell W2 check would accept them) while their
-	// continuous footprints interpenetrate roughly 81% of each room's
-	// area — a fractional origin defeats the very disjointness this field
-	// exists to guarantee, not just a hex-specific edge case.
-	//
-	// Both construction seams — Setup and Load — validate every field
-	// against the W-laws identically (#929 T2: LoadEncounter routes
-	// through the SAME shared validators Setup uses, not a parallel
-	// reimplementation): W1 (one grid family per field), W2 (rooms never
-	// overlap in absolute space), W3 (every connection's endpoints are
-	// adjacent absolute cells), W5 (anchors are construction data), and W6
-	// (the field's absolute footprint fits in one grid of its family — see
-	// canvasSpan in encounter.go, rpg-toolkit#1106).
-	//
-	// ORIGIN IS A COMPILER INPUT, NOT A RUNTIME BRIDGE (rpg-toolkit#1106).
-	// It used to be read back on every query: W4 called projection "a read",
-	// and Atlas, Absolute and Locate each ran the arithmetic on demand. Now
-	// it is spent ONCE, at construction, when the authored rooms are compiled
-	// into the single canvas the encounter actually runs on — every cell,
-	// occluder and wall lands absolute and stays there, and no verb projects
-	// anything. Origin still round-trips through persistence
-	// (RoomData.Origin, #929 T2) because it is construction truth, and Atlas
-	// still reports each authored room's absolute footprint from it.
-	Origin spatial.Position
+	// Lighting is the region's light level. REQUIRED: a nil pointer is
+	// refused at construction (ErrRegionLightingMissing), and there is no
+	// default.
+	Lighting *Lighting
 }
 
 // PropInput is one thing standing in a room that is not a creature: a pillar,
@@ -239,10 +173,10 @@ type PropInput struct {
 	// type's doc comment.
 	Ref string
 
-	// At is where it stands, ROOM-LOCAL in the authored frame, compiled to
-	// the absolute cell that column and row name (see [RoomInput.Origin]).
-	// Must be an integral cell in every grid family: a prop is a cell OF its
-	// region, and a region's cells are integral ([AtlasRegion.Props]).
+	// At is where it stands: an ABSOLUTE authored offset [col,row] pair under
+	// the field's orientation, converted once at construction. Must be an
+	// integral cell that some region owns — a prop is a cell OF the floor
+	// (ErrBadPlacement otherwise), and two props may not share one.
 	At spatial.Position
 
 	// BlocksMovement is whether a member can end a step on this cell.
@@ -256,68 +190,64 @@ type PropInput struct {
 	BlocksLineOfSight *bool
 }
 
-// ConnectionInput describes a connection between two rooms: a bidirectional
-// open doorway. FromPosition and ToPosition are the endpoint cells — the
-// position a member must stand on in each room to be at the doorway.
-// Crossing is not a mechanism of its own (rpg-toolkit#1106): a doorway's two
-// endpoints are adjacent absolute cells, so going through one is an ordinary
-// step. This declares where the opening sits, and [StepOutput.Crossing] names
-// it when a step goes straight across.
-type ConnectionInput struct {
-	// ID is the unique connection identifier.
-	ID string
-
-	// From is the source room ID.
-	From string
-
-	// To is the destination room ID.
-	To string
-
-	// FromPosition is the endpoint cell within room From — ROOM-LOCAL in the
-	// authored frame (see [RoomInput.Origin]).
-	FromPosition spatial.Position
-
-	// ToPosition is the endpoint cell within room To — ROOM-LOCAL in the
-	// authored frame.
-	ToPosition spatial.Position
-}
-
-// FieldInput describes the layout of rooms and connections, and what the
-// canvas they compile onto does to a sightline.
+// FieldInput describes the map: what the canvas declares, the regions that
+// make its floor, and the props, walls and doors standing on it
+// (rpg-project#256).
 type FieldInput struct {
-	// Canvas is what this field DECLARES about the map its rooms compile
-	// onto — today, what the space between them does to a sightline.
-	// REQUIRED: see
-	// [Void] for why this module is not allowed to pick (rpg-toolkit#1116).
+	// Canvas is what this field DECLARES about the map its regions paint:
+	// what the space between them does to a sightline, and which way its
+	// hexes point. Both REQUIRED: see [Void] and [Orientation] for why this
+	// module is not allowed to pick either (rpg-toolkit#1116, #1127).
 	Canvas CanvasInput
 
-	// Rooms is the list of rooms in this field.
-	Rooms []RoomInput
+	// Regions are the named cell sets whose union is the floor. REQUIRED
+	// non-empty. See [RegionInput].
+	Regions []RegionInput
 
-	// Connections is the list of connections between rooms.
-	Connections []ConnectionInput
+	// Props are the things standing on the floor that are not creatures, in
+	// absolute authored cells. Optional. See [PropInput].
+	Props []PropInput
 
-	// Doors are the doors standing in this field's walls — each a set of
-	// edges sharing one state (rpg-toolkit#1123). Optional: a field with no
-	// doors is an ordinary field, and every opening in it is simply a gap
-	// nobody can shut.
+	// Walls are the authored edges between adjacent floor cells that block
+	// movement and sight, with both endpoints as absolute authored offset
+	// [col,row] pairs (rpg-project#256 moved these up from the room, where
+	// they were room-local and compiled through an origin).
+	//
+	// WHICH CELLS ARE ADJACENT IS THE GRID'S ANSWER under the declared
+	// orientation, not a pair of offsets to hardcode: in the authored frame
+	// the neighbours of a cell STAGGER with the row's or column's parity, so
+	// the same pair is a crossing under one layout and not the other. Refused
+	// when the endpoints are not adjacent (ErrEdgeNotAdjacent), when either is
+	// not floor (ErrEdgeOffFloor — the envelope is implied, never written), or
+	// when the same edge is listed twice.
+	//
+	// Endpoint ORDER is not carried: spatial normalizes an undirected pair on
+	// registration, so From and To describe the same edge either way round.
+	Walls []spatial.Boundary
+
+	// Doors are the doors standing in this field's crossings — each a set of
+	// edges sharing one state (rpg-toolkit#1123), with edges in ABSOLUTE
+	// AXIAL cells (the shape [HexCellAt] produces — a door's edge is the one
+	// input here a caller converts, and [DoorEdge]'s doc says why). Optional:
+	// a field with no doors is an ordinary field, and every opening in it is
+	// simply a gap nobody can shut. A door edge need not sit on a region
+	// seam; a door inside a region is legal.
 	Doors []DoorInput
 }
 
 // MemberInput describes a member being placed into the encounter AT
 // CONSTRUCTION — Setup's roster, and Load's restored one.
 //
-// Room-shaped on purpose, and it stays that way (rpg-toolkit#1106, Kirk's
-// ruling: "we author rooms; that they become one thing is after render").
-// Authoring says "the skeleton stands in the hall, five cells in", which is
-// how the reference tomb is written and how a designer thinks. The canvas is
-// what those rooms compile INTO, so this position is projected through the
-// room's Origin exactly once, at construction.
+// Authored, so its cell is an authored one: an absolute offset [col,row] pair
+// under the field's orientation, converted once at construction through the
+// same [HexCellAt] every region cell goes through. There is no room to name
+// (rpg-project#256): which region holds the member is derived from the cell.
 //
 // ENTRY MID-SCENE IS A DIFFERENT SHAPE. A member walking in during play is not
 // being authored; they arrive at a cell on the map, and [JoinInput] takes that
-// cell directly (rpg-toolkit#1101). Construction data and play data have
-// different shapes for a reason, and this is the construction one.
+// cell directly, absolute and axial (rpg-toolkit#1101). Construction data and
+// play data have different shapes for a reason, and this is the construction
+// one.
 type MemberInput struct {
 	// ID is the member's unique identifier.
 	ID MemberID
@@ -333,12 +263,9 @@ type MemberInput struct {
 	// composition's to invent.
 	Name string
 
-	// Room is the ID of the room where the member is placed.
-	Room string
-
-	// Position is the member's location within the room — ROOM-LOCAL in the
-	// authored frame, and compiled to the absolute cell that column and row
-	// names on the canvas (see [RoomInput.Origin]).
+	// Position is the member's starting cell: an ABSOLUTE authored offset
+	// [col,row] pair, which must be floor — a cell some region owns
+	// (ErrBadPlacement otherwise).
 	Position spatial.Position
 
 	// Decider is the monster's decision-making engine (monsters only).
@@ -445,18 +372,15 @@ type Trigger interface {
 	isTrigger()
 }
 
-// TriggerReachedPosition fires when a member reaches a specific position.
+// TriggerReachedPosition fires when a member reaches a specific cell.
 //
-// Room-shaped because it is authored alongside the rooms (see [MemberInput]);
-// the pair is compiled to a single absolute cell at construction, and that is
-// the cell a member's arrival is compared against.
+// Authored alongside the regions (see [MemberInput]): the pair is an absolute
+// authored offset cell, compiled at construction to the one absolute axial
+// cell an arrival is compared against.
 type TriggerReachedPosition struct {
-	// Room is the target room ID.
-	Room string
-
-	// Position is the target position within the room — ROOM-LOCAL in the
-	// authored frame, compiled at construction to the one absolute cell an
-	// arrival is compared against (see [RoomInput.Origin]).
+	// Position is the target cell, an ABSOLUTE authored offset [col,row]
+	// pair. Must be floor (ErrNoEnding otherwise — an ending nobody can reach
+	// is a liveness hole).
 	Position spatial.Position
 
 	// Member is the target member ID (empty = any player member).
@@ -614,23 +538,14 @@ type Member struct {
 	// to report instead (rpg-toolkit#1108).
 	Region RegionID
 
-	// Position is where the member stands, in DUNGEON-ABSOLUTE space —
-	// already projected through their room's origin, so it can be compared
-	// with any other absolute coordinate this composition reports (an Atlas
-	// cell, a doorway endpoint, another member) without the caller redoing
-	// the arithmetic.
+	// Position is where the member stands, in DUNGEON-ABSOLUTE axial space —
+	// the same frame the Atlas draws and every verb takes, so it can be
+	// compared with any other coordinate this composition reports without
+	// the caller redoing any arithmetic.
 	//
-	// Absolute rather than room-local because a position without its room is
-	// not an answer in a multi-room field, and pairing every coordinate with
-	// a room ID is the dialect the seam reshape exists to remove: the
-	// composition has rooms, and it projects the absolute geometry so its
-	// caller sees one map (rpg-project#227). W4 already put projection on
-	// this side of the line — absolute coordinates belong in query outputs,
-	// never in a rule's own logic.
-	//
-	// There is no room-local counterpart any more, and no bridge to one: the
-	// field IS this frame (rpg-toolkit#1106). Room above names the authored
-	// chamber whose footprint holds this cell.
+	// There is no room-local counterpart, and no bridge to one: the field IS
+	// this frame (rpg-toolkit#1106). Region above names the authored region
+	// whose cells hold this one.
 	Position spatial.Position
 
 	// SpeedFeet, SightFeet, Actions and Targeting are this member's static
@@ -780,22 +695,11 @@ type StepOutput struct {
 	// implication is one nobody can rely on. #1123 asks for the door's identity
 	// AND state; this is both.
 	//
-	// Separate from Crossing rather than folded into it because they are
-	// different facts. A crossing is an authored OPENING somebody narrates; a
-	// door is a thing with state that may or may not stand in one. A step can
-	// go through both, one, or neither.
+	// A step names the DOORS it went through and nothing else. The
+	// connection list that used to name an opening beside them was the room
+	// chain's vocabulary; on this canvas a doorway is two adjacent floor
+	// cells with a door on the edge between them (rpg-project#256).
 	Doors []CrossedDoor
-
-	// Crossing names the doorway this step went through, or is empty when it
-	// did not go through one.
-	//
-	// A NAME, NOT A MECHANISM (rpg-toolkit#1106). It used to be the answer to
-	// "which of the two movement mechanisms carried this", and before that the
-	// thing that granted permission to leave a room at all. Neither survives:
-	// a step is a step, and what stops one is a wall. What is left is
-	// narration — a host writing "she slips through the gate" should not have
-	// to rediscover which gate from the Atlas — and it decides nothing.
-	Crossing string
 
 	// IntelDeltas maps member IDs to their updated percepts after the step
 	// (SurveilOutput deltas from the refreshSight cycle).
@@ -867,7 +771,7 @@ type PumpOutput struct {
 // reasoning after rpg-toolkit#1059 made the walk absolute.
 //
 // The two are separate types now rather than one shared one, because they are
-// two different things: Setup AUTHORS a roster into authored rooms, and Join
+// two different things: Setup AUTHORS a roster in authored cells, and Join
 // takes somebody who is already on the map. A second entry VERB was the other
 // way to close that gap, and was refused for the reason rpg-toolkit#1059 spent
 // two PRs on: two ways in is two places for a rule to land, and eventually one
@@ -889,7 +793,7 @@ type JoinInput struct {
 	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
 	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.
 	//
-	// A cell no authored room owns is refused with ErrBadPlacement: void is
+	// A cell no region owns is refused with ErrBadPlacement: void is
 	// not floor, and arriving in it is not a placement this composition can
 	// make sense of.
 	Cell spatial.Position

@@ -143,30 +143,7 @@ func structFieldNames(v any) []string {
 // (atX,g)-(atX+1,g) is left open, so a doorway is a doorway rather than a
 // diagonal shortcut around its own frame.
 func squareSeamWall(atX, height int, gapRows ...int) []spatial.Boundary {
-	gap := make(map[int]bool, len(gapRows))
-	for _, g := range gapRows {
-		gap[g] = true
-	}
-
-	out := make([]spatial.Boundary, 0, height*3)
-	for y := 0; y < height; y++ {
-		for _, dy := range []int{-1, 0, 1} {
-			to := y + dy
-			if to < 0 || to >= height {
-				continue
-			}
-			if dy == 0 && gap[y] {
-				continue // the doorway itself
-			}
-			out = append(out, spatial.Boundary{
-				From:              spatial.Position{X: float64(atX), Y: float64(y)},
-				To:                spatial.Position{X: float64(atX + 1), Y: float64(to)},
-				BlocksMovement:    true,
-				BlocksLineOfSight: true,
-			})
-		}
-	}
-	return out
+	return seamWallRows(atX, 0, height, gapRows...)
 }
 
 // hexOffsetSeamWall is squareSeamWall's hex sibling, in the frame a hex chamber

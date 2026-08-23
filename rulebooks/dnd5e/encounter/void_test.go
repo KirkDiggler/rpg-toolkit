@@ -66,10 +66,10 @@ var (
 // what that column does to a sightline.
 func gappedField(void encounter.Void) encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: void},
-		Rooms: []encounter.RoomInput{
-			{ID: voidWest, Width: 4, Height: 4, Origin: voidWestOrigin},
-			{ID: voidEast, Width: 4, Height: 4, Origin: voidEastOrigin},
+		Canvas: encounter.CanvasInput{Void: void, Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion(voidWest, int(voidWestOrigin.X), int(voidWestOrigin.Y), 4, 4),
+			rectRegion(voidEast, int(voidEastOrigin.X), int(voidEastOrigin.Y), 4, 4),
 		},
 	}
 }
@@ -81,10 +81,8 @@ func (s *VoidSuite) gapped(void encounter.Void) *encounter.Encounter {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: gappedField(void),
 		Members: []encounter.MemberInput{
-			{ID: brenna, Kind: encounter.KindPlayer, Room: voidWest,
-				Position: spatial.Position{X: 3, Y: 1}},
-			{ID: kade, Kind: encounter.KindPlayer, Room: voidEast,
-				Position: spatial.Position{X: 0, Y: 1}},
+			{ID: brenna, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
+			{ID: kade, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -165,10 +163,8 @@ func (s *VoidSuite) TestOpaqueVoidDoesNotBlockSightWithinAChamber() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: gappedField(encounter.VoidIsOpaque()),
 		Members: []encounter.MemberInput{
-			{ID: brenna, Kind: encounter.KindPlayer, Room: voidWest,
-				Position: spatial.Position{X: 0, Y: 0}},
-			{ID: kade, Kind: encounter.KindPlayer, Room: voidWest,
-				Position: spatial.Position{X: 3, Y: 3}},
+			{ID: brenna, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: kade, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 3}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -206,7 +202,7 @@ func (s *VoidSuite) TestAFieldMustSayWhatItsVoidIs() {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Rooms: []encounter.RoomInput{{ID: voidWest, Width: 4, Height: 4}},
+			Regions: []encounter.RegionInput{rectRegion(voidWest, 0, 0, 4, 4)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -305,25 +301,19 @@ func (s *VoidSuite) TestAnUnknownVoidIsRefusedByName() {
 // Handed the caller's own slice it would answer out of a thing the caller can
 // still edit, while [Encounter.RegionAt] answered out of the deep copy Setup
 // takes — two answers to one question, diverging silently the moment somebody
-// reused their RoomInputs to build a second encounter.
+// reused their RegionInputs to build a second encounter.
 //
-// SHIFTING west one cell east is the way to see it, and the choice of field
-// matters: [regionAt] asks each room's constructed GRID whether a local cell is
-// in bounds, so Width and Height are spent at construction and editing them
-// afterwards changes nothing. ORIGIN is the one it still reads on every call —
-// measured, not assumed, by mutating this call site back to the caller's slice
-// and watching a Width-based version of this test go on passing. Shifted, west
-// claims the gap column, the column stops being void, and it stops blocking.
+// PAINTING the gap cell into west, in the caller's own slice, is the way to
+// see it: if the owner map were built lazily off that slice the column would
+// stop being void, and it would stop blocking.
 func (s *VoidSuite) TestTheCanvasKeepsItsOwnCopyOfTheChambers() {
 	field := gappedField(encounter.VoidIsOpaque())
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: brenna, Kind: encounter.KindPlayer, Room: voidWest,
-				Position: spatial.Position{X: 3, Y: 1}},
-			{ID: kade, Kind: encounter.KindPlayer, Room: voidEast,
-				Position: spatial.Position{X: 0, Y: 1}},
+			{ID: brenna, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}},
+			{ID: kade, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -333,7 +323,7 @@ func (s *VoidSuite) TestTheCanvasKeepsItsOwnCopyOfTheChambers() {
 	s.Require().NoError(err)
 	s.Require().True(canvas.IsLineOfSightBlocked(brennaCell, kadeCell), "blocked, before anybody touches anything")
 
-	field.Rooms[0].Origin = spatial.Position{X: 1, Y: 0} // west now covers x 1..4 — in the CALLER's slice
+	field.Regions[0].Cells[0] = theGapCell // west now claims the gap column — in the CALLER's slice
 
 	s.True(canvas.IsLineOfSightBlocked(brennaCell, kadeCell),
 		"the encounter's map is not the caller's to redraw after the fact")
@@ -366,15 +356,34 @@ func (s *VoidSuite) TestNobodySeesOutOfOpaqueVoid() {
 // measurement below is counting.
 var blocked bool
 
-// contiguousField is two chambers that TOUCH: their footprints tile the canvas
-// exactly, so the field has no void at all and neither declaration has anything
-// to be about.
+// contiguousField is two regions that together fill their canvas EXACTLY —
+// every axial cell of the origin-centred 4x4 span the floor's bounding box
+// needs — so the field has no void at all and neither declaration has
+// anything to be about.
+//
+// An authored rectangle shears when it becomes axial and never tiles a span,
+// which is why this paints the span's own cells, converted back to the
+// authored frame through spatial's inverse of the one conversion.
 func contiguousField(void encounter.Void) encounter.FieldInput {
+	o := encounter.HexesArePointyTop()
+	var west, east []spatial.Position
+	for q := -2; q <= 1; q++ {
+		for r := -2; r <= 1; r++ {
+			cube := spatial.AxialToCube(spatial.Position{X: float64(q), Y: float64(r)})
+			cell := cube.ToOffsetCoordinateWithOrientation(spatial.HexOrientationPointyTop)
+			if q < 0 {
+				west = append(west, cell)
+			} else {
+				east = append(east, cell)
+			}
+		}
+	}
+	_ = o
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: void},
-		Rooms: []encounter.RoomInput{
-			{ID: voidWest, Width: 4, Height: 4, Origin: spatial.Position{X: 0, Y: 0}},
-			{ID: voidEast, Width: 4, Height: 4, Origin: spatial.Position{X: 4, Y: 0}},
+		Canvas: encounter.CanvasInput{Void: void, Orientation: o},
+		Regions: []encounter.RegionInput{
+			{ID: voidWest, Cells: west, Archetype: testArchetype, Lighting: fullLight()},
+			{ID: voidEast, Cells: east, Archetype: testArchetype, Lighting: fullLight()},
 		},
 	}
 }

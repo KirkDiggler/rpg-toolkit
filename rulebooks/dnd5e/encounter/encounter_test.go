@@ -6,8 +6,6 @@ package encounter_test
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -49,27 +47,18 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 				{
 					ID:       goblin,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 7, Y: 7},
 				},
 			},
@@ -77,7 +66,6 @@ func (s *EncounterTestSuite) TestSetupFirstLight() {
 				{
 					Key: "stairs",
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 9, Y: 9},
 					},
 				},
@@ -129,28 +117,18 @@ func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-						Props:  wallColumn(4, 0, 9),
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)}, Props: wallColumn(4, 0, 9),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 5},
 				},
 				{
 					ID:       goblin,
 					Kind:     encounter.KindMonster,
-					Room:     room1,
 					Position: spatial.Position{X: 7, Y: 5},
 				},
 			},
@@ -158,7 +136,6 @@ func (s *EncounterTestSuite) TestSetupWallBlocksSight() {
 				{
 					Key: "stairs",
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 9, Y: 9},
 					},
 				},
@@ -191,8 +168,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms:  []encounter.RoomInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{},
 			},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{
@@ -207,10 +184,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "room-1", Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{},
@@ -223,10 +198,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "room-1", Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{
@@ -241,10 +214,8 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "room-1", Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{
@@ -259,13 +230,11 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "room-1", Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
-				{ID: "", Kind: encounter.KindPlayer, Room: "room-1"},
+				{ID: "", Kind: encounter.KindPlayer},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -280,14 +249,12 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "room-1", Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 0}},
-				{ID: alice, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -303,7 +270,7 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		// First attempt: fails validation
 		setup1 := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field:   encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{}},
+			Field:   encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{}},
 			Members: []encounter.MemberInput{},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -316,13 +283,11 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		setup2 := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "room-1", Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
-				{ID: "alice", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 0}},
+				{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -332,63 +297,6 @@ func (s *EncounterTestSuite) TestSetupValidationOrderAndAtomicity() {
 		s.Require().NoError(err)
 		s.NotNil(enc)
 	})
-}
-
-// validConnSetup returns a fresh SetupInput with two DELIBERATELY
-// mismatched rooms — r1 is 10x4 (prop at (2,2)), r2 is 3x9 (prop
-// at (1,3)) — and one fully valid connection between them, with
-// FromPosition{9,1} valid ONLY in r1 and ToPosition{0,7} valid ONLY in r2.
-// Same-sized rooms and equal From/To positions would make a check that
-// validates an endpoint against the WRONG room (or a Load-side From/To
-// transposition) invisible: this is the base for
-// TestSetupConnectionValidation's one-defect rows, mirroring the same
-// defect classes rejected at Load (TestLoadRejections).
-//
-// #929 T1: the endpoints sit on each room's OWN boundary (r1's rightmost
-// column, r2's leftmost column) — a connection can only ever kiss (W3)
-// through a room's boundary cell, never an interior one (every neighbor of
-// an interior cell is still inside that room's own footprint). r2's Origin
-// (10,-6) puts its leftmost column at absolute x=10, immediately east of
-// r1's rightmost column (absolute x=9, since r1's Origin is the zero
-// value) — Chebyshev-adjacent (W3) — while r1's absolute footprint
-// (x:[0,9], y:[0,3]) and r2's (x:[10,12], y:[0,8]) share no x value at
-// all, so they stay disjoint (W2) regardless of their y overlap.
-func validConnSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 10, Height: 4, Props: []encounter.PropInput{rubble(2, 2)}},
-				{ID: "r2", Width: 3, Height: 9, Origin: spatial.Position{X: 10, Y: 0}, Props: []encounter.PropInput{rubble(1, 3)}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "c1", From: "r1", To: "r2",
-					FromPosition: spatial.Position{X: 9, Y: 1},
-					ToPosition:   spatial.Position{X: 0, Y: 1}},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-}
-
-// TestSetupSquarePropFractionalRejected pins F2 (#929 T3 Opus round):
-// prop integrality is universal now, not hex-only — a fractional
-// prop on a SQUARE room (previously accepted outright, before this
-// fix) must reject exactly like a fractional hex one
-// (TestSetupHexIntegralCells's sibling row), with the universal
-// isRepresentableInteger message, not the hex-specific one. One-defect:
-// validConnSetup's r1.Props[0] is the ONLY thing mutated.
-func (s *EncounterTestSuite) TestSetupSquarePropCellFractionalRejected() {
-	setup := validConnSetup()
-	setup.Field.Rooms[0].Props[0].At = spatial.Position{X: 2.5, Y: 2}
-	_, err := encounter.NewEncounter(setup)
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "not a representable integral cell")
 }
 
 // TestSetupPropOnBoundaryCellAccepted pins N2's over-tightening sweep
@@ -403,40 +311,13 @@ func (s *EncounterTestSuite) TestSetupPropOnBoundaryCellAccepted() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 5, Height: 5, Props: []encounter.PropInput{rubble(0, 2), rubble(4, 2), rubble(2, 0), rubble(2, 4), rubble(0, 0), rubble(4, 4)}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}, Props: []encounter.PropInput{rubble(0, 2), rubble(4, 2), rubble(2, 0), rubble(2, 4), rubble(0, 0), rubble(4, 4)},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
 	_, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal")
-}
-
-// TestSetupPropIDCrossRoomCollisionAccepted pins the hardening round's
-// fix (#929 item C): the prop entity ID used to concatenate room ID
-// and truncated coordinates (prop-<room>-<int(X)>-<int(Y)>), so room
-// "r" with prop (-5,4) and room "r-" with prop (5,4) both produced
-// "prop-r--5-4" — a genuine cross-room ID collision on a field that is
-// otherwise entirely legal under W1/W2/W3. The ID is index-based now, so
-// this exact colliding pair must construct without error.
-func (s *EncounterTestSuite) TestSetupPropIDCrossRoomCollisionAccepted() {
-	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
-					Props: []encounter.PropInput{rubble(-5, 4)}},
-				{ID: "r-", Width: 12, Height: 10, Grid: spatial.GridShapeHex,
-					Origin: spatial.Position{X: 1000, Y: 0}, Props: []encounter.PropInput{rubble(5, 4)}},
-			},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-	_, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, `room "r" prop (-5,4) and room "r-" prop (5,4) must not collide`)
 }
 
 // TestSetupDuplicatePropRejected pins the hardening round's item D:
@@ -451,10 +332,8 @@ func (s *EncounterTestSuite) TestSetupTwoPropsOnOneCellRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 5, Height: 5, Props: []encounter.PropInput{rubble(3, 3), rubble(3, 3)}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}, Props: []encounter.PropInput{rubble(3, 3), rubble(3, 3)},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	}
@@ -474,11 +353,11 @@ func (s *EncounterTestSuite) TestSetupDuplicateEndingKeyRejected() {
 	setup := &encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)},
 		},
 		Endings: []encounter.EndingInput{
-			{Key: "dup", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 4}}},
+			{Key: "dup", Trigger: encounter.TriggerReachedPosition{Position: spatial.Position{X: 4, Y: 4}}},
 			{Key: "dup", Trigger: encounter.TriggerExternal{}},
 		},
 	}
@@ -488,441 +367,6 @@ func (s *EncounterTestSuite) TestSetupDuplicateEndingKeyRejected() {
 	s.Require().Contains(err.Error(), "duplicate ending")
 }
 
-// TestSetupConnectionValidation mirrors TestLoadRejections' connection
-// defect classes at the Setup seam: each case breaks exactly one thing
-// about an otherwise-valid connection and must reject with ErrBadConnection.
-// Fragments name the missing room where applicable — a check neutered in
-// favor of the coincidental zero-value-room bounds fallback must not pass.
-func (s *EncounterTestSuite) TestSetupConnectionValidation() {
-	cases := []struct {
-		name     string
-		mutate   func(in *encounter.SetupInput)
-		fragment string
-	}{
-		{"empty connection id", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].ID = ""
-		}, "empty id"},
-		{"duplicate connection id", func(in *encounter.SetupInput) {
-			in.Field.Connections = append(in.Field.Connections, in.Field.Connections[0])
-		}, "duplicate connection"},
-		{"connection unknown from room", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].From = "nowhere"
-		}, `unknown room "nowhere"`},
-		{"connection unknown to room", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].To = "nowhere"
-		}, `unknown room "nowhere"`},
-		{"connection self-connection", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].To = "r1"
-		}, "itself"},
-		{"connection from-position out of bounds", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].FromPosition = spatial.Position{X: 99, Y: 99}
-		}, "from-position out of bounds"},
-		{"connection to-position out of bounds", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].ToPosition = spatial.Position{X: 99, Y: 99}
-		}, "to-position out of bounds"},
-		{"connection from-position on a prop", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].FromPosition = spatial.Position{X: 2, Y: 2}
-		}, "from-position on prop"},
-		{"connection to-position on a prop", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 3}
-		}, "to-position on prop"},
-	}
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			setup := validConnSetup()
-			tc.mutate(setup)
-			_, err := encounter.NewEncounter(setup)
-			s.Require().Error(err, tc.name)
-			s.Require().ErrorIs(err, encounter.ErrBadConnection, tc.name)
-			s.Require().Contains(err.Error(), tc.fragment,
-				"the check that fired must be the one this case targets")
-		})
-	}
-
-	// The valid base itself must construct — the one-defect discipline only
-	// means something if zero defects pass. Since FromPosition{9,1} is valid
-	// ONLY in r1 and ToPosition{0,7} valid ONLY in r2, this positive control
-	// also pins that each endpoint is checked against ITS OWN room: a check
-	// wired to the wrong room would reject this valid connection.
-	enc, err := encounter.NewEncounter(validConnSetup())
-	s.Require().NoError(err, "the valid base fixture must construct")
-	data := enc.ToData()
-	s.Require().Len(data.Field.Connections, 1)
-	s.Equal(&encounter.PositionData{X: 9, Y: 1}, data.Field.Connections[0].FromPosition,
-		"from-position must survive unswapped")
-	s.Equal(&encounter.PositionData{X: 0, Y: 1}, data.Field.Connections[0].ToPosition,
-		"to-position must survive unswapped")
-}
-
-// connBoundsSetup returns a fresh SetupInput with a 4x3 room r1 (valid
-// coordinates 0..3 x 0..2) and an r2 large enough to always hold the
-// connection's fixed ToPosition — used to pin the square grid's strictly-
-// less-than bounds semantics against FromPosition in r1, independent of any
-// cross-room concern (that's validConnSetup's job). r2's Origin (4,3)
-// anchors it diagonally past r1's bottom-right corner (#929 T1): the
-// positive control's FromPosition (3,2) — r1's own bottom-right corner —
-// and ToPosition (0,0)+(4,3)=(4,3) are Chebyshev-adjacent (a diagonal kiss,
-// distance 1), while the rooms' absolute footprints (x:[0,3] vs x:[4,7])
-// share no x value and so stay disjoint (W2) regardless of y.
-func connBoundsSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 4, Height: 3},
-				{ID: "r2", Width: 4, Height: 3, Origin: spatial.Position{X: 4, Y: 3}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "c1", From: "r1", To: "r2",
-					FromPosition: spatial.Position{X: 0, Y: 0},
-					ToPosition:   spatial.Position{X: 0, Y: 0}},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-}
-
-// TestConnectionEndpointBoundsBoundaries pins the square grid's strictly-
-// less-than bounds semantics at the Setup seam (#922 T1 Opus review, minor M3/M4):
-// a coordinate exactly at the room's Width/Height is out of bounds (valid
-// range is 0..dimension-1, matching member placement), a negative coordinate
-// is out of bounds, and Width-1/Height-1 — the last valid cell — is accepted.
-func (s *EncounterTestSuite) TestConnectionEndpointBoundsBoundaries() {
-	s.Run("X exactly at width is rejected", func() {
-		setup := connBoundsSetup()
-		setup.Field.Connections[0].FromPosition = spatial.Position{X: 4, Y: 0}
-		_, err := encounter.NewEncounter(setup)
-		s.Require().ErrorIs(err, encounter.ErrBadConnection)
-		s.Require().Contains(err.Error(), "from-position out of bounds")
-	})
-
-	s.Run("Y exactly at height is rejected", func() {
-		setup := connBoundsSetup()
-		setup.Field.Connections[0].FromPosition = spatial.Position{X: 0, Y: 3}
-		_, err := encounter.NewEncounter(setup)
-		s.Require().ErrorIs(err, encounter.ErrBadConnection)
-		s.Require().Contains(err.Error(), "from-position out of bounds")
-	})
-
-	s.Run("negative X is rejected", func() {
-		setup := connBoundsSetup()
-		setup.Field.Connections[0].FromPosition = spatial.Position{X: -1, Y: 0}
-		_, err := encounter.NewEncounter(setup)
-		s.Require().ErrorIs(err, encounter.ErrBadConnection)
-		s.Require().Contains(err.Error(), "from-position out of bounds")
-	})
-
-	s.Run("negative Y is rejected", func() {
-		setup := connBoundsSetup()
-		setup.Field.Connections[0].FromPosition = spatial.Position{X: 0, Y: -1}
-		_, err := encounter.NewEncounter(setup)
-		s.Require().ErrorIs(err, encounter.ErrBadConnection)
-		s.Require().Contains(err.Error(), "from-position out of bounds")
-	})
-
-	s.Run("Width-1,Height-1 is accepted (positive control)", func() {
-		setup := connBoundsSetup()
-		setup.Field.Connections[0].FromPosition = spatial.Position{X: 3, Y: 2}
-		_, err := encounter.NewEncounter(setup)
-		s.Require().NoError(err, "the last valid cell must be accepted")
-	})
-}
-
-// validRoomSetup returns a fresh SetupInput with a single valid square room
-// and one member — the base for TestSetupRoomValidation's one-defect rows.
-func validRoomSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 5, Height: 5},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-}
-
-// TestSetupRoomValidation pins room-level defects at the Setup seam
-// (#922 T1.5, deferred from the Opus T1 review): empty room ID, duplicate
-// room ID, and an unrecognized grid shape all reject with ErrNoField — a
-// malformed room list is as unusable as an empty one.
-//
-// #929 T1 Opus round: also pins room legality (non-positive Width/Height),
-// both zero AND negative for each dimension — the blocker this closes:
-// Width:-1 previously reached a negative-capacity make() in W2's
-// enumeration path (since replaced by interval math) and PANICKED
-// NewEncounter instead of rejecting it (R5: a panic is not a rejection).
-func (s *EncounterTestSuite) TestSetupRoomValidation() {
-	cases := []struct {
-		name     string
-		mutate   func(in *encounter.SetupInput)
-		fragment string
-	}{
-		{"room has empty id", func(in *encounter.SetupInput) {
-			in.Field.Rooms[0].ID = ""
-		}, "room has empty id"},
-		{"duplicate room id", func(in *encounter.SetupInput) {
-			in.Field.Rooms = append(in.Field.Rooms, in.Field.Rooms[0])
-		}, "duplicate room"},
-		{"room has unknown grid shape", func(in *encounter.SetupInput) {
-			in.Field.Rooms[0].Grid = spatial.GridShape(99)
-		}, "unknown grid shape"},
-		{"room has zero width", func(in *encounter.SetupInput) {
-			in.Field.Rooms[0].Width = 0
-		}, "non-positive dimensions"},
-		{"room has zero height", func(in *encounter.SetupInput) {
-			in.Field.Rooms[0].Height = 0
-		}, "non-positive dimensions"},
-		{"room has negative width", func(in *encounter.SetupInput) {
-			in.Field.Rooms[0].Width = -1
-		}, "non-positive dimensions"},
-		{"room has negative height", func(in *encounter.SetupInput) {
-			in.Field.Rooms[0].Height = -1
-		}, "non-positive dimensions"},
-	}
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			setup := validRoomSetup()
-			tc.mutate(setup)
-			_, err := encounter.NewEncounter(setup)
-			s.Require().Error(err, tc.name)
-			s.Require().ErrorIs(err, encounter.ErrNoField, tc.name)
-			s.Require().Contains(err.Error(), tc.fragment,
-				"the check that fired must be the one this case targets")
-		})
-	}
-
-	// The valid base itself must construct — the one-defect discipline only
-	// means something if zero defects pass.
-	_, err := encounter.NewEncounter(validRoomSetup())
-	s.Require().NoError(err, "the valid base fixture must construct")
-}
-
-// TestHexRoomBounds pins that a hex-shaped room's member-placement bounds
-// defer to the room's own constructed Grid rather than hardcoded rectangle
-// math — and, since the switch to AxialHexGrid (tools/spatial's origin-
-// centered axial Q/R grid, see RoomInput.Grid's doc comment), that hex
-// validity now genuinely DIVERGES from square's, not just gridless's: a
-// hex room's bounds are centered on the origin ([-Width/2, Width/2) for Q,
-// [-Height/2, Height/2) for R), so NEGATIVE coordinates are legal — a
-// position square would reject outright. This supersedes an earlier
-// finding (when this module built spatial.HexGrid, a bounded offset grid)
-// that hex's accept/reject shape was numerically identical to square's and
-// only gridless could kill a "grid shape ignored, always builds square"
-// mutant; the negative-Q case below now kills that mutant independently.
-func (s *EncounterTestSuite) TestHexRoomBounds() {
-	// Width=4, Height=3 => the chamber's own columns 0..3 and rows 0..2
-	// (rpg-toolkit#1127 — a chamber is the rectangle somebody drew, counted
-	// from its corner). Positions here are ROOM-LOCAL, so they are read in
-	// exactly those terms.
-	hexSetup := func(pos spatial.Position) *encounter.SetupInput {
-		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Rooms: []encounter.RoomInput{
-					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeHex},
-				},
-			},
-			Members: []encounter.MemberInput{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
-			},
-			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-		}
-	}
-
-	s.Run("a cell inside it accepted", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 1, Y: 1}))
-		s.Require().NoError(err)
-	})
-
-	s.Run("its own corner accepted", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 0, Y: 0}))
-		s.Require().NoError(err, "a chamber is anchored at its corner, and the corner is a cell")
-	})
-
-	s.Run("its far corner accepted", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 3, Y: 2}))
-		s.Require().NoError(err, "the last column of the last row is still inside")
-	})
-
-	s.Run("one column past the last rejected", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 4, Y: 0}))
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-	})
-
-	s.Run("one row past the last rejected", func() {
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: 0, Y: 3}))
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-	})
-
-	s.Run("a negative column rejected", func() {
-		// Under the origin-centred reading this was comfortably inside the
-		// room, which is the clearest single statement of what changed.
-		_, err := encounter.NewEncounter(hexSetup(spatial.Position{X: -1, Y: 0}))
-		s.Require().Error(err)
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
-	})
-}
-
-// TestHexConnectionEndpointNegativeAxial pins connection endpoints in a
-// hex room at the Setup seam: a negative axial Q/R endpoint — the
-// ordinary case for an origin-centered hex room — validates exactly like
-// a positive one, via the same grid-deferred bounds check members use.
-// Load-seam counterpart: TestHexConnectionEndpointNegativeAxialLoad in
-// data_test.go.
-//
-// TestAHexChambersCellsAreOffsetNotAxial replaces a test whose SUBJECT this
-// slice deleted, and the replacement is the same question asked of the new
-// answer.
-//
-// It used to be TestHexConnectionEndpointNegativeAxial, and it pinned that a
-// connection endpoint at a NEGATIVE axial coordinate validates — which was
-// right while a hex room was an origin-centred rhombus, where roughly half of
-// every chamber's own cells had a negative coordinate. A chamber is the offset
-// rectangle its author drew now (rpg-toolkit#1127), so its local cells run
-// [0,Width) x [0,Height) and a negative one is outside it. That is not a
-// narrowing of what a dungeon can be — the same hexes are still reachable, and
-// a chamber can still be anchored anywhere — it is a change of the frame the
-// author counts in, from one where the middle is zero to one where the corner
-// is.
-func (s *EncounterTestSuite) TestAHexChambersCellsAreOffsetNotAxial() {
-	build := func(to spatial.Position) error {
-		_, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Rooms: []encounter.RoomInput{
-					{ID: "hex-a", Width: 10, Height: 10, Grid: spatial.GridShapeHex},
-					{ID: "hex-b", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
-						Origin: spatial.Position{X: 10, Y: 0}},
-				},
-				Connections: []encounter.ConnectionInput{{
-					ID: "gate", From: "hex-a", To: "hex-b",
-					FromPosition: spatial.Position{X: 9, Y: 4},
-					ToPosition:   to,
-				}},
-			},
-			Members: []encounter.MemberInput{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 1, Y: 1}},
-			},
-			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-		})
-		return err
-	}
-
-	s.Require().NoError(build(spatial.Position{X: 0, Y: 4}),
-		"the chambers meet at hex-a's last column and hex-b's first, on the same row")
-
-	err := build(spatial.Position{X: -3, Y: -3})
-	s.Require().ErrorIs(err, encounter.ErrBadConnection,
-		"a negative local cell is outside the rectangle somebody drew")
-	s.Contains(err.Error(), "out of bounds")
-}
-
-// validHexSetup returns a fresh SetupInput with two hex rooms joined
-// by one connection, a member, and a prop — every position integral
-// axial, including a negative one (gate.ToPosition). The base for
-// TestSetupHexIntegralCells's one-defect rows: interim tools/spatial#926
-// enforcement (isIntegralHexCell) rejects a fractional X or Y at
-// any of these positions in a hex room.
-//
-// Both rooms are Width=8,Height=8 offset rectangles (rpg-toolkit#1127), so each
-// chamber's own cells are columns 0..7 and rows 0..7 counted from its corner.
-// hex-b is anchored at column 8, immediately east of hex-a's last column, so
-// the two rectangles tile without sharing a cell (W2) and the gate's two
-// endpoints — hex-a's (7,3) and hex-b's (0,3), the same row either side of the
-// seam — land on adjacent absolute cells (W3).
-//
-// gate.FromPosition sits on hex-a's boundary column rather than somewhere in
-// the middle, and that part has not changed: an interior cell can never kiss
-// anything, because every neighbour of an interior cell is still inside that
-// room's own footprint.
-func validHexSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hex-a", Width: 8, Height: 8, Grid: spatial.GridShapeHex,
-					Props: []encounter.PropInput{rubble(2, 2)}},
-				{ID: "hex-b", Width: 8, Height: 8, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 8, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "hex-a", To: "hex-b",
-				FromPosition: spatial.Position{X: 7, Y: 3},
-				ToPosition:   spatial.Position{X: 0, Y: 3},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-a", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-}
-
-// TestSetupHexIntegralCells pins the interim tools/spatial#926
-// enforcement at the Setup seam: a fractional X or Y is rejected for
-// every position kind a hex room accepts externally — member, both
-// connection endpoints, and a prop — each with the error class its
-// existing defect family already uses. Load-seam counterpart:
-// TestLoadHexIntegralCells in data_test.go.
-func (s *EncounterTestSuite) TestSetupHexIntegralCells() {
-	cases := []struct {
-		name     string
-		mutate   func(in *encounter.SetupInput)
-		alsoErr  error
-		fragment string
-	}{
-		{"member position fractional", func(in *encounter.SetupInput) {
-			in.Members[0].Position = spatial.Position{X: 0.5, Y: 0}
-		}, encounter.ErrBadPlacement, "not an integral cell"},
-		{"connection from-position fractional", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].FromPosition = spatial.Position{X: 1.5, Y: 1}
-		}, encounter.ErrBadConnection, "not an integral cell"},
-		{"connection to-position fractional", func(in *encounter.SetupInput) {
-			in.Field.Connections[0].ToPosition = spatial.Position{X: 0.5, Y: 3}
-		}, encounter.ErrBadConnection, "not an integral cell"},
-		{"prop cell fractional", func(in *encounter.SetupInput) {
-			// #929 T3 Opus round F2: prop integrality is now universal
-			// (isIntegralPosition), not hex-only (isIntegralHexCell) —
-			// the message matches Origin's ("not a representable integral
-			// cell"), not the hex-specific connection/member wording.
-			in.Field.Rooms[0].Props[0].At = spatial.Position{X: 2.5, Y: 2}
-		}, encounter.ErrNoField, "not a representable integral cell"},
-	}
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			setup := validHexSetup()
-			tc.mutate(setup)
-			_, err := encounter.NewEncounter(setup)
-			s.Require().Error(err, tc.name)
-			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
-			s.Require().Contains(err.Error(), tc.fragment,
-				"the check that fired must be the one this case targets")
-		})
-	}
-
-	// Positive control: the valid base — integral throughout — constructs.
-	//
-	// It used to add "including a NEGATIVE position (gate.ToPosition at
-	// (-4,-1))", which was true when a hex room's own frame was an
-	// origin-centred rhombus. Since rpg-toolkit#1127 an authored cell is a
-	// column and a row, so there are no negative ones to accept here; negative
-	// ABSOLUTE cells are still entirely ordinary, and TestMoveHexIntegralAxial
-	// is where that is pinned.
-	_, err := encounter.NewEncounter(validHexSetup())
-	s.Require().NoError(err, "integral authored cells must be accepted")
-}
-
 // TestMoveHexIntegralAxial is Move's verb-seam counterpart: a fractional
 // target in a hex room is rejected (moveMember is the shared path with
 // Pump's IntentMoveTo, so this also covers decider-driven moves).
@@ -930,11 +374,11 @@ func (s *EncounterTestSuite) TestMoveHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("hex-room", 0, 0, 8, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -966,11 +410,11 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms:  []encounter.RoomInput{{ID: "hex-room", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("hex-room", 0, 0, 8, 8)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-room", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -1001,50 +445,6 @@ func (s *EncounterTestSuite) TestJoinHexIntegralAxial() {
 	})
 }
 
-// TestGridlessRoomInclusiveBounds pinned gridless's own divergence from the
-// rectangle math a prior task deleted (GridlessRoom.IsValidPosition's
-// inclusive upper bound, x <= Width, vs SquareGrid's exclusive x < Width).
-// #929 T1 (shape legality, W1) retires that coverage: gridless leaves the
-// composition entirely as of v0.3 — the wire cannot carry a continuous
-// room's absolute projection — so a declared GridShapeGridless room is now
-// a room-list defect at Setup, full stop, regardless of any position within
-// it. This test is repurposed to pin THAT rejection instead of gridless's
-// old bounds semantics (AxialHexGrid's own divergence from square — origin-
-// centered bounds, legal negative coordinates — is still covered by
-// TestHexRoomBounds).
-func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
-	gridlessSetup := func(pos spatial.Position) *encounter.SetupInput {
-		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "r1", Width: 4, Height: 3, Grid: spatial.GridShapeGridless},
-				},
-			},
-			Members: []encounter.MemberInput{
-				{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: pos},
-			},
-			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-		}
-	}
-
-	s.Run("gridless room rejected regardless of member position", func() {
-		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: 4, Y: 0}))
-		s.Require().Error(err, "gridless leaves the composition as of v0.3 — no position can rescue it")
-		s.Require().ErrorIs(err, encounter.ErrNoField)
-		s.Require().Contains(err.Error(), "gridless grid shape, no longer supported",
-			"the check that fired must be shape legality, not a downstream placement check")
-	})
-
-	s.Run("still rejected for a position that would also be out of bounds", func() {
-		_, err := encounter.NewEncounter(gridlessSetup(spatial.Position{X: -1, Y: 0}))
-		s.Require().Error(err)
-		s.Require().ErrorIs(err, encounter.ErrNoField,
-			"shape legality fires before any placement check ever sees this position")
-	})
-}
-
 // ============================================================
 // #929 T1 — anchoring: RoomInput.Origin, W1 (one geometry per field), W2
 // (rooms never overlap), W3 (doorways kiss). Shape legality's own
@@ -1052,831 +452,23 @@ func (s *EncounterTestSuite) TestGridlessRoomInclusiveBounds() {
 // TestGridlessRoomInclusiveBounds — repurposed for exactly this law.
 // ============================================================
 
-// validAnchoredHexSetup returns THE core fixture for the W-law tests below:
-// two hex rooms, asymmetric in every dimension (T1 review lesson —
-// symmetric fixtures hide cross-wiring mutants: a prior wave's full sweep
-// missed four of them this way). hex-big is a 10x4 offset rectangle at the
-// zero-value Origin, so columns 0..9 and rows 0..3; hex-small is 3x9 anchored
-// at column 10 and row -2, so columns 10..12 and rows -2..6 (rpg-toolkit#1127 — a chamber
-// is the rectangle somebody drew, counted from its corner, and the spans this
-// comment used to quote were the rhombus reading).
-//
-// The connection's endpoints are each their own room's OWN boundary cell — an
-// interior cell can never kiss anything, since every neighbour of an interior
-// cell is still inside that room's own footprint. FromPosition (9,1) is
-// hex-big's last column; ToPosition (0,2) is hex-small's first. Converted to
-// the canvas they are axial (9,-6) and (10,-7): ΔQ=1, ΔR=-1, ΔS=0, cube
-// distance (1+1+0)/2 = 1 — adjacent, and deliberately OFF-AXIS (both ΔQ and ΔR
-// nonzero) so a Manhattan-distance mutant (|ΔQ|+|ΔR|=2) would wrongly reject
-// this valid base. That off-axis pair is why the rows differ by one either side
-// of the seam rather than matching: on a pointy-top grid a same-row crossing is
-// the on-axis one.
-//
-// hex-big owns columns 0..9 and hex-small columns 10..12: the two share no
-// column at all, so W2 holds regardless of row — the rooms are disjoint,
-// touching only through the one declared doorway.
-func validAnchoredHexSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hex-big", Width: 10, Height: 4, Grid: spatial.GridShapeHex},
-				{ID: "hex-small", Width: 3, Height: 9, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 10, Y: -2}},
-			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "hex-big", To: "hex-small",
-				FromPosition: spatial.Position{X: 9, Y: 1},
-				ToPosition:   spatial.Position{X: 0, Y: 4},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-big", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-}
-
-// TestSetupRefusesAnAxialDiagonalAsAdjacent keeps the discriminator that used
-// to be a row in TestSetupAnchoring, and it is a separate test because that row
-// stopped being buildable.
-//
-// # What it discriminates
-//
-// A "Chebyshev-on-axial" implementation of adjacency — max(|dQ|,|dR|) <= 1 —
-// accepts pairs the cube-distance formula rejects. The two disagree on exactly
-// one shape: a (1,1) diagonal, where Chebyshev says 1 and the true distance is
-// (1+1+2)/2 = 2. Every other near-miss delta is rejected by both, so only a
-// (1,1) or (-1,-1) delta can tell the correct formula from that mutant.
-//
-// # Why it is not a row any more
-//
-// When rpg-toolkit#1141 corrected the hex offset schemes, the projection from
-// authored cells to absolute ones changed, and a (1,1) delta became UNREACHABLE
-// from validAnchoredHexSetup by changing any single field. Verified by sweeping
-// all three independently against the compiled endpoints: origins from (5,-20)
-// to (20,12), every legal ToPosition in hex-small, and every legal FromPosition
-// in hex-big. None produces one. That is a property of the corrected geometry,
-// not a search that gave up.
-//
-// So the scenario gets its own setup rather than the shared base being reshaped
-// around it — reshaping the base would have moved every other row in this suite
-// and its mirror in data_test.go to preserve one assertion.
-func (s *EncounterTestSuite) TestSetupRefusesAnAxialDiagonalAsAdjacent() {
-	setup := validAnchoredHexSetup()
-	// Chosen by asking the compiler which combination lands on the diagonal,
-	// not by re-deriving the projection by hand: these compile to (8,-8) and
-	// (9,-7).
-	setup.Field.Rooms[1].Origin = spatial.Position{X: 8, Y: -9}
-	setup.Field.Connections[0].FromPosition = spatial.Position{X: 8, Y: 0}
-	setup.Field.Connections[0].ToPosition = spatial.Position{X: 0, Y: 7}
-
-	_, err := encounter.NewEncounter(setup)
-	s.Require().ErrorIs(err, encounter.ErrBadConnection)
-	s.Contains(err.Error(), "distance 2",
-		"a (1,1) axial diagonal is two steps apart, and only the cube formula says so")
-}
-
-// TestSetupAnchoring pins the one-defect rows for W1 (mixed grid families),
-// origin legality (non-integral origin), and W3 (endpoints that don't
-// kiss) — each breaking exactly ONE thing about validAnchoredHexSetup's
-// otherwise-valid base, rejecting with the sentinel and message fragment
-// its own law uses.
-//
-// The "W2" row below is honestly an ORDERING pin, not a one-defect row
-// (#929 T1 Opus round correction): zeroing hex-small's Origin makes it
-// collide with hex-big at (0,0) (a genuine W2 defect) but ALSO detaches
-// the gate's endpoints from their designed kiss (a W3 defect too, at the
-// mutated Origin) — W2 wins only because it runs before W3 in
-// buildValidRoomGrids' order. TestSetupAnchoringOverlapNonAdjacentPair is
-// the true one-defect W2 row: three rooms, only a non-adjacent-in-slice
-// pair overlaps, no connection involved at all.
-func (s *EncounterTestSuite) TestSetupAnchoring() {
-	cases := []struct {
-		name     string
-		mutate   func(in *encounter.SetupInput)
-		alsoErr  error
-		fragment string
-	}{
-		{"W1: mixed grid families", func(in *encounter.SetupInput) {
-			in.Field.Rooms[1].Grid = spatial.GridShapeSquare
-		}, encounter.ErrNoField, "declare different grid families"},
-		{"origin legality: fractional hex origin", func(in *encounter.SetupInput) {
-			in.Field.Rooms[1].Origin = spatial.Position{X: 6.5, Y: -5}
-		}, encounter.ErrNoField, "not a representable integral cell"},
-		{"room legality: infinite origin", func(in *encounter.SetupInput) {
-			// #929 T1 second Opus round: math.Trunc(+Inf) is +Inf, so the
-			// old pos.X == math.Trunc(pos.X) check accepted this outright.
-			// #929 T2 second review round: now caught even earlier, by
-			// maxAnchorCoord's bound in room legality — Inf is never <= a
-			// finite bound, so this never even reaches the representability
-			// check origin legality runs afterward.
-			in.Field.Rooms[1].Origin = spatial.Position{X: math.Inf(1), Y: -5}
-		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
-		{"room legality: origin exceeds max anchor coordinate (1e19)", func(in *encounter.SetupInput) {
-			// #929 T1 second Opus round: 1e19 is "integral" by Trunc (it has
-			// no fractional part as a float64) but exceeds int64's range —
-			// roomAbsoluteBounds' int() conversion on a value like this is
-			// Go-spec implementation-defined, not a real cell. See
-			// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap for the
-			// two-room construction that used to produce a wrong verdict.
-			// #929 T2 second review round: now caught by maxAnchorCoord's
-			// bound in room legality, before origin legality's
-			// representability check ever runs (1e19 is both non-representable
-			// AND out of bounds — the bound fires first).
-			in.Field.Rooms[1].Origin = spatial.Position{X: 1e19, Y: -5}
-		}, encounter.ErrNoField, "exceeds max anchor coordinate"},
-		{"ordering: W2 wins over a co-occurring W3 defect", func(in *encounter.SetupInput) {
-			in.Field.Rooms[1].Origin = spatial.Position{X: 0, Y: 0}
-		}, encounter.ErrNoField, "overlap at absolute cell"},
-		{"W3: endpoints do not kiss", func(in *encounter.SetupInput) {
-			// (1,4) is still a legal LOCAL cell in hex-small (its middle
-			// column, well inside its rows) — this must fail on adjacency,
-			// not on the earlier bounds check.
-			in.Field.Connections[0].ToPosition = spatial.Position{X: 1, Y: 4}
-		}, encounter.ErrBadConnection, "not adjacent"},
-	}
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			setup := validAnchoredHexSetup()
-			tc.mutate(setup)
-			_, err := encounter.NewEncounter(setup)
-			s.Require().Error(err, tc.name)
-			s.Require().ErrorIs(err, tc.alsoErr, tc.name)
-			s.Require().Contains(err.Error(), tc.fragment,
-				"the check that fired must be the one this case targets")
-		})
-	}
-
-	// The valid base itself must construct — the one-defect discipline only
-	// means something if zero defects pass. This ALSO doubles as the
-	// "touching but not overlapping" sibling proof (W2 rejects overlap,
-	// not contact): hex-big and hex-small touch at exactly the gate's two
-	// cells and nowhere else, yet still validate.
-	_, err := encounter.NewEncounter(validAnchoredHexSetup())
-	s.Require().NoError(err, "the valid base fixture — asymmetric, negative-anchored, off-axis kissing — must construct")
-}
-
-// TestSetupAnchoringSquareDiagonalKiss pins W3's Chebyshev adjacency for
-// the square family, specifically a DIAGONAL kiss (Chebyshev distance 1
-// includes diagonals, unlike a 4-directional adjacency check): sq-a and
-// sq-b sit corner-to-corner, touching at exactly one point and sharing no
-// cell (also the square-family sibling proof that W2 rejects overlap, not
-// contact — TestSetupAnchoring's hex base already proves it once, this
-// proves it independently for square's own distance formula).
-func (s *EncounterTestSuite) TestSetupAnchoringSquareDiagonalKiss() {
-	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "sq-a", Width: 5, Height: 5},
-				{ID: "sq-b", Width: 5, Height: 5, Origin: spatial.Position{X: 5, Y: 5}},
-			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "corner-gate", From: "sq-a", To: "sq-b",
-				FromPosition: spatial.Position{X: 4, Y: 4},
-				ToPosition:   spatial.Position{X: 0, Y: 0},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "sq-a", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	}
-	_, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, "a diagonal (Chebyshev distance 1) kiss must be accepted, not just a 4-directional one")
-}
-
-// TestSetupAnchoringSquareEndpointNotAdjacentDistance2 pins W3's
-// square-family rejection at a genuine, non-sub-unit distance (#929
-// hardening round, test-gap closure item 5): the only existing
-// square-family W3 non-adjacency coverage before this was the sub-unit
-// 0.5 case (TestSetupAnchoringFractionalSquareEndpointSubUnitDistance);
-// the two "not adjacent"/"distance 2" rows in TestSetupAnchoring's table
-// are hex-only. r1 is 3x3 at the zero-value Origin (absolute x:[0,2]);
-// r2 is 3x3 at Origin (4,0) (absolute x:[4,6]) — a genuine one-column
-// void gap at x=3, so W2 passes (footprints disjoint, not overlapping).
-// FromPosition (2,1) in r1 projects to absolute (2,1); ToPosition (0,1)
-// in r2 projects to absolute (4,1) — Chebyshev distance 2, not 1.
-func (s *EncounterTestSuite) TestSetupAnchoringSquareEndpointNotAdjacentDistance2() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 3, Height: 3},
-				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 4, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "r1", To: "r2",
-				FromPosition: spatial.Position{X: 2, Y: 1},
-				ToPosition:   spatial.Position{X: 0, Y: 1},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrBadConnection)
-	s.Require().Contains(err.Error(), "not adjacent")
-}
-
-// TestSetupAnchoringSquareOriginRejected pins that origin legality
-// (isIntegralPosition) applies to EVERY grid family, square included, not
-// just hex. #929 T1 Opus round finding: this test used to assert the
-// OPPOSITE — that a fractional square origin was fine — and in doing so
-// blessed a real hole in W2's disjointness promise. Two 5x5 square rooms
-// anchored at (0,0) and (0.5,0.5) have disjoint INTEGER cell sets (an
-// enumeration-based W2 check, since replaced, would have accepted them)
-// while their continuous footprints interpenetrate roughly 81% of each
-// room's area, and a Chebyshev-0 "doorway" (two endpoints landing on the
-// same fractional point) would still measure as adjacent. This is now the
-// rejection pin that closes that hole.
-func (s *EncounterTestSuite) TestSetupAnchoringSquareOriginRejected() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 0.5, Y: 1.5}},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err, "a fractional Origin on a square room is now a defect — origin legality is universal")
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "not a representable integral cell")
-}
-
-// TestSetupAnchoringNaNOriginRejected pins a genuinely subtle ordering
-// (#929 hardening round, test-gap closure item 4 — NaN and -Inf had ZERO
-// coverage anywhere in the suite before this): room legality's magnitude
-// check is `math.Abs(r.Origin.X) > maxAnchorCoord`, and for X = NaN,
-// math.Abs(NaN) is NaN, and EVERY comparison against NaN (including >)
-// is false in IEEE 754 — so a NaN origin silently SLIPS PAST room
-// legality's magnitude check, uncaught, and is rejected only later, by
-// the SEPARATE origin-legality loop (isIntegralPosition ->
-// isRepresentableInteger, which explicitly tests IsNaN). Verified by
-// probe before writing this assertion. The fragment below asserts the
-// origin-legality message SPECIFICALLY (not just ErrNoField) so a future
-// reorder that changes which check catches NaN fails loudly here,
-// instead of this test silently continuing to pass against a different
-// message.
-func (s *EncounterTestSuite) TestSetupAnchoringNaNOriginRejected() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.NaN(), Y: 0}}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "not a representable integral cell",
-		"a NaN origin must be caught by origin legality, since room legality's Abs(NaN) > bound comparison is always false")
-}
-
-// TestSetupAnchoringNegativeInfinityOriginRejected is NaN's sibling case
-// (#929 hardening round, test-gap closure item 4), with the OPPOSITE
-// ordering: math.Abs(-Inf) is +Inf, and +Inf > maxAnchorCoord (any
-// finite bound) IS true — so -Inf does NOT slip past room legality's
-// magnitude check the way NaN does; it is caught there, first, with
-// room legality's OWN message.
-func (s *EncounterTestSuite) TestSetupAnchoringNegativeInfinityOriginRejected() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: math.Inf(-1), Y: 0}}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
-		"-Inf must be caught by room legality's magnitude check, unlike NaN — Abs(-Inf) > bound is true")
-}
-
-// TestSetupAnchoringW1BothDirections pins W1's message names BOTH rooms and
-// BOTH families regardless of which room is square and which is hex —
-// mutating a two-hex-room field's SECOND room mirrors
-// TestSetupAnchoring's row, which mutates via the same slice index; this
-// covers the field declared the other way around (hex declared first,
-// square second) to guard against a comparison that only checks one
-// direction.
-func (s *EncounterTestSuite) TestSetupAnchoringW1BothDirections() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{ID: "square-first", Width: 5, Height: 5},
-				{ID: "hex-second", Width: 5, Height: 5, Grid: spatial.GridShapeHex},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "square-first", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), `room "square-first" (square)`)
-	s.Require().Contains(err.Error(), `room "hex-second" (hex)`)
-}
-
-// TestSetupAnchoringOverlapNonAdjacentPair is fixture 3b (#929 T1 Opus
-// round mutation evidence): three square rooms — r-a at the zero-value
-// Origin, r-b anchored far away at (20,20), r-c anchored at (2,2) — where
-// ONLY the (r-a, r-c) pair overlaps. r-a and r-b don't (adjacent pair
-// 0,1); r-b and r-c don't (adjacent pair 1,2); only r-a and r-c do
-// (non-adjacent pair 0,2). This is the TRUE one-defect W2 row — no
-// connection involved at all, unlike TestSetupAnchoring's "ordering" row
-// — and it kills a mutant that reduces W2's pairwise loop to adjacent-in-
-// slice-only comparison (j := i+1; j < i+2). Unlike W1's equivalent
-// mutant (provably unobservable over a two-value domain — see
-// validateGridFamilies' doc comment), overlap is NOT a transitive
-// relation over three arbitrarily-positioned rooms, so this fixture
-// genuinely distinguishes full pairwise from adjacent-only comparison.
-// Witness cell (2,2) is the component-wise max of r-a's and r-c's
-// interval mins.
-func (s *EncounterTestSuite) TestSetupAnchoringOverlapNonAdjacentPair() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r-a", Width: 5, Height: 5},
-				{ID: "r-b", Width: 5, Height: 5, Origin: spatial.Position{X: 20, Y: 20}},
-				{ID: "r-c", Width: 5, Height: 5, Origin: spatial.Position{X: 2, Y: 2}},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r-a", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), `room "r-a" and room "r-c" overlap at absolute cell (2, 2)`)
-}
-
-// TestSetupAnchoringRSpanSeparation is fixture 3c (#929 T1 Opus round
-// mutation evidence): two 4x4 hex rooms with IDENTICAL Q ranges — hex-r-b
-// is anchored at (0,4), directly south of hex-r-a, not east — disjoint
-// along R alone despite the shared Q span. This must ACCEPT (proving W2's
-// interval check doesn't need Q separation specifically) and kills an
-// R-span boundary-arithmetic drift mutant in axisBounds: dropping the hex
-// max formula's "-1" widens hex-r-a's R span from [-2,1] to [-2,2], which
-// falsely overlaps these rooms at R=2 (hex-r-b's R span is [2,5]) — see
-// the mutation evidence table. Its doorway also kisses: FromPosition
-// (0,1) is hex-r-a's own max-R boundary; ToPosition (0,-2) is hex-r-b's
-// own min-R boundary; anchored, absolute (0,1) and (0,2) are cube-distance
-// 1.
-func (s *EncounterTestSuite) TestSetupAnchoringRSpanSeparation() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hex-r-a", Width: 4, Height: 4, Grid: spatial.GridShapeHex},
-				{ID: "hex-r-b", Width: 4, Height: 4, Grid: spatial.GridShapeHex, Origin: spatial.Position{X: 0, Y: 4}},
-				// hex-r-a owns rows 0..3 and hex-r-b rows 4..7, over the SAME
-				// columns 0..3 — the case the run decomposition exists for
-				// (rpg-toolkit#1127): both chambers key on every column, so
-				// disjointness is decided per column on the rows, not waved
-				// through by a bounding box that misses.
-			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "hex-r-a", To: "hex-r-b",
-				FromPosition: spatial.Position{X: 0, Y: 3},
-				ToPosition:   spatial.Position{X: 0, Y: 0},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "hex-r-a", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().NoError(err, "rooms separated along R alone, with identical Q ranges, must still be accepted as disjoint")
-}
-
-// TestSetupAnchoringFractionalSquareEndpointSubUnitDistance pins W3's
-// strict `dist != 1` comparison (#929 T1 second Opus round: an earlier
-// comment on that check wrongly claimed sub-1 distances were unfalsifiable
-// post-origin-legality — origin legality only constrains ORIGINS, not
-// connection endpoints, and square endpoints stay fractional-tolerant by
-// design, RoomInput.Grid's doc comment). r1 is 3x3 at the zero-value
-// Origin; r2 is 3x3 at Origin (3,0), immediately east — fully disjoint (r1
-// absolute x:[0,2], r2 absolute x:[3,5]), both origins integral. Yet
-// FromPosition (2.5,1), a legal fractional cell in r1, projects to
-// absolute (2.5,1) — only 0.5 Chebyshev distance from ToPosition (0,1)'s
-// absolute (3,1). A `> 1` mutant would wrongly ACCEPT a 0.5-unit gap as
-// "close enough"; the strict `!= 1` correctly rejects it.
-func (s *EncounterTestSuite) TestSetupAnchoringFractionalSquareEndpointSubUnitDistance() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 3, Height: 3},
-				{ID: "r2", Width: 3, Height: 3, Origin: spatial.Position{X: 3, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "r1", To: "r2",
-				FromPosition: spatial.Position{X: 2.5, Y: 1},
-				ToPosition:   spatial.Position{X: 0, Y: 1},
-			}},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 0, Y: 0}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrBadConnection)
-	s.Require().Contains(err.Error(), "distance 0.5")
-}
-
-// TestSetupAnchoringHugeOriginRejectedNotFalseOverlap pins the fix for the
-// second Opus round's headline finding: before this fix, isIntegralPosition's
-// pos.X == math.Trunc(pos.X) check accepted any float64 past int64's usable
-// precision as "integral" (Trunc is a no-op there), so two rooms anchored
-// at X=1e19 and X=2e19 — nowhere near each other — both passed origin
-// legality, then BOTH got truncated by roomAbsoluteBounds' int() to the
-// SAME implementation-defined int64 value, producing a FALSE W2 overlap
-// verdict through the public API. This pins that such an origin now
-// rejects at ROOM LEGALITY instead (#929 T2 second review round:
-// maxAnchorCoord's bound now fires before origin legality's representability
-// check even runs — 1e19 is both non-representable AND out of bounds) —
-// before W2 ever sees it, and specifically NOT with a W2 "overlap" message.
-func (s *EncounterTestSuite) TestSetupAnchoringHugeOriginRejectedNotFalseOverlap() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 5, Height: 5, Origin: spatial.Position{X: 1e19, Y: 0}},
-				{ID: "r2", Width: 5, Height: 5, Origin: spatial.Position{X: 2e19, Y: 0}},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "exceeds max anchor coordinate",
-		"must reject at room legality, not fall through to a W2 overlap verdict on garbage-truncated positions")
-	s.Require().NotContains(err.Error(), "overlap at absolute cell",
-		"the old bug produced a W2 overlap message here — this must NOT be that")
-}
-
-// TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint pins maxRoomSpan
-// (#929 T2 second review round — see its doc comment): before this bound,
-// an unbounded Width could overflow roomAbsoluteBounds' interval-sum
-// arithmetic. r1 is 1000 wide at the zero-value Origin (absolute Q span
-// [0,999]); r2 is math.MaxInt wide, anchored at (999,0) — TRUE
-// (infinite-precision) math says these overlap by exactly one column, at
-// Q=999 (r2's own left edge sits exactly on r1's own right edge). r2's
-// absolute qMax is axisBounds(math.MaxInt).max + 999 = (math.MaxInt-1) +
-// 999, which OVERFLOWS int64 and wraps to -9223372036854774811 (verified
-// by running the exact interval-sum arithmetic standalone, not hand
-// computed): with r2's qMin at 999 and its qMax wrapped to that large
-// NEGATIVE number, validateRoomsDisjoint's overlap check
-// (bs[i].qMin <= bs[j].qMax && bs[j].qMin <= bs[i].qMax) sees
-// 0 <= -9223372036854774811 as false and wrongly reports the rooms
-// disjoint — WITHOUT this bound. WITH it, r2's Width alone is already
-// rejected — oversized, not evaluated for overlap at all.
-func (s *EncounterTestSuite) TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "r1", Width: 1000, Height: 5},
-				{ID: "r2", Width: math.MaxInt, Height: 5, Origin: spatial.Position{X: 999, Y: 0}},
-			},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "exceed max room span",
-		"must reject at room legality for being oversized, before overlap is ever evaluated")
-	s.Require().NotContains(err.Error(), "overlap at absolute cell",
-		"without the bound, this exact fixture used to wrongly VALIDATE via a false-disjoint W2 verdict — see the mutation evidence")
-}
-
-// TestSetupRoomCellBudgetRejectsPanicReproduction pins F1 (#929 T3 Opus
-// round, HIGH): a 2^30 x 2^30 room is individually LEGAL under
-// maxRoomSpan's per-axis check (each dimension equals, not exceeds, the
-// bound) but its cell count (2^60) panics Atlas's allocation — the exact
-// reproduction Opus found, reachable from a tiny SetupInput. Must REJECT
-// with maxRoomCells' message, never construct.
-func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproduction() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "huge", Width: 1 << 30, Height: 1 << 30}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err, "a 2^30 x 2^30 room must REJECT, not panic Atlas's allocation")
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "exceeding max room cells")
-}
-
-// TestSetupRoomCellBudgetRejectsPanicReproductionHex is the hex-family
-// sibling of TestSetupRoomCellBudgetRejectsPanicReproduction (#929
-// hardening round, test-gap closure item 3): maxRoomCells' doc comment
-// claims the bound is family-agnostic ("EQUAL for both grid families...
-// hex included"), but every existing budget fixture — this one's square
-// sibling, and TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms —
-// only ever declares a square room (Grid left unset, defaulting to
-// GridShapeSquare). This pins the SAME 2^30 x 2^30 reproduction against
-// an EXPLICIT hex room.
-func (s *EncounterTestSuite) TestSetupRoomCellBudgetRejectsPanicReproductionHex() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms:  []encounter.RoomInput{{ID: "huge", Grid: spatial.GridShapeHex, Width: 1 << 30, Height: 1 << 30}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err, "a 2^30 x 2^30 HEX room must REJECT too — the bound is family-agnostic")
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "exceeding max room cells")
-}
-
-// TestSetupOversizedRoomHeightRejected pins maxRoomSpan's Height clause
-// independently of Width (#929 hardening round, test-gap closure item
-// 3): TestSetupAnchoringOversizedRoomRejectedNotFalseDisjoint only grows
-// Width (r2 is math.MaxInt WIDE, Height a legal 5), and
-// TestSetupRoomCellBudgetRejectsPanicReproduction grows Width and Height
-// EQUALLY (1<<30 each) — neither can discriminate the
-// `|| r.Height > maxRoomSpan` half of the check from the Width half;
-// deleting either clause alone leaves the whole suite green. This
-// fixture grows ONLY Height (Width stays a legal 5) just past the bound
-// (1<<30 + 1). With the clause present, this rejects at room-span
-// legality with "exceed max room span". Without it (the mutant), the
-// oversized Height is NOT unobserved — it still rejects, just later and
-// with a DIFFERENT message: cellCount = 5*((1<<30)+1) comfortably
-// exceeds maxRoomCells, so a deleted Height-span clause falls through to
-// the cell-budget check instead. The message assertion below is what
-// actually catches the mutant — a bare Error()/ErrorIs(ErrNoField)
-// check alone would not.
-func (s *EncounterTestSuite) TestSetupOversizedRoomHeightRejected() {
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "tall", Width: 5, Height: (1 << 30) + 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "exceed max room span",
-		"a Height-only oversize must reject at room-span legality, not fall through to a different check with a different message")
-}
-
-// TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms pins F1's field-total
-// bound: SIX 1024x1024 rooms are each EXACTLY at maxRoomCells (1<<20,
-// individually legal — the per-room check passes) but their SUM (6<<20)
-// exceeds maxFieldCells (4<<20) — amplification across rooms, not within
-// one, the OTHER half of F1's reproduction. SIX rooms, not five (#929
-// hardening round, test-gap closure item 1): with only five, rooms 1-4
-// sum to EXACTLY maxFieldCells (4<<20) — not yet exceeding it — so the
-// budget is first exceeded at the fifth and LAST room, and the N3 fix
-// (accumulate the TRUE total over every room before checking once, so a
-// future room in the list is never silently dropped from the count) is
-// unpinnable: a reverted mid-loop check that returns as soon as the
-// RUNNING total exceeds the budget would trip at that same last room and
-// report the identical number, since there is no room AFTER it to be
-// dropped from the count. A sixth room makes the two diverge: a mid-loop
-// check trips at room 5 (running total 5<<20 = 5242880, room 6 never
-// even summed), while the true-total fix processes all six and reports
-// 6<<20 = 6291456 — the exact number asserted below.
-func (s *EncounterTestSuite) TestSetupFieldCellBudgetRejectsIndividuallyLegalRooms() {
-	rooms := make([]encounter.RoomInput, 6)
-	for i := range rooms {
-		rooms[i] = encounter.RoomInput{ID: fmt.Sprintf("room-%d", i), Width: 1024, Height: 1024}
-	}
-	_, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field:   encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: rooms},
-		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-	})
-	s.Require().Error(err, "individually-legal rooms whose SUM exceeds the field budget must reject")
-	s.Require().ErrorIs(err, encounter.ErrNoField)
-	s.Require().Contains(err.Error(), "field has 6291456 total cells across all rooms",
-		"must name the TRUE total over all six rooms, not a running total that stopped short at a mid-loop room")
-	s.Require().Contains(err.Error(), "exceeding max field cells")
-}
-
-// validEndingTriggerSetup is the base fixture for TestSetupEndingTriggerValidation:
-// a single square room with a TriggerReachedPosition ending naming a real,
-// in-bounds room/position — the valid base each case breaks exactly one
-// thing about (#929 T3 Opus round F5).
-func validEndingTriggerSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 3, Y: 3}}},
-		},
-	}
-}
-
-// TestSetupEndingTriggerValidation pins F5 (#929 T3 Opus round): a
-// TriggerReachedPosition ending that names no real room, or a position
-// that can never be reached, is a declaration defect — "an encounter that
-// cannot end is a liveness hole" (ErrNoEnding's doc comment) — not a
-// silently-accepted dead ending.
-func (s *EncounterTestSuite) TestSetupEndingTriggerValidation() {
-	cases := []struct {
-		name     string
-		mutate   func(in *encounter.SetupInput)
-		fragment string
-	}{
-		{"unknown room", func(in *encounter.SetupInput) {
-			in.Endings[0].Trigger = encounter.TriggerReachedPosition{Room: "nowhere", Position: spatial.Position{X: 3, Y: 3}}
-		}, "unknown room"},
-		{"out of bounds position", func(in *encounter.SetupInput) {
-			in.Endings[0].Trigger = encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 100, Y: 100}}
-		}, "out of bounds"},
-	}
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			setup := validEndingTriggerSetup()
-			tc.mutate(setup)
-			_, err := encounter.NewEncounter(setup)
-			s.Require().Error(err, tc.name)
-			s.Require().ErrorIs(err, encounter.ErrNoEnding, tc.name)
-			s.Require().Contains(err.Error(), tc.fragment,
-				"the check that fired must be the one this case targets")
-		})
-	}
-
-	// The valid base itself must construct.
-	_, err := encounter.NewEncounter(validEndingTriggerSetup())
-	s.Require().NoError(err, "a trigger naming a real room and in-bounds position must validate")
-}
-
-// TestSetupEndingTriggerHexNonIntegralRejected is TestSetupEndingTriggerValidation's
-// hex-specific sibling: a fractional axial trigger position rejects
-// exactly like a fractional connection/member position does (#929 T3
-// Opus round F5).
-func (s *EncounterTestSuite) TestSetupEndingTriggerHexNonIntegralRejected() {
-	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 0}}},
-		},
-	}
-	_, err := encounter.NewEncounter(setup)
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, encounter.ErrNoEnding)
-	s.Require().Contains(err.Error(), "not an integral cell")
-}
-
-// validTriggerAcceptanceFieldSetup is the rich SQUARE-family fixture for
-// TestSetupEndingTriggerMustAccept (#929 T3 trailing round N2): a kissing
-// pair (hall/vault, connected, hall carries a prop) plus an isolated
-// room (annex, no connection at all) — exercising every must-accept shape
-// a TriggerReachedPosition can legally target. A rejection-only test
-// suite proves a validator rejects; this fixture is what proves it does
-// NOT over-reach.
-func validTriggerAcceptanceFieldSetup() *encounter.SetupInput {
-	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 5, Height: 5, Props: []encounter.PropInput{rubble(2, 2)}},
-				{ID: "vault", Width: 4, Height: 4, Origin: spatial.Position{X: 5, Y: 0}},
-				{ID: "annex", Width: 3, Height: 3, Origin: spatial.Position{X: 1000, Y: 1000}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "gate", From: "hall", To: "vault",
-					FromPosition: spatial.Position{X: 4, Y: 2},
-					ToPosition:   spatial.Position{X: 0, Y: 2}},
-			},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 0, Y: 0}}},
-		},
-	}
-}
-
-// TestSetupEndingTriggerMustAccept pins N2 (#929 T3 trailing round): a
-// one-defect rejection table only proves a validator rejects what it
-// should; only a rich positive control proves it does not ALSO reject
-// what it shouldn't. Each row targets a specific over-tightening
-// hypothesis Opus's mutants tested and found undefended: occluded cells,
-// doorway endpoints on EITHER side, fractional square positions, a room
-// with zero connections, local (0,0), and a room's far corner. Each row
-// also survives a ToData/LoadEncounter round trip — the SAME shape must
-// validate identically at both seams.
-func (s *EncounterTestSuite) TestSetupEndingTriggerMustAccept() {
-	cases := []struct {
-		name    string
-		trigger encounter.TriggerReachedPosition
-	}{
-		{"occluded cell", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 2, Y: 2}}},
-		{"doorway endpoint, from-room side", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 4, Y: 2}}},
-		{"doorway endpoint, to-room side", encounter.TriggerReachedPosition{Room: "vault", Position: spatial.Position{X: 0, Y: 2}}},
-		{"fractional square position", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 1.5, Y: 1.5}}},
-		{"room with no connection", encounter.TriggerReachedPosition{Room: "annex", Position: spatial.Position{X: 1, Y: 1}}},
-		{"local (0,0)", encounter.TriggerReachedPosition{Room: "hall", Position: spatial.Position{X: 0, Y: 0}}},
-		{"far corner", encounter.TriggerReachedPosition{Room: "vault", Position: spatial.Position{X: 3, Y: 3}}},
-	}
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			setup := validTriggerAcceptanceFieldSetup()
-			setup.Endings[0].Trigger = tc.trigger
-			enc, err := encounter.NewEncounter(setup)
-			s.Require().NoError(err, tc.name)
-
-			data := enc.ToData()
-			_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
-			s.Require().NoError(err, "%s must survive a ToData/LoadEncounter round trip", tc.name)
-		})
-	}
-}
-
-// TestSetupEndingTriggerHexFarCornerMustAccept is
-// TestSetupEndingTriggerMustAccept's hex-specific sibling (W1 forbids mixing
-// families in one fixture): the far corner of a chamber is where a "reach this
-// cell" ending most often sits — stairs at the back of a room — and it is the
-// cell a bounds check written for the wrong frame is most likely to reject.
-//
-// It was TestSetupEndingTriggerHexNegativeAxialMustAccept until
-// rpg-toolkit#1127, when a hex room stopped being origin-centred and its own
-// cells stopped being half negative. The hazard N2 names is unchanged; the cell
-// that embodies it moved.
-func (s *EncounterTestSuite) TestSetupEndingTriggerHexFarCornerMustAccept() {
-	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms:  []encounter.RoomInput{{ID: "crypt", Width: 8, Height: 8, Grid: spatial.GridShapeHex}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "reach", Trigger: encounter.TriggerReachedPosition{Room: "crypt", Position: spatial.Position{X: 7, Y: 7}}},
-		},
-	}
-	enc, err := encounter.NewEncounter(setup)
-	s.Require().NoError(err, "a negative-axial hex trigger position is the NORMAL case, not an edge case")
-
-	data := enc.ToData()
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
-	s.Require().NoError(err, "must survive a ToData/LoadEncounter round trip")
-}
-
 func (s *EncounterTestSuite) TestSetupOpeningBeat() {
 	s.Run("opening beat reaches all members via Story", func() {
 		// Arrange
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 10, Height: 10, Boundaries: twoRoomSealedWall()},
-					{ID: room2, Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
-				{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 				// The goblin waits next door: co-located and visible would mean
 				// a fight forms at first light and appends its own beat, and this
 				// test is about the OPENING beat being the only one
 				// (rpg-toolkit#964).
-				{ID: goblin, Kind: encounter.KindMonster, Room: room2, Position: spatial.Position{X: 2, Y: 2}},
+				{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 2}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -1918,14 +510,12 @@ func (s *EncounterTestSuite) TestSetupBadPlacementSentinel() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				// Try to place alice in a room that doesn't exist
-				{ID: alice, Kind: encounter.KindPlayer, Room: "nonexistent", Position: spatial.Position{X: 0, Y: 0}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -1947,15 +537,13 @@ func (s *EncounterTestSuite) TestSetupCompletePercept() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 20, Height: 20},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)},
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
-				{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 10, Y: 10}},
-				{ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 15, Y: 15}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 10}},
+				{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 15, Y: 15}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -2004,14 +592,12 @@ func (s *EncounterTestSuite) TestMembers() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 10, Height: 10},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
-				{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 1, Y: 1}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -2033,27 +619,18 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  20,
-						Height: 20,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 				{
 					ID:       bob,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 10, Y: 10},
 				},
 			},
@@ -2061,7 +638,6 @@ func (s *EncounterTestSuite) TestMovePerceptRefreshes() {
 				{
 					Key: "stairs",
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 18, Y: 18},
 					},
 				},
@@ -2123,23 +699,16 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  20,
-						Height: 20,
-						Props:  wallRow(10, 7, 13),
-					},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)}, Props: wallRow(10, 7, 13),
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-				{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 10, Y: 18}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 18}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
-					Room: room1, Position: spatial.Position{X: 19, Y: 19}}},
+					Position: spatial.Position{X: 19, Y: 19}}},
 			},
 		}
 		enc, err := encounter.NewEncounter(setup)
@@ -2188,21 +757,13 @@ func (s *EncounterTestSuite) TestMoveSequentialConsistency() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  20,
-						Height: 20,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 5, Y: 5},
 				},
 			},
@@ -2210,7 +771,6 @@ func (s *EncounterTestSuite) TestMoveSequentialConsistency() {
 				{
 					Key: "stairs",
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 18, Y: 18},
 					},
 				},
@@ -2245,23 +805,13 @@ func (s *EncounterTestSuite) TestMoveEndingFires() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:         room1,
-						Width:      20,
-						Height:     20,
-						Boundaries: squareSeamWall(19, 20),
-					},
-					{ID: room2, Width: 20, Height: 20, Origin: spatial.Position{X: 20, Y: 0}},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20), rectRegion(room2, 20, 0, 20, 20)}, Walls: squareSeamWall(19, 20),
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 5, Y: 5},
 				},
 				{
@@ -2271,7 +821,6 @@ func (s *EncounterTestSuite) TestMoveEndingFires() {
 					// without a fight starting underfoot (rpg-toolkit#964): with
 					// one canvas, next door alone is not out of sight
 					// (rpg-toolkit#1106).
-					Room:     room2,
 					Position: spatial.Position{X: 10, Y: 10},
 				},
 			},
@@ -2279,7 +828,6 @@ func (s *EncounterTestSuite) TestMoveEndingFires() {
 				{
 					Key: "stairs",
 					Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 19, Y: 19},
 					},
 				},
@@ -2339,13 +887,11 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 				Field: encounter.FieldInput{
-					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-					Rooms: []encounter.RoomInput{
-						{ID: room1, Width: 10, Height: 10},
-					},
+					Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+					Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 				},
 				Members: []encounter.MemberInput{
-					{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+					{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 				},
 				Endings: []encounter.EndingInput{
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -2362,13 +908,11 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 				Field: encounter.FieldInput{
-					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-					Rooms: []encounter.RoomInput{
-						{ID: room1, Width: 10, Height: 10},
-					},
+					Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+					Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 				},
 				Members: []encounter.MemberInput{
-					{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+					{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 				},
 				Endings: []encounter.EndingInput{
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -2388,17 +932,14 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 				Field: encounter.FieldInput{
-					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-					Rooms: []encounter.RoomInput{
-						{ID: room1, Width: 10, Height: 10},
-					},
+					Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+					Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 				},
 				Members: []encounter.MemberInput{
-					{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+					{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 				},
 				Endings: []encounter.EndingInput{
 					{Key: "end", Trigger: encounter.TriggerReachedPosition{
-						Room:     room1,
 						Position: spatial.Position{X: 9, Y: 9},
 					}},
 				},
@@ -2425,13 +966,11 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 				Field: encounter.FieldInput{
-					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-					Rooms: []encounter.RoomInput{
-						{ID: room1, Width: 10, Height: 10},
-					},
+					Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+					Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 				},
 				Members: []encounter.MemberInput{
-					{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
+					{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 				},
 				Endings: []encounter.EndingInput{
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -2451,14 +990,12 @@ func (s *EncounterTestSuite) TestMoveValidationAndAtomicity() {
 			setup := &encounter.SetupInput{
 				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 				Field: encounter.FieldInput{
-					Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-					Rooms: []encounter.RoomInput{
-						{ID: room1, Width: 10, Height: 10},
-					},
+					Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+					Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 				},
 				Members: []encounter.MemberInput{
-					{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 0, Y: 0}},
-					{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
+					{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+					{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
 				},
 				Endings: []encounter.EndingInput{
 					{Key: "stairs", Trigger: encounter.TriggerExternal{}},
@@ -2495,18 +1032,15 @@ func (s *EncounterTestSuite) TestMoveOutcomeCopyOut() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 20, Height: 20},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)},
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
-				{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 10, Y: 10}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 10}},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "end", Trigger: encounter.TriggerReachedPosition{
-					Room:     room1,
 					Position: spatial.Position{X: 18, Y: 18},
 				}},
 			},
@@ -2550,14 +1084,14 @@ func (s *EncounterTestSuite) TestMoveOutcomeCopyOut() {
 func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)}},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
-				Room: room1, Position: spatial.Position{X: 19, Y: 19}}},
+				Position: spatial.Position{X: 19, Y: 19}}},
 		},
 	})
 	s.Require().NoError(err)
@@ -2569,10 +1103,10 @@ func (s *EncounterTestSuite) newBasicEncounter() *encounter.Encounter {
 func (s *EncounterTestSuite) newBasicEncounterWithExternalEnding() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: room1, Width: 20, Height: 20}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 20, 20)}},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
@@ -2641,39 +1175,23 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				// room-a WALLS its east edge, leaving the doorway's row open.
-				// With one canvas and no wall the two chambers share an open
-				// seam ten cells wide, so a fixture whose claims are about
-				// what can be seen has to say where its walls are
-				// (rpg-toolkit#1106).
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				// Anchored immediately east of room-a (#929 T1): door1's
-				// endpoints (9,5) and (0,5)+(10,0)=(10,5) are
-				// Chebyshev-adjacent (W3); the rooms' absolute footprints
-				// (x:[0,9] vs x:[10,19]) stay disjoint (W2).
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "door1", From: "room-a", To: "room-b",
-					FromPosition: spatial.Position{X: 9, Y: 5},
-					ToPosition:   spatial.Position{X: 0, Y: 5}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
+			Doors: []encounter.DoorInput{twoRoomDoor},
 		},
 		Members: []encounter.MemberInput{
 			// Alice stands IN the doorway. Bob watches from further back along
 			// the SAME row, so what he can see of room-b is decided by the
 			// opening rather than by the room — and what he cannot see is
 			// decided by the wall beside it.
-			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 5, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 5}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
 			// The goblin stands in room-b, OFF the doorway's row: the wall
 			// hides it from room-a, so nothing has seen anything at first
 			// light, and walking through the door starts a fight
 			// (rpg-toolkit#964). Tests that only look at what arrived can
 			// leave it running; the ones that hop back break off first.
-			{ID: goblin, Kind: encounter.KindMonster, Room: "room-b", Position: spatial.Position{X: 1, Y: 0}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 11, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "withdrawn", Trigger: encounter.TriggerExternal{}},
@@ -2691,8 +1209,8 @@ func (s *EncounterTestSuite) newTwoRoomEncounterWithConnection() *encounter.Enco
 // a step whose destination happens to be through an opening, and the only thing
 // that marks it as one is the doorway's name on the way out.
 func (s *EncounterTestSuite) TestACrossingIsJustAStepInBothDirections() {
-	near := spatial.Position{X: 9, Y: 5} // room-a's doorway cell
-	far := spatial.Position{X: 10, Y: 5} // room-b's, one cell along
+	near := cellAt(9, 5) // room-a's doorway cell
+	far := cellAt(10, 5) // room-b's, one cell along
 
 	s.Run("room-a to room-b", func() {
 		enc := s.newTwoRoomEncounterWithConnection()
@@ -2701,7 +1219,8 @@ func (s *EncounterTestSuite) TestACrossingIsJustAStepInBothDirections() {
 		s.Equal(alice, out.Stepped.Member)
 		s.Equal(near, out.Stepped.From)
 		s.Equal(far, out.Stepped.To)
-		s.Equal("door1", out.Crossing, "the doorway is named, and decided nothing")
+		s.Require().Len(out.Doors, 1, "the door is named, and decided nothing")
+		s.Equal(encounter.DoorID("door1"), out.Doors[0].ID)
 
 		s.Equal("room-b", s.roomOf(enc, alice), "she is in room-b now, because her cell is")
 	})
@@ -2720,7 +1239,8 @@ func (s *EncounterTestSuite) TestACrossingIsJustAStepInBothDirections() {
 		s.Require().NoError(err)
 		s.Equal(far, out.Stepped.From)
 		s.Equal(near, out.Stepped.To)
-		s.Equal("door1", out.Crossing, "the same doorway carried her home")
+		s.Require().Len(out.Doors, 1, "the same door carried her home")
+		s.Equal(encounter.DoorID("door1"), out.Doors[0].ID)
 		s.Equal("room-a", s.roomOf(enc, alice))
 	})
 }
@@ -2819,23 +1339,15 @@ func (s *EncounterTestSuite) TestACrossingFiresAnEndingOnArrival() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "door1", From: "room-a", To: "room-b",
-					FromPosition: spatial.Position{X: 9, Y: 5},
-					ToPosition:   spatial.Position{X: 0, Y: 5}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
-				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}}},
+				Position: spatial.Position{X: 0, Y: 5}}},
 		},
 	})
 	s.Require().NoError(err)
@@ -2862,24 +1374,16 @@ func (s *EncounterTestSuite) TestAMonsterCrossingOntoAnUnfilteredEndingDoesNotCl
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-a", Width: 10, Height: 10, Boundaries: twoRoomWall()},
-				{ID: "room-b", Width: 10, Height: 10, Origin: spatial.Position{X: 10, Y: 0}},
-			},
-			Connections: []encounter.ConnectionInput{
-				{ID: "door1", From: "room-a", To: "room-b",
-					FromPosition: spatial.Position{X: 9, Y: 5},
-					ToPosition:   spatial.Position{X: 0, Y: 5}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("room-a", 0, 0, 10, 10), rectRegion("room-b", 10, 0, 10, 10)}, Walls: twoRoomWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: goblin, Kind: encounter.KindMonster, Room: "room-a", Position: spatial.Position{X: 9, Y: 5}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{
 			// Unfiltered: empty Member means players only.
 			{Key: "escaped", Trigger: encounter.TriggerReachedPosition{
-				Room: "room-b", Position: spatial.Position{X: 0, Y: 5}, Member: ""}},
+				Position: spatial.Position{X: 0, Y: 5}, Member: ""}},
 		},
 	})
 	s.Require().NoError(err)
@@ -2948,7 +1452,7 @@ func (s *EncounterTestSuite) TestACrossingDoesNotAdvanceTheClock() {
 func (s *EncounterTestSuite) TestACrossingLeavesNoStaleRegistryEntry() {
 	enc := s.newTwoRoomEncounterWithConnection()
 
-	_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 10, Y: 5}})
+	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(10, 5)})
 	s.Require().NoError(err)
 
 	// She walked in on the goblin, so a fight started; she breaks off before
@@ -2959,13 +1463,14 @@ func (s *EncounterTestSuite) TestACrossingLeavesNoStaleRegistryEntry() {
 	_, err = enc.Join(&encounter.JoinInput{
 		Member: core.EntityID("charlie"),
 		Kind:   encounter.KindPlayer,
-		Cell:   spatial.Position{X: 9, Y: 5},
+		Cell:   cellAt(9, 5),
 	})
 	s.Require().NoError(err, "the vacated cell must truly be free — no stale registry entry")
 
-	out, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: 9, Y: 5}})
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(9, 5)})
 	s.Require().NoError(err, "alice must be able to step back — no stale entry on the far side either")
-	s.Equal("door1", out.Crossing)
+	s.Require().Len(out.Doors, 1)
+	s.Equal(encounter.DoorID("door1"), out.Doors[0].ID)
 	s.Equal("room-a", s.roomOf(enc, alice))
 }
 
@@ -2977,33 +1482,23 @@ func (s *EncounterTestSuite) TestJoinLateJoinerSeenByIncumbents() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 				{
 					ID:       bob,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 8, Y: 8},
 				},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-					Room:     room1,
 					Position: spatial.Position{X: 9, Y: 9},
 				}},
 			},
@@ -3135,27 +1630,18 @@ func (s *EncounterTestSuite) TestJoinOnStairsFiresEnding() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-					Room:     room1,
 					Position: spatial.Position{X: 9, Y: 9},
 				}},
 			},
@@ -3189,27 +1675,18 @@ func (s *EncounterTestSuite) TestExitCarryForward() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 				{
 					ID:       bob,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 8, Y: 8},
 				},
 			},
@@ -3286,27 +1763,18 @@ func (s *EncounterTestSuite) TestExitLastMemberClosesWithAbandoned() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 			},
 			Endings: []encounter.EndingInput{
 				{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-					Room:     room1,
 					Position: spatial.Position{X: 9, Y: 9},
 				}},
 			},
@@ -3340,27 +1808,18 @@ func (s *EncounterTestSuite) TestExitDepartedGhostFades() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{
-						ID:     room1,
-						Width:  10,
-						Height: 10,
-					},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 				{
 					ID:       bob,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 8, Y: 8},
 				},
 			},
@@ -3414,17 +1873,13 @@ func (s *EncounterTestSuite) TestEndExternalOnly() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 10, Height: 10},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 			},
@@ -3553,17 +2008,13 @@ func (s *EncounterTestSuite) TestStoryForExitedMembers() {
 		setup := &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: room1, Width: 10, Height: 10},
-				},
-				Connections: []encounter.ConnectionInput{},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 			},
 			Members: []encounter.MemberInput{
 				{
 					ID:       alice,
 					Kind:     encounter.KindPlayer,
-					Room:     room1,
 					Position: spatial.Position{X: 2, Y: 2},
 				},
 			},

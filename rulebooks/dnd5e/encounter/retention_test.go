@@ -35,13 +35,13 @@ type RetentionTestSuite struct {
 func (s *RetentionTestSuite) walkingEncounter(retention int) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "r1", Width: 5, Height: 5}}},
+		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion("r1", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
-			{ID: "p1", Kind: encounter.KindPlayer, Room: "r1", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "done", Trigger: encounter.TriggerReachedPosition{
-				Room: "r1", Position: spatial.Position{X: 4, Y: 4},
+				Position: spatial.Position{X: 4, Y: 4},
 			}},
 		},
 		Retention: retention,

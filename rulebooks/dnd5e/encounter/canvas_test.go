@@ -80,49 +80,64 @@ var (
 	tombDoorRow = 3
 )
 
-// seamWall returns the boundary edges a room declares along one of its own
-// vertical edges: a wall from every cell of column atLocalX to the cell beyond
-// it, with a gap at the doorway row.
+// tombSeamWall is the wall along the seam east of the chamber anchored at
+// origin and `width` wide: every crossing from its last column to the column
+// beyond, over its rows, with a gap at the doorway row.
 //
-// The far endpoint is OUTSIDE the declaring room, and that is the whole
-// expressiveness this slice buys. A room's boundaries are room-local at
-// authoring and absolute once compiled onto the canvas, so a room can finally
-// draw the wall along its own edge rather than leaving the seam open and
-// hoping a room label stands in for it.
-func tombSeamWall(atLocalX, height, gapRow int) []spatial.Boundary {
-	return squareSeamWall(atLocalX, height, gapRow)
+// The wall is a FIELD fact now (rpg-project#256): both endpoints are authored
+// absolute cells, and nothing about which region "declared" it survives.
+func tombSeamWall(origin spatial.Position, width, height, gapRow int) []spatial.Boundary {
+	return seamWallRows(int(origin.X)+width-1, int(origin.Y), height, int(origin.Y)+gapRow)
 }
 
 func tombField() encounter.FieldInput {
 	return encounter.FieldInput{
-		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-		Rooms: []encounter.RoomInput{
-			// The entrance walls itself off from the hall, all the way up its
-			// east edge except the doorway.
-			{ID: tombEntrance, Width: 6, Height: 8, Origin: tombEntranceOrigin,
-				Boundaries: tombSeamWall(5, 8, tombDoorRow)},
-			// The hall walls itself off from the tomb chamber the same way, and
-			// carries the pillars the reference tomb puts there.
-			{ID: tombHall, Width: 10, Height: 8, Origin: tombHallOrigin,
-				Boundaries: tombSeamWall(9, 8, tombDoorRow),
-				Props:      []encounter.PropInput{rubble(2, 1), rubble(2, 6), rubble(6, 1), rubble(6, 6)}},
-			{ID: tombChamber, Width: 12, Height: 8, Origin: tombChamberOrigin},
+		Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+		Regions: []encounter.RegionInput{
+			rectRegion(tombEntrance, int(tombEntranceOrigin.X), int(tombEntranceOrigin.Y), 6, 8),
+			rectRegion(tombHall, int(tombHallOrigin.X), int(tombHallOrigin.Y), 10, 8),
+			rectRegion(tombChamber, int(tombChamberOrigin.X), int(tombChamberOrigin.Y), 12, 8),
 		},
-		Connections: []encounter.ConnectionInput{
-			{ID: entranceDoor, From: tombEntrance, To: tombHall,
-				FromPosition: spatial.Position{X: 5, Y: float64(tombDoorRow)},
-				ToPosition:   spatial.Position{X: 0, Y: float64(tombDoorRow)}},
-			{ID: tombDoor, From: tombHall, To: tombChamber,
-				FromPosition: spatial.Position{X: 9, Y: float64(tombDoorRow)},
-				ToPosition:   spatial.Position{X: 0, Y: float64(tombDoorRow)}},
+		// The entrance is walled off from the hall all the way up the seam
+		// except the doorway, and the hall from the tomb chamber the same way.
+		Walls: append(
+			tombSeamWall(tombEntranceOrigin, 6, 8, tombDoorRow),
+			tombSeamWall(tombHallOrigin, 10, 8, tombDoorRow)...),
+		// The pillars the reference tomb puts in the hall.
+		Props: []encounter.PropInput{
+			tombProp(tombHallOrigin, 2, 1), tombProp(tombHallOrigin, 2, 6),
+			tombProp(tombHallOrigin, 6, 1), tombProp(tombHallOrigin, 6, 6),
+		},
+		// And an open door standing in each doorway, so a step through one
+		// can name it.
+		Doors: []encounter.DoorInput{
+			{ID: entranceDoor, State: encounter.DoorIsOpen(), Edges: []encounter.DoorEdge{{
+				From: tombAt(tombEntranceOrigin, 5, tombDoorRow), To: tombAt(tombHallOrigin, 0, tombDoorRow)}}},
+			{ID: tombDoor, State: encounter.DoorIsOpen(), Edges: []encounter.DoorEdge{{
+				From: tombAt(tombHallOrigin, 9, tombDoorRow), To: tombAt(tombChamberOrigin, 0, tombDoorRow)}}},
 		},
 	}
 }
 
-// at projects a room-local cell through the fixture's own anchor, so a changed
+// tombSeat is the AUTHORED absolute cell a chamber-local pair names — the
+// anchor plus the pair, in offset columns and rows — which is what a seat or
+// an ending target is written in.
+func tombSeat(origin spatial.Position, x, y int) spatial.Position {
+	return spatial.Position{X: float64(x), Y: float64(y)}.Add(origin)
+}
+
+// tombAt is the dungeon-absolute AXIAL cell the same pair names — what every
+// verb takes and reports — derived through the one conversion so a changed
 // anchor cannot leave a stale absolute literal passing.
 func tombAt(origin spatial.Position, x, y int) spatial.Position {
-	return spatial.Position{X: float64(x), Y: float64(y)}.Add(origin)
+	seat := tombSeat(origin, x, y)
+	return cellAt(int(seat.X), int(seat.Y))
+}
+
+// tombProp is a chamber-local rubble cell, authored absolute.
+func tombProp(origin spatial.Position, x, y int) encounter.PropInput {
+	seat := tombSeat(origin, x, y)
+	return rubble(int(seat.X), int(seat.Y))
 }
 
 // SetupTest opens the tomb with four members, all players so that nothing
@@ -141,14 +156,10 @@ func (s *CanvasSuite) SetupTest() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: tombField(),
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow)}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow)}},
-			{ID: carol, Kind: encounter.KindPlayer, Room: tombEntrance,
-				Position: spatial.Position{X: 5, Y: float64(tombDoorRow - 1)}},
-			{ID: dave, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 0, Y: float64(tombDoorRow - 1)}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow)},
+			{ID: bob, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow)},
+			{ID: carol, Kind: encounter.KindPlayer, Position: tombSeat(tombEntranceOrigin, 5, tombDoorRow-1)},
+			{ID: dave, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 0, tombDoorRow-1)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -199,16 +210,14 @@ func (s *CanvasSuite) TestTheWallIsAnAbsoluteEdgeNotARoomsBusiness() {
 	s.Equal(tombAt(tombHallOrigin, 0, tombDoorRow-1), want.to, "the far endpoint is the HALL's cell")
 
 	var found bool
-	for _, region := range atlas.Regions {
-		for _, b := range region.Boundaries {
-			if b.From == want.from && b.To == want.to {
-				found = true
-				s.True(b.BlocksLineOfSight)
-				s.True(b.BlocksMovement)
-			}
+	for _, b := range atlas.Boundaries {
+		if (b.From == want.from && b.To == want.to) || (b.From == want.to && b.To == want.from) {
+			found = true
+			s.True(b.BlocksLineOfSight)
+			s.True(b.BlocksMovement)
 		}
 	}
-	s.True(found, "the seam wall is on the map, in absolute cells, spanning two rooms")
+	s.True(found, "the seam wall is on the map, in absolute cells, spanning two regions")
 }
 
 // TestCrossingADoorwayIsAnOrdinaryStep. The walk does not know it crossed
@@ -223,7 +232,8 @@ func (s *CanvasSuite) TestCrossingADoorwayIsAnOrdinaryStep() {
 
 	s.Equal(tombAt(tombEntranceOrigin, 5, tombDoorRow), out.Stepped.From)
 	s.Equal(tombAt(tombHallOrigin, 0, tombDoorRow), out.Stepped.To)
-	s.Equal(entranceDoor, out.Crossing, "the doorway is named")
+	s.Require().Len(out.Doors, 1, "the door is named")
+	s.Equal(encounter.DoorID(entranceDoor), out.Doors[0].ID)
 
 	s.Equal("moved", s.beatKind(out.Seq), "and the story says she moved, because she did")
 }
@@ -261,7 +271,7 @@ func (s *CanvasSuite) TestVoidIsStillNotFloor() {
 	// One cell north of the entrance's own top row: inside the canvas's span
 	// (the chambers are 8 tall from y=4), owned by nothing.
 	_, err := s.enc.Step(&encounter.StepInput{
-		Member: alice, To: spatial.Position{X: 5, Y: 0},
+		Member: alice, To: cellAt(5, 0),
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrBadPlacement)
@@ -269,15 +279,12 @@ func (s *CanvasSuite) TestVoidIsStillNotFloor() {
 
 // TestAnOldDialectBlobIsRefusedByName is the persistence half of the slice.
 //
-// A member's placement went from a room and a room-local cell to one absolute
-// cell, and the two are indistinguishable by inspection: a blob written before
-// the flip carries numbers that are legal in the new frame and mean somewhere
-// else. So the key MOVED — "room"+"position" became "cell" — and the old keys
-// land nowhere: the field arrives absent, and its absence is the signal.
-//
-// Refused BY NAME, citing the issue, never defaulted to (0,0), which is a legal
-// cell that would invent a placement. That is the same call
-// MemberOutcomeData.Cell made for #1068, and Kirk's fail-loudly ruling.
+// A field went from rooms-plus-origins to regions (rpg-project#256), and a
+// room-chain blob still PARSES: its "rooms" key lands on a tombstone field
+// and nothing else, so the blob would otherwise arrive as a field with no
+// regions. Refused BY NAME, citing the change, so whoever reads it knows what
+// to recreate — Kirk's fail-loudly ruling (2026-08-17), the same call
+// MemberOutcomeData.Cell made for #1068.
 func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 	// A pre-#1106 blob, written by hand in the dialect this module used to
 	// produce: the member carries a room and a room-local position.
@@ -302,105 +309,54 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data,
 	})
-	require.Error(t, err, "a room-local placement must not load as an absolute one")
+	require.Error(t, err, "a room-chain blob must not load as a region one")
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
-	require.ErrorIs(t, err, encounter.ErrBadPlacement)
-	require.Contains(t, err.Error(), "rpg-toolkit#1106",
-		"the refusal names the change, so whoever reads it knows what to recreate")
-	require.Contains(t, err.Error(), "p1", "and names the member it could not place")
-}
-
-// TestASquareFieldMustFitOneGrid is W6, the one new construction law this
-// slice adds.
-//
-// The authored rooms compile into ONE grid, and a square grid is the half-open
-// rectangle [0,Width) x [0,Height) — it starts at the origin and cannot be
-// moved. So a field whose absolute footprint reaches a negative cell has no
-// grid to be drawn on, and construction says so rather than silently losing
-// the part that does not fit.
-//
-// The remedy is a relabeling, not a redesign, and the message says so: shifting
-// every Origin by the same vector moves the whole dungeon into the non-negative
-// quadrant and changes nothing about it.
-func TestASquareFieldMustFitOneGrid(t *testing.T) {
-	setup := func(origin spatial.Position) *encounter.SetupInput {
-		return &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
-			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms:  []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5, Origin: origin}},
-			},
-			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 0, Y: 0}},
-			},
-			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
-		}
-	}
-
-	_, err := encounter.NewEncounter(setup(spatial.Position{X: -3, Y: 0}))
-	require.Error(t, err)
 	require.ErrorIs(t, err, encounter.ErrNoField)
-	require.Contains(t, err.Error(), "(-3,0)", "the message names the cell that does not fit")
-	require.Contains(t, err.Error(), "shift every room Origin by the same vector",
-		"and names the remedy, which is a relabeling")
-
-	// The same dungeon, relabelled: legal, and identical in every way that
-	// matters, because a field's absolute frame only ever means "relative to
-	// the other rooms".
-	_, err = encounter.NewEncounter(setup(spatial.Position{X: 0, Y: 0}))
-	require.NoError(t, err)
+	require.Contains(t, err.Error(), "rpg-project#256",
+		"the refusal names the change, so whoever reads it knows what to recreate")
+	require.Contains(t, err.Error(), "rooms", "and names the key that gave the dialect away")
 }
 
-// TestAHexFieldNeedsNoSuchLaw is W6's other half: an axial hex grid is
-// origin-CENTRED, negative coordinates are ordinary there, and widening its
-// span always reaches further both ways — so a hex field always fits one grid
-// and this check never rejects one.
-func TestAHexFieldNeedsNoSuchLaw(t *testing.T) {
+// TestAFieldAlwaysFitsOneGrid is W6: an axial hex grid is origin-CENTRED,
+// negative coordinates are ordinary there, and widening its span always
+// reaches further both ways — so a field always fits one grid, wherever it is
+// painted.
+func TestAFieldAlwaysFitsOneGrid(t *testing.T) {
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{ID: "crypt", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
-					Origin: spatial.Position{X: -20, Y: -20}},
-			},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("crypt", -20, -20, 6, 6)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: -20, Y: -20}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
 	require.NoError(t, err, "a hex field anchored deep in the negative quadrant is ordinary")
 }
 
-// TestPropsAreCompiledThroughTheirRoomsAnchor is the prop half of the
+// TestPropsAreCompiledThroughTheOneConversion is the prop half of the
 // compile, pinned where it is observable: a sightline.
 //
 // The Atlas reports props absolute too, but it computes that projection
 // itself, from the same construction data — so an Atlas assertion cannot tell
 // whether the CANVAS got them right. This one can: the blocking column sits in
 // a chamber anchored well away from the origin, and the two members are placed
-// so that an unprojected prop would land in a different chamber entirely
-// and block nothing.
-func TestPropsAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
-	// A pillar wall three cells tall at hall-local x=5, y=2..4 — absolute
-	// x=14, y=6..8 through the hall's (9,4) anchor. Unprojected it would sit
-	// at (5,2..4), which is entrance floor and nowhere near the pair below.
+// so that a prop placed at its authored pair read as axial would land
+// somewhere else entirely and block nothing.
+func TestPropsAreCompiledThroughTheOneConversion(t *testing.T) {
+	// A pillar wall three cells tall at the hall's own x=5, y=2..4 —
+	// authored absolute [14, 6..8] through the hall's [9,4] anchor.
 	field := tombField()
-	for i := range field.Rooms {
-		if field.Rooms[i].ID == tombHall {
-			field.Rooms[i].Props = wallColumn(5, 2, 4)
-		}
-	}
+	field.Props = wallColumn(int(tombHallOrigin.X)+5, int(tombHallOrigin.Y)+2, int(tombHallOrigin.Y)+4)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 		Field: field,
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 3, Y: 3}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: tombHall,
-				Position: spatial.Position{X: 7, Y: 3}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 3, 3)},
+			{ID: bob, Kind: encounter.KindPlayer, Position: tombSeat(tombHallOrigin, 7, 3)},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -411,27 +367,23 @@ func TestPropsAreCompiledThroughTheirRoomsAnchor(t *testing.T) {
 	require.Empty(t, view, "the pillars stand between them, at the cells their room's anchor puts them")
 }
 
-// TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction.
+// TestAWallThatCannotBeDrawnIsRefusedAtConstruction.
 //
-// A wall's endpoints have to be two adjacent cells the canvas holds. When they
-// are not, spatial says so and construction stops there — R5, and the reason
-// this is worth a test of its own: compileCanvas is the one place a boundary is
-// registered for BOTH construction seams, so an error swallowed here would be
-// a wall the author declared and the encounter silently does not have.
-func TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
+// A wall's endpoints have to be two adjacent floor cells. When they are not,
+// construction says so and stops there — R5, and the reason this is worth a
+// test of its own: compileField is the one place a wall is checked for BOTH
+// construction seams, so an error swallowed here would be a wall the author
+// declared and the encounter silently does not have.
+func TestAWallThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
 	setup := func(b spatial.Boundary) *encounter.SetupInput {
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
-				Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-				Rooms: []encounter.RoomInput{
-					{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 4, Y: 4},
-						Boundaries: []spatial.Boundary{b}},
-				},
+				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+				Regions: []encounter.RegionInput{rectRegion("hall", 4, 4, 6, 6)}, Walls: []spatial.Boundary{b},
 			},
 			Members: []encounter.MemberInput{
-				{ID: alice, Kind: encounter.KindPlayer, Room: "hall",
-					Position: spatial.Position{X: 0, Y: 0}},
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 4}},
 			},
 			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		}
@@ -439,29 +391,24 @@ func TestABoundaryThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
 
 	t.Run("endpoints that are not adjacent", func(t *testing.T) {
 		_, err := encounter.NewEncounter(setup(spatial.Boundary{
-			From: spatial.Position{X: 0, Y: 0}, To: spatial.Position{X: 3, Y: 0},
+			From: spatial.Position{X: 4, Y: 4}, To: spatial.Position{X: 7, Y: 4},
 			BlocksMovement: true, BlocksLineOfSight: true,
 		}))
 		require.Error(t, err)
-		require.ErrorIs(t, err, encounter.ErrBadPlacement)
-		require.Contains(t, err.Error(), "adjacent")
+		require.ErrorIs(t, err, encounter.ErrEdgeNotAdjacent)
+		require.Contains(t, err.Error(), "walls[0]", "the message names the wall by its index")
 	})
 
-	t.Run("an endpoint off the canvas entirely", func(t *testing.T) {
-		// The hall's own (-5,0) projects to (-1,4), off the canvas: the field
-		// is anchored at (4,4) and a square canvas starts at (0,0), so there
-		// is no such cell to draw a wall to.
-		//
-		// A wall to a cell that is on the canvas but is NOT floor — the space
-		// between chambers — registers fine and is simply inert, since nothing
-		// can stand there anyway. That is the canvas spanning a bounding box
-		// rather than a footprint, said out loud.
+	t.Run("an endpoint that is not floor", func(t *testing.T) {
+		// The envelope is implied, never written: a crossing from floor into
+		// void is a crossing nobody can make, so a wall drawn along the rim
+		// has nothing to stand on.
 		_, err := encounter.NewEncounter(setup(spatial.Boundary{
-			From: spatial.Position{X: 0, Y: 0}, To: spatial.Position{X: -5, Y: 0},
+			From: spatial.Position{X: 4, Y: 4}, To: spatial.Position{X: 3, Y: 4},
 			BlocksMovement: true, BlocksLineOfSight: true,
 		}))
 		require.Error(t, err)
-		require.ErrorIs(t, err, encounter.ErrBadPlacement)
-		require.Contains(t, err.Error(), "valid positions")
+		require.ErrorIs(t, err, encounter.ErrEdgeOffFloor)
+		require.Contains(t, err.Error(), "[3,4]", "and names the endpoint that is void")
 	})
 }

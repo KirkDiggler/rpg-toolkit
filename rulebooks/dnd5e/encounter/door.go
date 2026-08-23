@@ -192,11 +192,12 @@ func (doorLocked) blocks() bool         { return true }
 // its own flags because a wall IS its flags; a door's edge is a pointer at the
 // thing that decides.
 //
-// ABSOLUTE rather than room-local, unlike [RoomInput.Boundaries]. A room's wall
-// is the room's to declare, but a door stands at the SEAM and belongs to
-// neither chamber it joins, so there is no room whose frame it is naturally in.
-// It is field-level for the same reason [ConnectionInput] is — and this is the
-// shape the content compiler (S5) emits, which is the caller this exists for.
+// ABSOLUTE AXIAL, unlike [FieldInput.Walls], whose endpoints are authored
+// offset pairs. A door is the one thing in a field whose identity outlives the
+// compile — its STATE persists under its ID and its edges are what a step
+// reports crossing ([StepOutput.Doors]) — so it is written in the frame every
+// verb speaks. The content compiler converts its edges through [HexCellAt]
+// once, which is the caller this shape exists for.
 type DoorEdge struct {
 	// From is one endpoint cell, dungeon-absolute.
 	From spatial.Position
@@ -311,48 +312,26 @@ func normalizeDoorEdge(e DoorEdge) DoorEdge {
 }
 
 // validateDoorInputs rejects door defects before construction (R5), at both
-// seams, and carries no verb prefix in its errors for buildValidRoomGrids'
-// reason: each caller wraps its own.
+// seams, and carries no verb prefix in its errors for compileField's reason:
+// each caller wraps its own.
 //
 // Every check here is about the door as DATA — a name, some edges, a state.
 // What the edges DO is spatial's, and this deliberately does not re-decide it.
 //
-// Requires at least one room and a grid per room, which both seams guarantee:
-// each rejects an empty room list at its door (NewEncounter's own first checks,
-// LoadEncounter's "no rooms") and each runs buildValidRoomGrids before this.
-//
 // The floor check is the one worth naming: a door's endpoints must both be
-// cells some chamber owns. A door hanging in the void is not a door, it is a
+// cells some region owns. A door hanging in the void is not a door, it is a
 // wall drawn across nothing — #880's rule ("both endpoints must be in the floor
-// footprint"), and the reason rpg-toolkit#1116's declaration has to land first
-// for this to even be askable.
-func validateDoorInputs(
-	rooms []RoomInput, grids map[string]spatial.Grid,
-	orientation Orientation, doors []DoorInput,
-) error {
+// footprint"), carried as ErrDoorEdgeOffFloor beside ErrBadDoor. Non-adjacent
+// endpoints carry ErrEdgeNotAdjacent the same way, so a wall and a door that
+// make the same mistake answer with the same sentinel.
+func validateDoorInputs(f *field, doors []DoorInput) error {
 	if len(doors) == 0 {
 		return nil
 	}
 
-	// Any room's grid answers adjacency for absolute cells: W1 gives every
-	// room in a field the same family, and both families' adjacency is
-	// translation-invariant. validateConnectionInputs' W3 check makes the same
-	// call, for the same reason.
-	grid := grids[rooms[0].ID]
-
 	seenIDs := make(map[DoorID]bool, len(doors))
 	seenEdges := make(map[DoorEdge]DoorID)
-
-	// Authored room walls, normalized absolute, so a door drawn on top of one
-	// is caught rather than silently winning or losing the registration race.
-	walls := make(map[DoorEdge]string)
-	for _, r := range rooms {
-		for _, b := range r.Boundaries {
-			walls[normalizeDoorEdge(DoorEdge{
-				From: absoluteOf(r, orientation, b.From), To: absoluteOf(r, orientation, b.To),
-			})] = r.ID
-		}
-	}
+	walls := f.wallEdges()
 
 	for _, d := range doors {
 		if d.ID == "" {
@@ -377,7 +356,7 @@ func validateDoorInputs(
 		for _, raw := range d.Edges {
 			edge := normalizeDoorEdge(raw)
 
-			if !isIntegralHexCell(grid, edge.From) || !isIntegralHexCell(grid, edge.To) {
+			if !isIntegralHexCell(edge.From) || !isIntegralHexCell(edge.To) {
 				return fmt.Errorf("door %q edge (%g,%g)-(%g,%g) is not an integral axial crossing: %w",
 					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor)
 			}
@@ -385,14 +364,14 @@ func validateDoorInputs(
 				return fmt.Errorf("door %q edge (%g,%g) has the same cell at both ends: %w",
 					d.ID, raw.From.X, raw.From.Y, ErrBadDoor)
 			}
-			if grid.Distance(edge.From, edge.To) != 1 {
-				return fmt.Errorf("door %q edge (%g,%g)-(%g,%g) joins cells that are not adjacent: %w",
-					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor)
+			if adjacencyGrid.Distance(edge.From, edge.To) != 1 {
+				return fmt.Errorf("door %q edge (%g,%g)-(%g,%g): %w: %w",
+					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor, ErrEdgeNotAdjacent)
 			}
 			for _, end := range []spatial.Position{edge.From, edge.To} {
-				if _, floor := regionAt(rooms, grids, orientation, end); !floor {
-					return fmt.Errorf("door %q edge endpoint (%g,%g) is not floor: %w",
-						d.ID, end.X, end.Y, ErrBadDoor)
+				if _, floor := f.regionOf(end); !floor {
+					return fmt.Errorf("door %q edge endpoint (%g,%g): %w: %w",
+						d.ID, end.X, end.Y, ErrBadDoor, ErrDoorEdgeOffFloor)
 				}
 			}
 			if owner, taken := seenEdges[edge]; taken {
@@ -405,9 +384,9 @@ func validateDoorInputs(
 			}
 			seenEdges[edge] = d.ID
 
-			if room, walled := walls[edge]; walled {
-				return fmt.Errorf("door %q stands in the crossing (%g,%g)-(%g,%g), where room %q already drew a wall: %w",
-					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, room, ErrBadDoor)
+			if walls[edge] {
+				return fmt.Errorf("door %q stands in the crossing (%g,%g)-(%g,%g), where a wall is already drawn: %w",
+					d.ID, raw.From.X, raw.From.Y, raw.To.X, raw.To.Y, ErrBadDoor)
 			}
 		}
 	}

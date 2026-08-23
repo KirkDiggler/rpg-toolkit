@@ -61,33 +61,28 @@ import (
 // CanvasInput is what the field DECLARES about its own canvas — the world facts
 // no rule can derive and this module is not allowed to pick.
 //
-// A struct with one field today, and a struct on purpose. "Can you see across
-// the space between the chambers" is the first of a species: facts that are
-// true of THIS dungeon, that arrive as construction data because there is
-// nowhere else they could come from. AMBIENT LIGHT IS THE NEXT ONE
-// (rpg-toolkit#1113) — "this dungeon is dark" is the same kind of sentence, and
-// it belongs beside this one rather than in a second mechanism invented for it.
-// That is the slot this type exists to hold open.
+// Two fields, both facts that are true of THIS dungeon and arrive as
+// construction data because there is nowhere else they could come from.
+// Light did NOT land here: it is a fact about an area, not about the space
+// between areas, so it lives on the region ([RegionInput.Lighting],
+// rpg-project#256 — closing rpg-toolkit#1113 by relocation).
 //
-// It is not a place for anything DERIVABLE. The canvas's dimensions, its grid
-// family, which cells are floor: all of those the authored rooms already say,
-// and a field that could state them twice would be a field that could state
-// them differently.
+// It is not a place for anything DERIVABLE. The canvas's dimensions and which
+// cells are floor: all of those the regions already say, and a field that
+// could state them twice would be a field that could state them differently.
 type CanvasInput struct {
-	// Void is what the space between the authored chambers does to a
+	// Void is what the space between the regions does to a
 	// sightline. REQUIRED — see [Void] for why there is no default to fall
 	// back on.
 	Void Void
 
-	// Orientation is which way this field's hexes point — REQUIRED for a hex
-	// field, and REFUSED for a square one, which has no orientation to
-	// declare. See [Orientation].
+	// Orientation is which way this field's hexes point — REQUIRED. See
+	// [Orientation].
 	//
-	// It sits here rather than on the room because it is a fact about the
-	// MAP: every chamber in one field is drawn on one grid, and a field whose
-	// rooms could disagree about which way its cells point would be a field
-	// whose seams do not meet. That is the same reason W1 gives one grid
-	// family to a whole field rather than one per room.
+	// It sits here rather than on the region because it is a fact about the
+	// MAP: every region in one field is painted on one grid, and a field
+	// whose regions could disagree about which way its cells point would be
+	// a field whose edges do not meet.
 	Orientation Orientation
 }
 
@@ -260,51 +255,11 @@ func voidFromData(name string) (Void, error) {
 type canvasRoom struct {
 	*spatial.BasicRoom
 
-	void Void
-
-	// rooms and grids are the SAME slices and maps the encounter holds, so
-	// asking this room what is floor and asking [Encounter.RegionAt] are one
-	// question — see IsLineOfSightBlocked.
-	rooms       []RoomInput
-	grids       map[string]spatial.Grid
-	orientation Orientation
-
-	// hasVoid is whether this field has any cell no chamber owns — see
-	// fieldHasVoid. Purely a cost decision: where there is no void, opaque and
-	// transparent MEAN THE SAME THING, and the scan below can only ever run to
-	// end of the ray and find nothing.
-	hasVoid bool
-}
-
-// fieldHasVoid reports whether any cell of the canvas belongs to no chamber.
-//
-// ARITHMETIC, NOT ENUMERATION, and that distinction is the whole reason this is
-// allowed to exist. W2 makes the chambers disjoint and W6 makes them fit, so
-// the union of their footprints has exactly the cell count their sum does, and
-// the canvas is void-free precisely when that sum fills it. Both grid families
-// count the same way: an AxialHexGrid of Width x Height holds Width*Height
-// integer (Q,R) pairs, exactly as a square grid holds Width*Height cells.
-//
-// IT COUNTS THE MASK, not a rhombus (rpg-toolkit#1127). Width*Height is the
-// authored floor count in BOTH families, because a chamber is an offset
-// rectangle either way and an offset rectangle has exactly Width*Height cells
-// however it shears when it becomes axial. What changed under hex is the other
-// side of the comparison: the canvas span is origin-centred and covers the
-// sheared footprint, so it is much larger than the floor and this reports void
-// where the rhombus reading used to report none. That is the honest answer —
-// see orientation.go for what the rhombus reading was getting wrong. The measured
-// case for it: on a twenty-chamber field whose rooms tile their canvas exactly,
-// deleting this check costs a sight refresh 121 ms against transparent's 30 ms —
-// and 46.7 MB of allocation against 24.2 MB — every byte of it spent proving
-// there was no void to find. With it, parity. Re-runnable: see
-// voidcost_internal_test.go.
-func fieldHasVoid(rooms []RoomInput, width, height int) bool {
-	var floor int64
-	for _, r := range rooms {
-		floor += int64(r.Width) * int64(r.Height)
-	}
-
-	return int64(width)*int64(height) != floor
+	// field is the compiled field this canvas was built from — the SAME
+	// owner map [Encounter.RegionAt] reads, so asking this room what is
+	// floor and asking the encounter are one question — see
+	// IsLineOfSightBlocked.
+	field *field
 }
 
 // IsLineOfSightBlocked reports whether sight between two cells is blocked,
@@ -333,12 +288,10 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // keeps this rule pinned to the boundary rule as spatial's rasterization
 // changes, rather than pinned to it by coincidence today.
 //
-// Floor is asked through [regionAt], the one function in this package that
-// turns an absolute cell into an owner. Not a copy of the rule and not a mask
-// beside it: a second answer to "is this floor" is exactly what region.go
-// exists to prevent, and rpg-toolkit#1105's ruling (4) deferred the floor mask
-// until a caller forces it — this one does not, because the question already
-// has an implementation.
+// Floor is asked through the compiled field's owner map, the one answer in
+// this package to which region holds a cell. Not a copy of the rule and not a
+// mask beside it: a second answer to "is this floor" is exactly what region.go
+// exists to prevent.
 //
 // Under [VoidTransparent] this is spatial's answer unchanged, which is the honest
 // shape of "the declaration decides": there is nothing to add to a sightline
@@ -370,9 +323,9 @@ func fieldHasVoid(rooms []RoomInput, width, height int) bool {
 // ratios did not; both are in voidcost_internal_test.go, which is where they
 // are re-runnable.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
-	if c.hasVoid && c.void.blocksSight() {
+	if c.field.hasVoid() && c.field.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
-			if _, floor := regionAt(c.rooms, c.grids, c.orientation, cell); !floor {
+			if _, floor := c.field.regionOf(cell); !floor {
 				return true
 			}
 		}

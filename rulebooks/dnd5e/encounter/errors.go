@@ -57,62 +57,44 @@ var (
 	// is called on a closed encounter. A closed encounter has an Outcome.
 	ErrClosed = errors.New("encounter closed")
 
-	// ErrNoField is returned when Setup is called without rooms, or when a
-	// declared room is itself defective — empty or duplicate ID, an
-	// unrecognized-or-no-longer-supported grid shape value (gridless
-	// included — RoomData's doc comment in data.go), a prop with no ref or
-	// with either blocking answer left unsaid (rpg-toolkit#1128 —
-	// [PropInput]), a non-integral prop cell in ANY family, not just hex
-	// (#929 T3 Opus round F2), two props on one cell within one room (#929
-	// hardening round D — previously escaped module validation and
-	// rejected only in spatial's own voice, an accident of the
-	// pre-index-based prop entity ID), a room carrying the retired
-	// `occluders` key at load (RoomData.Occluders), non-positive OR
-	// oversized Width/Height
-	// (maxRoomSpan), a
-	// per-room or field-total cell count exceeding maxRoomCells/
-	// maxFieldCells (allocation safety for Atlas — #929 T3 Opus round F1),
-	// an out-of-bounds Origin (maxAnchorCoord) or a non-representable one
-	// (non-integral, ±Inf, NaN — EVERY grid family, not just hex), or —
-	// Load-only, since RoomInput.Origin is a plain value and can't be
-	// absent the way RoomData.Origin's pointer can — a MISSING Origin (W5
-	// presence: a nil pointer means the field was absent from the blob,
-	// distinct from a declared zero — RoomData's doc comment in data.go)
-	// — or the room list as a whole is incoherent (W1: more than one grid
-	// family in one field; W2: two rooms' absolute footprints overlap) —
-	// a malformed room list is as unusable as an empty one.
+	// ErrNoField is returned when the field as a whole cannot be built
+	// (rpg-project#256): no regions at all; a region with an empty or
+	// duplicate ID, a non-integral or out-of-range cell (maxAnchorCoord), or
+	// a lighting intensity outside [0,1]; more cells than maxFieldCells across
+	// the field; a prop with no ref, with either blocking answer left unsaid
+	// (rpg-toolkit#1128 — [PropInput]), on a non-integral cell, or sharing a
+	// cell with another prop; a wall listed twice; or — Load-only — a blob
+	// carrying the retired `rooms` / `connections` keys (FieldData.Rooms),
+	// or a region whose lighting block omits its intensity. The region
+	// defects with a sentinel of their own (ErrRegionEmpty, ErrRegionOverlap,
+	// ErrRegionArchetypeMissing, ErrRegionLightingMissing) and the edge
+	// defects (ErrEdgeNotAdjacent, ErrEdgeOffFloor) carry that sentinel
+	// instead.
 	//
-	// Checked identically at Setup and Load (#929 T2): LoadEncounter routes
-	// room-list validation through the SAME buildValidRoomGrids Setup uses
-	// (LoadEncounter's doc comment in data.go), so W1, room-dimension
-	// legality, origin legality, and W2 reject a persisted blob exactly as
-	// they would a live SetupInput — Setup and Load can no longer drift on
-	// these checks by construction, not just by convention. The shared
-	// validator's own error messages carry no verb prefix — NewEncounter
-	// and LoadEncounter each wrap their own ("newencounter:" / "load
-	// encounter:") at their own call sites (#929 T2 second review round;
-	// buildValidRoomGrids' doc comment).
+	// Checked identically at Setup and Load: LoadEncounter converts the blob
+	// back into a [FieldInput] and routes it through the SAME compileField
+	// Setup uses, so the two seams cannot drift on these checks by
+	// construction, not just by convention. The shared validator's own
+	// messages carry no verb prefix — NewEncounter and LoadEncounter each
+	// wrap their own ("newencounter:" / "load encounter:") at the call site.
 	//
-	// Also returned when the field's absolute footprint cannot be drawn on a
-	// single grid of its family (W6, rpg-toolkit#1106): the canvas the rooms
-	// compile into is one grid, and a square field reaching a negative cell
-	// has no such grid — see canvasSpan, whose message names the remedy.
-	//
-	// And when the field does not say what its VOID is (rpg-toolkit#1116) —
-	// at Setup, a nil [CanvasInput.Void]; at Load, a blob whose canvas.void is
-	// absent or carries a word this build does not know. Field construction
-	// DATA, which is what this sentinel is for; the capability sentinels
-	// (ErrNoSight, ErrNoStanding) are for injected behaviour, not world facts.
-	// Both messages name the declaration and the two are worded apart, because
-	// "never declared" and "declared something I do not know" send whoever
-	// reads them to different places — see [Void] and voidFromData.
+	// And when the field does not say what its VOID is (rpg-toolkit#1116) or
+	// which way its hexes point (rpg-toolkit#1127) — at Setup, a nil
+	// [CanvasInput.Void] or [CanvasInput.Orientation]; at Load, a blob whose
+	// canvas says nothing or carries a word this build does not know. Field
+	// construction DATA, which is what this sentinel is for; the capability
+	// sentinels (ErrNoSight, ErrNoStanding) are for injected behaviour, not
+	// world facts. Both messages name the declaration and the two are worded
+	// apart, because "never declared" and "declared something I do not know"
+	// send whoever reads them to different places — see [Void] and
+	// voidFromData.
 	ErrNoField = errors.New("no field")
 
 	// ErrBadPlacement is returned when a placement or position is bad in
 	// a way runtime spatial state can catch (not declaration-time
-	// validation — that's ErrNoField/ErrBadConnection): a room or entity
+	// validation — that's ErrNoField and the region/edge sentinels): a room or entity
 	// lookup miss, a position out of bounds or (hex) non-integral, a
-	// member not standing at a connection's threshold, or an actual
+	// a prop placed on a cell no region owns, or an actual
 	// underlying spatial-package call (PlaceEntity, MoveEntity,
 	// RegisterBoundary, RemoveEntity) failing. Only the LAST class wraps an
 	// underlying spatial error — most call sites (moveMember's own
@@ -142,19 +124,56 @@ var (
 	// declared (0,0).
 	ErrBadPlacement = errors.New("bad placement")
 
-	// ErrBadConnection is returned when a connection's ID is empty or
-	// duplicated, its From/To names an unknown room or itself, an
-	// endpoint lies outside its room's bounds, is non-integral (hex
-	// rooms only), or sits on a prop's cell — or (W3) its two
-	// endpoints, once anchored to their rooms' Origin, are not adjacent
-	// absolute cells — or, Load-only, since ConnectionInput's endpoints
-	// are plain values and can't be absent the way ConnectionData's
-	// pointers can, a MISSING FromPosition or ToPosition (the connection
-	// analogue of ErrNoField's missing-Origin case). Checked identically
-	// at Setup and Load (#929 T2 — see ErrNoField's doc comment):
-	// LoadEncounter routes connection validation through the SAME
-	// validateConnectionInputs Setup uses.
-	ErrBadConnection = errors.New("bad connection")
+	// ErrRegionEmpty is returned when a region declares no cells
+	// (rpg-project#256). A region IS its cells — the floor is nothing but
+	// their union — so one with none is not a small room, it is a name with
+	// nothing under it, and an author who wrote it meant to paint something.
+	ErrRegionEmpty = errors.New("region has no cells")
+
+	// ErrRegionOverlap is returned when a cell belongs to two regions, or is
+	// listed twice by one (W2 — regions never overlap). Ownership has to be
+	// unique for [Encounter.RegionAt] to be an answer rather than a guess,
+	// and a cell painted twice is the one defect the builder's repaint can
+	// produce without noticing.
+	ErrRegionOverlap = errors.New("regions overlap")
+
+	// ErrRegionArchetypeMissing is returned when a region carries no
+	// archetype. An archetype is a presentation ref the assets resolve —
+	// "crypt", "cavern" — carried unread by this composition and NEVER a
+	// mechanic (rpg-project#256 ruling: v1's archetype chose the party's
+	// start, which is the #1033 trap). It is still REQUIRED: a region with no
+	// archetype is a region the assets cannot dress, and there is no default.
+	ErrRegionArchetypeMissing = errors.New("region has no archetype")
+
+	// ErrRegionLightingMissing is returned when a region carries no lighting
+	// block. Lighting is a per-region world fact carried through the
+	// composition unread (how an intensity becomes obscurement is a rule and
+	// lives in the rulebook), and it is REQUIRED for rpg-toolkit#1033's
+	// reason: a nil meaning "full light" or "no light" would be this module
+	// deciding a fact about a world it is not allowed to know.
+	ErrRegionLightingMissing = errors.New("region has no lighting")
+
+	// ErrEdgeNotAdjacent is returned when an authored edge — a wall in
+	// [FieldInput.Walls] or a door's [DoorEdge] — joins two cells that are
+	// not neighbours under the field's orientation. An edge is a crossing
+	// between adjacent cells and nothing else; "which cells are adjacent" is
+	// spatial's answer under the declared layout, never a pair of offsets to
+	// hardcode, and the same [col,row] pair is adjacent under one
+	// orientation and not the other.
+	ErrEdgeNotAdjacent = errors.New("edge joins cells that are not adjacent")
+
+	// ErrEdgeOffFloor is returned when a wall's endpoint is a cell no region
+	// owns. The envelope is implied, never written: a crossing from floor into
+	// void is a crossing nobody can make, and [Void] already says whether
+	// sight crosses it, so a wall drawn along the field's rim has nothing to
+	// stand on and is refused rather than silently dropped.
+	ErrEdgeOffFloor = errors.New("edge endpoint is not floor")
+
+	// ErrDoorEdgeOffFloor is returned when a door's endpoint is a cell no
+	// region owns — ErrEdgeOffFloor's rule for a door (#880: a door hanging in
+	// the void is a wall drawn across nothing). Wrapped together with
+	// ErrBadDoor, so a caller may match either.
+	ErrDoorEdgeOffFloor = errors.New("door edge endpoint is not floor")
 
 	// ErrInBubble is returned when a verb requires its member NOT be in a
 	// running bubble and they are: Form names a member already in a fight
