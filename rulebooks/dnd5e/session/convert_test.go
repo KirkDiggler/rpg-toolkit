@@ -43,13 +43,14 @@ var projectedPairs = []struct {
 	outer any
 }{
 	{"Atlas", encounter.Atlas{}, session.Atlas{}},
-	// The composition's per-room footprint is checked against the FLAT map it
-	// is folded into (rpg-toolkit#1042), not against a type of its own — there
-	// is no longer a room-shaped thing on this side. Pairing it this way keeps
-	// every field of a room accounted for: the ones that survive match by
-	// name, and the four that describe a room AS a room have to be justified
-	// below rather than quietly disappearing with the type that held them.
-	{"AtlasRoom folded into Atlas", encounter.AtlasRegion{}, session.Atlas{}},
+	// A region crosses as a region (rpg-project#256). It used to be folded
+	// into the flat map, because a room was a frame — an anchor and a span
+	// — and the one-map seam exists to hide frames. A region is a NAMED SET
+	// OF CELLS in the map's own frame, plus the facts true of that area;
+	// there is nothing in it to hide and a lighting level a client must not
+	// have to re-derive by experiment.
+	{"AtlasRegion", encounter.AtlasRegion{}, session.AtlasRegion{}},
+	{"AtlasProp", encounter.AtlasProp{}, session.AtlasProp{}},
 	{"AtlasBoundary", encounter.AtlasBoundary{}, session.AtlasBoundary{}},
 	{"AtlasDoorway", encounter.AtlasDoorway{}, session.AtlasDoorway{}},
 	{"Status", encounter.Status{}, session.Status{}},
@@ -89,31 +90,11 @@ var omitted = map[string]string{
 	// entered. The audience is a delivery rule, not story content.
 	"record.Entry.Audience": "delivery rule, not story content — naming it leaks unperceived members",
 
-	// The seam speaks ONE MAP (rpg-project#227). The composition keeps rooms
-	// and projects the absolute geometry out of them; by the time a map
-	// reaches a client the decomposition has done its job.
-	"encounter.Atlas.Regions":  "the decomposition itself — folded into the flat Cells/Props/Boundaries",
-	"encounter.AtlasRegion.ID": "a room id, which is exactly what the one-map seam stops carrying",
-	"encounter.AtlasRegion.Origin": "an anchor exists to project room-local coordinates, and nothing " +
-		"on this side has one left to project",
-	"encounter.AtlasRegion.Width":  "a room's span; the map's extent is the extent of Cells",
-	"encounter.AtlasRegion.Height": "a room's span; the map's extent is the extent of Cells",
-
-	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The room is
-	// the composition's own decomposition, and a caller that wanted it would
-	// be reconstructing the frame the reshape removed.
-	// Renamed from Room to Region when chambers became named regions of one
-	// canvas (rpg-toolkit#1127). The omission survives the rename, and it is
-	// the one worth arguing with: a region is now an AUTHORED name — "the
-	// hall", "the tomb" — rather than the incidental grouping it was when this
-	// entry was written. Telling a player which room they are standing in is a
-	// reasonable thing for a client to want.
-	//
-	// It stays omitted because a region id alone is not usable without the
-	// membership map that says which cells belong to it, and handing THAT over
-	// is handing back the decomposition this seam exists to flatten. If a
-	// client needs the name, the shape to give it is per-cell and
-	// viewer-authorised, not a global map.
+	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The region
+	// is derivable: the Atlas now lists every region's cells
+	// (rpg-project#256), so a client that wants the name of where somebody
+	// stands looks the cell up once in construction data rather than being
+	// told on every placement read.
 	"encounter.Member.Region":        "a region id; the seam reports the cell instead",
 	"encounter.MemberOutcome.Region": "a region id; the composition's own bookkeeping — Position already names the cell on the map",
 
@@ -132,14 +113,6 @@ var omitted = map[string]string{
 		"MonsterView.Seen, and a roster listing has no use for the raw range itself",
 	"encounter.Member.Actions":   "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Actions",
 	"encounter.Member.Targeting": "a TurnDriver-facing fact, carried verbatim via session.MonsterView.Targeting",
-
-	// A doorway's endpoints kept their meaning and lost their qualifier: on one
-	// map there is no second pair of From/To fields naming rooms to
-	// distinguish these from.
-	"encounter.AtlasDoorway.From":     "the source ROOM id; the doorway now carries only its two cells",
-	"encounter.AtlasDoorway.To":       "the destination ROOM id; same",
-	"encounter.AtlasDoorway.FromCell": "renamed to From, now that no room id competes for the name",
-	"encounter.AtlasDoorway.ToCell":   "renamed to To, for the same reason",
 }
 
 // TestEveryInnerFieldIsCarriedOrJustified is the completeness check.

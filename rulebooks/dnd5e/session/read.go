@@ -17,6 +17,13 @@ type AtlasInput struct {
 	Session string
 }
 
+// AtlasOfInput asks for the static map of an authored world that no session
+// holds — the same shape [StartSessionInput.World] takes.
+type AtlasOfInput struct {
+	// World is the authored content to describe. Required.
+	World *encounter.EncounterData
+}
+
 // StatusInput asks whether a session's encounter is still running.
 type StatusInput struct {
 	// Session is the session to report on.
@@ -77,6 +84,44 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 	atlas, err := enc.Atlas()
 	if err != nil {
 		return nil, fmt.Errorf("atlas: %w", translate(err))
+	}
+
+	projected := projectAtlas(atlas)
+	return &projected, nil
+}
+
+// AtlasOf projects the map of an authored world that no session holds.
+//
+// The same map [Manager.Atlas] answers for a started session — the same load
+// ([Manager.loadAuthored], shared with StartSession's own validation), the
+// same projection — for a world a host has only compiled. A dungeon registry
+// answers "what does this dungeon look like" with it (rpg-api's
+// PutDungeonResponse.atlas, rpg-project#256) without starting anything, and
+// because the producer is shared, what a builder previews is what the game
+// will play: one projection, one producer, no second geometry to keep in
+// step.
+//
+// A Manager method rather than a package function, deliberately. A load
+// needs the capabilities a Manager is built with — initiative, standing,
+// sight, a turn driver — and the only construction-only stand-in the
+// composition exports is its Striker. A free function would have to invent
+// the other four, which is exactly the defaulted capability this stack
+// forbids.
+//
+// Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil world or one
+// that will not load.
+func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error) {
+	if in == nil {
+		return nil, fmt.Errorf("atlasof: %w", ErrNilInput)
+	}
+	enc, err := m.loadAuthored(ctx, in.World)
+	if err != nil {
+		return nil, fmt.Errorf("atlasof: %w", err)
+	}
+
+	atlas, err := enc.Atlas()
+	if err != nil {
+		return nil, fmt.Errorf("atlasof: %w", translate(err))
 	}
 
 	projected := projectAtlas(atlas)
@@ -378,8 +423,7 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrClosed)
 	case errors.Is(err, encounter.ErrNoEnding):
 		return fmt.Errorf("%w", ErrNoEnding)
-	case errors.Is(err, encounter.ErrBadConnection),
-		errors.Is(err, encounter.ErrNoDoor),
+	case errors.Is(err, encounter.ErrNoDoor),
 		errors.Is(err, encounter.ErrBadDoor):
 		return fmt.Errorf("%w", ErrNoConnection)
 	case errors.Is(err, encounter.ErrLocked):

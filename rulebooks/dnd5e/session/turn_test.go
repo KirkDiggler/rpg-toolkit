@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // TurnTestSuite covers the per-member turn read and EndTurn.
@@ -42,7 +41,7 @@ func (s *TurnTestSuite) SetupTest() {
 func (s *TurnTestSuite) fight() {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: ambushPath(),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "the scene must actually put them in a fight")
@@ -251,7 +250,7 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	s.Require().NoError(err)
 	_, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "ptr", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: ambushPath(),
 	})
 	s.Require().NoError(err)
 
@@ -296,7 +295,7 @@ func (s *TurnTestSuite) TestTurnCarriesParticipants() {
 	// empty rather than faked.
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: ambushPath(),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "the scene must actually put them in a fight")

@@ -50,7 +50,7 @@ func Example_theSession() {
 
 	if _, err := mgr.Join(ctx, &session.JoinInput{
 		Session: "tomb-run", Member: "bob",
-		Position: spatial.Position{X: 1, Y: 3},
+		Position: hexCell(6, 1),
 	}); err != nil {
 		panic(err)
 	}
@@ -85,7 +85,7 @@ func Example_theSession() {
 	// -- a finished encounter is a record --
 	fmt.Println("-- afterwards --")
 	_, err = mgr.Move(ctx, &session.MoveInput{
-		Session: "tomb-run", Member: "bob", Path: []spatial.Position{{X: 1, Y: 2}},
+		Session: "tomb-run", Member: "bob", Path: []spatial.Position{hexCell(7, 1)},
 	})
 	fmt.Printf("  bob tries to move: %v\n", err != nil)
 
@@ -107,7 +107,7 @@ func Example_theSession() {
 
 	// Output:
 	// -- the party enters --
-	//   the map is 64 cells on a square grid
+	//   the map is 64 cells on a hex grid
 	// -- alice walks toward the stairs --
 	//   asked for 5 cells, walked 3
 	//     alice enters (2,1)
@@ -118,7 +118,7 @@ func Example_theSession() {
 	//   bob tries to move: true
 	//   but the story still reads: open=false, ended by "stairs"
 	//     alice at (4,1)
-	//     bob at (1,3)
+	//     bob at (6,1)
 }
 
 // Example_theFightThatStartsItself is the host's whole "a fight broke out"
@@ -145,7 +145,7 @@ func Example_theFightThatStartsItself() {
 		panic(err)
 	}
 
-	path := []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}}
+	path := ambushPath()
 	out, err := mgr.Move(ctx, &session.MoveInput{Session: "run", Member: "alice", Path: path})
 	if err != nil {
 		panic(err)
@@ -165,7 +165,7 @@ func Example_theFightThatStartsItself() {
 	// (rpg-toolkit#1169). This cell costs 5 of the feet her speed banked at
 	// the top of the fight.
 	out, err = mgr.Move(ctx, &session.MoveInput{
-		Session: "run", Member: "alice", Path: []spatial.Position{{X: 2, Y: 3}},
+		Session: "run", Member: "alice", Path: []spatial.Position{hexCell(1, 3)},
 	})
 	if err != nil {
 		panic(err)
@@ -190,13 +190,13 @@ func (panicFataler) Fatalf(format string, args ...any) {
 func authoredTomb() *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 4, Y: 1},
+				Position: spatial.Position{X: 4, Y: 1},
 			}},
 		},
 		Retention: encounter.RetentionUnbounded,

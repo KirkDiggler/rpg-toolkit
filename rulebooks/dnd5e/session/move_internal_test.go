@@ -45,22 +45,21 @@ func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
 }
 
-// walkWorld is two rooms of DIFFERENT sizes, anchored away from the origin.
+// walkWorld is two regions of DIFFERENT sizes, painted away from the origin.
 // Different sizes on purpose: the grid this seam builds used to take the
 // walker's own room's span, so a fixture whose rooms agree could not tell a
 // span that mattered from one that never did.
-func walkWorld(t *testing.T, family spatial.GridShape) *encounter.Encounter {
+func walkWorld(t *testing.T) *encounter.Encounter {
 	t.Helper()
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: &sightSeam{},
 		Initiative: walkOrderAsGiven{}, TurnDriver: passDriver{}, Standing: walkEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: canvasFor(family), Rooms: []encounter.RoomInput{
-			{ID: "hall", Width: 4, Height: 4, Grid: family, Origin: spatial.Position{X: 30, Y: 40}},
-			{ID: "annex", Width: 12, Height: 12, Grid: family, Origin: spatial.Position{X: 60, Y: 40}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{
+			rectRegion("hall", 30, 40, 4, 4),
+			rectRegion("annex", 60, 40, 12, 12),
 		}},
 		Members: []encounter.MemberInput{{
-			ID: "alice", Kind: encounter.KindPlayer, Room: "hall",
-			Position: spatial.Position{X: 1, Y: 1},
+			ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 31, Y: 41},
 		}},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -83,15 +82,21 @@ func walkWorld(t *testing.T, family spatial.GridShape) *encounter.Encounter {
 // carrying a real span again — which is the point of asserting it here rather
 // than trusting a comment.
 func TestTheAdjacencyGridIsSpanIndependent(t *testing.T) {
-	grid, err := gridOf(walkWorld(t, spatial.GridShapeSquare))
+	grid, err := gridOf(walkWorld(t))
 	require.NoError(t, err)
 
-	// Far outside adjacencySpan, in both rooms and in the void between them.
-	require.True(t, grid.IsAdjacent(spatial.Position{X: 31, Y: 41}, spatial.Position{X: 32, Y: 42}),
-		"a diagonal step deep inside the hall")
-	require.True(t, grid.IsAdjacent(spatial.Position{X: 64, Y: 47}, spatial.Position{X: 65, Y: 47}),
+	// Far outside adjacencySpan, in both regions. The grid speaks AXIAL, so
+	// the authored [col,row] pairs the fixture paints are converted the one
+	// way everything else is (the composition's HexCellAt) before they are
+	// asked about — two cells on one authored row are always neighbours.
+	at := func(col, row int) spatial.Position {
+		return encounter.HexCellAt(encounter.HexesArePointyTop(), col, row)
+	}
+	require.True(t, grid.IsAdjacent(at(31, 41), at(32, 41)),
+		"a step east deep inside the hall")
+	require.True(t, grid.IsAdjacent(at(64, 47), at(65, 47)),
 		"and one deep inside the annex, whose span is three times the hall's")
-	require.False(t, grid.IsAdjacent(spatial.Position{X: 31, Y: 41}, spatial.Position{X: 33, Y: 41}),
+	require.False(t, grid.IsAdjacent(at(31, 41), at(33, 41)),
 		"two cells apart is still two cells apart")
 }
 
@@ -104,7 +109,7 @@ func TestTheAdjacencyGridIsSpanIndependent(t *testing.T) {
 // one passes almost every hex fixture and fails only on the diagonals, which is
 // a previously-shipped defect class in this codebase.
 func TestTheAdjacencyGridUsesCubeDistanceOnHex(t *testing.T) {
-	grid, err := gridOf(walkWorld(t, spatial.GridShapeHex))
+	grid, err := gridOf(walkWorld(t))
 	require.NoError(t, err)
 
 	require.True(t, grid.IsAdjacent(spatial.Position{X: 30, Y: 40}, spatial.Position{X: 31, Y: 40}),
@@ -121,12 +126,12 @@ func TestTheAdjacencyGridUsesCubeDistanceOnHex(t *testing.T) {
 // composition queries and a silent-fallback helper to return the number the
 // first query already had.
 func TestStandsAtReadsTheRosterRow(t *testing.T) {
-	enc := walkWorld(t, spatial.GridShapeSquare)
+	enc := walkWorld(t)
 
 	at, err := standsAt(enc, "alice")
 	require.NoError(t, err)
-	require.Equal(t, spatial.Position{X: 31, Y: 41}, at,
-		"hall-local (1,1) through the hall's (30,40) anchor, as the roster already reported it")
+	require.Equal(t, encounter.HexCellAt(encounter.HexesArePointyTop(), 31, 41), at,
+		"authored [31,41] as one axial cell, as the roster already reported it")
 
 	members, err := enc.Members()
 	require.NoError(t, err)
@@ -136,21 +141,23 @@ func TestStandsAtReadsTheRosterRow(t *testing.T) {
 // TestStandsAtRefusesSomebodyWhoIsNotHere keeps the verb's own sentinel on the
 // path a caller can actually drive.
 func TestStandsAtRefusesSomebodyWhoIsNotHere(t *testing.T) {
-	_, err := standsAt(walkWorld(t, spatial.GridShapeSquare), "nobody")
+	_, err := standsAt(walkWorld(t), "nobody")
 	require.ErrorIs(t, err, ErrNoMember)
 }
 
-// canvasFor declares the canvas a walkWorld of this family needs.
-//
-// Orientation is REQUIRED on hex and must be absent on square: the composition
-// refuses a hex field that does not say which way its hexes point, because the
-// same authored rectangle covers different cells under each layout
-// (rpg-toolkit#1127). Square has no such choice to make.
-func canvasFor(family spatial.GridShape) encounter.CanvasInput {
-	canvas := encounter.CanvasInput{Void: encounter.VoidIsOpaque()}
-	if family == spatial.GridShapeHex {
-		canvas.Orientation = encounter.HexesArePointyTop()
-	}
+// pointyCanvas and rectRegion are the internal package's copies of the
+// external fixture helpers (regionfixtures_test.go): a Go test in package
+// session cannot see package session_test.
+func pointyCanvas() encounter.CanvasInput {
+	return encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}
+}
 
-	return canvas
+func rectRegion(id string, col, row, w, h int) encounter.RegionInput {
+	cells := make([]spatial.Position, 0, w*h)
+	for r := 0; r < h; r++ {
+		for c := 0; c < w; c++ {
+			cells = append(cells, spatial.Position{X: float64(col + c), Y: float64(row + r)})
+		}
+	}
+	return encounter.RegionInput{ID: id, Name: id, Cells: cells, Archetype: "crypt", Lighting: &encounter.Lighting{Intensity: 1}}
 }

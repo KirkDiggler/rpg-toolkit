@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 type aggregateRecordOrderAsGiven struct{}
@@ -66,12 +67,12 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 		Standing:   aggregateRecordEveryoneStanding{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "hall", Width: 4, Height: 4}},
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall"},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall"},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})

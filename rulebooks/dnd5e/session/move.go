@@ -638,21 +638,17 @@ func gridOf(enc *encounter.Encounter) (spatial.Grid, error) {
 	}
 
 	switch family {
-	case spatial.GridShapeSquare:
-		return spatial.NewSquareGrid(spatial.SquareGridConfig{
-			Width:  adjacencySpan,
-			Height: adjacencySpan,
-		}), nil
 	case spatial.GridShapeHex:
 		return spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{
 			SpanWidth:  adjacencySpan,
 			SpanHeight: adjacencySpan,
 		}), nil
 	default:
-		// Unreachable: the composition rejects every other family at both
-		// Setup and Load. Refused rather than defaulted to square, because a
-		// family we do not understand answered with one we do is a wrong
-		// answer dressed as a working one.
+		// Unreachable: hex is the only family a field has had since the
+		// square one left with the room chain (rpg-project#256). Still asked
+		// and still refused rather than assumed, because a family we do not
+		// understand answered with one we do is a wrong answer dressed as a
+		// working one — and the two families disagree on the diagonals.
 		return nil, fmt.Errorf("unknown grid family: %w", ErrInvalidWorld)
 	}
 }

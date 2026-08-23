@@ -70,18 +70,19 @@ func armedBarbarian(id string) *character.Data {
 }
 
 // twoPlayerTomb is one open hall wide enough to close a few cells of
-// distance in, walled at column atX exactly as
-// TestBlindSkeletonBehindAWallNeverJoinsTheFight's own fixture is — the
-// same fullColumnWall this file's sibling already defines, reused rather
+// distance in, walled solid between authored columns atX and atX+1 exactly
+// as TestBlindSkeletonBehindAWallNeverJoinsTheFight's own fixture is — the
+// same hexSeamWalls every seam in this package is drawn with, reused rather
 // than re-derived so a wall in this suite means what it already means
-// everywhere else in this package.
+// everywhere else.
 func twoPlayerTomb(t fataler, width, height, atX int) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "tomb", Width: width, Height: height, Boundaries: fullColumnWall(atX, height)},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
+			Walls:   hexSeamWalls(atX+1, height, -1),
+		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 	})

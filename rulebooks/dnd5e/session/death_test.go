@@ -68,12 +68,13 @@ func cryptWorld(t fataler) *encounter.EncounterData {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "crypt", Width: 10, Height: 10, Props: occludingProps(occluders...)},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
+			Props:   occludingProps(occluders...),
+		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "crypt", Position: spatial.Position{X: 8, Y: 8}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 8, Y: 8}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -137,7 +138,7 @@ func (s *DeathTestSuite) aliceSwings() *session.AttackOutput {
 // world look: every sight refresh consults the rulebook about who is standing.
 func (s *DeathTestSuite) bobSteps() {
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 8, Y: 7}},
+		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(8, 7)},
 	})
 	s.Require().NoError(err)
 }
@@ -695,7 +696,7 @@ func (s *DeathTestSuite) TestAMemberWithNoSheetIsUp() {
 
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}},
+		Path: ambushPath()[:3],
 	})
 	s.Require().NoError(err, "a sheetless monster is not a broken world")
 	s.Require().NotNil(out.Formed, "and it is an enemy, not a casualty")

@@ -37,10 +37,9 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
 		{"closed encounter", encounter.ErrClosed, ErrClosed},
 		{"undeclared ending", encounter.ErrNoEnding, ErrNoEnding},
-		{"malformed connection", encounter.ErrBadConnection, ErrNoConnection},
-		// Doors arrived as things with identity and state (the S4 slice), so
-		// the two ways of naming one badly translate where a bad connection
-		// already did: from the caller's side they are the same mistake.
+		// Doors are things with identity and state (the S4 slice), and since
+		// rpg-project#256 they are the only crossing with a name: a connection
+		// was a room-chain artefact, and its sentinel left with the rooms.
 		{"no such door", encounter.ErrNoDoor, ErrNoConnection},
 		{"malformed door", encounter.ErrBadDoor, ErrNoConnection},
 		// A locked door is a FICTION BEAT and gets its own sentinel: there is a

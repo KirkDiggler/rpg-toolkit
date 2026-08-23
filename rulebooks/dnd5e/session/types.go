@@ -24,12 +24,14 @@ import "github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 // persists grid this way for the same reason: an iota is an in-process
 // enumeration order, not a wire contract, and reordering it upstream would
 // silently reinterpret every stored and transmitted value.
+//
+// One value today. The square family left with the room chain
+// (rpg-project#256), so GridHex is the only kind a map can report — but the
+// field stays on the wire, because a client doing grid arithmetic should
+// learn which arithmetic to do from the map rather than assume it.
 type GridKind string
 
 const (
-	// GridSquare is a square grid, where distance is Chebyshev.
-	GridSquare GridKind = "square"
-
 	// GridHex is a hex grid addressed in axial coordinates, where distance is
 	// measured in cube space.
 	GridHex GridKind = "hex"
@@ -63,31 +65,31 @@ const (
 
 // Atlas is the static world map in dungeon-absolute space.
 //
-// ONE MAP. The composition underneath keeps rooms and projects the absolute
-// geometry out of them (rpg-project#227); by the time a map reaches here the
-// decomposition has done its job and is nobody else's business. What a client
-// renders is a set of cells, the ones that block sight, the walls between
-// cells, and the doorways — not a list of chambers with anchors and spans it
-// would have to reassemble.
+// ONE MAP (rpg-project#227). What a client renders is a set of cells, the
+// things standing on them, the walls between cells, and the doorways — not a
+// list of chambers with anchors and spans it would have to reassemble. The
+// regions beside them (rpg-project#256) are not that list coming back: a
+// region is a NAMED SET of the same cells, in the same frame, carrying the
+// facts that are true of an area — nothing a client has to project through.
 //
 // Construction truth: unchanged by movement, joins, exits, or endings. Cache
-// it per encounter rather than fetching it per frame.
+// it per encounter rather than fetching it per frame. The same map is
+// answered for a world nobody has started by [Manager.AtlasOf].
 //
-// The INBOUND direction is deliberately different, and worth saying out loud
-// so the asymmetry is not read as an oversight: StartSessionInput.World is
-// authored content and still speaks rooms. Authoring is construction data,
-// and the one-map rule governs what a session SEES while it plays.
+// The INBOUND direction is a different shape, and worth saying out loud so
+// the asymmetry is not read as an oversight: StartSessionInput.World is
+// authored content, whose cells are offset pairs under an orientation.
+// Authoring is construction data, and the one-map rule governs what a
+// session SEES while it plays.
 type Atlas struct {
-	// Grid is the coordinate family the whole map speaks. One value, not one
-	// per room: a field has a single grid family by law (W1), so a per-room
-	// grid was the same answer repeated.
+	// Grid is the coordinate family the whole map speaks — always GridHex
+	// as of rpg-project#256. See [GridKind] for why it is still said.
 	Grid GridKind `json:"grid"`
 
-	// Layout is how to lay the cells out to draw them, present exactly when
-	// Grid is hex and absent otherwise — the composition's own law (a hex
-	// field must declare an orientation, a square field must not) mirrored at
-	// the wire. Not a default: a square map that said pointy_top would be a
-	// client believing something that cannot be true about its grid.
+	// Layout is how to lay the cells out to draw them. Always present, since
+	// every map is hex and a hex field must declare an orientation; omitempty
+	// stays so that the absence of one — impossible today — would be visible
+	// on the wire rather than defaulted.
 	Layout HexLayout `json:"layout,omitempty"`
 
 	// Cells is every cell of the map, sorted by coordinate. Occluded cells
@@ -115,8 +117,47 @@ type Atlas struct {
 	// Boundaries is every wall and barrier on the map, sorted by endpoint.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
 
-	// Doorways is every crossable cell pair, sorted by connection ID.
+	// Doorways is every door's every edge, sorted by door ID then cell.
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
+
+	// Regions is every named area of the map, sorted by ID, each listing the
+	// cells it owns in the same frame and order Cells uses (rpg-project#256).
+	// Every cell in Cells appears in exactly one region's Cells.
+	//
+	// Regions ride beside the cells rather than around them: a client still
+	// draws ONE MAP from Cells, Props, Boundaries and Doorways, and reads the
+	// regions for the facts that are true of an area — what it looks like and
+	// how bright it is — which a client that could not read them off the wire
+	// would re-derive by experiment.
+	Regions []AtlasRegion `json:"regions,omitempty"`
+}
+
+// AtlasRegion is one named set of cells with the world facts it carries.
+type AtlasRegion struct {
+	// ID is the region's identifier.
+	ID string `json:"id"`
+
+	// Name is the region's display name, carried verbatim. May be empty.
+	Name string `json:"name,omitempty"`
+
+	// Cells is every cell the region owns, in dungeon-absolute space, sorted
+	// by coordinate — a subset of [Atlas.Cells], in the same frame.
+	Cells []spatial.Position `json:"cells,omitempty"`
+
+	// Archetype is the presentation profile the assets resolve for this
+	// region — "crypt". Never a mechanic.
+	Archetype string `json:"archetype"`
+
+	// Lighting is the region's light level.
+	Lighting Lighting `json:"lighting"`
+}
+
+// Lighting is an area's light level: the dimmer on top of the archetype.
+type Lighting struct {
+	// Intensity is the light level in [0,1]: 0 is no light, 1 is full light.
+	//
+	// No omitempty: zero is dark, which is an answer, not an absence.
+	Intensity float64 `json:"intensity"`
 }
 
 // AtlasProp is one thing standing on the map, in dungeon-absolute space.
@@ -166,13 +207,14 @@ type AtlasBoundary struct {
 // absolute space, which is what makes crossing one an ordinary step rather
 // than a jump between coordinate systems.
 //
-// It keeps an identifier and carries no room, because a doorway is a thing
-// with identity — a door that can be closed or locked is a capability still
-// ahead of this, and it will need to name one — while the rooms on either
-// side are the composition's own decomposition.
+// It names its door and nothing else, because a doorway is a thing with
+// identity — a door can be closed or locked, and the verbs that do so name
+// one — while which regions lie on either side is readable from the regions
+// themselves.
 type AtlasDoorway struct {
-	// Connection is the doorway's identifier.
-	Connection string `json:"connection"`
+	// Door is the identifier of the door standing in this crossing. A door
+	// with several edges appears once per edge under the same ID.
+	Door string `json:"door"`
 
 	// From is one of the two cells, in dungeon-absolute space.
 	From spatial.Position `json:"from"`

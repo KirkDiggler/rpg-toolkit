@@ -29,31 +29,31 @@ func TestAtlasMapSuite(t *testing.T) {
 	suite.Run(t, new(AtlasMapSuite))
 }
 
-// backwardsWorld is two 4x4 square rooms joined by a doorway, anchored so that
-// ROOM ORDER AND COORDINATE ORDER DISAGREE: the alphabetically-first room
-// ("alpha") sits to the RIGHT, at x 4..7, and "beta" occupies x 0..3.
+// backwardsWorld is two 4x4 regions joined by a door, painted so that REGION
+// ORDER AND COORDINATE ORDER DISAGREE: the alphabetically-first region
+// ("alpha") sits to the RIGHT, at columns 4..7, and "beta" occupies 0..3.
 //
 // That disagreement is the entire reason this fixture exists rather than
-// reusing hexWorld. There, the first room by ID is also the leftmost, so a map
-// concatenated room by room comes out in coordinate order BY ACCIDENT — and an
-// order pin written against it passes with the sorting deleted, which is
-// exactly what the first version of this file did.
+// reusing hexWorld. There, the first region by ID is also the leftmost, so a
+// map concatenated region by region comes out in coordinate order BY ACCIDENT
+// — and an order pin written against it passes with the sorting deleted,
+// which is exactly what the first version of this file did.
 func backwardsWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "alpha", Width: 4, Height: 4, Origin: spatial.Position{X: 4, Y: 0}},
-				{ID: "beta", Width: 4, Height: 4, Origin: spatial.Position{X: 0, Y: 0}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("alpha", 4, 0, 4, 4),
+				rectRegion("beta", 0, 0, 4, 4),
 			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "alpha", To: "beta",
-				FromPosition: spatial.Position{X: 0, Y: 0},
-				ToPosition:   spatial.Position{X: 3, Y: 0},
+			Doors: []encounter.DoorInput{{
+				ID:    "gate",
+				Edges: []encounter.DoorEdge{{From: hexCell(4, 0), To: hexCell(3, 0)}},
+				State: encounter.DoorIsOpen(),
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "beta", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -71,10 +71,9 @@ func (s *AtlasMapSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 
-	// Both rooms are anchored away from where their local coordinates would
-	// put them, which is what makes the projection observable at all: in a
-	// field where a room sits at (0,0), local and absolute are the same number
-	// and a map that never projected would look identical to one that did.
+	// Alpha is painted away from the origin, so its cells only exist at
+	// coordinates a projection that dropped or duplicated a region could
+	// not produce by accident.
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: backwardsWorld(s.T()),
 	})
@@ -98,14 +97,19 @@ func (s *AtlasMapSuite) atlas() *session.Atlas {
 // instead of passing review.
 func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 	s.Equal(
-		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways"},
+		[]string{"Grid", "Layout", "Cells", "Props", "Boundaries", "Doorways", "Regions"},
 		fieldsOf(session.Atlas{}),
-		"the map is a grid, which way its hexes point, its cells, the things standing on it, its walls, and its doorways",
+		"the map is a grid, which way its hexes point, its cells, the things standing on it, its walls, its doorways, and its regions",
 	)
 	s.Equal(
-		[]string{"Connection", "From", "To"},
+		[]string{"ID", "Name", "Cells", "Archetype", "Lighting"},
+		fieldsOf(session.AtlasRegion{}),
+		"a region is a named set of cells and the facts true of that area — never a frame of its own",
+	)
+	s.Equal(
+		[]string{"Door", "From", "To"},
 		fieldsOf(session.AtlasDoorway{}),
-		"a doorway is an identity and two cells",
+		"a doorway is a door's identity and two cells",
 	)
 	s.Equal(
 		[]string{"From", "To", "BlocksMovement", "BlocksLineOfSight"},
@@ -123,18 +127,17 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 func (s *AtlasMapSuite) TestTheMapIsEveryCellOnce() {
 	atlas := s.atlas()
 
-	s.Len(atlas.Cells, 32, "two 4x4 rooms, folded into one map")
+	s.Len(atlas.Cells, 32, "two 4x4 regions, folded into one map")
 
 	seen := map[spatial.Position]bool{}
 	for _, cell := range atlas.Cells {
-		s.False(seen[cell], "cell %v appears twice on a map whose rooms cannot overlap", cell)
+		s.False(seen[cell], "cell %v appears twice on a map whose regions cannot overlap", cell)
 		seen[cell] = true
 	}
 
-	// Cells from BOTH anchors are present, and alpha's only exist at these
-	// coordinates if the projection happened.
-	s.True(seen[spatial.Position{X: 0, Y: 0}], "beta's corner, anchored at the origin")
-	s.True(seen[spatial.Position{X: 7, Y: 3}], "alpha's far corner, anchored at (4,0)")
+	// Cells from BOTH regions are present.
+	s.True(seen[hexCell(0, 0)], "beta's corner, at the origin")
+	s.True(seen[hexCell(7, 3)], "alpha's far corner, painted at [4,0]")
 }
 
 // TestTheMapIsInCoordinateOrder guards the subtler half of flattening.
@@ -161,11 +164,10 @@ func (s *AtlasMapSuite) TestADoorwayIsTwoAdjacentCells() {
 	s.Require().Len(atlas.Doorways, 1)
 
 	gate := atlas.Doorways[0]
-	s.Equal("gate", gate.Connection)
-	s.Equal(spatial.Position{X: 4, Y: 0}, gate.From, "alpha-local (0,0), anchored at (4,0)")
-	s.Equal(spatial.Position{X: 3, Y: 0}, gate.To, "beta-local (3,0), anchored at the origin")
-	s.Equal(float64(1), gate.From.X-gate.To.X, "one step apart on the map")
-	s.Equal(gate.From.Y, gate.To.Y)
+	s.Equal("gate", gate.Door)
+	s.Equal(hexCell(3, 0), gate.From, "beta's east edge, first in coordinate order")
+	s.Equal(hexCell(4, 0), gate.To, "alpha's west edge")
+	s.Equal(1, hexSteps(gate.From, gate.To), "one step apart on the map")
 }
 
 // fieldsOf reports a struct's exported field names in declaration order.

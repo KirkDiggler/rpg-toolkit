@@ -33,6 +33,7 @@ package session_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -55,25 +56,34 @@ import (
 // here — and if that addition turns this test red, a leak has been found rather
 // than a chore created.
 var compositionSentinels = map[string]error{
-	"encounter.ErrNilInput":      encounter.ErrNilInput,
-	"encounter.ErrNoMember":      encounter.ErrNoMember,
-	"encounter.ErrNotMember":     encounter.ErrNotMember,
-	"encounter.ErrNoEnding":      encounter.ErrNoEnding,
-	"encounter.ErrClosed":        encounter.ErrClosed,
-	"encounter.ErrNoField":       encounter.ErrNoField,
-	"encounter.ErrBadPlacement":  encounter.ErrBadPlacement,
-	"encounter.ErrBadConnection": encounter.ErrBadConnection,
-	"encounter.ErrNoDoor":        encounter.ErrNoDoor,
-	"encounter.ErrBadDoor":       encounter.ErrBadDoor,
-	"encounter.ErrLocked":        encounter.ErrLocked,
-	"encounter.ErrNoRegion":      encounter.ErrNoRegion,
-	"encounter.ErrInBubble":      encounter.ErrInBubble,
-	"encounter.ErrNoBubble":      encounter.ErrNoBubble,
-	"encounter.ErrBadClock":      encounter.ErrBadClock,
-	"encounter.ErrInvalidData":   encounter.ErrInvalidData,
-	"encounter.ErrTrimmed":       encounter.ErrTrimmed,
-	"encounter.ErrNoInitiative":  encounter.ErrNoInitiative,
-	"encounter.ErrNoStanding":    encounter.ErrNoStanding,
+	"encounter.ErrNilInput":     encounter.ErrNilInput,
+	"encounter.ErrNoMember":     encounter.ErrNoMember,
+	"encounter.ErrNotMember":    encounter.ErrNotMember,
+	"encounter.ErrNoEnding":     encounter.ErrNoEnding,
+	"encounter.ErrClosed":       encounter.ErrClosed,
+	"encounter.ErrNoField":      encounter.ErrNoField,
+	"encounter.ErrBadPlacement": encounter.ErrBadPlacement,
+	// The field's construction refusals (rpg-project#256): a world that
+	// trips one fails to LOAD, and a load failure reaches a host as
+	// ErrInvalidWorld with the reason as text, never as one of these.
+	"encounter.ErrRegionEmpty":            encounter.ErrRegionEmpty,
+	"encounter.ErrRegionOverlap":          encounter.ErrRegionOverlap,
+	"encounter.ErrRegionArchetypeMissing": encounter.ErrRegionArchetypeMissing,
+	"encounter.ErrRegionLightingMissing":  encounter.ErrRegionLightingMissing,
+	"encounter.ErrEdgeNotAdjacent":        encounter.ErrEdgeNotAdjacent,
+	"encounter.ErrEdgeOffFloor":           encounter.ErrEdgeOffFloor,
+	"encounter.ErrDoorEdgeOffFloor":       encounter.ErrDoorEdgeOffFloor,
+	"encounter.ErrNoDoor":                 encounter.ErrNoDoor,
+	"encounter.ErrBadDoor":                encounter.ErrBadDoor,
+	"encounter.ErrLocked":                 encounter.ErrLocked,
+	"encounter.ErrNoRegion":               encounter.ErrNoRegion,
+	"encounter.ErrInBubble":               encounter.ErrInBubble,
+	"encounter.ErrNoBubble":               encounter.ErrNoBubble,
+	"encounter.ErrBadClock":               encounter.ErrBadClock,
+	"encounter.ErrInvalidData":            encounter.ErrInvalidData,
+	"encounter.ErrTrimmed":                encounter.ErrTrimmed,
+	"encounter.ErrNoInitiative":           encounter.ErrNoInitiative,
+	"encounter.ErrNoStanding":             encounter.ErrNoStanding,
 }
 
 // resolutionSentinels is every error value the resolution module exports.
@@ -168,11 +178,11 @@ func (s *SentinelSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	// offsetWorld is the fixture with the most map in it: two rooms anchored
-	// away from the origin, a doorway between them, and endings on both sides.
-	// Anchoring matters here — a cell outside every room is a real coordinate
-	// rather than a negative number, which is the mistake a client actually
-	// makes.
+	// offsetWorld is the fixture with the most map in it: two regions
+	// painted away from the origin, a door between them, and endings on both
+	// sides. Painting it out there matters — a cell outside every region is
+	// a real coordinate rather than a negative number, which is the mistake
+	// a client actually makes.
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
 		Session: "sess", Encounter: "world", World: offsetWorld(s.T()),
 	})
@@ -240,14 +250,15 @@ func (s *SentinelSuite) swing(mgr *session.Manager) error {
 // corrupt state, not a defect in this package, just a route computed one cell
 // too far. It is therefore the leak a real host hits first.
 func (s *SentinelSuite) TestAWalkOffTheMap() {
-	// alice stands at absolute (41,21); the hall runs (40,20)-(45,25). She
-	// steps to its corner, then off the map entirely.
+	// alice stands on authored [41,21]; the hall is painted over columns
+	// 40..45 of rows 20..25. She steps to its west edge, then off the map.
+	off := hexCell(39, 21)
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 40, Y: 20}, {X: 39, Y: 19}},
+		Path: []spatial.Position{hexCell(40, 21), off},
 	})
 	s.refusedInOurVocabulary(err, session.ErrBadPosition)
-	s.Contains(err.Error(), "39",
+	s.Contains(err.Error(), fmt.Sprintf("(%v, %v)", off.X, off.Y),
 		"and the refusal still names the cell that was refused")
 }
 
@@ -293,7 +304,7 @@ func (s *SentinelSuite) TestACorruptStoredWorld() {
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 42, Y: 22}},
+		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(42, 22)},
 	})
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
 
@@ -365,13 +376,13 @@ func (s *SentinelSuite) TestAClosedEncounter() {
 	// position, so the encounter is closed the way the game closes it.
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 42, Y: 21}, {X: 43, Y: 21}, {X: 44, Y: 21}},
+		Path: []spatial.Position{hexCell(42, 21), hexCell(43, 21), hexCell(44, 21)},
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Outcome, "the walk ended the encounter")
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 44, Y: 22}},
+		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(44, 22)},
 	})
 	s.refusedInOurVocabulary(err, session.ErrClosed)
 }
@@ -507,7 +518,7 @@ func (s *SentinelSuite) TestASecondSwingInOneTurn() {
 func (s *SentinelSuite) TestASpawnNamingAMalformedRef() {
 	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: "sess", ID: "skel-1", Ref: "skeleton",
-		Position: spatial.Position{X: 42, Y: 22},
+		Position: hexCell(42, 22),
 	})
 	s.refusedInOurVocabulary(err, session.ErrBadRef)
 	s.Contains(err.Error(), "skeleton",

@@ -86,13 +86,13 @@ func (s *StartSessionTestSuite) SetupTest() {
 func authoredWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 4, Y: 4},
+				Position: spatial.Position{X: 4, Y: 4},
 			}},
 		},
 	})

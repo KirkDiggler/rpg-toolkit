@@ -28,9 +28,11 @@ func TestWorkbenchRuns(t *testing.T) {
 	for _, want := range []string{
 		"the party enters the crypt",
 		// W3 holds in absolute space, and the map that reports it no longer
-		// names the rooms on either side (rpg-toolkit#1042).
+		// names the rooms on either side (rpg-toolkit#1042). Row 1 is one of
+		// the two authored rows whose axial cells read the same as their
+		// offsets under pointy-top, which is why the gate is legible here.
 		"gate: (5,1) kisses (6,1)",
-		"one square map: 72 cells",
+		"one hex map: 72 cells",
 		"alice enters (5,1)",           // the walk reached the doorway
 		"alice steps through to (6,1)", // and crossed it — a doorway is a step
 
@@ -41,7 +43,7 @@ func TestWorkbenchRuns(t *testing.T) {
 		"bob walks on regardless, 1 step(s)",                  // while everyone not in it carries on
 
 		`ended by "withdraw"`,
-		"alice at (7,2)", // she is where her own turn's walk left her, and it persisted
+		"alice at (6,2)", // authored [7,2] on the map: where her own turn's walk left her, and it persisted
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("workbench output missing %q\nfull output:\n%s", want, got)

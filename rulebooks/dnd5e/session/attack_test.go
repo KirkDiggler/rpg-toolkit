@@ -111,10 +111,10 @@ func duelWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -269,12 +269,12 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},   // adjacent to alice
-			{ID: "carol", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 3, Y: 1}}, // adjacent to bob, in melee reach
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},   // adjacent to alice
+			{ID: "carol", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 1}}, // adjacent to bob, in melee reach
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -512,10 +512,10 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -586,10 +586,10 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -619,11 +619,11 @@ func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{ID: "hall", Width: 20, Height: 20}}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 20, 20)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: bobAt},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: bobAt},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -708,11 +708,11 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 5, Y: 5}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -772,10 +772,10 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -811,14 +811,13 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 	placed := make([]encounter.MemberInput, 0, len(members))
 	for i, id := range members {
 		placed = append(placed, encounter.MemberInput{
-			ID: encounter.MemberID(id), Kind: encounter.KindPlayer, Room: "hall",
-			Position: spatial.Position{X: float64(i + 1), Y: 1},
+			ID: encounter.MemberID(id), Kind: encounter.KindPlayer, Position: spatial.Position{X: float64(i + 1), Y: 1},
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing:  encEveryoneStanding{},
-		Field:     encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 8, Height: 8}}},
+		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
 		Members:   placed,
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,

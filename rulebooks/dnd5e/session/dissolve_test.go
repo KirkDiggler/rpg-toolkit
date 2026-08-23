@@ -41,7 +41,7 @@ func (s *DissolveTestSuite) SetupTest() {
 func (s *DissolveTestSuite) fight() {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: ambushPath(),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed, "the scene must actually put them in a fight")
@@ -78,7 +78,7 @@ func (s *DissolveTestSuite) TestTheDeadEndIsClosed() {
 
 	// And she can walk again.
 	moved, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 3}},
+		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(1, 3)},
 	})
 	s.Require().NoError(err, "free roam is hers again")
 	s.Len(moved.Steps, 1)

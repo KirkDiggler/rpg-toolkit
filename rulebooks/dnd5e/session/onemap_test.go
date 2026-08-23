@@ -15,6 +15,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -36,38 +37,40 @@ func TestOneMapSuite(t *testing.T) {
 	suite.Run(t, new(OneMapSuite))
 }
 
-// offsetWorld is a single 6x6 room anchored at (40,20), plus a second room
-// beyond it so that "a cell in another room" is a thing a path can name.
+// offsetWorld is a single 6x6 region painted at [40,20], plus a second region
+// beyond it so that "a cell in another region" is a thing a path can name.
 //
-// The doorway joins hall-local (5,2) — absolute (45,22) — to annex-local (0,2)
-// — absolute (46,22).
+// The door joins authored [45,22] to [46,22], the one open crossing on the
+// seam. Every authored pair in this fixture is ABSOLUTE offset, and every
+// cell a verb takes or reports is the axial one hexCell makes of it.
 func offsetWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 40, Y: 20}},
-				{ID: "annex", Width: 6, Height: 6, Origin: spatial.Position{X: 46, Y: 20}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("hall", 40, 20, 6, 6),
+				rectRegion("annex", 46, 20, 6, 6),
 			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "hall", To: "annex",
-				FromPosition: spatial.Position{X: 5, Y: 2},
-				ToPosition:   spatial.Position{X: 0, Y: 2},
+			Walls: hexSeamWallsFrom(46, 20, 6, 22),
+			Doors: []encounter.DoorInput{{
+				ID:    "gate",
+				Edges: []encounter.DoorEdge{{From: hexCell(45, 22), To: hexCell(46, 22)}},
+				State: encounter.DoorIsOpen(),
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 41, Y: 21}},
 		},
 		Endings: []encounter.EndingInput{
 			// Fires where the walk below ends, so the outcome's own placement
 			// report is exercised in the same scene.
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 4, Y: 1}}},
+				Position: spatial.Position{X: 44, Y: 21}}},
 			// And one on the FAR SIDE of the doorway, for the pin that a
 			// crossing is an ordinary step: an ending there must fire as the
 			// crossing lands, inside the same Move.
 			{Key: "beyond", Trigger: encounter.TriggerReachedPosition{
-				Room: "annex", Position: spatial.Position{X: 0, Y: 2}}},
+				Position: spatial.Position{X: 46, Y: 22}}},
 		},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -101,7 +104,7 @@ func (s *OneMapSuite) SetupTest() {
 // and not others would satisfy any single one of these.
 func (s *OneMapSuite) TestAJoinIsAnsweredInTheSameCellItWasAskedFor() {
 	ctx := context.Background()
-	arrival := spatial.Position{X: 41, Y: 21} // hall-local (1,1)
+	arrival := hexCell(41, 21) // authored [41,21], inside the hall
 
 	joined, err := s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "bob", Position: arrival,
@@ -112,18 +115,18 @@ func (s *OneMapSuite) TestAJoinIsAnsweredInTheSameCellItWasAskedFor() {
 	// He walks two cells east, still inside the hall.
 	walked, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "bob",
-		Path: []spatial.Position{{X: 42, Y: 21}, {X: 43, Y: 21}},
+		Path: []spatial.Position{hexCell(42, 21), hexCell(43, 21)},
 	})
 	s.Require().NoError(err)
 	s.Require().Len(walked.Steps, 2)
-	s.Equal(spatial.Position{X: 42, Y: 21}, walked.Steps[0].Position)
-	s.Equal(spatial.Position{X: 43, Y: 21}, walked.Steps[1].Position, "walked on the map, reported on it")
+	s.Equal(hexCell(42, 21), walked.Steps[0].Position)
+	s.Equal(hexCell(43, 21), walked.Steps[1].Position, "walked on the map, reported on it")
 
 	// One more step lands on the stairs and closes the encounter, so the
 	// outcome reports where everybody finished — on the map as well.
 	ended, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "bob",
-		Path: []spatial.Position{{X: 44, Y: 21}},
+		Path: []spatial.Position{hexCell(44, 21)},
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(ended.Outcome, "the stairs are underfoot")
@@ -132,8 +135,8 @@ func (s *OneMapSuite) TestAJoinIsAnsweredInTheSameCellItWasAskedFor() {
 	for _, m := range ended.Outcome.Members {
 		placements[m.ID] = m.Position
 	}
-	s.Equal(spatial.Position{X: 44, Y: 21}, placements["bob"], "bob finished on the stairs")
-	s.Equal(spatial.Position{X: 41, Y: 21}, placements["alice"], "alice never moved from her cell")
+	s.Equal(hexCell(44, 21), placements["bob"], "bob finished on the stairs")
+	s.Equal(hexCell(41, 21), placements["alice"], "alice never moved from her cell")
 }
 
 // TestAWalkCrossesTheDoorway is what four slices of reshaping were for, and it
@@ -147,15 +150,15 @@ func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: []spatial.Position{
-			{X: 42, Y: 22}, {X: 43, Y: 22}, {X: 44, Y: 22}, {X: 45, Y: 22}, // the hall
-			{X: 46, Y: 22}, // through the doorway
+			hexCell(42, 22), hexCell(43, 22), hexCell(44, 22), hexCell(45, 22), // the hall
+			hexCell(46, 22), // through the doorway
 		},
 	})
 	s.Require().NoError(err, "the doorway is a step like any other")
 
 	s.Require().Len(out.Steps, 5)
-	s.Equal(spatial.Position{X: 45, Y: 22}, out.Steps[3].Position, "the threshold")
-	s.Equal(spatial.Position{X: 46, Y: 22}, out.Steps[4].Position, "the far side, in the annex")
+	s.Equal(hexCell(45, 22), out.Steps[3].Position, "the threshold")
+	s.Equal(hexCell(46, 22), out.Steps[4].Position, "the far side, in the annex")
 
 	// A crossing is a step, so an ending declared on the arrival cell fires as
 	// it lands — in THIS Move's own output, not on the next call.
@@ -180,7 +183,7 @@ func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: []spatial.Position{
-			{X: 42, Y: 22}, {X: 43, Y: 22}, {X: 44, Y: 22}, {X: 45, Y: 22}, {X: 46, Y: 22},
+			hexCell(42, 22), hexCell(43, 22), hexCell(44, 22), hexCell(45, 22), hexCell(46, 22),
 		},
 	})
 	s.Require().NoError(err)
@@ -204,16 +207,17 @@ func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 // absolute — which in this world differs by (40,20) and would send whoever
 // read it looking for a cell nobody named.
 func (s *OneMapSuite) TestARefusalIsDescribedInTheCallersOwnCoordinates() {
-	// Alice stands at (41,21). A jump three cells away is not a walk.
+	// Alice stands at [41,21]. A jump three cells away is not a walk.
+	from, to := hexCell(41, 21), hexCell(44, 24)
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 44, Y: 24}},
+		Path: []spatial.Position{to},
 	})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, session.ErrBrokenPath)
 
-	s.Contains(err.Error(), "from (41,21)", "the cell she stands on, on the map")
-	s.Contains(err.Error(), "to (44,24)", "the cell the caller asked for, as the caller wrote it")
+	s.Contains(err.Error(), fmt.Sprintf("from (%v,%v)", from.X, from.Y), "the cell she stands on, on the map")
+	s.Contains(err.Error(), fmt.Sprintf("to (%v,%v)", to.X, to.Y), "the cell the caller asked for, as the caller wrote it")
 }
 
 // TestAWalkIntoTheVoidIsRefused: a cell no room owns is not a step, and the
@@ -222,18 +226,19 @@ func (s *OneMapSuite) TestARefusalIsDescribedInTheCallersOwnCoordinates() {
 func (s *OneMapSuite) TestAWalkIntoTheVoidIsRefused() {
 	ctx := context.Background()
 
-	// To the hall's corner first: the void has to be ADJACENT for this to be
-	// the refusal under test. A cell far away is refused earlier, as a path
-	// that is not a walk, which is a different mistake and is checked first.
+	// To the hall's west edge first: the void has to be ADJACENT for this to
+	// be the refusal under test. A cell far away is refused earlier, as a
+	// path that is not a walk, which is a different mistake and is checked
+	// first.
 	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 40, Y: 20}},
+		Path: []spatial.Position{hexCell(40, 21)},
 	})
 	s.Require().NoError(err)
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 39, Y: 19}},
+		Path: []spatial.Position{hexCell(39, 21)},
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrBadPosition, "no room owns that cell")
@@ -279,7 +284,7 @@ func (s *OneMapSuite) TestNothingOnThePlaySurfaceNamesARoom() {
 // while looking exactly as plausible.
 func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	ctx := context.Background()
-	bobsCell := spatial.Position{X: 42, Y: 21} // hall-local (2,1)
+	bobsCell := hexCell(42, 21) // authored [42,21], inside the hall
 
 	_, err := s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "bob", Position: bobsCell,
@@ -298,8 +303,8 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	}
 	s.Require().NotNil(payload, "alice and bob share an open hall in plain sight")
 
-	s.Equal(map[string]any{"x": float64(42), "y": float64(21)}, payload,
-		"bob's cell on the dungeon map — hall-local (2,1) anchored at (40,20)")
+	s.Equal(map[string]any{"x": bobsCell.X, "y": bobsCell.Y}, payload,
+		"bob's cell on the dungeon map — authored [42,21] as one axial cell")
 	s.NotContains(payload, "room", "a sighting names no room; there is one map")
 
 	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
@@ -315,7 +320,7 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 	ctx := context.Background()
 	joined, err := s.mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Position: spatial.Position{X: 43, Y: 22},
+		Session: "sess", Member: "bob", Position: hexCell(43, 22),
 	})
 	s.Require().NoError(err)
 
@@ -341,34 +346,34 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 		"the cell bob joined at is the cell alice sees him on")
 }
 
-// The two tests below are the pins the rest of this file cannot carry, and
-// they exist because the mistake they guard against is INVISIBLE in every
-// other world here.
+// The three tests below pin that a cell crosses this seam CONVERTED ONCE.
 //
-// The hall above is six cells wide and anchored at (40,20), so an absolute
-// cell there is never also a legal room-local one. Anchor a cell twice in that
-// world and the composition refuses the second projection as out of bounds,
-// the seam's fallback hands the cell back untouched, and a wrong calculation
-// produces a right answer. Anchor the room near the origin instead and the
-// overlap is real — (7,6) is both a cell on the map and a cell inside the room
-// — so the second anchoring succeeds and lands somewhere else entirely, in the
-// one report a host reads after the encounter is over.
+// They were written against anchors: a room-local cell projected through its
+// room's origin, where a second projection of an already-absolute cell could
+// succeed and land somewhere else entirely (#1072). Rooms and origins are
+// gone (rpg-project#256), and the conversion that remains is offset-to-axial
+// at the composition's construction. The same shape of mistake is still
+// available — converting an axial cell as though it were an authored offset
+// pair — and it is invisible in a world painted at the origin's first two
+// rows, where the two frames agree. So this world is painted a few rows down,
+// where they do not, and every cell a verb reports is compared against the
+// ONE conversion the fixture's hexCell does.
 
-// shallowAnchoredWorld is one 10x10 room anchored at (2,3) — close enough to
-// the origin that its ABSOLUTE cells overlap its own room-local ones.
+// shallowAnchoredWorld is one 10x10 region painted at [2,3], off the origin
+// by less than its own span.
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "hall", Width: 10, Height: 10, Origin: spatial.Position{X: 2, Y: 3}},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 2, 3, 10, 10)},
+		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 3}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 3}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 5, Y: 3}}},
+				Position: spatial.Position{X: 5, Y: 3}}},
 		},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -379,8 +384,8 @@ func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 	return &data
 }
 
-// shallowSession starts a session on that world. Alice stands at absolute
-// (4,6) — hall-local (2,3) — and the stairs are at absolute (7,6).
+// shallowSession starts a session on that world. Alice stands on authored
+// [2,3] and the stairs are at authored [5,3], three cells east along row 3.
 func (s *OneMapSuite) shallowSession() *session.Manager {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
@@ -400,40 +405,32 @@ func (s *OneMapSuite) shallowSession() *session.Manager {
 func (s *OneMapSuite) TestAnOutcomeIsNotAnchoredTwice() {
 	out, err := s.shallowSession().Move(context.Background(), &session.MoveInput{
 		Session: "shallow", Member: "alice",
-		Path: []spatial.Position{{X: 5, Y: 6}, {X: 6, Y: 6}, {X: 7, Y: 6}},
+		Path: []spatial.Position{hexCell(3, 3), hexCell(4, 3), hexCell(5, 3)},
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Outcome, "the stairs are underfoot")
 	s.Require().Len(out.Outcome.Members, 1)
 
-	s.Equal(spatial.Position{X: 7, Y: 6}, out.Outcome.Members[0].Position,
-		"the cell she finished on — anchoring it a second time would say (9,9)")
+	s.Equal(hexCell(5, 3), out.Outcome.Members[0].Position,
+		"the cell she finished on — converting it a second time would name another")
 }
 
 // TestAWalkIsNotAnchoredTwice is the standing probe (#1072) aimed at the walk
 // itself rather than at what it ends in.
 //
-// Every OTHER fixture in this package anchors its rooms far enough out that an
-// absolute cell is never also a legal room-local one — which means a step
-// reported through one anchoring too many produces a cell no room owns, and
-// the projection refuses rather than answering wrongly. Anchor shallowly and
-// the overlap is real: (7,6) is both a cell on the map and a cell inside the
-// room, so a second anchoring SUCCEEDS and lands somewhere else entirely.
-//
-// The walk path is where that mattered longest: it was the last place a
-// room-local cell crossed this seam in either direction.
+// The walk path is where a second conversion mattered longest: it was the
+// last place a room-local cell crossed this seam in either direction.
 func (s *OneMapSuite) TestAWalkIsNotAnchoredTwice() {
 	out, err := s.shallowSession().Move(context.Background(), &session.MoveInput{
 		Session: "shallow", Member: "alice",
-		Path: []spatial.Position{{X: 5, Y: 6}, {X: 6, Y: 6}},
+		Path: []spatial.Position{hexCell(3, 3), hexCell(4, 3)},
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Steps, 2)
 
-	s.Equal(spatial.Position{X: 5, Y: 6}, out.Steps[0].Position,
-		"the cell asked for — anchoring it a second time would say (7,9)")
-	s.Equal(spatial.Position{X: 6, Y: 6}, out.Steps[1].Position,
-		"and the next one, which would say (8,9)")
+	s.Equal(hexCell(3, 3), out.Steps[0].Position,
+		"the cell asked for — converting it a second time would name another")
+	s.Equal(hexCell(4, 3), out.Steps[1].Position, "and the next one")
 }
 
 // TestAnExitIsNotAnchoredTwice: the leaver's own report, which the composition
@@ -446,6 +443,6 @@ func (s *OneMapSuite) TestAnExitIsNotAnchoredTwice() {
 	})
 	s.Require().NoError(err)
 
-	s.Equal(spatial.Position{X: 4, Y: 6}, left.Outcome.Position,
-		"the cell she left from — anchoring it a second time would say (6,9)")
+	s.Equal(hexCell(2, 3), left.Outcome.Position,
+		"the cell she left from — converting it a second time would name another")
 }
