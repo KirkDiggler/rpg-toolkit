@@ -1,15 +1,23 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-08-04
-confidence: medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18; #785 arcade recovery (dead/0-HP characters restored entering a new encounter) added 2026-07-19; #787/#788 wave-2 slice 0 — QuickRoom/InitRoom entropy-seeded by default (with optional explicit seed), HexGrid.GetLineOfSight cube-rounded instead of truncated — added 2026-07-19; #790 wave-2 slice 1 — closed doors block movement+LoS via the existing wall machinery, OpenDoor unblocks and reveals through the doorway, viewerCanSee made wall-aware (rpg-api#648 finding) — added 2026-07-19; #794 wave-2 slice 1b — combat pockets: rollInitiative scoped to LoS-engaged monsters, non-terminal TURN_BASED->FREE_ROAM exit on pocket clear, ModeEnded reserved for whole-dungeon clear — added 2026-07-19; #795 arcade recovery restores resource pools (rage/ki/hit dice) at every new-encounter seating regardless of HP, extending #785's dead-only scope — added 2026-07-19; #804 wave-2 slice 2 (toolkit leg) — Encounter.InitTwoChamberRoom: two chambers in one continuous Space, region tags, entrance cell, plain door, connectivity guaranteed by construction — added 2026-07-19
+updated: 2026-08-23
+confidence: high for the 2026-08-23 retirement state; older delivery entries are retained as dated history; medium — seeded from full repo read, test run, go.mod inspection, and PR history; #689 + Wave 2.11d updates verified against shipped code; #714 move-economy added 2026-07-02; #747/#748 Rage+Ki fixes and v0.65.0 tag added 2026-07-05; #755 rage-sustain-on-miss fix added 2026-07-12; #757 the walled room added 2026-07-13; #761 monster EntityAppeared/Disappeared added 2026-07-15; #764 AddMonster-side EntityAppeared added 2026-07-15; #765 InitiativeRolledEvent added 2026-07-16; #767 ExitCombat wired at encounter-end added 2026-07-16; #754 snapshot-visible active conditions added 2026-07-17; #778 build-time-granted conditions excluded from ActiveConditions added 2026-07-17; #772/#781/#782 TPK end-condition + mid-turn unconscious economy fix added 2026-07-18; #785 arcade recovery (dead/0-HP characters restored entering a new encounter) added 2026-07-19; #787/#788 wave-2 slice 0 — QuickRoom/InitRoom entropy-seeded by default (with optional explicit seed), HexGrid.GetLineOfSight cube-rounded instead of truncated — added 2026-07-19; #790 wave-2 slice 1 — closed doors block movement+LoS via the existing wall machinery, OpenDoor unblocks and reveals through the doorway, viewerCanSee made wall-aware (rpg-api#648 finding) — added 2026-07-19; #794 wave-2 slice 1b — combat pockets: rollInitiative scoped to LoS-engaged monsters, non-terminal TURN_BASED->FREE_ROAM exit on pocket clear, ModeEnded reserved for whole-dungeon clear — added 2026-07-19; #795 arcade recovery restores resource pools (rage/ki/hit dice) at every new-encounter seating regardless of HP, extending #785's dead-only scope — added 2026-07-19; #804 wave-2 slice 2 (toolkit leg) — Encounter.InitTwoChamberRoom: two chambers in one continuous Space, region tags, entrance cell, plain door, connectivity guaranteed by construction — added 2026-07-19
 ---
 
 # rpg-toolkit: Where We Are
 
 This is a living doc. Edit it in the same PR that invalidates a line. Don't let it rot.
 
-## Active work
+## Current direction
+
+The top-level `github.com/KirkDiggler/rpg-toolkit/encounter` module was retired
+by rpg-toolkit#1215 after rpg-api moved to `rulebooks/dnd5e/session`. Current
+game execution lives in the independently versioned D&D 5e encounter
+composition, resolution, and session modules. Older sections below retain the
+legacy module's delivery history and must not be read as current support.
+
+## Historical top-level encounter delivery record
 
 **#897 — Dungeon YAML v0.4 Wave A canonical region floor (2026-08-09).**
 `dungeonspec.CompileDungeon` now compiles complete standalone Draft/Strict
@@ -630,7 +638,9 @@ See "Paused / on hold" below.
   shape. Irrelevant at level 1 single-class (today's only playtest shape) —
   revisit if multiclass ordering is ever exercised.
 
-### Encounter SDK
+### Retired top-level Encounter SDK (historical)
+
+These gaps are preserved as delivery history for the retired module, not active module debt.
 
 - **Snapshots don't carry active statuses (rpg-toolkit#752 follow-up).** The
   broker only streams `StatusApplied`/`StatusRemoved` live; `Encounter.Data`
@@ -667,7 +677,6 @@ See quality.md for grade and rationale.
 | core | High — stable foundation, clean interfaces, good tests |
 | events | Medium-high — typed topics work well; dual-bus split undocumented |
 | dice | High — well-tested including pool, lazy, modifier, notation |
-| encounter | High — #689 made LoadFromData own combatant hydration (held entities, #684 double-subscribe cured at source); discrete-phase orchestration + reaction prompts from Wave 2.11d; HOST CONTRACT smell on AttackContextJSON tracked in #657; ActivateFeature self-load (defer Cleanup) folding into the held entity is a tracked follow-up |
 | mechanics/conditions | Medium — good coverage for dnd5e conditions; base module has go.mod drift |
 | mechanics/resources | Medium-high — passes tests, no known gaps |
 | mechanics/effects | Medium — no suite-pattern tests; functional |
