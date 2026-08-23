@@ -297,6 +297,24 @@ func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
 }
 
 func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, err error) {
+	// RE-ENTRANCY GUARD (rpg-toolkit#1206). driveMonsterTurns is the single
+	// owner of driving a bubble forward, and this call may already be
+	// running deeper on THIS SAME Go call stack: a driven member's own
+	// Strike can down a teammate without deciding the fight, whose
+	// noticeDown -> Transfer(id, ClockWorld) -> driveIfStillRunning reaches
+	// back here while the OUTER driveOneMonsterTurn call is still mid-turn,
+	// budget not yet spent. Without this check that reentry would hand the
+	// SAME still-acting monster a second, undocumented turn under a fresh
+	// budget — exactly the defect this guard exists to make impossible
+	// rather than merely unlikely. A nested call is a no-op the caller
+	// ignores: the outer call already owns driving this bubble and will
+	// finish it once its own Strike call returns.
+	if e.driving {
+		return false, 0, nil
+	}
+	e.driving = true
+	defer func() { e.driving = false }()
+
 	order, err := bubble.Order()
 	if err != nil {
 		return false, 0, fmt.Errorf("drive monster turns: %w", err)
@@ -1017,6 +1035,15 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		if bubble == nil {
 			return nil, fmt.Errorf("transfer %q: %w", in.Member, ErrNoBubble)
 		}
+		// Read BEFORE the clock-level move: whether the departing member
+		// was the one whose slot is about to need rescuing is a fact about
+		// the bubble as it stood a moment ago, not after (rpg-toolkit#1206).
+		wasActive, aerr := bubble.Active()
+		if aerr != nil {
+			return nil, fmt.Errorf("transfer %q: %w", in.Member, aerr)
+		}
+		departedWasActive := wasActive == core.EntityID(in.Member)
+
 		if _, terr := clock.Transfer(&clock.TransferInput{
 			From: bubble,
 			To:   e.clock,
@@ -1031,8 +1058,25 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		// slot is driven forward if they have no player (rpg-toolkit#1162) —
 		// this is how noticeDown's splice of a fallen body stays safe, since
 		// it reaches this same branch through Transfer.
-		if derr := e.driveIfStillRunning(bubble); derr != nil {
-			return nil, fmt.Errorf("transfer %q: %w", in.Member, derr)
+		//
+		// ONLY WHEN THE DEPARTING MEMBER GENUINELY WAS ACTIVE, though
+		// (rpg-toolkit#1206). A member spliced out of a bubble whose active
+		// slot belongs to somebody else — most commonly a driven monster
+		// still mid-turn, reached here through its own Strike's noticeDown
+		// — leaves nothing stalled to rescue: the active member's own turn
+		// is already running and will end itself in the ordinary way.
+		// Driving again here would hand that still-running turn a second,
+		// undocumented one under a second, fresh budget — the exact defect
+		// TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn (session
+		// package, rpg-toolkit#1205) found. driveMonsterTurns' own
+		// re-entrancy guard (its doc) makes the same mistake impossible a
+		// second, structural way; this is the semantic one — the call
+		// this branch would otherwise be making is simply the wrong one to
+		// make at all when nothing is actually stalled.
+		if departedWasActive {
+			if derr := e.driveIfStillRunning(bubble); derr != nil {
+				return nil, fmt.Errorf("transfer %q: %w", in.Member, derr)
+			}
 		}
 	default:
 		return nil, fmt.Errorf("transfer %q to %q: %w", in.Member, in.To, ErrBadClock)
