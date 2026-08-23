@@ -566,10 +566,11 @@ type Event struct {
 	Correlation string `json:"correlation,omitempty"`
 
 	// Tags is queryable metadata describing the beat, carried unchanged from
-	// the story-log entry this event was projected from — the same map
-	// StoryEntry alone used to carry before rpg-api-protos#239: a client
-	// resolving a gap by re-querying Story now gets the identical Tags a
-	// live subscriber already had, rather than a second, thinner shape.
+	// the story-log entry this event was projected from. Before
+	// rpg-api-protos#239 only a Story catch-up carried this field; a live
+	// subscriber now gets the identical Tags too, so a client resolving a
+	// gap by re-querying Story is never handed a thinner answer than what
+	// arrived live.
 	Tags map[string]string `json:"tags,omitempty"`
 
 	// Recipient is the member this projection is addressed to.

@@ -177,22 +177,6 @@ func projectEntry(session, recipient string, e record.Entry) Event {
 // LoadJSON's own routing already uses for conditions and features elsewhere
 // in this codebase.
 //
-// An unrecognised beat, or one whose declared kind decodes to a shape this
-// build's struct does not match, becomes (EventUnknown, nil) rather than
-// being dropped. A client that receives something it cannot interpret still
-// learns its sequence advanced, which keeps gap-detection working; dropping
-// it would manufacture a hole and send every client into a resync it did
-// not need. It also means a newer composition can add beats without older
-// clients losing their place.
-// decodeBeat determines a beat's wire EventKind and, for the kinds this
-// version types, its typed EventBody — DELETING kindOf's own JSON sniffing
-// (rpg-toolkit#941). It is still the one place this package interprets a
-// payload rather than passing it through: the composition's own "beat" key
-// is a DECLARED kind (every append site in encounter names it explicitly),
-// not content this function guesses at, the same peek-then-dispatch pattern
-// LoadJSON's own routing already uses for conditions and features elsewhere
-// in this codebase.
-//
 // KIND AND BODY ARE TWO SEPARATE QUESTIONS, on purpose. kindFor answers the
 // first from "beat" alone and is total over every string the composition
 // can write there; bodyFor attempts the second, and a payload whose other
