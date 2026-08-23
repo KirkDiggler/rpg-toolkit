@@ -204,6 +204,29 @@ type Encounter struct {
 	// Required at both constructors for the same reason turnDriver is; see
 	// [Striker].
 	striker Striker
+
+	// driving is true for the duration of ONE driveMonsterTurns call, at
+	// any depth of Go call stack — runtime state, never persisted (there is
+	// no stack mid-verb for ToData to capture, and none is needed: a fresh
+	// load always starts false).
+	//
+	// The load-bearing half of rpg-toolkit#1207's fix, alongside Transfer's
+	// own active-member guard (see its own doc). A driven turn's own Strike
+	// can splice a downed teammate out through Transfer, whose "the
+	// departing member may have been active" rescue (rpg-toolkit#1162) is a
+	// real need for a genuinely stalled slot — but nothing before this flag
+	// stopped that rescue firing AGAIN for the SAME still-mid-turn monster
+	// its own Strike call is nested inside, handing it a second,
+	// undocumented turn under a second, fresh budget.
+	//
+	// driveMonsterTurns is the single owner of driving a bubble forward: a
+	// driven turn runs to completion under one budget, and nothing that
+	// happens inside it starts another. A nested call reaching it while one
+	// is already running on this *Encounter is therefore a no-op — the
+	// outer call already owns it and will finish it; see
+	// driveMonsterTurns's own doc for the check itself.
+	driving bool
+
 	// endings holds declared endings in Setup order. Evaluation is
 	// deterministic (law C8), but NOT globally "first-declared-wins":
 	// for a single action (Step, Join) declaration order is
