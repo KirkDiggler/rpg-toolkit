@@ -1,21 +1,31 @@
 ---
-name: encounter module
-description: Orchestrator-facing SDK for running an encounter end-to-end — sealed event taxonomy, process-scoped Broker, transient Encounter aggregate, combatant hydration cascade, discrete-phase combat orchestration, MovementResolver seam (both movement directions), walled-room space + wall-aware LoS + inline combat entry
-updated: 2026-08-09
-confidence: high — #689 made LoadFromData own combatant hydration (the #684 double-subscribe cure); Wave 2.11d shipped discrete-phase combat; Wave 2.11e extended CompleteTakeAction to accept either PvE attack direction AND added MovementResolver for per-step movement in BOTH directions; #697 (TakeAction wave, ADR-0032) deleted the attack-only gate — non-attack refs delegate to the held character's economy/menu, turn-start seeding moved into the engine, ActorTurnState exposes the menu as data; #757 (the walled room) added SpaceData, wall-aware VisibleHexesAt/CanSeeAt, wall-blocked movement, and inline combat-entry self-transition
+name: retired top-level encounter module
+description: Historical record of the deleted orchestrator-facing encounter SDK
+updated: 2026-08-23
+confidence: high — rpg-toolkit#1215 retired the unconsumed module after rpg-api moved to the session stack
 ---
 
-# encounter module
+# Top-level encounter module (retired)
 
-**Path:** `encounter/`
-**Module:** `github.com/KirkDiggler/rpg-toolkit/encounter`
-**Grade:** B+ (Wave 2.11d added discrete-phase combat orchestration; grade was B at first slice)
+> **Retired 2026-08-23 by #1215.** The module
+> `github.com/KirkDiggler/rpg-toolkit/encounter` no longer exists. Current game
+> execution uses [`rulebooks/dnd5e/encounter`](../../../rulebooks/dnd5e/encounter),
+> [`rulebooks/dnd5e/resolution`](../../../rulebooks/dnd5e/resolution), and
+> [`rulebooks/dnd5e/session`](../../../rulebooks/dnd5e/session). The material
+> below is retained as historical implementation context, not supported API
+> guidance.
 
-The encounter SDK is the orchestrator-facing facade for running an encounter
-(combat, free-roam, social) end-to-end. Game servers `Load` an encounter from
-persisted state, mutate via verb methods (`Move`, `OpenDoor`, ...), serialize
-back via `ToData`, and save. Player-facing events flow through a process-scoped
-`Broker` that publishes per-player projected events through a pluggable
+## Historical record
+
+**Former path:** `encounter/`
+**Former module:** `github.com/KirkDiggler/rpg-toolkit/encounter`
+**Last grade:** B+
+
+The retired encounter SDK was the orchestrator-facing facade for running an
+encounter (combat, free-roam, social) end-to-end. Game servers loaded an
+encounter from persisted state, called verb methods, serialized through
+`ToData`, and saved. Player-facing events flowed through a process-scoped
+`Broker` that published per-player projected events through a pluggable
 `Transport`.
 
 ## Internal layout

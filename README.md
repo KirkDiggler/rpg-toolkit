@@ -1,9 +1,10 @@
 # RPG Toolkit
 
 RPG Toolkit is a collection of independently versioned Go modules for building
-RPG rules engines and game hosts. It contains reusable foundations and tools, a
-D&D 5e rulebook, and a currently D&D-5e-coupled encounter SDK. The toolkit owns
-game rules; a host owns storage, transport, and request orchestration.
+RPG rules engines and game hosts. It contains reusable foundations and tools,
+the D&D 5e rulebook, and the active D&D 5e encounter composition, resolution
+machines, and session host seam. The toolkit owns game rules; a host owns
+storage, transport, and request orchestration.
 
 ## Start here
 
@@ -29,10 +30,11 @@ not shipped.
 
 ## Architecture and module map
 
-The repository has no root `go.mod`. It currently contains 22 Go module roots,
-each with its own dependency/version boundary and module-prefixed Git tags.
-Each module has its own test command, although some packages/modules currently
-contain no test files.
+The repository has no root `go.mod`. Each module root has its own
+dependency/version boundary and module-prefixed Git tags. Repository commands
+discover current module roots from their `go.mod` files rather than a
+hand-maintained count. Each module has its own test command, although some
+packages/modules currently contain no test files.
 Dependency direction is generally **Core → Mechanics / Play primitives → Tools
 → Rulebooks**; higher layers may import lower ones, not the reverse.
 
@@ -42,8 +44,7 @@ Dependency direction is generally **Core → Mechanics / Play primitives → Too
 | Mechanics | `mechanics/effects`, `features`, `proficiency`, `resources` | Rule-agnostic mechanic building blocks |
 | Play primitives | `play/clock`, `intel`, `interrupt`, `record` | Small reusable time, knowledge, interruption, and record contracts; these currently depend only on Core |
 | Tools | `tools/environments`, `selectables`, `spatial`, `spawn` | Environment graphs, weighted selection, positioning, and placement |
-| Rulebooks | `rulebooks/dnd5e` | D&D 5e content and rules, including characters, combat, monsters, conditions, and refs |
-| Current composition | `encounter` | Encounter aggregate and host-facing composition; it imports `rulebooks/dnd5e` today and is not rulebook-agnostic |
+| Rulebooks and live D&D 5e stack | `rulebooks/dnd5e`, `rulebooks/dnd5e/behavior`, `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, `rulebooks/dnd5e/session` | D&D 5e content and rules, encounter composition, interaction resolution, monster behavior, and the host-facing session seam |
 
 The top-level `behavior/` and `spawn/` directories contain package-design stubs,
 not additional Go modules or usable implementations. Use the module map in the
