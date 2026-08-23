@@ -102,20 +102,21 @@ func buildAmbush(t fataler, alice spatial.Position, extra ...encounter.MemberInp
 	}
 
 	members := []encounter.MemberInput{
-		{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: alice},
-		{ID: "ogre", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 5, Y: 3}},
+		{ID: "alice", Kind: encounter.KindPlayer, Position: alice},
+		{ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 3}},
 	}
 	members = append(members, extra...)
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "hall", Width: 8, Height: 8, Props: occludingProps(occluders...)},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
+			Props:   occludingProps(occluders...),
+		},
 		Members: members,
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 7, Y: 7},
+				Position: spatial.Position{X: 7, Y: 7},
 			}},
 		},
 		Retention: encounter.RetentionUnbounded,
@@ -212,7 +213,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 			Session: "sess", Encounter: "world", World: ambushWorld(s.T(),
 				encounter.MemberInput{
 					ID: "aardvark", Kind: encounter.KindMonster,
-					Room: "hall", Position: spatial.Position{X: 5, Y: 3},
+					Position: spatial.Position{X: 5, Y: 3},
 				}),
 		})
 		s.Require().NoError(err)
@@ -466,7 +467,7 @@ func (s *FightStartsTestSuite) TestTheFightsOrderIsAFunctionOfPersistedData() {
 	// sorted order disagree.
 	s.startAmbush(encounter.MemberInput{
 		ID: "aardvark", Kind: encounter.KindMonster,
-		Room: "hall", Position: spatial.Position{X: 5, Y: 3},
+		Position: spatial.Position{X: 5, Y: 3},
 	})
 
 	out := s.walkIntoTheAmbush()

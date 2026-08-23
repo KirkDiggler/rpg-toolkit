@@ -55,25 +55,34 @@ import (
 // here — and if that addition turns this test red, a leak has been found rather
 // than a chore created.
 var compositionSentinels = map[string]error{
-	"encounter.ErrNilInput":      encounter.ErrNilInput,
-	"encounter.ErrNoMember":      encounter.ErrNoMember,
-	"encounter.ErrNotMember":     encounter.ErrNotMember,
-	"encounter.ErrNoEnding":      encounter.ErrNoEnding,
-	"encounter.ErrClosed":        encounter.ErrClosed,
-	"encounter.ErrNoField":       encounter.ErrNoField,
-	"encounter.ErrBadPlacement":  encounter.ErrBadPlacement,
-	"encounter.ErrBadConnection": encounter.ErrBadConnection,
-	"encounter.ErrNoDoor":        encounter.ErrNoDoor,
-	"encounter.ErrBadDoor":       encounter.ErrBadDoor,
-	"encounter.ErrLocked":        encounter.ErrLocked,
-	"encounter.ErrNoRegion":      encounter.ErrNoRegion,
-	"encounter.ErrInBubble":      encounter.ErrInBubble,
-	"encounter.ErrNoBubble":      encounter.ErrNoBubble,
-	"encounter.ErrBadClock":      encounter.ErrBadClock,
-	"encounter.ErrInvalidData":   encounter.ErrInvalidData,
-	"encounter.ErrTrimmed":       encounter.ErrTrimmed,
-	"encounter.ErrNoInitiative":  encounter.ErrNoInitiative,
-	"encounter.ErrNoStanding":    encounter.ErrNoStanding,
+	"encounter.ErrNilInput":     encounter.ErrNilInput,
+	"encounter.ErrNoMember":     encounter.ErrNoMember,
+	"encounter.ErrNotMember":    encounter.ErrNotMember,
+	"encounter.ErrNoEnding":     encounter.ErrNoEnding,
+	"encounter.ErrClosed":       encounter.ErrClosed,
+	"encounter.ErrNoField":      encounter.ErrNoField,
+	"encounter.ErrBadPlacement": encounter.ErrBadPlacement,
+	// The field's construction refusals (rpg-project#256): a world that
+	// trips one fails to LOAD, and a load failure reaches a host as
+	// ErrInvalidWorld with the reason as text, never as one of these.
+	"encounter.ErrRegionEmpty":            encounter.ErrRegionEmpty,
+	"encounter.ErrRegionOverlap":          encounter.ErrRegionOverlap,
+	"encounter.ErrRegionArchetypeMissing": encounter.ErrRegionArchetypeMissing,
+	"encounter.ErrRegionLightingMissing":  encounter.ErrRegionLightingMissing,
+	"encounter.ErrEdgeNotAdjacent":        encounter.ErrEdgeNotAdjacent,
+	"encounter.ErrEdgeOffFloor":           encounter.ErrEdgeOffFloor,
+	"encounter.ErrDoorEdgeOffFloor":       encounter.ErrDoorEdgeOffFloor,
+	"encounter.ErrNoDoor":                 encounter.ErrNoDoor,
+	"encounter.ErrBadDoor":                encounter.ErrBadDoor,
+	"encounter.ErrLocked":                 encounter.ErrLocked,
+	"encounter.ErrNoRegion":               encounter.ErrNoRegion,
+	"encounter.ErrInBubble":               encounter.ErrInBubble,
+	"encounter.ErrNoBubble":               encounter.ErrNoBubble,
+	"encounter.ErrBadClock":               encounter.ErrBadClock,
+	"encounter.ErrInvalidData":            encounter.ErrInvalidData,
+	"encounter.ErrTrimmed":                encounter.ErrTrimmed,
+	"encounter.ErrNoInitiative":           encounter.ErrNoInitiative,
+	"encounter.ErrNoStanding":             encounter.ErrNoStanding,
 }
 
 // resolutionSentinels is every error value the resolution module exports.

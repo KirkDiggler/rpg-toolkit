@@ -81,11 +81,20 @@ func hexCell(col, row int) spatial.Position {
 // emitted: on hex, which pairs are adjacent staggers with the column's parity,
 // so the candidates are filtered by actual cube distance rather than assumed.
 func hexSeamWalls(westWidth, rows, openRow int) []spatial.Boundary {
+	return hexSeamWallsFrom(westWidth, 0, rows, openRow)
+}
+
+// hexSeamWallsFrom is hexSeamWalls for a seam whose rows start at row0 rather
+// than 0: the wall between authored column east-1 and column east, over rows
+// [row0, row0+rows), leaving the straight crossing on openRow open (-1 for a
+// solid wall).
+func hexSeamWallsFrom(east, row0, rows, openRow int) []spatial.Boundary {
+	westWidth := east
 	out := make([]spatial.Boundary, 0, rows*2)
-	for row := 0; row < rows; row++ {
+	for row := row0; row < row0+rows; row++ {
 		for _, dr := range []int{-1, 0, 1} {
 			to := row + dr
-			if to < 0 || to >= rows {
+			if to < row0 || to >= row0+rows {
 				continue
 			}
 			if dr == 0 && row == openRow {

@@ -46,42 +46,33 @@ func (s *ReadTestSuite) startWith(world *encounter.EncounterData) {
 	s.Require().NoError(err)
 }
 
-// hexWorld is a two-room hex field with a doorway, occluders and a wall — rich
-// enough that a projection dropping any one field is visible.
+// hexWorld is a two-region hex field with a door, an occluder and a wall —
+// rich enough that a projection dropping any one field is visible.
 func hexWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-			Rooms: []encounter.RoomInput{
-				{
-					ID: "corridor", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
-					Origin: spatial.Position{X: 0, Y: 0},
-					Props:  occludingProps(spatial.Position{X: 1, Y: 1}),
-					// Room-local, in the AUTHORED frame: columns 0..5, rows 0..5.
-					// This used to read (-2,-2)->(-2,-1), which was the old
-					// origin-centred rhombus reading of a hex room and is out
-					// of bounds now (rpg-toolkit#1127).
-					// The seam with the vault, open only on row 0 where the gate
-					// is. Without these the two chambers are one open space and
-					// a walker crosses anywhere along the edge.
-					Boundaries: hexSeamWalls(6, 6, 0),
-				},
-				{
-					ID: "vault", Width: 6, Height: 6, Grid: spatial.GridShapeHex,
-					Origin: spatial.Position{X: 6, Y: 0},
-				},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			// Two chambers side by side in the AUTHORED frame: the corridor
+			// owns columns 0..5 and the vault 6..11, rows 0..5 each.
+			Regions: []encounter.RegionInput{
+				rectRegion("corridor", 0, 0, 6, 6),
+				rectRegion("vault", 6, 0, 6, 6),
 			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "corridor", To: "vault",
-				// The corridor's own LAST column meets the vault's FIRST, on a
-				// shared row — the two chambers sit side by side, six columns
-				// apart. Was (2,0)->(-3,0) under the rhombus reading.
-				FromPosition: spatial.Position{X: 5, Y: 0},
-				ToPosition:   spatial.Position{X: 0, Y: 0},
+			Props: occludingProps(spatial.Position{X: 1, Y: 1}),
+			// The seam between them, open only on row 0 where the gate is.
+			// Without these the two chambers are one open space and a walker
+			// crosses anywhere along the edge.
+			Walls: hexSeamWalls(6, 6, 0),
+			Doors: []encounter.DoorInput{{
+				ID: "gate",
+				// The corridor's own LAST column meets the vault's FIRST, on
+				// the shared row the wall leaves open.
+				Edges: []encounter.DoorEdge{{From: hexCell(5, 0), To: hexCell(6, 0)}},
+				State: encounter.DoorIsOpen(),
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -160,7 +151,7 @@ func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
 	s.Require().NoError(err)
 
 	s.Equal(session.GridHex, atlas.Grid, "the grid family must survive as the wire enum")
-	s.Len(atlas.Cells, 72, "both 6x6 rooms, every cell, once each")
+	s.Len(atlas.Cells, 72, "both 6x6 regions, every cell, once each")
 	s.Require().Len(atlas.Props, 1, "props are not optional decoration")
 	s.True(atlas.Props[0].BlocksLineOfSight, "and it must still say it blocks sight")
 	s.NotEmpty(atlas.Props[0].Ref, "and name what it is — the whole point of rpg-toolkit#1130")
@@ -170,34 +161,8 @@ func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
 
 	s.Require().Len(atlas.Doorways, 1)
 	gate := atlas.Doorways[0]
-	s.Equal("gate", gate.Connection)
+	s.Equal("gate", gate.Door)
 	s.NotEqual(gate.From, gate.To, "the kissing pair is two distinct absolute cells")
-}
-
-// TestGridProjectionCoversBothFamilies guards the enum mapping in both
-// directions. A projection hard-coded to one family would pass every hex test
-// in this file and quietly mislabel every square room in the game.
-func (s *ReadTestSuite) TestGridProjectionCoversBothFamilies() {
-	s.startWith(hexWorld(s.T()))
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
-	s.Require().NoError(err)
-	s.Equal(session.GridHex, atlas.Grid)
-
-	square := newFakeSessions()
-	squareEnc := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: square, Encounters: squareEnc, Characters: testCharacters(),
-		Events: session.DiscardEvents{},
-	})
-	s.Require().NoError(err)
-	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sq", Encounter: "sq-world", World: authoredWorld(s.T()),
-	})
-	s.Require().NoError(err)
-
-	atlas, err = mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sq"})
-	s.Require().NoError(err)
-	s.Equal(session.GridSquare, atlas.Grid,
-		"a square room must not be reported as hex")
 }
 
 // TestStatusReportsOpen covers the ordinary case; a closed encounter's outcome
@@ -301,9 +266,9 @@ func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
 func trimmedWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field:    encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{{ID: "hall", Width: 5, Height: 5}}},
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "out", Trigger: encounter.TriggerExternal{}},
@@ -345,17 +310,16 @@ func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
 		"hexWorld is authored pointy-top, and after rpg-toolkit#1141 that IS the way to draw it")
 }
 
-// TestAtlasLayoutCoversBothHexLayouts guards the mapping in both directions,
-// for the same reason TestGridProjectionCoversBothFamilies does: a projection
-// hard-coded to pointy would pass every fixture in this file.
+// TestAtlasLayoutCoversBothHexLayouts guards the mapping in both directions:
+// a projection hard-coded to pointy would pass every fixture in this file.
 func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
 	flat, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesAreFlatTop()},
-			Rooms: []encounter.RoomInput{{ID: "cell", Width: 4, Height: 4, Grid: spatial.GridShapeHex}},
+			Regions: []encounter.RegionInput{rectRegion("cell", 0, 0, 4, 4)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "cell", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 		},
 		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -366,17 +330,6 @@ func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
 	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
 	s.Require().NoError(err)
 	s.Equal(session.HexLayoutFlatTop, atlas.Layout, "a flat-top field must not be reported as pointy")
-}
-
-// TestASquareAtlasHasNoLayout mirrors the composition's own law at the wire: a
-// hex field must declare an orientation and a square field must not. A square
-// map that said "pointy_top" would be a client believing something that cannot
-// be true about the grid it is drawing.
-func (s *ReadTestSuite) TestASquareAtlasHasNoLayout() {
-	s.startWith(authoredWorld(s.T()))
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
-	s.Require().NoError(err)
-	s.Empty(atlas.Layout, "square grids have no hex layout; the field is absent, not defaulted")
 }
 
 // TestViewCarriesNameAndStanding pins rpg-toolkit#1137's perception half:

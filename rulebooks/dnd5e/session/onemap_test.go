@@ -36,38 +36,40 @@ func TestOneMapSuite(t *testing.T) {
 	suite.Run(t, new(OneMapSuite))
 }
 
-// offsetWorld is a single 6x6 room anchored at (40,20), plus a second room
-// beyond it so that "a cell in another room" is a thing a path can name.
+// offsetWorld is a single 6x6 region painted at [40,20], plus a second region
+// beyond it so that "a cell in another region" is a thing a path can name.
 //
-// The doorway joins hall-local (5,2) — absolute (45,22) — to annex-local (0,2)
-// — absolute (46,22).
+// The door joins authored [45,22] to [46,22], the one open crossing on the
+// seam. Every authored pair in this fixture is ABSOLUTE offset, and every
+// cell a verb takes or reports is the axial one hexCell makes of it.
 func offsetWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 40, Y: 20}},
-				{ID: "annex", Width: 6, Height: 6, Origin: spatial.Position{X: 46, Y: 20}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("hall", 40, 20, 6, 6),
+				rectRegion("annex", 46, 20, 6, 6),
 			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "gate", From: "hall", To: "annex",
-				FromPosition: spatial.Position{X: 5, Y: 2},
-				ToPosition:   spatial.Position{X: 0, Y: 2},
+			Walls: hexSeamWallsFrom(46, 20, 6, 22),
+			Doors: []encounter.DoorInput{{
+				ID:    "gate",
+				Edges: []encounter.DoorEdge{{From: hexCell(45, 22), To: hexCell(46, 22)}},
+				State: encounter.DoorIsOpen(),
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 41, Y: 21}},
 		},
 		Endings: []encounter.EndingInput{
 			// Fires where the walk below ends, so the outcome's own placement
 			// report is exercised in the same scene.
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 4, Y: 1}}},
+				Position: spatial.Position{X: 44, Y: 21}}},
 			// And one on the FAR SIDE of the doorway, for the pin that a
 			// crossing is an ordinary step: an ending there must fire as the
 			// crossing lands, inside the same Move.
 			{Key: "beyond", Trigger: encounter.TriggerReachedPosition{
-				Room: "annex", Position: spatial.Position{X: 0, Y: 2}}},
+				Position: spatial.Position{X: 46, Y: 22}}},
 		},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -354,21 +356,21 @@ func (s *OneMapSuite) TestASightingAndAPlacementAgree() {
 // — so the second anchoring succeeds and lands somewhere else entirely, in the
 // one report a host reads after the encounter is over.
 
-// shallowAnchoredWorld is one 10x10 room anchored at (2,3) — close enough to
-// the origin that its ABSOLUTE cells overlap its own room-local ones.
+// shallowAnchoredWorld is one 10x10 region painted at [2,3], off the origin
+// by less than its own span.
 func shallowAnchoredWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "hall", Width: 10, Height: 10, Origin: spatial.Position{X: 2, Y: 3}},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 2, 3, 10, 10)},
+		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "hall", Position: spatial.Position{X: 2, Y: 3}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 3}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{
-				Room: "hall", Position: spatial.Position{X: 5, Y: 3}}},
+				Position: spatial.Position{X: 5, Y: 3}}},
 		},
 		Retention: encounter.RetentionUnbounded,
 	})

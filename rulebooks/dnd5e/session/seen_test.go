@@ -55,53 +55,29 @@ func (s *SeenTestSuite) SetupTest() {
 	s.mgr = mgr
 }
 
-// squareSeamWalls is entrance's east wall, open only at doorRow — the square
-// analogue of hexSeamWalls (testprops_test.go), and the same construction as
-// the encounter package's own squareSeamWall/tombSeamWall test helpers.
-func squareSeamWalls(atX, rows, doorRow int) []spatial.Boundary {
-	out := make([]spatial.Boundary, 0, rows*3)
-	for y := 0; y < rows; y++ {
-		for _, dy := range []int{-1, 0, 1} {
-			to := y + dy
-			if to < 0 || to >= rows {
-				continue
-			}
-			if dy == 0 && y == doorRow {
-				continue // the doorway itself
-			}
-			out = append(out, spatial.Boundary{
-				From:              spatial.Position{X: float64(atX), Y: float64(y)},
-				To:                spatial.Position{X: float64(atX + 1), Y: float64(to)},
-				BlocksMovement:    true,
-				BlocksLineOfSight: true,
-			})
-		}
-	}
-	return out
-}
-
-// skeletonBehindADoor is a two-room world: entrance (0,0) and hall (6,0),
-// each 6x6, joined by one doorway on row 2 with a solid wall everywhere else
-// along the shared edge. skeleton-1 stands well inside hall at local (3,3) —
-// absolute (9,3) — where nothing but the doorway can put it in sight.
+// skeletonBehindADoor is a two-region world: entrance at [0,0] and hall at
+// [6,0], each 6x6, joined by one door on row 2 with a solid wall everywhere
+// else along the shared edge. skeleton-1 stands well inside hall at authored
+// [9,3], where nothing but the doorway can put it in sight.
 func skeletonBehindADoor(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{},
 		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "entrance", Width: 6, Height: 6, Boundaries: squareSeamWalls(5, 6, 2)},
-				{ID: "hall", Width: 6, Height: 6, Origin: spatial.Position{X: 6, Y: 0}},
+			Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("entrance", 0, 0, 6, 6),
+				rectRegion("hall", 6, 0, 6, 6),
 			},
-			Connections: []encounter.ConnectionInput{{
-				ID: "door1", From: "entrance", To: "hall",
-				FromPosition: spatial.Position{X: 5, Y: 2},
-				ToPosition:   spatial.Position{X: 0, Y: 2},
+			Walls: hexSeamWalls(6, 6, 2),
+			Doors: []encounter.DoorInput{{
+				ID:    "door1",
+				Edges: []encounter.DoorEdge{{From: hexCell(5, 2), To: hexCell(6, 2)}},
+				State: encounter.DoorIsOpen(),
 			}},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "fighter", Kind: encounter.KindPlayer, Room: "entrance", Position: spatial.Position{X: 5, Y: 0}},
-			{ID: "skeleton-1", Kind: encounter.KindMonster, Room: "hall", Position: spatial.Position{X: 3, Y: 3}},
+			{ID: "fighter", Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 0}},
+			{ID: "skeleton-1", Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 3}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})

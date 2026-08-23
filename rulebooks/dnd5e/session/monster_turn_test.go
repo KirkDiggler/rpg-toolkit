@@ -43,9 +43,9 @@ func tombRoom(width, height int) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "tomb", Width: width, Height: height},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, width, height)},
+		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -188,9 +188,13 @@ func (s *MonsterTurnTestSuite) TestBlindSkeletonBehindAWallNeverJoinsTheFight() 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()}, Rooms: []encounter.RoomInput{
-			{ID: "tomb", Width: 12, Height: 6, Boundaries: fullColumnWall(6, 6)},
-		}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)},
+			// Every crossing between columns 6 and 7, no gap — unlike a
+			// seam's own doorway — because (b) is testing that a wall with
+			// nothing to peek through blocks contact outright.
+			Walls: hexSeamWalls(7, 6, -1),
+		},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
 	})
@@ -471,22 +475,6 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	// merely non-empty or plausible-looking.
 	s.Equal(joinMember, struck.Recipient,
 		"the struck event's Recipient must be exactly the string Join was called with")
-}
-
-// fullColumnWall blocks line of sight the full height of a room at column
-// atX — no gap, unlike squareSeam's own doorway — because (b) is testing
-// that a wall with nothing to peek through blocks contact outright.
-func fullColumnWall(atX, rows int) []spatial.Boundary {
-	out := make([]spatial.Boundary, 0, rows)
-	for y := 0; y < rows; y++ {
-		out = append(out, spatial.Boundary{
-			From:              spatial.Position{X: float64(atX), Y: float64(y)},
-			To:                spatial.Position{X: float64(atX + 1), Y: float64(y)},
-			BlocksMovement:    true,
-			BlocksLineOfSight: true,
-		})
-	}
-	return out
 }
 
 // reachlessAttacker always declares an attack against the fighter using the

@@ -26,34 +26,14 @@ import (
 // looks complete. convert_test.go closes that: every inner field must be
 // carried across or explicitly justified as omitted.
 
-// projectGrid maps a room's grid family onto the wire enum.
-//
-// An unrecognised shape yields the empty string rather than a guess. It is
-// unreachable — the composition rejects unknown grid families at both Setup
-// and Load — but inventing a plausible value for something we do not
-// understand would turn an impossible state into a wrong answer, which is
-// strictly worse than an obviously absent one.
-func projectGrid(shape spatial.GridShape) GridKind {
-	switch shape {
-	case spatial.GridShapeSquare:
-		return GridSquare
-	case spatial.GridShapeHex:
-		return GridHex
-	default:
-		return ""
-	}
-}
-
 // projectLayout maps the composition's authoring frame onto the wire's render
-// word (rpg-toolkit#1140). Nil — a square field, which declares no orientation
-// by law — yields the empty string, which is what keeps Atlas.Layout's
-// "present exactly when the grid is hex" true.
+// word (rpg-toolkit#1140).
 //
-// The default arm is unreachable, the way projectGrid's is: encounter.Orientation
-// is SEALED by an unexported method, so the only kinds that can exist are the
-// two named here, and a hex field must declare one of them. It still refuses
-// to guess rather than invent a layout, for the reason projectGrid gives — a
-// guess would turn an impossible state into a wrong picture.
+// The default arm is unreachable: encounter.Orientation is SEALED by an
+// unexported method, so the only kinds that can exist are the two named
+// here, and a hex field must declare one of them. It still refuses to guess
+// rather than invent a layout: a guess would turn an impossible state into a
+// wrong picture, which is strictly worse than an obviously absent one.
 func projectLayout(o encounter.Orientation) HexLayout {
 	if o == nil {
 		return ""
@@ -68,107 +48,70 @@ func projectLayout(o encounter.Orientation) HexLayout {
 	}
 }
 
-// projectAtlas flattens the composition's room-by-room map into one map.
+// projectAtlas copies the composition's map across, field for field.
 //
-// The composition answers in its own terms — a footprint per room, a doorway
-// naming the two it joins — because rooms are how it holds a field together.
-// This is where that stops being anybody else's problem: the cells are
-// concatenated and sorted, and a doorway becomes the pair of adjacent cells
-// it always was in absolute space.
+// It used to be a reshape: the composition answered room by room — a
+// footprint per room, props and walls grouped under the room that declared
+// them, a doorway naming the two rooms it joined — and this was where that
+// stopped being anybody else's problem, by enumerating the footprints into
+// absolute cells and sorting every list into one coordinate order. As of
+// rpg-project#256 the composition's field IS flat: a region is a named set
+// of absolute cells, and props, walls and doorways are field-level facts
+// sorted in the composition's own order. There is nothing left to flatten,
+// and — the symmetric-bug lesson — nothing to convert: every cell arriving
+// here is already axial, and the ONE place a cell becomes axial is the
+// composition's construction, not this seam.
 //
-// Sorting matters more than it looks. Concatenating room by room would leave
-// the grouping perfectly visible in the order, so a client could reconstruct
-// the decomposition the reshape exists to hide — and would eventually depend
-// on it. One order, derived from the coordinates themselves.
+// What remains is the translation S2 exists for: the composition's types
+// become this package's, so a host never recompiles when the inner module
+// changes shape. convert_test.go holds this honest field by field.
 func projectAtlas(in encounter.Atlas) Atlas {
-	out := Atlas{Layout: projectLayout(in.Orientation), Doorways: make([]AtlasDoorway, 0, len(in.Doorways))}
-
-	for _, region := range in.Regions {
-		// W1: every region in a field shares one grid family, so the last
-		// writer wins and every writer agrees.
-		out.Grid = projectGrid(region.Grid)
-		out.Cells = append(out.Cells, regionCells(region, in.Orientation)...)
-
-		for _, prop := range region.Props {
-			out.Props = append(out.Props, AtlasProp{
-				Ref:               prop.Ref,
-				At:                prop.At,
-				BlocksMovement:    prop.BlocksMovement,
-				BlocksLineOfSight: prop.BlocksLineOfSight,
-			})
-		}
-
-		for _, b := range region.Boundaries {
-			out.Boundaries = append(out.Boundaries, AtlasBoundary{
-				From:              b.From,
-				To:                b.To,
-				BlocksMovement:    b.BlocksMovement,
-				BlocksLineOfSight: b.BlocksLineOfSight,
-			})
-		}
+	out := Atlas{
+		// Hex is the field's only family as of rpg-project#256; the
+		// composition's Grid() has no other answer to give.
+		Grid:       GridHex,
+		Layout:     projectLayout(in.Orientation),
+		Cells:      append([]spatial.Position(nil), in.Cells...),
+		Props:      make([]AtlasProp, 0, len(in.Props)),
+		Boundaries: make([]AtlasBoundary, 0, len(in.Boundaries)),
+		Doorways:   make([]AtlasDoorway, 0, len(in.Doorways)),
+		Regions:    make([]AtlasRegion, 0, len(in.Regions)),
 	}
 
-	sortCells(out.Cells)
-	sort.Slice(out.Props, func(i, j int) bool {
-		if out.Props[i].At != out.Props[j].At {
-			return before(out.Props[i].At, out.Props[j].At)
-		}
-		return out.Props[i].Ref < out.Props[j].Ref
-	})
-	sort.Slice(out.Boundaries, func(i, j int) bool {
-		if out.Boundaries[i].From != out.Boundaries[j].From {
-			return before(out.Boundaries[i].From, out.Boundaries[j].From)
-		}
-		return before(out.Boundaries[i].To, out.Boundaries[j].To)
-	})
-
-	for _, d := range in.Doorways {
-		out.Doorways = append(out.Doorways, AtlasDoorway{
-			Connection: d.Connection,
-			From:       d.FromCell,
-			To:         d.ToCell,
+	for _, prop := range in.Props {
+		out.Props = append(out.Props, AtlasProp{
+			Ref:               prop.Ref,
+			At:                prop.At,
+			BlocksMovement:    prop.BlocksMovement,
+			BlocksLineOfSight: prop.BlocksLineOfSight,
 		})
 	}
 
-	return out
-}
+	for _, b := range in.Boundaries {
+		out.Boundaries = append(out.Boundaries, AtlasBoundary{
+			From:              b.From,
+			To:                b.To,
+			BlocksMovement:    b.BlocksMovement,
+			BlocksLineOfSight: b.BlocksLineOfSight,
+		})
+	}
 
-// regionCells enumerates the cells a region owns, in dungeon-absolute space.
-//
-// A region describes itself as "a Width x Height rectangle anchored HERE"
-// rather than by listing cells (rpg-toolkit#1127), which is the whole reason
-// [encounter.Atlas] reports an Orientation: on hex, the same rectangle covers
-// a different set of cells under each layout, so the frame is not optional.
-//
-// # Why the anchor is added in OFFSET space
-//
-// An authored rectangle SHEARS when it becomes axial. Adding the anchor in
-// axial instead would put that shear back one level up — two chambers anchored
-// six columns apart would land at axial distances that vary by row. Three
-// callers inside the composition got this wrong before #1131 found them, so
-// this is not a hypothetical: it is the arithmetic with a track record.
-//
-// This is a SECOND implementation of a projection the composition also owns,
-// which is a thing worth being nervous about. It is kept honest rather than
-// trusted: TestEveryProjectedCellIsOwnedByItsRegion asks the composition's own
-// RegionAt about every cell this produces, so the two answers cannot drift
-// apart without a test failing. If the composition ever exports the
-// enumeration itself, this should be deleted in favour of it.
-func regionCells(r encounter.AtlasRegion, o encounter.Orientation) []spatial.Position {
-	out := make([]spatial.Position, 0, r.Width*r.Height)
+	for _, d := range in.Doorways {
+		out.Doorways = append(out.Doorways, AtlasDoorway{
+			Door: string(d.Door),
+			From: d.From,
+			To:   d.To,
+		})
+	}
 
-	for row := 0; row < r.Height; row++ {
-		for col := 0; col < r.Width; col++ {
-			if r.Grid == spatial.GridShapeHex {
-				out = append(out, encounter.HexCellAt(o, col+int(r.Origin.X), row+int(r.Origin.Y)))
-				continue
-			}
-
-			out = append(out, spatial.Position{
-				X: r.Origin.X + float64(col),
-				Y: r.Origin.Y + float64(row),
-			})
-		}
+	for _, r := range in.Regions {
+		out.Regions = append(out.Regions, AtlasRegion{
+			ID:        string(r.ID),
+			Name:      r.Name,
+			Cells:     append([]spatial.Position(nil), r.Cells...),
+			Archetype: r.Archetype,
+			Lighting:  Lighting{Intensity: r.Lighting.Intensity},
+		})
 	}
 
 	return out

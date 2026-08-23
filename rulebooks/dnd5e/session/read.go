@@ -378,8 +378,7 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrClosed)
 	case errors.Is(err, encounter.ErrNoEnding):
 		return fmt.Errorf("%w", ErrNoEnding)
-	case errors.Is(err, encounter.ErrBadConnection),
-		errors.Is(err, encounter.ErrNoDoor),
+	case errors.Is(err, encounter.ErrNoDoor),
 		errors.Is(err, encounter.ErrBadDoor):
 		return fmt.Errorf("%w", ErrNoConnection)
 	case errors.Is(err, encounter.ErrLocked):

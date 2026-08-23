@@ -48,16 +48,16 @@ func (s *EventsTestSuite) SetupTest() {
 func twoRoomParty(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
-		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "corridor", Width: 8, Height: 8},
-				{ID: "vault", Width: 8, Height: 8, Origin: spatial.Position{X: 20, Y: 0}},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("corridor", 0, 0, 8, 8),
+				rectRegion("vault", 20, 0, 8, 8),
 			},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "dave", Kind: encounter.KindPlayer, Room: "corridor", Position: spatial.Position{X: 2, Y: 2}},
-			{ID: "carol", Kind: encounter.KindPlayer, Room: "vault", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "dave", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: "carol", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
