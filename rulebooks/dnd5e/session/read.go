@@ -242,14 +242,18 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward
-// inclusive.
+// inclusive, projected exactly as a live [EventStream] subscriber would have
+// received them: same Kind, same typed Body, same Tags — one projection
+// ([projectEntry]) for both paths, so a client that notices a gap and
+// re-queries Story sees byte-equal entries for the same seq rather than a
+// second, thinner shape it must decode differently (rpg-api-protos#239).
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember, or ErrStoryTrimmed when the requested resume
 // point has aged out of the retention window — in which case the caller must
 // resync from zero rather than resume, since a short answer would be
 // indistinguishable from a complete one.
-func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]StoryEntry, error) {
+func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]Event, error) {
 	if in == nil {
 		return nil, fmt.Errorf("story: %w", ErrNilInput)
 	}
@@ -271,7 +275,15 @@ func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]StoryEntry, erro
 		return nil, fmt.Errorf("story: %w", translate(err))
 	}
 
-	return projectStory(entries), nil
+	// projectEntry, not a second mapping: catch-up must be byte-equal to
+	// what a live subscriber received for the same seq (rpg-api-protos#239).
+	// The requesting member IS the recipient — Story asks after one's own
+	// story, there is no other audience to address it to.
+	events := make([]Event, 0, len(entries))
+	for _, e := range entries {
+		events = append(events, projectEntry(in.Session, in.Member, e))
+	}
+	return events, nil
 }
 
 // open loads a session and reconstitutes the encounter it points at.

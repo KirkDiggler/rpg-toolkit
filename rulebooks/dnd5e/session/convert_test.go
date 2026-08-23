@@ -58,7 +58,10 @@ var projectedPairs = []struct {
 	{"Member", encounter.Member{}, session.Member{}},
 	{"MemberOutcome", encounter.MemberOutcome{}, session.MemberOutcome{}},
 	{"Sighting", intel.Holding{}, session.Sighting{}},
-	{"StoryEntry", record.Entry{}, session.StoryEntry{}},
+	// An Event, not a StoryEntry: rpg-api-protos#239 deleted StoryEntry, and
+	// Manager.Story now returns the SAME Event projectEvents builds for the
+	// live stream (projectEntry, events.go) — one projection, audited once.
+	{"Event", record.Entry{}, session.Event{}},
 }
 
 // renamed lists inner fields carried across under a DIFFERENT name, each with

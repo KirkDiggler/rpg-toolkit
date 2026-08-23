@@ -214,7 +214,7 @@ func (s *ReadTestSuite) TestStoryOmitsTheAudienceRoster() {
 	s.Require().NoError(err)
 	s.Require().NotEmpty(entries, "setup records a scene-opened beat")
 
-	// If StoryEntry ever grows an Audience field, this assertion's premise is
+	// If Event ever grows an Audience field, this assertion's premise is
 	// gone and the reflection below reports it.
 	for _, field := range structFields(entries[0]) {
 		s.NotEqual("Audience", field,

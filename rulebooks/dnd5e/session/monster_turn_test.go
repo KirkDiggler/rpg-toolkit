@@ -477,6 +477,72 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 		"the struck event's Recipient must be exactly the string Join was called with")
 }
 
+// (g) Live delivery and a Story catch-up are the SAME projection of the
+// same story-log entries, entry by entry, for a driven monster turn —
+// rpg-api-protos#239's ruling (rpg-project#257 slice 3), and the reason
+// [projectEntry] exists: one producer, not two mappings that happen to
+// agree today. The debug feed found this broken as kind=UNKNOWN body=null
+// on every caught-up entry while the same beats arrived live typed
+// correctly (moved, missed, ...); a client that notices a gap and
+// re-queries Story from FromSeq:1 must see exactly what a live subscriber
+// already received.
+//
+// A driven monster turn is the fixture rather than a single Move, because
+// it is the shape #239 was found broken under, and because it exercises
+// several kinds at once (joined, bubble-formed, moved, struck-or-missed,
+// turn-ended) rather than one kind that might happen to survive both paths
+// by accident.
+func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
+	ctx := context.Background()
+	stream := &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: newFakeCharacters(armedFighter("fighter")),
+		Events:     stream,
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err)
+
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 4, Y: 0}, // four cells off: closes, then swings (TestSkeletonClosesAndAttacks)
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(spawned.Formed, "the skeleton's driven turn is this test's whole point")
+
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err, "the skeleton's whole turn — move, strike, end — drives inside this one call")
+
+	// live is everything the fake stream delivered to fighter across the
+	// WHOLE scene, join through the driven turn — never reset — so it lines
+	// up against Story{FromSeq:1}, which answers from the very first entry
+	// fighter's own audience appears in.
+	var live []session.Event
+	for _, e := range stream.published {
+		if e.Recipient == "fighter" {
+			live = append(live, e)
+		}
+	}
+	s.Require().NotEmpty(live, "join, spawn and the driven turn must all have addressed fighter")
+
+	caughtUp, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter", FromSeq: 1})
+	s.Require().NoError(err)
+
+	s.Equal(live, caughtUp,
+		"live delivery and Story{FromSeq:1} catch-up must be the SAME projection, entry by "+
+			"entry — kind, typed Body and Tags included — not two mappings that merely agree today")
+}
+
 // reachlessAttacker always declares an attack against the fighter using the
 // first action it is told about, regardless of whether it is anywhere near
 // reach — (c)'s bad intent, by construction rather than by accident.
