@@ -86,6 +86,13 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   pool receives the attack ability modifier; every eligible attack die,
   including Sneak Attack, doubles on a critical unless that pool explicitly has
   `DoesNotCrit`. Resolution rolls pools, folds one chain, and applies once.
+- **0045** *(proposed)* — **Actions are inert, self-describing data**: producers
+  author or assemble shared profiles in `combat/actions`, and resolution
+  dispatches profile kinds to machines without knowing content refs or producer
+  schemas. Conditions own executable effects and lifecycle; action objects do
+  not activate, subscribe, or remove themselves. *Rule: data shared by several
+  producers and one interpreter belongs below all of them, while behavior stays
+  with the effect or machine that executes it.*
 
 ## Spatial and world
 
