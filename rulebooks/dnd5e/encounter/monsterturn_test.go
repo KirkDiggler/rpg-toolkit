@@ -778,20 +778,26 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 }
 
 // killerStriker wraps scriptedStriker's own outcome-recording, additionally
-// marking target down in standing BEFORE recording — the same order the real
-// session seam keeps (rpg-toolkit#1083: a swing's sheet is written before its
-// outcome is recorded), so the standing consult inside THIS SAME Record call
-// already sees the killing blow.
+// marking the STRUCK CALL'S OWN target down in standing BEFORE recording —
+// the same order the real session seam keeps (rpg-toolkit#1083: a swing's
+// sheet is written before its outcome is recorded), so the standing consult
+// inside THIS SAME Record call already sees the killing blow.
+//
+// Reads target from Strike's own argument rather than a field configured at
+// construction (Copilot, PR #1202 review): a fixed field the caller sets up
+// front is a value that can drift from what a future scene's driver actually
+// declares, silently marking the wrong member down. There is only ever one
+// honest answer to "who did this strike hit" — the one Strike itself was
+// called with.
 type killerStriker struct {
 	*scriptedStriker
 	standing *downList
-	target   encounter.MemberID
 }
 
 func (k *killerStriker) Strike(
 	ctx context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
 ) error {
-	k.standing.down = append(k.standing.down, k.target)
+	k.standing.down = append(k.standing.down, target)
 	return k.scriptedStriker.Strike(ctx, enc, attacker, target, action)
 }
 
@@ -819,7 +825,7 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 	}}
 	striker := &killerStriker{
 		scriptedStriker: &scriptedStriker{kind: encounter.OutcomeStruck},
-		standing:        standing, target: alice,
+		standing:        standing,
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
