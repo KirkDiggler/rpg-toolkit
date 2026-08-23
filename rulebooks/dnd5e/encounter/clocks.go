@@ -242,6 +242,25 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, err
 	return out.Seq, nil
 }
 
+// lastRecordedSeq returns the sequence of the most recently appended story
+// entry, or 0 if nothing has ever been appended (unreachable in practice —
+// Setup's own scene-opened beat is always first).
+//
+// Its one caller is driveOneMonsterTurn's own bubble-already-dissolved case:
+// a driven member whose killing blow just ended the fight has no
+// "turn-ended" beat of its own left to append (there is no bubble left to
+// end a turn IN), but the caller still needs an honest answer to "how far
+// did the story move," and the dissolution's own beat — already appended,
+// several calls down, inside the Record that noticed the kill — is the
+// truthful one.
+func (e *Encounter) lastRecordedSeq() uint64 {
+	next, err := e.story.NextSeq()
+	if err != nil || next == 0 {
+		return 0
+	}
+	return next - 1
+}
+
 // driveMonsterTurns advances bubble past every consecutive member with no
 // player, starting from its current Active member, stopping at the first
 // KindPlayer member.
@@ -291,6 +310,22 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 	// the most this loop could ever legitimately need, and hasPlayer above
 	// already guarantees it terminates well before then.
 	for i := 0; i < len(order); i++ {
+		// A member driven earlier in THIS SAME loop can have ended the fight
+		// with its own killing blow — see driveOneMonsterTurn's own doc.
+		// bubble is then idle, and idle is a state bubble.Active() refuses
+		// with ErrIdle. Order() never does (an idle clock answers with an
+		// empty slice, by its own contract), so it is the check that lets
+		// this loop notice "nothing is left to drive" and stop cleanly,
+		// rather than asking a dissolved clock whose turn it still thinks it
+		// is.
+		remaining, oerr := bubble.Order()
+		if oerr != nil {
+			return wrapped, lastSeq, fmt.Errorf("drive monster turns: %w", oerr)
+		}
+		if len(remaining) == 0 {
+			break
+		}
+
 		active, aerr := bubble.Active()
 		if aerr != nil {
 			return wrapped, lastSeq, fmt.Errorf("drive monster turns: %w", aerr)
@@ -366,6 +401,27 @@ func (e *Encounter) driveOneMonsterTurn(
 		if done {
 			break
 		}
+	}
+
+	// A step just executed (almost always a Strike) can have ended the fight
+	// out from under this very turn: [Encounter.noticeDown], reached through
+	// Record, dissolves a bubble that has run out of a side the instant it
+	// notices (rpg-toolkit#1078, ByDefeat) — and a driven member's own
+	// killing blow notices EXACTLY that. When it does, bubble is the same
+	// *clock.Turn this call has held throughout, now idle: there is nothing
+	// left to end, and nothing wrong — the "bubble-dissolved" beat that
+	// noticing already appended tells the whole story of why this member's
+	// own turn never explicitly closed. Calling bubble.End regardless would
+	// ask an idle clock to end a turn it no longer has, and play/clock
+	// refuses that with ErrIdle exactly as it should — which is what turned
+	// a driven monster's own killing blow into an error on the CALLER's
+	// verb (rpg-project#254's live walk, round 4) until this check existed.
+	stillRunning, cerr := bubble.Contains(&clock.ContainsInput{ID: active})
+	if cerr != nil {
+		return 0, false, fmt.Errorf("contains: %w", cerr)
+	}
+	if !stillRunning {
+		return e.lastRecordedSeq(), false, nil
 	}
 
 	out, eerr := bubble.End(&clock.EndInput{Actor: active})
@@ -1008,6 +1064,14 @@ type EndTurnOutput struct {
 	// unplayed members, this call already drove them forward via TurnDriver
 	// before returning (rpg-toolkit#1162): the caller never receives a Next
 	// nobody can act for.
+	//
+	// EXCEPT when a driven member's own turn ends the fight (its killing
+	// blow — rpg-toolkit#1078, ByDefeat — noticed while THIS call was still
+	// driving it forward): there is then no bubble left to name a Next
+	// turn IN, and Next reports Member instead — the caller who ended their
+	// own turn, now free again. A caller learns the fight actually ended,
+	// as it always has, from the "bubble-dissolved" beat this same call's
+	// own fan-out carries, not from a distinguishable value here.
 	Next MemberID
 
 	// RoundWrapped is true when this end, OR any unplayed member's pass this
@@ -1100,11 +1164,34 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		if moreSeq != 0 {
 			lastSeq = moreSeq
 		}
-		active, aerr := bubble.Active()
-		if aerr != nil {
-			return nil, fmt.Errorf("end turn %q: %w", in.Member, aerr)
+
+		// The drive just run can have ended the fight this bubble was
+		// holding — a driven member's own killing blow, exactly as
+		// driveOneMonsterTurn's own doc describes. bubble.Active() refuses
+		// an idle clock with ErrIdle, so Order() is asked first: it never
+		// does (an idle clock's Order is an empty slice, not an error), and
+		// an empty one means there is no bubble left to ask whose turn it
+		// is.
+		remaining, oerr := bubble.Order()
+		if oerr != nil {
+			return nil, fmt.Errorf("end turn %q: %w", in.Member, oerr)
 		}
-		next = MemberID(active)
+		if len(remaining) == 0 {
+			// There is no "next" turn in a bubble that no longer exists.
+			// in.Member — who called this verb — is the honest answer: they
+			// are the one free again, exactly as a non-driven defeat already
+			// leaves the survivor (rpg-toolkit#1078). A caller learns the
+			// fight actually ended the way it always has: the
+			// "bubble-dissolved" beat this same call's own fan-out already
+			// carries, not a new field on this output.
+			next = in.Member
+		} else {
+			active, aerr := bubble.Active()
+			if aerr != nil {
+				return nil, fmt.Errorf("end turn %q: %w", in.Member, aerr)
+			}
+			next = MemberID(active)
+		}
 	}
 
 	return &EndTurnOutput{
