@@ -31,7 +31,8 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
 - **0034 (superseded)** — Proposed splitting the old top-level encounter along
   its generic/rulebook seam; that move never shipped. The session stack was
   built separately and #1215 retired the old module. *Standing rule: when one
-  module is "generic" plus "one game's rules", its boundary is false*. <!-- **0034** -->
+  module is "generic" plus "one game's rules", its boundary is false.*
+  [0034-where-encounter-logic-lives.md](0034-where-encounter-logic-lives.md)
 
 ## Events and the bus
 
