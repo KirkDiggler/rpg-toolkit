@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -294,4 +295,167 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// test method — deliberately not folded into this walk, since forcing a
 	// down here would risk this suite's own turn-order assertions above
 	// wandering into the newly found double-turn defect (reported separately) by accident.
+}
+
+// TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers is (e): #1202's own
+// dissolved-bubble case, reproduced with two real players rather than one —
+// the shape unreachable before rpg-toolkit#1207's own fix, since a driven
+// strike that downs a teammate without deciding the fight used to hand the
+// SAME monster an undocumented second turn (see two_players_test.go's own
+// suite doc). Held as its own standalone test rather than a case inside
+// TestTwoPlayersOneSession precisely because it needs low HP to force both
+// downs, which that suite's own survival walk deliberately avoids.
+//
+// fighter and barbarian both start at 10 HP — one hit (12 damage under
+// testDice{}, verified against duelAC 12 the same way every other fixture
+// in this package is) downs either outright. skel-1 spawns adjacent to
+// barbarian, one cell short of fighter.
+//
+// Round 1: barbarian's own turn passes. Fighter's own EndTurn drives skel-1,
+// whose ONE attack downs barbarian — the fight is NOT decided (fighter still
+// stands) — and skel-1's own turn ends normally, wrapping back to fighter.
+// This is the exact scenario rpg-toolkit#1207 fixed: without it, skel-1
+// would have gone on to a second, undocumented turn and struck fighter too,
+// right here.
+//
+// Round 2: fighter's own EndTurn drives skel-1 again. skel-1's ONE attack
+// this time downs fighter — the last player standing — deciding the fight:
+// #1202's own dissolved-bubble path fires, EndTurnOutput.Next reports the
+// CALLER (fighter) rather than a bubble that no longer exists, and both
+// players — barbarian already down, fighter just now — receive fight_ended.
+func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	fighter := armedFighter("fighter")
+	fighter.HitPoints, fighter.MaxHitPoints = 10, 10
+	barbarian := armedBarbarian("barbarian")
+	barbarian.HitPoints, barbarian.MaxHitPoints = 10, 10
+	stream := &fakeStream{}
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Sessions: sessions, Encounters: encounters,
+		Characters: newFakeCharacters(fighter, barbarian),
+		Events:     stream,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
+	})
+	require.NoError(t, err)
+
+	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0}})
+	require.NoError(t, err)
+	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "barbarian", Position: spatial.Position{X: 1, Y: 0}})
+	require.NoError(t, err)
+
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 2, Y: 0},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spawned.Formed)
+	require.Equal(t, []string{"barbarian", "fighter", "skel-1"}, spawned.Formed.Order,
+		"same tie-break as TestTwoPlayersOneSession's own — barbarian sorts first")
+
+	// Round 1: barbarian passes her own turn.
+	out1, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian"})
+	require.NoError(t, err)
+	require.Equal(t, "fighter", out1.Next)
+
+	// Round 1: fighter's own end drives skel-1's WHOLE turn — the fix under
+	// test is that this is exactly ONE attack, not two.
+	stream.published = nil
+	out2, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	require.NoError(t, err)
+	require.Equal(t, "fighter", out2.Next, "a two-member order (barbarian spliced) wraps skel-1's own end back to fighter")
+	require.True(t, out2.RoundWrapped)
+
+	round1Drive := stream.published
+	round1Fighter := recipientSeqs(round1Drive, "fighter")
+	require.Len(t, round1Fighter, 6,
+		"turn-ended(fighter), struck(barbarian), down(barbarian), transferred(barbarian), moved(skel-1), turn-ended(skel-1)")
+
+	var round1Struck []session.Event
+	for _, e := range round1Drive {
+		if e.Recipient == "fighter" && e.Kind == session.EventStruck {
+			round1Struck = append(round1Struck, e)
+		}
+	}
+	require.Len(t, round1Struck, 1, "the fix: skel-1's own turn is exactly one attack, not two")
+	body, ok := round1Struck[0].Body.(session.StruckBody)
+	require.True(t, ok)
+	require.Equal(t, "barbarian", body.Target)
+	require.Equal(t, "skel-1", body.Attacker)
+
+	// Fighter — the survivor — was never touched this round: not struck,
+	// still standing, still in the fight.
+	for _, e := range round1Drive {
+		if e.Kind == session.EventStruck {
+			if b, ok := e.Body.(session.StruckBody); ok {
+				require.NotEqual(t, "fighter", b.Target, "fighter must not be attacked in round 1 — that is rpg-toolkit#1207's own defect")
+			}
+		}
+	}
+	clockOf, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "fighter"})
+	require.NoError(t, err)
+	require.Equal(t, session.ClockTurn, clockOf.Clock, "fighter is alive and the fight is still running")
+
+	// Both players — barbarian already down, fighter still standing — heard
+	// the same round-1 beats (rpg-toolkit#940's own current broadcast
+	// behaviour, same as TestTwoPlayersOneSession's own negative control).
+	round1Barbarian := recipientSeqs(round1Drive, "barbarian")
+	require.Equal(t, round1Fighter, round1Barbarian, "both players receive the identical round-1 beat set")
+
+	// Round 2: fighter's own end drives skel-1 a second time. This time
+	// skel-1's one attack downs fighter too — the last player standing —
+	// deciding the fight mid-drive: rpg-toolkit#1202's own case, now with
+	// two players in it.
+	stream.published = nil
+	out3, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	require.NoError(t, err, "a driven turn that wins the fight must not abort the caller's own EndTurn")
+	require.Equal(t, "fighter", out3.Next,
+		"there is no bubble left to name a turn IN; EndTurnOutput.Next reports the caller instead (rpg-toolkit#1202)")
+	require.False(t, out3.RoundWrapped, "the fight ended mid-round, not by cycling back to its top")
+
+	round2Drive := stream.published
+	var round2Struck []session.Event
+	var fightEnded []session.Event
+	for _, e := range round2Drive {
+		if e.Recipient != "fighter" {
+			continue
+		}
+		switch e.Kind {
+		case session.EventStruck:
+			round2Struck = append(round2Struck, e)
+		case session.EventFightEnded:
+			fightEnded = append(fightEnded, e)
+		}
+	}
+	require.Len(t, round2Struck, 1, "skel-1's own killing blow is still exactly one attack")
+	body2, ok := round2Struck[0].Body.(session.StruckBody)
+	require.True(t, ok)
+	require.Equal(t, "fighter", body2.Target)
+
+	require.Len(t, fightEnded, 1, "fighter — the caller — hears the fight end")
+	endedBody, ok := fightEnded[0].Body.(session.FightEndedBody)
+	require.True(t, ok)
+	require.Equal(t, session.DissolveByDefeat, endedBody.Cause)
+
+	// Both players get fight_ended — barbarian, already down since round 1,
+	// hears it too (rpg-toolkit#940's own current broadcast behaviour).
+	var barbarianFightEnded int
+	for _, e := range round2Drive {
+		if e.Recipient == "barbarian" && e.Kind == session.EventFightEnded {
+			barbarianFightEnded++
+		}
+	}
+	require.Equal(t, 1, barbarianFightEnded, "barbarian must also receive fight_ended")
+
+	for _, who := range []string{"fighter", "barbarian"} {
+		final, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: who})
+		require.NoError(t, err)
+		require.Equal(t, session.ClockWorld, final.Clock, "%s: the fight the killing blow ended left nobody still in it", who)
+	}
 }
