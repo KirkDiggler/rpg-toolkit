@@ -60,8 +60,8 @@ func (s *WhereSuite) where(member string) spatial.Position {
 // TestAClientCanAskWhereItStands is the headline: the question answered
 // directly, rather than remembered from the last Move.
 func (s *WhereSuite) TestAClientCanAskWhereItStands() {
-	s.Equal(spatial.Position{X: 41, Y: 21}, s.where("alice"),
-		"hall-local (1,1), anchored at (40,20)")
+	s.Equal(hexCell(41, 21), s.where("alice"),
+		"authored [41,21], as the map speaks it")
 }
 
 // TestTheAnswerIsWhereTheyAreNow is the derive-don't-echo pin, and the case a
@@ -75,11 +75,11 @@ func (s *WhereSuite) TestAClientCanAskWhereItStands() {
 func (s *WhereSuite) TestTheAnswerIsWhereTheyAreNow() {
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 42, Y: 22}, {X: 43, Y: 22}},
+		Path: []spatial.Position{hexCell(42, 22), hexCell(43, 22)},
 	})
 	s.Require().NoError(err)
 
-	s.Equal(spatial.Position{X: 43, Y: 22}, s.where("alice"), "where the walk left her")
+	s.Equal(hexCell(43, 22), s.where("alice"), "where the walk left her")
 }
 
 // TestTheAnswerAgreesWithTheMap crosses the read against the other one a client
@@ -106,7 +106,7 @@ func (s *WhereSuite) TestTheAnswerAgreesWithTheMap() {
 func (s *WhereSuite) TestItSurvivesAReconnect() {
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 42, Y: 22}},
+		Path: []spatial.Position{hexCell(42, 22)},
 	})
 	s.Require().NoError(err)
 
@@ -120,7 +120,7 @@ func (s *WhereSuite) TestItSurvivesAReconnect() {
 		Session: "sess", Member: "alice",
 	})
 	s.Require().NoError(err)
-	s.Equal(spatial.Position{X: 42, Y: 22}, out.Position, "read cold from what was persisted")
+	s.Equal(hexCell(42, 22), out.Position, "read cold from what was persisted")
 }
 
 // TestItRefusesWhatItCannotAnswer covers the three ways to ask badly.

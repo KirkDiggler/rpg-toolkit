@@ -39,7 +39,7 @@ func (s *MoveTestSuite) SetupTest() {
 	s.mgr = mgr
 }
 
-// corridorWorld is a square room with alice at (1,1) and an ending at (4,1),
+// corridorWorld is an 8x8 hall with alice at [1,1] and an ending at (4,1),
 // three steps to her east — near enough to walk onto, far enough that a walk
 // can be interrupted before reaching it.
 func corridorWorld(t fataler) *encounter.EncounterData {
@@ -173,22 +173,6 @@ func (s *MoveTestSuite) TestSingleCellPathIsLegal() {
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
 	})
 	s.Require().NoError(err)
-	s.Len(out.Steps, 1)
-}
-
-// TestDiagonalIsAdjacentOnSquare is the other must-accept row, and it is
-// grid-family-specific on purpose.
-//
-// On a square grid a diagonal step is adjacent. A validator that used
-// orthogonal-only adjacency would reject half of all legal movement while
-// passing every straight-line test in this file.
-func (s *MoveTestSuite) TestDiagonalIsAdjacentOnSquare() {
-	s.startCorridor()
-
-	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 2}},
-	})
-	s.Require().NoError(err, "a diagonal step is adjacent on a square grid")
 	s.Len(out.Steps, 1)
 }
 
@@ -402,10 +386,11 @@ func (s *MoveTestSuite) TestAWalkComesBackThroughTheSameDoorway() {
 func (s *MoveTestSuite) TestAStepOntoNoCellUsesOurSentinelNotTheirs() {
 	s.startCorridor()
 
-	// The hall runs (0,0)-(7,7). Alice steps to its corner, then off the map.
+	// The hall is authored over columns 0..7. Alice steps to its west
+	// edge, then off the map.
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 0, Y: 0}, {X: -1, Y: -1}},
+		Path: []spatial.Position{{X: 0, Y: 1}, {X: -1, Y: 1}},
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrBadPosition, "the caller sees our vocabulary")
@@ -441,10 +426,10 @@ func (s *MoveTestSuite) TestAMidWalkRefusalMovesNobody() {
 	s.Require().NoError(err)
 	s.stream.published = nil // setup beats predate the walk
 
-	// (1,1) → (0,0) is a real step. (-1,-1) is off the map.
+	// (1,1) → (0,1) is a real step. (-1,1) is off the map.
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 0, Y: 0}, {X: -1, Y: -1}},
+		Path: []spatial.Position{{X: 0, Y: 1}, {X: -1, Y: 1}},
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrBadPosition)

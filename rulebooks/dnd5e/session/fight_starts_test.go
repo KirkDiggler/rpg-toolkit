@@ -88,6 +88,14 @@ func ambushWorldWithAliceAt(t fataler, at spatial.Position) *encounter.Encounter
 	return buildAmbush(t, at)
 }
 
+// ambushPath is the four-cell walk north along authored column 1 that meets
+// the ogre on cell two — two cells still to go, which is what makes "the
+// fight stopped the walk" a claim rather than a coincidence. Authored cells,
+// spoken to the verb as the map's own.
+func ambushPath() []spatial.Position {
+	return []spatial.Position{hexCell(1, 1), hexCell(1, 2), hexCell(1, 3), hexCell(1, 4)}
+}
+
 func ambushWorld(t fataler, extra ...encounter.MemberInput) *encounter.EncounterData {
 	return buildAmbush(t, spatial.Position{X: 1, Y: 0}, extra...)
 }
@@ -141,7 +149,7 @@ func (s *FightStartsTestSuite) startAmbush(extra ...encounter.MemberInput) {
 func (s *FightStartsTestSuite) walkIntoTheAmbush() *session.MoveOutput {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: ambushPath(),
 	})
 	s.Require().NoError(err)
 	return out
@@ -162,7 +170,7 @@ func (s *FightStartsTestSuite) TestTheFightStopsTheWalk() {
 	out := s.walkIntoTheAmbush()
 
 	s.Require().Len(out.Steps, 2, "the walk stopped where the fight started")
-	s.Equal(spatial.Position{X: 2, Y: 2}, out.Steps[1].Position,
+	s.Equal(hexCell(1, 2), out.Steps[1].Position,
 		"where she stopped, not where she was headed")
 
 	s.Require().NotNil(out.Formed, "lining up with the gap started a fight")
@@ -221,7 +229,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 
 		out, err := mgr.Move(context.Background(), &session.MoveInput{
 			Session: "sess", Member: "alice",
-			Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}},
+			Path: ambushPath()[:2],
 		})
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Formed, "run %d", i)
@@ -256,7 +264,7 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 
 	out, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}, {X: 2, Y: 3}, {X: 2, Y: 4}},
+		Path: ambushPath(),
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Formed)
@@ -290,7 +298,7 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 
 	_, err = mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}},
+		Path: ambushPath()[:2],
 	})
 	s.Require().Error(err, "the fight could not be ordered, so the verb fails")
 	s.ErrorIs(err, errNoRandomness, "and the host's own failure is still matchable")
@@ -318,18 +326,18 @@ func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 func (s *FightStartsTestSuite) TestAWalkThatStartsNoFightRunsToTheEnd() {
 	s.startAmbush()
 
-	// She walks up the near side of the wall, (2,0) then (2,1), staying off
-	// the file the gap opens onto. Neither ever holds the other — verified
-	// below rather than assumed, because "no fight" would also be the answer
-	// if the walk had simply failed.
+	// She walks along the near side of the wall, [2,0] then [2,1], staying
+	// off the file the gap opens onto. Neither ever holds the other —
+	// verified below rather than assumed, because "no fight" would also be
+	// the answer if the walk had simply failed.
 	//
-	// This route used to run to the corner at (0,0). Lane sight reaches
+	// This route used to run to the corner at [0,0]. Lane sight reaches
 	// through the gap at a much shallower angle than a single ray did, and the
-	// whole x=0 column turned out to be in view of it — so the old "quiet"
+	// whole column 0 turned out to be in view of it — so the old "quiet"
 	// corner is now the loudest cell in the room.
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 0}, {X: 2, Y: 1}},
+		Path: []spatial.Position{hexCell(2, 0), hexCell(2, 1)},
 	})
 	s.Require().NoError(err)
 	s.Nil(out.Formed, "nobody saw anybody, so no fight started")
@@ -437,7 +445,7 @@ func (s *FightStartsTestSuite) TestAFightOnTheFinalCellIsStillReported() {
 
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 1}, {X: 2, Y: 2}}, // contact lands on the last cell
+		Path: ambushPath()[:2], // contact lands on the last cell
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.Steps, 2, "the walk finished")
@@ -515,7 +523,7 @@ func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 
 	_, err := mgr.Spawn(context.Background(), &session.SpawnInput{
 		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 6, Y: 6},
+		Position: hexCell(6, 6),
 	})
 	s.Require().Error(err, "the spawned sheet had to be written to the session")
 	s.Require().ErrorIs(err, session.ErrSaveFailed, "the condition is matchable")
@@ -539,7 +547,7 @@ func (s *FightStartsTestSuite) TestATotalSaveFailureNamesOnlyWhatWasAttempted() 
 	mgr := managerOverRepos(s.T(), s.sessions, encounters)
 
 	_, err := mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
+		Session: "sess", Member: "alice", Path: ambushPath()[:1],
 	})
 	s.Require().Error(err)
 

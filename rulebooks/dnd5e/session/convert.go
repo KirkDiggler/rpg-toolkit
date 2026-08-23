@@ -4,7 +4,6 @@
 package session
 
 import (
-	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -115,20 +114,6 @@ func projectAtlas(in encounter.Atlas) Atlas {
 	}
 
 	return out
-}
-
-// sortCells puts positions in one deterministic order: by X, then by Y.
-func sortCells(cells []spatial.Position) {
-	sort.Slice(cells, func(i, j int) bool { return before(cells[i], cells[j]) })
-}
-
-// before is the map's coordinate order, shared by every sorted list on the
-// Atlas so that two of them can be read side by side.
-func before(a, b spatial.Position) bool {
-	if a.X != b.X {
-		return a.X < b.X
-	}
-	return a.Y < b.Y
 }
 
 func projectStatus(in *encounter.Status) *Status {

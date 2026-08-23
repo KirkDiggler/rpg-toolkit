@@ -112,7 +112,7 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 
 	// The fighter walks down to the doorway row and through it. The walk may
 	// stop short of the full requested path: reaching the doorway's own gap
-	// cell (5,2) already opens sight to skeleton-1 across it, and a sighting
+	// cell [5,2] already opens sight to skeleton-1 across it, and a sighting
 	// between a player and a monster starts a fight, which is news the walk
 	// reports rather than something it walks through (session/doc.go — the
 	// composition detects contact wherever sight changes and stops the walker
@@ -120,7 +120,7 @@ func (s *SeenTestSuite) TestSeenIsPopulatedAfterCrossingTheDoorway() {
 	// exactly because the walk reached the doorway, not before.
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
-		Path: []spatial.Position{{X: 5, Y: 1}, {X: 5, Y: 2}, {X: 6, Y: 2}},
+		Path: []spatial.Position{hexCell(5, 1), hexCell(5, 2), hexCell(6, 2)},
 	})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(out.Steps, "the fighter must have moved at all")
@@ -157,7 +157,7 @@ func (s *SeenTestSuite) TestDiscoveredAlsoCarriesSeen() {
 
 	out, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter",
-		Path: []spatial.Position{{X: 5, Y: 1}, {X: 5, Y: 2}, {X: 6, Y: 2}},
+		Path: []spatial.Position{hexCell(5, 1), hexCell(5, 2), hexCell(6, 2)},
 	})
 	s.Require().NoError(err)
 
