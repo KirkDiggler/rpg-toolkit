@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -251,4 +252,61 @@ func (s *AtlasRegionsSuite) TestAtlasOfRefusesWhatStartSessionRefuses() {
 
 	_, err = s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: broken})
 	s.ErrorIs(err, session.ErrInvalidWorld, "and StartSession refuses the same world the same way")
+}
+
+// untouchableStores is every repository a Manager is wired with, each
+// failing the test the moment anything reaches it.
+type untouchableStores struct{ t *testing.T }
+
+func (u untouchableStores) touched(what string) {
+	u.t.Helper()
+	u.t.Fatalf("AtlasOf reached a store: %s", what)
+}
+
+func (u untouchableStores) GetSession(context.Context, string) (*session.SessionData, error) {
+	u.touched("GetSession")
+	return nil, nil
+}
+func (u untouchableStores) SaveSession(context.Context, *session.SessionData) error {
+	u.touched("SaveSession")
+	return nil
+}
+func (u untouchableStores) GetEncounter(context.Context, string) (*encounter.EncounterData, error) {
+	u.touched("GetEncounter")
+	return nil, nil
+}
+func (u untouchableStores) SaveEncounter(context.Context, string, *encounter.EncounterData) error {
+	u.touched("SaveEncounter")
+	return nil
+}
+func (u untouchableStores) GetCharacter(context.Context, string) (*character.Data, error) {
+	u.touched("GetCharacter")
+	return nil, nil
+}
+func (u untouchableStores) SaveCharacter(context.Context, *character.Data) error {
+	u.touched("SaveCharacter")
+	return nil
+}
+func (u untouchableStores) Publish(context.Context, []session.Event) error {
+	u.touched("Publish")
+	return nil
+}
+
+// TestAtlasOfTouchesNoStore pins what a dungeon registry relies on when it
+// calls AtlasOf for every file at boot and on every validate-only keystroke
+// from a builder: the projection is pure construction, and reaches no
+// session, encounter, character store or event stream. A load does not
+// consult standing, sight or initiative — those fire from play — and this
+// is the test that keeps it so from this side of the seam.
+func (s *AtlasRegionsSuite) TestAtlasOfTouchesNoStore() {
+	stores := untouchableStores{t: s.T()}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: stores, Encounters: stores, Characters: stores, Events: stores,
+	})
+	s.Require().NoError(err)
+
+	atlas, err := mgr.AtlasOf(context.Background(), &session.AtlasOfInput{World: tomb(encounter.HexesArePointyTop())})
+	s.Require().NoError(err)
+	s.Len(atlas.Regions, 3)
 }
