@@ -98,31 +98,24 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 
 	bs, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
-	// Exact-string pin: every room now carries "origin" (#929 T2), always
-	// present (no omitempty — RoomData's doc comment) — crypt's and hall's
-	// are both negative-axial, the wire-shape proof this golden exists for.
+	// Exact-string pin of the wire shape since regions replaced rooms
+	// (rpg-project#256): a field is "canvas" + "regions" + "props" + "walls",
+	// every region listing its AUTHORED cells under "cells" beside its
+	// "archetype" and "lighting" block, and an ending's target under "at".
+	// Doors are top-level beside members, as before. The room-chain keys —
+	// "rooms", "connections", "origin", "room" — are gone, and a blob
+	// carrying them is refused by name (FieldData.Rooms).
 	//
 	// A MEMBER IS A CELL, not a room and a cell (rpg-toolkit#1106): "cell"
-	// under a new key, absolute, with the room label gone because a member's
-	// chamber is derived from where they stand.
+	// under its own key, absolute axial, with the region derived from where
+	// they stand. The two intel payloads mirror the two members' cells by
+	// construction.
 	//
-	// FOUR VALUES MOVED when rpg-toolkit#1141 corrected the hex offset schemes,
-	// and only four: the two members' absolute cells, and the two intel payloads
-	// that mirror them (each member holds where it SEES the other, so those
-	// track the cells by construction). Everything else here is byte-identical
-	// -- every tag, key, log entry, bubble, ending, and every AUTHORED value,
-	// since room origins, props, boundaries and connection endpoints are all
-	// written in the offset frame and did not move. That is the check that
-	// justified updating a golden at all: this file exists to pin tags and wire
-	// shape, and none of that changed.
-	//
-	// And this blob now carries a FIGHT. The two members are one doorway apart
-	// with nothing between them, so they see each other at first light and
-	// trigger detection forms a bubble — which used to be invisible here only
-	// because sight stopped at a room boundary. That makes the golden strictly
-	// richer: it is the one place the bubbles array and intel's holdings are
+	// And this blob carries a FIGHT. The two members see each other across
+	// the open seam at first light and trigger detection forms a bubble —
+	// so this is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTMsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotNSwieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":4,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"rooms":[{"id":"crypt","width":8,"height":8,"grid":"hex","props":[{"ref":"test:props:rubble","at":{"x":1,"y":2},"blocks_movement":true,"blocks_line_of_sight":true}],"boundaries":[{"from":{"x":2,"y":2},"to":{"x":2,"y":3},"blocks_movement":true,"blocks_line_of_sight":true}],"origin":{"x":-10,"y":7}},{"id":"hall","width":6,"height":6,"grid":"hex","origin":{"x":-2,"y":7}}],"connections":[{"id":"door1","from":"crypt","to":"hall","from_position":{"x":7,"y":3},"to_position":{"x":0,"y":3}}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"endings":[{"key":"guarded","kind":"reached_position","room":"crypt","position":{"x":3,"y":3},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTMsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotNSwieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":4,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -148,7 +141,7 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: enc1.ToData()})
 	s.Require().NoError(err)
 
-	out, err := enc2.Step(&encounter.StepInput{Member: "p1", To: spatial.Position{X: 3, Y: 3}})
+	out, err := enc2.Step(&encounter.StepInput{Member: "p1", To: cellAt(3, 3)})
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Outcome)
 	s.Equal("first", out.Outcome.Ending,
@@ -190,9 +183,9 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	s.Require().NoError(err)
 
 	setup.Field.Regions[0].ID = "VANDALIZED"
-	setup.Field.Regions[0].Cells[0] = spatial.Position{X: 999, Y: 999}
+	setup.Field.Regions[0].Cells[0] = cellAt(999, 999)
 	setup.Field.Regions[0].Lighting.Intensity = 0.1
-	setup.Field.Props[0].At = spatial.Position{X: 4, Y: 4}
+	setup.Field.Props[0].At = cellAt(4, 4)
 	setup.Field.Walls[0].From = spatial.Position{X: 4, Y: 4}
 
 	data := enc.ToData()
@@ -319,7 +312,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		// Move goblin behind the wall to create a ghost
 		_, err = enc1.Step(&encounter.StepInput{
 			Member: "playerA",
-			To:     spatial.Position{X: 4, Y: 1},
+			To:     cellAt(4, 1),
 		})
 		s.Require().NoError(err)
 
@@ -333,7 +326,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 		// Move goblin to create ghost at last-seen position
 		_, err = enc1.Step(&encounter.StepInput{
 			Member: "goblin",
-			To:     spatial.Position{X: 5, Y: 6}, // Behind the wall from A's view
+			To:     cellAt(5, 6), // Behind the wall from A's view
 		})
 		s.Require().NoError(err)
 
@@ -370,13 +363,13 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A pillar on the diagonal keeps playerA and the
+				// A wall across the room keeps playerA and the
 				// goblin out of each other's sight, so the scene
 				// opens in free roam and the goblin stays the
 				// world's to pump. Co-located and visible would be
 				// a fight at first light (rpg-toolkit#964), and a
 				// fight monster's decider is never consulted.
-				Props: []encounter.PropInput{rubble(5, 5)},
+				Props: wallRow(5, 1, 8),
 			},
 			Members: []encounter.MemberInput{
 				{
@@ -423,13 +416,13 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A pillar on the diagonal keeps playerA and the
+				// A wall across the room keeps playerA and the
 				// goblin out of each other's sight, so the scene
 				// opens in free roam and the goblin stays the
 				// world's to pump. Co-located and visible would be
 				// a fight at first light (rpg-toolkit#964), and a
 				// fight monster's decider is never consulted.
-				Props: []encounter.PropInput{rubble(5, 5)},
+				Props: wallRow(5, 1, 8),
 			},
 			Members: []encounter.MemberInput{
 				{
@@ -456,7 +449,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 		// Move to stairs to close
 		_, err = enc1.Step(&encounter.StepInput{
 			Member: "playerA",
-			To:     spatial.Position{X: 0, Y: 0},
+			To:     cellAt(0, 0),
 		})
 		s.Require().NoError(err)
 
@@ -485,13 +478,13 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A pillar on the diagonal keeps playerA and the
+				// A wall across the room keeps playerA and the
 				// goblin out of each other's sight, so the scene
 				// opens in free roam and the goblin stays the
 				// world's to pump. Co-located and visible would be
 				// a fight at first light (rpg-toolkit#964), and a
 				// fight monster's decider is never consulted.
-				Props: []encounter.PropInput{rubble(5, 5)},
+				Props: wallRow(5, 1, 8),
 			},
 			Members: []encounter.MemberInput{
 				{
@@ -539,13 +532,13 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A pillar on the diagonal keeps playerA and the
+				// A wall across the room keeps playerA and the
 				// goblin out of each other's sight, so the scene
 				// opens in free roam and the goblin stays the
 				// world's to pump. Co-located and visible would be
 				// a fight at first light (rpg-toolkit#964), and a
 				// fight monster's decider is never consulted.
-				Props: []encounter.PropInput{rubble(5, 5)},
+				Props: wallRow(5, 1, 8),
 			},
 			Members: []encounter.MemberInput{
 				{
@@ -575,12 +568,12 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 		// Move should work
 		out, err := enc2.Step(&encounter.StepInput{
 			Member: "playerA",
-			To:     spatial.Position{X: 2, Y: 2},
+			To:     cellAt(2, 2),
 		})
 
 		s.Require().NoError(err)
 		s.NotNil(out)
-		s.Equal(spatial.Position{X: 2, Y: 2}, out.Stepped.To)
+		s.Equal(cellAt(2, 2), out.Stepped.To)
 	})
 }
 
@@ -620,7 +613,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 		// renamed tag fails this where a decoded comparison would not.
 		// (log carries the opening beat: a fresh encounter is born with
 		// its first story entry; clock/intel marshal {} per leaf laws.)
-		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque"},"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":2,"y":2}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"clock":{"budgets":{"p1":0}},"intel":{},"log":{"next_seq":2,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":1,"y":2}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -664,7 +657,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// Close the encounter
 		_, err = enc.Step(&encounter.StepInput{
 			Member: "p1",
-			To:     spatial.Position{X: 0, Y: 0},
+			To:     cellAt(0, 0),
 		})
 		s.Require().NoError(err)
 
@@ -684,7 +677,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 		// blob written before the flip lands nowhere on today's shape and is
 		// refused by name rather than read in the wrong frame (see
 		// dialect_test.go).
-		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"canvas":{"void":"opaque"},"rooms":[{"id":"room1","width":5,"height":5,"origin":{"x":0,"y":0}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","room":"room1","position":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
+		expectedJSON := `{"outcome":{"ending":"done","at":1,"members":[{"id":"p1","cell":{"x":0,"y":0}}]},"clock":{"budgets":{"p1":1},"driver_progress":{"world":1},"high_water":1},"intel":{},"log":{"next_seq":4,"entries":[{"seq":1,"audience":["p1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"at":1,"audience":["p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":3,"at":1,"audience":["p1"],"tags":{"tag":"movement"},"payload":"eyJiZWF0IjoibW92ZWQiLCJtZW1iZXIiOiJwMSIsInBvc2l0aW9uIjp7IngiOjAsInkiOjB9fQ=="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"room1","name":"room1","cells":[{"x":0,"y":0},{"x":1,"y":0},{"x":2,"y":0},{"x":3,"y":0},{"x":4,"y":0},{"x":0,"y":1},{"x":1,"y":1},{"x":2,"y":1},{"x":3,"y":1},{"x":4,"y":1},{"x":0,"y":2},{"x":1,"y":2},{"x":2,"y":2},{"x":3,"y":2},{"x":4,"y":2},{"x":0,"y":3},{"x":1,"y":3},{"x":2,"y":3},{"x":3,"y":3},{"x":4,"y":3},{"x":0,"y":4},{"x":1,"y":4},{"x":2,"y":4},{"x":3,"y":4},{"x":4,"y":4}],"archetype":"crypt","lighting":{"intensity":1}}]},"members":[{"id":"p1","kind":"player","cell":{"x":0,"y":0}}],"endings":[{"key":"done","kind":"reached_position","at":{"x":0,"y":0}}],"ever_members":["p1"],"retention":32}`
 		s.Equal(expectedJSON, string(jsonBytes))
 	})
 }
@@ -848,13 +841,13 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A pillar on the diagonal keeps playerA and the
+				// A wall across the room keeps playerA and the
 				// goblin out of each other's sight, so the scene
 				// opens in free roam and the goblin stays the
 				// world's to pump. Co-located and visible would be
 				// a fight at first light (rpg-toolkit#964), and a
 				// fight monster's decider is never consulted.
-				Props: []encounter.PropInput{rubble(5, 5)},
+				Props: wallRow(5, 1, 8),
 			},
 			Members: []encounter.MemberInput{
 				{
@@ -885,7 +878,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 		// Load with goblin's decider re-attached
 		decider := &testDecider{
 			intent: encounter.IntentMoveTo{
-				To: spatial.Position{X: 7, Y: 7},
+				To: cellAt(7, 7),
 			},
 		}
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
@@ -913,13 +906,13 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
-				// A pillar on the diagonal keeps playerA and the
+				// A wall across the room keeps playerA and the
 				// goblin out of each other's sight, so the scene
 				// opens in free roam and the goblin stays the
 				// world's to pump. Co-located and visible would be
 				// a fight at first light (rpg-toolkit#964), and a
 				// fight monster's decider is never consulted.
-				Props: []encounter.PropInput{rubble(5, 5)},
+				Props: wallRow(5, 1, 8),
 			},
 			Members: []encounter.MemberInput{
 				{
@@ -1010,7 +1003,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10), rectRegion("antechamber", 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
 		},
 		Members: []encounter.MemberInput{
-			{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 11, Y: 1}},
 			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8},
 				Decider: &testDecider{intent: encounter.IntentHold{}}},
 			{ID: "rat", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8},
@@ -1023,7 +1016,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	s.Require().NoError(err)
 	data1 := enc1.ToData()
 
-	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: spatial.Position{X: 3, Y: 8}}}
+	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: cellAt(3, 8)}}
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 			"goblin": nil,
@@ -1035,7 +1028,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	s.Require().NoError(err)
 	s.Require().Len(out.MonsterMoves, 1, "only rat's real decider produces a move")
 	s.Equal(encounter.MemberID("rat"), out.MonsterMoves[0].Member)
-	s.Equal(spatial.Position{X: 3, Y: 8}, out.MonsterMoves[0].To)
+	s.Equal(cellAt(3, 8), out.MonsterMoves[0].To)
 }
 
 // ============================================================================
@@ -1486,11 +1479,11 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 		// (rpg-toolkit#964), and a fight member cannot free-roam — so the two
 		// break off before the goblin walks back out of sight and fades. The
 		// ghost this makes is the same ghost; it just has a story now.
-		_, err = enc1.Step(&encounter.StepInput{Member: "playerA", To: spatial.Position{X: 4, Y: 1}})
+		_, err = enc1.Step(&encounter.StepInput{Member: "playerA", To: cellAt(4, 1)})
 		s.Require().NoError(err)
 		_, err = enc1.Dissolve(&encounter.DissolveInput{Member: "goblin"})
 		s.Require().NoError(err, "the sighting formed a fight to break off")
-		_, err = enc1.Step(&encounter.StepInput{Member: "goblin", To: spatial.Position{X: 5, Y: 6}})
+		_, err = enc1.Step(&encounter.StepInput{Member: "goblin", To: cellAt(5, 6)})
 		s.Require().NoError(err)
 
 		holdings1, _ := enc1.View(&encounter.ViewInput{Member: "playerA"})

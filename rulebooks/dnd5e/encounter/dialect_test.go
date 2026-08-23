@@ -65,9 +65,9 @@ func (s *DialectSuite) closedBlob() encounter.EncounterData {
 			rectRegion("hall", int(dialectOrigin.X), int(dialectOrigin.Y), 8, 8),
 		}},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 3}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
-			{ID: "carl", Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 4}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: dialectOrigin.Add(spatial.Position{X: 2, Y: 3})},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: dialectOrigin.Add(spatial.Position{X: 2, Y: 5})},
+			{ID: "carl", Kind: encounter.KindPlayer, Position: dialectOrigin.Add(spatial.Position{X: 4, Y: 4})},
 		},
 		Endings:   []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,

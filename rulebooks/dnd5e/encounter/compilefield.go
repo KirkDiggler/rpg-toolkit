@@ -230,7 +230,7 @@ func (f *field) compileProps(props []PropInput) error {
 				p.Ref, p.At.X, p.At.Y, ErrNoField)
 		}
 		cell := f.cellAt(p.At)
-		if _, floor := f.owner[cell]; !floor {
+		if _, floor := f.regionOf(cell); !floor {
 			return fmt.Errorf("prop %q at [%g,%g] stands on no region's floor: %w",
 				p.Ref, p.At.X, p.At.Y, ErrBadPlacement)
 		}
@@ -302,7 +302,7 @@ func (f *field) edgeOf(from, to spatial.Position) (DoorEdge, error) {
 	for _, end := range []struct {
 		authored, abs spatial.Position
 	}{{from, a}, {to, b}} {
-		if _, floor := f.owner[end.abs]; !floor {
+		if _, floor := f.regionOf(end.abs); !floor {
 			return DoorEdge{}, fmt.Errorf("endpoint [%g,%g] is not floor: %w",
 				end.authored.X, end.authored.Y, ErrEdgeOffFloor)
 		}
