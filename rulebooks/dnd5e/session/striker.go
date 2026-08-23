@@ -74,7 +74,7 @@ func (s strikerSeam) Strike(
 		}
 	}
 	if actionData == nil {
-		return fmt.Errorf("strike: attacker %q: action %q: %w", attacker, action, ErrBadAttack)
+		return fmt.Errorf("strike: attacker %q: action %q: %w", attacker, action.String(), ErrBadAttack)
 	}
 
 	profile, err := resolution.AttackFromMonsterAction(*actionData)
