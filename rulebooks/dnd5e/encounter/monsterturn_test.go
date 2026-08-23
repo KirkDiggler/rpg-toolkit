@@ -940,14 +940,14 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker,
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+			Canvas:  openAir(),
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 5, Y: 5}},
-			{ID: bob, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 5}},
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
 			{
-				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 4, Y: 5},
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 5},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
 					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
