@@ -35,7 +35,9 @@ func atlasField() encounter.FieldInput {
 		Canvas:  pointyCanvas(),
 		Regions: regions,
 		Props:   []encounter.PropInput{rubble(8, 6), rubble(7, 5)},
-		Walls:   seamWallRows(9, 4, 5, 6),
+		// The seam, plus one wall inside the entrance authored BACKWARDS —
+		// east cell first — so the Atlas's normalization has something to do.
+		Walls: append(seamWallRows(9, 4, 5, 6), wall(8, 5, 7, 5)),
 		Doors: []encounter.DoorInput{
 			openDoorway("seam", 9, 6, 10, 6),
 			{ID: "inner", State: encounter.DoorIsClosed(), Edges: []encounter.DoorEdge{{From: cellAt(15, 5), To: cellAt(15, 6)}}},
@@ -127,6 +129,8 @@ func (s *AtlasRegionsSuite) TestAtlasDeterministicOrdering() {
 	for _, b := range atlas.Boundaries {
 		s.True(b.From.X < b.To.X || (b.From.X == b.To.X && b.From.Y < b.To.Y), "and each normalized From before To")
 	}
+	s.Contains(atlas.Boundaries, encounter.AtlasBoundary{From: cellAt(7, 5), To: cellAt(8, 5), BlocksMovement: true, BlocksLineOfSight: true},
+		"the wall authored east-first is reported west-first: a wall has no side")
 
 	s.Require().Len(atlas.Doorways, 2)
 	s.Equal(encounter.DoorID("inner"), atlas.Doorways[0].Door, "doorways by door ID")
@@ -160,8 +164,10 @@ func (s *AtlasRegionsSuite) TestAtlasCopyOutImmunity() {
 	enc := s.open(atlasField())
 	first, err := enc.Atlas()
 	s.Require().NoError(err)
-	pristine, err := enc.Atlas()
+	pristine := deepCopyAtlas(first)
+	hall, err := enc.Region("hall")
 	s.Require().NoError(err)
+	hallCells := append([]spatial.Position(nil), hall.Cells...)
 
 	poison := spatial.Position{X: -999, Y: -999}
 	for i := range first.Cells {
@@ -183,9 +189,33 @@ func (s *AtlasRegionsSuite) TestAtlasCopyOutImmunity() {
 		first.Doorways[i].From = poison
 	}
 
+	for i := range hall.Cells {
+		hall.Cells[i] = poison
+	}
+
 	second, err := enc.Atlas()
 	s.Require().NoError(err)
 	s.Equal(pristine, second, "mutating one snapshot must not reach internal state")
+	again, err := enc.Region("hall")
+	s.Require().NoError(err)
+	s.Equal(hallCells, again.Cells, "nor may a Region read alias the cells it hands out")
+}
+
+// deepCopyAtlas is a copy that shares no slice with its source — what a
+// copy-out test has to compare against, since a second Atlas call would
+// itself be the thing under test.
+func deepCopyAtlas(a encounter.Atlas) encounter.Atlas {
+	out := a
+	out.Cells = append([]spatial.Position(nil), a.Cells...)
+	out.Regions = make([]encounter.AtlasRegion, len(a.Regions))
+	for i, r := range a.Regions {
+		out.Regions[i] = r
+		out.Regions[i].Cells = append([]spatial.Position(nil), r.Cells...)
+	}
+	out.Props = append([]encounter.AtlasProp(nil), a.Props...)
+	out.Boundaries = append([]encounter.AtlasBoundary(nil), a.Boundaries...)
+	out.Doorways = append([]encounter.AtlasDoorway(nil), a.Doorways...)
+	return out
 }
 
 // TestAtlasIdenticalAfterReload — the reload-identity property, for the

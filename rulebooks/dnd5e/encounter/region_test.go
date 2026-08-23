@@ -252,6 +252,14 @@ func (s *RegionSetupSuite) TestSetup_RefusesRegionDefectsByName() {
 		s.Require().ErrorIs(err, encounter.ErrNoField)
 		s.Contains(err.Error(), "cells[0]")
 	})
+	s.Run("more cells than the field budget", func() {
+		// 2049 x 2049 is 4,198,401 cells — one past 1<<22. The budget is
+		// checked before any cell is converted, so this costs the input
+		// slice and nothing else.
+		_, err := s.setupWith([]encounter.RegionInput{rectRegion("vast", 0, 0, 2049, 2049)})
+		s.Require().ErrorIs(err, encounter.ErrNoField)
+		s.Contains(err.Error(), "more than 4194304 cells")
+	})
 	s.Run("a cell past the coordinate bound", func() {
 		regions := threeRegions()
 		regions[1].Cells[0] = spatial.Position{X: 1 << 31, Y: 4}
