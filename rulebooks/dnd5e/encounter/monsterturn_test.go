@@ -776,3 +776,99 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 	s.Equal([]spatial.Position{{X: 1, Y: 0}}, aliceSeen.Path,
 		"the nearest WALKABLE in-range cell is one step away, not several steps around the wall")
 }
+
+// killerStriker wraps scriptedStriker's own outcome-recording, additionally
+// marking the STRUCK CALL'S OWN target down in standing BEFORE recording —
+// the same order the real session seam keeps (rpg-toolkit#1083: a swing's
+// sheet is written before its outcome is recorded), so the standing consult
+// inside THIS SAME Record call already sees the killing blow.
+//
+// Reads target from Strike's own argument rather than a field configured at
+// construction (Copilot, PR #1202 review): a fixed field the caller sets up
+// front is a value that can drift from what a future scene's driver actually
+// declares, silently marking the wrong member down. There is only ever one
+// honest answer to "who did this strike hit" — the one Strike itself was
+// called with.
+type killerStriker struct {
+	*scriptedStriker
+	standing *downList
+}
+
+func (k *killerStriker) Strike(
+	ctx context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
+) error {
+	k.standing.down = append(k.standing.down, target)
+	return k.scriptedStriker.Strike(ctx, enc, attacker, target, action)
+}
+
+// TestDrivenKillingBlowEndsTheDriveCleanly reproduces rpg-project#254's live
+// walk anomaly #2 (the tomb evidence, round 4:
+// "drive monster turns \"skeleton-1\": end: end turn: clock is idle").
+//
+// A driven member's own strike can be the fight's own killing blow —
+// [Encounter.noticeDown], reached through Record (which Strike calls before
+// returning), dissolves the SAME bubble driveMonsterTurns is still mid-loop
+// over the instant it notices (rpg-toolkit#1078, ByDefeat) — before the loop
+// gets back around to closing THIS member's own turn out of it. bubble.End
+// then asked an idle clock to end a turn it no longer had, and play/clock's
+// own ErrIdle turned an entirely ordinary outcome — a monster winning the
+// fight it was in — into an error on the CALLER's own EndTurn. That is
+// exactly the asymmetry this file's own doc draws for a driver malfunction
+// (TestADriverMalfunctionAbortsTheWholeCall) versus everything else
+// (TestAttackOnOutOfReachTargetEndsTheTurnWithoutAborting and friends): only
+// a malfunction earns aborting the caller's verb, and the fight ending is
+// not one.
+func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
+	standing := &downList{}
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Attack{Target: alice, Action: testMeleeAction},
+	}}
+	striker := &killerStriker{
+		scriptedStriker: &scriptedStriker{kind: encounter.OutcomeStruck},
+		standing:        standing,
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: striker,
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: room1, Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Room: room1, Position: spatial.Position{X: 2, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Room: room1, Position: spatial.Position{X: 3, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{
+					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
+				},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	et, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err, "a driven turn that wins the fight must not abort the caller's own EndTurn")
+	s.Equal(alice, et.Next,
+		"there is no bubble left to name a turn IN; EndTurnOutput.Next reports the caller instead")
+
+	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(encounter.ClockWorld, clockOf.Kind, "the bubble the killing blow ended left nobody still in it")
+
+	beats := s.clockBeats(enc, alice)
+	var sawStruck, sawDissolved bool
+	for _, b := range beats {
+		switch b["beat"] {
+		case "struck":
+			sawStruck = true
+		case "bubble-dissolved":
+			sawDissolved = true
+			s.Equal("defeat", b["cause"])
+		}
+	}
+	s.True(sawStruck, "the killing blow itself is on the record: %+v", beats)
+	s.True(sawDissolved, "and so is the fight it ended: %+v", beats)
+}
