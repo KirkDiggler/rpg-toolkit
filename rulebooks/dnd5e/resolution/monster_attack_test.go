@@ -75,6 +75,43 @@ func (s *MonsterAttackTestSuite) TestMeleePreservesCanonicalPoolsAndIntrinsicBon
 	}
 }
 
+// TestMeleeNameCarriesTheAuthoredValue pins a sibling gap to the Reach one
+// below: AttackProfile.Name stayed empty for every monster melee action
+// regardless of what the stat block authored (MeleeConfig.Name — "shortsword",
+// "scimitar"), even though the field exists on the profile precisely so a
+// caller reporting what was swung never has to look the ref back up in a
+// catalog (rpg-toolkit#866, AttackProfile.Name's own doc). A monster
+// attacker reaching a recording caller — session's Striker, driving a
+// monster's own turn (rpg-project#254) — needs this to say more than "" in
+// a struck/missed beat's AttackIdentity.Name.
+func (s *MonsterAttackTestSuite) TestMeleeNameCarriesTheAuthoredValue() {
+	action := s.action(refs.MonsterActions.Melee(), monsterActions.MeleeConfig{
+		Name:        "scimitar",
+		AttackBonus: 4,
+		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing}},
+		Reach:       5,
+	})
+
+	profile, err := AttackFromMonsterAction(action)
+	s.Require().NoError(err)
+	s.Equal("scimitar", profile.Name)
+}
+
+// TestBiteNameIsNotEmpty pins that a bite — which has no configurable Name
+// field at all (BiteConfig carries none; every bite is just "the bite") —
+// compiles to a non-empty display name rather than "", for the same reason
+// TestMeleeNameCarriesTheAuthoredValue does.
+func (s *MonsterAttackTestSuite) TestBiteNameIsNotEmpty() {
+	action := s.action(refs.MonsterActions.Bite(), monsterActions.BiteConfig{
+		AttackBonus: 4,
+		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing}},
+	})
+
+	profile, err := AttackFromMonsterAction(action)
+	s.Require().NoError(err)
+	s.Equal("Bite", profile.Name)
+}
+
 // TestMeleeReachCarriesTheAuthoredValue pins the fix: a generic melee
 // action's Reach was silently dropped — AttackProfile.Reach stayed zero
 // regardless of what the stat block authored, meaning nothing gated a

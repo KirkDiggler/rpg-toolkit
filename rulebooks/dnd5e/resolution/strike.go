@@ -63,10 +63,11 @@ type AttackProfile struct {
 	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
 	// Strike" — carried alongside it so a caller reporting what was swung
 	// (a beat line, a struck/missed event) never has to look the ref back
-	// up in a catalog of its own (rpg-toolkit#866). Populated by
-	// [AttackFromCharacter]; empty from [AttackFromMonsterAction] today —
-	// monster attackers do not yet reach a caller that reports this
-	// (v1 compiles CHARACTER attackers only, session.Attack's own doc).
+	// up in a catalog of its own (rpg-toolkit#866). Populated by both
+	// compilers: [AttackFromCharacter] reads it off the equipped weapon,
+	// and [AttackFromMonsterAction] carries the stat block's own authored
+	// name through for a melee action ("shortsword", "scimitar") or
+	// reports the fixed label "Bite" for a bite, which authors none.
 	Name string
 
 	// AttackBonus is added to the d20.
@@ -745,7 +746,15 @@ func attackFromMelee(action monster.ActionData) (AttackProfile, error) {
 
 	ref := action.Ref
 	profile := AttackProfile{
-		Ref:         &ref,
+		Ref: &ref,
+		// The stat block's own authored display name — "shortsword",
+		// "scimitar" — carried through exactly as AttackFromCharacter
+		// already carries a weapon's (rpg-toolkit#866). Previously dropped
+		// (AttackProfile.Name stayed "" for every monster melee action),
+		// harmless only while nothing that compiled a monster's attack
+		// ever reported it to a caller — session's Striker now does
+		// (rpg-project#254).
+		Name:        config.Name,
 		AttackBonus: config.AttackBonus,
 		Damage:      copyDamagePools(config.Damage),
 		// The stat block's own authored reach, in cells — carried through
@@ -775,7 +784,14 @@ func attackFromBite(action monster.ActionData) (AttackProfile, error) {
 
 	ref := action.Ref
 	profile := AttackProfile{
-		Ref:         &ref,
+		Ref: &ref,
+		// BiteConfig carries no authored display name — every bite is just
+		// "the bite" — so this is a fixed label rather than read off
+		// content, the same way Reach below is a fixed value rather than a
+		// configured one. Kept non-empty for the same reason melee's Name
+		// is carried at all: a caller reporting what was swung (a beat
+		// line, a struck/missed event) reads this rather than a catalog.
+		Name:        "Bite",
 		AttackBonus: config.AttackBonus,
 		Damage:      copyDamagePools(config.Damage),
 		Gate:        config.SaveGate,
