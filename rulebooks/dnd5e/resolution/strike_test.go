@@ -105,7 +105,7 @@ func (s *StrikeTestSuite) wolfBite() monster.ActionData {
 // hero; otherwise it stands three cells away — the two sides of prone's range
 // split.
 func (s *StrikeTestSuite) world(secondWolfAt spatial.Position) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
@@ -367,7 +367,7 @@ func (s *StrikeTestSuite) TestTheStrikeRunsInPieces() {
 	surf := newSurface(events.NewEventBus())
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: world, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Data: world, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 	})
 	s.Require().NoError(err)
@@ -945,7 +945,7 @@ func (s *StrikeTestSuite) TestASkeletonSwingsItsShortsword() {
 	s.Require().NoError(err)
 	s.Require().Nil(attack.Gate, "a plain weapon declares no rider")
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
 			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
@@ -1000,7 +1000,7 @@ const scoutID = "scout-1"
 // deciding a rule" (ADR-0038).
 func (s *StrikeTestSuite) spreadWorld(secondWolfRoom string, secondWolfAt spatial.Position) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
@@ -1163,7 +1163,7 @@ func (s *StrikeTestSuite) TestAWolfInTheNextChamberIsSixtyFeetAwayNotOneCell() {
 // after this test predated it — see localIsInRoom's own doc.)
 func (s *StrikeTestSuite) hexWorld() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 		// Orientation is required for a hex field but arbitrary here: axial
 		// distance (what this test measures) is the same six neighbours either

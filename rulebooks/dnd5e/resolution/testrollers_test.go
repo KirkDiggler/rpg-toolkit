@@ -2,8 +2,10 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -76,8 +78,21 @@ func (everyoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, 
 // fixtures hand over the one answer that changes nothing.
 type passDriver struct{}
 
-func (passDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+func (passDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
+}
+
+// noAttacksExpected is the deterministic Striker every fixture wires. This
+// package's own fixtures never drive a monster's turn through the
+// composition (passDriver never returns anything but Pass), so this is
+// never actually called — required at construction regardless
+// (rpg-project#254), and it says so honestly rather than fabricating a hit.
+type noAttacksExpected struct{}
+
+func (noAttacksExpected) Strike(
+	context.Context, *encounter.Encounter, encounter.MemberID, encounter.MemberID, core.Ref,
+) error {
+	return errors.New("resolution fixtures: no scene here ever attacks")
 }
 
 // unlimitedSight is the range these fixtures hand out. Further than the longest

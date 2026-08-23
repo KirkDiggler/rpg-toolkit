@@ -293,6 +293,15 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Standing:   in.Standing,
 		Sight:      in.Sight,
 		TurnDriver: in.TurnDriver,
+		// A construction-only Striker (rpg-project#254): this package runs
+		// ONE interaction machine against a loaded snapshot and returns — it
+		// never drives a monster's whole turn (that is driveMonsterTurns'
+		// own job, reached through EndTurn/form, neither of which this
+		// package's Resolve calls). A driven turn reaching this Striker
+		// would mean this reconstruction is being asked to do something it
+		// was never built for; RefusingStriker names that loudly rather
+		// than fabricating a hit.
+		Striker: encounter.RefusingStriker{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
