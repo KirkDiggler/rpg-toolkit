@@ -1,7 +1,7 @@
 # ADR-0021: Actions as Internal Implementation Pattern
 
 ## Status
-Proposed
+Superseded by ADR-0045
 
 ## Context
 

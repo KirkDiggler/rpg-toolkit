@@ -1,7 +1,7 @@
 # ADR-0028: Typed Activatable Actions
 
 ## Status
-Proposed
+Superseded by ADR-0045
 
 ## Context
 

@@ -4,7 +4,7 @@ Date: 2026-08-23
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -298,8 +298,8 @@ capacity. Action assembly then projects the available Flurry attack
 definitions. Nothing called `FlurryStrike` subscribes to turn end or removes
 itself.
 
-On acceptance, this section supersedes ADR-0021's executable internal action
-pattern and ADR-0028's first-class, self-subscribing action objects. It preserves
+This section supersedes ADR-0021's executable internal action pattern and
+ADR-0028's first-class, self-subscribing action objects. It preserves
 the useful semantic distinction behind ADR-0028: features grant, actions
 declare what may be done, and conditions modify or sustain behavior.
 
