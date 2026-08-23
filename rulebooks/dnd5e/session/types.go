@@ -65,20 +65,22 @@ const (
 
 // Atlas is the static world map in dungeon-absolute space.
 //
-// ONE MAP. The composition underneath keeps rooms and projects the absolute
-// geometry out of them (rpg-project#227); by the time a map reaches here the
-// decomposition has done its job and is nobody else's business. What a client
-// renders is a set of cells, the ones that block sight, the walls between
-// cells, and the doorways — not a list of chambers with anchors and spans it
-// would have to reassemble.
+// ONE MAP (rpg-project#227). What a client renders is a set of cells, the
+// things standing on them, the walls between cells, and the doorways — not a
+// list of chambers with anchors and spans it would have to reassemble. The
+// regions beside them (rpg-project#256) are not that list coming back: a
+// region is a NAMED SET of the same cells, in the same frame, carrying the
+// facts that are true of an area — nothing a client has to project through.
 //
 // Construction truth: unchanged by movement, joins, exits, or endings. Cache
-// it per encounter rather than fetching it per frame.
+// it per encounter rather than fetching it per frame. The same map is
+// answered for a world nobody has started by [Manager.AtlasOf].
 //
-// The INBOUND direction is deliberately different, and worth saying out loud
-// so the asymmetry is not read as an oversight: StartSessionInput.World is
-// authored content and still speaks rooms. Authoring is construction data,
-// and the one-map rule governs what a session SEES while it plays.
+// The INBOUND direction is a different shape, and worth saying out loud so
+// the asymmetry is not read as an oversight: StartSessionInput.World is
+// authored content, whose cells are offset pairs under an orientation.
+// Authoring is construction data, and the one-map rule governs what a
+// session SEES while it plays.
 type Atlas struct {
 	// Grid is the coordinate family the whole map speaks — always GridHex
 	// as of rpg-project#256. See [GridKind] for why it is still said.
@@ -205,10 +207,10 @@ type AtlasBoundary struct {
 // absolute space, which is what makes crossing one an ordinary step rather
 // than a jump between coordinate systems.
 //
-// It keeps an identifier and carries no room, because a doorway is a thing
-// with identity — a door that can be closed or locked is a capability still
-// ahead of this, and it will need to name one — while the rooms on either
-// side are the composition's own decomposition.
+// It names its door and nothing else, because a doorway is a thing with
+// identity — a door can be closed or locked, and the verbs that do so name
+// one — while which regions lie on either side is readable from the regions
+// themselves.
 type AtlasDoorway struct {
 	// Door is the identifier of the door standing in this crossing. A door
 	// with several edges appears once per edge under the same ID.
