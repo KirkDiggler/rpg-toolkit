@@ -349,17 +349,29 @@ func (s *MonsterTurnTestSuite) TestPassDriverStillPasses() {
 // passing log read proves nothing here, since the evidence already showed
 // the log was never the problem.
 //
-// This gate PASSES today. Traced end to end (openForWrite's baseline is set
-// once per EndTurn call, before that call's own writes; the same in-memory
-// *encounter.Encounter is mutated through the whole driven cascade and
-// persisted once at commit; projectEvents reads Story per member from that
-// baseline over the SAME object) the mechanism has no seam for a round-2
-// beat to go missing that a round-1 beat would not also hit. The live
-// walk's own anomaly is therefore not reproducible as a toolkit defect —
-// this test is the negative control that rules the toolkit's own Publish
-// call out, in writing, for whoever looks at rpg-api's broker/stream layer
-// (a live, no-replay pub/sub — StreamEvents' own doc: "no replay
-// obligation... a client resyncs via GetStory") or the live harness next.
+// This gate PASSES today, and pins the two seams a toolkit-side defect
+// could hide in, both with an exact assertion rather than a black-box
+// pass/fail:
+//
+//  1. Baseline: round 2's own publish batch must start exactly one seq
+//     after round 1's last (asserted below) — openForWrite's baseline is
+//     set once per EndTurn call, before that call's own writes, and
+//     saveDirty (run inside Strike, before Record) touches neither
+//     scope.baseline nor scope.enc, so there is no seam for round 2's
+//     baseline to advance past or skip over what round 1 already
+//     delivered.
+//  2. Recipient: the delivered struck event's Recipient is byte-equal to
+//     the exact string Join was called with (asserted below) — the same
+//     string a real StreamEvents caller subscribes with
+//     (h.broker.Subscribe(session, member), rpg-api's stream_events.go).
+//
+// Both clean means the mechanism has no seam for a round-2 beat to go
+// missing that a round-1 beat would not also hit. The live walk's own
+// anomaly is therefore not reproducible as a toolkit defect — this test is
+// the negative control that rules the toolkit's own Publish call out, in
+// writing, for whoever looks at rpg-api's broker/stream layer (a live,
+// no-replay pub/sub — StreamEvents' own doc: "no replay obligation... a
+// client resyncs via GetStory") or the live harness next.
 func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	ctx := context.Background()
 	stream := &fakeStream{}
@@ -396,16 +408,23 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	s.Require().NoError(err)
 	s.Require().NotNil(spawned.Formed)
 
-	skelStruckFighter := func(events []session.Event) bool {
+	// joinMember is the exact string handed to Join — the same string a
+	// real StreamEvents caller subscribes with (h.broker.Subscribe(session,
+	// member), rpg-api's stream_events.go). The recipient check below
+	// compares against this constant, not a literal, so the two can never
+	// silently drift apart.
+	const joinMember = "fighter"
+
+	skelStruckFighter := func(events []session.Event) (session.Event, bool) {
 		for _, e := range events {
-			if e.Recipient != "fighter" || e.Kind != session.EventStruck {
+			if e.Recipient != joinMember || e.Kind != session.EventStruck {
 				continue
 			}
-			if body, ok := e.Body.(session.StruckBody); ok && body.Attacker == "skel-1" && body.Target == "fighter" {
-				return true
+			if body, ok := e.Body.(session.StruckBody); ok && body.Attacker == "skel-1" && body.Target == joinMember {
+				return e, true
 			}
 		}
-		return false
+		return session.Event{}, false
 	}
 
 	// Round 1: the fighter hands her turn to the skeleton, which swings
@@ -417,8 +436,19 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	// evidence's own skeleton-1 survived every round it is about).
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
-	s.Require().True(skelStruckFighter(stream.published),
-		"round 1's own struck beat must reach the live subscriber (control)")
+	_, ok := skelStruckFighter(stream.published)
+	s.Require().True(ok, "round 1's own struck beat must reach the live subscriber (control)")
+
+	// (1) Baseline seam, made explicit rather than merely implied by the
+	// round 2 assertion below: round 2's own publish batch must pick up
+	// EXACTLY where round 1's left off. saveDirty runs inside Strike,
+	// before Record — it writes m.characters.SaveCharacter and mutates
+	// scope.data.NPCs in place, and touches neither scope.baseline nor
+	// scope.enc — so there is no seam here for round 2's own baseline to
+	// advance past or skip over what round 1 already delivered. A gap
+	// above 0 would mean some beat between the two calls reached nobody.
+	s.Require().NotEmpty(stream.published)
+	round1Last := stream.published[len(stream.published)-1].Seq
 
 	// Round 2: the same call again. The skeleton's SECOND driven strike is
 	// round 2's own struck beat — the one the live evidence says never
@@ -427,9 +457,20 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	stream.published = nil // isolate what THIS EndTurn's own publish call delivers
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
+	s.Require().NotEmpty(stream.published)
+	round2First := stream.published[0].Seq
+	s.Equal(round1Last+1, round2First,
+		"round 2's own publish batch starts exactly one seq after round 1's last — no gap, no bypass")
 
-	s.True(skelStruckFighter(stream.published),
+	struck, ok := skelStruckFighter(stream.published)
+	s.Require().True(ok,
 		"round 2's own struck beat must reach the live subscriber, exactly as round 1's did")
+
+	// (2) Recipient seam, made explicit: the delivered event's Recipient is
+	// byte-equal to the string a real subscriber would key off — not
+	// merely non-empty or plausible-looking.
+	s.Equal(joinMember, struck.Recipient,
+		"the struck event's Recipient must be exactly the string Join was called with")
 }
 
 // fullColumnWall blocks line of sight the full height of a room at column
