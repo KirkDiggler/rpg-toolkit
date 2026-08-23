@@ -61,7 +61,7 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{},
 		Sight:      aggregateRecordEveryoneSees{},
 		Standing:   aggregateRecordEveryoneStanding{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},

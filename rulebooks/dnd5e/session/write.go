@@ -7,7 +7,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -185,9 +188,11 @@ type EndOutput struct {
 // somewhere with no visible connection to the join that caused it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadPosition if no room
-// owns the cell they were placed on, ErrClosed if the encounter has already
-// ended, or ErrSaveFailed with a populated report.
+// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadAttack if the
+// character's own main-hand weapon cannot be compiled into their member
+// record's static Actions fact, ErrBadPosition if no room owns the cell they
+// were placed on, ErrClosed if the encounter has already ended, or
+// ErrSaveFailed with a populated report.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
@@ -206,7 +211,13 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	placed, err := place(scope, in.Member, KindPlayer, ch.GetName(), in.Position)
+	actions, err := memberActionsFromCharacter(ch)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
+	placed, err := place(scope, in.Member, KindPlayer, ch.GetName(), in.Position,
+		ch.GetSpeed(), defaultSightFeet, actions, "")
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -336,7 +347,14 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	scope.data.NPCs = append(scope.data.NPCs, *sheet)
 	scope.touched = true
 
-	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position)
+	// The stat block's own authored Darkvision, UNCHANGED — zero included.
+	// sightSeam is the one place that decides what a monster's silence
+	// means: the same defaultSightFeet a character's own silence falls
+	// back to (rpg-project#254 design §5) — see sight.go's doc for why
+	// baking a decision in here, at spawn time, would be the wrong place
+	// to make it.
+	placed, err := place(scope, in.ID, KindMonster, sheet.Name, in.Position,
+		sheet.Speed.Walk, sheet.Senses.Darkvision, memberActionsFromMonster(sheet.Actions), sheet.Targeting.String())
 	if err != nil {
 		return nil, fmt.Errorf("spawn: %w", err)
 	}
@@ -376,6 +394,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 // kills the pins on both. Same reasoning, one layer up.
 func place(
 	scope *writeScope, id string, kind MemberKind, name string, at spatial.Position,
+	speedFeet, sightFeet int, actions []encounter.ActionView, targeting string,
 ) (*encounter.JoinOutput, error) {
 	// This used to resolve the cell to a room first, because the composition's
 	// verbs were room-local by law and somebody had to say which chamber owned
@@ -388,16 +407,90 @@ func place(
 	// into ErrBadPosition, so a caller matches on the same sentinel as before
 	// and the composition's account still crosses as TEXT rather than as a
 	// chain a host could match on (the S2 leak, rpg-toolkit#1058).
+	//
+	// scope.sight learns about THIS member before Join does, not after:
+	// arriving triggers its own sight refresh (does the newcomer see
+	// anyone; is the newcomer seen), and that refresh asks about the
+	// newcomer by ID — which the seam's snapshot cannot yet answer for
+	// unless this runs first (sight.go's own doc explains why a pointer
+	// makes that possible at all).
+	scope.sight.add(encounter.MemberID(id), sightFeet)
 	placed, err := scope.enc.Join(&encounter.JoinInput{
 		Member: encounter.MemberID(id),
 		Kind:   encounter.MemberKind(kind),
 		Name:   name,
 		Cell:   at,
+		// SpeedFeet, SightFeet, Actions and Targeting are this member's
+		// static facts (rpg-project#254) — what a TurnDriver reads through
+		// MonsterView once the clock lands on this member with nobody
+		// playing them. Both callers (Join, Spawn) compute these off the
+		// sheet or catalog content they just loaded and hand them straight
+		// through; see each verb's own doc for where its values come from.
+		SpeedFeet: speedFeet,
+		SightFeet: sightFeet,
+		Actions:   actions,
+		Targeting: targeting,
 	})
 	if err != nil {
 		return nil, translate(err)
 	}
 	return placed, nil
+}
+
+// memberActionsFromCharacter compiles a joining player's own static Actions
+// fact for the shared member record (rpg-project#254): main-hand melee, the
+// one swing v1 compiles for a character attacker at all (see
+// [Manager.compileAttack]'s own doc — the identical compile, at a different
+// moment).
+//
+// FILLED FOR A PLAYER TOO, even though nothing reads it back today — a
+// TurnDriver is only ever asked about an UNPLAYED member's turn. The same
+// argument [memberRecord]'s own doc makes for Name: SpeedFeet, SightFeet,
+// Actions and Targeting are member facts for every kind, not a monster-only
+// extra, and the day a disconnected player's turn needs driving, the record
+// already has what it needs.
+func memberActionsFromCharacter(ch *character.Character) ([]encounter.ActionView, error) {
+	profile, err := resolution.AttackFromCharacter(ch, &resolution.CharacterAttackInput{
+		Slot: character.SlotMainHand,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadAttack, err)
+	}
+	view := encounter.ActionView{Name: profile.Name, ReachFeet: profile.Reach, Kind: "melee"}
+	if profile.Ref != nil {
+		view.Ref = *profile.Ref
+	}
+	return []encounter.ActionView{view}, nil
+}
+
+// memberActionsFromMonster compiles a spawned monster's own static Actions
+// fact from its stat block, for the shared member record (rpg-project#254)
+// — the vocabulary a [TurnDriver] reads through MonsterView.Actions once the
+// clock lands on this member's own turn. Kind is the action's own ref ID
+// ("melee", "bite", "ranged") — [resolution.AttackFromMonsterAction]'s own
+// routing vocabulary, reused here rather than invented twice.
+//
+// AN ACTION THIS BUILD CANNOT COMPILE IS SKIPPED, not refused — the same
+// choice [resolution.AttackFromMonsterAction] already makes about what a
+// strike can compile at all (a ranged action, multiattack, waits on range
+// and turn-economy semantics the strike does not have yet). A stat block
+// naming content this build does not yet read is not a reason to refuse
+// spawning the whole monster; the member simply has one fewer action to
+// choose from until that content compiles.
+func memberActionsFromMonster(actions []monster.ActionData) []encounter.ActionView {
+	views := make([]encounter.ActionView, 0, len(actions))
+	for _, action := range actions {
+		profile, err := resolution.AttackFromMonsterAction(action)
+		if err != nil {
+			continue
+		}
+		view := encounter.ActionView{Name: profile.Name, ReachFeet: profile.Reach, Kind: string(action.Ref.ID)}
+		if profile.Ref != nil {
+			view.Ref = *profile.Ref
+		}
+		views = append(views, view)
+	}
+	return views
 }
 
 // Exit removes a member from the session's encounter, returning what they knew
@@ -497,18 +590,29 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 	if err != nil {
 		return nil, err
 	}
-	enc, baseline, standing, err := m.loadWorldWithBaseline(ctx, data)
-	if err != nil {
-		return nil, err
-	}
-	return &writeScope{
+
+	// scope is allocated here, with its Session/Encounter/Data half filled,
+	// BEFORE the load that needs to hand a Striker to the very *Encounter
+	// this scope will go on to hold — the chicken-and-egg [strikerSeam]
+	// exists to solve (rpg-project#254). strikerSeam reads scope.enc only
+	// from inside Strike, which nothing can call until this function has
+	// already returned it, so backfilling enc/baseline/standing below, after
+	// the load, is safe: by the time a driven turn ever reaches Strike,
+	// every field it reads is set.
+	scope := &writeScope{
 		session:   sessionID,
 		encounter: data.Encounter,
 		data:      data,
-		enc:       enc,
-		baseline:  baseline,
-		standing:  standing,
-	}, nil
+		sight:     &sightSeam{},
+	}
+	enc, baseline, standing, err := m.loadWorldWithBaseline(ctx, data, strikerSeam{m: m, scope: scope}, scope.sight)
+	if err != nil {
+		return nil, err
+	}
+	scope.enc = enc
+	scope.baseline = baseline
+	scope.standing = standing
+	return scope, nil
 }
 
 // writeScope is everything a write verb needs to act, save, and fan out: the
@@ -530,6 +634,13 @@ type writeScope struct {
 	// and would quietly allow two capabilities reading different sheets within
 	// one verb.
 	standing encounter.Standing
+
+	// sight is the SAME *sightSeam the live encounter holds — see the
+	// type's own doc on why a pointer, not a value. place adds a member
+	// being placed by THIS verb to it before that member's own Join asks
+	// Sight about them; adopt rebuilds it from the world a resolution
+	// handed back, the same way it rebuilds standing.
+	sight *sightSeam
 
 	// touched marks the session record as changed by this verb — a spawned
 	// sheet, today — so a verb that changed only the world writes only the
@@ -570,12 +681,17 @@ type writeScope struct {
 // next verb that resolves through data reuses this instead of hand-rolling the
 // swap, and so the novelty has exactly one home to document.
 func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error {
+	scope.sight = &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       world,
 		Initiative: m.initiative,
 		Standing:   scope.standing,
-		Sight:      sightSeam{},
+		Sight:      scope.sight,
 		TurnDriver: m.turnDriver,
+		// Bound to the SAME scope, not rebuilt: this replaces scope.enc, and
+		// strikerSeam only ever reads scope.enc from inside a later Strike
+		// call, well after this assignment lands (rpg-project#254).
+		Striker: strikerSeam{m: m, scope: scope},
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)

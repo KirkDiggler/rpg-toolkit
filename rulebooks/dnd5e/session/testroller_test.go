@@ -93,6 +93,6 @@ func (encEveryoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberI
 // accidentally lean on it for an answer.
 type encPassDriver struct{}
 
-func (encPassDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+func (encPassDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
 }

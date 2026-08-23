@@ -95,7 +95,7 @@ func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.Membe
 // same however it is entered.
 type encPassDriver struct{}
 
-func (encPassDriver) Act(encounter.MemberID) (encounter.TurnOutcome, error) {
+func (encPassDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
 }
 
@@ -416,6 +416,7 @@ func drive(out *bytes.Buffer) error {
 // absolute space.
 func authoredCrypt() (*encounter.EncounterData, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
+		Striker:  encounter.RefusingStriker{},
 		Standing: encEveryoneStanding{},
 		// Governs THIS construction only: once session loads the world it
 		// supplies its own sight seam, so the walk below runs on session's
@@ -518,18 +519,36 @@ const sightRadius = 4
 // squareSeam is the wall between two side-by-side square chambers, with one row
 // left open for the doorway. Room-local to the WEST chamber, where column
 // width-1 is its last and column width is the east chamber's first.
+//
+// EVERY DIAGONAL CROSSING TOO, not just the straight one — this used to draw
+// only From:{width-1,row} To:{width,row} per row, which seals the seam
+// against a ray that crosses it level but leaves every diagonal crossing
+// (row to row±1) wide open. Sight asks for a LANE, not a line (spatial's own
+// IsLineOfSightBlocked doc): a viewer several rows off the doorway still
+// finds an unobstructed diagonal through a seam sealed only this way, and at
+// this package's own 120-foot shared default (rpg-project#254 design §5)
+// that reaches the whole width of a small room. The composition's own
+// squareSeamWalls (rulebooks/dnd5e/session's seen_test.go) already drew all
+// three; this now matches it rather than being the thinner copy that let a
+// diagonal ray through the wall this scene depends on.
 func squareSeam(width, rows, openRow int) []spatial.Boundary {
-	out := make([]spatial.Boundary, 0, rows)
+	out := make([]spatial.Boundary, 0, rows*3)
 	for row := 0; row < rows; row++ {
-		if row == openRow {
-			continue // the gate itself
+		for _, dy := range []int{-1, 0, 1} {
+			to := row + dy
+			if to < 0 || to >= rows {
+				continue
+			}
+			if dy == 0 && row == openRow {
+				continue // the gate itself
+			}
+			out = append(out, spatial.Boundary{
+				From:              spatial.Position{X: float64(width - 1), Y: float64(row)},
+				To:                spatial.Position{X: float64(width), Y: float64(to)},
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
+			})
 		}
-		out = append(out, spatial.Boundary{
-			From:              spatial.Position{X: float64(width - 1), Y: float64(row)},
-			To:                spatial.Position{X: float64(width), Y: float64(row)},
-			BlocksMovement:    true,
-			BlocksLineOfSight: true,
-		})
 	}
 
 	return out
