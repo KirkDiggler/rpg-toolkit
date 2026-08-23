@@ -76,31 +76,8 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	// The loaded encounter is deliberately discarded. This is a validation
 	// call, and the manager holds no domain state between verbs (S1); the next
 	// verb loads its own.
-	// The capability is supplied over NO session record, which is the honest
-	// answer at this moment rather than a shortcut: no session exists yet, so
-	// nothing has been spawned and there are no session-scoped sheets to read.
-	// A real one is built anyway — capabilities are supplied, never defaulted,
-	// and handing over a stand-in here would be a second answer to a question
-	// that has one.
-	if _, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:       *in.World,
-		Initiative: m.initiative,
-		Standing:   m.standingFor(ctx, nil),
-		Sight:      &sightSeam{members: append([]encounter.MemberData(nil), in.World.Members...)},
-		TurnDriver: m.turnDriver,
-		// A construction-only Striker (rpg-project#254), the same reason
-		// the capability just above it is built over no session record: no
-		// session exists yet, and this load is validation only — its
-		// result is discarded, and a driven turn reaching it would be a
-		// bug in this package rather than anything a caller did.
-		Striker: encounter.RefusingStriker{},
-	}); err != nil {
-		// The reason as TEXT, our sentinel as the only thing to match on. A
-		// blob that will not load fails several modules deep, and every one of
-		// those is replaceable underneath this seam (S2) — see
-		// loadWorldWithBaseline, which refuses the same way for the same
-		// reason.
-		return nil, fmt.Errorf("startsession: %w: %v", ErrInvalidWorld, err)
+	if _, err := m.loadAuthored(ctx, in.World); err != nil {
+		return nil, fmt.Errorf("startsession: %w", err)
 	}
 
 	// Refuse to overwrite a session in progress. A miss is the expected path
@@ -151,4 +128,43 @@ func (m *Manager) StartSession(ctx context.Context, in *StartSessionInput) (*Sta
 	report.Written = append(report.Written, "session:"+in.Session)
 
 	return &StartSessionOutput{Session: in.Session, Saved: report}, nil
+}
+
+// loadAuthored reconstitutes an authored world that no session holds yet.
+//
+// The capabilities are supplied over NO session record, which is the honest
+// answer at this moment rather than a shortcut: no session exists, so nothing
+// has been spawned and there are no session-scoped sheets to read. Real ones
+// are built anyway — capabilities are supplied, never defaulted, and handing
+// over a stand-in here would be a second answer to a question that has one.
+// The Striker is the construction-only one (rpg-project#254): a driven turn
+// reaching a world loaded here would be a bug in this package rather than
+// anything a caller did.
+//
+// Two callers, one load. [Manager.StartSession] proves a world can be
+// reconstituted before persisting it, and [Manager.AtlasOf] projects the map
+// of a world nobody has started — and the day those two loaded differently
+// would be the day a dungeon that previews fine refuses to start, or the
+// reverse.
+//
+// Returns ErrInvalidWorld for a nil world or one that will not load. The
+// reason is kept as TEXT, not as a chain: a blob this seam cannot reconstitute
+// fails several modules deep, and every one of those is a module we intend to
+// keep replaceable (S2).
+func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterData) (*encounter.Encounter, error) {
+	if world == nil {
+		return nil, fmt.Errorf("nil world: %w", ErrInvalidWorld)
+	}
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:       *world,
+		Initiative: m.initiative,
+		Standing:   m.standingFor(ctx, nil),
+		Sight:      &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
+		TurnDriver: m.turnDriver,
+		Striker:    encounter.RefusingStriker{},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
+	}
+	return enc, nil
 }

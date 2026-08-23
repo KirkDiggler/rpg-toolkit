@@ -4,7 +4,6 @@
 package session
 
 import (
-
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
