@@ -66,17 +66,17 @@ func TestTombSuite(t *testing.T) {
 }
 
 func (s *TombSuite) SetupTest() {
-	compiled, err := dungeonspec.Load([]byte(tombYAML))
+	compiled, err := dungeonspec.Load([]byte(tombYAML(s.T())))
 	s.Require().NoError(err, "the shipping tomb must compile")
 	s.compiled = compiled
 
 	members := []encounter.MemberInput{{
 		ID: delve, Kind: encounter.KindPlayer,
-		Room: compiled.PartyStart[0].Region, Position: compiled.PartyStart[0].At,
+		Position: compiled.PartyStart[0].At,
 	}}
 	for i, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
-			ID: monsterID(i), Kind: encounter.KindMonster, Room: m.Region, Position: m.At,
+			ID: monsterID(i), Kind: encounter.KindMonster, Position: m.At,
 		})
 	}
 
@@ -203,8 +203,8 @@ func (s *TombSuite) TestTheCoffinIsSolidAndSeenOver() {
 	s.Require().NoError(err)
 
 	var found int
-	for _, region := range atlas.Regions {
-		for _, p := range region.Props {
+	{
+		for _, p := range atlas.Props {
 			switch p.Ref {
 			case "dnd5e:props:coffin":
 				found++
@@ -514,11 +514,9 @@ func (s *TombSuite) solidCells() map[spatial.Position]bool {
 	s.Require().NoError(err)
 
 	out := map[spatial.Position]bool{}
-	for _, region := range atlas.Regions {
-		for _, p := range region.Props {
-			if p.BlocksMovement {
-				out[p.At] = true
-			}
+	for _, p := range atlas.Props {
+		if p.BlocksMovement {
+			out[p.At] = true
 		}
 	}
 
@@ -538,11 +536,9 @@ func (s *TombSuite) shutCrossings() map[[2]spatial.Position]bool {
 	s.Require().NoError(err)
 
 	out := map[[2]spatial.Position]bool{}
-	for _, region := range atlas.Regions {
-		for _, b := range region.Boundaries {
-			if b.BlocksMovement {
-				out[normalizedCrossing(b.From, b.To)] = true
-			}
+	for _, b := range atlas.Boundaries {
+		if b.BlocksMovement {
+			out[normalizedCrossing(b.From, b.To)] = true
 		}
 	}
 	for _, d := range s.enc.Doors() {

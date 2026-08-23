@@ -66,17 +66,6 @@ func rubbleData(x, y float64) encounter.PropData {
 	}
 }
 
-// absoluteRubble is rubble as the map reports it: the same thing, at a
-// dungeon-absolute cell, with the flags it was authored with.
-func absoluteRubble(x, y float64) encounter.AtlasProp {
-	return encounter.AtlasProp{
-		Ref:               "test:props:rubble",
-		At:                spatial.Position{X: x, Y: y},
-		BlocksMovement:    true,
-		BlocksLineOfSight: true,
-	}
-}
-
 // wallRow returns a horizontal run of wall cells at the given row, inclusive of
 // both ends.
 func wallRow(y, fromX, toX int) []encounter.PropInput {

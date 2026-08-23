@@ -18,10 +18,6 @@ func rectRegion(id string, col, row, w, h int) RegionInput {
 	return RegionInput{ID: id, Name: id, Cells: cells, Archetype: "crypt", Lighting: &Lighting{Intensity: 1}}
 }
 
-func pointyCanvas() CanvasInput {
-	return CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}
-}
-
 func openAir() CanvasInput {
 	return CanvasInput{Void: VoidIsTransparent(), Orientation: HexesArePointyTop()}
 }

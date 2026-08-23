@@ -5,18 +5,20 @@ package dungeonspec_test
 
 // golden_test.go is THE FORCING CASE for dungeonspec version 2 (rpg-project#256,
 // design §5): the reference tomb, re-authored by hand in the new dialect, must
-// compile to the SAME atlas the version-1 room chain produced — same cells,
-// same walls, same doorways, same props. testdata/reference-tomb.atlas.json is
-// that atlas, captured from the v1 compile BEFORE v1 was deleted (the first
-// commit of the PR), in the flat, sorted shape the session seam projects.
+// compile to the SAME atlas the version-1 room chain produced — same 224
+// cells, same 28 walls, same 2 doorways, same 15 props.
+// testdata/reference-tomb.atlas.json is that atlas, captured from the v1
+// compile BEFORE v1 was deleted (the first commit of the PR), in the flat,
+// sorted shape the session seam projects.
 //
-// Regenerate with UPDATE_GOLDEN=1 only when the dungeon itself is meant to
-// change — never to make a failing compile pass.
+// The golden is never regenerated from version 2: it is the last thing the
+// chain said, and the whole point is that the re-authored file agrees with it.
+// What version 2 ADDS — the regions, with their archetypes and lighting — is
+// compared beside it rather than folded into it.
 
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 	"testing"
 
@@ -31,7 +33,9 @@ const goldenPath = "testdata/reference-tomb.atlas.json"
 
 // goldenAtlas is the atlas flattened the way rulebooks/dnd5e/session projects
 // it: every list sorted by coordinate so nothing about how the field was
-// authored leaks through the order.
+// authored leaks through the order. Doorways carry no ID: version 1 named
+// them `<key>:<west>-<east>` and version 2 names them `<key>/<door id>`, and
+// the golden is about WHERE the openings are.
 type goldenAtlas struct {
 	Layout     string           `json:"layout"`
 	Cells      []goldenCell     `json:"cells"`
@@ -105,42 +109,40 @@ func normalizeGolden(g *goldenAtlas) {
 	})
 }
 
-// goldenFromAtlas flattens the composition's atlas into the golden shape. On
-// the version-1 (room chain) shape a region is a rectangle it describes rather
-// than enumerates, so the cells are walked through HexCellAt exactly as the
-// session seam walks them.
+// goldenFromAtlas flattens the composition's atlas into the golden shape. The
+// atlas is flat and sorted already since rpg-project#256; normalizing again
+// is what keeps this comparison independent of that.
 func goldenFromAtlas(atlas encounter.Atlas) goldenAtlas {
 	g := goldenAtlas{Layout: string(atlas.Orientation.Kind())}
-	for _, r := range atlas.Regions {
-		for row := 0; row < r.Height; row++ {
-			for col := 0; col < r.Width; col++ {
-				g.Cells = append(g.Cells, cellOf(encounter.HexCellAt(
-					atlas.Orientation, col+int(r.Origin.X), row+int(r.Origin.Y))))
-			}
-		}
-		for _, p := range r.Props {
-			g.Props = append(g.Props, goldenProp{
-				Ref: p.Ref, At: cellOf(p.At),
-				BlocksMovement: p.BlocksMovement, BlocksLineOfSight: p.BlocksLineOfSight,
-			})
-		}
-		for _, b := range r.Boundaries {
-			g.Boundaries = append(g.Boundaries, goldenBoundary{
-				From: cellOf(b.From), To: cellOf(b.To),
-				BlocksMovement: b.BlocksMovement, BlocksLineOfSight: b.BlocksLineOfSight,
-			})
-		}
+	for _, c := range atlas.Cells {
+		g.Cells = append(g.Cells, cellOf(c))
+	}
+	for _, p := range atlas.Props {
+		g.Props = append(g.Props, goldenProp{
+			Ref: p.Ref, At: cellOf(p.At),
+			BlocksMovement: p.BlocksMovement, BlocksLineOfSight: p.BlocksLineOfSight,
+		})
+	}
+	for _, b := range atlas.Boundaries {
+		g.Boundaries = append(g.Boundaries, goldenBoundary{
+			From: cellOf(b.From), To: cellOf(b.To),
+			BlocksMovement: b.BlocksMovement, BlocksLineOfSight: b.BlocksLineOfSight,
+		})
 	}
 	for _, d := range atlas.Doorways {
-		g.Doorways = append(g.Doorways, goldenDoorway{From: cellOf(d.FromCell), To: cellOf(d.ToCell)})
+		g.Doorways = append(g.Doorways, goldenDoorway{From: cellOf(d.From), To: cellOf(d.To)})
 	}
 	normalizeGolden(&g)
 	return g
 }
 
-func compiledTombAtlas(t *testing.T) encounter.Atlas {
+// compiledAtlas compiles a file and builds the encounter its field describes,
+// with nobody in it, and hands back the map.
+func compiledAtlas(t *testing.T, path string) (dungeonspec.Compiled, encounter.Atlas) {
 	t.Helper()
-	compiled, err := dungeonspec.Load([]byte(tombYAML))
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	compiled, err := dungeonspec.Load(raw)
 	require.NoError(t, err)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
@@ -151,26 +153,66 @@ func compiledTombAtlas(t *testing.T) encounter.Atlas {
 	require.NoError(t, err)
 	atlas, err := enc.Atlas()
 	require.NoError(t, err)
-	return atlas
+	return compiled, atlas
 }
 
-func TestGolden_ReferenceTombAtlas(t *testing.T) {
-	got := goldenFromAtlas(compiledTombAtlas(t))
-	raw, err := json.MarshalIndent(got, "", "  ")
-	require.NoError(t, err)
-
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		require.NoError(t, os.MkdirAll(filepath.Dir(goldenPath), 0o755))
-		require.NoError(t, os.WriteFile(goldenPath, append(raw, '\n'), 0o644))
-		t.Logf("wrote %s (%d cells, %d boundaries, %d doorways, %d props)",
-			goldenPath, len(got.Cells), len(got.Boundaries), len(got.Doorways), len(got.Props))
-		return
-	}
-
+// TestGolden_ReferenceTombV2MatchesV1Atlas is the forcing case.
+func TestGolden_ReferenceTombV2MatchesV1Atlas(t *testing.T) {
 	want, err := os.ReadFile(goldenPath)
-	require.NoError(t, err, "the golden must exist before the dialect it pins is touched")
+	require.NoError(t, err, "the golden was captured from version 1 before version 1 was deleted")
 	var wantAtlas goldenAtlas
 	require.NoError(t, json.Unmarshal(want, &wantAtlas))
-	require.Equal(t, wantAtlas, got, "the compiled tomb moved under the fixtures that use it")
+	normalizeGolden(&wantAtlas)
+
+	_, atlas := compiledAtlas(t, tombPath)
+	got := goldenFromAtlas(atlas)
+
+	require.Equal(t, wantAtlas.Layout, got.Layout)
+	require.Equal(t, wantAtlas.Cells, got.Cells, "the 224 cells the chain drew, painted by hand")
+	require.Equal(t, wantAtlas.Boundaries, got.Boundaries, "the 28 seam walls the chain generated, written out")
+	require.Equal(t, wantAtlas.Doorways, got.Doorways, "the two doorways")
+	require.Equal(t, wantAtlas.Props, got.Props, "the 15 props, at absolute cells")
 	require.Len(t, got.Cells, 224, "the reference tomb is 224 cells (design §5)")
+
+	// And what version 2 adds, compared beside the golden rather than
+	// folded into it: three regions whose cells union to the floor.
+	require.Len(t, atlas.Regions, 3)
+	var union []goldenCell
+	byID := map[string]encounter.AtlasRegion{}
+	for _, r := range atlas.Regions {
+		byID[r.ID] = r
+		for _, c := range r.Cells {
+			union = append(union, cellOf(c))
+		}
+	}
+	sort.Slice(union, func(i, j int) bool { return cellBefore(union[i], union[j]) })
+	require.Equal(t, got.Cells, union, "the regions' cells ARE the floor")
+	require.Equal(t, "crypt", byID["entrance"].Archetype)
+	require.Equal(t, 0.6, byID["entrance"].Lighting.Intensity)
+	require.Equal(t, 0.4, byID["hall"].Lighting.Intensity)
+	require.Equal(t, 0.15, byID["tomb"].Lighting.Intensity)
+	require.Equal(t, 48, len(byID["entrance"].Cells))
+	require.Equal(t, 80, len(byID["hall"].Cells))
+	require.Equal(t, 96, len(byID["tomb"].Cells))
+}
+
+// TestSecondSkeletonFixtureCompiles is rpg-project#254's fixture, so slice 2
+// keeps running: the same tomb with a wall across the hall, and the second
+// skeleton behind it. The wall is the only difference, and the golden says
+// so: cells, props and doorways identical, 14 more boundaries.
+func TestSecondSkeletonFixtureCompiles(t *testing.T) {
+	compiled, atlas := compiledAtlas(t, secondSkeletonPath)
+	got := goldenFromAtlas(atlas)
+
+	_, tomb := compiledAtlas(t, tombPath)
+	want := goldenFromAtlas(tomb)
+
+	require.Equal(t, want.Cells, got.Cells)
+	require.Equal(t, want.Props, got.Props)
+	require.Equal(t, want.Doorways, got.Doorways)
+	require.Len(t, got.Boundaries, len(want.Boundaries)+15, "a full wall across the hall: 8 straight crossings and 7 staggered")
+
+	require.Len(t, compiled.Monsters, 3)
+	require.Equal(t, "hall", compiled.Monsters[1].Region, "the second skeleton is in the hall")
+	require.Equal(t, spatial.Position{X: 13, Y: 5}, compiled.Monsters[1].At, "behind the wall")
 }

@@ -69,15 +69,6 @@ func wall(fromCol, fromRow, toCol, toRow int) spatial.Boundary {
 	}
 }
 
-// seamWall is every crossing between column `west` and column west+1 over
-// `rows` rows, minus the row `open` (pass -1 for none) — the wall a room
-// chain used to generate at a seam, authored explicitly. Which candidate
-// pairs are crossings is the grid's answer under pointy-top, never a parity
-// table.
-func seamWall(west, rows, open int) []spatial.Boundary {
-	return seamWallRows(west, 0, rows, open)
-}
-
 // seamWallRows is seamWall over rows [row0, row0+rows), leaving the straight
 // crossing open at each of the (absolute) gap rows named. Only candidate pairs
 // that are actually adjacent under pointy-top are emitted: a hex cell has six

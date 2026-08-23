@@ -5,16 +5,13 @@ package dungeonspec
 
 import (
 	"fmt"
+	"math"
+	"regexp"
 	"strings"
-)
 
-// Version is the one dialect this build speaks.
-//
-// A single accepted value rather than a floor, deliberately. "Version 2 or
-// later is fine" is a promise about files nobody has written yet, and the
-// standing precedent for a shape this build does not know is to refuse it by
-// name rather than read it hopefully (rpg-toolkit#1053/#1068).
-const Version = 1
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
 
 // The author-facing vocabularies. Each is closed, and an unrecognised word is
 // refused rather than mapped to the nearest one — for [encounter.Void]'s
@@ -22,14 +19,18 @@ const Version = 1
 // and picking the closest answer would author a dungeon the host did not.
 var (
 	voids        = map[string]bool{"opaque": true, "transparent": true}
-	orientations = map[string]bool{"pointy": true, "flat": true}
+	orientations = map[string]encounter.Orientation{
+		"pointy": encounter.HexesArePointyTop(),
+		"flat":   encounter.HexesAreFlatTop(),
+	}
 
 	// The targeting words are carried, not interpreted — but a TYPO is still
 	// worth catching, because "lowest-helth" would otherwise ride all the way
 	// through the compiler and be rejected (or worse, ignored) by a rulebook
-	// the author never sees. Checking the spelling of a word whose meaning
-	// this package does not know is exactly as far as it may go.
+	// the author never sees.
 	targetings = map[string]bool{"closest": true, "lowest-health": true, "lowest-ac": true}
+
+	keyShape = regexp.MustCompile(`^[a-z0-9-]+$`)
 )
 
 // The ref type segments this compiler can route. A ref's type decides what a
@@ -40,292 +41,321 @@ const (
 	typeMonsters = "monsters"
 )
 
-// Validate reports whether a decoded spec is a dungeon, in the author's own
-// vocabulary.
+// Validate reports every way a decoded spec is not a dungeon, each at the
+// YAML path of the thing that is wrong. An empty list means the spec
+// compiles.
 //
-// # What it checks, and what it deliberately does not
+// # Every defect, not the first
 //
-// Everything here is true BEFORE geometry: no check below depends on the grid
-// family, the orientation, or how chambers are laid out on a canvas. That is
-// the seam — this function is about whether the file describes a dungeon, and
-// the compiler is about what that dungeon becomes.
+// Version 1 stopped at the first defect. This reports all of them because the
+// builder draws each one on the canvas where it belongs (rpg-project#256
+// design §5): a cell painted twice glows in both regions, a wall between cells
+// that do not touch is drawn red, a prop with no `blocks_los` is flagged at
+// its cell. An author fixing a dungeon by hand gets the same list.
 //
-// The one place it reaches toward geometry is the doorway rule, and it is worth
-// saying why that is not a leak. A connector's opening lands on the seam row,
-// so a placement there would sit in the doorway. The composition already
-// refuses that (validateConnectionInputs, "from-position on prop") — but it
-// refuses it in the COMPOSITION's vocabulary, about an absolute cell the author
-// never wrote, after a compile they cannot see. Said here, it is about the line
-// they did write.
+// # Geometry is checked here
 //
-// # It stops at the first defect
-//
-// Not a list, on purpose. A spec with a malformed ref usually has three, and an
-// author fixing them one at a time is served better by a message about one line
-// than a wall about ten — and a wall invites skimming, which is how the fourth
-// one ships.
-func Validate(spec *Spec) error {
+// Version 1 kept validation "before geometry" because its layout was derived.
+// Version 2's file IS the geometry — the floor is the cells the author listed
+// — so whether a wall's endpoints touch is a question about the file, asked
+// under the orientation it declares, and answered by spatial rather than by a
+// parity table. When the orientation itself is not a word this build knows,
+// every check that needs it is skipped and only the orientation is reported:
+// a pile of adjacency errors under a wrong layout would all be noise.
+func Validate(spec *Spec) []FieldError {
 	if spec == nil {
-		return fmt.Errorf("no dungeon spec: %w", ErrBadSpec)
+		return []FieldError{{Message: "no dungeon spec"}}
 	}
-
-	if spec.Version != Version {
-		return fmt.Errorf(
-			"dungeon spec version %d, which this build does not speak (it speaks %d): %w",
-			spec.Version, Version, ErrBadSpec)
+	v := &validation{spec: spec}
+	v.header()
+	v.regions()
+	if v.geometryUsable() {
+		v.walls()
+		v.doors()
+		v.start()
+		v.place()
 	}
-	if spec.Key == "" {
-		return fmt.Errorf("the dungeon has no key: %w", ErrBadSpec)
-	}
-	if spec.Height < 1 {
-		return fmt.Errorf("the dungeon's height is %d, and a chamber must be at least one cell tall: %w",
-			spec.Height, ErrBadSpec)
-	}
-	if !voids[spec.Void] {
-		return fmt.Errorf(
-			"the dungeon does not say what its void is (void: %q; opaque or transparent, and there is no default): %w",
-			spec.Void, ErrBadSpec)
-	}
-	if !orientations[spec.Orientation] {
-		return fmt.Errorf(
-			"the dungeon does not say which way its hexes point "+
-				"(orientation: %q; pointy or flat, and every `at` in the file depends on it): %w",
-			spec.Orientation, ErrBadSpec)
-	}
-	if len(spec.Rooms) == 0 {
-		return fmt.Errorf("the dungeon has no rooms: %w", ErrBadSpec)
-	}
-
-	index, err := validateRooms(spec)
-	if err != nil {
-		return err
-	}
-
-	if err := validateConnectors(spec, index); err != nil {
-		return err
-	}
-
-	return validateStart(spec)
+	return v.errs
 }
 
-// validateStart checks the party's way in.
-//
-// A cell inside the dungeon and not on top of anything, which is as far as this
-// can go before geometry: WHICH chamber holds it is a question about a layout
-// that has not been computed yet, and [Load] answers it — and refuses a start
-// that lands in no chamber at all, which on a chain of chambers cannot happen
-// but on a future layout could.
-//
-// It does not refuse a start on the doorway row. Standing in an opening is a
-// legal place to be — the composition says so, and the vault-chase scene in the
-// encounter package is built on it — and a party that comes in through a door
-// is coming in through a door.
-func validateStart(spec *Spec) error {
-	if spec.Start == nil {
-		return fmt.Errorf("the dungeon does not say where the party starts (start:): %w", ErrBadSpec)
+// validation accumulates defects and the floor they are checked against.
+type validation struct {
+	spec *Spec
+	errs []FieldError
+
+	orientation encounter.Orientation
+
+	// owner is every floor cell (absolute axial) to the index of the region
+	// that owns it — the same map compileField builds, built here so the
+	// file's own defects are reported in the file's own paths.
+	owner map[spatial.Position]int
+
+	// regionOK is whether the region list was sound enough to check edges
+	// and placements against.
+	regionOK bool
+
+	// crossings is every wall's and door's normalized crossing to the path
+	// that claimed it, so an edge listed twice — or as both — is refused.
+	crossings map[[2]spatial.Position]string
+}
+
+func (v *validation) fail(path, format string, args ...any) {
+	v.errs = append(v.errs, FieldError{Path: path, Message: fmt.Sprintf(format, args...)})
+}
+
+func (v *validation) header() {
+	s := v.spec
+	if s.Version != Version {
+		v.fail("version", "dungeon spec version %d, which this build does not speak (it speaks %d)", s.Version, Version)
+	}
+	if s.Key == "" {
+		v.fail("key", "the dungeon has no key")
+	} else if !keyShape.MatchString(s.Key) {
+		v.fail("key", "key %q is not [a-z0-9-]", s.Key)
+	}
+	if o, ok := orientations[s.Orientation]; ok {
+		v.orientation = o
+	} else {
+		v.fail("orientation", "the dungeon does not say which way its hexes point "+
+			"(%q; pointy or flat, and every [col,row] in the file depends on it)", s.Orientation)
+	}
+	if !voids[s.Void] {
+		v.fail("void", "the dungeon does not say what its void is (%q; opaque or transparent, and there is no default)", s.Void)
+	}
+}
+
+func (v *validation) geometryUsable() bool { return v.orientation != nil && v.regionOK }
+
+// cell is the absolute axial cell an authored pair names under the declared
+// orientation — the same conversion the composition runs.
+func (v *validation) cell(at [2]int) spatial.Position {
+	return encounter.HexCellAt(v.orientation, at[0], at[1])
+}
+
+func (v *validation) regions() {
+	s := v.spec
+	v.owner = map[spatial.Position]int{}
+	v.regionOK = v.orientation != nil
+	if len(s.Regions) == 0 {
+		v.fail("regions", "the dungeon has no regions, so it has no floor")
+		v.regionOK = false
+		return
 	}
 
-	width := 0
-	for _, r := range spec.Rooms {
-		width += r.Width
-	}
+	ids := map[string]int{}
+	for i, r := range s.Regions {
+		p := fmt.Sprintf("regions[%d]", i)
+		if r.ID == "" {
+			v.fail(p+".id", "the region has no id")
+			v.regionOK = false
+		} else if prev, dup := ids[r.ID]; dup {
+			v.fail(p+".id", "region %q is already declared at regions[%d]", r.ID, prev)
+			v.regionOK = false
+		} else {
+			ids[r.ID] = i
+		}
+		if r.Archetype == "" {
+			v.fail(p+".archetype", "the region has no archetype, and there is no default: the assets cannot dress it")
+		}
+		switch {
+		case r.Lighting == nil:
+			v.fail(p+".lighting", "the region does not say its lighting, and there is no default")
+		case r.Lighting.Intensity == nil:
+			v.fail(p+".lighting.intensity", "the lighting block does not say its intensity")
+		case math.IsNaN(*r.Lighting.Intensity) || *r.Lighting.Intensity < 0 || *r.Lighting.Intensity > 1:
+			v.fail(p+".lighting.intensity", "intensity %g is outside [0,1]", *r.Lighting.Intensity)
+		}
 
-	col, row := spec.Start[0], spec.Start[1]
-
-	if col < 0 || col >= width || row < 0 || row >= spec.Height {
-		return fmt.Errorf(
-			"the party starts at [%d,%d], which is outside the dungeon (%dx%d): %w",
-			col, row, width, spec.Height, ErrBadSpec)
-	}
-
-	base := 0
-	for _, r := range spec.Rooms {
-		if col < base+r.Width {
-			for _, p := range r.Place {
-				if p.At[0] == col-base && p.At[1] == row {
-					return fmt.Errorf(
-						"the party starts at [%d,%d], where %q already stands: %w",
-						col, row, p.Ref, ErrBadSpec)
+		count := 0
+		for row, cells := range r.Cells {
+			for col, at := range cells {
+				count++
+				if v.orientation == nil {
+					continue
 				}
+				cp := fmt.Sprintf("%s.cells[%d][%d]", p, row, col)
+				cell := v.cell(at)
+				if prev, taken := v.owner[cell]; taken {
+					if prev == i {
+						v.fail(cp, "[%d,%d] is painted twice in this region", at[0], at[1])
+					} else {
+						v.fail(cp, "[%d,%d] is already painted in region %q", at[0], at[1], s.Regions[prev].ID)
+					}
+					v.regionOK = false
+					continue
+				}
+				v.owner[cell] = i
 			}
-
-			return nil
 		}
-		base += r.Width
-	}
-
-	return nil
-}
-
-// validateRooms checks the chamber list and returns each chamber's position in
-// it, which validateConnectors needs to tell neighbours from strangers.
-func validateRooms(spec *Spec) (map[string]int, error) {
-	index := make(map[string]int, len(spec.Rooms))
-
-	for i, room := range spec.Rooms {
-		if room.ID == "" {
-			return nil, fmt.Errorf("rooms[%d] has no id: %w", i, ErrBadSpec)
-		}
-		if _, seen := index[room.ID]; seen {
-			return nil, fmt.Errorf("duplicate room %q: %w", room.ID, ErrBadSpec)
-		}
-		index[room.ID] = i
-
-		if room.Width < 1 {
-			return nil, fmt.Errorf("room %q has width %d, and a chamber must be at least one cell wide: %w",
-				room.ID, room.Width, ErrBadSpec)
-		}
-
-		if err := validatePlacements(spec, room); err != nil {
-			return nil, err
+		if count == 0 {
+			v.fail(p+".cells", "the region has no cells, and a region is its cells")
+			v.regionOK = false
 		}
 	}
-
-	return index, nil
 }
 
-// validatePlacements checks everything standing in one chamber, boss included.
-//
-// The boss goes through these rules rather than a parallel set, which is what
-// folding it into `place:` bought: it is a monster in a cell, and the only
-// thing that makes it special is a flag. A second implementation of "is this
-// cell inside the room" is how the two answers eventually disagree.
-func validatePlacements(spec *Spec, room RoomSpec) error {
-	occupied := make(map[[2]int]string, len(room.Place))
-	bosses := 0
+// edge checks one authored crossing: both endpoints floor, and adjacent under
+// the orientation. Returns the normalized absolute crossing and whether it
+// passed.
+func (v *validation) edge(path string, e EdgeSpec) ([2]spatial.Position, bool) {
+	a, b := v.cell(e[0]), v.cell(e[1])
+	ok := true
+	for i, end := range []spatial.Position{a, b} {
+		if _, floor := v.owner[end]; !floor {
+			v.fail(path, "endpoint [%d,%d] is not floor: the envelope is implied, never written", e[i][0], e[i][1])
+			ok = false
+		}
+	}
+	if a == b {
+		v.fail(path, "[%d,%d] is both ends of the edge", e[0][0], e[0][1])
+		return [2]spatial.Position{}, false
+	}
+	if ok && adjacencyGrid.Distance(a, b) != 1 {
+		v.fail(path, "[%d,%d] and [%d,%d] are not adjacent under %s", e[0][0], e[0][1], e[1][0], e[1][1], v.orientation.Kind())
+		ok = false
+	}
+	return normalizedCrossing(a, b), ok
+}
 
-	for _, p := range room.Place {
-		kind, err := refKind(p.Ref)
+// adjacencyGrid is the calculator every adjacency question here asks: any
+// instance of the family measures absolute cells correctly, since Distance
+// never reads the grid's own bounds.
+var adjacencyGrid = spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
+
+func normalizedCrossing(a, b spatial.Position) [2]spatial.Position {
+	if b.X < a.X || (b.X == a.X && b.Y < a.Y) {
+		return [2]spatial.Position{b, a}
+	}
+	return [2]spatial.Position{a, b}
+}
+
+func (v *validation) walls() {
+	v.crossings = map[[2]spatial.Position]string{}
+	for i, w := range v.spec.Walls {
+		p := fmt.Sprintf("walls[%d]", i)
+		c, ok := v.edge(p, w)
+		if !ok {
+			continue
+		}
+		if prev, dup := v.crossings[c]; dup {
+			v.fail(p, "the same edge is already listed at %s", prev)
+			continue
+		}
+		v.crossings[c] = p
+	}
+}
+
+func (v *validation) doors() {
+	ids := map[string]int{}
+	for i, d := range v.spec.Doors {
+		p := fmt.Sprintf("doors[%d]", i)
+		if d.ID == "" {
+			v.fail(p+".id", "the door has no id")
+		} else if prev, dup := ids[d.ID]; dup {
+			v.fail(p+".id", "door %q is already declared at doors[%d]", d.ID, prev)
+		} else {
+			ids[d.ID] = i
+		}
+		if len(d.Edges) == 0 {
+			v.fail(p+".edges", "the door stands in no edges")
+		}
+		for j, e := range d.Edges {
+			ep := fmt.Sprintf("%s.edges[%d]", p, j)
+			c, ok := v.edge(ep, e)
+			if !ok {
+				continue
+			}
+			if prev, taken := v.crossings[c]; taken {
+				if strings.HasPrefix(prev, "walls[") {
+					v.fail(ep, "this edge is also a wall (%s), and a door cannot stand in a wall", prev)
+				} else {
+					v.fail(ep, "this edge is already a door's (%s), and one edge cannot have two states", prev)
+				}
+				continue
+			}
+			v.crossings[c] = ep
+		}
+		if d.Locked != nil {
+			if d.Locked.DC < 1 {
+				v.fail(p+".locked.dc", "a lock with dc %d has nothing to beat", d.Locked.DC)
+			}
+			if d.Locked.Ability == "" {
+				v.fail(p+".locked.ability", "a lock must say which ability beats it")
+			}
+		}
+	}
+}
+
+func (v *validation) start() {
+	s := v.spec
+	if s.Start == nil {
+		v.fail("start", "the dungeon does not say where the party starts")
+		return
+	}
+	if _, floor := v.owner[v.cell(*s.Start)]; !floor {
+		v.fail("start", "the party starts at [%d,%d], which is not floor", s.Start[0], s.Start[1])
+		return
+	}
+	for i, pl := range s.Place {
+		if pl.At == *s.Start {
+			v.fail("start", "the party starts at [%d,%d], where %q (place[%d]) already stands", s.Start[0], s.Start[1], pl.Ref, i)
+		}
+	}
+}
+
+func (v *validation) place() {
+	s := v.spec
+	occupied := map[[2]int]int{}
+	bosses := map[int]int{} // region index -> place index of its boss
+	for i, pl := range s.Place {
+		p := fmt.Sprintf("place[%d]", i)
+		kind, err := refKind(pl.Ref)
 		if err != nil {
-			return fmt.Errorf("room %q: %w", room.ID, err)
+			v.fail(p+".ref", "%v", err)
+		}
+		owner, floor := v.owner[v.cell(pl.At)]
+		if !floor {
+			v.fail(p+".at", "%q at [%d,%d], which is not floor", pl.Ref, pl.At[0], pl.At[1])
+		}
+		if prev, taken := occupied[pl.At]; taken {
+			v.fail(p+".at", "%q and %q (place[%d]) are on the same cell [%d,%d]", pl.Ref, s.Place[prev].Ref, prev, pl.At[0], pl.At[1])
+		} else {
+			occupied[pl.At] = i
 		}
 
-		if p.At[0] < 0 || p.At[0] >= room.Width || p.At[1] < 0 || p.At[1] >= spec.Height {
-			return fmt.Errorf(
-				"room %q: %q at [%d,%d], which is outside the chamber (%dx%d): %w",
-				room.ID, p.Ref, p.At[0], p.At[1], room.Width, spec.Height, ErrBadSpec)
-		}
-		if doorwayRow(spec.Height) == p.At[1] && standsInASeam(spec, room, p.At[0]) {
-			return fmt.Errorf(
-				"room %q: %q at [%d,%d] stands in a doorway: %w",
-				room.ID, p.Ref, p.At[0], p.At[1], ErrBadSpec)
-		}
-		if other, taken := occupied[p.At]; taken {
-			return fmt.Errorf("room %q: %q and %q are on the same cell [%d,%d]: %w",
-				room.ID, other, p.Ref, p.At[0], p.At[1], ErrBadSpec)
-		}
-		occupied[p.At] = p.Ref
-
-		if kind == typeMonsters {
-			if err := validateMonsterPlacement(room, p); err != nil {
-				return err
+		switch kind {
+		case typeMonsters:
+			if pl.BlocksMovement != nil {
+				v.fail(p+".blocks_movement", "%q is not a prop and cannot declare what it blocks", pl.Ref)
 			}
-			if p.Boss {
-				bosses++
-				if bosses > 1 {
-					return fmt.Errorf("room %q names more than one boss: %w", room.ID, ErrBadSpec)
+			if pl.BlocksLoS != nil {
+				v.fail(p+".blocks_los", "%q is not a prop and cannot declare what it blocks", pl.Ref)
+			}
+			if pl.Targeting != nil && !targetings[*pl.Targeting] {
+				v.fail(p+".targeting", "%q declares targeting %q, which is not a word this build knows", pl.Ref, *pl.Targeting)
+			}
+			if pl.Boss && floor {
+				if prev, dup := bosses[owner]; dup {
+					v.fail(p+".boss", "region %q already names %q (place[%d]) as its boss", s.Regions[owner].ID, s.Place[prev].Ref, prev)
+				} else {
+					bosses[owner] = i
 				}
 			}
-
-			continue
-		}
-
-		if err := validatePropPlacement(room, p); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// validateMonsterPlacement checks the fields only a monster may carry.
-func validateMonsterPlacement(room RoomSpec, p PlaceSpec) error {
-	if p.BlocksMovement != nil || p.BlocksLoS != nil {
-		return fmt.Errorf("room %q: %q is not a prop and cannot declare what it blocks: %w",
-			room.ID, p.Ref, ErrBadSpec)
-	}
-	if p.Targeting != nil && !targetings[*p.Targeting] {
-		return fmt.Errorf("room %q: %q declares targeting %q, which is not a word this build knows: %w",
-			room.ID, p.Ref, *p.Targeting, ErrBadSpec)
-	}
-
-	return nil
-}
-
-// validatePropPlacement checks the fields only a prop may carry, and insists on
-// the two it must.
-//
-// Both answers REQUIRED, never defaulted — see [PlaceSpec.BlocksMovement] for
-// the argument, which is [encounter.PropInput]'s own one layer out.
-func validatePropPlacement(room RoomSpec, p PlaceSpec) error {
-	if p.Targeting != nil {
-		return fmt.Errorf("room %q: %q is not a monster and cannot have targeting: %w",
-			room.ID, p.Ref, ErrBadSpec)
-	}
-	if p.Boss {
-		return fmt.Errorf("room %q: %q is not a monster and cannot be the boss: %w",
-			room.ID, p.Ref, ErrBadSpec)
-	}
-	if p.BlocksMovement == nil {
-		return fmt.Errorf("room %q: %q does not say whether it blocks movement, and there is no default: %w",
-			room.ID, p.Ref, ErrBadSpec)
-	}
-	if p.BlocksLoS == nil {
-		return fmt.Errorf("room %q: %q does not say whether it blocks line of sight, and there is no default: %w",
-			room.ID, p.Ref, ErrBadSpec)
-	}
-
-	return nil
-}
-
-// validateConnectors checks the openings.
-func validateConnectors(spec *Spec, index map[string]int) error {
-	seams := make(map[[2]string]bool, len(spec.Connectors))
-
-	for i, c := range spec.Connectors {
-		from, ok := index[c.From]
-		if !ok {
-			return fmt.Errorf("connectors[%d] joins room %q, which is not declared: %w", i, c.From, ErrBadSpec)
-		}
-		to, ok := index[c.To]
-		if !ok {
-			return fmt.Errorf("connectors[%d] joins room %q, which is not declared: %w", i, c.To, ErrBadSpec)
-		}
-		if from == to {
-			return fmt.Errorf("connectors[%d] joins room %q to itself: %w", i, c.From, ErrBadSpec)
-		}
-		// Chambers are laid out in declaration order, so a connector between
-		// rooms that are not adjacent in that order names a seam no two
-		// chambers share.
-		if from != to-1 && to != from-1 {
-			return fmt.Errorf(
-				"connectors[%d] joins %q and %q, which are not next to each other in the room list: %w",
-				i, c.From, c.To, ErrBadSpec)
-		}
-
-		seam := [2]string{c.From, c.To}
-		if from > to {
-			seam = [2]string{c.To, c.From}
-		}
-		if seams[seam] {
-			return fmt.Errorf("connectors[%d] declares the seam between %q and %q twice: %w",
-				i, seam[0], seam[1], ErrBadSpec)
-		}
-		seams[seam] = true
-
-		if c.Locked == nil {
-			continue
-		}
-		if c.Locked.DC < 1 {
-			return fmt.Errorf("connectors[%d] is locked with dc %d, and a lock with nothing to beat is not a lock: %w",
-				i, c.Locked.DC, ErrBadSpec)
-		}
-		if c.Locked.Ability == "" {
-			return fmt.Errorf("connectors[%d] is locked with no ability to check: %w", i, ErrBadSpec)
+		case typeProps:
+			if pl.Targeting != nil {
+				v.fail(p+".targeting", "%q is not a monster and cannot have targeting", pl.Ref)
+			}
+			if pl.Boss {
+				v.fail(p+".boss", "%q is not a monster and cannot be the boss", pl.Ref)
+			}
+			if pl.BlocksMovement == nil {
+				v.fail(p+".blocks_movement", "%q does not say whether it blocks movement, and there is no default", pl.Ref)
+			}
+			if pl.BlocksLoS == nil {
+				v.fail(p+".blocks_los", "%q does not say whether it blocks line of sight, and there is no default", pl.Ref)
+			}
 		}
 	}
-
-	return nil
 }
 
 // refKind returns a ref's type segment, which is what routes a placement.
@@ -334,80 +364,16 @@ func validateConnectors(spec *Spec, index map[string]int) error {
 // this package exists: importing one would break design law C1. The check is
 // deliberately shallow — three non-empty segments — because "is this a ref that
 // resolves to real content" is a question only the layer that owns content can
-// answer, and pretending to answer it here would be a second, weaker opinion
-// beside the real one.
+// answer.
 func refKind(ref string) (string, error) {
 	parts := strings.Split(ref, ":")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", fmt.Errorf("ref %q is not module:type:id: %w", ref, ErrBadSpec)
+		return "", fmt.Errorf("ref %q is not module:type:id", ref)
 	}
-
 	switch parts[1] {
 	case typeProps, typeMonsters:
 		return parts[1], nil
 	default:
-		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place: %w",
-			ref, parts[1], ErrBadSpec)
+		return "", fmt.Errorf("ref %q names type %q, which this compiler cannot place", ref, parts[1])
 	}
-}
-
-// doorwayRow is the row every connector's opening sits on.
-//
-// height/2, which is the old stack's rule (dungeonspec's own validate reserves
-// the same row) and, more to the point, is where the reference tomb's author
-// already believes it is: the shipping file places things on rows 1, 2, 3, 5
-// and 6 of an 8-tall dungeon, and never on row 4.
-func doorwayRow(height int) int { return height / 2 }
-
-// standsInASeam reports whether a column is the one a connector's opening
-// actually lands in — the only column where the doorway rule can bite.
-//
-// TWO NARROWINGS, and both matter. A chamber's INTERIOR is its own business:
-// something standing on the doorway ROW in the middle of a hall is in nobody's
-// way, and refusing it would be the old stack's rule imported without the
-// geometry that made it necessary — over there a wall column was carved for the
-// door, so the whole row was spoken for, and here nothing is.
-//
-// And an edge column only counts if a connector opens THROUGH it. The tomb's
-// entrance has a seam on its east side and open rock to its west, so a brazier
-// against its west wall on row 4 is a brazier against a wall. Asking "does this
-// chamber have any connector at all" would have refused it, which is the kind
-// of over-refusal that teaches authors to distrust the compiler.
-func standsInASeam(spec *Spec, room RoomSpec, col int) bool {
-	west, east := col == 0, col == room.Width-1
-	if !west && !east {
-		return false
-	}
-
-	// The chambers are laid out in declaration order, so the neighbour a
-	// connector must name is the one on that side.
-	var index int
-	for i, r := range spec.Rooms {
-		if r.ID == room.ID {
-			index = i
-			break
-		}
-	}
-
-	for _, c := range spec.Connectors {
-		other := ""
-		switch room.ID {
-		case c.From:
-			other = c.To
-		case c.To:
-			other = c.From
-		default:
-			continue
-		}
-		for i, r := range spec.Rooms {
-			if r.ID != other {
-				continue
-			}
-			if (west && i == index-1) || (east && i == index+1) {
-				return true
-			}
-		}
-	}
-
-	return false
 }
