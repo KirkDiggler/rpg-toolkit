@@ -26,11 +26,13 @@ import (
 // watching the same fight at once.
 //
 // armedBarbarian ("barbarian") joins alongside armedFighter ("fighter") —
-// the design doc's own two-browser walk (ideas/stream-whole/design.md §6),
-// reduced to what a fake EventStream can pin. skel-1 is spawned in plain
-// sight of both and pulls them into one bubble; skel-2 is spawned behind a
-// genuine LOS+movement wall, matching TestBlindSkeletonBehindAWallNeverJoinsTheFight's
-// own fixture shape, and never joins.
+// the design doc's own two-browser walk (rpg-project's ideas/stream-whole
+// design.md on the origin/ideas/stream-whole branch, §6), reduced to what a
+// fake EventStream can pin. skel-1 is spawned in plain sight of both and
+// pulls them into one bubble; skel-2 is spawned behind a genuine
+// LOS+movement wall, matching
+// TestBlindSkeletonBehindAWallNeverJoinsTheFight's own fixture shape, and
+// never joins.
 //
 // Both players are given 100 HP (armedFighter's own 24/28 raised the same
 // way TestRoundTwoStruckReachesTheLiveSubscriber's own fixture is: "high hit
