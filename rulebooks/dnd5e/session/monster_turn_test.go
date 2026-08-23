@@ -333,6 +333,105 @@ func (s *MonsterTurnTestSuite) TestPassDriverStillPasses() {
 	s.Equal([]string{"turn-ended", "turn-ended"}, s.storyBeats(mgr, "fighter")[before:])
 }
 
+// (f) A round-2+ driven strike reaches the LIVE SUBSCRIBER, not merely the
+// log.
+//
+// rpg-project#254's live walk (the tomb evidence) found skeleton-1's own
+// struck beats correctly appended to the story in rounds 2 and 3 — the log
+// was right — but never delivered to the live client's stream: the panel
+// went straight from "Skeleton's turn." to "Skeleton does nothing." both
+// times, though round 1's own moved/missed beats DID arrive live. This gate
+// asks the toolkit's own question: does [Manager.EndTurn]'s publish call
+// actually hand a round-2 struck beat to the [EventStream] it was given, the
+// same as round 1's?
+//
+// Two full rounds against a FAKE STREAM (not Story) is the point — a
+// passing log read proves nothing here, since the evidence already showed
+// the log was never the problem.
+//
+// This gate PASSES today. Traced end to end (openForWrite's baseline is set
+// once per EndTurn call, before that call's own writes; the same in-memory
+// *encounter.Encounter is mutated through the whole driven cascade and
+// persisted once at commit; projectEvents reads Story per member from that
+// baseline over the SAME object) the mechanism has no seam for a round-2
+// beat to go missing that a round-1 beat would not also hit. The live
+// walk's own anomaly is therefore not reproducible as a toolkit defect —
+// this test is the negative control that rules the toolkit's own Publish
+// call out, in writing, for whoever looks at rpg-api's broker/stream layer
+// (a live, no-replay pub/sub — StreamEvents' own doc: "no replay
+// obligation... a client resyncs via GetStory") or the live harness next.
+func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
+	ctx := context.Background()
+	stream := &fakeStream{}
+
+	// A durable fighter: testDice{}'s flat rolls make every hit's damage a
+	// large, repeatable number, and this gate is about DELIVERY, not
+	// defeat. High hit points keep two ordinary rounds of being hit from
+	// wandering into a defeat-ends-the-fight scene by accident.
+	fighter := armedFighter("fighter")
+	fighter.HitPoints, fighter.MaxHitPoints = 100, 100
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: newFakeCharacters(fighter),
+		Events:     stream,
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(12, 6),
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err)
+
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 1, Y: 0}, // adjacent: no run-up, every round is a swing
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(spawned.Formed)
+
+	skelStruckFighter := func(events []session.Event) bool {
+		for _, e := range events {
+			if e.Recipient != "fighter" || e.Kind != session.EventStruck {
+				continue
+			}
+			if body, ok := e.Body.(session.StruckBody); ok && body.Attacker == "skel-1" && body.Target == "fighter" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Round 1: the fighter hands her turn to the skeleton, which swings
+	// (testDice{}'s flat 10 clears duelAC 12 — TestSkeletonClosesAndAttacks's
+	// own math). Baseline: this is the round the live evidence says DID
+	// stream correctly. The fighter never swings back — a player's own turn
+	// needs no declared action before EndTurn, and skipping it keeps the
+	// skeleton's own 13 hit points out of this gate's way entirely (the
+	// evidence's own skeleton-1 survived every round it is about).
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+	s.Require().True(skelStruckFighter(stream.published),
+		"round 1's own struck beat must reach the live subscriber (control)")
+
+	// Round 2: the same call again. The skeleton's SECOND driven strike is
+	// round 2's own struck beat — the one the live evidence says never
+	// arrived at the client's stream, though the story log recorded it
+	// correctly.
+	stream.published = nil // isolate what THIS EndTurn's own publish call delivers
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	s.Require().NoError(err)
+
+	s.True(skelStruckFighter(stream.published),
+		"round 2's own struck beat must reach the live subscriber, exactly as round 1's did")
+}
+
 // fullColumnWall blocks line of sight the full height of a room at column
 // atX — no gap, unlike squareSeam's own doorway — because (b) is testing
 // that a wall with nothing to peek through blocks contact outright.
