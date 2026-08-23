@@ -360,7 +360,13 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[str
 		return doorChange{}, err
 	}
 
-	audience := e.rosterIDs()
+	// subjectBeat: not a whole-table fact, and no one member is really "the
+	// subject" of a door — #940's eventual perception scoping is far more
+	// likely to key off who can currently see the door than off any one
+	// member, so there's no subject to pass today. v1 still sends everyone
+	// regardless (audienceFor's doc); this is the passthrough
+	// appendDoorBeat's own doc calls "the one early adopter."
+	audience := e.audienceFor(subjectBeat)
 
 	seq, err := e.appendDoorBeat(door, audience, extra)
 	if err != nil {

@@ -655,11 +655,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter first light: %w", err)
 	}
 
-	// Opening record beat: all members hear "scene-opened"
+	// Opening record beat: all members hear "scene-opened". tableBeat,
+	// subjects = memberIDs verbatim — this beat's audience has always been
+	// declaration order (the order Members were given in), not the sorted
+	// order every other beat in this module uses, and audienceFor's
+	// tableBeat branch preserves exactly that (see its doc).
 	beatPayload, _ := json.Marshal(map[string]string{"beat": "scene-opened"})
 	_, err = e.appendBeat(&record.AppendInput{
 		At:       0,
-		Audience: memberIDs,
+		Audience: e.audienceFor(tableBeat, memberIDs...),
 		Tags:     map[string]string{"tag": "scene"},
 		Payload:  beatPayload,
 	})
@@ -926,6 +930,63 @@ func (e *Encounter) rosterIDs() []MemberID {
 	return ids
 }
 
+// beatClass names what a story beat is about — the audience question every
+// append site used to answer alone, each in its own slightly different way.
+// Recorded once per call, honestly, so rpg-toolkit#940's eventual policy
+// split is a change to audienceFor's body, not a hunt through ten call
+// sites for which ones need it.
+type beatClass int
+
+const (
+	// subjectBeat concerns specific members: struck, missed, downed, moved,
+	// joined. subjects is the actor and targets (moved: the mover; joined:
+	// the joiner).
+	subjectBeat beatClass = iota
+	// bubbleBeat concerns a fight's clock: formed, turn-ended, transferred,
+	// dissolved. subjects is the bubble's current members.
+	bubbleBeat
+	// tableBeat concerns the whole encounter, not any one member or fight:
+	// scene-opened, tick, exited, ended. No PER-MEMBER subject — but a table
+	// site that already computes its own audience (declaration order at
+	// scene-opened; a roster snapshot taken before something else changes
+	// it, at Pump's tick beat and Exit's own exit beat) passes it through
+	// AS subjects so audienceFor doesn't overwrite it with a fresh, sorted
+	// e.rosterIDs() that would tell a different, wrong-order story.
+	tableBeat
+)
+
+// audienceFor is the one decision point every story beat's audience flows
+// through — the shelf rpg-toolkit#940 sits on.
+//
+// Kirk's ruling (rpg-project#260 slice 4, 2026-08-24): "Until we get to
+// v1.0 we intend on giving all the data down the combat log. Limiting what
+// others see is a later concern — but we want a shelf that it can sit upon
+// when needed." So v1's policy, for every class, is EVERYONE: the current
+// roster, unconditionally.
+//
+// class is passed honestly at every call site — that classification is
+// this slice's actual deliverable, reviewed once here. #940 is the flip,
+// and it lands as a change to THIS function's body alone: subjects ∪
+// current sight-holders for subject beats, bubble membership for bubble
+// beats, table beats unchanged. No call site moves.
+//
+// subjects is ignored for subjectBeat and bubbleBeat today — v1 sends
+// everyone regardless of who the beat is about, and subjects is only
+// recorded for #940 to read later. tableBeat is the one exception: when a
+// table site passes subjects, those ARE today's answer verbatim, because a
+// table beat's own audience computation already varies in ways a fresh
+// e.rosterIDs() call would not reproduce — scene-opened's declaration
+// order (not sorted, unlike everything else here) chief among them. An
+// empty tableBeat call (Pump's tick beat, Exit's exit beat, End's end beat)
+// falls through to e.rosterIDs(), which already matches what those three
+// compute by hand today.
+func (e *Encounter) audienceFor(class beatClass, subjects ...MemberID) []MemberID {
+	if class == tableBeat && len(subjects) > 0 {
+		return subjects
+	}
+	return e.rosterIDs()
+}
+
 // appendMovementBeat records one executed step in the story and returns its
 // sequence number.
 //
@@ -942,6 +1003,11 @@ func (e *Encounter) rosterIDs() []MemberID {
 //
 // CALL THIS BEFORE refreshSight. A verb's own beat precedes any beat its
 // consequences append — the law is stated at [Encounter.refreshSight].
+//
+// audience is computed by the CALLER, via audienceFor(subjectBeat, mover) —
+// not here, because Pump needs its pre-Phase-1 snapshot reused across every
+// movement beat in one tick rather than a fresh roster read per action (see
+// Pump's own comment on why).
 func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
 	payload := map[string]interface{}{
 		"beat":     "moved",
@@ -1093,6 +1159,16 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		return nil, fmt.Errorf("pump members: %w", err)
 	}
 
+	// The tick beat's (and every movement beat's) audience, captured HERE
+	// rather than at the append site: a contract-violating decider that
+	// removes itself mid-Decide below still belongs in this tick's beat
+	// audience, because an exited member keeps Story access to the beats
+	// they were present for. tableBeat's policy is "everyone" either way,
+	// but WHICH "everyone" — before or after Phase 1 mutates e.members — is
+	// a real difference, and it is why Pump does not call audienceFor fresh
+	// at each append site the way the other verbs do.
+	audience := e.audienceFor(tableBeat)
+
 	// Who is down, asked before anything is planned: a body has no action to
 	// take, so its decider is not consulted at all rather than consulted and
 	// discarded (a decider is behaviour, and running a corpse's behaviour is
@@ -1214,19 +1290,9 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 		}
 	}
 
-	// Single refreshSight for all members after all monster actions.
-	//
-	// Derived from the roster snapshot taken BEFORE phase 1, not from live
-	// membership: a contract-violating decider that removed itself mid-Decide
-	// still belongs in this tick's beat audience, because an exited member
-	// keeps Story access to the beats they were present for. This is why Pump
-	// does not share rosterIDs with the other verbs — every one of those reads
-	// a roster nothing has had a chance to change.
-	memberIDs := make([]MemberID, 0, len(allMembers))
-	for _, m := range allMembers {
-		memberIDs = append(memberIDs, m.ID)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+	// Single refreshSight for all members after all monster actions, over
+	// the SAME pre-Phase-1 audience captured above (its own comment there) —
+	// movement beats below reuse it too, for the same reason.
 
 	// Pump's own beats — the tick frame and every action inside it — are
 	// recorded BEFORE sight refreshes: the monsters' walk is the cause,
@@ -1241,7 +1307,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	tickAppendOut, err := e.appendBeat(&record.AppendInput{
 		At:       newTickReading,
-		Audience: memberIDs,
+		Audience: audience,
 		Tags:     map[string]string{"tag": "clock"},
 		Payload:  tickBeatBytes,
 	})
@@ -1253,14 +1319,14 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 
 	// Then record a beat for each successful action, in decision order.
 	for _, action := range executed {
-		actionSeq, err := e.appendMovementBeat(action, memberIDs, newTickReading)
+		actionSeq, err := e.appendMovementBeat(action, audience, newTickReading)
 		if err != nil {
 			return nil, fmt.Errorf("pump append movement beat: %w", err)
 		}
 		seqs = append(seqs, actionSeq)
 	}
 
-	intelDeltas, formed, err := e.refreshSight(memberIDs)
+	intelDeltas, formed, err := e.refreshSight(audience)
 	if err != nil {
 		return nil, fmt.Errorf("pump refresh sight: %w", err)
 	}
@@ -1599,12 +1665,10 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	}
 
 	// Audience for both the join beat and the sight refresh: the joiner sees
-	// incumbents, incumbents see the joiner.
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		memberIDs = append(memberIDs, id)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
+	// incumbents, incumbents see the joiner. subjectBeat, subject is the
+	// joiner — v1 still sends everyone (audienceFor's doc); rpg-toolkit#940
+	// is where "everyone" might narrow to who can actually see them arrive.
+	memberIDs := e.audienceFor(subjectBeat, in.Member)
 
 	// Record the join beat BEFORE refreshing sight: arriving is the cause,
 	// anything trigger detection appends is its effect (see refreshSight).
@@ -1706,6 +1770,13 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit member %q clock: %w", in.Member, cerr)
 	}
 
+	// The exit beat's audience, captured HERE, before the exiter is removed
+	// from e.members below: it is every member INCLUDING the exiter — they
+	// witness their own departure (and can re-read it via Story).
+	// audienceFor reads live membership, so calling it after the delete
+	// would leave the exiter out (tableBeat, no subjects — see its doc).
+	audience := e.audienceFor(tableBeat)
+
 	// Remove from member set (and deciders if present)
 	delete(e.members, in.Member)
 	delete(e.deciders, in.Member)
@@ -1717,15 +1788,6 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	}
 	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-	// The exit beat's audience is every member INCLUDING the exiter —
-	// they witness their own departure (and can re-read it via Story).
-	allMemberIDs := make([]MemberID, 0, len(e.members)+1)
-	allMemberIDs = append(allMemberIDs, in.Member) // Add the exiter
-	for id := range e.members {
-		allMemberIDs = append(allMemberIDs, id)
-	}
-	sort.Slice(allMemberIDs, func(i, j int) bool { return allMemberIDs[i] < allMemberIDs[j] })
-
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
 	beatPayload := map[string]interface{}{
@@ -1736,7 +1798,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	appendOut, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
-		Audience: allMemberIDs,
+		Audience: audience,
 		Tags:     map[string]string{"tag": "membership"},
 		Payload:  beatBytes,
 	})
@@ -1828,12 +1890,10 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 		Members: memberOutcomes,
 	}
 
-	// Record the end beat
-	allMemberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		allMemberIDs = append(allMemberIDs, id)
-	}
-	sort.Slice(allMemberIDs, func(i, j int) bool { return allMemberIDs[i] < allMemberIDs[j] })
+	// Record the end beat. tableBeat, no subjects: nothing has removed
+	// anyone from e.members by this point, so a fresh call here already
+	// matches "everyone" — unlike Exit, no reordering is needed.
+	audience := e.audienceFor(tableBeat)
 
 	beatPayload := map[string]interface{}{
 		"beat":   "ended",
@@ -1843,7 +1903,7 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 
 	_, err := e.appendBeat(&record.AppendInput{
 		At:       clockReadingForBeat,
-		Audience: allMemberIDs,
+		Audience: audience,
 		Tags:     map[string]string{"tag": "scene"},
 		Payload:  beatBytes,
 	})

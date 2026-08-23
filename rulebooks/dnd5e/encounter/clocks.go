@@ -213,13 +213,11 @@ func (e *Encounter) dropBubbleIfIdle(b *clock.Turn) error {
 // audience-and-timestamp convention the membership beats use (Join, Exit).
 // Tag "clock" matches Pump's tick beat: one tag family for everything the
 // clocks do.
-func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, error) {
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		memberIDs = append(memberIDs, id)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
-
+//
+// subjects is the bubble's own membership (bubbleBeat, per audienceFor's
+// doc) — passed honestly by every caller even though v1 still sends
+// everyone; rpg-toolkit#940 is where that changes.
+func (e *Encounter) appendClockBeat(payload map[string]interface{}, subjects ...MemberID) (uint64, error) {
 	// Unreachable for today's payloads (strings and ID slices marshal
 	// unconditionally), but this helper is the one seam every clock beat
 	// flows through — a future payload that cannot marshal must fail its
@@ -232,7 +230,7 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, err
 	}
 	out, err := e.appendBeat(&record.AppendInput{
 		At:       uint64(e.clock.ToData().HighWater),
-		Audience: memberIDs,
+		Audience: e.audienceFor(bubbleBeat, subjects...),
 		Tags:     map[string]string{"tag": "clock"},
 		Payload:  beatBytes,
 	})
@@ -447,11 +445,16 @@ func (e *Encounter) driveOneMonsterTurn(
 		return 0, false, fmt.Errorf("end: %w", eerr)
 	}
 
+	order, oerr := bubble.Order()
+	if oerr != nil {
+		return 0, false, fmt.Errorf("order: %w", oerr)
+	}
+
 	seq, berr := e.appendClockBeat(map[string]interface{}{
 		"beat":   "turn-ended",
 		"member": string(activeID),
 		"next":   out.Next,
-	})
+	}, order...)
 	if berr != nil {
 		return 0, false, fmt.Errorf("append beat: %w", berr)
 	}
@@ -509,7 +512,7 @@ func (e *Encounter) executeTurnIntent(
 		}
 
 		at := uint64(e.clock.ToData().HighWater)
-		audience := e.rosterIDs()
+		audience := e.audienceFor(subjectBeat, activeID)
 		moved := 0
 		for _, cell := range it.Path {
 			action, stepped := e.stepTo(m, cell)
@@ -939,7 +942,7 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	if len(in.Surprised) > 0 {
 		beat["surprised"] = in.Surprised
 	}
-	seq, err := e.appendClockBeat(beat)
+	seq, err := e.appendClockBeat(beat, in.Order...)
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
 	}
@@ -1085,11 +1088,23 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		return nil, fmt.Errorf("transfer %q to %q: %w", in.Member, in.To, ErrBadClock)
 	}
 
+	// The bubble's own membership (bubbleBeat, per audienceFor's doc): the
+	// one just entered for ClockTurn, the one just left for ClockWorld.
+	var subjects []MemberID
+	if in.To == ClockTurn {
+		subjects, err = e.bubbles[0].Order()
+	} else {
+		subjects, err = bubble.Order()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("transfer %q: %w", in.Member, err)
+	}
+
 	seq, err := e.appendClockBeat(map[string]interface{}{
 		"beat":   "transferred",
 		"member": string(in.Member),
 		"to":     string(in.To),
-	})
+	}, subjects...)
 	if err != nil {
 		return nil, fmt.Errorf("transfer append beat: %w", err)
 	}
@@ -1184,11 +1199,16 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, err)
 	}
 
+	order, oerr := bubble.Order()
+	if oerr != nil {
+		return nil, fmt.Errorf("end turn %q: %w", in.Member, oerr)
+	}
+
 	seq, err := e.appendClockBeat(map[string]interface{}{
 		"beat":   "turn-ended",
 		"member": string(in.Member),
 		"next":   out.Next,
-	})
+	}, order...)
 	if err != nil {
 		return nil, fmt.Errorf("end turn append beat: %w", err)
 	}
