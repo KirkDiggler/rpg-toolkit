@@ -397,25 +397,6 @@ type Sighting struct {
 	Status string `json:"status,omitempty"`
 }
 
-// StoryEntry is one beat of what an observer has witnessed.
-type StoryEntry struct {
-	// Seq is the beat's sequence: monotonic, gapless, never renumbered. A
-	// client that notices a gap has missed a beat and should re-query.
-	Seq uint64 `json:"seq"`
-
-	// At is the clock reading when the beat was recorded.
-	At uint64 `json:"at,omitempty"`
-
-	// Correlation groups cause and effect across beats. Empty is legal.
-	Correlation string `json:"correlation,omitempty"`
-
-	// Tags is queryable metadata describing the beat.
-	Tags map[string]string `json:"tags,omitempty"`
-
-	// Payload is the beat itself, encoded by the composition.
-	Payload []byte `json:"payload,omitempty"`
-}
-
 // EventKind names what an event reports.
 //
 // A string enum rather than free-form prose, because this is the field clients
@@ -583,6 +564,14 @@ type Event struct {
 
 	// Correlation groups cause and effect across events. Empty is legal.
 	Correlation string `json:"correlation,omitempty"`
+
+	// Tags is queryable metadata describing the beat, carried unchanged from
+	// the story-log entry this event was projected from. Before
+	// rpg-api-protos#239 only a Story catch-up carried this field; a live
+	// subscriber now gets the identical Tags too, so a client resolving a
+	// gap by re-querying Story is never handed a thinner answer than what
+	// arrived live.
+	Tags map[string]string `json:"tags,omitempty"`
 
 	// Recipient is the member this projection is addressed to.
 	Recipient string `json:"recipient"`

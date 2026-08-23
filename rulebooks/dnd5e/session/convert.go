@@ -5,7 +5,6 @@ package session
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -186,35 +185,6 @@ func projectSeen(channel intel.Channel, payload []byte, downed bool) *Seen {
 		standing = StandingDowned
 	}
 	return &Seen{Position: pos, Standing: standing}
-}
-
-// projectStory drops each entry's audience roster deliberately.
-//
-// A story is queried by one viewer, and the roster names every OTHER viewer a
-// beat was addressed to. Handing that back would tell Alice which members
-// exist and were present for something — including members she has never
-// perceived, and members in rooms she has never entered. The audience is a
-// delivery rule, not story content, and it is the composition's business
-// rather than the host's.
-func projectStory(in []record.Entry) []StoryEntry {
-	out := make([]StoryEntry, 0, len(in))
-	for _, e := range in {
-		var tags map[string]string
-		if len(e.Tags) > 0 {
-			tags = make(map[string]string, len(e.Tags))
-			for k, v := range e.Tags {
-				tags[k] = v
-			}
-		}
-		out = append(out, StoryEntry{
-			Seq:         e.Seq,
-			At:          e.At,
-			Correlation: e.Correlation,
-			Tags:        tags,
-			Payload:     append([]byte(nil), e.Payload...),
-		})
-	}
-	return out
 }
 
 func projectMember(in encounter.Member) Member {

@@ -192,7 +192,7 @@ func (s *EconomySuite) storedEconomy() *character.ActionEconomyData {
 	return stored.ActionEconomy
 }
 
-func (s *EconomySuite) story() []session.StoryEntry {
+func (s *EconomySuite) story() []session.Event {
 	s.T().Helper()
 	out, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)

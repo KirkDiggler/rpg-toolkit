@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -124,39 +125,49 @@ func (m *Manager) projectEvents(
 		}
 
 		for _, entry := range entries {
-			kind, body := decodeBeat(entry.Payload)
-			events = append(events, Event{
-				Session:     scope.session,
-				Seq:         entry.Seq,
-				At:          entry.At,
-				Correlation: entry.Correlation,
-				Recipient:   string(member),
-				Kind:        kind,
-				Payload:     append([]byte(nil), entry.Payload...),
-				Body:        body,
-			})
+			events = append(events, projectEntry(scope.session, string(member), entry))
 		}
 	}
 
 	return events
 }
 
-// decodeBeat determines a beat's wire EventKind and, for the kinds this
-// version types, its typed EventBody — DELETING kindOf's own JSON sniffing
-// (rpg-toolkit#941). It is still the one place this package interprets a
-// payload rather than passing it through: the composition's own "beat" key
-// is a DECLARED kind (every append site in encounter names it explicitly),
-// not content this function guesses at, the same peek-then-dispatch pattern
-// LoadJSON's own routing already uses for conditions and features elsewhere
-// in this codebase.
+// projectEntry turns one story-log entry into the Event it becomes for one
+// recipient — the SAME projection whether the entry reaches a client live
+// (projectEvents, moments after Record) or later, on catch-up ([Manager.Story]).
 //
-// An unrecognised beat, or one whose declared kind decodes to a shape this
-// build's struct does not match, becomes (EventUnknown, nil) rather than
-// being dropped. A client that receives something it cannot interpret still
-// learns its sequence advanced, which keeps gap-detection working; dropping
-// it would manufacture a hole and send every client into a resync it did
-// not need. It also means a newer composition can add beats without older
-// clients losing their place.
+// One function, two call sites, is the whole mechanism behind rpg-api-protos
+// #239's ruling: live delivery and a Story catch-up are byte-equal for the
+// same seq because nothing else in this package is allowed to build an Event
+// any other way. Before this, Story returned a thinner StoryEntry with the
+// raw payload and no typed Kind or Body, so a client that noticed a gap and
+// re-queried Story got a shape it had to decode a second, different way —
+// exactly the drift #239 found live in the debug feed (kind=UNKNOWN
+// body=null on every caught-up entry).
+func projectEntry(session, recipient string, e record.Entry) Event {
+	kind, body := decodeBeat(e.Payload)
+
+	var tags map[string]string
+	if len(e.Tags) > 0 {
+		tags = make(map[string]string, len(e.Tags))
+		for k, v := range e.Tags {
+			tags[k] = v
+		}
+	}
+
+	return Event{
+		Session:     session,
+		Seq:         e.Seq,
+		At:          e.At,
+		Correlation: e.Correlation,
+		Tags:        tags,
+		Recipient:   recipient,
+		Kind:        kind,
+		Payload:     append([]byte(nil), e.Payload...),
+		Body:        body,
+	}
+}
+
 // decodeBeat determines a beat's wire EventKind and, for the kinds this
 // version types, its typed EventBody — DELETING kindOf's own JSON sniffing
 // (rpg-toolkit#941). It is still the one place this package interprets a
