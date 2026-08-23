@@ -38,7 +38,7 @@ func threePlayerMonsterBubble(t *testing.T) *Encounter {
 }
 
 // TestNestedDriveMonsterTurnsWhileOneIsRunningIsANoOp pins guard 2 of
-// rpg-toolkit#1206's fix directly against driveMonsterTurns, independent of
+// rpg-toolkit#1207's fix directly against driveMonsterTurns, independent of
 // how a caller might reach a nested call in practice (Transfer's own
 // path is guard 1's — pinned separately below).
 //
@@ -78,7 +78,7 @@ func TestNestedDriveMonsterTurnsWhileOneIsRunningIsANoOp(t *testing.T) {
 }
 
 // TestTransferOfANonActiveMemberNeverDrives pins guard 1 of
-// rpg-toolkit#1206's fix: Transfer's ClockWorld case must not call
+// rpg-toolkit#1207's fix: Transfer's ClockWorld case must not call
 // driveIfStillRunning for a departing member who was never the bubble's
 // own active one — there is nothing stalled to rescue.
 //

@@ -297,7 +297,7 @@ func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
 }
 
 func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, err error) {
-	// RE-ENTRANCY GUARD (rpg-toolkit#1206). driveMonsterTurns is the single
+	// RE-ENTRANCY GUARD (rpg-toolkit#1207). driveMonsterTurns is the single
 	// owner of driving a bubble forward, and this call may already be
 	// running deeper on THIS SAME Go call stack: a driven member's own
 	// Strike can down a teammate without deciding the fight, whose
@@ -1037,7 +1037,7 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		}
 		// Read BEFORE the clock-level move: whether the departing member
 		// was the one whose slot is about to need rescuing is a fact about
-		// the bubble as it stood a moment ago, not after (rpg-toolkit#1206).
+		// the bubble as it stood a moment ago, not after (rpg-toolkit#1207).
 		wasActive, aerr := bubble.Active()
 		if aerr != nil {
 			return nil, fmt.Errorf("transfer %q: %w", in.Member, aerr)
@@ -1060,15 +1060,18 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		// it reaches this same branch through Transfer.
 		//
 		// ONLY WHEN THE DEPARTING MEMBER GENUINELY WAS ACTIVE, though
-		// (rpg-toolkit#1206). A member spliced out of a bubble whose active
+		// (rpg-toolkit#1207). A member spliced out of a bubble whose active
 		// slot belongs to somebody else — most commonly a driven monster
 		// still mid-turn, reached here through its own Strike's noticeDown
 		// — leaves nothing stalled to rescue: the active member's own turn
 		// is already running and will end itself in the ordinary way.
 		// Driving again here would hand that still-running turn a second,
 		// undocumented one under a second, fresh budget — the exact defect
-		// TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn (session
-		// package, rpg-toolkit#1205) found. driveMonsterTurns' own
+		// TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn found,
+		// reproduced directly against the composition in
+		// rulebooks/dnd5e/encounter/monsterturn_test.go (encounter_test
+		// package) after first surfacing while writing the session
+		// package's own rpg-toolkit#1205. driveMonsterTurns' own
 		// re-entrancy guard (its doc) makes the same mistake impossible a
 		// second, structural way; this is the semantic one — the call
 		// this branch would otherwise be making is simply the wrong one to

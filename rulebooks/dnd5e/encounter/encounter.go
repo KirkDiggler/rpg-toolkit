@@ -210,7 +210,7 @@ type Encounter struct {
 	// no stack mid-verb for ToData to capture, and none is needed: a fresh
 	// load always starts false).
 	//
-	// The load-bearing half of rpg-toolkit#1206's fix, alongside Transfer's
+	// The load-bearing half of rpg-toolkit#1207's fix, alongside Transfer's
 	// own active-member guard (see its own doc). A driven turn's own Strike
 	// can splice a downed teammate out through Transfer, whose "the
 	// departing member may have been active" rescue (rpg-toolkit#1162) is a
