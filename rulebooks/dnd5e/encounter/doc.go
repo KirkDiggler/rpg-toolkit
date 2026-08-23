@@ -69,49 +69,51 @@
 // This is not a play/ leaf: the module composes published pieces and exposes
 // one aggregate persistence pair at the host seam.
 //
-// v0.3 anchors every room in one dungeon-absolute space (docs/ideas/
-// encounter-anchoring/design.md), governed by five more laws:
+// Every cell of a field lives in one dungeon-absolute space (docs/ideas/
+// encounter-anchoring/design.md; regions since rpg-project#256, ADR-0044),
+// governed by these laws:
 //
-//   - W1 (one geometry per field) — every room in a field shares the same
-//     grid family; a mixed field has no coherent absolute space.
-//   - W2 (rooms never overlap) — distinct rooms' absolute footprints are
-//     disjoint; touching is legal, sharing a cell is not.
-//   - W3 (doorways kiss) — a connection's two endpoints, once anchored to
-//     their rooms' origins, are adjacent absolute cells.
+//   - W1 (one geometry per field) — every field is hex, under ONE declared
+//     orientation ([CanvasInput.Orientation], required). The square family
+//     left with the room chain (#256): a region is painted on a hex grid,
+//     and a second family would be a second frame for every coordinate to
+//     be wrong in.
+//   - W2 (regions never overlap) — the floor is the union of the regions'
+//     cells, and a cell belongs to exactly one region. A cell listed twice,
+//     in one region or across two, is refused (ErrRegionOverlap); touching
+//     is legal, sharing a cell is not.
+//   - W3 (a door edge joins two adjacent floor cells) — every authored
+//     edge, wall or door, has both endpoints on the floor and adjacent
+//     under the declared orientation (ErrEdgeOffFloor, ErrEdgeNotAdjacent).
+//     The envelope is implied, never written: a crossing from floor into
+//     void is a crossing nobody can make, and [Void] already says whether
+//     sight crosses it.
 //   - W4 (projection is a read) — RETIRED by #1106, and worth stating as
 //     history because the whole shape of this module used to follow from it.
 //     Rules and verbs stayed room-local and absolute coordinates appeared
 //     only where the module REPORTED a cell; that reporting set grew until
-//     it was everything (the coordinate queries it started as, then
-//     placement reads and movement beats (#1040), sight payloads (#1044),
-//     the pump's monster moves (#1062), and the outcome (#1068)) — at which
-//     point the room-local frame underneath had no readers left. #1106
-//     spends Origin ONCE, at construction, compiling the authored rooms
-//     into one canvas: there is one frame now, and nothing to project.
-//   - W5 (anchors are construction data) — Origin's LEGALITY (bounds,
-//     integrality) is validated identically at Setup and Load, never
-//     derived or inferred; PRESENCE is structurally Load-only — Origin is
-//     a plain value at Setup (RoomInput) but a pointer at Load
-//     (RoomData), so only Load can distinguish a missing Origin from a
-//     declared zero one.
-//   - W6 (the field is one canvas) — the union of the authored rooms'
-//     absolute footprints must be expressible as a SINGLE grid of the
-//     field's family, because that is what the rooms compile into
-//     (#1106). Square grids start at (0,0), so a square field cannot
-//     reach a negative cell; a hex canvas is an origin-centred axial span
-//     and always widens to cover the sheared footprints it holds.
-//     The remedy for a rejection is a relabelling — shift every Origin by
-//     the same vector — since a field's absolute frame only ever means
-//     "relative to the other rooms".
+//     it was everything, at which point the room-local frame underneath had
+//     no readers left. #1106 compiled the authored rooms into one canvas;
+//     #256 deleted the rooms. There is one frame, and ONE conversion into
+//     it: every authored [col,row] pair goes through [HexCellAt] exactly
+//     once, at construction (compileField), and no caller ever adds an
+//     origin — the room-local seam (#1139) ceased to exist rather than
+//     getting fixed.
+//   - W5 (world facts are construction data) — a region's archetype and
+//     lighting are authored, REQUIRED, carried unread, and persisted; an
+//     archetype NEVER decides a mechanic (ErrRegionArchetypeMissing,
+//     ErrRegionLightingMissing). Validated identically at Setup and Load
+//     through the one shared compileField.
+//   - W6 (the field is one canvas) — the floor's bounding box fits in a
+//     single origin-centred hex grid, which always widens to hold it.
 //
-// A ROOM IS A REGION at runtime (#1108). Rooms remain how a dungeon is
-// AUTHORED — RoomInput, MemberInput.Room and TriggerReachedPosition.Room are
-// construction data and stay room-shaped — but what survives the compile onto
-// the canvas is a named set of cells: [Encounter.RegionAt] says which region
-// holds a cell, [Encounter.MembersIn] says who is standing in one, and
-// [Encounter.Atlas] reports each region's anchor and span instead of listing
-// its cells. Membership is DERIVED from a member's cell wherever it is
-// reported, never stored beside it.
+// A REGION IS A NAMED SET OF CELLS (#1108, #256). It is how a dungeon is
+// AUTHORED — [RegionInput] lists the cells it owns — and what the runtime
+// answers in: [Encounter.RegionAt] says which region holds a cell,
+// [Encounter.MembersIn] says who is standing in one, and [Encounter.Atlas]
+// reports every region's cells, archetype and lighting beside the flat lists
+// of props, walls and doorways. Membership is DERIVED from a member's cell
+// wherever it is reported, never stored beside it.
 //
 // AND THE CANVAS ITSELF IS READABLE (#1114). Everything above DESCRIBES the
 // map; [Encounter.Canvas] hands out the map, to read. It is the live room
@@ -119,9 +121,7 @@
 // write by name — see its own doc for why a copy is not an option and why a
 // silent no-op would be worse than a refusal.
 //
-// Room and field size are bounded (maxRoomCells/maxFieldCells): two individually
-// legal dimensions multiply into a cell count nothing could walk. The bound
-// guarded an Atlas allocation until #1108 stopped it enumerating; it now
-// guards the instruction a region report gives a host that wants the cells
-// itself. See maxRoomCells/maxFieldCells for the figures and the history.
+// Field size is bounded (maxFieldCells): a region is its cells, so the bound
+// is on how many a field may list, which is also the size of the owner map
+// this package keeps and the list the Atlas hands out.
 package encounter
