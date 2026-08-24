@@ -5,9 +5,9 @@ package combat
 
 // CapacityType identifies what capacity an action consumes.
 //
-// This is the toolkit's cost vocabulary. An action declares what it draws from
-// (actions.Action.CapacityType), a compiled [SpendProfile] keys its costs,
-// grants and requirements by it, and [Ledger] is where those keys are read and
+// This is the toolkit's cost vocabulary. A shared action definition may carry
+// a compiled [SpendProfile] that keys its costs, grants and requirements by it,
+// and [Ledger] is where those keys are read and
 // written. It is deliberately keyed rather than fielded: the action economy
 // grew a named field per feature once already, and the persisted twin had to
 // replace them with a map when the bridge between the two turned out to carry

@@ -4,7 +4,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
@@ -12,8 +11,7 @@ import (
 // Combat abilities typically need the event bus and action economy to:
 // 1. Consume action economy resources (action, bonus action, reaction)
 // 2. Grant capacity (attacks, movement) via ActionEconomy
-// 3. Grant actions (Strike, Move) via ActionHolder
-// 4. Grant conditions (Dodging, Disengaging) via event bus
+// 3. Grant conditions (Dodging, Disengaging) via event bus
 type CombatAbilityInput struct {
 	// Bus is the event bus for publishing events and granting conditions.
 	// Required for abilities that grant conditions or publish events.
@@ -22,11 +20,6 @@ type CombatAbilityInput struct {
 	// ActionEconomy tracks action/bonus action/reaction usage and capacity.
 	// Required for consuming action economy and setting capacity.
 	ActionEconomy *combat.ActionEconomy `json:"-"`
-
-	// ActionHolder is the entity that can hold granted actions.
-	// Required for abilities that grant temporary actions (e.g., Strike).
-	// Typically this is the Character using the ability.
-	ActionHolder actions.ActionHolder `json:"-"`
 
 	// Speed is the character's base movement speed in feet.
 	// Required for abilities that add movement (e.g., Dash).
