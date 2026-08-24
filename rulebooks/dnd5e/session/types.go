@@ -396,6 +396,13 @@ type Sighting struct {
 	// Lands with rpg-toolkit#1137.
 	Name string `json:"name,omitempty"`
 
+	// Kind is the sighted subject's member kind — player or monster. Beside
+	// Name for the same reason: kind is not a perception question either,
+	// anything an observer can sight, they can classify at a glance. A
+	// memory (CurrentVia empty) keeps its kind exactly as it keeps its
+	// name. Lands with rpg-toolkit#1230.
+	Kind MemberKind `json:"kind,omitempty"`
+
 	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
 	// the composition, not by this package — session never unmarshals
 	// Payload itself.

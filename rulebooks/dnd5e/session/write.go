@@ -534,7 +534,7 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 
 	return &ExitOutput{
 		Outcome:  projectMemberOutcome(left.Outcome),
-		Carry:    projectSightings(left.Carry, rosterNames(roster), down),
+		Carry:    projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), down),
 		Seq:      left.Seq,
 		Closed:   projectOutcome(left.Closed),
 		Saved:    report,
