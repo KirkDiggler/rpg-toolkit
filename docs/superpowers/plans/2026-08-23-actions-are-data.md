@@ -242,7 +242,7 @@ func (a ConditionApplication) Clone() ConditionApplication
 
 Validation rules are the ADR rules, not defaults:
 
-- `Definition.Ref` must have module, type, and ID; `Name` must be non-empty; exactly `Attack` is populated in this first implementation; `Cost.Validate()` must pass.
+- `Definition.Ref` must have module, type, and ID; `Name` must be non-empty; exactly `Attack` is populated in this first implementation; when `Cost` is non-nil, `Cost.Validate()` must pass.
 - Weapon/spell are the only categories. Spell attacks reject non-nil `Weapon`.
 - Exactly one delivery arm is non-nil. Melee reach is positive. Ranged normal range is positive; long range is zero or at least normal range.
 - If `Ability` is present, it names a real ability and exactly one pool has `damage.AddsAttackAbilityModifier`; if absent, no pool has that marker.

@@ -63,9 +63,9 @@ profile:
 
 ```go
 type Definition struct {
-    Ref  core.Ref `json:"ref"`
-    Name string   `json:"name"`
-    Cost Cost     `json:"cost"`
+    Ref  core.Ref             `json:"ref"`
+    Name string               `json:"name"`
+    Cost *combat.SpendProfile `json:"cost,omitempty"`
 
     // Exactly one profile is present.
     Attack *AttackProfile `json:"attack,omitempty"`
@@ -123,30 +123,30 @@ interactions.
 
 ```go
 type AttackProfile struct {
-    Category    AttackCategory
-    Delivery    AttackDelivery
-    AttackBonus int
+    Category    AttackCategory `json:"category"`
+    Delivery    AttackDelivery `json:"delivery"`
+    AttackBonus int            `json:"attack_bonus"`
 
     // Optional evidence. Precomputed stat blocks may honestly omit it.
-    Ability *AbilityContribution
+    Ability *AbilityContribution `json:"ability,omitempty"`
 
     // Optional wielded-weapon evidence. A natural or unarmed weapon attack
     // need not carry it.
-    Weapon *WeaponContext
+    Weapon *WeaponContext `json:"weapon,omitempty"`
 
-    Damage []damage.Damage
-    OnHit  []ConditionApplication
+    Damage []damage.Damage        `json:"damage,omitempty"`
+    OnHit  []ConditionApplication `json:"on_hit,omitempty"`
 }
 
 type AbilityContribution struct {
-    Ability  abilities.Ability
-    Modifier int
+    Ability  abilities.Ability `json:"ability"`
+    Modifier int               `json:"modifier"`
 }
 
 type WeaponContext struct {
-    Ref              *core.Ref
-    TwoHanded        bool
-    OffHandWeaponRef *core.Ref
+    Ref              *core.Ref `json:"ref,omitempty"`
+    TwoHanded        bool      `json:"two_handed"`
+    OffHandWeaponRef *core.Ref `json:"off_hand_weapon_ref,omitempty"`
 }
 ```
 
@@ -216,8 +216,9 @@ refs, parameters, and gates.
 
 ### Producers author or assemble the same definition
 
-Monster content authors shared definitions directly and persists them in its
-action list. There is no `BiteConfig -> BiteAction -> AttackProfile` path. A
+Monster factories author shared definitions directly and persist them in each
+monster's action list. There is no `BiteConfig -> BiteAction -> AttackProfile`
+path. A
 bite, claw, slam, shortsword, or shortbow is data unless it introduces a new
 rules interaction.
 
@@ -257,7 +258,7 @@ interprets `AttackProfile`; it does not know action catalogs or producers.
 
 The shared contract validates intrinsic consistency:
 
-- a definition has identity, name, cost, and exactly one profile;
+- a definition has identity, name, exactly one profile, and a valid cost when one is declared;
 - an attack has exactly one delivery arm;
 - melee reach and ranged brackets are valid;
 - ability and modifier appear together;
@@ -324,7 +325,7 @@ No local `replace`, dual wire format, legacy loader, or permanent adapter is
 part of the target architecture. Because the change crosses the root D&D module
 and the nested resolution module, implementation must use a published tag or a
 merge strategy that preserves the provider commit; it must not pin a
-pseudo-version that squash merging orphans.
+pseudo-version whose provider commit a squash merge would orphan.
 
 ## Consequences
 
