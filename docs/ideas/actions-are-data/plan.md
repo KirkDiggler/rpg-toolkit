@@ -6,17 +6,20 @@
 
 **Architecture:** `rulebooks/dnd5e/combat/actions` is a data-only package in the existing D&D 5e module. Monster factories author `actions.Definition` values directly; `character.AssembleAttack` derives the same value from a sheet and equipment; resolution dispatches the populated profile arm to Strike and never switches on content refs. The migration is a hard cut with no loader, adapter, second JSON shape, or forwarding action object.
 
-**Tech Stack:** Go 1.24.1, standard `encoding/json`, testify suites, independently versioned Go modules in one repository, GitHub merge-commit integration.
+**Tech Stack:** Go 1.24.1, standard `encoding/json`, testify suites, independently versioned Go modules in one repository, module-isolated GitHub PRs, squash merges, and CI-generated stable tags.
 
 **Design:** `docs/ideas/actions-are-data/design.md`
 
 **Decision record:** `docs/adr/0045-actions-are-data.md`
 
+**Delivery correction (2026-08-24):** Tasks 1–8 record implementation and RED/GREEN evidence completed on quarantined draft PR #1232. Their original single-branch commit/push commands are historical and must not be replayed. Task 9 is the canonical delivery procedure: reconstruct the reviewed content on fresh module-isolated branches, squash providers, and replace temporary consumer pins with CI-generated stable tags before each consumer merges.
+
 ## Global Constraints
 
 - Prerequisite issue #1215 must be merged before cutting the implementation branch.
-- PR #1214 is the approved idea review surface. Keep it open throughout implementation; merge it only after the implementation PR lands and `implementation.md` records what actually shipped.
-- Fetch first and create `feat/1198-actions-are-data` from current `origin/main`, never a local branch and never the idea branch.
+- PR #1214 is the approved idea review surface. Keep it open throughout implementation; merge it only after all module implementation PRs land and `implementation.md` records what actually shipped.
+- Every changed Go module gets a fresh branch and PR from current `origin/main`. A replacement PR may copy the reconciled content of draft PR #1232, but it must not inherit #1232's cross-module commit graph.
+- PR #1232 is an invalid delivery artifact, not a merge candidate. Keep it draft until every changed file is assigned to exactly one replacement PR, then close it.
 - Keep `design.md` and `plan.md` live on PR #1214. If implementation invalidates either document, stop, update the idea branch, obtain Kirk's approval for the changed boundary, and only then continue.
 - Do not create `implementation.md` before implementation completes; it records observed results and nuances rather than predictions.
 - Do not add a `go.mod` under `rulebooks/dnd5e/combat/actions`; it is part of `rulebooks/dnd5e`.
@@ -28,8 +31,10 @@
 - Validate definition, condition declarations, actor/target, and delivery range before cost, dice, or participant mutation.
 - Use feet in authored profiles and convert to cells only at the comparison boundary.
 - Delete old executable actions and stale tests; do not retain deprecated aliases or legacy JSON translation.
-- Push provider commits before asking an upper module to resolve them by SHA.
-- The implementation PR must use a **merge commit**, not squash, so committed pseudo-version provider SHAs remain ancestors of `main`.
+- All replacement PRs use the repository's normal squash merge. Never require a merge-commit exception.
+- Open module PRs together for concurrent review. A consumer may temporarily pin a pushed provider-branch pseudo-version while both PRs are open, but it must replace that pin with the stable tag generated after the provider's squash merge before the consumer merges.
+- Deliver in dependency order: root D&D and encounter first, then resolution, then session. Wait for the main-branch auto-tag workflow after each provider merge and verify the exact generated tag rather than predicting it.
+- Repository-wide documentation changes belong to PR #1214 after all code PRs land. Module-local README and architecture files may travel with their owning module.
 - Every task follows red-green-refactor: observe the focused test fail for the intended reason before implementation.
 
 ---
@@ -1324,75 +1329,102 @@ git push
 
 ---
 
-### Task 9: Open and Merge the Implementation PR Without Orphaning Pins
+### Task 9: Replace the Cross-Module Draft with Module-Isolated Squash PRs
 
-**Status:** implementation PR [#1232](https://github.com/KirkDiggler/rpg-toolkit/pull/1232) is open and green. Current-main integration produced combined encounter provider `a2f99f0`; review produced resolution provider `32045ab` and final session pin `de1e318`.
+**Status:** draft PR [#1232](https://github.com/KirkDiggler/rpg-toolkit/pull/1232) proved the integrated code and exposed an invalid delivery strategy. It is explicitly marked **DO NOT MERGE**. Its commits are reconciliation evidence only; no provider SHA from that branch may survive as a committed final dependency.
 
-**Files:**
-- No source changes expected; this is the integration gate.
+**Module ownership:**
+- Root D&D PR: files whose nearest `go.mod` is `rulebooks/dnd5e/go.mod`, excluding every nested module.
+- Encounter PR: files whose nearest `go.mod` is `rulebooks/dnd5e/encounter/go.mod`.
+- Resolution PR: files whose nearest `go.mod` is `rulebooks/dnd5e/resolution/go.mod`.
+- Session PR: files whose nearest `go.mod` is `rulebooks/dnd5e/session/go.mod`.
+- PR #1214: repository-wide files under `docs/`; it receives final current-state documentation and the retrospective after code lands.
 
 **Interfaces:**
-- Consumes: all committed provider/consumer changes and their pushed SHAs.
-- Produces: one #1198 PR whose merge graph preserves every pinned provider commit.
+- Consumes: the reviewed content and verification evidence from draft #1232.
+- Produces: four module-isolated, squash-mergeable implementation PRs whose consumer `go.mod` files reference stable provider tags at merge time.
 
-- [x] **Step 1: Verify ancestry and committed dependency integrity**
+- [x] **Step 1: Quarantine the invalid integration PR**
 
-Run:
+Convert #1232 to draft and add a visible `DO NOT MERGE` comment explaining the module-isolation and squash conflict. Correct any issue comment that calls it merge-ready. Do not close it yet; retain it until the replacement-file census passes.
 
-```bash
-git fetch origin
-DND5E_PROVIDER_SHA=$(cat /tmp/1198-dnd5e-provider-sha)
-ENCOUNTER_PROVIDER_SHA=$(cat /tmp/1198-encounter-provider-sha)
-RESOLUTION_PROVIDER_SHA=$(cat /tmp/1198-resolution-provider-sha)
+- [ ] **Step 2: Create fresh module-isolated branches and reconcile every file**
 
-git merge-base --is-ancestor "$DND5E_PROVIDER_SHA" HEAD
-git merge-base --is-ancestor "$ENCOUNTER_PROVIDER_SHA" HEAD
-git merge-base --is-ancestor "$RESOLUTION_PROVIDER_SHA" HEAD
+Fetch `origin/main`. Create four fresh worktrees and named branches from that exact commit; do not branch from #1232 or cherry-pick its cross-module commits. Apply the final reviewed file content by module ownership:
 
-git grep -n '^replace ' -- '*/go.mod' && exit 1 || true
-git status --short --branch
+```text
+feat/1198-actions-dnd5e
+feat/1198-actions-encounter
+feat/1198-actions-resolution
+feat/1198-actions-session
 ```
 
-Expected: every provider SHA is an ancestor, no committed replace exists, and the worktree is clean.
+Generate a machine-readable census from `git diff --name-only origin/main...origin/feat/1198-actions-are-data`. Assign each source file to its nearest `go.mod`; assign repository-wide `docs/` files to PR #1214. Fail if a changed file is unassigned, assigned twice, or a replacement branch changes a second module.
 
-- [x] **Step 2: Open the implementation PR**
+The root D&D and encounter branches are independent. The resolution branch temporarily resolves the pushed root D&D branch pseudo-version. The session branch temporarily resolves the pushed root D&D, encounter, and resolution branch pseudo-versions. Temporary pins are review/CI scaffolding only and must not reach `main`.
 
-Create one PR from `feat/1198-actions-are-data` to `main`. The body must:
+- [ ] **Step 3: Verify each isolated branch and open all four PRs**
 
-- Reference `Implements the accepted ADR-0045 design in #1214` and `Closes #1198`.
-- State `Prerequisite #1215 merged`.
-- List root D&D, active encounter, resolution, and session provider SHAs.
-- Include all focused/full verification commands and results.
-- State in bold: `MERGE COMMIT REQUIRED — DO NOT SQUASH`.
-- Use the Platform signature.
-
-- [x] **Step 3: Request review and resolve every finding**
-
-Request Copilot/human review. Reply inline to every inline finding. For any change, rerun the focused module plus `make test-all`, `make lint-all`, and `./scripts/check-decisions.sh` before updating the PR evidence.
-
-- [ ] **Step 4: Verify GitHub checks immediately before merge**
-
-Run:
+For each branch:
 
 ```bash
-PR_NUMBER=$(gh pr view --repo KirkDiggler/rpg-toolkit --json number --jq .number)
-gh pr checks --repo KirkDiggler/rpg-toolkit --watch "$PR_NUMBER"
+go mod tidy
+go test -race ./...
+golangci-lint run ./...
+git diff --check
+git grep -n '^replace ' -- go.mod && exit 1 || true
 ```
 
-Expected: every required applicable check passes.
+Run commands from that branch's owning module. Open all four PRs to `main` so review can proceed concurrently. Each body must link #1198, ADR-0045, PR #1214, and replacement draft #1232; identify its sole module; disclose any temporary pseudo-version; and state that it uses the normal squash workflow. Only the final session PR closes #1198.
 
-- [ ] **Step 5: Merge with a real merge commit and verify ancestry**
+Use breaking conventional titles so the v0 auto-tag workflow performs a minor bump after squash:
 
-Use GitHub's **Create a merge commit** method. Do not use squash or rebase. After merge:
+```text
+feat(actions)!: make D&D actions inert shared data (#1198)
+refactor(encounter)!: project action range independent of delivery (#1198)
+feat(resolution)!: interpret inert action definitions (#1198)
+feat(session)!: consume inert action definitions (#1198)
+```
+
+Do not predict final version numbers; intervening main changes may alter them.
+
+- [ ] **Step 4: Review all replacement PRs before the merge wave**
+
+Request Copilot and human review on every replacement. Resolve findings inline and rerun the owning module's full race tests and lint after every code change. Keep all four PRs open until their independent review surfaces are clear.
+
+- [ ] **Step 5: Squash the independent root D&D and encounter providers and capture tags**
+
+Immediately before each merge, verify applicable GitHub checks. Squash-merge root D&D and encounter using their breaking PR titles. After each merge, wait for `Auto Tag Modules (Safe)` on `main`, fetch tags, inspect the workflow summary, and record the exact stable tag and squash commit.
+
+Expected: nested-module exclusions cause the root D&D merge to tag only root D&D and the encounter merge to tag only encounter. If tagging fails or tags an unexpected module, stop before updating consumers and repair the release state.
+
+- [ ] **Step 6: Replace resolution's temporary pin, then squash and tag resolution**
+
+Update the resolution branch from current `origin/main`. Set `DND5E_TAG` to the exact root tag recorded in Step 5, derive `DND5E_VERSION=${DND5E_TAG#rulebooks/dnd5e/}`, then replace the pseudo-version:
 
 ```bash
-git fetch origin
-git merge-base --is-ancestor "$DND5E_PROVIDER_SHA" origin/main
-git merge-base --is-ancestor "$ENCOUNTER_PROVIDER_SHA" origin/main
-git merge-base --is-ancestor "$RESOLUTION_PROVIDER_SHA" origin/main
+cd rulebooks/dnd5e/resolution
+: "${DND5E_TAG:?set from the Step 5 workflow output}"
+DND5E_VERSION=${DND5E_TAG#rulebooks/dnd5e/}
+GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@"${DND5E_VERSION}"
+go mod tidy
+go test -race ./...
+golangci-lint run ./...
 ```
 
-Expected: all three commands exit zero. If any fails, stop before bumping downstream consumers and repair the orphaned pin explicitly.
+Confirm no replacement-provider pseudo-version remains in `go.mod`, push, and wait for CI/review. Squash-merge resolution, wait for its auto-generated stable tag, and record the exact tag and squash commit.
+
+- [ ] **Step 7: Replace session's temporary pins, then squash and tag session**
+
+Update the session branch from current `origin/main`. Replace all three temporary provider pins with the generated root D&D, encounter, and resolution stable tags. Run tidy, the full session race suite, lint, and focused active-path tests. Confirm `go.mod` contains no #1198 provider pseudo-version or `replace` directive, then push and wait for CI/review.
+
+Squash-merge session only after every provider tag resolves through `GOPROXY=direct`. Wait for the session tag and record its exact value and squash commit.
+
+- [ ] **Step 8: Reconcile the landed result and close #1232**
+
+On current `origin/main`, run the hard-cut census, `make test-all`, changed-module race/lint gates, and `git diff` comparisons against #1232's intended source result. Differences must be explained by stable-tag pins, current-main integration, review fixes, or repository-wide docs intentionally held for #1214.
+
+When every draft #1232 file is accounted for and no behavior was lost, close #1232 with links to the four replacement PRs and their released tags. Do not merge or retarget it.
 
 ---
 
@@ -1404,7 +1436,7 @@ Expected: all three commands exit zero. If any fails, stop before bumping downst
 - Create: `docs/ideas/actions-are-data/implementation.md`
 
 **Interfaces:**
-- Consumes: the merged #1198 implementation PR, final provider ancestry, module tags, verification output, and implementation discoveries.
+- Consumes: the four merged #1198 module PRs, their squash commits and stable module tags, verification output, and implementation discoveries.
 - Produces: a durable record separating approved intent, executable plan, and observed implementation reality.
 
 - [ ] **Step 1: Bring the open idea branch forward after implementation merges**
@@ -1416,14 +1448,14 @@ git fetch origin
 git merge --no-edit origin/main
 ```
 
-Expected: the idea branch now contains the shipped implementation and retains the docs commits from PR #1214.
+Expected: the idea branch now contains every shipped module squash commit and retains the docs commits from PR #1214.
 
 - [ ] **Step 2: Write the post-implementation record from evidence**
 
 Create `implementation.md` only now. Record:
 
-- implementation PR URL and merge commit;
-- provider commits and released module tags;
+- all module implementation PR URLs and squash commits;
+- released provider and consumer module tags;
 - final package/type/function paths;
 - exact verification commands and outcomes;
 - deviations from the original plan and why they were necessary;
@@ -1451,4 +1483,4 @@ git push
 gh pr checks 1214 --repo KirkDiggler/rpg-toolkit --watch
 ```
 
-Request final review of the design-to-implementation record. Merge PR #1214 only after its threads and checks are clear.
+Request final review of the design-to-implementation record. Squash-merge PR #1214 only after its threads and checks are clear.

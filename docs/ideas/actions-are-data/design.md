@@ -1,6 +1,6 @@
 # Actions Are Data; Resolution Machines Interpret Shared Profiles
 
-**Status:** Approved — implementation open
+**Status:** Approved — module-isolated implementation delivery open
 
 **Issue:** [rpg-toolkit#1198](https://github.com/KirkDiggler/rpg-toolkit/issues/1198)
 
@@ -11,8 +11,9 @@
 This is the live implementation design. PR #1214 remains open while #1198 is
 implemented so discoveries can be reconciled here rather than hidden in code.
 If implementation requires an architectural deviation, update this design and
-obtain Kirk's approval before continuing. Add `implementation.md` only after the
-implementation PR merges; that file records observed nuances and final evidence.
+obtain Kirk's approval before continuing. Add `implementation.md` only after
+all module implementation PRs merge; that file records observed nuances and
+final evidence.
 
 ## Context
 
@@ -330,10 +331,34 @@ sequenced, but no compatibility representation survives on `main`:
   JSON at runtime.
 
 No local `replace`, dual wire format, legacy loader, or permanent adapter is
-part of the target architecture. Because the change crosses the root D&D module
-and the nested resolution module, implementation must use a published tag or a
-merge strategy that preserves the provider commit; it must not pin a
-pseudo-version whose provider commit a squash merge would orphan.
+part of the target architecture.
+
+### Delivery follows module boundaries and squash-generated tags
+
+The repository squashes PRs and independently tags each Go module. Therefore a
+single PR must not carry the root D&D, encounter, resolution, and session
+changes together. That would either require a merge-commit exception or leave
+committed pseudo-versions pointing at provider commits rewritten by squash.
+
+Implementation is delivered through one PR per changed Go module. All module
+PRs may be opened for concurrent review. While providers are still open, a
+consumer PR may temporarily resolve a pushed provider-branch pseudo-version so
+its CI can exercise the complete design. A consumer must not merge with that
+temporary pin. Providers merge first by squash; the main-branch auto-tag
+workflow publishes stable module tags; then each consumer replaces its
+temporary pins with those tags, reruns its full gate, and merges by squash.
+
+The dependency order is:
+
+```text
+root D&D ────────> resolution ──> session
+encounter ──────────────────────> session
+```
+
+Root D&D and encounter are independent and may merge first in either order.
+Resolution merges only after it pins the released root D&D tag. Session merges
+only after it pins the released root D&D, encounter, and resolution tags.
+Repository-wide documentation remains on PR #1214 until all code PRs land.
 
 ## Consequences
 

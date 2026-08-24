@@ -326,10 +326,12 @@ sequenced, but no compatibility representation survives on `main`:
   JSON at runtime.
 
 No local `replace`, dual wire format, legacy loader, or permanent adapter is
-part of the target architecture. Because the change crosses the root D&D module
-and the nested resolution module, implementation must use a published tag or a
-merge strategy that preserves the provider commit; it must not pin a
-pseudo-version whose provider commit a squash merge would orphan.
+part of the target architecture. Because the repository squash-merges PRs and
+tags Go modules independently, implementation is delivered through one PR per
+changed module. Provider PRs merge first and publish stable tags; each consumer
+must replace any temporary provider-branch pseudo-version with those tags before
+it merges. A single cross-module PR or a merge-commit exception is not an
+acceptable way to preserve provider commits.
 
 ## Consequences
 
