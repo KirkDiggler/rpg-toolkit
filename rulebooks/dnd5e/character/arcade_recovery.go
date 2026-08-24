@@ -8,17 +8,20 @@ import (
 )
 
 // RestoreForNewEncounter applies arcade recovery to a character's persisted
-// data before it is seated in a BRAND NEW encounter — an arcade run start,
-// not a real-world rest. Two independent restorations, gated differently:
+// data before it is seated at a game LAUNCH — an arcade run start, not a
+// real-world rest. Two independent restorations, both ungated:
 //
-//  1. HP / death-save / Unconscious (rpg-toolkit#785): death is an
-//     encounter-scoped outcome, not a persistent character state. A
-//     character carrying 0 HP or less from a prior encounter — whether a
-//     confirmed 3-failed-death-save death or an unresolved TPK snapshot —
-//     is restored to full HP with its death-save state cleared and its
-//     Unconscious condition removed, as if walking into a fresh fight
-//     healthy. Gated on HitPoints <= 0: a character already alive is not
-//     touched by this branch (no free heal on every new fight).
+//  1. HP / death-save / Unconscious (rpg-toolkit#785, ungated by #1225):
+//     death and damage are run-scoped outcomes, not persistent character
+//     state. EVERY seated character is restored to full HP with its
+//     death-save state cleared and its Unconscious condition removed —
+//     whether it arrived dead (3 failed death saves or an unresolved TPK
+//     snapshot) or merely wounded from an earlier run. The original
+//     HitPoints <= 0 gate ("no free heal on every new fight") guarded the
+//     OLD stack's per-encounter reseat through encounter.AddPlayer; on the
+//     session stack the only caller is the host's launch path and fights
+//     afterwards form by sighting, so a full heal here is a run start, not
+//     a mid-run freebie (Kirk's ruling, rpg-project#253 walk 2026-08-24).
 //  2. Resource pools (rpg-toolkit#795): every tracked resource in
 //     d.Resources (rage charges, ki, hit dice, and anything else a future
 //     feature keys into that map — see restoreResourcePools) refreshes to
@@ -33,11 +36,13 @@ import (
 //     rpg-toolkit#800 and #799 respectively, both out of this scope).
 //
 // Contract — read before calling this from anywhere new: it fires only at
-// first seating, never on rehydration. Callers own distinguishing the two.
-// encounter.LoadFromData — the per-RPC reload of an EXISTING seat — must
-// NEVER call this; only a new-seat path (encounter.AddPlayer) should.
-// Calling it on an already-restored or already-healthy, already-full-
-// resource character is a harmless no-op.
+// launch seating, never on rehydration. Callers own distinguishing the
+// two. A per-RPC reload of an EXISTING seat must NEVER call this; only the
+// host's launch path (today, rpg-api's StartEncounter before it Joins each
+// member) should — mid-run, the full heal this now performs would be a
+// free heal, which is exactly what launch-only scoping prevents. Calling
+// it on an already-healthy, already-full-resource character is a harmless
+// no-op.
 //
 // Why the Unconscious condition must be stripped, not left to re-hydrate:
 // conditions.UnconsciousCondition does not subscribe to CombatEndTopic, so
@@ -50,22 +55,27 @@ import (
 // shaped differently.
 //
 // Returns true iff it actually restored something — HP/death-save OR at
-// least one resource pool — so a caller (today, encounter.AddPlayer) knows
-// whether to also resync any HP snapshot it keeps alongside d and whether
-// to persist the (possibly resource-only) change. Because resource
-// restoration is now ungated, this returns true for most resource-bearing
-// characters on most new seatings, not only revived ones — see that call
-// site's own doc for why HP/DataJSON must not be allowed to diverge.
+// least one resource pool — so the caller knows whether the record needs
+// persisting before it is seated. A character already at full HP with full
+// pools returns false.
 func RestoreForNewEncounter(d *Data) bool {
 	if d == nil {
 		return false
 	}
 	restored := false
 
-	if d.HitPoints <= 0 {
+	if d.HitPoints < d.MaxHitPoints {
 		d.HitPoints = d.MaxHitPoints
+		restored = true
+	}
+	if d.DeathSaveState != nil {
 		d.DeathSaveState = nil
-		d.Conditions = stripConditionByRef(d.Conditions, refs.Conditions.Unconscious())
+		restored = true
+	}
+	// Stripped unconditionally: an Unconscious blob with HP already at max is
+	// exactly the incoherent state this function exists to remove.
+	if stripped := stripConditionByRef(d.Conditions, refs.Conditions.Unconscious()); len(stripped) != len(d.Conditions) {
+		d.Conditions = stripped
 		restored = true
 	}
 
