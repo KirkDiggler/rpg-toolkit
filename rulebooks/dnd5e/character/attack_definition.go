@@ -145,7 +145,7 @@ func equippedWeapon(c *Character, slot InventorySlot) (*weapons.Weapon, bool, er
 
 	equipped := c.GetEquippedSlot(slot)
 	if equipped == nil {
-		itemID := c.ToData().EquipmentSlots.Get(slot)
+		itemID := c.equipmentSlots.Get(slot)
 		if itemID == "" {
 			switch slot {
 			case SlotMainHand, SlotOffHand:

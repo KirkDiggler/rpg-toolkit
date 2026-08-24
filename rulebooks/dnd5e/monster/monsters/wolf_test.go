@@ -63,7 +63,7 @@ func (s *WolfTestSuite) TestBiteIsACompleteSharedDefinition() {
 
 	bite := data.Actions[0]
 	s.Equal(refs.MonsterActions.WolfBite(), &bite.Ref)
-	s.Equal("Bite", bite.Name)
+	s.Equal("bite", bite.Name)
 	s.Require().NotNil(bite.Attack)
 	s.Equal(combatActions.AttackCategoryWeapon, bite.Attack.Category)
 	s.Equal(&combatActions.MeleeDelivery{ReachFeet: 5}, bite.Attack.Delivery.Melee)

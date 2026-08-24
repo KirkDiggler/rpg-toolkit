@@ -37,7 +37,7 @@ func NewWolf(id string) *monster.Monster {
 	// (ADR-0039).
 	mustAddAction(m, combatActions.Definition{
 		Ref:  *refs.MonsterActions.WolfBite(),
-		Name: "Bite",
+		Name: "bite",
 		Attack: &combatActions.AttackProfile{
 			Category:    combatActions.AttackCategoryWeapon,
 			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
