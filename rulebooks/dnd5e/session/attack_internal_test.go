@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -83,10 +84,10 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	// empty. This test is about damage aggregation, not attack identity, so
 	// the profile is otherwise bare; DamageType stays unchecked and empty is
 	// still a legal answer for it.
-	profile := resolution.AttackProfile{Ref: refs.Weapons.Longsword(), Name: "Longsword"}
+	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
 
 	recorded, err := enc.Record(recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck, profile,
+		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition,
 	))
 	require.NoError(t, err)
 	require.NotZero(t, recorded.Seq)

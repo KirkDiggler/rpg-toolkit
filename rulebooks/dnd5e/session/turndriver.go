@@ -73,8 +73,8 @@ type ActionView struct {
 	// Name is this action's display name — "Shortsword", "Bite".
 	Name string
 
-	// ReachFeet is how far this action reaches, in feet.
-	ReachFeet int
+	// RangeFeet is how far this action reaches, in feet.
+	RangeFeet int
 
 	// Kind is this action's category, in the rulebook's own words — "melee",
 	// "ranged", "unarmed" — opaque here.
@@ -226,7 +226,7 @@ var _ encounter.TurnDriver = turnDriverSeam{}
 func projectMonsterView(view encounter.MonsterView) MonsterView {
 	actions := make([]ActionView, len(view.Actions))
 	for i, a := range view.Actions {
-		actions[i] = ActionView{Ref: a.Ref.String(), Name: a.Name, ReachFeet: a.ReachFeet, Kind: a.Kind}
+		actions[i] = ActionView{Ref: a.Ref.String(), Name: a.Name, RangeFeet: a.RangeFeet, Kind: a.Kind}
 	}
 
 	seen := make([]SeenMember, len(view.Seen))
