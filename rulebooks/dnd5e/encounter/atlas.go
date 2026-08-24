@@ -92,6 +92,13 @@ type AtlasProp struct {
 	// spatial's lane rule, so one cell of it obstructs nothing on its own
 	// ([PropInput]).
 	BlocksLineOfSight bool
+
+	// Facing and Offset are the same authored, uninterpreted presentational
+	// facts as [PropInput.Facing] and [PropInput.Offset], carried through
+	// unread. Neither is validated here either — dungeonspec is the layer
+	// that knows the field's orientation and checks the word against it.
+	Facing string
+	Offset [2]float64
 }
 
 // AtlasBoundary is one wall or barrier crossing, with both endpoints in
@@ -169,6 +176,8 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			At:                f.cellAt(p.At),
 			BlocksMovement:    *p.BlocksMovement,
 			BlocksLineOfSight: *p.BlocksLineOfSight,
+			Facing:            p.Facing,
+			Offset:            p.Offset,
 		})
 	}
 	sort.Slice(out.Props, func(i, j int) bool {

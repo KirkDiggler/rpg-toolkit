@@ -193,6 +193,26 @@ type PlaceSpec struct {
 	// and refused on anything else, for BlocksMovement's reason.
 	BlocksLoS *bool `yaml:"blocks_los,omitempty"`
 
+	// Facing is the prop's authored direction, one of the SIX names valid
+	// under the dungeon's own declared orientation — flat-top:
+	// n|s|ne|nw|se|sw, pointy-top: e|w|ne|nw|se|sw (rpg-project#261). A name
+	// from the wrong orientation's set is refused by name, never silently
+	// snapped to the nearest valid one. Optional: omitted means the asset's
+	// own default facing. REFUSED on monsters, for BlocksMovement's reason —
+	// a monster faces dynamically in play; authored spawn facing is a shelf
+	// item for the Monster AI journey, not smuggled in here.
+	Facing string `yaml:"facing,omitempty"`
+
+	// Offset is a within-cell VISUAL nudge, [x,y] fractions of the cell
+	// size, each REQUIRED in [-0.5, 0.5] when authored (Kirk's ruling: "offset
+	// is visual only, agreed" — the prop still occupies its whole cell for
+	// movement and LOS). Optional: omitted means centered, which [0,0] also
+	// means — the two are the same fact by design. A SLICE, not a [2]float64,
+	// so a list of the wrong length is a validate-level defect naming
+	// place[i].offset rather than a decode-time line number. REFUSED on
+	// monsters, for Facing's reason.
+	Offset []float64 `yaml:"offset,omitempty"`
+
 	// Targeting is the author's word for how a monster picks a target.
 	// Monsters only. Carried opaquely and never interpreted here.
 	Targeting *string `yaml:"targeting,omitempty"`

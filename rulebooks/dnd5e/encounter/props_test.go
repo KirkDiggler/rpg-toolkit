@@ -428,3 +428,90 @@ func (s *PropsSuite) TestASavedPropIsNotAliasedByTheSnapshot() {
 		"a second snapshot must not carry the first one's edits")
 	s.False(*second.Field.Props[0].BlocksLineOfSight)
 }
+
+// TestFacingAndOffsetAreCarriedButNeverInterpreted — rpg-project#261's law:
+// presentation never decides mechanics. This module carries whatever word and
+// numbers a caller hands it, valid or not — vocabulary and bounds are
+// dungeonspec's job to check, not this module's — and neither ever reaches
+// Sight, Standing or Step: a prop authored with a nonsense facing and an
+// offset far outside [-0.5,0.5] still blocks, or doesn't, exactly per its own
+// two flags. "Said nothing" and "said zero/center" are the same fact by
+// design, so a prop that authors neither carries the zero value of both.
+func (s *PropsSuite) TestFacingAndOffsetAreCarriedButNeverInterpreted() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("tomb", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
+			Props: []encounter.PropInput{
+				{Ref: "dnd5e:props:statue-reaper", At: propSeat(1, 1),
+					BlocksMovement: propTrue(), BlocksLineOfSight: propTrue(),
+					Facing: "not-a-real-direction", Offset: [2]float64{9, -9}},
+				{Ref: "dnd5e:props:altar", At: propSeat(9, 3),
+					BlocksMovement: propTrue(), BlocksLineOfSight: propFalse()},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: delver, Kind: encounter.KindPlayer, Position: propSeat(4, 6)},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err, "this module validates neither the word nor the numbers")
+
+	atlas, err := enc.Atlas()
+	s.Require().NoError(err)
+	props := atlas.Props
+	s.Require().Len(props, 2, "sorted by cell, the same order TestTheMapSaysWHICHThingIsWhere pins")
+
+	s.Equal("dnd5e:props:statue-reaper", props[0].Ref)
+	s.Equal("not-a-real-direction", props[0].Facing, "the exact word, uninterpreted")
+	s.Equal([2]float64{9, -9}, props[0].Offset, "the exact numbers, unbounded")
+
+	s.Equal("dnd5e:props:altar", props[1].Ref)
+	s.Equal("", props[1].Facing, "said nothing")
+	s.Equal([2]float64{0, 0}, props[1].Offset, "and said zero/center: the same fact by design")
+
+	_, err = enc.Step(&encounter.StepInput{Member: delver, To: propAbs(1, 1)})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement,
+		"movement still comes only from the two flags, whatever the facing says")
+}
+
+// TestFacingAndOffsetSurviveASave — the two additive fields persist across
+// ToData/LoadFromData exactly like the two required flags already do
+// (TestAPropSurvivesASave).
+func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("crypt", int(propsOrigin.X), int(propsOrigin.Y), 12, 8)},
+			Props: []encounter.PropInput{
+				{Ref: "dnd5e:props:statue-reaper", At: propSeat(propAtX, 4),
+					BlocksMovement: propTrue(), BlocksLineOfSight: propTrue(),
+					Facing: "ne", Offset: [2]float64{0.25, -0.4}},
+			},
+		},
+		Members: []encounter.MemberInput{
+			{ID: delver, Kind: encounter.KindPlayer, Position: propSeat(2, 4)},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	data := enc.ToData()
+	s.Require().Len(data.Field.Props, 1)
+	s.Equal("ne", data.Field.Props[0].Facing)
+	s.Equal([2]float64{0.25, -0.4}, data.Field.Props[0].Offset)
+
+	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+	})
+	s.Require().NoError(err)
+
+	atlas, err := back.Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(atlas.Props, 1)
+	s.Equal("ne", atlas.Props[0].Facing, "still there after a reload")
+	s.Equal([2]float64{0.25, -0.4}, atlas.Props[0].Offset)
+}
