@@ -1383,7 +1383,7 @@ done < <(git diff --name-status origin/main..."$SOURCE_REF")
 awk -F'\t' '{count[$1]++} END {for (owner in count) print owner, count[owner]}' "$MANIFEST" | sort
 ```
 
-The reviewed draft currently assigns exactly 103 root D&D files, 7 encounter files, 24 resolution files, 17 session files, and 7 repository-doc files. Stop if those counts change without a new explicit reconciliation.
+The quarantined draft assigns exactly 103 root D&D files, 7 encounter files, 24 resolution files, 17 session files, and 7 repository-doc files. Independent resolution review then found that module-local `resolution/doc.go` still documented the superseded pay-before-Start order. That path is explicitly reconciled as a 25th resolution file, so the replacement result contains 159 assigned paths while #1232 remains the 158-path source baseline. Stop if any other count changes without a new explicit reconciliation.
 
 Create binary patches from the same source/base comparison:
 
