@@ -17,7 +17,8 @@ import (
 // rules are read off sheets. It is never handed the bus (R6): it says what it
 // wants folded, and resolution folds it.
 type Machine interface {
-	// Start yields the first step of the interaction.
+	// Start is pure preflight: it may validate and read attached sheets, but it
+	// must not roll, spend, publish, or mutate. It yields the first step.
 	Start(ctx context.Context, cast *Participants) (Step, error)
 }
 
@@ -94,18 +95,22 @@ type Outcome interface {
 	isOutcome()
 }
 
+func start(ctx context.Context, machine Machine, cast *Participants) (Step, error) {
+	return machine.Start(ctx, cast)
+}
+
 // drive runs a machine to completion on the surface's bus.
-//
-// The loop is the whole driver: a machine yields, resolution acts, the machine
-// yields again. Nothing accumulates on the Go stack between yields, which is
-// what makes a suspension expressible later — the machine's own state is the
-// only state there is.
 func drive(ctx context.Context, bus events.EventBus, machine Machine, cast *Participants) (Outcome, error) {
-	step, err := machine.Start(ctx, cast)
+	first, err := start(ctx, machine, cast)
 	if err != nil {
 		return nil, err
 	}
+	return driveStep(ctx, bus, first, cast)
+}
 
+// driveStep continues from an already preflighted first step.
+func driveStep(ctx context.Context, bus events.EventBus, step Step, cast *Participants) (Outcome, error) {
+	var err error
 	for {
 		switch s := step.(type) {
 		case Done:

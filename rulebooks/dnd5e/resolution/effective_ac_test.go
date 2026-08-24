@@ -105,7 +105,7 @@ func (s *EffectiveACTestSuite) world() encounter.EncounterData {
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 8, Y: 5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -118,8 +118,7 @@ func (s *EffectiveACTestSuite) world() encounter.EncounterData {
 // strike measured itself against.
 func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutcome {
 	data := monsters.NewWolf(wolfID).ToData()
-	attack, err := AttackFromMonsterAction(data.Actions[0])
-	s.Require().NoError(err)
+	attack := data.Actions[0]
 
 	out, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.world(),
@@ -127,7 +126,7 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Attack:     attack,
+			Definition: attack,
 			Roller:     &sequenceRoller{singles: []int{roll, 18}, pair: []int{3, 4}, fallback: 2},
 		}),
 	})
@@ -186,8 +185,7 @@ func (s *EffectiveACTestSuite) TestTheFoldedACDecidesTheHitNotJustTheReport() {
 func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	data := monsters.NewWolf(wolfID).ToData()
 	second := monsters.NewWolf(secondWolfID).ToData()
-	attack, err := AttackFromMonsterAction(data.Actions[0])
-	s.Require().NoError(err)
+	attack := data.Actions[0]
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
@@ -208,7 +206,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   secondWolfID,
-			Attack:     attack,
+			Definition: attack,
 			Roller:     &sequenceRoller{singles: []int{15, 18}, pair: []int{3, 4}, fallback: 2},
 		}),
 	})

@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -59,8 +60,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 	bus events.EventBus, target *monster.Data, roller *sequenceRoller,
 ) (*Output, error) {
 	data := monsters.NewWolf(wolfID).ToData()
-	attack, err := AttackFromMonsterAction(data.Actions[0])
-	s.Require().NoError(err)
+	attack := data.Actions[0]
 
 	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
@@ -68,7 +68,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   target.ID,
-			Attack:     attack,
+			Definition: attack,
 			Roller:     roller,
 		}),
 	}, newSurface(bus))
@@ -156,6 +156,19 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 	s.Require().Equal(4+6, outcome.Damage, "each type resolves on its own")
 }
 
+func oozeProfile(pools ...damage.Damage) combatActions.Definition {
+	return combatActions.Definition{
+		Ref:  *refs.MonsterActions.WolfBite(),
+		Name: "Ooze Strike",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      pools,
+		},
+	}
+}
+
 func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndImmunity() {
 	bus := events.NewEventBus()
 	s.multiplyOnBus(bus, damage.Bludgeoning, 2)
@@ -172,8 +185,8 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   target.ID,
-			Attack:     profile,
-			Roller:     scripted(15, 4, 5),
+			Definition: profile,
+			Roller:     &sequenceRoller{singles: []int{15}, pair: []int{4, 5}},
 		}),
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -201,15 +214,14 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 8, Y: 5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err)
 
 	data := monsters.NewWolf(wolfID).ToData()
-	attack, err := AttackFromMonsterAction(data.Actions[0])
-	s.Require().NoError(err)
+	attack := data.Actions[0]
 
 	raging, err := (&conditions.RagingCondition{
 		CharacterID: heroID,
@@ -228,7 +240,7 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Attack:     attack,
+			Definition: attack,
 			Roller:     &sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2},
 		}),
 	})
