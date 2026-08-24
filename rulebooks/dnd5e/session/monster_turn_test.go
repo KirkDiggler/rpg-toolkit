@@ -427,7 +427,7 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	}
 
 	// Round 1: the fighter hands her turn to the skeleton, which swings
-	// (testDice{}'s flat 10 clears duelAC 12 — TestSkeletonClosesAndAttacks's
+	// (testDice{}'s flat 10 clears duelAC 12 — TestSkeletonAttacksFromRange's
 	// own math). Baseline: this is the round the live evidence says DID
 	// stream correctly. The fighter never swings back — a player's own turn
 	// needs no declared action before EndTurn, and skipping it keeps the
@@ -484,8 +484,8 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 //
 // A driven monster turn is the fixture rather than a single Move, because
 // it is the shape #239 was found broken under, and because it exercises
-// several kinds at once (joined, bubble-formed, moved, struck-or-missed,
-// turn-ended) rather than one kind that might happen to survive both paths
+// several kinds at once (joined, bubble-formed, struck-or-missed, turn-ended)
+// rather than one kind that might happen to survive both paths
 // by accident.
 func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 	ctx := context.Background()
@@ -510,13 +510,13 @@ func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 
 	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
 		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
-		Position: spatial.Position{X: 4, Y: 0}, // four cells off: closes, then swings (TestSkeletonClosesAndAttacks)
+		Position: spatial.Position{X: 4, Y: 0}, // four cells off: attacks from shortbow range (TestSkeletonAttacksFromRange)
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(spawned.Formed, "the skeleton's driven turn is this test's whole point")
 
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err, "the skeleton's whole turn — move, strike, end — drives inside this one call")
+	s.Require().NoError(err, "the skeleton's whole turn — strike, end — drives inside this one call")
 
 	// live is everything the fake stream delivered to fighter across the
 	// WHOLE scene, join through the driven turn — never reset — so it lines

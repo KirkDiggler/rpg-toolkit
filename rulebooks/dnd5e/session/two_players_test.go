@@ -160,7 +160,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.Require().NotNil(spawned1.Formed, "skel-1 is in plain sight of both players and must pull them into one bubble")
 	// testDice{}'s flat rolls tie every initiative roll, so the order falls
 	// to the ID tie-break the seam documents (initiative.go) — alphabetical,
-	// same as TestSkeletonClosesAndAttacks's own "fighter's ID sorts first"
+	// same as TestSkeletonAttacksFromRange's own "fighter's ID sorts first"
 	// comment. "barbarian" < "fighter" < "skel-1", so the REAL order this
 	// dice+ID combination produces is barbarian first, not the fighter-first
 	// prose a walkthrough might expect — asserted here rather than fought.
@@ -210,7 +210,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// Round 1, fighter: her own end drives skel-1's WHOLE turn inside this
 	// one call — using its shortbow from range against barbarian (the closer
 	// of the two), then wrapping the round
-	// back to barbarian, exactly as TestSkeletonClosesAndAttacks's own
+	// back to barbarian, exactly as TestSkeletonAttacksFromRange's own
 	// single-player shape does with a second real player added.
 	beforeRound1Drive := len(s.stream.published)
 	out2, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})

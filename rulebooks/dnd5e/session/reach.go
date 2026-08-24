@@ -8,7 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// rosterPositions indexes a roster read by member id, for the reach checks
+// rosterPositions indexes a roster read by member id, for the range checks
 // below and for Afford's per-target declarations — both need "where does
 // this member stand" and both already hold the roster read that answers it,
 // so this is a lookup rather than a second fetch.
@@ -20,12 +20,11 @@ func rosterPositions(roster []encounter.Member) map[string]spatial.Position {
 	return out
 }
 
-// inReach reports whether to is within reach FEET of from, on enc's own
-// grid (Encounter.Distance — the same primitive refreshSight's sight check
-// uses internally, exposed minimally: rpg-toolkit#1010). Converted to cells
-// once, here, via encounter.CellsFromFeet (Kirk, rpg-project#254 review —
-// reach is authored in feet everywhere in this codebase's data; a cell is
-// five feet).
-func inReach(enc *encounter.Encounter, from, to spatial.Position, rangeFeet int) bool {
+// inRange reports whether to is within the declared maximum range in feet of
+// from, on enc's own grid (Encounter.Distance — the same primitive
+// refreshSight's sight check uses internally, exposed minimally:
+// rpg-toolkit#1010). Range is converted to cells once, here, via
+// encounter.CellsFromFeet; a cell is five feet.
+func inRange(enc *encounter.Encounter, from, to spatial.Position, rangeFeet int) bool {
 	return enc.Distance(from, to) <= float64(encounter.CellsFromFeet(rangeFeet))
 }

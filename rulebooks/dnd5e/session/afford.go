@@ -389,9 +389,10 @@ func blockedDeclarations(why Shortfall) []Declaration {
 // attackDeclarationsFor builds one ATTACK declaration per candidate the
 // member currently, live, perceives (holdings whose CurrentVia is
 // non-empty — a memory of somebody no longer in sight is not somebody this
-// member could swing at right now) and who stands within reach. Every
-// declaration shares the SAME affordable/why the economy already decided;
-// what varies per declaration is only the target and whether reach passed.
+// member could swing at right now) and who stands within the attack's maximum
+// range in feet. Every declaration shares the SAME affordable/why the economy
+// already decided; what varies per declaration is only the target and whether
+// that maximum-range check passed.
 //
 // NO CANDIDATE IN REACH IS STILL AN ANSWER (rpg-toolkit#1010, rpg-project#249
 // §6): a single declaration with no Target, Affordable false and
@@ -400,7 +401,7 @@ func blockedDeclarations(why Shortfall) []Declaration {
 // close enough."
 func attackDeclarationsFor(
 	enc *encounter.Encounter, positions map[string]spatial.Position, holdings []intel.Holding,
-	member string, slot Slot, reach int, affordable bool, why *Shortfall,
+	member string, slot Slot, maxRangeFeet int, affordable bool, why *Shortfall,
 ) []Declaration {
 	from := positions[member]
 
@@ -411,7 +412,7 @@ func attackDeclarationsFor(
 			continue
 		}
 		to, ok := positions[subject]
-		if !ok || !inReach(enc, from, to, reach) {
+		if !ok || !inRange(enc, from, to, maxRangeFeet) {
 			continue
 		}
 		target := subject
