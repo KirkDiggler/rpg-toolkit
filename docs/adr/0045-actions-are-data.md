@@ -6,9 +6,9 @@ Date: 2026-08-23
 
 Accepted
 
-The approved implementation design and live execution plan are maintained in
-[`docs/ideas/actions-are-data/`](../ideas/actions-are-data/) until implementation
-completes. The idea record receives `implementation.md` after the code lands.
+The approved design, completed execution plan, and observed implementation
+record are maintained in
+[`docs/ideas/actions-are-data/`](../ideas/actions-are-data/).
 
 ## Context
 

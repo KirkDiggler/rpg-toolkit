@@ -1,6 +1,6 @@
 # Actions Are Data; Resolution Machines Interpret Shared Profiles
 
-**Status:** Approved — module-isolated implementation delivery open
+**Status:** Implemented
 
 **Issue:** [rpg-toolkit#1198](https://github.com/KirkDiggler/rpg-toolkit/issues/1198)
 
@@ -8,12 +8,11 @@
 
 **Execution:** [plan.md](plan.md)
 
-This is the live implementation design. PR #1214 remains open while #1198 is
-implemented so discoveries can be reconciled here rather than hidden in code.
-If implementation requires an architectural deviation, update this design and
-obtain Kirk's approval before continuing. Add `implementation.md` only after
-all module implementation PRs merge; that file records observed nuances and
-final evidence.
+**Observed result:** [implementation.md](implementation.md)
+
+This is the approved implementation design. The four module-isolated code PRs
+have merged; `implementation.md` records the shipped paths, tags, verification,
+and deviations discovered during delivery.
 
 ## Context
 

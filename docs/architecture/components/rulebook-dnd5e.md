@@ -24,13 +24,9 @@ Per a fresh grep on 2026-05-04, rpg-api imports **31 sub-packages** of
 `rulebooks/dnd5e` (the `character/` package alone is imported by 24 rpg-api
 files, which is where the audit's intro narrative's "24 sub-packages"
 phrasing comes from — that count is files-importing-`character`, not
-total sub-packages). The audit Section 1 marks
-`monster/actions` and `monster/monsters` as 0 files each; that's wrong —
-both are imported (`monster/actions` from
-`internal/orchestrators/encounter/monster_turns.go`; `monster/monsters` from
-`internal/components/dungeon/monster_factory.go` and
-`internal/orchestrators/encounter/orchestrator_test.go`). Audit needs a
-follow-up correction; this doc's table reflects the fresh count.
+total sub-packages). The canonical integration path now consumes the session stack and built-in
+monster registry; the removed `monster/actions` package is not a supported
+surface.
 
 This is the dominant consumer-facing surface. The top imports by file count:
 
@@ -56,7 +52,7 @@ This is the dominant consumer-facing surface. The top imports by file count:
 | `monstertraits/` | 2 | `LoadMonsterConditions` |
 | `fightingstyles/` | 2 | Fighting style constants |
 | `languages/` | 2 | Language constants |
-| `ammunition/`, `packs/`, `tools/`, `proficiencies/`, `saves/`, `equipment/`, `features/`, `actions/`, `events/`, `resources/` | 1 each | narrow imports — see audit Section 1 |
+| `ammunition/`, `packs/`, `tools/`, `proficiencies/`, `saves/`, `equipment/`, `features/`, `events/`, `resources/` | narrow | see current import graph |
 
 Most rpg-api callsites send **refs in** and receive **rich breakdowns out**.
 The toolkit owns the rules; rpg-api orchestrates load → call → save.
@@ -69,14 +65,13 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `character/choices/` | Choice system (class/race at creation) | Medium — testdata from external API |
 | `combat/` | AC chain, attack resolution, damage, healing, action economy | High — integration and unit tests |
 | `combatabilities/` | Attack, Dash, Disengage, Dodge, Hide, Move | Medium — `move.go` minimally tested |
-| `actions/` | Strike, OffHandStrike, CheckAndGrant | High — used in integration tests |
+| `combat/actions/` | Inert shared definitions, typed attack profiles, validation, deep clones | High |
 | `features/` | Feature loader for dnd5e features | High — Rage, SecondWind, MartialArts, etc. |
 | `conditions/` | Condition loader + all named conditions | High — loader test, individual condition tests |
 | `initiative/` | Initiative roll + tracker | High |
 | `saves/` | Saving throw resolution | Medium |
 | `skills/` | Skill check resolution | Medium |
-| `monster/` | Monster stat block + turn execution | High — used in integration tests |
-| `monster/actions/` | Bite, melee, ranged, multiattack — sibling of `monster/` | High |
+| `monster/` | Monster stat block, direct definition storage, load/persistence | High |
 | `monster/monsters/` | Bandit, Brown Bear, Ghoul — sibling of `monster/` | High |
 | `monstertraits/` | Special monster abilities | Medium |
 | `resources/` | Resource loading (ki, rage uses, spell slots) | Medium |
@@ -87,7 +82,7 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `gamectx/` | D&D-specific game-context plumbing — combatant registry, characters, room | Low |
 | `refs/` | Typed ref constructors (`refs.Features.Rage()`) | Medium |
 | `shared/` | Shared type aliases (EquipmentID, etc.) | — |
-| `events/` | dnd5e event payloads, topics, `ConditionBehavior`, `ActionBehavior` | High |
+| `events/` | D&D event payloads, topics, and `ConditionBehavior` | High |
 | `integration/` | Full encounter integration tests (Barbarian/Fighter/Monk/Rogue) | High |
 
 ## go.mod status
@@ -392,34 +387,13 @@ notes are in `character/choices/CHOICES_SYSTEM.md`.
 
 ## monster/ — runtime, actions, content, and traits
 
-Monster support currently spans four packages inside the single D&D 5e module:
-
-| Package | Current owner |
-|---|---|
-| `monster` | Runtime `Monster`, persisted `Data`, perception/action contracts, `TakeTurn`, targeting, base `LoadFromData`/`ToData`; also the older `NewGoblin` factory |
-| `monster/actions` | Loadable generic action implementations and `LoadMonsterActions` |
-| `monster/monsters` | Built-in factory functions and canonical-ref constructor registry |
-| `monstertraits` | Condition-style trait loader and implementations |
-
-`monster/actions` and `monster/monsters` are directly imported subpackages; they
-are not surfaced through package `monster`. The registry in
-`monster/monsters/registry.go` is the current author/load seam and is consumed by
-`rulebooks/dnd5e/encounter` seeding/dungeonspec paths plus
-`rulebooks/dnd5e/session` spawn/load paths.
-
-Monster reload is deliberately multi-step today: `monster.LoadFromData` creates
-the base runtime object, `monster/actions.LoadMonsterActions` restores action
-implementations, and `monstertraits.LoadMonsterConditions` loads and applies
-persisted traits. The encounter/session hydration paths own those steps for held
-combatants. `monster.LoadFromData` alone is not a complete factory round trip.
-
-`Monster.TakeTurn` is the shipped tactics/decision path. It chooses a targeting
-strategy, moves via `tools/spatial` A*, scores and activates actions, and returns
-movement/action attempts. Generic attack actions still publish D&D 5e attack
-events when invoked directly; in the live stack, monster strikes flow through
-`rulebooks/dnd5e/session`'s striker seam, which compiles authored
-`monster.ActionData` into `rulebooks/dnd5e/resolution` attack profiles and lets
-that module resolve hit/damage.
+Monster support spans `monster`, `monster/monsters`, and `monstertraits`.
+Factories author complete `combat/actions.Definition` literals with unique
+content refs. `monster.Load` validates and deep-clones them directly; traits
+remain condition behavior attached by `monstertraits`. The active encounter
+TurnDriver chooses opaque action refs, session selects the exact definition,
+and resolution dispatches by profile arm. The retired `Monster.TakeTurn` and
+runtime action loader are not compatibility paths.
 
 See the [current monster README](../../../rulebooks/dnd5e/monster/README.md) and
 [monster contribution guide](../../how-to/add-a-dnd5e-monster.md) for the exact

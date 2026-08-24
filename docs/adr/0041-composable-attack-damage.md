@@ -6,6 +6,10 @@ Date: 2026-08-20
 
 Accepted
 
+ADR-0045 relocates attack-definition/profile ownership to
+`rulebooks/dnd5e/combat/actions`. It preserves this record's ordered typed
+pools, single fold, and single application semantics unchanged.
+
 ## Context
 
 An attack can deal several kinds of damage at once. A weapon may have more
