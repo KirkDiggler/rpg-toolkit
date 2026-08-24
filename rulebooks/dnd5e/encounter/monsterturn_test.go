@@ -517,7 +517,7 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.SightFeet = -5 }))
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
 	})
-	s.Run("negative action reach", func() {
+	s.Run("negative action range", func() {
 		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.Actions[0].RangeFeet = -5 }))
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
 	})
@@ -702,7 +702,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 
 // TestSeenMemberPathIsEmptyWhenAlreadyWithinReach is the bug the
 // end-to-end behavior.Basic test found: a member already at exactly
-// bestReachCells' distance (no earlier cell to stop at before the
+// bestRangeCells' distance (no earlier cell to stop at before the
 // target's own) must not return a one-element Path onto the target's own
 // cell — Path must be empty, matching its own documented contract ("empty
 // ... or this member is already within reach without moving at all").

@@ -318,8 +318,8 @@ type MemberInput struct {
 
 	// Actions are this member's own static facts about what it can do on
 	// its turn: a character's equipped weapon's swing (and the unarmed
-	// strike when no weapon is equipped), or a monster's authored
-	// [monster.ActionData]. Static join-time facts, the same species as
+	// strike when no weapon is equipped), or a monster's authored action
+	// definitions. Static join-time facts, the same species as
 	// Name (rpg-toolkit#1137) — this module cannot import the rulebook
 	// (C1), so every field on [ActionView] is carried and never
 	// interpreted, exactly as [Member.Name] already is.
