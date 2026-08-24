@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -771,10 +772,155 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 // fact that failed to persist is the one mistake with no recovery — a client
 // told the ogre died, a world in which it did not, and no sequence gap to
 // betray the difference.
+//
+// exitDissolvedCombatants runs FIRST, before the save: a sheet it clears must
+// land in the SAME persist this verb already makes, never a second write
+// cycle a failure between the two could leave half-done.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
+	if err := m.exitDissolvedCombatants(ctx, scope); err != nil {
+		return SaveReport{Written: scope.written}, DeliveryReport{}, err
+	}
+
 	report, snapshot, err := m.persist(ctx, scope)
 	if err != nil {
 		return report, DeliveryReport{}, err
 	}
 	return report, m.publish(ctx, scope, snapshot), nil
+}
+
+// exitDissolvedCombatants clears the action economy of every player whose
+// fight THIS CALL just dissolved — the other half of [readyForTurn]'s own
+// ignition (economy.go). StartTurn lights a cold sheet the first time an
+// actor on the fight clock acts; nothing anywhere in this module ever put the
+// light back out. grep -rn ExitCombat rulebooks/dnd5e/session
+// rulebooks/dnd5e/encounter turns up only [character.Character.ExitCombat]'s
+// own definition — no caller.
+//
+// Left unlit, [character.Character.InCombat] answers true forever after a
+// member's first-ever combat turn in a session, so [readyForTurn]'s
+// `!sheet.InCombat()` branch — the one that unconditionally reseeds via
+// StartTurn — can never fire again for that character. Every later fight
+// falls to RefreshForTurn instead, which is a deliberate no-op whenever the
+// new fight's round happens to equal whatever TurnNumber was left on the
+// sheet — and since every bubble's own round counter starts fresh at 1
+// ([play/clock]'s Turn is per-bubble, never global to the session), a round-1
+// collision with a stale round-1 economy from an earlier, unrelated fight is
+// the common case, not a rare one. rpg-project#253 (Kirk, live, two
+// browsers): a member recruited into a running fight started their own first
+// turn in it with 5 of 30 feet left — exactly the number their PREVIOUS
+// fight left on their sheet when it ended by defeat, mid-turn, with no
+// EndTurn ever called (encounter/dissolve.go's ByDefeat: "the composition
+// NOTICES defeat, never something a caller declares").
+//
+// Read off the SAME beats [Manager.projectEvents] already fans out from —
+// every ever-member's own story since the scope's baseline — rather than
+// re-deriving who dissolved from scratch: a "bubble-dissolved" beat already
+// names everyone the fight held, in its `members` field
+// (encounter/dissolve.go's dissolveBubble is the ONE place that beat is
+// written, shared by an explicit [Manager.Dissolve] and the composition
+// noticing defeat on its own — "Both endings run exactly this... Only the
+// cause differs" — so this one read covers both without needing to know
+// which produced it). TestTheLastOneDownedEndsTheFightByDefeat (death_test.go)
+// pins the payload shape this reads.
+//
+// A member whose OWN story cannot be read is skipped — the same best-effort
+// law [Manager.publish] states for delivery, and for the same reason: a
+// read failure for one member's perception must not silence the rest of the
+// table. WHAT IS NOT best-effort is a member the read DID name: a monster ID
+// (no loadable character at all, [Manager.fetchCharacterData]'s own
+// ErrNoCharacter) is skipped by design, but any OTHER error — a repository
+// outage, a sheet that will not load, a failed save — is returned and
+// FAILS THE VERB. The reason is durability, not caution: this call runs
+// BEFORE [Manager.persist], so a failure here means nothing about this
+// call's own dissolution has landed yet — a caller who retries the whole
+// verb finds this cleanup still pending against the SAME baseline. Letting
+// it fail silently instead would let the dissolve beat persist while the
+// sheet it named stays stale, and — because the next call's own baseline
+// moves past that beat — never retried again (Copilot's own finding on
+// PR #1222).
+func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
+	data := scope.enc.ToData()
+
+	// Kind, from the ENCOUNTER's own authoritative roster — never inferred
+	// from whether an ID happens to load out of the character repository
+	// (Copilot's own finding on PR #1222). Spawn's only uniqueness guard is
+	// "not a CURRENT member of this encounter"; nothing stops a monster ID
+	// from colliding with a real character ID belonging to a different
+	// session entirely. Asking the character store "does this load" would
+	// answer yes for that collision and reset a stranger's sheet. Asking the
+	// roster "is this a player" cannot be fooled by an ID that merely
+	// resembles one.
+	kindByID := make(map[string]encounter.MemberKind, len(data.Members))
+	for _, member := range data.Members {
+		kindByID[string(member.ID)] = member.Kind
+	}
+
+	seen := map[string]bool{}
+
+	for _, member := range data.EverMembers {
+		entries, err := scope.enc.Story(&encounter.StoryInput{
+			Audience: member, AfterSeq: scope.baseline,
+		})
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			var peek struct {
+				Beat    string   `json:"beat"`
+				Members []string `json:"members"`
+			}
+			if json.Unmarshal(entry.Payload, &peek) != nil || peek.Beat != "bubble-dissolved" {
+				continue
+			}
+
+			for _, id := range peek.Members {
+				if seen[id] || kindByID[id] != encounter.KindPlayer {
+					continue
+				}
+				seen[id] = true
+				if err := m.exitCombatIfPlayer(ctx, scope, id); err != nil {
+					return fmt.Errorf("exit combat for dissolved member %q: %w", id, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// exitCombatIfPlayer clears one member's action economy. The caller has
+// already confirmed this ID is a PLAYER on the encounter's own roster
+// (exitDissolvedCombatants) — a monster ID never reaches here at all, so an
+// ErrNoCharacter from [Manager.fetchCharacterData] below would be a real
+// inconsistency (a roster naming a player the character store does not
+// hold), not the ordinary case it would be without that filter, and is
+// returned rather than swallowed for the same reason every other fetch
+// error is: a repository outage or corrupt data must not masquerade as
+// nothing-to-clear (Copilot's own finding on PR #1222). A player whose
+// sheet is already out of combat does nothing, but that is
+// [character.Character.InCombat] answering false, not an error.
+//
+// Saved through [Manager.saveWalker] — move.go's own name for "save one
+// sheet and mark the scope written", generic despite it, and the same
+// mechanism a walk's own spend already uses. Its error is returned rather
+// than discarded (Copilot's own finding on PR #1222): a save that silently
+// failed here would report success while the stale economy it was
+// supposed to clear stayed exactly as stale as it started.
+func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id string) error {
+	data, err := m.fetchCharacterData(ctx, "member", id)
+	if err != nil {
+		return err
+	}
+	sheet, err := character.Load(ctx, data)
+	if err != nil {
+		return fmt.Errorf("member %q: %w: %v", id, ErrBadCharacter, err)
+	}
+	if !sheet.InCombat() {
+		return nil
+	}
+	if _, err := sheet.ExitCombat(ctx, &character.ExitCombatInput{}); err != nil {
+		return err
+	}
+	return m.saveWalker(ctx, scope, sheet)
 }
