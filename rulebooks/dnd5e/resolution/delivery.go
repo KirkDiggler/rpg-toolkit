@@ -27,7 +27,10 @@ func deliveryRangeState(
 	distance := room.GetGrid().Distance(attacker, target)
 	maximum := float64(encounter.CellsFromFeet(delivery.MaxRangeFeet()))
 	if distance > maximum {
-		return false, fmt.Errorf("%w: distance %.0f cells exceeds %d feet", ErrOutOfRange, distance, delivery.MaxRangeFeet())
+		return false, fmt.Errorf(
+			"%w: distance %.0f cells exceeds maximum %.0f cells (%d feet)",
+			ErrOutOfRange, distance, maximum, delivery.MaxRangeFeet(),
+		)
 	}
 	if delivery.Ranged != nil && delivery.Ranged.LongFeet > 0 {
 		normal := float64(encounter.CellsFromFeet(delivery.NormalRangeFeet()))

@@ -137,6 +137,7 @@ func TestDeliveryRangeAndLongRangeDisadvantage(t *testing.T) {
 		roller := &actionRoller{}
 		_, err := resolveActionDefinition(t, definition, 10, roller)
 		require.ErrorIs(t, err, ErrOutOfRange)
+		require.Contains(t, err.Error(), "distance 9 cells exceeds maximum 8 cells (40 feet)")
 		require.Zero(t, roller.calls)
 	})
 
