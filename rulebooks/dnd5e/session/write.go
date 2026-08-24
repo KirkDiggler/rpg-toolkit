@@ -9,9 +9,8 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -439,10 +438,9 @@ func place(
 }
 
 // memberActionsFromCharacter compiles a joining player's own static Actions
-// fact for the shared member record (rpg-project#254): main-hand melee, the
-// one swing v1 compiles for a character attacker at all (see
-// [Manager.compileAttack]'s own doc — the identical compile, at a different
-// moment).
+// fact for the shared member record (rpg-project#254) from
+// [character.AssembleAttack]: the main-hand definition, projected once at join
+// time whether it is melee or ranged.
 //
 // FILLED FOR A PLAYER TOO, even though nothing reads it back today — a
 // TurnDriver is only ever asked about an UNPLAYED member's turn. The same
@@ -451,47 +449,39 @@ func place(
 // extra, and the day a disconnected player's turn needs driving, the record
 // already has what it needs.
 func memberActionsFromCharacter(ch *character.Character) ([]encounter.ActionView, error) {
-	profile, err := resolution.AttackFromCharacter(ch, &resolution.CharacterAttackInput{
-		Slot: character.SlotMainHand,
-	})
+	definition, err := character.AssembleAttack(ch, &character.AssembleAttackInput{Slot: character.SlotMainHand})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadAttack, err)
 	}
-	view := encounter.ActionView{Name: profile.Name, ReachFeet: profile.Reach, Kind: "melee"}
-	if profile.Ref != nil {
-		view.Ref = *profile.Ref
-	}
-	return []encounter.ActionView{view}, nil
+	return []encounter.ActionView{{
+		Ref: definition.Ref, Name: definition.Name,
+		RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
+		Kind:      deliveryKind(definition.Attack.Delivery),
+	}}, nil
 }
 
-// memberActionsFromMonster compiles a spawned monster's own static Actions
-// fact from its stat block, for the shared member record (rpg-project#254)
-// — the vocabulary a [TurnDriver] reads through MonsterView.Actions once the
-// clock lands on this member's own turn. Kind is the action's own ref ID
-// ("melee", "bite", "ranged") — [resolution.AttackFromMonsterAction]'s own
-// routing vocabulary, reused here rather than invented twice.
-//
-// AN ACTION THIS BUILD CANNOT COMPILE IS SKIPPED, not refused — the same
-// choice [resolution.AttackFromMonsterAction] already makes about what a
-// strike can compile at all (a ranged action, multiattack, waits on range
-// and turn-economy semantics the strike does not have yet). A stat block
-// naming content this build does not yet read is not a reason to refuse
-// spawning the whole monster; the member simply has one fewer action to
-// choose from until that content compiles.
-func memberActionsFromMonster(actions []monster.ActionData) []encounter.ActionView {
-	views := make([]encounter.ActionView, 0, len(actions))
-	for _, action := range actions {
-		profile, err := resolution.AttackFromMonsterAction(action)
-		if err != nil {
+// memberActionsFromMonster projects every attack definition directly into the
+// composition's opaque action view.
+func memberActionsFromMonster(definitions []combatActions.Definition) []encounter.ActionView {
+	views := make([]encounter.ActionView, 0, len(definitions))
+	for _, definition := range definitions {
+		if definition.Attack == nil {
 			continue
 		}
-		view := encounter.ActionView{Name: profile.Name, ReachFeet: profile.Reach, Kind: string(action.Ref.ID)}
-		if profile.Ref != nil {
-			view.Ref = *profile.Ref
-		}
-		views = append(views, view)
+		views = append(views, encounter.ActionView{
+			Ref: definition.Ref, Name: definition.Name,
+			RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
+			Kind:      deliveryKind(definition.Attack.Delivery),
+		})
 	}
 	return views
+}
+
+func deliveryKind(delivery combatActions.AttackDelivery) string {
+	if delivery.IsMelee() {
+		return "melee"
+	}
+	return "ranged"
 }
 
 // Exit removes a member from the session's encounter, returning what they knew

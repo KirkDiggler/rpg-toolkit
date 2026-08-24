@@ -5,7 +5,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -313,14 +312,16 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// a sheet that loads fine but names a weapon this build cannot
 	// compile — becomes a declaration instead of a failed read, so the
 	// rest of a UI's turn panel still renders.
-	sheet, profile, err := m.compileAttack(ctx, in.Member)
+	sheet, err := m.loadAttackSheet(ctx, in.Member)
 	if err != nil {
-		if errors.Is(err, ErrBadAttack) {
-			return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
-				Reason: ShortfallUnreadable, Text: err.Error(),
-			})}, nil
-		}
 		return nil, fmt.Errorf("afford: %w", err)
+	}
+	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{Slot: character.SlotMainHand})
+	if err != nil {
+		badAttack := fmt.Errorf("member %q: %w: %v", in.Member, ErrBadAttack, err)
+		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
+			Reason: ShortfallUnreadable, Text: badAttack.Error(),
+		})}, nil
 	}
 
 	price, err := m.priceSwing(ctx, enc, in.Member, sheet)
@@ -359,7 +360,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return nil, fmt.Errorf("afford: %w", translate(err))
 	}
 
-	attackDecls := attackDeclarationsFor(enc, positions, holdings, in.Member, slot, profile.Reach, affordable, why)
+	attackDecls := attackDeclarationsFor(enc, positions, holdings, in.Member, slot, definition.Attack.Delivery.MaxRangeFeet(), affordable, why)
 
 	// affordMove reads the SAME sheet, already readied for this turn by
 	// priceSwing's own call above — never a second ready, which would
@@ -388,9 +389,10 @@ func blockedDeclarations(why Shortfall) []Declaration {
 // attackDeclarationsFor builds one ATTACK declaration per candidate the
 // member currently, live, perceives (holdings whose CurrentVia is
 // non-empty — a memory of somebody no longer in sight is not somebody this
-// member could swing at right now) and who stands within reach. Every
-// declaration shares the SAME affordable/why the economy already decided;
-// what varies per declaration is only the target and whether reach passed.
+// member could swing at right now) and who stands within the attack's maximum
+// range in feet. Every declaration shares the SAME affordable/why the economy
+// already decided; what varies per declaration is only the target and whether
+// that maximum-range check passed.
 //
 // NO CANDIDATE IN REACH IS STILL AN ANSWER (rpg-toolkit#1010, rpg-project#249
 // §6): a single declaration with no Target, Affordable false and
@@ -399,7 +401,7 @@ func blockedDeclarations(why Shortfall) []Declaration {
 // close enough."
 func attackDeclarationsFor(
 	enc *encounter.Encounter, positions map[string]spatial.Position, holdings []intel.Holding,
-	member string, slot Slot, reach int, affordable bool, why *Shortfall,
+	member string, slot Slot, maxRangeFeet int, affordable bool, why *Shortfall,
 ) []Declaration {
 	from := positions[member]
 
@@ -410,7 +412,7 @@ func attackDeclarationsFor(
 			continue
 		}
 		to, ok := positions[subject]
-		if !ok || !inReach(enc, from, to, reach) {
+		if !ok || !inRange(enc, from, to, maxRangeFeet) {
 			continue
 		}
 		target := subject
@@ -499,7 +501,7 @@ func currencyOfSlot(slot Slot) Currency {
 // SLOT FIRST, AND USUALLY ONLY. slot is the declaration's own answer to
 // "which shape does this price light" (slotOf) — the same SpendProfile,
 // asked the same way — and it covers the whole of v1's reachable economy:
-// costOfSwing's own folding (asOnePayment) means a capacity shortfall
+// character.CostOfSwing's folding means a capacity shortfall
 // always resurfaces as the action slot being spent already, so a profile
 // that draws SlotNone (a purely banked swing) never actually runs out in a
 // way this build can produce. That branch is still handled, defensively,

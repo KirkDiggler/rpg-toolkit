@@ -893,3 +893,55 @@ func (s *AttackTestSuite) TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt() 
 	// named. "participant" is the word that explains why she was read at all.
 	s.Contains(err.Error(), `participant "carol"`, "say which part the missing member was playing")
 }
+func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("range", 0, 0, 140, 8)}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: targetX, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, Retention: encounter.RetentionUnbounded,
+	})
+	if err != nil {
+		t.Fatalf("building ranged duel: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+func (s *AttackTestSuite) rangedDuel(targetX float64, roller *sequenceDice) *session.Manager {
+	alice, bob := armedFighter("alice"), armedFighter("bob")
+	alice.Inventory = []character.InventoryItemData{{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longbow), Quantity: 1}}
+	alice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Longbow)}
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(alice, bob)
+	mgr, err := session.NewManager(&session.Config{Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{}})
+	s.Require().NoError(err)
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{Session: "sess", Encounter: "world", World: rangedDuelWorld(s.T(), targetX)})
+	s.Require().NoError(err)
+	return mgr
+}
+
+func (s *AttackTestSuite) TestCharacterLongbowAttacksInsideNormalRange() {
+	roller := &sequenceDice{rolls: []int{4, 17}}
+	out, err := s.swing(s.rangedDuel(17, roller)) // 16 cells = 80 feet
+	s.Require().NoError(err)
+	s.Equal(4, out.Roll, "normal range rolls one die")
+	s.Equal(1, roller.next)
+}
+
+func (s *AttackTestSuite) TestCharacterLongbowAttacksAtLongRangeWithDisadvantage() {
+	roller := &sequenceDice{rolls: []int{17, 4}}
+	out, err := s.swing(s.rangedDuel(41, roller)) // 40 cells = 200 feet
+	s.Require().NoError(err)
+	s.Equal(4, out.Roll)
+	s.Equal(2, roller.next)
+}
+
+func (s *AttackTestSuite) TestOutOfRangeAttackRollsNothing() {
+	roller := &sequenceDice{rolls: []int{17, 4}}
+	_, err := s.swing(s.rangedDuel(123, roller)) // 122 cells = 610 feet
+	s.Require().ErrorIs(err, session.ErrOutOfReach)
+	s.Zero(roller.next)
+}

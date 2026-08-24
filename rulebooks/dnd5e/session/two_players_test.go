@@ -160,7 +160,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.Require().NotNil(spawned1.Formed, "skel-1 is in plain sight of both players and must pull them into one bubble")
 	// testDice{}'s flat rolls tie every initiative roll, so the order falls
 	// to the ID tie-break the seam documents (initiative.go) — alphabetical,
-	// same as TestSkeletonClosesAndAttacks's own "fighter's ID sorts first"
+	// same as TestSkeletonAttacksFromRange's own "fighter's ID sorts first"
 	// comment. "barbarian" < "fighter" < "skel-1", so the REAL order this
 	// dice+ID combination produces is barbarian first, not the fighter-first
 	// prose a walkthrough might expect — asserted here rather than fought.
@@ -208,9 +208,9 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.False(out1.RoundWrapped)
 
 	// Round 1, fighter: her own end drives skel-1's WHOLE turn inside this
-	// one call — closing one cell to reach barbarian (the closer of the two,
-	// at distance 2 against fighter's 3), striking, then wrapping the round
-	// back to barbarian, exactly as TestSkeletonClosesAndAttacks's own
+	// one call — using its shortbow from range against barbarian (the closer
+	// of the two), then wrapping the round
+	// back to barbarian, exactly as TestSkeletonAttacksFromRange's own
 	// single-player shape does with a second real player added.
 	beforeRound1Drive := len(s.stream.published)
 	out2, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
@@ -220,7 +220,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 
 	round1Drive := s.stream.published[beforeRound1Drive:]
 	fighterRound1 := recipientSeqs(round1Drive, "fighter")
-	s.Require().Len(fighterRound1, 4, "turn-ended(fighter), moved(skel-1), struck(skel-1), turn-ended(skel-1) — one beat set, fanned to fighter")
+	s.Require().Len(fighterRound1, 3, "turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — the shortbow needs no approach")
 
 	// Round 2, barbarian: same shape as round 1's own opening.
 	out3, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian"})
@@ -228,11 +228,8 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.Equal("fighter", out3.Next)
 	s.False(out3.RoundWrapped)
 
-	// Round 2, fighter: skel-1 is already adjacent to barbarian from round
-	// 1's own approach, so this round's driven turn is a bare strike —
-	// exactly the "closer standing target already in reach" case
-	// buildMonsterView's own Path-truncation exists for, with no move beat
-	// at all.
+	// Round 2, fighter: skel-1 remains inside shortbow range, so this
+	// round's driven turn is again a bare strike with no move beat.
 	beforeRound2Drive := len(s.stream.published)
 	out4, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
@@ -241,7 +238,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 
 	round2Drive := s.stream.published[beforeRound2Drive:]
 	fighterRound2 := recipientSeqs(round2Drive, "fighter")
-	s.Require().Len(fighterRound2, 3, "turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — no move beat once already adjacent")
+	s.Require().Len(fighterRound2, 3, "turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — the shortbow needs no approach")
 
 	// (b): seqs are contiguous per recipient across the whole two-round
 	// window, for BOTH real players — no gap, no duplicate.
@@ -249,11 +246,11 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.assertContiguous(recipientSeqs(twoRounds, "fighter"), "fighter")
 	s.assertContiguous(recipientSeqs(twoRounds, "barbarian"), "barbarian")
 
-	// Each player sees the other's moved/struck beats, not only her own turn
+	// Each player sees the skeleton's struck beats, not only her own turn
 	// ending — the actual content check behind (a)'s "each sees the other's"
 	// clause, independent of the audience-scoping question below.
 	for _, who := range []string{"fighter", "barbarian"} {
-		var sawStruck, sawMoved bool
+		var sawStruck bool
 		for _, e := range twoRounds {
 			if e.Recipient != who {
 				continue
@@ -261,12 +258,9 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 			switch e.Kind {
 			case session.EventStruck:
 				sawStruck = true
-			case session.EventMoved:
-				sawMoved = true
 			}
 		}
 		s.True(sawStruck, "%s must see skel-1's struck beats", who)
-		s.True(sawMoved, "%s must see skel-1's round-1 approach", who)
 	}
 
 	// --- (a), as a documented negative control ---
@@ -375,8 +369,8 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 
 	round1Drive := stream.published
 	round1Fighter := recipientSeqs(round1Drive, "fighter")
-	require.Len(t, round1Fighter, 6,
-		"turn-ended(fighter), struck(barbarian), down(barbarian), transferred(barbarian), moved(skel-1), turn-ended(skel-1)")
+	require.Len(t, round1Fighter, 5,
+		"turn-ended(fighter), struck(barbarian), down(barbarian), transferred(barbarian), turn-ended(skel-1)")
 
 	var round1Struck []session.Event
 	for _, e := range round1Drive {

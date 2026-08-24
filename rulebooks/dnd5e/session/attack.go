@@ -9,6 +9,8 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -94,10 +96,11 @@ type AttackOutput struct {
 // level-5 fighter gets two, and the swing after that is refused with
 // [ErrCannotAfford] naming the currency that ran out.
 //
-// The price is compiled here and charged by resolution's door, before the
-// machine starts — so a refused swing resolves nothing, damages nobody, and
-// writes nothing at all. See [Manager.priceSwing] for what a turn costs and
-// [costOfSwing] for how one price is made out of the rulebook's two.
+// The price is compiled here and charged by resolution's door after pure
+// machine preflight and before its first executable step — so a refused swing
+// rolls nothing, damages nobody, and writes nothing at all. See
+// [Manager.priceSwing] for what a turn costs and
+// [character.CostOfSwing] for how one price is made out of the rulebook's two.
 //
 // IN FREE ROAM IT COSTS NOTHING, which is a ruling rather than the old gap: the
 // action economy is a fight's economy, and a member on the world clock has no
@@ -205,17 +208,8 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		}
 	}
 
-	sheet, profile, err := m.compileAttack(ctx, in.Attacker)
+	sheet, err := m.loadAttackSheet(ctx, in.Attacker)
 	if err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	// NO TARGET IN REACH, before pricing: a swing this seam is about to
-	// refuse for distance must not first charge the actor for it.
-	// rpg-toolkit#1010 — melee one cell, the Reach property two, read off
-	// the profile [compileAttack] just built rather than re-deriving a
-	// weapon's own rule here.
-	if err := refuseOutOfReach(scope.enc, roster, in.Attacker, in.Target, profile.Reach); err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
@@ -230,6 +224,21 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
+	var cost = price.cost
+	var profileCost = (*combat.SpendProfile)(nil)
+	if cost != nil {
+		profileCost = cost.Profile
+	}
+	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{
+		Slot: character.SlotMainHand,
+		Cost: profileCost,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("attack: attacker %q: %w: %v", in.Attacker, ErrBadAttack, err)
+	}
+	if cost != nil {
+		cost.Profile = definition.Cost
+	}
 
 	// The readied sheet goes into the cast rather than the stored one: it is the
 	// sheet whose turn was just lit or refilled, and the door is about to charge
@@ -237,6 +246,15 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	cast, err := m.castFor(ctx, scope, roster, price.payer)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
+	}
+	machine, err := resolution.NewAction(&resolution.ActionInput{
+		Definition: definition,
+		AttackerID: in.Attacker,
+		TargetID:   in.Target,
+		Roller:     &diceSeam{roller: m.dice},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w: %v", ErrBadAttack, err)
 	}
 
 	world := scope.enc.ToData()
@@ -247,24 +265,23 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Standing:     scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   m.turnDriver,
-		Cost:         price.cost,
-		Machine: resolution.NewStrike(&resolution.StrikeInput{
-			AttackerID: in.Attacker,
-			TargetID:   in.Target,
-			Attack:     profile,
-			// The machine rolls the attack and its damage; Input.Roller only
-			// reconstitutes effects that need one. Two rollers because they
-			// are two jobs — and BOTH must be the host's, or the swing is
-			// resolved with randomness the host never supplied. StrikeInput's
-			// still defaults silently when nil, which is the class resolution
-			// just closed on its own Input (#1033); leaving it unset here is
-			// how this verb first resolved with unreproducible dice.
-			Roller: &diceSeam{roller: m.dice},
-		}),
+		Cost:         cost,
+		Machine:      machine,
+		// The machine rolls the attack and its damage; Input.Roller only
+		// reconstitutes effects that need one. Two rollers because they
+		// are two jobs — and BOTH must be the host's, or the swing is
+		// resolved with randomness the host never supplied. ActionInput's
+		// still defaults silently when nil, which is the class resolution
+		// just closed on its own Input (#1033); leaving it unset here is
+		// how this verb first resolved with unreproducible dice.
 		Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("attack: %w", translateResolution(err))
+		translated := translateResolution(err)
+		if errors.Is(translated, ErrOutOfReach) {
+			return nil, fmt.Errorf("attack: target %q: %w", in.Target, translated)
+		}
+		return nil, fmt.Errorf("attack: %w", translated)
 	}
 
 	struck, ok := out.Outcome.(resolution.StrikeOutcome)
@@ -283,7 +300,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 
 	// And now the beat, on a world whose sheets say what the swing did — see the
 	// godoc for why this is not the other way round.
-	recorded, err := scope.enc.Record(recordFor(in, struck, profile))
+	recorded, err := scope.enc.Record(recordFor(in, struck, definition))
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -303,7 +320,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Seq:      recorded.Seq,
 		Saved:    report,
 		Delivery: delivery,
-		Attack:   attackRefFor(profile),
+		Attack:   attackRefFor(definition),
 	}, nil
 }
 
@@ -313,18 +330,14 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 // (rpg-toolkit#866).
 //
 // The damage type reported is the FIRST declared pool's, which is every
-// weapon this compiler produces today (rulebooks/dnd5e/resolution's
-// AttackFromCharacter names no weapon with a second damage pool). A weapon
+// weapon this assembler produces today. A weapon
 // that ever declares two would need this to say which one the beat line
 // means, and that decision belongs beside the day such a weapon compiles,
 // not guessed at here.
-func attackRefFor(profile resolution.AttackProfile) AttackRef {
-	ref := AttackRef{Name: profile.Name}
-	if profile.Ref != nil {
-		ref.Ref = string(profile.Ref.ID)
-	}
-	if len(profile.Damage) > 0 {
-		ref.DamageType = DamageType(profile.Damage[0].Type)
+func attackRefFor(definition combatActions.Definition) AttackRef {
+	ref := AttackRef{Ref: string(definition.Ref.ID), Name: definition.Name}
+	if definition.Attack != nil && len(definition.Attack.Damage) > 0 {
+		ref.DamageType = DamageType(definition.Attack.Damage[0].Type)
 	}
 	return ref
 }
@@ -400,6 +413,8 @@ func translateResolution(err error) error {
 		// Reporting it as "out of actions" would send whoever debugs it to a
 		// player's sheet to look for a bug that is in the code.
 		return fmt.Errorf("%w: %v", ErrBadCost, err)
+	case errors.Is(err, resolution.ErrOutOfRange):
+		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
 		return fmt.Errorf("%w: %v", ErrBadCharacter, err)
 	case errors.Is(err, resolution.ErrNoCombatant):
@@ -427,7 +442,7 @@ func translateResolution(err error) error {
 // tell from an ordinary one. THAT is the caller that earns recorded crit
 // vocabulary, and when it arrives this comment is where to start.
 func recordFor(
-	in *AttackInput, struck resolution.StrikeOutcome, profile resolution.AttackProfile,
+	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
 ) *encounter.RecordInput {
 	values := map[encounter.OutcomeValue]int{
 		encounter.ValueRoll:    struck.Roll,
@@ -440,7 +455,7 @@ func recordFor(
 		values[encounter.ValueAmount] = struck.Damage
 	}
 
-	ref := attackRefFor(profile)
+	ref := attackRefFor(definition)
 	return &encounter.RecordInput{
 		Kind:     kind,
 		Actor:    encounter.MemberID(in.Attacker),
@@ -451,12 +466,11 @@ func recordFor(
 	}
 }
 
-// compileAttack turns the attacker's stored sheet into the neutral profile the
-// strike machine takes, and hands back the sheet it read it off.
+// loadAttackSheet reconstitutes the attacker's stored sheet for assembly and pricing.
 //
 // The sheet is loaded here as well as inside Resolve, and that is not a
 // duplicate to be optimised away: character.Load is bus-free, so this
-// reconstitution attaches nothing and subscribes nothing. The compiler needs a
+// reconstitution attaches nothing and subscribes nothing. The assembler needs a
 // live character to read static facts off; resolution needs its own cast to
 // attach effects to. Two purposes, one stored sheet, and no shared bus between
 // them.
@@ -466,36 +480,19 @@ func recordFor(
 // ([Manager.priceSwing]), and loading a third copy to do it would ready a turn
 // on a sheet nobody hands over.
 //
-// Both refusals below keep the inner reason as TEXT rather than as a chain, the
-// way translateResolution's arms do. The second is the one that made it worth
-// saying: an empty main hand is refused by resolution, so its ErrBadAttack was
-// riding out under ours and a host could match on it (rpg-toolkit#1066). This
-// is not routed THROUGH translateResolution, deliberately — the compiler
-// answers everything the profile step refuses with ErrBadAttack, including the
-// resolution.ErrNilInput cases, and routing it would silently re-map those onto
-// a different sentinel than the one hosts have been given.
-func (m *Manager) compileAttack(
-	ctx context.Context, attacker string,
-) (*character.Character, resolution.AttackProfile, error) {
+// Load errors keep their inner reason as text so the host sees only this seam's
+// sentinel vocabulary.
+func (m *Manager) loadAttackSheet(ctx context.Context, attacker string) (*character.Character, error) {
 	data, err := m.fetchCharacterData(ctx, "attacker", attacker)
 	if err != nil {
-		return nil, resolution.AttackProfile{}, err
+		return nil, err
 	}
 
 	loaded, err := character.Load(ctx, data)
 	if err != nil {
-		return nil, resolution.AttackProfile{},
-			fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCharacter, err)
+		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCharacter, err)
 	}
-
-	profile, err := resolution.AttackFromCharacter(loaded, &resolution.CharacterAttackInput{
-		Slot: character.SlotMainHand,
-	})
-	if err != nil {
-		return nil, resolution.AttackProfile{},
-			fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadAttack, err)
-	}
-	return loaded, profile, nil
+	return loaded, nil
 }
 
 // castFor gathers every member of the encounter as a participant.

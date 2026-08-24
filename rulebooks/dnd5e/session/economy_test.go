@@ -273,8 +273,8 @@ func (s *EconomySuite) TestExtraAttackBuysASecondSwing() {
 
 // TestARefusedSwingWritesNothing is the #1056 shape asked of the economy.
 //
-// E2 refuses at the door — before the machine starts, before any damage exists —
-// so this is the clean case that shape was named for: there is nothing to undo
+// E2 refuses at the door — after pure preflight but before the first executable
+// step or any damage — so this is the clean case that shape was named for: there is nothing to undo
 // because nothing was done. A refusal that had persisted a sheet, or recorded a
 // beat for a swing that never happened, would leave a host holding a story about
 // an attack nobody made.

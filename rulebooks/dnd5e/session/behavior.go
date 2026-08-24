@@ -91,7 +91,7 @@ func unprojectMonsterView(view MonsterView) (encounter.MonsterView, error) {
 		if err != nil {
 			return encounter.MonsterView{}, fmt.Errorf("action %d ref %q: %w", i, a.Ref, err)
 		}
-		actions[i] = encounter.ActionView{Ref: *ref, Name: a.Name, ReachFeet: a.ReachFeet, Kind: a.Kind}
+		actions[i] = encounter.ActionView{Ref: *ref, Name: a.Name, RangeFeet: a.RangeFeet, Kind: a.Kind}
 	}
 
 	seen := make([]encounter.SeenMember, len(view.Seen))
