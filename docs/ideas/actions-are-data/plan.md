@@ -1326,6 +1326,8 @@ git push
 
 ### Task 9: Open and Merge the Implementation PR Without Orphaning Pins
 
+**Status:** implementation PR [#1232](https://github.com/KirkDiggler/rpg-toolkit/pull/1232) is open. Current-main integration produced combined encounter provider `a2f99f0` and final session pin `a154e41`.
+
 **Files:**
 - No source changes expected; this is the integration gate.
 
@@ -1333,7 +1335,7 @@ git push
 - Consumes: all committed provider/consumer changes and their pushed SHAs.
 - Produces: one #1198 PR whose merge graph preserves every pinned provider commit.
 
-- [ ] **Step 1: Verify ancestry and committed dependency integrity**
+- [x] **Step 1: Verify ancestry and committed dependency integrity**
 
 Run:
 
@@ -1353,7 +1355,7 @@ git status --short --branch
 
 Expected: every provider SHA is an ancestor, no committed replace exists, and the worktree is clean.
 
-- [ ] **Step 2: Open the implementation PR**
+- [x] **Step 2: Open the implementation PR**
 
 Create one PR from `feat/1198-actions-are-data` to `main`. The body must:
 
