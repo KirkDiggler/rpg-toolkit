@@ -147,8 +147,13 @@ func equippedWeapon(c *Character, slot InventorySlot) (*weapons.Weapon, bool, er
 	if equipped == nil {
 		itemID := c.ToData().EquipmentSlots.Get(slot)
 		if itemID == "" {
-			weapon := weapons.SpecialWeapons[weapons.UnarmedStrike]
-			return &weapon, true, nil
+			switch slot {
+			case SlotMainHand, SlotOffHand:
+				weapon := weapons.SpecialWeapons[weapons.UnarmedStrike]
+				return &weapon, true, nil
+			default:
+				return nil, false, rpgerr.Newf(rpgerr.CodeInvalidArgument, "%q holds no weapon", slot)
+			}
 		}
 		return nil, false, rpgerr.Newf(
 			rpgerr.CodeInvalidArgument, "%q names %q which is not in the inventory", slot, itemID)

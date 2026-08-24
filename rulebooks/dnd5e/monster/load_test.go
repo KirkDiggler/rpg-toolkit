@@ -116,6 +116,37 @@ func (s *PureLoadTestSuite) TestActionsReturnsDeepClones() {
 	s.Equal(s.sheet().Actions, m.ToData().Actions)
 }
 
+func (s *PureLoadTestSuite) TestAddActionRejectsInvalidOpaqueConditionParameters() {
+	m, err := Load(s.ctx, &Data{
+		ID:           "bad-action-monster",
+		Name:         "Bad Action Monster",
+		HitPoints:    5,
+		MaxHitPoints: 5,
+		ArmorClass:   10,
+	})
+	s.Require().NoError(err)
+
+	err = m.AddAction(combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonShortsword(),
+		Name: "Bad Shortsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing}},
+			OnHit: []combatActions.ConditionApplication{{
+				Ref:        *refs.Conditions.Prone(),
+				Parameters: json.RawMessage(`{"duration":`),
+			}},
+		},
+	})
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "invalid monster action")
+	s.Contains(err.Error(), "parameters")
+	s.Empty(m.Actions())
+}
+
 func (s *PureLoadTestSuite) TestLegacyLoadDropsTheConditions() {
 	m, err := LoadFromData(s.ctx, s.sheet(), events.NewEventBus())
 	s.Require().NoError(err)

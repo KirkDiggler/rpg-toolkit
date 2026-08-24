@@ -236,6 +236,9 @@ func (a ConditionApplication) Validate() error {
 	if a.Ref.Module != dnd5eModule || a.Ref.Type != conditionType {
 		return fmt.Errorf("condition ref must use %s:%s, got %s", dnd5eModule, conditionType, a.Ref.String())
 	}
+	if len(a.Parameters) > 0 && !json.Valid(a.Parameters) {
+		return fmt.Errorf("condition parameters must be valid JSON")
+	}
 	if a.Save != nil {
 		if a.Save.OnSuccess != saves.Negated {
 			return fmt.Errorf("condition save must negate the condition on success")

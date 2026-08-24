@@ -296,6 +296,13 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_RefusesUnreadableEquipment
 		s.Contains(err.Error(), "not in the inventory")
 	})
 
+	s.Run("empty non-hand slot", func() {
+		_, err := AssembleAttack(s.load(s.heroSheet(nil, nil)), &AssembleAttackInput{Slot: SlotArmor})
+
+		s.Require().Error(err)
+		s.Contains(err.Error(), "holds no weapon")
+	})
+
 	s.Run("armor in requested slot", func() {
 		data := s.heroSheet(nil, nil)
 		data.Inventory = append(data.Inventory, InventoryItemData{
