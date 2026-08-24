@@ -197,9 +197,17 @@ type AtlasProp struct {
 
 	// Offset is a within-cell VISUAL nudge, [x,y] fractions of the cell
 	// size, carried verbatim from [encounter.AtlasProp.Offset]. {0,0} means
-	// centered, which omitting the field also means. VISUAL ONLY — a prop
-	// still occupies its whole cell for movement and line of sight; this
-	// never reaches a rule.
+	// centered — the SAME fact a prop that authored no offset carries, by
+	// design (rpg-project#261).
+	//
+	// No omitempty: Go's encoding/json cannot omit a fixed-size array
+	// regardless of the tag (verified — the key is always written), so a
+	// reading client checks the VALUE for {0,0} rather than the key for
+	// absence, the same way [Lighting.Intensity]'s own zero is an answer
+	// rather than a gap.
+	//
+	// VISUAL ONLY — a prop still occupies its whole cell for movement and
+	// line of sight; this never reaches a rule.
 	Offset [2]float64 `json:"offset"`
 }
 
