@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -777,7 +778,9 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 // land in the SAME persist this verb already makes, never a second write
 // cycle a failure between the two could leave half-done.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
-	m.exitDissolvedCombatants(ctx, scope)
+	if err := m.exitDissolvedCombatants(ctx, scope); err != nil {
+		return SaveReport{Written: scope.written}, DeliveryReport{}, err
+	}
 
 	report, snapshot, err := m.persist(ctx, scope)
 	if err != nil {
@@ -821,12 +824,22 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // which produced it). TestTheLastOneDownedEndsTheFightByDefeat (death_test.go)
 // pins the payload shape this reads.
 //
-// Best-effort by the same law [Manager.publish] states for delivery: a
-// member whose story cannot be read, or a member ID with no loadable
-// character (a monster, by [Manager.fetchCharacterData]'s own ErrNoCharacter),
-// is skipped rather than failing the verb this cleanup rides in on. Combat
-// hygiene must never be the reason a swing or a walk is refused.
-func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) {
+// A member whose OWN story cannot be read is skipped — the same best-effort
+// law [Manager.publish] states for delivery, and for the same reason: a
+// read failure for one member's perception must not silence the rest of the
+// table. WHAT IS NOT best-effort is a member the read DID name: a monster ID
+// (no loadable character at all, [Manager.fetchCharacterData]'s own
+// ErrNoCharacter) is skipped by design, but any OTHER error — a repository
+// outage, a sheet that will not load, a failed save — is returned and
+// FAILS THE VERB. The reason is durability, not caution: this call runs
+// BEFORE [Manager.persist], so a failure here means nothing about this
+// call's own dissolution has landed yet — a caller who retries the whole
+// verb finds this cleanup still pending against the SAME baseline. Letting
+// it fail silently instead would let the dissolve beat persist while the
+// sheet it named stays stale, and — because the next call's own baseline
+// moves past that beat — never retried again (Copilot's own finding on
+// PR #1222).
+func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
 	seen := map[string]bool{}
 
 	for _, member := range scope.enc.ToData().EverMembers {
@@ -851,33 +864,52 @@ func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope
 					continue
 				}
 				seen[id] = true
-				m.exitCombatIfPlayer(ctx, scope, id)
+				if err := m.exitCombatIfPlayer(ctx, scope, id); err != nil {
+					return fmt.Errorf("exit combat for dissolved member %q: %w", id, err)
+				}
 			}
 		}
 	}
+
+	return nil
 }
 
 // exitCombatIfPlayer clears one member's action economy if they are a
-// loadable player character currently carrying one. A monster ID (no
-// loadable character) and a player whose sheet is already out of combat both
-// do nothing here — [character.Character.ExitCombat] is itself guarded the
-// same way, but asking first avoids a load-and-save cycle for the ordinary
-// case.
+// loadable player character currently carrying one.
+//
+// A monster ID is the ONE case that does nothing without error: no
+// character repository holds it, so [Manager.fetchCharacterData] answers
+// ErrNoCharacter, and that specific sentinel is the only reason this
+// returns nil without having cleared anything. Every other fetch error —
+// a repository outage, corrupt data — is returned rather than swallowed
+// (Copilot's own finding on PR #1222): treating them the same as "it was a
+// monster" would let an operational failure masquerade as an ordinary skip.
+// A player whose sheet is already out of combat also does nothing, but
+// that is [character.Character.InCombat] answering false, not an error.
 //
 // Saved through [Manager.saveWalker] — move.go's own name for "save one
 // sheet and mark the scope written", generic despite it, and the same
-// mechanism a walk's own spend already uses.
-func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id string) {
+// mechanism a walk's own spend already uses. Its error is returned rather
+// than discarded (Copilot's own finding on PR #1222): a save that silently
+// failed here would report success while the stale economy it was
+// supposed to clear stayed exactly as stale as it started.
+func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id string) error {
 	data, err := m.fetchCharacterData(ctx, "member", id)
 	if err != nil {
-		return // a monster, or otherwise unloadable — nothing to clear
+		if errors.Is(err, ErrNoCharacter) {
+			return nil // a monster — nothing to clear
+		}
+		return err
 	}
 	sheet, err := character.Load(ctx, data)
-	if err != nil || !sheet.InCombat() {
-		return
+	if err != nil {
+		return fmt.Errorf("member %q: %w: %v", id, ErrBadCharacter, err)
+	}
+	if !sheet.InCombat() {
+		return nil
 	}
 	if _, err := sheet.ExitCombat(ctx, &character.ExitCombatInput{}); err != nil {
-		return
+		return err
 	}
-	_ = m.saveWalker(ctx, scope, sheet)
+	return m.saveWalker(ctx, scope, sheet)
 }
