@@ -1,45 +1,47 @@
 # Ideas
 
-Self-contained directories for ideas progressing from brainstorm to implementation.
+Toolkit-scoped ideas progress from approved intent to observed implementation in
+one self-contained directory.
 
 ## Structure
 
-Each idea gets its own directory:
-
-```
+```text
 docs/ideas/<idea-name>/
-├── progress.json    # Tracks phases, decisions, reasoning
-├── README.md        # Human-readable summary and status
-├── brainstorm.md    # Initial exploration
-├── use-cases.md     # Concrete scenarios
-├── design.md        # Implementation specification
-└── ...              # Additional docs as needed
+├── brainstorm.md       # Optional exploration and rejected alternatives
+├── design.md           # Normative WHAT; reviewed and approved first
+├── plan.md             # Executable HOW; added after design approval
+└── implementation.md   # Observed result; added only after code lands
 ```
 
-## progress.json
+Supporting documents are allowed when the idea needs them, but tooling names
+and agent runtime details do not define durable documentation directories.
 
-The spine of each idea. Tracks:
+## Lifecycle
 
-- **status**: Current phase (brainstorming, designing, implementing, complete)
-- **phases**: Each phase with status, date, file, and notes
-- **decisions**: Key choices made with reasoning
+1. Open an idea PR with `design.md`.
+2. After design approval, add `plan.md` to the same PR.
+3. Keep the idea PR open while implementation proceeds in its owning branch or
+   repository. Keep design and plan current; stop for approval if implementation
+   exposes an architectural change.
+4. After implementation merges, add `implementation.md` with final commit/tag
+   evidence, deviations, and nuances learned from the code.
+5. Merge the idea PR after the implementation record and checks are reviewed.
 
-Phases can be marked as:
-- `pending` - Not started
-- `in_progress` - Currently working on
-- `completed` - Done
-- `skipped` - Intentionally skipped (must include reason)
+The three files have different jobs:
 
-## Philosophy
+- `design.md` is the approved contract and must not drift silently.
+- `plan.md` is live execution state; completed, superseded, and blocked steps
+  must be represented honestly.
+- `implementation.md` is retrospective evidence, never a prediction or an
+  advance placeholder.
 
-- Each directory tells the complete story
-- JSON tracks what happened and why
-- Decisions are captured so they survive context switches
-- Phases can be skipped but must explain why
+## Active ideas
 
-## Current Ideas
-
-| Idea | Status | Summary |
-|------|--------|---------|
-| [action-economy-history](./action-economy-history/) | Issues Created | Track what actions were taken, not just how many remain |
-| [type-safe-refs](./type-safe-refs/) | Design Complete | Replace loose string damage sources with type-safe enums |
+- [Actions are data](actions-are-data/) — implemented; includes design, completed plan, and implementation record
+- [Encounter](encounter/)
+- [Encounter anchoring](encounter-anchoring/)
+- [Encounter transitions](encounter-transitions/)
+- [Monster behavior](monster-behavior/)
+- [Play](play/)
+- [Session SDK](session-sdk/)
+- [Type-safe refs](type-safe-refs/)

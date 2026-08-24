@@ -95,277 +95,134 @@ but do not rely on the PR as the distributed notice. This repository guidance
 is not legal advice. If the source terms or required notice cannot be satisfied
 confidently, use original content or stop for human review.
 
-## 2. Choose the lane clause by clause
+## 2. Inventory every clause
 
 Make a table before editing:
 
 | Source clause | Current implementation evidence | Lane | Test |
 |---|---|---|---|
-| e.g. one melee attack | `monster/actions/melee.go` + loader | content composition | factory + action round trip |
-| e.g. “on hit, target is grappled” | no current action/rule path | new mechanic — stop | separately scoped rule test |
+| one attack-roll action | `combat/actions.AttackProfile` | content | factory + round trip |
+| on-hit prone, STR save negates | `ConditionApplication` + `SaveGate` + condition registry | content | declaration + resolution |
+| multiattack sequence | no sequence profile/machine | new mechanic — stop | separate design |
 
-### Content-composition lane
+A content-only monster may use only behavior the current rulebook can express.
+Do not silently omit or approximate unsupported clauses.
 
-A content-only monster can currently compose these verified surfaces:
+Current action capabilities:
 
-- canonical identity through `refs.Monsters`;
-- `monster.Config`: ID, name, ref, HP/max HP, AC, six ability scores, and an
-  optional proficiency bonus (zero defaults to 2);
-- walking/flying/swimming/climbing/burrowing speed through `SetSpeed`;
-- generic melee, ranged, multiattack, and bite action objects in
-  `monster/actions`, subject to the limitations below;
-- targeting through `SetTargeting`: closest, lowest HP, or lowest AC;
-- immunity and vulnerability trait JSON through current `monstertraits`
-  helpers, with load/apply/round-trip tests.
-
-A **simple first fixture** should use one generic melee or ranged attack, no
-special trait text, and default closest targeting. This keeps the contribution
-about content composition rather than inventing rule semantics.
-
-### Supported data is not the same as supported clause behavior
-
-Be explicit about current limitations:
-
-- `monster.Data` has senses and proficiency fields, but the built-in factory
-  surface has no setters for them. It also has `Features` and `Inventory`
-  fields that the current base load/`ToData` path does not hydrate/preserve as
-  complete runtime behavior. Do not add such clauses in a factory-only PR.
-- CR, XP, size, creature type, alignment, languages, saving-throw
-  proficiencies, legendary/lair actions, recharge, spellcasting, and encounter
-  difficulty are not part of the current built-in factory contract.
-- generic melee/ranged actions are not standalone hit-and-damage functions.
-  In the current live stack, `rulebooks/dnd5e/session` compiles authored
-  `monster.ActionData` into `rulebooks/dnd5e/resolution`, which resolves the
-  attack bonus/damage profile; direct `Activate` still publishes D&D 5e attack
-  events.
-- ranged normal-vs-long range disadvantage is not implemented by the generic
-  ranged action; it only gates against long range.
-- `BiteConfig.KnockdownDC` serializes, but knockdown-on-hit is not implemented.
-- Pack Tactics currently subscribes as a no-op; ally adjacency does not grant
-  advantage.
-- Undead Fortitude currently rolls but does not change HP and cannot enforce
-  its critical-hit exception.
-- comments in some existing factories mention Pack Tactics or Undead Fortitude
-  without attaching a completed behavior. A comment is not capability evidence.
-
-Do not “support” a source by dropping one of its material clauses. Either use an
-original/simple creature whose contract fits the current engine, or take the
-new-mechanic lane.
-
-### New-mechanic stop/scope lane
-
-When any required clause is unsupported:
-
-1. stop the monster content edit;
-2. open or confirm a separate issue and board item for the mechanic;
-3. define the narrowest rule owner, inputs/outputs, event-chain behavior,
-   persistence/reload consequence, and a real-path rule test;
-4. implement and ship the mechanic in its own reviewed change;
-5. return to the content contribution only after the published/current rulebook
-   surface can express the whole clause.
-
-Do not put encounter composition into the monster factory and do not make the
-host interpret a rule. If encounter selection, population, placement, or CR
-budgeting is the missing feature, scope it at the composition layer rather than
-pretending it is a stat-block behavior.
+- melee and ranged attack delivery in feet;
+- precomputed attack bonus;
+- ordered typed damage pools;
+- automatic or save-gated on-hit conditions whose refs the condition registry
+  can build;
+- no multiattack/sequence compatibility object;
+- no save-area, healing, recharge, legendary/lair, or spellcasting profile
+  before its machine exists.
 
 ## 3. Use the current files
 
-For a creature named `Example Beast` with slug `example-beast`, the current
-change set is:
+For `Example Beast` / `example-beast`:
 
 | File | Required edit |
 |---|---|
-| `rulebooks/dnd5e/refs/monsters.go` | Add the unexported singleton ref and the `refs.Monsters.ExampleBeast()` method. Use lowercase hyphenated ref IDs. |
-| `rulebooks/dnd5e/refs/refs_test.go` | Assert the new ref's module, type, and ID (add a monster namespace table if needed). |
-| `rulebooks/dnd5e/monster/monsters/example_beast.go` | Add `NewExampleBeast(id string) *monster.Monster`, an adaptation/change comment per the provenance section, supported stats/actions, and speed. |
-| `rulebooks/dnd5e/monster/monsters/example_beast_test.go` | Assert ID, ref, name, stats, ability scores, speed, action IDs/types, and any supported attached trait data. |
-| `rulebooks/dnd5e/monster/monsters/registry.go` | Map the full `refs.Monsters.ExampleBeast().String()` to the constructor. |
-| `rulebooks/dnd5e/monster/monsters/registry_test.go` | Add the ref to the expected registry list; the existing test proves ref → constructor → same ref. |
+| `rulebooks/dnd5e/refs/monsters.go` | canonical monster ref |
+| `rulebooks/dnd5e/refs/monster_actions.go` | one content ref per authored action |
+| `rulebooks/dnd5e/refs/*_test.go` | full identities and uniqueness |
+| `rulebooks/dnd5e/monster/monsters/example_beast.go` | factory with direct definitions |
+| `rulebooks/dnd5e/monster/monsters/example_beast_test.go` | stats and complete definitions |
+| `rulebooks/dnd5e/monster/monsters/registry.go` | ref-to-constructor entry |
+| `rulebooks/dnd5e/monster/monsters/registry_test.go` | registry expectation |
 
-Do not create `rulebooks/dnd5e/monsters` for this task. That flatter location is
-a proposed follow-up only. Do not add a `go.mod`: all of the paths above are
-packages inside the existing `rulebooks/dnd5e` module.
+Do not create `monster/actions` or a `go.mod`. The shared contract is the leaf
+package `rulebooks/dnd5e/combat/actions` inside the existing D&D module.
 
-Only touch `monster/actions`, `monstertraits`, their refs/loaders, or encounter
-code after taking the separately scoped new-mechanic lane.
-
-## 4. Follow the canonical simple fixture
-
-Use the existing one-action bandit as the worked **structural** pattern. Do
-not copy its distance literals: the older factories use feet-shaped values such
-as `Reach: 5` and `RangeNormal: 80`, while the current generic action configs
-and `PerceivedEntity.Distance` interpret reach/ranges as hex counts. New content
-must use current units (5 feet = 1 hex) and pin them in tests.
-
-- factory: [`monster/monsters/bandit.go`](../../rulebooks/dnd5e/monster/monsters/bandit.go)
-  (`NewBanditMelee` is the smallest example);
-- direct assertions: [`bandit_test.go`](../../rulebooks/dnd5e/monster/monsters/bandit_test.go);
-- discoverability: [`registry.go`](../../rulebooks/dnd5e/monster/monsters/registry.go);
-- registry correctness: [`registry_test.go`](../../rulebooks/dnd5e/monster/monsters/registry_test.go).
-
-The minimum shape is:
+## 4. Author definitions directly
 
 ```go
-func NewExampleBeast(id string) *monster.Monster {
-    m := monster.New(monster.Config{
-        ID:            id,
-        Name:          "Example Beast",
-        Ref:           refs.Monsters.ExampleBeast(),
-        HP:            9,
-        AC:            12,
-        AbilityScores: shared.AbilityScores{
-            abilities.STR: 10, abilities.DEX: 12, abilities.CON: 11,
-            abilities.INT: 3, abilities.WIS: 10, abilities.CHA: 6,
+mustAddAction(m, combatActions.Definition{
+    Ref:  *refs.MonsterActions.ExampleBeastClaw(),
+    Name: "claw",
+    Attack: &combatActions.AttackProfile{
+        Category: combatActions.AttackCategoryWeapon,
+        Delivery: combatActions.AttackDelivery{
+            Melee: &combatActions.MeleeDelivery{ReachFeet: 5},
         },
-    })
-    m.AddAction(actions.NewMeleeAction(actions.MeleeConfig{
-        Name: "claw", AttackBonus: 3, DamageDice: "1d4+1",
-        Reach: 1, DamageType: damage.Slashing,
-    }))
-    m.SetSpeed(monster.SpeedData{Walk: 30})
-    return m
-}
+        AttackBonus: 3,
+        Damage: []damage.Damage{{
+            Dice: "1d4", Type: damage.Slashing, FlatBonus: 1,
+        }},
+    },
+})
 ```
 
-The values above are an illustrative original fixture, not a published D&D
-stat block. Verify dice notation, range units, and damage vocabulary against
-current action tests. In these action configs, reach/ranges are hex counts even
-though `SpeedData` is feet; existing older comments and values are not uniformly
-reliable, so the new test must pin the intended current behavior.
+Monster profiles normally omit `Ability` and `Weapon`: stat-block attack and
+damage numbers are already precomputed. Use feet for delivery. Keep every
+damage pool in authored order.
 
-### Prove the full applicable round trip
-
-A no-trait fixture still needs to prove action hydration:
-
-```text
-factory
-  → ToData
-  → JSON marshal/unmarshal (when persistence is claimed)
-  → monster.LoadFromData(ctx, data, bus)
-  → actions.LoadMonsterActions(loaded, data.Actions)
-  → monstertraits.LoadMonsterConditions(...) when conditions exist
-  → loaded.ToData
-```
-
-Use [`monster/actions/integration_test.go`](../../rulebooks/dnd5e/monster/actions/integration_test.go)
-as the current action-hydration example. A new factory test should extend that
-proof to JSON and the complete applicable definition, following this concise
-skeleton (names abbreviated):
+For an on-hit condition:
 
 ```go
-ctx := context.Background()
-bus := events.NewEventBus() // test-local: discard the whole bus after the test
+OnHit: []combatActions.ConditionApplication{{
+    Ref:  *refs.Conditions.Prone(),
+    Save: saves.NewSaveGate(abilities.STR, 11),
+}},
+```
+
+Parameters belong to the referenced condition package. A condition save must
+negate on success. Do not put executable functions or lifecycle on a definition.
+
+## 5. Prove storage and behavior
+
+At minimum:
+
+```go
 before := NewExampleBeast("example-1").ToData()
 raw, err := json.Marshal(before)
 require.NoError(t, err)
+
 var persisted monster.Data
 require.NoError(t, json.Unmarshal(raw, &persisted))
-
-loaded, err := monster.LoadFromData(ctx, &persisted, bus)
+loaded, err := monster.Load(context.Background(), &persisted)
 require.NoError(t, err)
-require.NoError(t, actions.LoadMonsterActions(loaded, persisted.Actions))
-require.NoError(t, monstertraits.LoadMonsterConditions(
-    ctx, loaded, persisted.Conditions, bus, dice.NewRoller(),
-))
-
-after := loaded.ToData()
-require.Equal(t, before.Ref.String(), after.Ref.String())
-require.Equal(t, before.HitPoints, after.HitPoints)
-require.Equal(t, before.Speed, after.Speed)
-require.Len(t, loaded.Actions(), len(before.Actions))
-require.Equal(t, "claw", loaded.Actions()[0].GetID())
-require.Equal(t, monster.TypeMeleeAttack, loaded.Actions()[0].ActionType())
-require.Equal(t, before.Actions[0].Ref, after.Actions[0].Ref)
-require.JSONEq(t, string(before.Actions[0].Config), string(after.Actions[0].Config))
+require.Equal(t, before, loaded.ToData())
 ```
 
-Also assert max HP, AC, all six ability scores, targeting, every action (not just
-the first), and supported trait JSON/behavior as applicable. For a trait, assert
-its actual chain behavior as well as JSON presence; serialization alone does not
-prove a rule.
+Also mutate the value returned by `loaded.Actions()` and prove a second read and
+`ToData()` are unchanged. Assert every action's full ref, name, category,
+delivery, attack bonus, ordered damage, and condition declarations.
 
-`Monster.Cleanup` removes only the base monster's own subscriptions; it does
-**not** remove trait subscriptions applied by `LoadMonsterConditions`. The
-simplest test isolation is one bus per test and discarding that bus with the
-loaded graph. If a test intentionally reuses a long-lived bus, call `Remove` on
-each condition returned by `loaded.GetConditions()` before
-`loaded.Cleanup(ctx)`. Do not claim `Monster.Cleanup` alone cleans the full
-hydrated monster.
+When traits are present, use:
 
-The encounter hydration cascade already performs these loading steps, but a
-rulebook content test should keep the factory contract understandable without
-requiring a full encounter fixture. If the contribution is also intended for
-authored dungeon specs, the registry test is mandatory because dungeonspec
-validation calls `monsters.ByRef`.
+```go
+loaded, err := monstertraits.LoadMonster(ctx, &persisted)
+require.NoError(t, err)
+require.NoError(t, monstertraits.AttachMonster(ctx, loaded, bus, roller))
+```
 
-## 5. Validate
+Test actual chain behavior for each trait, not JSON presence alone.
 
-Run from the repository root unless the command changes directory:
+## 6. Validate
 
 ```bash
-# Focused rulebook packages touched by a simple monster
 cd rulebooks/dnd5e
-go test -race ./refs ./monster ./monster/actions ./monster/monsters ./monstertraits
-
-# Full owning module
+go test -race ./refs ./monster ./monster/monsters ./monstertraits
+golangci-lint run ./refs/... ./monster/... ./monstertraits/...
 go test -race ./...
 golangci-lint run ./...
-
-# Return to repository root for repository gates
 cd ../..
 git diff --check
-make pre-commit
 ```
-
-`make pre-commit` currently exercises Core and Events; it does not replace the
-D&D 5e module commands above. The installed Git hook exits successfully for a
-documentation-only commit and checks changed Go packages for code changes.
-
-Also open every changed Markdown link or run the repository-relative link check
-used by the PR. There is currently no dedicated Markdown/link target in the
-Makefile, so do not report one as if it existed.
 
 ## Done checklist
 
-### Provenance
-
-- [ ] Human approved an original or permissively licensed source.
-- [ ] For SRD-derived content, the exact SRD 5.1 attribution statement is in
-      root `NOTICE` and the distribution's legal notices/credits, with no other
-      Wizards attribution.
-- [ ] Modifications are recorded separately in `NOTICE`, beside the factory,
-      and in the PR.
-- [ ] No closed Monster Manual or unverified aggregator content was copied.
-
-### Capability and scope
-
-- [ ] Every source clause appears in the support inventory.
-- [ ] Every included clause has current code and real-path test evidence.
-- [ ] Unsupported clauses stopped or moved to separately scoped mechanic work;
-      none were silently omitted or described as shipped.
-- [ ] Factory contains definition only; rule resolution and encounter
-      composition remain with their current owners.
-
-### Current integration
-
-- [ ] Canonical ref and ref test exist.
-- [ ] Current `monster/monsters` factory and focused test exist.
-- [ ] Registry and expected registry list include the ref and construct the
-      matching ref.
-- [ ] Factory `ToData` preserves the intended definition.
-- [ ] Base load plus action load (and condition load/apply when applicable)
-      reconstructs the runtime monster.
-- [ ] `ToData` after load preserves applicable ID/ref, mutable HP, stats, speed,
-      targeting, actions, and supported traits.
-- [ ] An intended authored encounter path can resolve the ref through
-      `monsters.ByRef`; no future `dnd5e/monsters` path is assumed.
-
-### Verification
-
-- [ ] Focused package tests pass with the race detector.
-- [ ] Full `rulebooks/dnd5e` tests and lint pass.
-- [ ] `git diff --check`, Markdown link sanity, and `make pre-commit` pass (or a
-      known repository or concrete environment blocker is reported).
-- [ ] Diff contains no package move, new module, unrelated behavior, or local
-      `replace` directive.
+- [ ] Provenance and required notices are approved.
+- [ ] Every source clause is inventoried.
+- [ ] Unsupported mechanics stopped for separate design.
+- [ ] Monster and each authored action have canonical content refs.
+- [ ] Factory authors complete `actions.Definition` literals directly.
+- [ ] Distances are feet and damage pools preserve order.
+- [ ] No executable action object, loader config, adapter, or multiattack placeholder exists.
+- [ ] JSON/load/ToData and deep-clone behavior are tested.
+- [ ] Applicable condition/trait behavior is tested on the real path.
+- [ ] Registry constructs the matching monster ref.
+- [ ] Focused and full D&D tests/lint pass.

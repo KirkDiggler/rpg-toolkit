@@ -109,7 +109,7 @@ Conditions and features use a JSON variant of the same pattern:
 
 The difference: `LoadFromData` is used when the data schema is homogeneous (one struct type per entity); `LoadJSON` is used when the loader routes by ref (multiple condition/feature types serialized to the same opaque blob field).
 
-Monster reload currently composes both forms and is explicitly multi-step: `monster.LoadFromData` restores the base entity, `monster/actions.LoadMonsterActions` restores polymorphic actions, and `monstertraits.LoadMonsterConditions` routes and applies trait JSON. The encounter hydration cascade owns all three. See the [current monster README](../../rulebooks/dnd5e/monster/README.md).
+Monster reload validates and clones inert `combat/actions.Definition` values directly in `monster.Load`. `monstertraits.LoadMonster` / `AttachMonster` additionally route and apply persisted trait JSON. See the [current monster README](../../rulebooks/dnd5e/monster/README.md).
 
 ## The boundary rule
 

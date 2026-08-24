@@ -25,7 +25,8 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   one. *Rule: infrastructure and rules live in different places.*
 - **0023** — `core` provides types and contracts only; rulebooks implement.
   *Rule: the shared layer defines vocabulary, never behaviour.*
-- **0021** — Actions are an internal rulebook pattern, not public API.
+- **0021** *(superseded by ADR-0045)* — Actions were executable internal
+  rulebook objects; ADR-0045 replaces them with shared inert definitions.
 - **0022** — `Repository (data) → Loader (domain objects) → Orchestrator (workflow)`.
   *Rule: reconstitution is its own layer; repositories trade in data.*
 - **0034 (superseded)** — Proposed splitting the old top-level encounter along
@@ -63,8 +64,9 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   case.*
 - **0020** — The `Feature` interface carries only what features actually do,
   keyed by `*core.Ref`.
-- **0028** — Three domain types with distinct jobs: Feature (grants), Action
-  (does), Condition (listens).
+- **0028** *(superseded by ADR-0045)* — Actions were first-class executable,
+  self-subscribing objects; ADR-0045 moves lifecycle to conditions/effects and
+  makes actions data.
 - **0030** — `Encounter.LoadFromData` owns combatant hydration by cascading the
   standard `ToData`/`LoadFromData` round-trip — no injected "hydrator". *Rule:
   apply the existing serialise↔runtime pattern one level up rather than inventing
@@ -88,6 +90,13 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   pool receives the attack ability modifier; every eligible attack die,
   including Sneak Attack, doubles on a critical unless that pool explicitly has
   `DoesNotCrit`. Resolution rolls pools, folds one chain, and applies once.
+- **0045** — **Actions are inert, self-describing data**: producers
+  author or assemble shared profiles in `combat/actions`, and resolution
+  dispatches profile kinds to machines without knowing content refs or producer
+  schemas. Conditions own executable effects and lifecycle; action objects do
+  not activate, subscribe, or remove themselves. *Rule: data shared by several
+  producers and one interpreter belongs below all of them, while behavior stays
+  with the effect or machine that executes it.*
 
 ## Spatial and world
 
