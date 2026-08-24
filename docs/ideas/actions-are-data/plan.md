@@ -1,6 +1,6 @@
 # Actions Are Data Implementation Plan
 
-> **For agentic workers:** Execute this plan task-by-task with TDD and review checkpoints. Keep each checkbox current on the open idea PR as implementation proceeds.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to execute this live cross-PR plan task-by-task. Keep each checkbox current on the open idea PR and stop at every provider-tag checkpoint.
 
 **Goal:** Replace executable producer-specific action objects with one shared, serializable action-definition contract consumed by the active D&D 5e resolution/session stack.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.24.1, standard `encoding/json`, testify suites, independently versioned Go modules in one repository, module-isolated GitHub PRs, squash merges, and CI-generated stable tags.
 
-**Design:** `docs/ideas/actions-are-data/design.md`
+**Spec:** `docs/ideas/actions-are-data/design.md`
 
 **Decision record:** `docs/adr/0045-actions-are-data.md`
 
@@ -1359,23 +1359,155 @@ feat/1198-actions-resolution
 feat/1198-actions-session
 ```
 
-Generate a machine-readable census from `git diff --name-only origin/main...origin/feat/1198-actions-are-data`. Assign each source file to its nearest `go.mod`; assign repository-wide `docs/` files to PR #1214. Fail if a changed file is unassigned, assigned twice, or a replacement branch changes a second module.
+Generate the machine-readable census before creating branches:
 
-The root D&D and encounter branches are independent. The resolution branch temporarily resolves the pushed root D&D branch pseudo-version. The session branch temporarily resolves the pushed root D&D, encounter, and resolution branch pseudo-versions. Temporary pins are review/CI scaffolding only and must not reach `main`.
+```bash
+REPO=/home/kirk/game-dev/rpg-toolkit
+SOURCE_REF=origin/feat/1198-actions-are-data
+MANIFEST=/tmp/1198-split-manifest.tsv
+cd "$REPO"
+git fetch origin --prune --tags
+: > "$MANIFEST"
+while IFS=$'\t' read -r status path extra; do
+  test -z "$extra" || { echo "unexpected rename/copy row: $status $path $extra" >&2; exit 1; }
+  case "$path" in
+    docs/*) owner=idea-docs ;;
+    rulebooks/dnd5e/encounter/*) owner=encounter ;;
+    rulebooks/dnd5e/resolution/*) owner=resolution ;;
+    rulebooks/dnd5e/session/*) owner=session ;;
+    rulebooks/dnd5e/*) owner=dnd5e ;;
+    *) echo "unassigned draft path: $path" >&2; exit 1 ;;
+  esac
+  printf '%s\t%s\t%s\n' "$owner" "$status" "$path" >> "$MANIFEST"
+done < <(git diff --name-status origin/main..."$SOURCE_REF")
+awk -F'\t' '{count[$1]++} END {for (owner in count) print owner, count[owner]}' "$MANIFEST" | sort
+```
+
+The reviewed draft currently assigns exactly 103 root D&D files, 7 encounter files, 24 resolution files, 17 session files, and 7 repository-doc files. Stop if those counts change without a new explicit reconciliation.
+
+Create binary patches from the same source/base comparison:
+
+```bash
+git diff --binary origin/main..."$SOURCE_REF" -- rulebooks/dnd5e \
+  ':(exclude)rulebooks/dnd5e/behavior' \
+  ':(exclude)rulebooks/dnd5e/encounter' \
+  ':(exclude)rulebooks/dnd5e/resolution' \
+  ':(exclude)rulebooks/dnd5e/session' > /tmp/1198-dnd5e.patch
+git diff --binary origin/main..."$SOURCE_REF" -- rulebooks/dnd5e/encounter > /tmp/1198-encounter.patch
+git diff --binary origin/main..."$SOURCE_REF" -- rulebooks/dnd5e/resolution > /tmp/1198-resolution.patch
+git diff --binary origin/main..."$SOURCE_REF" -- rulebooks/dnd5e/session > /tmp/1198-session.patch
+git diff --binary origin/main..."$SOURCE_REF" -- docs > /tmp/1198-idea-docs.patch
+```
+
+Use the git-worktree safety procedure to create:
+
+```text
+/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-dnd5e
+/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-encounter
+/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-resolution
+/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-session
+```
+
+Apply only the matching patch in each worktree with `git apply --index`. Keep `/tmp/1198-idea-docs.patch` unapplied until Task 10 on PR #1214.
+
+The root D&D and encounter branches are independent. Commit and push both first. The resolution branch then temporarily resolves the new root D&D branch commit with `GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@"${DND5E_PR_SHA}"`. After resolution is committed and pushed, session temporarily resolves the new root D&D, encounter, and resolution branch commits the same way. Temporary pins are review/CI scaffolding only and must not reach `main`.
 
 - [ ] **Step 3: Verify each isolated branch and open all four PRs**
 
-For each branch:
+Apply, verify, commit, and push root D&D first:
 
 ```bash
+DND5E_WT=/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-dnd5e
+git -C "$DND5E_WT" apply --index /tmp/1198-dnd5e.patch
+cd "$DND5E_WT/rulebooks/dnd5e"
 go mod tidy
 go test -race ./...
 golangci-lint run ./...
+cd "$DND5E_WT"
 git diff --check
-git grep -n '^replace ' -- go.mod && exit 1 || true
+test -z "$(git grep -n '^replace ' -- rulebooks/dnd5e/go.mod || true)"
+git commit -m "feat(actions)!: make D&D actions inert shared data (#1198)"
+git push -u origin feat/1198-actions-dnd5e
+git rev-parse HEAD > /tmp/1198-dnd5e-pr-sha
 ```
 
-Run commands from that branch's owning module. Open all four PRs to `main` so review can proceed concurrently. Each body must link #1198, ADR-0045, PR #1214, and replacement draft #1232; identify its sole module; disclose any temporary pseudo-version; and state that it uses the normal squash workflow. Only the final session PR closes #1198.
+Apply, verify, commit, and push encounter independently:
+
+```bash
+ENCOUNTER_WT=/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-encounter
+git -C "$ENCOUNTER_WT" apply --index /tmp/1198-encounter.patch
+cd "$ENCOUNTER_WT/rulebooks/dnd5e/encounter"
+go mod tidy
+go test -race ./...
+golangci-lint run ./...
+cd "$ENCOUNTER_WT"
+git diff --check
+test -z "$(git grep -n '^replace ' -- rulebooks/dnd5e/encounter/go.mod || true)"
+git commit -m "refactor(encounter)!: project action range independent of delivery (#1198)"
+git push -u origin feat/1198-actions-encounter
+git rev-parse HEAD > /tmp/1198-encounter-pr-sha
+```
+
+Apply resolution, replace the quarantined draft pin with the new root PR commit, then verify and push:
+
+```bash
+RESOLUTION_WT=/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-resolution
+DND5E_PR_SHA=$(cat /tmp/1198-dnd5e-pr-sha)
+git -C "$RESOLUTION_WT" apply --index /tmp/1198-resolution.patch
+cd "$RESOLUTION_WT/rulebooks/dnd5e/resolution"
+GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@"$DND5E_PR_SHA"
+go mod tidy
+go test -race ./...
+golangci-lint run ./...
+cd "$RESOLUTION_WT"
+git add rulebooks/dnd5e/resolution/go.mod rulebooks/dnd5e/resolution/go.sum
+git diff --check
+test -z "$(git grep -n '^replace ' -- rulebooks/dnd5e/resolution/go.mod || true)"
+git commit -m "feat(resolution)!: interpret inert action definitions (#1198)"
+git push -u origin feat/1198-actions-resolution
+git rev-parse HEAD > /tmp/1198-resolution-pr-sha
+```
+
+Apply session, replace every quarantined draft pin with the corresponding replacement PR commit, then verify and push:
+
+```bash
+SESSION_WT=/home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-session
+DND5E_PR_SHA=$(cat /tmp/1198-dnd5e-pr-sha)
+ENCOUNTER_PR_SHA=$(cat /tmp/1198-encounter-pr-sha)
+RESOLUTION_PR_SHA=$(cat /tmp/1198-resolution-pr-sha)
+git -C "$SESSION_WT" apply --index /tmp/1198-session.patch
+cd "$SESSION_WT/rulebooks/dnd5e/session"
+GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@"$DND5E_PR_SHA"
+GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter@"$ENCOUNTER_PR_SHA"
+GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution@"$RESOLUTION_PR_SHA"
+go mod tidy
+go test -race ./...
+golangci-lint run ./...
+cd "$SESSION_WT"
+git add rulebooks/dnd5e/session/go.mod rulebooks/dnd5e/session/go.sum
+git diff --check
+test -z "$(git grep -n '^replace ' -- rulebooks/dnd5e/session/go.mod || true)"
+git commit -m "feat(session)!: consume inert action definitions (#1198)"
+git push -u origin feat/1198-actions-session
+```
+
+Before opening PRs, compare each branch's changed-file list with its owner rows in `/tmp/1198-split-manifest.tsv`; every `diff` must be empty:
+
+```bash
+check_owner() {
+  owner=$1
+  worktree=$2
+  awk -F'\t' -v owner="$owner" '$1 == owner {print $3}' /tmp/1198-split-manifest.tsv | sort > "/tmp/1198-${owner}-expected.txt"
+  git -C "$worktree" diff --name-only origin/main...HEAD | sort > "/tmp/1198-${owner}-actual.txt"
+  diff -u "/tmp/1198-${owner}-expected.txt" "/tmp/1198-${owner}-actual.txt"
+}
+check_owner dnd5e /home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-dnd5e
+check_owner encounter /home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-encounter
+check_owner resolution /home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-resolution
+check_owner session /home/kirk/game-dev/rpg-toolkit/.worktrees/1198-actions-session
+```
+
+Open all four PRs to `main` so review can proceed concurrently. Each body must link #1198, ADR-0045, PR #1214, and replacement draft #1232; identify its sole module; disclose any temporary pseudo-version; and state that it uses the normal squash workflow. Only the final session PR closes #1198.
 
 Use breaking conventional titles so the v0 auto-tag workflow performs a minor bump after squash:
 
