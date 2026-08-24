@@ -211,6 +211,13 @@ type PlaceSpec struct {
 	// so a list of the wrong length is a validate-level defect naming
 	// place[i].offset rather than a decode-time line number. REFUSED on
 	// monsters, for Facing's reason.
+	//
+	// NIL, NOT LEN 0, IS "OMITTED": yaml.v3 leaves this nil when the key is
+	// absent but decodes `offset: []` to a non-nil, zero-length slice, and
+	// the two are different authored facts — the second is a malformed list
+	// somebody wrote, refused the same as any other wrong-length one. Every
+	// presence check in validate.go tests the pointer-ness (`!= nil`), never
+	// the length, for exactly this reason.
 	Offset []float64 `yaml:"offset,omitempty"`
 
 	// Targeting is the author's word for how a monster picks a target.

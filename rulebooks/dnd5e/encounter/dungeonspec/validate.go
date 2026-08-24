@@ -347,7 +347,7 @@ func (v *validation) place() {
 			if pl.Facing != "" {
 				v.fail(p+".facing", "%q is not a prop and cannot declare an authored facing", pl.Ref)
 			}
-			if len(pl.Offset) > 0 {
+			if pl.Offset != nil {
 				v.fail(p+".offset", "%q is not a prop and cannot declare an authored offset", pl.Ref)
 			}
 			if pl.Targeting != nil && !targetings[*pl.Targeting] {
@@ -376,7 +376,7 @@ func (v *validation) place() {
 			if pl.Facing != "" && !facingsByOrientation[v.orientation.Kind()][pl.Facing] {
 				v.fail(p+".facing", "%s-top has no facing %q", v.orientation.Kind(), pl.Facing)
 			}
-			if len(pl.Offset) > 0 {
+			if pl.Offset != nil {
 				if len(pl.Offset) != 2 {
 					v.fail(p+".offset", "offset must be [x,y], got %d value(s)", len(pl.Offset))
 				} else {
