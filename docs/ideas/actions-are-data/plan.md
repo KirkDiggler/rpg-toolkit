@@ -1326,7 +1326,7 @@ git push
 
 ### Task 9: Open and Merge the Implementation PR Without Orphaning Pins
 
-**Status:** implementation PR [#1232](https://github.com/KirkDiggler/rpg-toolkit/pull/1232) is open. Current-main integration produced combined encounter provider `a2f99f0` and final session pin `a154e41`.
+**Status:** implementation PR [#1232](https://github.com/KirkDiggler/rpg-toolkit/pull/1232) is open and green. Current-main integration produced combined encounter provider `a2f99f0`; review produced resolution provider `32045ab` and final session pin `de1e318`.
 
 **Files:**
 - No source changes expected; this is the integration gate.
@@ -1366,7 +1366,7 @@ Create one PR from `feat/1198-actions-are-data` to `main`. The body must:
 - State in bold: `MERGE COMMIT REQUIRED — DO NOT SQUASH`.
 - Use the Platform signature.
 
-- [ ] **Step 3: Request review and resolve every finding**
+- [x] **Step 3: Request review and resolve every finding**
 
 Request Copilot/human review. Reply inline to every inline finding. For any change, rerun the focused module plus `make test-all`, `make lint-all`, and `./scripts/check-decisions.sh` before updating the PR evidence.
 
