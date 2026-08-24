@@ -11,7 +11,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.98.1-0.20260824034029-d3d6e309971a
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.32.1-0.20260824043705-a2f99f01ce6c
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.9-0.20260824040604-258dbed8f5cd
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.9-0.20260824044321-32045ab4b55a
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
 )
