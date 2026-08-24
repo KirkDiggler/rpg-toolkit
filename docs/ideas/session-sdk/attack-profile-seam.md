@@ -1,5 +1,10 @@
 # The Attack Profile Seam: One Strike, N Compilers
 
+> **Superseded by ADR-0045 / rpg-toolkit#1198.** The compiler placement and
+> resolution-owned profile described below are historical. Current producers
+> share `combat/actions.Definition`; monsters author it directly, characters use
+> `character.AssembleAttack`, and resolution dispatches with `NewAction`.
+
 **Date:** 2026-08-15
 **Status:** reflection + forward design. The "today" examples are working
 code on main (resolution v0.5.0); the "proposed" examples are the shape

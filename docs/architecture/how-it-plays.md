@@ -16,7 +16,7 @@ whether or not the feature exists is a named defect class here:
 
 ---
 
-## UC-1 — A character swings a sword · SHIPPED @ session v0.13.0 / resolution v0.7.2
+## UC-1 — A character swings a sword · SHIPPED @ rpg-toolkit#1198
 
 The bread-and-butter path (`session/attack.go`): rpg-api calls one verb with
 IDs, and everything between — compile, bus lifetime, machine, chains — happens
@@ -33,12 +33,13 @@ sequenceDiagram
 
     API->>S: Attack{Session, Attacker, Target}
     S->>S: openForWrite — load session + encounter blobs via host repositories
-    S->>R: AttackFromCharacter(sheet, weapon) — pure compile, no bus yet
-    R-->>S: AttackProfile — static facts baked (finesse, proficiency, dice)
-    S->>R: Resolve(world + cast + NewStrike(profile))
+    S->>S: character.AssembleAttack(sheet, weapon, cost) — pure data
+    S->>R: Resolve(world + cast + NewAction(definition))
     activate R
     R->>B: create the bus + instrumented surface
     R->>B: attach loop — Raging, Prone … stamped via BusForEffect
+    R->>M: Start — validate definition, participants, range, conditions
+    R->>R: pay declared cost
     R->>M: drive
     M-->>R: yield Gather(attack chain)
     R->>B: run chain → to-hit breakdown (prof, Bless, prone's range split …)
@@ -46,7 +47,7 @@ sequenceDiagram
     M-->>R: yield Gather(damage chain)
     R->>B: run chain → damage fold (Rage +2, immunity, resistance …)
     M->>M: apply damage to the target
-    opt profile.Imposes with a SaveGate (e.g. bite → prone)
+    opt ordered ConditionApplication with a SaveGate
         M-->>R: yield Request(contest)
         R->>R: save machine rolls the gate (DC as data, ADR-0039)
         R->>M: outcome — on fail, the consequence lands as condition data
@@ -63,8 +64,8 @@ sequenceDiagram
 
 What each hop proves:
 
-- **1–4**: the seam takes IDs and blobs only; the compiler bakes *static*
-  facts into the profile as a pure call, before any bus exists.
+- **1–3**: the seam takes IDs and blobs only; character assembly produces the
+  same inert definition monster factories author directly.
 - **6–7**: the one place a bus is born; the attach loop stamps attribution, so
   "this effect subscribed nothing" is an assertable fact in `Hooks`.
 - **9, 12**: the machine never touches the bus — it *yields* `Gather` and the
@@ -74,9 +75,9 @@ What each hop proves:
   *attackers* at the seam by name — that case belongs to the behavior work.)
 - **19–24**: teardown, adopt, record, save. The host learned nothing about
   rules; the stream — not the RPC response — is how the table hears about it.
-- **Not shown, on purpose**: nothing spends. The economy machine that chooses
-  actions and pays for them sits *above* the strike and does not exist yet —
-  the `Resolve` call in `attack.go` marks the one place it will go.
+- **Preflight before payment**: invalid range or condition declarations roll
+  nothing and consume nothing. Resolution charges the caller-supplied cost only
+  after `Start` succeeds.
 
 ---
 

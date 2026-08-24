@@ -14,8 +14,12 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't let 
 The top-level `github.com/KirkDiggler/rpg-toolkit/encounter` module was retired
 by rpg-toolkit#1215 after rpg-api moved to `rulebooks/dnd5e/session`. Current
 game execution lives in the independently versioned D&D 5e encounter
-composition, resolution, and session modules. Older sections below retain the
-legacy module's delivery history and must not be read as current support.
+composition, resolution, and session modules. Actions are now inert shared
+`combat/actions.Definition` data: monster factories author definitions,
+characters assemble them, and resolution dispatches by typed profile arm.
+Executable character/monster action packages and producer-specific resolution
+compilers are retired. Older sections below retain the legacy module's delivery
+history and must not be read as current support.
 
 ## Historical top-level encounter delivery record
 

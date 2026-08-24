@@ -124,7 +124,7 @@ func (s *CostCompilerTestSuite) TestAStrikeCostsOneBankedAttackAndNoSlot() {
 }
 
 // No sheet, no price. The compilers refuse rather than compiling a default,
-// the way AttackFromCharacter refuses a nil character.
+// the same way AssembleAttack refuses a nil character.
 func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
 	_, err := CostOfAttack(nil)
 	s.Require().Error(err)
