@@ -56,8 +56,10 @@ current factory/registry paths, and full load/round-trip expectations.
 
 - [`plans/`](plans/) contains implementation plans from particular moments.
   Some shipped, some were superseded, and snippets may no longer compile.
-- [`ideas/`](ideas/) contains design exploration and proposals. A design title
-  does not mean the API exists.
+- [`ideas/`](ideas/) contains live toolkit-scoped idea records: approved
+  `design.md`, executable `plan.md`, and post-merge `implementation.md`. The
+  idea PR remains open through implementation; a design title alone does not
+  mean the API exists.
 - [`archive/`](archive/) is historical reference only.
 
 Monster behavior documents now carry explicit status banners. Start from the

@@ -1,14 +1,18 @@
-# ADR-0045: Actions Are Data; Resolution Machines Interpret Shared Profiles
+# Actions Are Data; Resolution Machines Interpret Shared Profiles
 
-Date: 2026-08-23
+**Status:** Approved — implementation open
 
-## Status
+**Issue:** [rpg-toolkit#1198](https://github.com/KirkDiggler/rpg-toolkit/issues/1198)
 
-Accepted
+**Decision:** [ADR-0045](../../adr/0045-actions-are-data.md)
 
-The approved implementation design and live execution plan are maintained in
-[`docs/ideas/actions-are-data/`](../ideas/actions-are-data/) until implementation
-completes. The idea record receives `implementation.md` after the code lands.
+**Execution:** [plan.md](plan.md)
+
+This is the live implementation design. PR #1214 remains open while #1198 is
+implemented so discoveries can be reconciled here rather than hidden in code.
+If implementation requires an architectural deviation, update this design and
+obtain Kirk's approval before continuing. Add `implementation.md` only after the
+implementation PR merges; that file records observed nuances and final evidence.
 
 ## Context
 

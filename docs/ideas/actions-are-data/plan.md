@@ -1,6 +1,6 @@
 # Actions Are Data Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this plan task-by-task with TDD and review checkpoints. Keep each checkbox current on the open idea PR as implementation proceeds.
 
 **Goal:** Replace executable producer-specific action objects with one shared, serializable action-definition contract consumed by the active D&D 5e resolution/session stack.
 
@@ -8,12 +8,17 @@
 
 **Tech Stack:** Go 1.24.1, standard `encoding/json`, testify suites, independently versioned Go modules in one repository, GitHub merge-commit integration.
 
-**Spec:** `docs/adr/0045-actions-are-data.md`
+**Design:** `docs/ideas/actions-are-data/design.md`
+
+**Decision record:** `docs/adr/0045-actions-are-data.md`
 
 ## Global Constraints
 
-- PR #1214 and prerequisite issue #1215 must be merged before cutting the implementation branch.
-- Fetch first and create `feat/1198-actions-are-data` from current `origin/main`, never a local branch.
+- Prerequisite issue #1215 must be merged before cutting the implementation branch.
+- PR #1214 is the approved idea review surface. Keep it open throughout implementation; merge it only after the implementation PR lands and `implementation.md` records what actually shipped.
+- Fetch first and create `feat/1198-actions-are-data` from current `origin/main`, never a local branch and never the idea branch.
+- Keep `design.md` and `plan.md` live on PR #1214. If implementation invalidates either document, stop, update the idea branch, obtain Kirk's approval for the changed boundary, and only then continue.
+- Do not create `implementation.md` before implementation completes; it records observed results and nuances rather than predictions.
 - Do not add a `go.mod` under `rulebooks/dnd5e/combat/actions`; it is part of `rulebooks/dnd5e`.
 - `combat/actions` must not directly import monster, character, resolution, or `github.com/KirkDiggler/rpg-toolkit/events`.
 - Implement only the `Attack` profile arm. Do not scaffold save-area, healing, or sequence profiles before their machines exist.
@@ -1212,7 +1217,6 @@ git push
 - Modify: `docs/status.md`
 - Modify: `docs/adr/0041-composable-attack-damage.md`
 - Modify: `docs/ideas/session-sdk/attack-profile-seam.md`
-- Modify: `docs/adr/DECISIONS.md` only if implementation changes ADR-0045's digest wording
 
 **Interfaces:**
 - Consumes: the final shipped paths from Tasks 1–7.
@@ -1319,7 +1323,7 @@ Expected: every provider SHA is an ancestor, no committed replace exists, and th
 
 Create one PR from `feat/1198-actions-are-data` to `main`. The body must:
 
-- Reference `Implements ADR-0045` and `Closes #1198`.
+- Reference `Implements the accepted ADR-0045 design in #1214` and `Closes #1198`.
 - State `Prerequisite #1215 merged`.
 - List root D&D, active encounter, resolution, and session provider SHAs.
 - Include all focused/full verification commands and results.
@@ -1353,3 +1357,62 @@ git merge-base --is-ancestor "$RESOLUTION_PROVIDER_SHA" origin/main
 ```
 
 Expected: all three commands exit zero. If any fails, stop before bumping downstream consumers and repair the orphaned pin explicitly.
+
+---
+
+### Task 10: Record What Shipped and Close the Idea
+
+**Files (on the still-open PR #1214 idea branch):**
+- Modify: `docs/ideas/actions-are-data/design.md`
+- Modify: `docs/ideas/actions-are-data/plan.md`
+- Create: `docs/ideas/actions-are-data/implementation.md`
+
+**Interfaces:**
+- Consumes: the merged #1198 implementation PR, final provider ancestry, module tags, verification output, and implementation discoveries.
+- Produces: a durable record separating approved intent, executable plan, and observed implementation reality.
+
+- [ ] **Step 1: Bring the open idea branch forward after implementation merges**
+
+In the idea worktree, fetch and merge current `origin/main` into `docs/1198-actions-are-data`. Do not rewrite the implementation merge graph:
+
+```bash
+git fetch origin
+git merge --no-edit origin/main
+```
+
+Expected: the idea branch now contains the shipped implementation and retains the docs commits from PR #1214.
+
+- [ ] **Step 2: Write the post-implementation record from evidence**
+
+Create `implementation.md` only now. Record:
+
+- implementation PR URL and merge commit;
+- provider commits and released module tags;
+- final package/type/function paths;
+- exact verification commands and outcomes;
+- deviations from the original plan and why they were necessary;
+- subtleties discovered while implementing, including module pinning, lifecycle, validation order, and condition behavior;
+- intentionally deferred profile types and follow-up issues;
+- confirmation that no compatibility representation survived.
+
+Do not restate predictions as findings. Every claim must cite merged code, command output, a commit, or a follow-up issue.
+
+- [ ] **Step 3: Close the live design and plan state**
+
+Change the design status from `Approved — implementation open` to `Implemented`. Check every completed plan box. If a step was superseded, mark it explicitly with the shipped alternative and link the implementation record; do not falsely mark an unperformed command as run.
+
+- [ ] **Step 4: Verify and merge the idea PR**
+
+Run:
+
+```bash
+git diff --check
+./scripts/check-decisions.sh
+git status --short --branch
+git add docs/ideas/actions-are-data docs/adr/0045-actions-are-data.md docs/adr/DECISIONS.md
+git commit -m "docs(actions): record the actions-as-data implementation (#1198)"
+git push
+gh pr checks 1214 --repo KirkDiggler/rpg-toolkit --watch
+```
+
+Request final review of the design-to-implementation record. Merge PR #1214 only after its threads and checks are clear.
