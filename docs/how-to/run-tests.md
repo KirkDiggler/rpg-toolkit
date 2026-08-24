@@ -1,14 +1,21 @@
 ---
 name: how to run tests
 description: Per-module, full-repository, lint, and pre-commit commands for the multi-module repository
-updated: 2026-08-10
+updated: 2026-08-23
 ---
 
 # How to run tests
 
-RPG Toolkit has 22 independent Go module roots and no root `go.mod`. A root-level
-`go test ./...` is therefore not a repository test. Run the owning module first,
-then use the Makefile's module discovery when a full sweep is required.
+RPG Toolkit has independent Go module roots and no root `go.mod`. A root-level
+`go test ./...` is therefore not a repository test. If you need the current
+module census, discover it from tracked `go.mod` files instead of prose:
+
+```bash
+find . -name go.mod -type f -not -path './vendor/*' | sort
+```
+
+Run the owning module first, then use the Makefile's module discovery when a
+full sweep is required.
 
 ## Owning module
 
@@ -29,7 +36,9 @@ Other examples:
 ```bash
 cd core && go test -race ./...
 cd events && go test -race ./...
-cd encounter && go test -race ./...
+cd rulebooks/dnd5e/encounter && go test -race ./...
+cd rulebooks/dnd5e/resolution && go test -race ./...
+cd rulebooks/dnd5e/session && go test -race ./...
 cd tools/spatial && go test -race ./...
 cd play/clock && go test -race ./...
 ```
