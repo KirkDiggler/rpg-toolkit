@@ -16,7 +16,7 @@ whether or not the feature exists is a named defect class here:
 
 ---
 
-## UC-1 — A character swings a sword · SHIPPED @ rpg-toolkit#1198
+## UC-1 — A character swings a sword · SHIPPED @ session v0.27.0 / resolution v0.12.0
 
 The bread-and-butter path (`session/attack.go`): rpg-api calls one verb with
 IDs, and everything between — compile, bus lifetime, machine, chains — happens
