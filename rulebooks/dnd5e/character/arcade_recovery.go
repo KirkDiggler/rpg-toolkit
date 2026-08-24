@@ -7,9 +7,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// RestoreForNewEncounter applies arcade recovery to a character's persisted
+// RestoreForLaunch applies arcade recovery to a character's persisted
 // data before it is seated at a game LAUNCH — an arcade run start, not a
-// real-world rest. Two independent restorations, both ungated:
+// real-world rest. (Named RestoreForNewEncounter until rpg-toolkit#1225
+// renamed it: "encounter" stopped describing the call site once the only
+// legitimate caller became the host's launch path — the old name invited
+// exactly the mid-run misuse the contract below forbids.) Two independent restorations, both ungated:
 //
 //  1. HP / death-save / Unconscious (rpg-toolkit#785, ungated by #1225):
 //     death and damage are run-scoped outcomes, not persistent character
@@ -58,7 +61,7 @@ import (
 // least one resource pool — so the caller knows whether the record needs
 // persisting before it is seated. A character already at full HP with full
 // pools returns false.
-func RestoreForNewEncounter(d *Data) bool {
+func RestoreForLaunch(d *Data) bool {
 	if d == nil {
 		return false
 	}

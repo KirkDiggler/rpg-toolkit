@@ -21,7 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// ArcadeRecoveryTestSuite exercises RestoreForNewEncounter (rpg-toolkit#785).
+// ArcadeRecoveryTestSuite exercises RestoreForLaunch (rpg-toolkit#785).
 type ArcadeRecoveryTestSuite struct {
 	suite.Suite
 	ctx context.Context
@@ -68,7 +68,7 @@ func conditionRef(t *testing.T, cond interface {
 }
 
 func (s *ArcadeRecoveryTestSuite) TestNilData_NoPanic_ReturnsFalse() {
-	s.False(RestoreForNewEncounter(nil))
+	s.False(RestoreForLaunch(nil))
 }
 
 // TestWounded_RestoredToFull: the #1225 ungate (Kirk's ruling,
@@ -83,12 +83,32 @@ func (s *ArcadeRecoveryTestSuite) TestWounded_RestoredToFull() {
 		Conditions:     []json.RawMessage{unconsciousBlob(s.T(), "char-1", 2, false)},
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored, "a wounded character is restored at launch since #1225")
 	s.Equal(20, data.HitPoints, "HP must restore to MaxHitPoints, not just for the downed")
 	s.Nil(data.DeathSaveState)
 	s.Empty(data.Conditions, "a lingering Unconscious blob is stripped regardless of HP")
+}
+
+// TestHealthy_LingeringUnconsciousBlob_IsStrippedAndReported: the strip
+// runs unconditionally, so a coherent-looking record (full HP, no
+// death-save state) that still carries an Unconscious blob from a broken
+// earlier state is cleaned AND reported true — the caller must persist
+// the strip, or the next hydration re-Applies the condition onto a
+// healthy character.
+func (s *ArcadeRecoveryTestSuite) TestHealthy_LingeringUnconsciousBlob_IsStrippedAndReported() {
+	data := &Data{
+		HitPoints:    20,
+		MaxHitPoints: 20,
+		Conditions:   []json.RawMessage{unconsciousBlob(s.T(), "char-1", 1, false)},
+	}
+
+	restored := RestoreForLaunch(data)
+
+	s.True(restored, "a stripped blob alone must still tell the caller to persist")
+	s.Equal(20, data.HitPoints)
+	s.Empty(data.Conditions)
 }
 
 // TestFullyHealthy_IsNoOp: what remains of the old above-zero no-op after
@@ -101,7 +121,7 @@ func (s *ArcadeRecoveryTestSuite) TestFullyHealthy_IsNoOp() {
 		MaxHitPoints: 20,
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.False(restored, "nothing to restore, nothing to persist")
 	s.Equal(20, data.HitPoints)
@@ -117,7 +137,7 @@ func (s *ArcadeRecoveryTestSuite) TestZeroHP_TPKDeath_RestoresFullHPAndClearsDea
 		Conditions:     []json.RawMessage{unconsciousBlob(s.T(), "char-1", 3, true)},
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored)
 	s.Equal(16, data.HitPoints, "HP must restore to MaxHitPoints")
@@ -131,7 +151,7 @@ func (s *ArcadeRecoveryTestSuite) TestNegativeHP_TreatedSameAsZero() {
 	// require exactly 0 to trigger a restore for an equally-broken record.
 	data := &Data{HitPoints: -4, MaxHitPoints: 12}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored)
 	s.Equal(12, data.HitPoints)
@@ -155,7 +175,7 @@ func (s *ArcadeRecoveryTestSuite) TestPreservesOtherConditions() {
 		},
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored)
 	s.Require().Len(data.Conditions, 1, "only the Unconscious condition should be stripped")
@@ -171,7 +191,7 @@ func (s *ArcadeRecoveryTestSuite) TestPreservesOtherConditions() {
 // ToData/LoadFromData shape a new encounter's hydration cascade exercises:
 // marshal the restored Data, unmarshal it, LoadFromData it, and confirm the
 // resulting live Character has no Unconscious condition subscribed and full
-// HP -- not just that RestoreForNewEncounter mutated the struct in memory.
+// HP -- not just that RestoreForLaunch mutated the struct in memory.
 func (s *ArcadeRecoveryTestSuite) TestRoundTrip_HydratesCleanly() {
 	data := &Data{
 		ID:               "char-1",
@@ -185,7 +205,7 @@ func (s *ArcadeRecoveryTestSuite) TestRoundTrip_HydratesCleanly() {
 		Conditions:       []json.RawMessage{unconsciousBlob(s.T(), "char-1", 3, true)},
 	}
 
-	s.Require().True(RestoreForNewEncounter(data))
+	s.Require().True(RestoreForLaunch(data))
 
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)
@@ -235,7 +255,7 @@ func (s *ArcadeRecoveryTestSuite) TestDeadBarbarian_SpentRage_SeatedAlive_FullHP
 		Resources:      spentRageResources(),
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored)
 	s.Equal(20, data.HitPoints, "HP must restore to MaxHitPoints")
@@ -256,7 +276,7 @@ func (s *ArcadeRecoveryTestSuite) TestAliveBarbarian_SpentRage_SeatedWithFullRag
 		Resources:    spentRageResources(),
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored)
 	s.Equal(20, data.HitPoints, "since #1225 launch heals the wounded to full, not just the downed")
@@ -280,12 +300,12 @@ func (s *ArcadeRecoveryTestSuite) TestFullRage_AboveZeroHP_IsFullNoOp() {
 	// before is a real, independent snapshot, not a shallow struct copy --
 	// *data alone would leave before.Resources pointing at the SAME map as
 	// data.Resources, making the s.Equal below compare the map to itself
-	// (trivially "equal" no matter what RestoreForNewEncounter does to it,
+	// (trivially "equal" no matter what RestoreForLaunch does to it,
 	// proving nothing about the no-op claim). Copilot catch on PR #801.
 	before := *data
 	before.Resources = maps.Clone(data.Resources)
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.False(restored, "a character already whole on both HP and resources must be a full no-op")
 	s.Equal(before.HitPoints, data.HitPoints)
@@ -306,7 +326,7 @@ func (s *ArcadeRecoveryTestSuite) TestMultipleResourcePools_AllRestoreIndependen
 		},
 	}
 
-	restored := RestoreForNewEncounter(data)
+	restored := RestoreForLaunch(data)
 
 	s.True(restored)
 	s.Equal(3, data.Resources[dnd5eResources.RageCharges].Current)
