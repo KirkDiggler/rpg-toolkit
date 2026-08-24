@@ -414,6 +414,8 @@ git commit -m "feat(character)!: assemble shared attack definitions (#1198)"
 
 ### Task 3: Remove Executable Character Action Objects
 
+**Completed:** `8605911` (`refactor(actions)!: delete executable character actions (#1198)`)
+
 **Files:**
 - Delete: `rulebooks/dnd5e/actions/`
 - Delete: `rulebooks/dnd5e/character/actions_test.go`
@@ -425,16 +427,25 @@ git commit -m "feat(character)!: assemble shared attack definitions (#1198)"
 - Modify: `rulebooks/dnd5e/character/action_economy_test.go`
 - Modify: `rulebooks/dnd5e/character/economy_dirty_test.go`
 - Modify: `rulebooks/dnd5e/character/combat_abilities_test.go`
+- Modify: `rulebooks/dnd5e/character/integration_test.go`
+- Modify: `rulebooks/dnd5e/character/sheet_keeper_test.go`
+- Modify: `rulebooks/dnd5e/combat/action_economy.go`
+- Modify: `rulebooks/dnd5e/combat/capacity.go`
+- Modify: `rulebooks/dnd5e/combat/turn_manager.go`
+- Modify: `rulebooks/dnd5e/combat/turn_manager_queries.go`
+- Modify: `rulebooks/dnd5e/combatabilities/ability.go`
+- Modify: `rulebooks/dnd5e/combatabilities/attack.go`
 - Modify: `rulebooks/dnd5e/combatabilities/input.go`
 - Modify: `rulebooks/dnd5e/features/flurry_of_blows.go`
 - Modify: `rulebooks/dnd5e/features/flurry_of_blows_test.go`
 - Modify: `rulebooks/dnd5e/events/events.go`
+- Modify: `rulebooks/dnd5e/integration/monk_encounter_test.go`
 
 **Interfaces:**
 - Consumes: character's existing persisted `ActionEconomyData` and `combat.Ledger` implementation.
 - Produces: no action-object API. Turn lifecycle, ledger payment, and capacity grants remain data operations.
 
-- [ ] **Step 1: Write the replacement Flurry capacity test**
+- [x] **Step 1: Write the replacement Flurry capacity test**
 
 Replace action-grant assertions with persisted economy assertions:
 
@@ -451,7 +462,7 @@ func (s *FlurryOfBlowsTestSuite) TestActivateSpendsKiAndBanksTwoFlurryStrikes() 
 
 Add a refusal test proving zero Ki leaves `CapacityFlurryStrike` unchanged. Do not subscribe to or assert `ActionGrantedTopic`.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -462,7 +473,7 @@ go test ./features -run FlurryOfBlows
 
 Expected: FAIL because Flurry still creates and publishes executable `FlurryStrike` objects.
 
-- [ ] **Step 3: Replace Flurry action objects with capacity state**
+- [x] **Step 3: Replace Flurry action objects with capacity state**
 
 Replace the test's `mockMonkCharacter.actions` slice and four `ActionHolder` methods with a `map[combat.CapacityType]int`, plus these exact methods:
 
@@ -496,7 +507,7 @@ owner.BankCapacity(combat.CapacityFlurryStrike, 2)
 
 Because `BankCapacity` cannot fail and marks the sheet, no bus or rollback action object is needed. Keep bonus-action consumption in the existing feature-activation caller; this method owns Ki and granted capacity only.
 
-- [ ] **Step 4: Remove the superseded runtime action surface**
+- [x] **Step 4: Remove the superseded runtime action surface**
 
 Delete the entire `rulebooks/dnd5e/actions` directory. Then remove:
 
@@ -518,11 +529,11 @@ executeStrike / executeOffHandStrike / executeFlurryStrike / executeUnarmedStrik
 checkPostStrikeGrants
 ```
 
-Also remove `Actions []AvailableAction` fields from turn/activation outputs. Preserve `ActionEconomyData`, `StartTurn`, `RefreshForTurn`, `EndTurn`, `ExitCombat`, `GrantCapacity`, `combat.Ledger`, and cost compilation.
+Also remove `Actions []AvailableAction` fields from turn/activation outputs. Remove `combat.TurnManager`'s dead `ActionInfo`/`GetAvailableActions` query seam rather than forcing Character to return an empty compatibility list. Preserve `ActionEconomyData`, `StartTurn`, `RefreshForTurn`, `EndTurn`, `ExitCombat`, `GrantCapacity`, `combat.Ledger`, and cost compilation.
 
 Delete action-object lifecycle tests. In `action_economy_test.go`, retain persistence and turn-lifecycle cases through `TestEndTurn_ResetsButStaysInCombat`; remove the old menu/ActivateAbility/ExecuteAction cases. In `economy_dirty_test.go`, retain direct ledger/turn/resource dirty tests and remove cases whose only entry is the deleted action execution API.
 
-- [ ] **Step 5: Prove no executable action object remains**
+- [x] **Step 5: Prove no executable action object remains**
 
 Run:
 
@@ -539,7 +550,7 @@ golangci-lint run ./character/... ./features/... ./combatabilities/... ./events/
 
 Expected: grep finds nothing and all tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A rulebooks/dnd5e/actions \
