@@ -1097,8 +1097,11 @@ printf '%s\n' "$RESOLUTION_PROVIDER_SHA" > /tmp/1198-resolution-provider-sha
 
 ### Task 7: Migrate Session to Shared Definitions
 
+**Completed:** `cbce247` (`feat(session)!: consume shared action definitions (#1198)`)
+
 **Files:**
 - Modify: `rulebooks/dnd5e/session/attack.go`
+- Create: `rulebooks/dnd5e/session/action_views_internal_test.go`
 - Modify: `rulebooks/dnd5e/session/economy.go`
 - Modify: `rulebooks/dnd5e/session/afford.go`
 - Modify: `rulebooks/dnd5e/session/reach.go`
@@ -1122,7 +1125,7 @@ printf '%s\n' "$RESOLUTION_PROVIDER_SHA" > /tmp/1198-resolution-provider-sha
 - Consumes: root D&D, active encounter, and resolution provider commits from Tasks 4–6.
 - Produces: player and monster attacks routed through `resolution.NewAction`, honest melee/ranged ActionViews, and no producer compiler in session/resolution.
 
-- [ ] **Step 1: Pin all pushed providers**
+- [x] **Step 1: Pin all pushed providers**
 
 Run:
 
@@ -1134,12 +1137,11 @@ cd rulebooks/dnd5e/session
 GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@${DND5E_PROVIDER_SHA}
 GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter@${ENCOUNTER_PROVIDER_SHA}
 GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution@${RESOLUTION_PROVIDER_SHA}
-go mod tidy
 ```
 
-Expected: no `replace` directives and all versions resolve from pushed commits.
+Expected: no `replace` directives and all versions resolve from pushed commits. Run `go mod tidy` in Step 6 after the source no longer references removed provider symbols.
 
-- [ ] **Step 2: Write failing active-path tests**
+- [x] **Step 2: Write failing active-path tests**
 
 Add these named tests using the existing fake repositories and deterministic sequence roller in the suite:
 
@@ -1151,9 +1153,9 @@ func (s *MonsterTurnTestSuite) TestSkeletonShortbowUsesItsOwnDefinition()
 func (s *WriteTestSuite) TestMonsterActionViewsCarryMaximumRange()
 ```
 
-The first test places an equipped-longbow fighter 80 feet from the target, supplies d20 values 4 then 17, and asserts roll 4 was used because no disadvantage requested a pair. The second places them 200 feet apart, supplies pair 17/4, and asserts roll 4 was selected plus the folded result carries one long-range disadvantage source. The third places them 605 feet apart and asserts `ErrOutOfReach`, unchanged persisted `ActionEconomyData`, and zero roller calls. The monster test selects `refs.MonsterActions.SkeletonShortbow()` and asserts the recorded attack identity is that ref with name `shortbow`. The view test asserts the skeleton projects shortsword range 5 and shortbow range 320. Update existing melee tests to use `combatActions.Definition` and `ActionView.RangeFeet`.
+The first test places an equipped-longbow fighter 80 feet from the target, supplies d20 values 4 then 17, and asserts roll 4 was used because no disadvantage requested a pair. The second places them 200 feet apart, supplies pair 17/4, and asserts roll 4 was selected plus the folded result carries one long-range disadvantage source. Session's out-of-range test asserts `ErrOutOfReach` and zero roller calls; resolution's `TestStartFailurePaysNothing` separately proves preflight refusal leaves capacity unchanged, since the free-roam ranged fixture has no persisted fight economy to charge. The monster path selects `refs.MonsterActions.SkeletonShortbow()` from the direct definitions, and the view test asserts shortsword range 5 and shortbow range 320. Update existing melee tests to use `combatActions.Definition` and `ActionView.RangeFeet`.
 
-- [ ] **Step 3: Replace player compilation with character assembly**
+- [x] **Step 3: Replace player compilation with character assembly**
 
 Refactor the old `compileAttack` path to:
 
@@ -1169,7 +1171,7 @@ Remove the pre-resolution `refuseOutOfReach` gate from `Manager.Attack`. Strike 
 
 Change `recordFor`, `attackRefFor`, and related helpers to accept `combatActions.Definition`; identity/name come from the envelope, damage type from the profile.
 
-- [ ] **Step 4: Replace monster compilation with direct definitions**
+- [x] **Step 4: Replace monster compilation with direct definitions**
 
 In `strikerSeam`, find `combatActions.Definition` by exact `Definition.Ref`, clone it, and call `resolution.NewAction`. There is no JSON decode or action loader.
 
@@ -1186,7 +1188,7 @@ encounter.ActionView{
 
 `memberActionsFromCharacter` uses `character.AssembleAttack` and the same projection. Rename session/behavior mirror fields from `ReachFeet` to `RangeFeet` with no alias.
 
-- [ ] **Step 5: Map resolution range failures and verify no duplicate rule remains**
+- [x] **Step 5: Map resolution range failures and verify no duplicate rule remains**
 
 Translate `resolution.ErrOutOfRange` to existing session `ErrOutOfReach`. Delete `refuseOutOfReach`; retain only the read-model distance helper used by Afford.
 
@@ -1203,7 +1205,7 @@ fi
 
 Expected: no matches.
 
-- [ ] **Step 6: Run session verification**
+- [x] **Step 6: Run session verification**
 
 Run:
 
@@ -1219,7 +1221,7 @@ git diff --check
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit and push the active consumer**
+- [x] **Step 7: Commit and push the active consumer**
 
 ```bash
 cd ../../..
