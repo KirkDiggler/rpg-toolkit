@@ -137,7 +137,9 @@ func projectStatus(in *encounter.Status) *Status {
 	return out
 }
 
-func projectSightings(in []intel.Holding, names map[string]string, down map[string]bool) []Sighting {
+func projectSightings(
+	in []intel.Holding, names map[string]string, kinds map[string]MemberKind, down map[string]bool,
+) []Sighting {
 	out := make([]Sighting, 0, len(in))
 	for _, h := range in {
 		via := make([]string, 0, len(h.CurrentVia))
@@ -147,6 +149,7 @@ func projectSightings(in []intel.Holding, names map[string]string, down map[stri
 		out = append(out, Sighting{
 			Subject:    string(h.Subject),
 			Name:       names[string(h.Subject)],
+			Kind:       kinds[string(h.Subject)],
 			Seen:       projectSeen(h.Channel, h.Payload, down[string(h.Subject)]),
 			Payload:    append([]byte(nil), h.Payload...),
 			Channel:    string(h.Channel),

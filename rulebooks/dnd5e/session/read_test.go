@@ -356,3 +356,55 @@ func (s *ReadTestSuite) TestViewCarriesNameAndStanding() {
 	s.Require().NotNil(skeleton.Seen, "a live sight-channel sighting carries Seen")
 	s.Equal(session.StandingUp, skeleton.Seen.Standing, "nothing has touched it yet")
 }
+
+// twoObservedWorld is one open 6x6 hall with no occluders and unbounded
+// sight: "scout" watches "ally" (a fellow player) and "goblin" (a monster),
+// both mutually visible from the moment the session starts — no walk needed
+// to open sight, unlike seen_test.go's doorway scenes, because this is about
+// what Kind reports once a sighting exists, not about how one opens.
+func twoObservedWorld(t fataler) *encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
+		Members: []encounter.MemberInput{
+			{ID: "scout", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "ally", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 0}},
+		},
+		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	if err != nil {
+		t.Fatalf("building twoObservedWorld: %v", err)
+	}
+	data := enc.ToData()
+	return &data
+}
+
+// TestViewCarriesKind pins rpg-toolkit#1230: a Sighting reports what kind of
+// member the subject is, looked up from the roster the same way Name already
+// is, so a client can tell a player from a monster without guessing (the
+// diagnosis behind rpg-dnd5e-web#792). One session, one player and one
+// monster besides the observer, one View call — both kinds must come back
+// right, not just whichever one a hard-coded default would fake.
+func (s *ReadTestSuite) TestViewCarriesKind() {
+	s.startWith(twoObservedWorld(s.T()))
+
+	sightings, err := s.mgr.View(context.Background(),
+		&session.ViewInput{Session: "sess", Member: "scout"})
+	s.Require().NoError(err)
+
+	var ally, goblin *session.Sighting
+	for i := range sightings {
+		switch sightings[i].Subject {
+		case "ally":
+			ally = &sightings[i]
+		case "goblin":
+			goblin = &sightings[i]
+		}
+	}
+	s.Require().NotNil(ally, "scout must see ally in the open hall")
+	s.Require().NotNil(goblin, "scout must see goblin in the open hall")
+	s.Equal(session.KindPlayer, ally.Kind, "a fellow player's Sighting must report Kind player")
+	s.Equal(session.KindMonster, goblin.Kind, "a monster's Sighting must report Kind monster")
+}
