@@ -87,6 +87,12 @@ var (
 	// room refuses. The world is the caller's to hand over intact.
 	ErrBadWorld = errors.New("resolution: world data is unusable")
 
+	// ErrBadAction indicates an invalid or unsupported shared action definition.
+	ErrBadAction = errors.New("resolution: invalid action definition")
+
+	// ErrOutOfRange indicates a valid attack whose target lies beyond its delivery.
+	ErrOutOfRange = errors.New("resolution: target is out of range")
+
 	// ErrBadAttack indicates an action this build cannot read as an attack —
 	// an unknown weapon ref, a slot holding something that is not a weapon,
 	// or an equipment slot whose entry names an item that is not in

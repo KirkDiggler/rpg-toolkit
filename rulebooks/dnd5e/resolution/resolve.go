@@ -85,7 +85,7 @@ type Input struct {
 	// FREE ACTION and is the common case today — only a caller that compiled a
 	// price passes one.
 	//
-	// It is paid HERE, before the machine starts, and the machine is never told:
+	// It is paid HERE, after pure machine preflight and before execution, and the machine is never told:
 	// it cannot tell a swing that cost an action from one that cost nothing,
 	// which is the ignorance the ruling asks for, because what an action costs
 	// was already answered by whoever compiled the profile. See [Cost], and
@@ -343,17 +343,18 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
-	// THE DOOR PAYS, AND IT PAYS BEFORE THE MACHINE RUNS. A resolution nobody
-	// can pay for never starts one, which is R5's clean case and is only true
-	// while there is still nothing to undo. The teardown is joined rather than
-	// swallowed the way the attach failure above swallows it: everything
-	// attached successfully here, so a subscription outliving a refused
-	// interaction is a leak rather than the tail of a half-finished attach.
+	// Start is pure preflight and runs before payment. Invalid participant,
+	// delivery, or condition declarations therefore consume nothing.
+	first, startErr := start(ctx, in.Machine, cast)
+	if startErr != nil {
+		return nil, errors.Join(startErr, surf.teardown(ctx))
+	}
+
 	if payErr := payAtTheDoor(ctx, in.Cost, cast); payErr != nil {
 		return nil, errors.Join(payErr, surf.teardown(ctx))
 	}
 
-	outcome, runErr := drive(ctx, surf, in.Machine, cast)
+	outcome, runErr := driveStep(ctx, surf, first, cast)
 
 	// R5: revoke everything granted, whether or not the machine succeeded.
 	tearErr := surf.teardown(ctx)

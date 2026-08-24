@@ -6,6 +6,7 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -168,6 +169,8 @@ func (m *witnessMachine) Start(ctx context.Context, cast *Participants) (Step, e
 // its attack, so a count of zero says the machine never got that far. Every
 // answer is a miss, which keeps a resolution that DOES run away from the damage
 // phase and its sheet writes.
+const missRoll = 1
+
 type countingRoller struct {
 	rolls int
 }
@@ -198,13 +201,13 @@ func (r *countingRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
 func (s *CostTestSuite) swing(
 	hero *character.Data, cost *Cost, roller *countingRoller,
 ) (*Output, *witnessMachine, error) {
-	profile, err := AttackFromCharacter(s.load(hero), &CharacterAttackInput{Slot: character.SlotMainHand})
+	definition, err := character.AssembleAttack(s.load(hero), &character.AssembleAttackInput{Slot: character.SlotMainHand})
 	s.Require().NoError(err)
 
 	machine := &witnessMachine{inner: NewStrike(&StrikeInput{
 		AttackerID: heroID,
 		TargetID:   wolfID,
-		Attack:     profile,
+		Definition: definition,
 		Roller:     roller,
 	})}
 
@@ -236,15 +239,42 @@ func (s *CostTestSuite) thisTurn() *Turn {
 	return &Turn{Number: firstTurn, Speed: suppliedSpeed}
 }
 
+var errPreflight = errors.New("preflight refused")
+
+type failingPreflightMachine struct {
+	payer *character.Character
+}
+
+func (m *failingPreflightMachine) Start(_ context.Context, cast *Participants) (Step, error) {
+	m.payer, _ = cast.Character(heroID)
+	return nil, errPreflight
+}
+
+func (s *CostTestSuite) TestStartFailurePaysNothing() {
+	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	machine := &failingPreflightMachine{}
+
+	out, err := Resolve(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: s.world(), Participants: []Participant{{Character: hero}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: machine,
+		Cost:    &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+	})
+
+	s.Require().ErrorIs(err, errPreflight)
+	s.Require().Nil(out)
+	s.Require().NotNil(machine.payer)
+	s.Equal(1, machine.payer.CapacityLeft(combat.CapacityAttack), "invalid machine start pays nothing")
+}
+
 // ---------------------------------------------------------------------------
-// THE HEADLINE: a swing nobody can pay for never happens.
+// THE HEADLINE: a swing nobody can pay for preflights but never executes.
 // ---------------------------------------------------------------------------
 
 // The hero is in combat with an action in hand, but the Attack action was never
 // taken — so there is no banked swing for this strike to spend. The refusal has
-// to arrive before the machine does anything, and both halves of the evidence
-// say it did.
-func (s *CostTestSuite) TestAnActorWhoCannotPayNeverStartsTheMachine() {
+// to arrive after pure preflight but before dice or mutation.
+func (s *CostTestSuite) TestAnActorWhoCannotPayPreflightsButNeverExecutes() {
 	hero := s.hero(s.economy(firstTurn, 1, 0))
 	roller := &countingRoller{}
 
@@ -256,8 +286,8 @@ func (s *CostTestSuite) TestAnActorWhoCannotPayNeverStartsTheMachine() {
 
 	s.Require().ErrorIs(err, ErrCannotPay)
 	s.Require().Nil(out, "a refused resolution hands back nothing to store")
-	s.Require().False(machine.started, "the machine never started")
-	s.Require().Zero(roller.rolls, "a strike that started would have rolled its attack")
+	s.Require().True(machine.started, "pure preflight runs before payment")
+	s.Require().Zero(roller.rolls, "a refused strike rolls no attack")
 
 	// The sentinel is what E3 matches on; the gate's own message is what says
 	// WHICH currency ran out, and it has to survive being wrapped or the
@@ -398,7 +428,7 @@ func (s *CostTestSuite) TestACostNamingAMonsterIsRefusedByName() {
 	s.Require().Contains(err.Error(), wolfID)
 	s.Require().Contains(err.Error(), "monster", "the refusal says which of the two ways it failed")
 	s.Require().Nil(out)
-	s.Require().False(machine.started)
+	s.Require().True(machine.started, "pure preflight runs before payment")
 }
 
 func (s *CostTestSuite) TestACostNamingSomebodyNotPassedInIsRefused() {
@@ -413,7 +443,7 @@ func (s *CostTestSuite) TestACostNamingSomebodyNotPassedInIsRefused() {
 	s.Require().ErrorIs(err, ErrNoPayer)
 	s.Require().Contains(err.Error(), "ghost")
 	s.Require().Nil(out)
-	s.Require().False(machine.started)
+	s.Require().True(machine.started, "pure preflight runs before payment")
 }
 
 // Out of combat is a refusal, not a free swing. The refresh does not rescue it:
@@ -430,7 +460,7 @@ func (s *CostTestSuite) TestAnActorWithNoEconomyIsRefusedRatherThanChargedNothin
 
 	s.Require().ErrorIs(err, ErrCannotPay)
 	s.Require().Nil(out)
-	s.Require().False(machine.started)
+	s.Require().True(machine.started, "pure preflight runs before payment")
 }
 
 // ---------------------------------------------------------------------------

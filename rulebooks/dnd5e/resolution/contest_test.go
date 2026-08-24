@@ -15,11 +15,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -50,20 +49,10 @@ func (s *ContestTestSuite) SetupTest() {
 // so a test that hand-builds it proves the machine works on a gate nobody
 // ships.
 func (s *ContestTestSuite) wolfsKnockdown() *saves.SaveGate {
-	for _, action := range monsters.NewWolf(wolfID).Actions() {
-		bite, isBite := action.(*monsterActions.BiteAction)
-		if !isBite {
-			continue
-		}
-
-		if gate := bite.SaveGate(); gate != nil {
-			return gate
-		}
-	}
-
-	s.Require().Fail("the catalog wolf has no bite declaring a save gate")
-
-	return nil
+	definitions := monsters.NewWolf(wolfID).Actions()
+	s.Require().Len(definitions, 1)
+	s.Require().Len(definitions[0].Attack.OnHit, 1)
+	return definitions[0].Attack.OnHit[0].Save
 }
 
 func (s *ContestTestSuite) world() encounter.EncounterData {
@@ -140,7 +129,7 @@ func (s *ContestTestSuite) contest(gate *saves.SaveGate, roller *scriptedRoller)
 	return NewContest(&ContestInput{
 		Gate:        gate,
 		SaverID:     heroID,
-		Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+		Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 		Roller:      roller,
 	})
 }
@@ -318,7 +307,7 @@ func (s *ContestTestSuite) TestTheDCComesFromTheGate() {
 		Machine: NewContest(&ContestInput{
 			Gate:        gate,
 			SaverID:     heroID,
-			Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+			Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			DamageTaken: 9,
 			Roller:      &scriptedRoller{single: advantageRoll},
 		}),
@@ -343,7 +332,7 @@ func (s *ContestTestSuite) TestARecurringGateIsRefused() {
 
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, ErrRecurrenceUnsupported)
-	s.Require().Contains(err.Error(), "ghoul", "and it says what it is waiting for")
+	s.Require().Contains(err.Error(), string(saves.RecurrenceEndOfTurn))
 }
 
 func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
@@ -353,7 +342,7 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 			Participants: []Participant{{Character: s.hero()}},
 			Machine: NewContest(&ContestInput{
 				SaverID:     heroID,
-				Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 		})
 		s.Require().ErrorIs(err, ErrNilInput)
@@ -366,19 +355,19 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 			Machine: NewContest(&ContestInput{
 				Gate:        &saves.SaveGate{DC: saves.DCStatic(11)}, // no ability to roll
 				SaverID:     heroID,
-				Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 		})
 		s.Require().ErrorIs(err, ErrBadGate)
 	})
 
-	s.Run("no consequence", func() {
+	s.Run("no condition application", func() {
 		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 			World:        s.world(),
 			Participants: []Participant{{Character: s.hero()}},
 			Machine:      NewContest(&ContestInput{Gate: s.wolfsKnockdown(), SaverID: heroID}),
 		})
-		s.Require().ErrorIs(err, ErrNilInput)
+		s.Require().ErrorIs(err, ErrBadAction)
 	})
 
 	s.Run("a saver who is not a participant", func() {
@@ -388,7 +377,7 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 			Machine: NewContest(&ContestInput{
 				Gate:        s.wolfsKnockdown(),
 				SaverID:     "nobody",
-				Consequence: ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
+				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
 			}),
 		})
 		s.Require().ErrorIs(err, ErrNoSaver)
@@ -411,32 +400,3 @@ func (s *ContestTestSuite) TestASaverTheCastDoesNotHaveIsRefusedBeforeAnyRoll() 
 
 // The imposition step says what it does, so a reader of the step log sees
 // "impose the prone condition" rather than a fold that folds nothing.
-func (s *ContestTestSuite) TestTheImpositionStepSaysWhatItDoes() {
-	step := imposeOnBus(
-		ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne),
-		&Participants{},
-		heroID,
-		func([]ImposedEffect) Step { return Done{} },
-	)
-
-	s.Require().Equal("impose the prone condition", step.Name())
-}
-
-// A consequence naming no condition is a caller defect, refused before the
-// contest rolls anything — rather than a description reading "unknown" and a
-// contest that imposes something nobody can name.
-func (s *ContestTestSuite) TestAConsequenceWithNoRefIsRefused() {
-	_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
-		World:        s.world(),
-		Participants: []Participant{{Character: s.hero()}, {Monster: s.wolfData()}},
-		Machine: NewContest(&ContestInput{
-			Gate:        s.wolfsKnockdown(),
-			SaverID:     heroID,
-			Consequence: ImposeCondition(nil, dnd5eEvents.ConditionProne),
-			Roller:      &scriptedRoller{single: straightRoll},
-		}),
-	})
-
-	s.Require().ErrorIs(err, ErrNilInput)
-	s.Require().Contains(err.Error(), "condition ref")
-}
