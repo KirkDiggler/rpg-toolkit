@@ -86,7 +86,10 @@ func (s strikerSeam) Strike(
 	}
 
 	// No readied sheet: a monster attacker has no action-economy readying
-	// step the way a character's own swing does (Manager.priceSwing).
+	// step the way a character's own swing does (Manager.priceSwing). If
+	// persisted content declares a non-nil cost anyway, resolution sees it at
+	// the same door and refuses the monster payer rather than silently
+	// inventing monster economy here.
 	cast, err := s.m.castFor(ctx, s.scope, roster, nil)
 	if err != nil {
 		return fmt.Errorf("strike: %w", err)
@@ -102,6 +105,11 @@ func (s strikerSeam) Strike(
 		return fmt.Errorf("strike: attacker %q: %w: %v", attacker, ErrBadAttack, err)
 	}
 
+	var cost *resolution.Cost
+	if definition.Cost != nil {
+		cost = &resolution.Cost{PayerID: string(attacker), Profile: definition.Cost}
+	}
+
 	world := enc.ToData()
 	out, err := resolution.Resolve(ctx, &resolution.Input{
 		World:        world,
@@ -110,6 +118,7 @@ func (s strikerSeam) Strike(
 		Standing:     s.scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   s.m.turnDriver,
+		Cost:         cost,
 		Machine:      machine,
 		Roller:       &diceSeam{roller: s.m.dice},
 	})

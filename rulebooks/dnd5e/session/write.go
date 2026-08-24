@@ -438,10 +438,9 @@ func place(
 }
 
 // memberActionsFromCharacter compiles a joining player's own static Actions
-// fact for the shared member record (rpg-project#254): main-hand melee, the
-// one swing v1 compiles for a character attacker at all (see
-// [Manager.compileAttack]'s own doc — the identical compile, at a different
-// moment).
+// fact for the shared member record (rpg-project#254) from
+// [character.AssembleAttack]: the main-hand definition, projected once at join
+// time whether it is melee or ranged.
 //
 // FILLED FOR A PLAYER TOO, even though nothing reads it back today — a
 // TurnDriver is only ever asked about an UNPLAYED member's turn. The same

@@ -5,17 +5,28 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -45,6 +56,20 @@ func (aggregateRecordEveryoneSees) Sight(
 		out[member] = 1_000_000
 	}
 	return out, nil
+}
+
+type scriptedDice struct {
+	rolls []int
+	next  int
+}
+
+func (d *scriptedDice) Roll(_ context.Context, _ int) (int, error) {
+	if d.next >= len(d.rolls) {
+		return 0, fmt.Errorf("scriptedDice: asked for roll %d of %d", d.next+1, len(d.rolls))
+	}
+	roll := d.rolls[d.next]
+	d.next++
+	return roll, nil
 }
 
 // TestRecordUsesAggregateFromTypedStrikeOutcome pins the session boundary at
@@ -152,4 +177,157 @@ func TestAPartialCharacterSaveNamesWhatLanded(t *testing.T) {
 		"alice's sheet is durable and the caller must not be told to retry it")
 	require.Equal(t, []string{"character:bob"}, saved.Report.Failed,
 		"and bob's is the one that needs repair")
+}
+
+func cloneFixture[T any](in *T) (*T, error) {
+	raw, err := json.Marshal(in)
+	if err != nil {
+		return nil, err
+	}
+	var out T
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+type strikeSessions struct{ byID map[string]*SessionData }
+
+func (s *strikeSessions) GetSession(_ context.Context, id string) (*SessionData, error) {
+	data, ok := s.byID[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return cloneFixture(data)
+}
+
+func (s *strikeSessions) SaveSession(_ context.Context, data *SessionData) error {
+	s.byID[data.ID] = data
+	return nil
+}
+
+type strikeEncounters struct {
+	byID map[string]*encounter.EncounterData
+}
+
+func (s *strikeEncounters) GetEncounter(_ context.Context, id string) (*encounter.EncounterData, error) {
+	data, ok := s.byID[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return cloneFixture(data)
+}
+
+func (s *strikeEncounters) SaveEncounter(_ context.Context, id string, data *encounter.EncounterData) error {
+	s.byID[id] = data
+	return nil
+}
+
+type strikeCharacters struct{ byID map[string]*character.Data }
+
+func (s *strikeCharacters) GetCharacter(_ context.Context, id string) (*character.Data, error) {
+	data, ok := s.byID[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return cloneFixture(data)
+}
+
+func (s *strikeCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
+	s.byID[data.ID] = data
+	return nil
+}
+
+func strikeFixtureFighter(id string) *character.Data {
+	return &character.Data{
+		ID:       id,
+		PlayerID: "player-" + id,
+		Name:     id,
+		Level:    3,
+		ClassID:  classes.Fighter,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 8,
+		},
+		HitPoints:           24,
+		MaxHitPoints:        28,
+		ArmorClass:          16,
+		ProficiencyBonus:    2,
+		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponMartial},
+		Inventory: []character.InventoryItemData{{
+			Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1,
+		}},
+		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: string(weapons.Longsword)},
+	}
+}
+
+// TestStrikeRefusesAPersistedMonsterPriceBeforeRolling pins the one door the
+// driven monster strike now shares with a player's own swing: if persisted
+// content declares a non-nil price, it is refused there rather than executing
+// free.
+func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	characters := &strikeCharacters{byID: map[string]*character.Data{"fighter": strikeFixtureFighter("fighter")}}
+	roller := &scriptedDice{rolls: []int{17, 4}}
+
+	mgr, err := NewManager(&Config{
+		Dice: roller, TurnDriver: Pass{},
+		Sessions: sessions, Encounters: encounters, Characters: characters, Events: DiscardEvents{},
+	})
+	require.NoError(t, err)
+
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
+		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	require.NoError(t, err)
+	worldData := world.ToData()
+
+	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &worldData})
+	require.NoError(t, err)
+	_, err = mgr.Join(ctx, &JoinInput{Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0}})
+	require.NoError(t, err)
+	_, err = mgr.Spawn(ctx, &SpawnInput{Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(), Position: spatial.Position{X: 1, Y: 0}})
+	require.NoError(t, err)
+
+	stored, err := sessions.GetSession(ctx, "sess")
+	require.NoError(t, err)
+	var actionRef *core.Ref
+	for i := range stored.NPCs {
+		if stored.NPCs[i].ID != "skel-1" {
+			continue
+		}
+		for j := range stored.NPCs[i].Actions {
+			stored.NPCs[i].Actions[j].Cost = &combat.SpendProfile{
+				Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+			}
+		}
+		actionRef = refs.MonsterActions.SkeletonShortsword()
+	}
+	require.NotNil(t, actionRef, "the spawned skeleton must be the persisted attacker under test")
+	require.NoError(t, sessions.SaveSession(ctx, stored))
+
+	roller.next = 0 // isolate the strike: Join/Spawn already spent formation dice.
+
+	scope, err := mgr.openForWrite(ctx, "sess")
+	require.NoError(t, err)
+	beforeStory, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
+	require.NoError(t, err)
+	beforeHP := characters.byID["fighter"].HitPoints
+
+	err = (strikerSeam{m: mgr, scope: scope}).Strike(ctx, scope.enc, "skel-1", "fighter", *actionRef)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrBadCost)
+	require.NotErrorIs(t, err, resolution.ErrNoPayer, "the seam translates resolution's monster-payer refusal")
+	require.Zero(t, roller.next, "the priced strike is refused before attack or damage dice roll")
+	require.Equal(t, beforeHP, characters.byID["fighter"].HitPoints, "no free hit lands when pricing is declared")
+	afterStory, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
+	require.NoError(t, err)
+	require.Len(t, afterStory, len(beforeStory), "an unrecorded refusal must not append a strike beat")
 }
