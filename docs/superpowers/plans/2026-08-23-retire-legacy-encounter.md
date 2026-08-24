@@ -258,8 +258,8 @@ confidence: high — rpg-toolkit#1215 retired the unconsumed module after rpg-ap
 
 ## Historical record
 
-**Former path:** `encounter/`  
-**Former module:** `github.com/KirkDiggler/rpg-toolkit/encounter`  
+**Former path:** `encounter/`
+**Former module:** `github.com/KirkDiggler/rpg-toolkit/encounter`
 **Last grade:** B+
 
 The retired encounter SDK was the orchestrator-facing facade for running an

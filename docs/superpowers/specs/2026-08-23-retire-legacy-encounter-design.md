@@ -1,7 +1,7 @@
 # Retire the Top-Level Legacy Encounter Module
 
-**Status:** Approved in session on 2026-08-23  
-**Issue:** [KirkDiggler/rpg-toolkit#1215](https://github.com/KirkDiggler/rpg-toolkit/issues/1215)  
+**Status:** Approved in session on 2026-08-23
+**Issue:** [KirkDiggler/rpg-toolkit#1215](https://github.com/KirkDiggler/rpg-toolkit/issues/1215)
 **Blocks:** [KirkDiggler/rpg-toolkit#1198](https://github.com/KirkDiggler/rpg-toolkit/issues/1198)
 
 ## Purpose
