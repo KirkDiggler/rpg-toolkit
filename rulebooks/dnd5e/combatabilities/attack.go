@@ -16,7 +16,7 @@ import (
 // Attack represents the Attack combat ability.
 // When activated, it consumes 1 action and sets AttacksRemaining based on
 // the character's Extra Attack feature (1 normally, 2+ with Extra Attack).
-// The actual Strike actions will be granted in Phase 4.
+// Resolution spends the resulting attack capacity when a shared definition is used.
 type Attack struct {
 	*BaseCombatAbility
 }
@@ -63,8 +63,7 @@ func (a *Attack) Activate(ctx context.Context, owner core.Entity, input CombatAb
 	attackCount := 1 + input.ExtraAttacks
 	input.ActionEconomy.SetAttacks(attackCount)
 
-	// Note: Strike actions will be granted in Phase 4
-	// For now, the character can use ActionEconomy.UseAttack() to consume attacks
+	// Resolution pays one attack capacity for each shared attack definition it runs.
 
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -41,10 +40,9 @@ func (c *Character) InCombat() bool {
 // mutation that skips this is a spend that serializes perfectly and is then
 // discarded (#1087).
 //
-// Each writer calls this for itself rather than trusting a caller to, with two
-// exceptions documented where they live: checkPostStrikeGrants, whose only
-// caller marks after it returns, and restoreActionType, which undoes a spend
-// that already marked. The load path is a third: it seeds the economy from
+// Each writer calls this for itself rather than trusting a caller to. The
+// restoreActionType rollback is the one exception because it undoes a spend
+// that already marked. The load path seeds the economy from
 // stored data, so the sheet already matches storage.
 func (c *Character) economyChanged() {
 	c.dirty = true
@@ -65,7 +63,7 @@ func (c *Character) ExitCombat(_ context.Context, _ *ExitCombatInput) (*ExitComb
 
 // StartTurn initializes the action economy for a new turn.
 // Sets 1 action, 1 bonus action, 1 reaction, and movement from input speed.
-// Returns the available abilities and actions for this turn.
+// Returns the available abilities for this turn.
 //
 // A call with no input is refused rather than dereferenced. The two turn verbs
 // answer the same way about the same mistake: [Character.RefreshForTurn] will
@@ -79,7 +77,6 @@ func (c *Character) StartTurn(_ context.Context, input *StartTurnInput) (*StartT
 
 	return &StartTurnOutput{
 		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
 	}, nil
 }
 
@@ -168,15 +165,6 @@ func (c *Character) AvailableAbilities() []AvailableAbility {
 	return c.buildAvailableAbilities()
 }
 
-// AvailableActions returns the list of actions the character can potentially take.
-// Returns an empty slice if not in combat.
-func (c *Character) AvailableActions() []AvailableAction {
-	if !c.InCombat() {
-		return []AvailableAction{}
-	}
-	return c.buildAvailableActions()
-}
-
 // ActivateAbility activates a combat ability or feature by ref.
 // Routes to the appropriate handler based on whether the ref matches a combat ability or feature.
 // Returns success=false with an error message if activation fails.
@@ -206,36 +194,6 @@ func (c *Character) ActivateAbility(_ context.Context, input *ActivateAbilityInp
 		Success: false,
 		Error:   "unknown ability",
 	}, nil
-}
-
-// ExecuteAction executes an action that consumes granted capacity.
-// Routes to the appropriate handler based on the action ref.
-// Returns success=false if the action cannot be executed.
-func (c *Character) ExecuteAction(_ context.Context, input *ExecuteActionInput) (*ExecuteActionOutput, error) {
-	if !c.InCombat() {
-		return &ExecuteActionOutput{
-			Success: false,
-			Error:   "not in combat",
-		}, nil
-	}
-
-	switch input.ActionRef.ID {
-	case refs.Actions.Strike().ID:
-		return c.executeStrike()
-	case refs.Actions.OffHandStrike().ID:
-		return c.executeOffHandStrike()
-	case refs.Actions.FlurryStrike().ID:
-		return c.executeFlurryStrike()
-	case refs.Actions.UnarmedStrike().ID:
-		return c.executeUnarmedStrike()
-	case refs.Actions.Move().ID:
-		return c.executeMove(input.Distance)
-	default:
-		return &ExecuteActionOutput{
-			Success: false,
-			Error:   "unknown action",
-		}, nil
-	}
 }
 
 // GrantCapacity grants a specified amount of capacity for a given key.
@@ -271,23 +229,16 @@ func targetKindForRef(ref *core.Ref) TargetKind {
 		return TargetKindUnspecified
 	}
 	switch ref.ID {
-	// Attacks and the strikes they grant target one entity.
+	// Attack-shaped abilities target one entity.
 	case refs.CombatAbilities.Attack().ID,
 		refs.CombatAbilities.OffHandAttack().ID,
-		refs.CombatAbilities.Help().ID,
-		refs.Actions.Strike().ID,
-		refs.Actions.OffHandStrike().ID,
-		refs.Actions.FlurryStrike().ID,
-		refs.Actions.UnarmedStrike().ID:
+		refs.CombatAbilities.Help().ID:
 		return TargetKindSingleEntity
 	// Self-affecting abilities (grant a condition on the actor).
 	case refs.CombatAbilities.Dodge().ID,
 		refs.CombatAbilities.Disengage().ID,
 		refs.CombatAbilities.Hide().ID:
 		return TargetKindSelf
-	// Movement targets a position.
-	case refs.Actions.Move().ID:
-		return TargetKindPosition
 	// Deliberately untargeted (fire without a prompt).
 	case refs.CombatAbilities.Dash().ID:
 		return TargetKindNone
@@ -362,80 +313,6 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 	return result
 }
 
-// buildAvailableActions builds the list of available actions from granted capacity.
-func (c *Character) buildAvailableActions() []AvailableAction {
-	result := make([]AvailableAction, 0)
-
-	// Move is always listed. It draws from movement and targets a position.
-	moveCanUse := c.actionEconomy.MovementRemaining > 0
-	result = append(result, AvailableAction{
-		Ref:         refs.Actions.Move(),
-		Name:        "Move",
-		EconomySlot: EconomySlotMovement,
-		TargetKind:  targetKindForRef(refs.Actions.Move()),
-		CanUse:      moveCanUse,
-		Reason:      c.actionReason(moveCanUse, "no movement remaining"),
-	})
-
-	// Strike: listed if attacks granted. Each strike spends one granted attack
-	// from the Attack action, so it belongs to the action slot.
-	if c.actionEconomy.Granted[GrantedAttacks] > 0 {
-		result = append(result, AvailableAction{
-			Ref:         refs.Actions.Strike(),
-			Name:        "Strike",
-			EconomySlot: EconomySlotAction,
-			TargetKind:  targetKindForRef(refs.Actions.Strike()),
-			CanUse:      true,
-		})
-	}
-
-	// Off-Hand Strike: listed if granted. Two-weapon fighting grants it off the
-	// bonus action.
-	if c.actionEconomy.Granted[GrantedOffHandStrikes] > 0 {
-		result = append(result, AvailableAction{
-			Ref:         refs.Actions.OffHandStrike(),
-			Name:        "Off-Hand Strike",
-			EconomySlot: EconomySlotBonusAction,
-			TargetKind:  targetKindForRef(refs.Actions.OffHandStrike()),
-			CanUse:      true,
-		})
-	}
-
-	// Flurry Strike: listed if granted. Flurry of Blows grants strikes off the
-	// bonus action.
-	if c.actionEconomy.Granted[GrantedFlurryStrikes] > 0 {
-		result = append(result, AvailableAction{
-			Ref:         refs.Actions.FlurryStrike(),
-			Name:        "Flurry Strike",
-			EconomySlot: EconomySlotBonusAction,
-			TargetKind:  targetKindForRef(refs.Actions.FlurryStrike()),
-			CanUse:      true,
-		})
-	}
-
-	// Unarmed Strike (Martial Arts Bonus): listed if granted. The Monk martial
-	// arts bonus strike is a bonus-action strike.
-	if c.actionEconomy.Granted[GrantedMartialArtsBonus] > 0 {
-		// The unarmed strike costs a bonus action (PHB p.78): it is only usable
-		// while the bonus-action slot is unspent, so the menu reflects that.
-		canUse := c.actionEconomy.BonusActionsRemaining > 0
-		reason := ""
-		if !canUse {
-			reason = "no bonus action remaining"
-		}
-		result = append(result, AvailableAction{
-			Ref:         refs.Actions.UnarmedStrike(),
-			Name:        "Unarmed Strike",
-			EconomySlot: EconomySlotBonusAction,
-			TargetKind:  targetKindForRef(refs.Actions.UnarmedStrike()),
-			CanUse:      canUse,
-			Reason:      reason,
-		})
-	}
-
-	return result
-}
-
 // --- Activate helpers ---
 
 // activateCombatAbility uses the bridge pattern to activate a combat ability.
@@ -455,258 +332,64 @@ func (c *Character) activateCombatAbility(
 		ObserverPassivePerceptions: activateInput.ObserverPassivePerceptions,
 	}
 
-	// Check if ability can be activated
 	if err := ca.CanActivate(ctx, c, input); err != nil {
 		return &ActivateAbilityOutput{
 			Success:   false,
 			Error:     err.Error(),
 			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
 		}, nil
 	}
-
-	// Activate
 	if err := ca.Activate(ctx, c, input); err != nil {
 		return &ActivateAbilityOutput{
 			Success:   false,
 			Error:     err.Error(),
 			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
 		}, nil
 	}
 
-	// Sync toolkit action economy back to our data
 	c.fromToolkitActionEconomy(ae)
-
 	return &ActivateAbilityOutput{
 		Success:         true,
 		GrantedCapacity: c.describeGrantedCapacity(ca),
 		Abilities:       c.buildAvailableAbilities(),
-		Actions:         c.buildAvailableActions(),
 	}, nil
 }
 
 // activateFeature directly manages action economy for feature activation.
-// Features manage their own resources (charges) but the Character manages action economy consumption.
+// Features manage their own resources while Character manages slot consumption.
 func (c *Character) activateFeature(f features.Feature, _ *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
-	// Check action economy
 	if !c.canUseAbilityByActionType(f.ActionType()) {
 		reason := c.actionTypeExhaustedReason(f.ActionType())
 		return &ActivateAbilityOutput{
 			Success:   false,
 			Error:     reason,
 			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
 		}, nil
 	}
 
-	// Check feature-specific requirements
 	ctx := context.Background()
 	if err := f.CanActivate(ctx, c, features.FeatureInput{}); err != nil {
 		return &ActivateAbilityOutput{
 			Success:   false,
 			Error:     err.Error(),
 			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
 		}, nil
 	}
 
-	// Consume action economy
 	c.consumeActionType(f.ActionType())
-
-	// Activate the feature
 	if err := f.Activate(ctx, c, features.FeatureInput{Bus: c.bus}); err != nil {
-		// Rollback action economy on failure
 		c.restoreActionType(f.ActionType())
 		return &ActivateAbilityOutput{
 			Success:   false,
 			Error:     err.Error(),
 			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
 		}, nil
 	}
 
 	return &ActivateAbilityOutput{
 		Success:   true,
 		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
 	}, nil
-}
-
-// --- Execute helpers ---
-
-// executeStrike decrements granted attacks and checks for post-strike grants.
-func (c *Character) executeStrike() (*ExecuteActionOutput, error) {
-	attacks := c.actionEconomy.Granted[GrantedAttacks]
-	if attacks <= 0 {
-		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     "no attacks remaining",
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	c.actionEconomy.Granted[GrantedAttacks]--
-	c.checkPostStrikeGrants()
-	c.economyChanged()
-
-	return &ExecuteActionOutput{
-		Success:   true,
-		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
-	}, nil
-}
-
-// executeOffHandStrike decrements granted off-hand strikes.
-func (c *Character) executeOffHandStrike() (*ExecuteActionOutput, error) {
-	if c.actionEconomy.Granted[GrantedOffHandStrikes] <= 0 {
-		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     "no off-hand strikes remaining",
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	c.actionEconomy.Granted[GrantedOffHandStrikes]--
-	c.economyChanged()
-
-	return &ExecuteActionOutput{
-		Success:   true,
-		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
-	}, nil
-}
-
-// executeFlurryStrike decrements granted flurry strikes.
-func (c *Character) executeFlurryStrike() (*ExecuteActionOutput, error) {
-	if c.actionEconomy.Granted[GrantedFlurryStrikes] <= 0 {
-		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     "no flurry strikes remaining",
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	c.actionEconomy.Granted[GrantedFlurryStrikes]--
-	c.economyChanged()
-
-	return &ExecuteActionOutput{
-		Success:   true,
-		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
-	}, nil
-}
-
-// executeUnarmedStrike consumes a granted martial arts bonus strike AND the
-// bonus action that pays for it. The Monk's Martial Arts unarmed strike is a
-// bonus action (PHB p.78: "you can make one unarmed strike as a bonus action"):
-// the granted capacity tracks that the strike is available this turn, and the
-// bonus-action slot is the economy cost spent when the strike is actually taken.
-// Decrementing both here keeps the two-level model honest — without the slot
-// decrement the actor could appear to still have a bonus action after using it.
-func (c *Character) executeUnarmedStrike() (*ExecuteActionOutput, error) {
-	if c.actionEconomy.Granted[GrantedMartialArtsBonus] <= 0 {
-		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     "no martial arts bonus strikes remaining",
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	// The unarmed strike costs a bonus action (PHB p.78). Reject before spending
-	// the granted capacity if the bonus-action slot is already gone, so
-	// enforcement does not depend on call order.
-	if c.actionEconomy.BonusActionsRemaining <= 0 {
-		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     "no bonus action remaining",
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	c.actionEconomy.Granted[GrantedMartialArtsBonus]--
-	c.actionEconomy.BonusActionsRemaining--
-	c.economyChanged()
-
-	return &ExecuteActionOutput{
-		Success:   true,
-		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
-	}, nil
-}
-
-// executeMove spends distance feet from the movement budget (#714). Movement
-// is granted capacity like attacks/strikes (see executeStrike et al.), but the
-// unit is feet rather than a use-count: distance is supplied by the caller
-// (Encounter.Move computes it from the hex path) rather than fixed at 1 per
-// call.
-//
-// Rejects (without mutating state) a non-positive distance — a move must
-// cover ground; a zero or negative distance is a caller defect, and negative
-// in particular would otherwise INCREASE the budget (MovementRemaining -=
-// negative), an economy exploit. This is a public rules-layer API, so it
-// guards its own inputs rather than trusting every caller.
-//
-// Also rejects (without mutating state) when distance exceeds
-// MovementRemaining. The encounter caller (Encounter.Move) is expected to
-// have already pre-checked an over-budget request before running any movement
-// chain, so this is the structural backstop, not the primary gate.
-func (c *Character) executeMove(distance int) (*ExecuteActionOutput, error) {
-	if distance <= 0 {
-		return &ExecuteActionOutput{
-			Success:   false,
-			Error:     fmt.Sprintf("movement distance must be positive, got %dft", distance),
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	if distance > c.actionEconomy.MovementRemaining {
-		return &ExecuteActionOutput{
-			Success: false,
-			Error: fmt.Sprintf("insufficient movement: %dft requested, %dft remaining",
-				distance, c.actionEconomy.MovementRemaining),
-			Abilities: c.buildAvailableAbilities(),
-			Actions:   c.buildAvailableActions(),
-		}, nil
-	}
-
-	c.actionEconomy.MovementRemaining -= distance
-	c.economyChanged()
-
-	return &ExecuteActionOutput{
-		Success:   true,
-		Abilities: c.buildAvailableAbilities(),
-		Actions:   c.buildAvailableActions(),
-	}, nil
-}
-
-// checkPostStrikeGrants checks for post-main-hand-strike grants.
-// After a main-hand strike, monks get a martial arts bonus strike
-// and two-weapon fighters get an off-hand strike.
-//
-// It writes granted capacity but does not call economyChanged: its only caller,
-// executeStrike, marks once for the decrement and these grants together. A
-// second caller has to mark for itself.
-func (c *Character) checkPostStrikeGrants() {
-	// Monk: grant martial arts bonus if bonus action available and not already granted
-	if c.classID == classes.Monk &&
-		c.actionEconomy.Granted[GrantedMartialArtsBonus] == 0 &&
-		c.actionEconomy.BonusActionsRemaining > 0 {
-		c.actionEconomy.Granted[GrantedMartialArtsBonus] = 1
-	}
-
-	// Two-weapon fighting: grant off-hand strike if bonus action available and not already granted
-	if c.hasTwoLightWeapons() &&
-		c.actionEconomy.Granted[GrantedOffHandStrikes] == 0 &&
-		c.actionEconomy.BonusActionsRemaining > 0 {
-		c.actionEconomy.Granted[GrantedOffHandStrikes] = 1
-	}
 }
 
 // --- Bridge methods ---

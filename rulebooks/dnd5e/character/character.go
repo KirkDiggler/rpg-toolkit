@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -31,8 +30,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// Compile-time check that Character implements ActionHolder and CombatAbilityHolder
-var _ actions.ActionHolder = (*Character)(nil)
+// Compile-time check that Character implements CombatAbilityHolder.
 var _ combatabilities.CombatAbilityHolder = (*Character)(nil)
 
 // Character represents a playable D&D 5e character
@@ -77,14 +75,11 @@ type Character struct {
 	classResources map[shared.ClassResourceType]ResourceData
 	resources      map[coreResources.ResourceKey]*combat.RecoverableResource
 
-	// Features (rage, second wind, etc) - grant actions and conditions
+	// Features (rage, second wind, etc) grant capacity and conditions.
 	features []features.Feature
 
-	// Combat abilities (Attack, Dash, Dodge, Disengage) - consume action economy to grant capacity
+	// Combat abilities (Attack, Dash, Dodge, Disengage) consume action economy to grant capacity.
 	combatAbilities []combatabilities.CombatAbility
-
-	// Actions (attack, dash, flurry strike, etc) - things you can do
-	actions []actions.Action
 
 	// Conditions (raging, poisoned, stunned, etc) - passive effects
 	conditions []dnd5eEvents.ConditionBehavior
@@ -565,45 +560,6 @@ func (c *Character) GetFeature(id string) features.Feature {
 	return nil
 }
 
-// AddAction adds an action to the character's available actions.
-// Implements actions.ActionHolder interface.
-func (c *Character) AddAction(action actions.Action) error {
-	if action == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "action cannot be nil")
-	}
-	c.actions = append(c.actions, action)
-	return nil
-}
-
-// RemoveAction removes an action by ID.
-// Implements actions.ActionHolder interface.
-func (c *Character) RemoveAction(actionID string) error {
-	for i, a := range c.actions {
-		if a.GetID() == actionID {
-			c.actions = append(c.actions[:i], c.actions[i+1:]...)
-			return nil
-		}
-	}
-	return rpgerr.Newf(rpgerr.CodeNotFound, "action %s not found", actionID)
-}
-
-// GetActions returns all available actions.
-// Implements actions.ActionHolder interface.
-func (c *Character) GetActions() []actions.Action {
-	return c.actions
-}
-
-// GetAction returns a specific action by ID, or nil if not found.
-// Implements actions.ActionHolder interface.
-func (c *Character) GetAction(id string) actions.Action {
-	for _, a := range c.actions {
-		if a.GetID() == id {
-			return a
-		}
-	}
-	return nil
-}
-
 // AddCombatAbility adds a combat ability to the character's available combat abilities.
 // Implements combatabilities.CombatAbilityHolder interface.
 // Implements combatabilities.CombatAbilityHolder interface.
@@ -693,7 +649,6 @@ func (c *Character) ActivateCombatAbility(ctx context.Context, input *combat.Act
 	abilityInput := combatabilities.CombatAbilityInput{
 		Bus:           input.Bus,
 		ActionEconomy: input.Economy,
-		ActionHolder:  c,
 		Speed:         input.Speed,
 		ExtraAttacks:  input.ExtraAttacks,
 	}
@@ -714,21 +669,6 @@ func (c *Character) GetAbilityInfos() []combat.AbilityInfo {
 			Ref:        a.Ref(),
 			Name:       a.Name(),
 			ActionType: a.ActionType(),
-		})
-	}
-	return infos
-}
-
-// GetActionInfos returns metadata about all actions on this character.
-// Implements combat.CombatCharacter interface.
-func (c *Character) GetActionInfos() []combat.ActionInfo {
-	infos := make([]combat.ActionInfo, 0, len(c.actions))
-	for _, a := range c.actions {
-		infos = append(infos, combat.ActionInfo{
-			ID:           a.GetID(),
-			ActionType:   a.ActionType(),
-			CapacityType: a.CapacityType(),
-			IsTemporary:  a.IsTemporary(),
 		})
 	}
 	return infos
@@ -1269,47 +1209,7 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 	return nil
 }
 
-// onActionGranted handles ActionGrantedEvent.
-//
-// bus is the sheet's attached bus, for the reason given on onConditionApplied.
-// Granted actions are not persisted, so this does not mark the sheet dirty.
-func (c *Character) onActionGranted(ctx context.Context, bus events.EventBus, event dnd5eEvents.ActionGrantedEvent) error {
-	// Only process events for this character
-	if event.CharacterID != c.id {
-		return nil
-	}
-
-	// Type-assert to actions.Action
-	action, ok := event.Action.(actions.Action)
-	if !ok {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "event action does not implement actions.Action")
-	}
-
-	// Apply the action (subscribes to events like TurnEnd for cleanup).
-	// Ignore AlreadyExists errors since the granter may have already called Apply.
-	if err := action.Apply(ctx, bus); err != nil {
-		if rpgerr.GetCode(err) != rpgerr.CodeAlreadyExists {
-			return rpgerr.Wrapf(err, "failed to apply action")
-		}
-	}
-
-	// Add the action to our list
-	return c.AddAction(action)
-}
-
-// onActionRemoved handles ActionRemovedEvent
-func (c *Character) onActionRemoved(_ context.Context, event dnd5eEvents.ActionRemovedEvent) error {
-	// Only process events for this character
-	if event.OwnerID != c.id {
-		return nil
-	}
-
-	// Remove the action from our list
-	_ = c.RemoveAction(event.ActionID)
-	return nil
-}
-
-// Cleanup unsubscribes from all events and removes all active conditions and temporary actions
+// Cleanup unsubscribes from all events and removes all active conditions.
 func (c *Character) Cleanup(ctx context.Context) error {
 	if c.bus == nil {
 		return nil
@@ -1324,19 +1224,6 @@ func (c *Character) Cleanup(ctx context.Context) error {
 		}
 	}
 	c.conditions = nil
-
-	// Remove temporary actions (unsubscribes from TurnEnd, publishes ActionRemovedEvent)
-	var permanentActions []actions.Action
-	for _, action := range c.actions {
-		if action.IsTemporary() {
-			if err := action.Remove(ctx, c.bus); err != nil {
-				errors = append(errors, rpgerr.Wrapf(err, "failed to remove action"))
-			}
-		} else {
-			permanentActions = append(permanentActions, action)
-		}
-	}
-	c.actions = permanentActions
 
 	// Unsubscribe from events - collect errors but try to unsubscribe all
 	for _, subID := range c.subscriptionIDs {

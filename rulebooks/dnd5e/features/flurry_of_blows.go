@@ -7,18 +7,17 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // FlurryOfBlows represents the monk's Flurry of Blows feature.
 // It implements core.Action[FeatureInput] for activation.
-// When activated, consumes 1 Ki point and grants two unarmed strikes as a bonus action.
+// When activated, consumes 1 Ki point and banks two flurry-strike capacity.
 type FlurryOfBlows struct {
 	id          string
 	name        string
@@ -65,78 +64,25 @@ func (f *FlurryOfBlows) CanActivate(_ context.Context, owner core.Entity, _ Feat
 	return nil
 }
 
-// Activate implements core.Action[FeatureInput]
+type flurryOwner interface {
+	coreResources.ResourceAccessor
+	BankCapacity(combat.CapacityType, int)
+}
+
+// Activate implements core.Action[FeatureInput].
 func (f *FlurryOfBlows) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-	// Check if we can activate
 	if err := f.CanActivate(ctx, owner, input); err != nil {
 		return err
 	}
 
-	// Cast owner to ResourceAccessor to consume Ki
-	accessor, ok := owner.(coreResources.ResourceAccessor)
+	monk, ok := owner.(flurryOwner)
 	if !ok {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner cannot bank flurry strike capacity")
 	}
-
-	// Require event bus for action granting via events
-	if input.Bus == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus required for flurry of blows")
-	}
-
-	// Grant two FlurryStrike actions
-	ownerID := owner.GetID()
-	strike1 := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
-		ID:      fmt.Sprintf("%s-flurry-strike-1", ownerID),
-		OwnerID: ownerID,
-	})
-	strike2 := actions.NewFlurryStrike(actions.FlurryStrikeConfig{
-		ID:      fmt.Sprintf("%s-flurry-strike-2", ownerID),
-		OwnerID: ownerID,
-	})
-
-	// Apply actions to event bus (subscribe to turn end for cleanup)
-	if err := strike1.Apply(ctx, input.Bus); err != nil {
-		return rpgerr.Wrapf(err, "failed to apply flurry strike 1")
-	}
-	if err := strike2.Apply(ctx, input.Bus); err != nil {
-		// Rollback strike1
-		_ = strike1.Remove(ctx, input.Bus)
-		return rpgerr.Wrapf(err, "failed to apply flurry strike 2")
-	}
-
-	// Publish ActionGrantedEvent for each action
-	// The character subscribes to this event and adds the action
-	actionGrantedTopic := dnd5eEvents.ActionGrantedTopic.On(input.Bus)
-	if err := actionGrantedTopic.Publish(ctx, dnd5eEvents.ActionGrantedEvent{
-		CharacterID: ownerID,
-		Action:      strike1,
-		Source:      "flurry_of_blows",
-	}); err != nil {
-		// Rollback subscriptions
-		_ = strike1.Remove(ctx, input.Bus)
-		_ = strike2.Remove(ctx, input.Bus)
-		return rpgerr.Wrapf(err, "failed to publish action granted event for flurry strike 1")
-	}
-	if err := actionGrantedTopic.Publish(ctx, dnd5eEvents.ActionGrantedEvent{
-		CharacterID: ownerID,
-		Action:      strike2,
-		Source:      "flurry_of_blows",
-	}); err != nil {
-		// Rollback subscriptions (note: strike1 is already added to character via event)
-		_ = strike1.Remove(ctx, input.Bus)
-		_ = strike2.Remove(ctx, input.Bus)
-		return rpgerr.Wrapf(err, "failed to publish action granted event for flurry strike 2")
-	}
-
-	// Consume 1 Ki point only after successful action granting
-	// This ensures no Ki is lost if action granting fails
-	if err := accessor.UseResource(resources.Ki, 1); err != nil {
-		// Rollback subscriptions (actions were added to character via events)
-		_ = strike1.Remove(ctx, input.Bus)
-		_ = strike2.Remove(ctx, input.Bus)
+	if err := monk.UseResource(resources.Ki, 1); err != nil {
 		return rpgerr.Wrapf(err, "failed to use ki for flurry of blows")
 	}
-
+	monk.BankCapacity(combat.CapacityFlurryStrike, 2)
 	return nil
 }
 
@@ -172,6 +118,6 @@ func (f *FlurryOfBlows) ToJSON() (json.RawMessage, error) {
 }
 
 // ActionType returns the action economy cost to activate flurry of blows (bonus action)
-func (f *FlurryOfBlows) ActionType() combat.ActionType {
-	return combat.ActionBonus
+func (f *FlurryOfBlows) ActionType() coreCombat.ActionType {
+	return coreCombat.ActionBonus
 }

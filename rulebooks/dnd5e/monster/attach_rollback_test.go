@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -103,7 +104,7 @@ func (s *MonsterAttachRollbackTestSuite) sheet() *Data {
 		HitPoints:    9,
 		MaxHitPoints: 13,
 		ArmorClass:   13,
-		Actions:      []ActionData{},
+		Actions:      []combatActions.Definition{},
 	}
 }
 

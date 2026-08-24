@@ -51,21 +51,10 @@ func (s *SkeletonCaptainTestSuite) TestNewSkeletonCaptain() {
 	speed := captain.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Check actions - should have longsword and multiattack
+	// The component attack remains; multiattack waits for a sequence profile.
 	actions := captain.Actions()
-	s.Require().Len(actions, 2)
-
-	var hasLongsword, hasMultiattack bool
-	for _, action := range actions {
-		switch action.GetID() {
-		case "longsword":
-			hasLongsword = true
-		case "multiattack":
-			hasMultiattack = true
-		}
-	}
-	s.Assert().True(hasLongsword, "should have longsword action")
-	s.Assert().True(hasMultiattack, "should have multiattack action")
+	s.Require().Len(actions, 1)
+	s.Equal(refs.MonsterActions.SkeletonCaptainLongsword(), &actions[0].Ref)
 }
 
 func (s *SkeletonCaptainTestSuite) TestSkeletonCaptainTraitsIncludedInData() {

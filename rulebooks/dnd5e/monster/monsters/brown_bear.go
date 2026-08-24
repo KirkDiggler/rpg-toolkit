@@ -5,14 +5,15 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewBrownBear creates a CR 1 brown bear boss with multiattack (bite + claws)
+// NewBrownBear creates a CR 1 brown bear with bite and claw component attacks.
+// Multiattack is deferred until a sequence profile and machine exist.
 func NewBrownBear(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -30,26 +31,27 @@ func NewBrownBear(id string) *monster.Monster {
 		},
 	})
 
-	// Bite attack (part of multiattack)
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "bite",
-		AttackBonus: 6, // +4 STR + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 4}},
-		Reach:       5,
-	})))
-
-	// Claw attack (part of multiattack)
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "claw",
-		AttackBonus: 6, // +4 STR + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Slashing, FlatBonus: 4}},
-		Reach:       5,
-	})))
-
-	// Multiattack - bite + claws
-	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{
-		Attacks: []string{"bite", "claw"},
-	}))
+	// Component attacks remain available until a sequence profile exists.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.BrownBearBite(),
+		Name: "bite",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 6,
+			Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 4}},
+		},
+	})
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.BrownBearClaw(),
+		Name: "claw",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 6,
+			Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Slashing, FlatBonus: 4}},
+		},
+	})
 
 	// Set movement speed (bears can also climb)
 	m.SetSpeed(monster.SpeedData{

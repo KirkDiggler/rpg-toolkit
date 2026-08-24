@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -45,10 +46,8 @@ const (
 // the load and the error names it. Whether the ref resolves to a trait this
 // build knows is monstertraits' answer to give, at attach time.
 //
-// Actions are not loaded here either, and for the same reason — the action
-// loader imports this package. monstertraits.LoadMonster is the composition
-// that does both; a monster loaded by Load alone has no actions, and ToData
-// will say so.
+// Actions are already inert shared definitions. Load validates and clones them
+// directly; no behavior loader or second representation is involved.
 //
 // Two fields of [Data] survive no loader: Features and Inventory have nowhere
 // to live on the monster and ToData does not write them. That is a gap in the
@@ -101,14 +100,16 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		senses:           d.Senses,
 		targeting:        d.Targeting,
 		subscriptionIDs:  make([]string, 0),
-		actions:          make([]MonsterAction, 0, len(d.Actions)),
+		actions:          make([]combatActions.Definition, 0, len(d.Actions)),
 		proficiencies:    make(map[string]int),
 		conditions:       make([]dnd5eEvents.ConditionBehavior, 0, len(d.Conditions)),
 	}
 
-	// Actions must be loaded by the caller to avoid import cycles.
-	// The monster package cannot import monster/actions because actions imports monster.
-	// Use LoadMonsterActions helper to load actions after creating the monster.
+	for index, definition := range d.Actions {
+		if err := m.AddAction(definition); err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to load monster action %d", index)
+		}
+	}
 
 	// Load proficiencies
 	for _, prof := range d.Proficiencies {
@@ -138,8 +139,7 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 
 // SheetKeeper is a monster's own reaction to the world, made attachable.
 //
-// A monster sheet has less to keep than a character's — damage taken and
-// healing received, both of which move its hit points — but the principle is
+// A monster sheet keeps damage, healing, and live condition applications, but the principle is
 // the same one rpg-toolkit#985 is about: that is behaviour, and behaviour
 // belongs in something a caller can attach, name in a registration ledger, and
 // take back, rather than in wiring hidden inside a constructor.
@@ -165,7 +165,7 @@ func (m *Monster) SheetKeeper() *SheetKeeper {
 	return m.keeper
 }
 
-// Apply subscribes the monster's damage and healing handlers to bus.
+// Apply subscribes the monster's damage, healing, and condition handlers to bus.
 //
 // The handlers close over this bus rather than reading one off the monster: a
 // purely loaded monster has none of its own.
@@ -205,6 +205,12 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 		}},
 		{"healing received", func() (string, error) {
 			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, m.onHealingReceived)
+		}},
+		{"condition applied", func() (string, error) {
+			return dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(ctx,
+				func(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+					return m.onConditionApplied(ctx, bus, event)
+				})
 		}},
 	}
 

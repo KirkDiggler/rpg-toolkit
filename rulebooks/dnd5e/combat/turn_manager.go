@@ -47,22 +47,6 @@ type AbilityInfo struct {
 	ActionType coreCombat.ActionType
 }
 
-// ActionInfo provides metadata about an available action.
-type ActionInfo struct {
-	// ID is the unique identifier of this action instance.
-	ID string
-
-	// ActionType is the action economy cost to use this action.
-	ActionType coreCombat.ActionType
-
-	// CapacityType indicates what capacity this action consumes when used.
-	// For example, Strike consumes attack capacity, Move consumes movement capacity.
-	CapacityType CapacityType
-
-	// IsTemporary indicates if this action was granted for the current turn only.
-	IsTemporary bool
-}
-
 // CombatCharacter combines the interfaces needed for turn orchestration.
 // Character already satisfies this interface.
 type CombatCharacter interface {
@@ -71,7 +55,6 @@ type CombatCharacter interface {
 	GetExtraAttacksCount() int
 	ActivateCombatAbility(ctx context.Context, input *ActivateAbilityInput) error
 	GetAbilityInfos() []AbilityInfo
-	GetActionInfos() []ActionInfo
 	Cleanup(ctx context.Context) error
 }
 
@@ -180,7 +163,7 @@ func (tm *TurnManager) StartTurn(ctx context.Context) (*StartTurnResult, error) 
 	}, nil
 }
 
-// EndTurn publishes a TurnEndEvent and cleans up temporary actions/conditions.
+// EndTurn publishes a TurnEndEvent and cleans up attached conditions.
 // After calling EndTurn, the TurnManager must not be reused.
 func (tm *TurnManager) EndTurn(ctx context.Context) (*EndTurnResult, error) {
 	if tm.turnEnded {
@@ -198,7 +181,7 @@ func (tm *TurnManager) EndTurn(ctx context.Context) (*EndTurnResult, error) {
 		return nil, fmt.Errorf("failed to publish turn end event: %w", err)
 	}
 
-	// Cleanup temporary actions/conditions
+	// Cleanup attached conditions and subscriptions.
 	if err := tm.character.Cleanup(ctx); err != nil {
 		return nil, err
 	}
