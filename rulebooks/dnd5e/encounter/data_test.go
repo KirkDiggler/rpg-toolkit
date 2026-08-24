@@ -203,6 +203,16 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	s.Require().NoError(err)
 }
 
+func (s *DataTestSuite) TestActionViewUsesRangeFeetJSONWithoutLegacyAlias() {
+	raw, err := json.Marshal(encounter.ActionViewData{
+		Ref:       core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "skeleton-shortbow"},
+		RangeFeet: 320,
+	})
+	s.Require().NoError(err)
+	s.JSONEq(`{"ref":{"module":"dnd5e","type":"monster_actions","id":"skeleton-shortbow"},"range_feet":320}`, string(raw))
+	s.NotContains(string(raw), "reach_feet")
+}
+
 func TestDataSuite(t *testing.T) {
 	suite.Run(t, new(DataTestSuite))
 }
