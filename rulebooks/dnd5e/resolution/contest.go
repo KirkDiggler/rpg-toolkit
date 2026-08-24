@@ -51,6 +51,26 @@ type preparedCondition struct {
 	behavior    dnd5eEvents.ConditionBehavior
 }
 
+// validateConditionGate checks the subset of save gates resolution can execute.
+// Shared action data permits recurrence, but this module currently resolves
+// only the immediate save that negates a condition on success.
+func validateConditionGate(gate *saves.SaveGate) error {
+	if gate == nil {
+		return fmt.Errorf("%w: contest has no save gate", ErrNilInput)
+	}
+	if err := gate.Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrBadGate, err)
+	}
+	if gate.OnSuccess != saves.Negated {
+		return fmt.Errorf("%w: a condition contest must negate on success", ErrBadGate)
+	}
+	if gate.Recurrence != saves.RecurrenceNone {
+		return fmt.Errorf("%w: %q", ErrRecurrenceUnsupported, gate.Recurrence)
+	}
+
+	return nil
+}
+
 func prepareCondition(
 	application combatActions.ConditionApplication, targetID, sourceRef string,
 ) (preparedCondition, error) {
@@ -112,17 +132,8 @@ func (m *contestMachine) Start(_ context.Context, cast *Participants) (Step, err
 		return nil, ErrNilInput
 	}
 	m.cast = cast
-	if m.in.Gate == nil {
-		return nil, fmt.Errorf("%w: contest has no save gate", ErrNilInput)
-	}
-	if err := m.in.Gate.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrBadGate, err)
-	}
-	if m.in.Gate.OnSuccess != saves.Negated {
-		return nil, fmt.Errorf("%w: a condition contest must negate on success", ErrBadGate)
-	}
-	if m.in.Gate.Recurrence != saves.RecurrenceNone {
-		return nil, fmt.Errorf("%w: %q", ErrRecurrenceUnsupported, m.in.Gate.Recurrence)
+	if err := validateConditionGate(m.in.Gate); err != nil {
+		return nil, err
 	}
 
 	if m.in.prepared != nil {

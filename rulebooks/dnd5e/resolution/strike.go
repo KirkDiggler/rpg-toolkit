@@ -133,7 +133,7 @@ type strikeMachine struct {
 	outcome StrikeOutcome
 }
 
-// Start validates the profile, reads the target's AC, and folds the attack chain.
+// Start validates the profile and produces the first post-payment resolution step.
 func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
@@ -175,6 +175,11 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	}
 	m.prepared = make([]preparedCondition, len(m.attack.OnHit))
 	for index, application := range m.attack.OnHit {
+		if application.Save != nil {
+			if gateErr := validateConditionGate(application.Save); gateErr != nil {
+				return nil, fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
+			}
+		}
 		prepared, prepareErr := prepareCondition(application, m.in.TargetID, m.in.Definition.Ref.String())
 		if prepareErr != nil {
 			return nil, prepareErr
@@ -182,62 +187,62 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 		m.prepared[index] = prepared
 	}
 
-	// The AC the target actually has — armor worn and every effect folded onto
-	// the AC chain — rather than the flat number the sheet happens to carry.
-	//
-	// combat.GetEffectiveAC is bus-free at its signature and dispatches on the
-	// sheet: a character folds combat.ACChain, a monster has no such method and
-	// falls through to its stat block's AC, which is correct for a stat block.
-	//
-	// The character's fold rides the bus parked on the sheet, and under Resolve
-	// that bus IS this interaction's participant view — Attach was handed it —
-	// so the fold runs among the same subscribers everything else in this strike
-	// folds among. That is the legacy shape and it is load-bearing here: a
-	// resolution-owned step (an AC Gather before the attack event is built) is
-	// the eventual form if AC folding ever needs to be inspectable in the step
-	// log or suspendable at a reaction window. Documented rather than built —
-	// nothing asks for it yet, and the fold reaches the right subscribers
-	// either way.
-	//
-	// THE CHAIN EVENT'S COPY IS THE ONE THAT MATTERS. afterAttackChain compares
-	// against the FOLDED event and then assigns m.outcome.TargetAC from it, so
-	// the event's number both decides the hit and replaces whatever the outcome
-	// was built with. Setting only the outcome would report the effective AC
-	// and roll against the flat one — a strike that tells the truth and does
-	// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
-	//
-	// The outcome is seeded with it anyway, and that seed is dead on every
-	// path that exists today: nothing returns a StrikeOutcome before the fold
-	// runs. It stays because a future phase that can end the strike earlier —
-	// a reaction window declining the attack, say — would otherwise hand back
-	// an outcome with a zero AC, and that is a worse failure than a redundant
-	// assignment.
-	effectiveAC := combat.GetEffectiveAC(ctx, target)
+	return m.effectiveACStep(target, longRange), nil
+}
 
-	m.outcome = StrikeOutcome{
-		AttackerID: m.in.AttackerID,
-		TargetID:   m.in.TargetID,
-		TargetAC:   effectiveAC,
-	}
+// effectiveACStep performs the first event-backed work only after the door has
+// accepted payment, then builds the attack event from that folded AC.
+func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool) Gather {
+	return Gather{
+		name: "effective AC",
+		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
+			// The AC the target actually has — armor worn and every effect folded onto
+			// the AC chain — rather than the flat number the sheet happens to carry.
+			//
+			// combat.GetEffectiveAC is bus-free at its signature and dispatches on the
+			// sheet: a character folds combat.ACChain, a monster has no such method and
+			// falls through to its stat block's AC, which is correct for a stat block.
+			//
+			// The character's fold rides the bus parked on the sheet, and under Resolve
+			// that bus IS this interaction's participant view — Attach was handed it —
+			// so the fold runs among the same subscribers everything else in this strike
+			// folds among. Running that read inside this first Gather is load-bearing:
+			// Start is pure preflight, and an action the door refuses publishes nothing.
+			//
+			// THE CHAIN EVENT'S COPY IS THE ONE THAT MATTERS. afterAttackChain compares
+			// against the FOLDED event and then assigns m.outcome.TargetAC from it, so
+			// the event's number both decides the hit and replaces whatever the outcome
+			// was built with. Setting only the outcome would report the effective AC
+			// and roll against the flat one — a strike that tells the truth and does
+			// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
+			effectiveAC := combat.GetEffectiveAC(ctx, target)
 
-	event := dnd5eEvents.AttackChainEvent{
-		AttackerID:        m.in.AttackerID,
-		TargetID:          m.in.TargetID,
-		WeaponRef:         m.sourceRef,
-		IsMelee:           m.attack.Delivery.IsMelee(),
-		AttackBonus:       m.attack.AttackBonus,
-		TargetAC:          effectiveAC,
-		CriticalThreshold: criticalThreshold,
-	}
-	if longRange {
-		event.DisadvantageSources = append(event.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-			SourceRef: &m.in.Definition.Ref,
-			SourceID:  m.in.AttackerID,
-			Reason:    "target is beyond normal range",
-		})
-	}
+			m.outcome = StrikeOutcome{
+				AttackerID: m.in.AttackerID,
+				TargetID:   m.in.TargetID,
+				TargetAC:   effectiveAC,
+			}
 
-	return gatherAttack(event, m.afterAttackChain), nil
+			event := dnd5eEvents.AttackChainEvent{
+				AttackerID:        m.in.AttackerID,
+				TargetID:          m.in.TargetID,
+				WeaponRef:         m.sourceRef,
+				IsMelee:           m.attack.Delivery.IsMelee(),
+				AttackBonus:       m.attack.AttackBonus,
+				TargetAC:          effectiveAC,
+				CriticalThreshold: criticalThreshold,
+			}
+			if longRange {
+				event.DisadvantageSources = append(event.DisadvantageSources, dnd5eEvents.AttackModifierSource{
+					SourceRef: &m.in.Definition.Ref,
+					SourceID:  m.in.AttackerID,
+					Reason:    "target is beyond normal range",
+				})
+			}
+
+			return gatherAttack(event, m.afterAttackChain), nil
+		},
+	}
 }
 
 // afterAttackChain rolls the die the fold decided the shape of, and decides

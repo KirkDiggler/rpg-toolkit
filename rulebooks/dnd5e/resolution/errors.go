@@ -93,12 +93,9 @@ var (
 	// ErrOutOfRange indicates a valid attack whose target lies beyond its delivery.
 	ErrOutOfRange = errors.New("resolution: target is out of range")
 
-	// ErrBadAttack indicates an action this build cannot read as an attack —
-	// an unknown weapon ref, a slot holding something that is not a weapon,
-	// or an equipment slot whose entry names an item that is not in
-	// inventory (see equippedWeapon in character_attack.go). Refused by
-	// name rather than treated as a generic swing, because guessing an
-	// attack bonus is how a stat block starts lying again.
+	// ErrBadAttack indicates an attack cannot be resolved from its shared
+	// definition, such as damage notation the dice parser refuses or a roller
+	// that does not return a requested pair.
 	ErrBadAttack = errors.New("resolution: unreadable attack")
 
 	// ErrNoCombatant indicates a strike naming somebody who was not passed in.

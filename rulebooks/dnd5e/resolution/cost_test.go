@@ -11,18 +11,22 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -294,6 +298,97 @@ func (s *CostTestSuite) TestAnActorWhoCannotPayPreflightsButNeverExecutes() {
 	// translation on the other side has nothing to say.
 	s.Require().Contains(err.Error(), heroID, "the refusal names who could not pay")
 	s.Require().Contains(err.Error(), string(combat.CapacityAttack), "and what they were short of")
+}
+
+// Effective AC is an event-backed read for characters, so it belongs to
+// execution rather than pure preflight. A strike the actor cannot afford must
+// therefore reach neither that chain nor its dice.
+func (s *CostTestSuite) TestAnUnaffordableStrikePublishesNoACChain() {
+	bus := events.NewEventBus()
+	acFolds := 0
+	_, err := combat.ACChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *combat.ACChainEvent,
+			c chain.Chain[*combat.ACChainEvent],
+		) (chain.Chain[*combat.ACChainEvent], error) {
+			acFolds++
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	hero := s.hero(s.economy(firstTurn, 1, 0))
+	wolf := monsters.NewWolf(wolfID).ToData()
+	roller := &countingRoller{}
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: s.world(), Participants: []Participant{{Character: hero}, {Monster: wolf}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: wolfID, TargetID: heroID, Definition: wolf.Actions[0], Roller: roller,
+		}),
+		Cost: &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+	}, newSurface(bus))
+
+	s.Require().ErrorIs(err, ErrCannotPay)
+	s.Require().Nil(out)
+	s.Zero(acFolds, "payment refusal happens before the character publishes its AC chain")
+	s.Zero(roller.rolls, "payment refusal also happens before attack dice")
+}
+
+// A recurring on-hit gate is structurally valid shared data, but resolution
+// cannot execute it yet. Strike must reject that limitation during its own
+// Start, before the door spends or any attack phase can mutate a participant.
+func (s *CostTestSuite) TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation() {
+	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	definition, err := character.AssembleAttack(s.load(hero), &character.AssembleAttackInput{
+		Slot: character.SlotMainHand,
+	})
+	s.Require().NoError(err)
+
+	gate := saves.NewSaveGate(abilities.STR, 11)
+	gate.Recurrence = saves.RecurrenceEndOfTurn
+	definition.Attack.OnHit = append(definition.Attack.OnHit, combatActions.ConditionApplication{
+		Ref:  *refs.Conditions.Prone(),
+		Save: gate,
+	})
+
+	roller := &actionRoller{singles: []int{15}, damage: [][]int{{4}}}
+	machine := NewStrike(&StrikeInput{
+		AttackerID: heroID,
+		TargetID:   wolfID,
+		Definition: definition,
+		Roller:     roller,
+	}).(*strikeMachine)
+	applyDamageCalls := 0
+	machine.applyDamage = func(
+		ctx context.Context, target combat.Combatant, input *combat.ApplyDamageInput,
+	) *combat.ApplyDamageResult {
+		applyDamageCalls++
+		return target.ApplyDamage(ctx, input)
+	}
+
+	wolf := monsters.NewWolf(wolfID).ToData()
+	out, err := Resolve(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: s.world(), Participants: []Participant{{Character: hero}, {Monster: wolf}},
+		Machine: machine,
+		Cost:    &Cost{PayerID: heroID, Profile: s.strikeCost(hero), Turn: s.thisTurn()},
+	})
+
+	s.Require().ErrorIs(err, ErrRecurrenceUnsupported)
+	s.Require().Nil(out)
+	s.Zero(roller.calls, "outer strike preflight refuses before attack or damage dice")
+	s.Zero(applyDamageCalls, "outer strike preflight refuses before target application")
+
+	s.Require().NotNil(machine.cast)
+	loadedHero, ok := machine.cast.Character(heroID)
+	s.Require().True(ok)
+	s.Equal(bankedAttacks, loadedHero.CapacityLeft(combat.CapacityAttack),
+		"outer strike preflight refuses before payment")
+	loadedWolf, ok := machine.cast.Monster(wolfID)
+	s.Require().True(ok)
+	s.Equal(wolf.HitPoints, loadedWolf.ToData().HitPoints,
+		"outer strike preflight leaves the target unchanged")
 }
 
 // A paid swing that MISSES still costs what it cost. The attacker's sheet comes

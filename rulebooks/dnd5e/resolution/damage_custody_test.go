@@ -169,6 +169,64 @@ func oozeProfile(pools ...damage.Damage) combatActions.Definition {
 	}
 }
 
+// ADR-0041's explicit boundary guard: multiple declared pools still produce
+// one DamageChain fold and one call through Strike's application seam.
+func (s *DamageCustodyTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
+	bus := events.NewEventBus()
+	damageFolds := 0
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			damageFolds++
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	definition := oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2},
+		damage.Damage{Dice: "1d6", Type: damage.Acid},
+	)
+	target := monsters.NewWolf(secondWolfID).ToData()
+	startingHitPoints := target.HitPoints
+	machine := NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   target.ID,
+		Definition: definition,
+		Roller:     &sequenceRoller{singles: []int{15}, pair: []int{4, 5}},
+	}).(*strikeMachine)
+	applyDamageCalls := 0
+	machine.applyDamage = func(
+		ctx context.Context, combatant combat.Combatant, input *combat.ApplyDamageInput,
+	) *combat.ApplyDamageResult {
+		applyDamageCalls++
+		return combatant.ApplyDamage(ctx, input)
+	}
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		Participants: []Participant{
+			{Monster: monsters.NewWolf(wolfID).ToData()},
+			{Monster: target},
+		},
+		Machine: machine,
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	struck, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Equal(11, struck.Damage)
+	s.Len(struck.DamageInstances, 2)
+	s.Len(struck.DamageComponents, 2)
+	s.Equal(1, damageFolds, "all pools travel through one DamageChain fold")
+	s.Equal(1, applyDamageCalls, "all typed instances enter one ApplyDamage call")
+	s.Require().Len(out.DirtyMonsters, 1)
+	s.Equal(startingHitPoints-struck.Damage, out.DirtyMonsters[0].HitPoints,
+		"the folded instances land together in one application")
+}
+
 func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndImmunity() {
 	bus := events.NewEventBus()
 	s.multiplyOnBus(bus, damage.Bludgeoning, 2)
