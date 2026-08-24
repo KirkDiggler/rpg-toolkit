@@ -186,6 +186,29 @@ type AtlasProp struct {
 
 	// BlocksLineOfSight reports whether sight passes through its cell.
 	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+
+	// Facing is the authored direction this prop faces, in the field's own
+	// orientation vocabulary — carried verbatim from
+	// [encounter.AtlasProp.Facing] and never interpreted here (rpg-project
+	// #261). Optional: "" means the asset's own default facing. Angle math
+	// is a render concern, not this seam's — the wire names the fact, the
+	// client derives pixels.
+	Facing string `json:"facing,omitempty"`
+
+	// Offset is a within-cell VISUAL nudge, [x,y] fractions of the cell
+	// size, carried verbatim from [encounter.AtlasProp.Offset]. {0,0} means
+	// centered — the SAME fact a prop that authored no offset carries, by
+	// design (rpg-project#261).
+	//
+	// No omitempty: Go's encoding/json cannot omit a fixed-size array
+	// regardless of the tag (verified — the key is always written), so a
+	// reading client checks the VALUE for {0,0} rather than the key for
+	// absence, the same way [Lighting.Intensity]'s own zero is an answer
+	// rather than a gap.
+	//
+	// VISUAL ONLY — a prop still occupies its whole cell for movement and
+	// line of sight; this never reaches a rule.
+	Offset [2]float64 `json:"offset"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
