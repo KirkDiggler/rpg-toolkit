@@ -194,6 +194,15 @@ func TestGolden_ReferenceTombV2MatchesV1Atlas(t *testing.T) {
 	require.Equal(t, 48, len(byID["entrance"].Cells))
 	require.Equal(t, 80, len(byID["hall"].Cells))
 	require.Equal(t, 96, len(byID["tomb"].Cells))
+
+	// rpg-project#261: the reference tomb authors neither field on any prop,
+	// so the additive fields must change nothing absent — every prop's
+	// Facing and Offset are the zero value, the same fact "said nothing"
+	// always means.
+	for _, p := range atlas.Props {
+		require.Equal(t, "", p.Facing, "the reference tomb authors no facing on %q", p.Ref)
+		require.Equal(t, [2]float64{0, 0}, p.Offset, "nor an offset on %q", p.Ref)
+	}
 }
 
 // TestSecondSkeletonFixtureCompiles is rpg-project#254's fixture, so slice 2
