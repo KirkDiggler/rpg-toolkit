@@ -17,12 +17,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -131,19 +131,17 @@ func (s *ResolveTestSuite) dodging() json.RawMessage {
 	return raw
 }
 
-// shortsword is the skeleton's melee attack in the form a host stores it. Built
-// through the action's own ToData so the fixture is the real serialized shape
-// rather than a hand-copied guess at it.
-func (s *ResolveTestSuite) shortsword() monster.ActionData {
-	action, err := monsterActions.NewMeleeAction(monsterActions.MeleeConfig{
-		Name:        "shortsword",
-		AttackBonus: 4,
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
-		Reach:       5,
-	})
-	s.Require().NoError(err)
-
-	return action.ToData()
+func (s *ResolveTestSuite) shortsword() combatActions.Definition {
+	return combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonShortsword(),
+		Name: "shortsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
+		},
+	}
 }
 
 // skeleton carries a trait that has nothing to do with saving throws, which is
@@ -166,7 +164,7 @@ func (s *ResolveTestSuite) skeleton() *monster.Data {
 		MaxHitPoints:  13,
 		ArmorClass:    13,
 		AbilityScores: shared.AbilityScores{},
-		Actions:       []monster.ActionData{s.shortsword()},
+		Actions:       []combatActions.Definition{s.shortsword()},
 		Conditions:    []json.RawMessage{raw},
 	}
 }
@@ -405,12 +403,8 @@ func (s *ResolveTestSuite) TestTheWorldRoundTripsUnchanged() {
 	}
 }
 
-// The three-call assembly, pinned. monster.LoadFromData loads neither actions
-// nor conditions, and monster.ToData serializes both — so a resolution that
-// skips LoadMonsterActions does not merely leave the skeleton unable to swing,
-// it writes back a skeleton that has silently lost its shortsword. Asserting the
-// action reconstitutes AND survives ToData is what makes that class of loss a
-// test failure instead of a data-loss bug in a host's repository.
+// The direct-definition round trip is pinned: a monster's authored action
+// survives pure load, attach, and ToData without a behavior loader.
 func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 	machine := &captureMachine{}
 
@@ -426,11 +420,11 @@ func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 	s.Require().True(ok, "the skeleton was attached")
 
 	// Reconstituted as behaviour, not merely carried along as bytes.
-	s.Require().Len(loaded.Actions(), 1, "the shortsword became a real action")
-	s.Require().Equal(monster.TypeMeleeAttack, loaded.Actions()[0].ActionType())
+	s.Require().Len(loaded.Actions(), 1, "the shortsword definition survived")
+	s.Require().Equal(refs.MonsterActions.SkeletonShortsword(), &loaded.Actions()[0].Ref)
 
 	// And it round-trips back out to exactly the data that went in.
-	s.Require().Equal([]monster.ActionData{s.shortsword()}, loaded.ToData().Actions)
+	s.Require().Equal([]combatActions.Definition{s.shortsword()}, loaded.ToData().Actions)
 }
 
 // A save changes nobody, so nobody comes back dirty. The point is that dirty

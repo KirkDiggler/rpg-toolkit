@@ -124,12 +124,14 @@ func (c *Cost) validate() error {
 	return nil
 }
 
-// payAtTheDoor charges the actor, and charges them before the machine runs.
+// payAtTheDoor charges the actor after pure machine preflight and before the
+// first yielded step runs.
 //
-// This is the runner's enforcement point. The machine starts already-paid and
-// is never told: it cannot tell a swing that cost an action from one that cost
-// nothing, which is the ignorance the ruling asks for, because what an action
-// costs was answered by whoever compiled the profile one layer up.
+// This is the runner's enforcement point. Machine.Start has already validated
+// the interaction without publishing, rolling, spending, or mutating; every
+// executable step runs only after this payment and is never told whether the
+// swing cost an action or nothing. That preserves the ignorance the ruling asks
+// for because price was answered by whoever compiled the profile one layer up.
 //
 // The order inside is not arbitrary:
 //

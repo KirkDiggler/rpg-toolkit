@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -59,8 +60,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 	bus events.EventBus, target *monster.Data, roller *sequenceRoller,
 ) (*Output, error) {
 	data := monsters.NewWolf(wolfID).ToData()
-	attack, err := AttackFromMonsterAction(data.Actions[0])
-	s.Require().NoError(err)
+	attack := data.Actions[0]
 
 	return resolveOn(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
@@ -68,7 +68,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   target.ID,
-			Attack:     attack,
+			Definition: attack,
 			Roller:     roller,
 		}),
 	}, newSurface(bus))
@@ -85,7 +85,7 @@ func (s *DamageCustodyTestSuite) TestResistanceHalvesDamageThroughTheOwnedFold()
 	s.halveOnBus(bus, damage.Piercing)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -109,7 +109,7 @@ func (s *DamageCustodyTestSuite) TestImmunityNegatesDamageThroughTheOwnedFold() 
 	s.multiplyOnBus(bus, damage.Piercing, 0)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -131,7 +131,7 @@ func (s *DamageCustodyTestSuite) TestASubscriberOnResolutionsBusContributes() {
 	s.addFlatOnBus(bus, 5, damage.Piercing)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -147,13 +147,84 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 	s.halveOnBus(bus, damage.Piercing)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
 	s.Require().True(ok)
 	// Piercing 9 halved to 4; fire 6 untouched.
 	s.Require().Equal(4+6, outcome.Damage, "each type resolves on its own")
+}
+
+func oozeProfile(pools ...damage.Damage) combatActions.Definition {
+	return combatActions.Definition{
+		Ref:  *refs.MonsterActions.WolfBite(),
+		Name: "Ooze Strike",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      pools,
+		},
+	}
+}
+
+// ADR-0041's explicit boundary guard: multiple declared pools still produce
+// one DamageChain fold and one call through Strike's application seam.
+func (s *DamageCustodyTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
+	bus := events.NewEventBus()
+	damageFolds := 0
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(s.ctx,
+		func(_ context.Context, _ *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			damageFolds++
+			return c, nil
+		})
+	s.Require().NoError(err)
+
+	definition := oozeProfile(
+		damage.Damage{Dice: "1d8", Type: damage.Bludgeoning, FlatBonus: 2},
+		damage.Damage{Dice: "1d6", Type: damage.Acid},
+	)
+	target := monsters.NewWolf(secondWolfID).ToData()
+	startingHitPoints := target.HitPoints
+	machine := NewStrike(&StrikeInput{
+		AttackerID: wolfID,
+		TargetID:   target.ID,
+		Definition: definition,
+		Roller:     &sequenceRoller{singles: []int{15}, pair: []int{4, 5}},
+	}).(*strikeMachine)
+	applyDamageCalls := 0
+	machine.applyDamage = func(
+		ctx context.Context, combatant combat.Combatant, input *combat.ApplyDamageInput,
+	) *combat.ApplyDamageResult {
+		applyDamageCalls++
+		return combatant.ApplyDamage(ctx, input)
+	}
+
+	out, err := resolveOn(s.ctx, &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World: s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		Participants: []Participant{
+			{Monster: monsters.NewWolf(wolfID).ToData()},
+			{Monster: target},
+		},
+		Machine: machine,
+	}, newSurface(bus))
+	s.Require().NoError(err)
+
+	struck, ok := out.Outcome.(StrikeOutcome)
+	s.Require().True(ok)
+	s.Equal(11, struck.Damage)
+	s.Len(struck.DamageInstances, 2)
+	s.Len(struck.DamageComponents, 2)
+	s.Equal(1, damageFolds, "all pools travel through one DamageChain fold")
+	s.Equal(1, applyDamageCalls, "all typed instances enter one ApplyDamage call")
+	s.Require().Len(out.DirtyMonsters, 1)
+	s.Equal(startingHitPoints-struck.Damage, out.DirtyMonsters[0].HitPoints,
+		"the folded instances land together in one application")
 }
 
 func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndImmunity() {
@@ -172,8 +243,8 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   target.ID,
-			Attack:     profile,
-			Roller:     scripted(15, 4, 5),
+			Definition: profile,
+			Roller:     &sequenceRoller{singles: []int{15}, pair: []int{4, 5}},
 		}),
 	}, newSurface(bus))
 	s.Require().NoError(err)
@@ -201,15 +272,14 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 8, Y: 5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
 	s.Require().NoError(err)
 
 	data := monsters.NewWolf(wolfID).ToData()
-	attack, err := AttackFromMonsterAction(data.Actions[0])
-	s.Require().NoError(err)
+	attack := data.Actions[0]
 
 	raging, err := (&conditions.RagingCondition{
 		CharacterID: heroID,
@@ -228,8 +298,8 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
 			TargetID:   heroID,
-			Attack:     attack,
-			Roller:     &sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2},
+			Definition: attack,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3, 4, 18, 2}},
 		}),
 	})
 	s.Require().NoError(err)
