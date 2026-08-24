@@ -6,7 +6,6 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -840,9 +839,25 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // moves past that beat — never retried again (Copilot's own finding on
 // PR #1222).
 func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
+	data := scope.enc.ToData()
+
+	// Kind, from the ENCOUNTER's own authoritative roster — never inferred
+	// from whether an ID happens to load out of the character repository
+	// (Copilot's own finding on PR #1222). Spawn's only uniqueness guard is
+	// "not a CURRENT member of this encounter"; nothing stops a monster ID
+	// from colliding with a real character ID belonging to a different
+	// session entirely. Asking the character store "does this load" would
+	// answer yes for that collision and reset a stranger's sheet. Asking the
+	// roster "is this a player" cannot be fooled by an ID that merely
+	// resembles one.
+	kindByID := make(map[string]encounter.MemberKind, len(data.Members))
+	for _, member := range data.Members {
+		kindByID[string(member.ID)] = member.Kind
+	}
+
 	seen := map[string]bool{}
 
-	for _, member := range scope.enc.ToData().EverMembers {
+	for _, member := range data.EverMembers {
 		entries, err := scope.enc.Story(&encounter.StoryInput{
 			Audience: member, AfterSeq: scope.baseline,
 		})
@@ -860,7 +875,7 @@ func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope
 			}
 
 			for _, id := range peek.Members {
-				if seen[id] {
+				if seen[id] || kindByID[id] != encounter.KindPlayer {
 					continue
 				}
 				seen[id] = true
@@ -874,18 +889,17 @@ func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope
 	return nil
 }
 
-// exitCombatIfPlayer clears one member's action economy if they are a
-// loadable player character currently carrying one.
-//
-// A monster ID is the ONE case that does nothing without error: no
-// character repository holds it, so [Manager.fetchCharacterData] answers
-// ErrNoCharacter, and that specific sentinel is the only reason this
-// returns nil without having cleared anything. Every other fetch error —
-// a repository outage, corrupt data — is returned rather than swallowed
-// (Copilot's own finding on PR #1222): treating them the same as "it was a
-// monster" would let an operational failure masquerade as an ordinary skip.
-// A player whose sheet is already out of combat also does nothing, but
-// that is [character.Character.InCombat] answering false, not an error.
+// exitCombatIfPlayer clears one member's action economy. The caller has
+// already confirmed this ID is a PLAYER on the encounter's own roster
+// (exitDissolvedCombatants) — a monster ID never reaches here at all, so an
+// ErrNoCharacter from [Manager.fetchCharacterData] below would be a real
+// inconsistency (a roster naming a player the character store does not
+// hold), not the ordinary case it would be without that filter, and is
+// returned rather than swallowed for the same reason every other fetch
+// error is: a repository outage or corrupt data must not masquerade as
+// nothing-to-clear (Copilot's own finding on PR #1222). A player whose
+// sheet is already out of combat does nothing, but that is
+// [character.Character.InCombat] answering false, not an error.
 //
 // Saved through [Manager.saveWalker] — move.go's own name for "save one
 // sheet and mark the scope written", generic despite it, and the same
@@ -896,9 +910,6 @@ func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope
 func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id string) error {
 	data, err := m.fetchCharacterData(ctx, "member", id)
 	if err != nil {
-		if errors.Is(err, ErrNoCharacter) {
-			return nil // a monster — nothing to clear
-		}
 		return err
 	}
 	sheet, err := character.Load(ctx, data)
