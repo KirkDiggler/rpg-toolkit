@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -771,10 +772,112 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 // fact that failed to persist is the one mistake with no recovery — a client
 // told the ogre died, a world in which it did not, and no sequence gap to
 // betray the difference.
+//
+// exitDissolvedCombatants runs FIRST, before the save: a sheet it clears must
+// land in the SAME persist this verb already makes, never a second write
+// cycle a failure between the two could leave half-done.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
+	m.exitDissolvedCombatants(ctx, scope)
+
 	report, snapshot, err := m.persist(ctx, scope)
 	if err != nil {
 		return report, DeliveryReport{}, err
 	}
 	return report, m.publish(ctx, scope, snapshot), nil
+}
+
+// exitDissolvedCombatants clears the action economy of every player whose
+// fight THIS CALL just dissolved — the other half of [readyForTurn]'s own
+// ignition (economy.go). StartTurn lights a cold sheet the first time an
+// actor on the fight clock acts; nothing anywhere in this module ever put the
+// light back out. grep -rn ExitCombat rulebooks/dnd5e/session
+// rulebooks/dnd5e/encounter turns up only [character.Character.ExitCombat]'s
+// own definition — no caller.
+//
+// Left unlit, [character.Character.InCombat] answers true forever after a
+// member's first-ever combat turn in a session, so [readyForTurn]'s
+// `!sheet.InCombat()` branch — the one that unconditionally reseeds via
+// StartTurn — can never fire again for that character. Every later fight
+// falls to RefreshForTurn instead, which is a deliberate no-op whenever the
+// new fight's round happens to equal whatever TurnNumber was left on the
+// sheet — and since every bubble's own round counter starts fresh at 1
+// ([play/clock]'s Turn is per-bubble, never global to the session), a round-1
+// collision with a stale round-1 economy from an earlier, unrelated fight is
+// the common case, not a rare one. rpg-project#253 (Kirk, live, two
+// browsers): a member recruited into a running fight started their own first
+// turn in it with 5 of 30 feet left — exactly the number their PREVIOUS
+// fight left on their sheet when it ended by defeat, mid-turn, with no
+// EndTurn ever called (encounter/dissolve.go's ByDefeat: "the composition
+// NOTICES defeat, never something a caller declares").
+//
+// Read off the SAME beats [Manager.projectEvents] already fans out from —
+// every ever-member's own story since the scope's baseline — rather than
+// re-deriving who dissolved from scratch: a "bubble-dissolved" beat already
+// names everyone the fight held, in its `members` field
+// (encounter/dissolve.go's dissolveBubble is the ONE place that beat is
+// written, shared by an explicit [Manager.Dissolve] and the composition
+// noticing defeat on its own — "Both endings run exactly this... Only the
+// cause differs" — so this one read covers both without needing to know
+// which produced it). TestTheLastOneDownedEndsTheFightByDefeat (death_test.go)
+// pins the payload shape this reads.
+//
+// Best-effort by the same law [Manager.publish] states for delivery: a
+// member whose story cannot be read, or a member ID with no loadable
+// character (a monster, by [Manager.fetchCharacterData]'s own ErrNoCharacter),
+// is skipped rather than failing the verb this cleanup rides in on. Combat
+// hygiene must never be the reason a swing or a walk is refused.
+func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) {
+	seen := map[string]bool{}
+
+	for _, member := range scope.enc.ToData().EverMembers {
+		entries, err := scope.enc.Story(&encounter.StoryInput{
+			Audience: member, AfterSeq: scope.baseline,
+		})
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			var peek struct {
+				Beat    string   `json:"beat"`
+				Members []string `json:"members"`
+			}
+			if json.Unmarshal(entry.Payload, &peek) != nil || peek.Beat != "bubble-dissolved" {
+				continue
+			}
+
+			for _, id := range peek.Members {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+				m.exitCombatIfPlayer(ctx, scope, id)
+			}
+		}
+	}
+}
+
+// exitCombatIfPlayer clears one member's action economy if they are a
+// loadable player character currently carrying one. A monster ID (no
+// loadable character) and a player whose sheet is already out of combat both
+// do nothing here — [character.Character.ExitCombat] is itself guarded the
+// same way, but asking first avoids a load-and-save cycle for the ordinary
+// case.
+//
+// Saved through [Manager.saveWalker] — move.go's own name for "save one
+// sheet and mark the scope written", generic despite it, and the same
+// mechanism a walk's own spend already uses.
+func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id string) {
+	data, err := m.fetchCharacterData(ctx, "member", id)
+	if err != nil {
+		return // a monster, or otherwise unloadable — nothing to clear
+	}
+	sheet, err := character.Load(ctx, data)
+	if err != nil || !sheet.InCombat() {
+		return
+	}
+	if _, err := sheet.ExitCombat(ctx, &character.ExitCombatInput{}); err != nil {
+		return
+	}
+	_ = m.saveWalker(ctx, scope, sheet)
 }
