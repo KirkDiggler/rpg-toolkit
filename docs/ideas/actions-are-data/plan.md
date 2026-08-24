@@ -1234,6 +1234,8 @@ git push
 
 ### Task 8: Reconcile Current Documentation and Prove the Hard Cut
 
+**Completed:** `bd3d856` (current docs) and `9b29787` (resolution guidance)
+
 **Files:**
 - Modify: `README.md`
 - Modify: `rulebooks/dnd5e/README.md`
@@ -1252,7 +1254,7 @@ git push
 - Consumes: the final shipped paths from Tasks 1–7.
 - Produces: current contributor guidance with historical documents clearly marked, plus full repository evidence.
 
-- [ ] **Step 1: Update current documentation to the final paths**
+- [x] **Step 1: Update current documentation to the final paths**
 
 Document:
 
@@ -1265,7 +1267,7 @@ Document:
 
 In ADR-0041, add a note that ADR-0045 relocates profile ownership while preserving ordered damage semantics. At the top of `docs/ideas/session-sdk/attack-profile-seam.md`, mark the compiler placement as superseded by ADR-0045; preserve the document as history rather than rewriting its narrative.
 
-- [ ] **Step 2: Run the repository-wide negative census**
+- [x] **Step 2: Run the repository-wide negative census**
 
 Run from repository root:
 
@@ -1290,7 +1292,7 @@ fi
 
 Expected: all three checks exit zero without findings.
 
-- [ ] **Step 3: Run formatting, module, test, lint, and ADR checks**
+- [x] **Step 3: Run formatting, module, test, lint, and ADR checks**
 
 Run:
 
@@ -1305,7 +1307,9 @@ make lint-all
 
 Expected: all commands pass. Inspect `git diff` after `make mod-tidy`; no local `replace` or accidental module-wide dependency update is allowed.
 
-- [ ] **Step 4: Commit documentation and verification cleanup**
+Observed: `make fmt-all`, `make mod-tidy`, `make test-all`, and the ADR check passed. Each changed module (`rulebooks/dnd5e`, active encounter, resolution, session) passed its full race tests and lint. `make lint-all` reaches an untouched pre-existing `rpgerr` failure: two `goconst` findings for the string `poison`; the same failure reproduces on `origin/main`, so #1198 does not modify that independently versioned module. Repository-wide `goimports` spill from `make fmt-all` was reverted rather than committed as unrelated formatting.
+
+- [x] **Step 4: Commit documentation and verification cleanup**
 
 ```bash
 git add README.md rulebooks/dnd5e/README.md \
