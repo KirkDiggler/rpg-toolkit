@@ -5,16 +5,17 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewSkeletonCaptain creates a CR 2 skeleton captain boss with multiattack
-// (2x longsword), vulnerability to bludgeoning, and immunity to poison.
+// NewSkeletonCaptain creates a CR 2 skeleton captain with a longsword
+// component attack, vulnerability to bludgeoning, and immunity to poison.
+// Multiattack is deferred until a sequence profile and machine exist.
 //
 // This is a skeleton-shaped boss, not a wight: a wight's signature Life Drain
 // ability needs a max-HP-reducing attack effect that does not exist in the
@@ -40,18 +41,17 @@ func NewSkeletonCaptain(id string) *monster.Monster {
 		},
 	})
 
-	// Longsword attack (part of multiattack)
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "longsword",
-		AttackBonus: 5, // +3 STR + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Slashing, FlatBonus: 3}},
-		Reach:       5,
-	})))
-
-	// Multiattack - 2x longsword
-	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{
-		Attacks: []string{"longsword", "longsword"},
-	}))
+	// The component attack remains available until a sequence profile exists.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonCaptainLongsword(),
+		Name: "longsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 5,
+			Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Slashing, FlatBonus: 3}},
+		},
+	})
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

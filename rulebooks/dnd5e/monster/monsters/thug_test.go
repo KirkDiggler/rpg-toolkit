@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -43,26 +44,14 @@ func (s *ThugTestSuite) TestNewThug() {
 	speed := thug.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Check actions - should have multiattack and mace
+	// The component attack remains; multiattack waits for a sequence profile.
 	actions := thug.Actions()
-	s.Require().Len(actions, 2)
-
-	// Find multiattack and mace
-	var hasMultiattack, hasMace bool
-	for _, action := range actions {
-		switch action.GetID() {
-		case "multiattack":
-			hasMultiattack = true
-		case "mace":
-			hasMace = true
-		}
-	}
-	s.Assert().True(hasMultiattack, "should have multiattack action")
-	s.Assert().True(hasMace, "should have mace action")
+	s.Require().Len(actions, 1)
+	s.Equal(refs.MonsterActions.ThugMace(), &actions[0].Ref)
 }
 
 func (s *ThugTestSuite) TestThugTraits() {
-	// Thugs have Pack Tactics and multiattack (2x mace)
+	// Thugs have Pack Tactics; their mace remains available while sequence attacks are deferred.
 	thug := NewThug("thug-1")
 	s.Require().NotNil(thug)
 

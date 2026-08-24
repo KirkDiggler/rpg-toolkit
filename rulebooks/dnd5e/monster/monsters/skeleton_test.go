@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
@@ -53,43 +54,28 @@ func (s *SkeletonTestSuite) TestNewSkeleton() {
 	// Check actions - should have shortsword and shortbow
 	actions := skeleton.Actions()
 	s.Require().Len(actions, 2)
-
-	// Find shortsword and shortbow
-	var hasShortsword, hasShortbow bool
-	for _, action := range actions {
-		switch action.GetID() {
-		case "shortsword":
-			hasShortsword = true
-		case "shortbow":
-			hasShortbow = true
-		}
-	}
-	s.Assert().True(hasShortsword, "should have shortsword action")
-	s.Assert().True(hasShortbow, "should have shortbow action")
+	s.Equal(refs.MonsterActions.SkeletonShortsword(), &actions[0].Ref)
+	s.Equal(refs.MonsterActions.SkeletonShortbow(), &actions[1].Ref)
 }
 
-// TestShortswordReachIsStandardMeleeReach pins that the shortsword's
-// authored Reach (5) is correct — it is FEET (Kirk, rpg-project#254
-// review), not cells/hexes as MeleeConfig.Reach's doc comment used to
-// claim (that comment was the actual bug, fixed alongside this test). 5
-// feet is the standard one-handed melee reach every non-reach weapon
-// compiles to; a shortsword has no Reach property, so it gets no more.
-func (s *SkeletonTestSuite) TestShortswordReachIsStandardMeleeReach() {
-	skeleton := NewSkeleton("skeleton-1")
+func (s *SkeletonTestSuite) TestWeaponDefinitionsHaveDistinctIdentityAndDelivery() {
+	actions := NewSkeleton("skeleton-1").Actions()
+	s.Require().Len(actions, 2)
 
-	var shortsword monster.ActionData
-	for _, action := range skeleton.Actions() {
-		if action.GetID() == "shortsword" {
-			shortsword = action.ToData()
-		}
-	}
-	s.Require().NotEmpty(shortsword.Config, "shortsword action must be found")
+	shortsword := actions[0]
+	s.Equal(refs.MonsterActions.SkeletonShortsword(), &shortsword.Ref)
+	s.Equal("shortsword", shortsword.Name)
+	s.Require().NotNil(shortsword.Attack)
+	s.Equal(&combatActions.MeleeDelivery{ReachFeet: 5}, shortsword.Attack.Delivery.Melee)
+	s.Nil(shortsword.Attack.Delivery.Ranged)
 
-	var config struct {
-		Reach int `json:"reach"`
-	}
-	s.Require().NoError(json.Unmarshal(shortsword.Config, &config))
-	s.Equal(5, config.Reach, "feet, the standard one-handed melee reach")
+	shortbow := actions[1]
+	s.Equal(refs.MonsterActions.SkeletonShortbow(), &shortbow.Ref)
+	s.Equal("shortbow", shortbow.Name)
+	s.Require().NotNil(shortbow.Attack)
+	s.Equal(&combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320}, shortbow.Attack.Delivery.Ranged)
+	s.Nil(shortbow.Attack.Delivery.Melee)
+	s.NotEqual(shortsword.Ref, shortbow.Ref)
 }
 
 func (s *SkeletonTestSuite) TestSkeletonTraits() {

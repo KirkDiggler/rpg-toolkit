@@ -5,9 +5,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -32,21 +32,28 @@ func NewSkeleton(id string) *monster.Monster {
 	})
 
 	// Shortsword melee attack
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "shortsword",
-		AttackBonus: 4, // +2 DEX + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
-		Reach:       5, // feet — a shortsword has no Reach property
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonShortsword(),
+		Name: "shortsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
+		},
+	})
 
 	// Shortbow ranged attack
-	m.AddAction(mustAction(actions.NewRangedAction(actions.RangedConfig{
-		Name:        "shortbow",
-		AttackBonus: 4, // +2 DEX + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
-		RangeNormal: 80,
-		RangeLong:   320,
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonShortbow(),
+		Name: "shortbow",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
+		},
+	})
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

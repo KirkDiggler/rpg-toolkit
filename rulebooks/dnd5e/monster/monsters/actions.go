@@ -3,11 +3,15 @@
 
 package monsters
 
-import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+import (
+	"fmt"
 
-func mustAction(action monster.MonsterAction, err error) monster.MonsterAction {
-	if err != nil {
-		panic(err)
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+)
+
+func mustAddAction(m *monster.Monster, definition combatActions.Definition) {
+	if err := m.AddAction(definition); err != nil {
+		panic(fmt.Sprintf("invalid monster action %s: %v", definition.Ref.String(), err))
 	}
-	return action
 }
