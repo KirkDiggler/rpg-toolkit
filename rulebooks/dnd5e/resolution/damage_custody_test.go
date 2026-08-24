@@ -85,7 +85,7 @@ func (s *DamageCustodyTestSuite) TestResistanceHalvesDamageThroughTheOwnedFold()
 	s.halveOnBus(bus, damage.Piercing)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -109,7 +109,7 @@ func (s *DamageCustodyTestSuite) TestImmunityNegatesDamageThroughTheOwnedFold() 
 	s.multiplyOnBus(bus, damage.Piercing, 0)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -131,7 +131,7 @@ func (s *DamageCustodyTestSuite) TestASubscriberOnResolutionsBusContributes() {
 	s.addFlatOnBus(bus, 5, damage.Piercing)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -147,7 +147,7 @@ func (s *DamageCustodyTestSuite) TestTypesAreGroupedSeparatelyThroughTheFold() {
 	s.halveOnBus(bus, damage.Piercing)
 
 	out, err := s.biteOnBus(bus, monsters.NewWolf(secondWolfID).ToData(),
-		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2})
+		&sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}})
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(StrikeOutcome)
@@ -299,7 +299,7 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 			AttackerID: wolfID,
 			TargetID:   heroID,
 			Definition: attack,
-			Roller:     &sequenceRoller{singles: []int{hitRoll, 18}, pair: []int{3, 4}, fallback: 2},
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3, 4, 18, 2}},
 		}),
 	})
 	s.Require().NoError(err)

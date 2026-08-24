@@ -61,6 +61,11 @@ func validateConditionGate(gate *saves.SaveGate) error {
 	if err := gate.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrBadGate, err)
 	}
+	for _, ability := range gate.Abilities {
+		if !supportedSaveAbility(ability) {
+			return fmt.Errorf("%w: unsupported save ability %q", ErrBadGate, ability)
+		}
+	}
 	if gate.OnSuccess != saves.Negated {
 		return fmt.Errorf("%w: a condition contest must negate on success", ErrBadGate)
 	}
@@ -69,6 +74,15 @@ func validateConditionGate(gate *saves.SaveGate) error {
 	}
 
 	return nil
+}
+
+func supportedSaveAbility(ability abilities.Ability) bool {
+	switch ability {
+	case abilities.STR, abilities.DEX, abilities.CON, abilities.INT, abilities.WIS, abilities.CHA:
+		return true
+	default:
+		return false
+	}
 }
 
 func prepareCondition(

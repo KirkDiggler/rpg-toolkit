@@ -361,6 +361,20 @@ func (s *ContestTestSuite) TestRefusesAContestItCannotRun() {
 		s.Require().ErrorIs(err, ErrBadGate)
 	})
 
+	s.Run("unknown save ability", func() {
+		gate := saves.NewSaveGate(abilities.Ability("bogus"), 11)
+		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+			World:        s.world(),
+			Participants: []Participant{{Character: s.hero()}},
+			Machine: NewContest(&ContestInput{
+				Gate:        gate,
+				SaverID:     heroID,
+				Application: combatActions.ConditionApplication{Ref: *refs.Conditions.Prone()},
+			}),
+		})
+		s.Require().ErrorIs(err, ErrBadGate)
+	})
+
 	s.Run("no condition application", func() {
 		_, err := Resolve(s.ctx, &Input{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 			World:        s.world(),

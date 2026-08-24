@@ -127,7 +127,7 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 			AttackerID: wolfID,
 			TargetID:   heroID,
 			Definition: attack,
-			Roller:     &sequenceRoller{singles: []int{roll, 18}, pair: []int{3, 4}, fallback: 2},
+			Roller:     &sequenceRoller{singles: []int{roll, 18}, pair: []int{3, 4}},
 		}),
 	})
 	s.Require().NoError(err)
@@ -207,7 +207,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 			AttackerID: wolfID,
 			TargetID:   secondWolfID,
 			Definition: attack,
-			Roller:     &sequenceRoller{singles: []int{15, 18}, pair: []int{3, 4}, fallback: 2},
+			Roller:     &sequenceRoller{singles: []int{15, 18}, pair: []int{3, 4}},
 		}),
 	})
 	s.Require().NoError(err)

@@ -435,8 +435,13 @@ func (m *strikeMachine) rollDamageComponent(
 		rolls = append(rolls, flattenDice(again.Rolls())...)
 	}
 
+	source := dnd5eEvents.DamageSourceWeapon
+	if m.attack.Category == combatActions.AttackCategorySpell {
+		source = dnd5eEvents.DamageSourceSpell
+	}
+
 	return dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
+		Source:            source,
 		SourceRef:         m.sourceRef,
 		Dice:              declared.Dice,
 		OriginalDiceRolls: rolls,

@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -93,6 +94,37 @@ func resolveActionDefinition(
 		Participants: []Participant{
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: actionHero()},
+		},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+	})
+}
+
+func resolveActionDefinitionAgainstMonster(
+	t *testing.T, definition combatActions.Definition, roller dice.Roller,
+) (*Output, error) {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Field: encounter.FieldInput{
+			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
+			Rooms:  []encounter.RoomInput{{ID: "room", Width: 10, Height: 10}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: wolfID, Kind: encounter.KindMonster, Room: "room", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: secondWolfID, Kind: encounter.KindMonster, Room: "room", Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	machine, err := NewAction(&ActionInput{
+		Definition: definition, AttackerID: wolfID, TargetID: secondWolfID, Roller: roller,
+	})
+	require.NoError(t, err)
+	return Resolve(context.Background(), &Input{
+		World: enc.ToData(),
+		Participants: []Participant{
+			{Monster: monsters.NewWolf(wolfID).ToData()},
+			{Monster: monsters.NewSkeleton(secondWolfID).ToData()},
 		},
 		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
@@ -188,4 +220,36 @@ func TestConditionOnlyAttackSkipsDamageAndStillApplies(t *testing.T) {
 	require.Zero(t, outcome.Damage)
 	require.Len(t, outcome.Conditions, 1)
 	require.True(t, outcome.Conditions[0].Applied)
+}
+
+func TestAutomaticConditionPersistsOnAMonsterTarget(t *testing.T) {
+	definition := validMeleeDefinition()
+	definition.Attack.Damage = nil
+	definition.Attack.OnHit = []combatActions.ConditionApplication{{Ref: *refs.Conditions.Prone()}}
+
+	out, err := resolveActionDefinitionAgainstMonster(t, definition, &actionRoller{singles: []int{20}})
+
+	require.NoError(t, err)
+	outcome := out.Outcome.(StrikeOutcome)
+	require.Len(t, outcome.Conditions, 1)
+	require.True(t, outcome.Conditions[0].Applied)
+	require.Len(t, out.DirtyMonsters, 1)
+	require.Equal(t, secondWolfID, out.DirtyMonsters[0].ID)
+	startingConditions := len(monsters.NewSkeleton(secondWolfID).ToData().Conditions)
+	require.Len(t, out.DirtyMonsters[0].Conditions, startingConditions+1)
+	require.Contains(t, string(out.DirtyMonsters[0].Conditions[startingConditions]), refs.Conditions.Prone().ID)
+}
+
+func TestSpellAttackDamageKeepsItsSpellSource(t *testing.T) {
+	definition := validMeleeDefinition()
+	definition.Attack.Category = combatActions.AttackCategorySpell
+
+	out, err := resolveActionDefinition(t, definition, 2, &actionRoller{
+		singles: []int{15}, damage: [][]int{{3}},
+	})
+
+	require.NoError(t, err)
+	outcome := out.Outcome.(StrikeOutcome)
+	require.Len(t, outcome.DamageComponents, 1)
+	require.Equal(t, dnd5eEvents.DamageSourceSpell, outcome.DamageComponents[0].Source)
 }

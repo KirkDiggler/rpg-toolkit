@@ -3,6 +3,9 @@ package resolution
 import (
 	"context"
 	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -14,9 +17,8 @@ const (
 )
 
 type sequenceRoller struct {
-	singles  []int
-	pair     []int
-	fallback int
+	singles []int
+	pair    []int
 }
 
 func (r *sequenceRoller) Roll(_ context.Context, _ int) (int, error) {
@@ -25,7 +27,7 @@ func (r *sequenceRoller) Roll(_ context.Context, _ int) (int, error) {
 		r.singles = r.singles[1:]
 		return next, nil
 	}
-	return r.fallback, nil
+	return 0, errors.New("sequence roller: scripted singles exhausted")
 }
 
 func (r *sequenceRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
@@ -34,11 +36,16 @@ func (r *sequenceRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
 		r.pair = r.pair[count:]
 		return next, nil
 	}
-	out := make([]int, count)
-	for i := range out {
-		out[i] = r.fallback
-	}
-	return out, nil
+	return nil, errors.New("sequence roller: scripted group exhausted")
+}
+
+func TestSequenceRollerRefusesExhaustedScripts(t *testing.T) {
+	roller := &sequenceRoller{}
+
+	_, err := roller.Roll(context.Background(), 20)
+	require.Error(t, err)
+	_, err = roller.RollN(context.Background(), 2, 6)
+	require.Error(t, err)
 }
 
 // orderAsGiven is the deterministic InitiativeRoller every fixture wires.
