@@ -62,7 +62,7 @@ type MonsterView struct {
 // ActionView is this package's own twin of encounter.ActionView: a static
 // fact about one action a member can take.
 type ActionView struct {
-	// Ref identifies this action's implementation, as "module:type:id"
+	// Ref identifies this authored action definition, as "module:type:id"
 	// (core.Ref.String()) rather than core.Ref itself (S2 — core.Ref is not
 	// on this package's contract-type allow-list, and a driver never
 	// constructs one field by field; it only ever echoes this string back
@@ -70,14 +70,14 @@ type ActionView struct {
 	// way back across the boundary (see turnDriverSeam.Act).
 	Ref string
 
-	// Name is this action's display name — "Shortsword", "Bite".
+	// Name is this action's authored display name — "Longsword", "bite".
 	Name string
 
-	// ReachFeet is how far this action reaches, in feet.
-	ReachFeet int
+	// RangeFeet is how far this action reaches, in feet.
+	RangeFeet int
 
-	// Kind is this action's category, in the rulebook's own words — "melee",
-	// "ranged", "unarmed" — opaque here.
+	// Kind is the action's delivery projection: "melee" or "ranged". It is
+	// derived from the shared definition and remains opaque to this seam.
 	Kind string
 }
 
@@ -226,7 +226,7 @@ var _ encounter.TurnDriver = turnDriverSeam{}
 func projectMonsterView(view encounter.MonsterView) MonsterView {
 	actions := make([]ActionView, len(view.Actions))
 	for i, a := range view.Actions {
-		actions[i] = ActionView{Ref: a.Ref.String(), Name: a.Name, ReachFeet: a.ReachFeet, Kind: a.Kind}
+		actions[i] = ActionView{Ref: a.Ref.String(), Name: a.Name, RangeFeet: a.RangeFeet, Kind: a.Kind}
 	}
 
 	seen := make([]SeenMember, len(view.Seen))

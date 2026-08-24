@@ -1,7 +1,7 @@
 ---
 name: rulebooks/dnd5e module
 description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 31 sub-packages (character/ alone in 24 files)
-updated: 2026-05-14
+updated: 2026-08-23
 confidence: high — verified by directory listing, grep over public symbols, rpg-api import-graph audit 049, and Wave 2.11d shipped-code verification
 ---
 
@@ -404,19 +404,22 @@ Monster support currently spans four packages inside the single D&D 5e module:
 `monster/actions` and `monster/monsters` are directly imported subpackages; they
 are not surfaced through package `monster`. The registry in
 `monster/monsters/registry.go` is the current author/load seam and is consumed by
-encounter seeding and dungeonspec validation.
+`rulebooks/dnd5e/encounter` seeding/dungeonspec paths plus
+`rulebooks/dnd5e/session` spawn/load paths.
 
 Monster reload is deliberately multi-step today: `monster.LoadFromData` creates
 the base runtime object, `monster/actions.LoadMonsterActions` restores action
 implementations, and `monstertraits.LoadMonsterConditions` loads and applies
-persisted traits. The encounter hydration cascade owns those steps for held
+persisted traits. The encounter/session hydration paths own those steps for held
 combatants. `monster.LoadFromData` alone is not a complete factory round trip.
 
 `Monster.TakeTurn` is the shipped tactics/decision path. It chooses a targeting
 strategy, moves via `tools/spatial` A*, scores and activates actions, and returns
-movement/action attempts. Generic attack actions publish D&D 5e attack events;
-the currently D&D-5e-coupled top-level encounter module captures those events
-and delegates hit/damage to its `CombatResolver`.
+movement/action attempts. Generic attack actions still publish D&D 5e attack
+events when invoked directly; in the live stack, monster strikes flow through
+`rulebooks/dnd5e/session`'s striker seam, which compiles authored
+`monster.ActionData` into `rulebooks/dnd5e/resolution` attack profiles and lets
+that module resolve hit/damage.
 
 See the [current monster README](../../../rulebooks/dnd5e/monster/README.md) and
 [monster contribution guide](../../how-to/add-a-dnd5e-monster.md) for the exact

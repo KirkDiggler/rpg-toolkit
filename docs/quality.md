@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit quality scorecard
 description: Per-module grade with rationale — graded from code read, test run, and go.mod inspection 2026-05-02
-updated: 2026-07-13
-confidence: medium — first-pass grades from read-through and live test run; Wave 2.11d grades from shipped-code verification; rpg-toolkit#757 (encounter, tools/spawn) verified against shipped code 2026-07-13; no coverage tooling run
+updated: 2026-08-23
+confidence: medium — first-pass grades from read-through and live test run; Wave 2.11d grades from shipped-code verification; rpg-toolkit#757 (encounter, tools/spawn) verified against shipped code 2026-07-13; no coverage tooling run. The top-level encounter module's former B+ assessment is retained only as a retirement note after #1215.
 ---
 
 # Quality scorecard
@@ -41,67 +41,14 @@ polluting function signatures" problem. Dependency on events and core is appropr
 Pinned to old `events v0.1.1` and `core v0.1.0` — no replace directives, but the
 version spread across modules makes it hard to know what "current game" means.
 
-### encounter — B+ (Wave 2.11d, was B at slice 1)
+### Retired: top-level encounter module
 
-Original first slice landed in PR #622 (walking skeleton): sealed
-`EncounterEvent` taxonomy via AWS v2 SDK marker pattern; process-scoped
-`Broker` over a pluggable `Transport`; transient `Encounter` aggregate with
-`Move`/`OpenDoor` verbs and `ToData`/`LoadFromData` persistence.
+The former `github.com/KirkDiggler/rpg-toolkit/encounter` module was graded B+
+before retirement. rpg-toolkit#1215 deleted it after rpg-api moved to the active
+session stack. Its detailed assessment remains in the
+[historical component record](architecture/components/encounter.md); it is not
+part of the current module scorecard.
 
-**Wave 2.11d (PR #656) added the combat-orchestration surface that this
-module needed to carry encounter sessions end-to-end through reactions.**
-The discrete-phase architecture replaces the implied chain-pause primitive
-with `TakeActionPhased` + `CompleteTakeAction` SDK verbs, the
-`PhasedCombatResolver` extension interface, and `PendingReactionPrompts`
-persistence between the two RPC phases. NPC turns pause via the
-`errNPCPausedForReaction` sentinel (`IsNPCPausedForReaction` helper for
-hosts). The `InputRequiredDeliveredEvent` (metadata-only, single-viewer
-audience) is the bus signal hosts translate into the proto reaction
-prompt.
-
-Subpackages (unchanged from slice 1):
-
-- `encounter/core` — identity primitives (EncounterID, PlayerID, EntityID)
-  + spatial primitives (Hex, HexSet) with custom `HexSet` JSON (struct map
-  keys can't serialize via the default codec). Since rpg-toolkit#757, `core`
-  depends on `tools/spatial` for the `Hex.ToCube`/`ToPosition` bridge
-  (field-rename to `CubeCoordinate`; offset-coordinate bridge to `Position`).
-- `encounter/events` — concrete events (Move, HexRevealed, DoorOpened,
-  Wave 2.11d adds `InputRequiredDelivered`), each with
-  `MarshalJSON`/`UnmarshalJSON` so unexported `encID`/`seq` round-trip
-  cleanly. Also holds `AudienceSet` (event-routing concept).
-- `encounter/perception` — pure `ProjectMove`/`ProjectDoorOpen`. Since
-  rpg-toolkit#757, `VisibleHexesAt`/`CanSeeAt` take a `room spatial.Room` and
-  are wall-aware when one is supplied (nil room = the original Manhattan-radius
-  stub, unchanged — the fallback for every encounter with no `Data.Space`).
-- `encounter` (top-level) — Encounter aggregate, Broker (with `sync.WaitGroup`
-  for clean shutdown — no double-close races), Transport, InMemoryTransport,
-  JSON codec, **Wave 2.11d** combat orchestration (combat.go,
-  combat_phased.go, combat_resolver.go, npc.go pause handling).
-
-Wave 2.11d tests cover: phased attack inline path, player-reaction pause +
-resume, NPC-paused-for-reaction propagation, legacy `CombatResolver`-only
-fallback, buffered subscriber drain pattern.
-
-Grade B+ for the combined surface — discrete-phase orchestration is a
-meaningful architectural surface addition that lifts the module above
-"walking skeleton." Grade is held back from A by the HOST CONTRACT smell
-on `PendingReactionPrompt.AttackContextJSON` (issue #657 — SDK trusts
-host to populate the bytes; resolver-supplied serializer would close it)
-and by no coverage tooling run yet.
-
-**rpg-toolkit#757 (the walled room, 2026-07-13) adds `Data.Space`, wall-aware
-LoS/movement, and inline combat-entry self-transition** — see
-[encounter.md](architecture/components/encounter.md#walled-rooms-wall-aware-los-and-inline-combat-entry-rpg-toolkit757).
-Caught and fixed during implementation: `environments`' wall generator places
-walls at continuous (non-hex-snapped) positions, which would have made most
-`environments.QuickRoom`-generated walls silently non-blocking against this
-package's integer-hex LoS/movement checks — worth flagging here since it's
-exactly the kind of cross-module assumption mismatch that doesn't show up
-until two modules are actually wired together, not from reading either one
-in isolation. Grade unchanged (B+) — the new surface is well-tested
-(`space_test.go`, `combat_entry_test.go`, `perception/room_los_test.go`,
-`core/core_test.go`) but doesn't change what's holding the module back from A.
 
 ### events — B+
 
@@ -426,18 +373,17 @@ Held back from B by the absence of any tests at the base-module level.
 - **C** — meaningful gap: missing tests for non-trivial logic, or known regression
 - **D** — tests broken or absent for load-bearing code; blocked from CI passing
 
-## Grade distribution (2026-05-14, post Wave 2.11d)
+## Grade distribution (2026-08-23)
 
 | Grade | Modules |
 |---|---|
 | A / A- | core, rpgerr, dice, rulebooks/dnd5e/combat |
-| B+ | game, events, encounter, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
+| B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
 | B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
 | B- | mechanics/spells |
 | C | mechanics/features, items |
 
-Wave 2.11d moves: `encounter` B → B+ (discrete-phase orchestration
-surface), `rulebooks/dnd5e/combat` A- → A (AttackContext-as-pure-data +
+Wave 2.11d moves: `rulebooks/dnd5e/combat` A- → A (AttackContext-as-pure-data +
 PostAttackRollChain), `rulebooks/dnd5e/conditions` broken out as own
 grade at B+ (4-condition pattern validation).
 

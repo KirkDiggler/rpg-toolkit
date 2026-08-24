@@ -56,10 +56,13 @@
 //
 // # The door pays
 //
-// [Input.Cost] is what an interaction costs the actor who declared it, and this
-// package charges it before [Machine.Start] runs. A resolution nobody can pay
-// for never starts a machine and writes nothing; a nil cost is a free action,
-// which is what every Resolve was before the door existed.
+// [Input.Cost] is what an interaction costs the actor who declared it.
+// [Machine.Start] runs first as pure preflight: it may only read and validate
+// attached sheets and produce the first step; it must not roll, spend, publish,
+// or mutate. The package charges the cost only after Start succeeds and before
+// it drives that first step. A resolution nobody can pay for therefore executes
+// no step and writes nothing; a nil cost is a free action, which is what every
+// Resolve was before the door existed.
 //
 // The runner spends and machines yield. That is the same move R6 makes about
 // the bus — a machine names what it wants and this package acts — so no machine

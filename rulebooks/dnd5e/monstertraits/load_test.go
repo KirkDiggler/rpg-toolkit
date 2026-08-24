@@ -12,14 +12,14 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// MonsterCompositionTestSuite covers the pair of calls that replace the
-// three-call assembly: one pure load, one attach.
+// MonsterCompositionTestSuite covers the complete pair: one pure load and one attach.
 type MonsterCompositionTestSuite struct {
 	suite.Suite
 
@@ -52,9 +52,15 @@ func goblinData(id string) *monster.Data {
 		MaxHitPoints:     7,
 		ArmorClass:       15,
 		ProficiencyBonus: 2,
-		Actions: []monster.ActionData{{
-			Ref:    *refs.MonsterActions.Melee(),
-			Config: json.RawMessage(`{"name":"scimitar","attack_bonus":4,"damage":[{"dice":"1d6","type":"slashing","flat_bonus":2}],"reach":1}`),
+		Actions: []combatActions.Definition{{
+			Ref:  *refs.MonsterActions.GoblinScimitar(),
+			Name: "scimitar",
+			Attack: &combatActions.AttackProfile{
+				Category:    combatActions.AttackCategoryWeapon,
+				Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 1}},
+				AttackBonus: 4,
+				Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}},
+			},
 		}},
 	}
 }
@@ -74,9 +80,7 @@ func (s *MonsterCompositionTestSuite) marshal(d *monster.Data) string {
 }
 
 // The whole monster, loaded with no bus and written back byte for byte —
-// actions and conditions included. This is what the three-call assembly could
-// never promise: two of its three calls produce a monster that serializes
-// without the third one's contents, and says nothing about it.
+// actions and conditions included.
 func (s *MonsterCompositionTestSuite) TestRoundTripsByteIdenticalWithNoBus() {
 	data := s.goblin()
 
@@ -86,7 +90,7 @@ func (s *MonsterCompositionTestSuite) TestRoundTripsByteIdenticalWithNoBus() {
 	s.Require().Equal(s.marshal(data), s.marshal(m.ToData()))
 }
 
-// Actions are the half monster.Load cannot do on its own.
+// The composition entry point preserves definitions loaded directly by monster.Load.
 func (s *MonsterCompositionTestSuite) TestLoadMonsterLoadsTheActions() {
 	m, err := LoadMonster(s.ctx, s.goblin())
 	s.Require().NoError(err)

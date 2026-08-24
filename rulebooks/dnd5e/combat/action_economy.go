@@ -18,7 +18,7 @@ type ActionEconomy struct {
 	AttacksRemaining  int // Set when Attack ability is taken (stays 0 until then)
 	MovementRemaining int // Set at turn start from character speed
 
-	// Additional capacity for granted actions
+	// Additional capacity granted for later resolution
 	OffHandAttacksRemaining int // Set by TwoWeaponGranter after main-hand attack
 	FlurryStrikesRemaining  int // Set by FlurryOfBlows feature (usually 2)
 }
@@ -116,7 +116,7 @@ func (ae *ActionEconomy) CanUseAttack() bool {
 }
 
 // UseAttack consumes one attack if available
-// Purpose: Called by Strike actions to consume one of the attacks granted by the Attack ability.
+// Purpose: Called when resolution consumes one attack granted by the Attack ability.
 // Returns CodeResourceExhausted if no attacks remain.
 func (ae *ActionEconomy) UseAttack() error {
 	if ae.AttacksRemaining <= 0 {
@@ -141,7 +141,7 @@ func (ae *ActionEconomy) CanUseMovement(cost int) bool {
 }
 
 // UseMovement consumes the specified amount of movement if available
-// Purpose: Called by Move actions to consume movement when moving on the battlefield.
+// Purpose: Called when movement resolution consumes movement on the battlefield.
 // Returns CodeResourceExhausted if insufficient movement remains.
 // Does not consume partial movement - it's all or nothing.
 func (ae *ActionEconomy) UseMovement(cost int) error {
@@ -174,7 +174,7 @@ func (ae *ActionEconomy) CanUseOffHandAttack() bool {
 }
 
 // UseOffHandAttack consumes one off-hand attack if available
-// Purpose: Called by OffHandStrike actions to consume one of the attacks granted by two-weapon fighting.
+// Purpose: Called when resolution consumes an attack granted by two-weapon fighting.
 // Returns CodeResourceExhausted if no off-hand attacks remain.
 func (ae *ActionEconomy) UseOffHandAttack() error {
 	if ae.OffHandAttacksRemaining <= 0 {
@@ -199,7 +199,7 @@ func (ae *ActionEconomy) CanUseFlurryStrike() bool {
 }
 
 // UseFlurryStrike consumes one flurry strike if available
-// Purpose: Called by FlurryStrike actions to consume one of the attacks granted by Flurry of Blows.
+// Purpose: Called when resolution consumes an attack granted by Flurry of Blows.
 // Returns CodeResourceExhausted if no flurry strikes remain.
 func (ae *ActionEconomy) UseFlurryStrike() error {
 	if ae.FlurryStrikesRemaining <= 0 {

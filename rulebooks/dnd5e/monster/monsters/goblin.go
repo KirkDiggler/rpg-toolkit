@@ -5,9 +5,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -30,12 +30,17 @@ func NewGoblin(id string) *monster.Monster {
 		},
 	})
 
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "scimitar",
-		AttackBonus: 4,
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}},
-		Reach:       1,
-	})))
+	// Preserve the existing authored reach value; its unit defect is separate.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.GoblinScimitar(),
+		Name: "scimitar",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 1}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 2}},
+		},
+	})
 	m.SetSpeed(monster.SpeedData{Walk: 30})
 
 	return m

@@ -21,9 +21,9 @@ import (
 //
 // They live in this package rather than in combat for the plainest of reasons:
 // a compiler reads the SHEET, and combat cannot see a sheet — character imports
-// combat, so the dependency only runs one way. It is the same force that put
-// AttackFromCharacter in the resolution module: the compiler goes where the
-// sheet is, and hands back something neutral.
+// combat, so the dependency only runs one way. It is the same force that puts
+// [AssembleAttack] here: compilers stay beside the sheet and hand back neutral
+// data.
 //
 // The conventions follow that compiler's. A concrete sheet in, a neutral
 // profile out, nil refused by name, and only STATIC facts compiled — nothing
@@ -58,9 +58,9 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 // CostOfStrike compiles what one swing costs this character: a single banked
 // attack and no slot at all.
 //
-// Those are the same two facts actions.Strike already declares about itself —
-// ActionFree, CapacityAttack — restated as a price the gate can charge instead
-// of a pair of accessors something has to interpret.
+// This is the capacity half of a shared attack definition's optional price,
+// compiled as data the gate can charge rather than behavior an action object
+// must expose through accessors.
 //
 // The sheet is not read today. It is taken anyway, because the price of a swing
 // is a character question the moment anything makes it one, and a compiler that
@@ -75,4 +75,77 @@ func CostOfStrike(c *Character) (*combat.SpendProfile, error) {
 			combat.CapacityAttack: 1,
 		},
 	}, nil
+}
+
+// CostOfSwing composes the Attack action and one Strike into the single atomic
+// price charged for a swing. An already-banked attack costs only its capacity;
+// otherwise the first swing is netted from the Attack action's grant.
+func CostOfSwing(c *Character) (*combat.SpendProfile, error) {
+	strike, err := CostOfStrike(c)
+	if err != nil {
+		return nil, err
+	}
+	if combat.CanPay(c, strike) {
+		return strike, nil
+	}
+
+	action, err := CostOfAttack(c)
+	if err != nil {
+		return nil, err
+	}
+	return asOnePayment(action, strike), nil
+}
+
+func asOnePayment(action, strike *combat.SpendProfile) *combat.SpendProfile {
+	wants := sum(action.Capacity, strike.Capacity)
+	banks := sum(action.Grants, strike.Grants)
+	merged := &combat.SpendProfile{
+		Slots:    sum(action.Slots, strike.Slots),
+		Pools:    sum(action.Pools, strike.Pools),
+		Requires: larger(action.Requires, strike.Requires),
+	}
+
+	for key, want := range wants {
+		if owed := want - banks[key]; owed > 0 {
+			merged.Capacity = put(merged.Capacity, key, owed)
+		}
+	}
+	for key, banked := range banks {
+		if left := banked - wants[key]; left > 0 {
+			merged.Grants = put(merged.Grants, key, left)
+		}
+	}
+	return merged
+}
+
+func sum[K ~string](a, b map[K]int) map[K]int {
+	var out map[K]int
+	for key, quantity := range a {
+		out = put(out, key, quantity)
+	}
+	for key, quantity := range b {
+		out = put(out, key, out[key]+quantity)
+	}
+	return out
+}
+
+func larger[K ~string](a, b map[K]int) map[K]int {
+	var out map[K]int
+	for key, quantity := range a {
+		out = put(out, key, quantity)
+	}
+	for key, quantity := range b {
+		if quantity > out[key] {
+			out = put(out, key, quantity)
+		}
+	}
+	return out
+}
+
+func put[K ~string](values map[K]int, key K, quantity int) map[K]int {
+	if values == nil {
+		values = make(map[K]int)
+	}
+	values[key] = quantity
+	return values
 }

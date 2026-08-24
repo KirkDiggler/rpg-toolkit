@@ -4,12 +4,16 @@ Date: 2026-07-04
 
 ## Status
 
-**Accepted** — decided by Kirk (architect/owner) on 2026-07-04. This revision
-records the **final** decision (a *split*); it amends the first-merged version of
-this ADR (PR #730), which was merged while module placement was still written as
-an open sub-choice. The alternatives are preserved under *Options considered*.
-The decision commits the repo to a structural move that is **executed later** (a
-focused restructure after Beat 2); this document moves no code.
+**Superseded in implementation (2026-08-23).** The proposed split was never
+performed. The active `rulebooks/dnd5e/encounter`, resolution, and session stack
+was built separately; rpg-api moved to that stack in PRs #801/#804; and
+rpg-toolkit#1215 deleted the now-unconsumed top-level module. The original
+reasoning and alternatives remain below as history.
+
+The general rule survives: a package that mixes reusable infrastructure with
+one game's rules has a false boundary. The superseding implementation chose a
+clean new composition and host seam rather than relocating the old module's two
+halves.
 
 ## Context
 

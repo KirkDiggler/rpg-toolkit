@@ -5,7 +5,6 @@ package resolution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -13,12 +12,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	monsterActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
 // criticalThreshold is the roll at or above which an attack crits. A flat 20
@@ -27,197 +24,12 @@ import (
 // rather than from this constant.
 const criticalThreshold = 20
 
-// StrikeInput describes one attack.
-//
-// The attack arrives as an [AttackProfile] — attacker-kind-neutral, compiled
-// at the seam from whatever persisted form the attacker has. The headline
-// tests still drive the catalog wolf's own bite: content in, one compilation
-// step, machine unchanged.
+// StrikeInput describes one attack over an inert shared definition.
 type StrikeInput struct {
-	// AttackerID names the participant swinging.
 	AttackerID string
-
-	// TargetID names the participant being swung at.
-	TargetID string
-
-	// Attack is the attack's numbers, attacker-kind-neutral. The machine
-	// never learns who compiled them: a monster action converts through
-	// AttackFromMonsterAction, and a character's weapon-plus-sheet compiles
-	// through a sibling constructor when it arrives (rpg-toolkit#1003). The
-	// phases are the same swing either way — only the compilation differs.
-	Attack AttackProfile
-
-	// Roller rolls the attack and its damage. Nil takes the default roller.
-	Roller dice.Roller
-}
-
-// AttackProfile is what a strike needs to know about an attack, whoever is
-// making it. It is derived at strike time, never persisted: the persisted
-// forms are the monster's action data and the character's sheet, and each
-// compiles into this shape at the seam.
-type AttackProfile struct {
-	// Ref names the attack for attribution — the weapon or action behind
-	// the swing.
-	Ref *core.Ref
-
-	// Name is the catalog's display name for Ref — "Longsword", "Unarmed
-	// Strike" — carried alongside it so a caller reporting what was swung
-	// (a beat line, a struck/missed event) never has to look the ref back
-	// up in a catalog of its own (rpg-toolkit#866). Populated by both
-	// compilers: [AttackFromCharacter] reads it off the equipped weapon,
-	// and [AttackFromMonsterAction] carries the stat block's own authored
-	// name through for a melee action ("shortsword", "scimitar") or
-	// reports the fixed label "Bite" for a bite, which authors none.
-	Name string
-
-	// AttackBonus is added to the d20.
-	AttackBonus int
-
-	// Reach is how far this melee attack reaches, in FEET: 5 (the 5e
-	// default, and the unarmed strike's own reach) or 10 for a weapon
-	// carrying the Reach property (rpg-toolkit#1010). Feet, not cells
-	// (Kirk, rpg-project#254 review) — the same unit monster.ActionData's
-	// own Reach field and monster.SpeedData already use; a cell is 5 feet,
-	// and the one place that needs cells (the reach gate, the monster
-	// turn's movement budget) converts once, at the point of comparison,
-	// rather than every producer of this field guessing at the conversion.
-	//
-	// Populated by both compilers now — [AttackFromCharacter] via
-	// [defaultMeleeReach]/[reachPropertyReach], [AttackFromMonsterAction]
-	// via the action's own authored Reach (rpg-project#254; previously
-	// silently zero for every monster action, since nothing read it).
-	// Meaningless for a ranged attack, which never compiles a profile at
-	// all (IsRanged refuses before one is built).
-	Reach int
-
-	// Damage is the ordered set of canonical damage pools declared by the
-	// weapon or monster action. Dice notation remains pure NdM; intrinsic
-	// arithmetic stays in each pool's FlatBonus.
-	Damage []damage.Damage
-
-	// AbilityUsed is the ability the compiler swung with, when it chose one.
-	//
-	// Effects predicate on this field. Rage's damage bonus applies
-	// only to melee attacks made with Strength, so it reads this off the
-	// folded damage event; with the field empty its predicate never matches
-	// and a raging character silently loses the bonus. Measured, not assumed:
-	// a raging hero's longsword dealt 8 instead of 10 before this was
-	// plumbed (TestARagingHerosBonusArrivesViaTheChainNotTheCompiler).
-	//
-	// The empty value is meaningful and correct for a stat block: a monster
-	// action's numbers are pre-computed and name no ability, so
-	// AttackFromMonsterAction leaves it unset rather than guessing STR.
-	//
-	// This is the field the attack-profile seam named as additive when a
-	// predicate finally needed it (docs/ideas/session-sdk/attack-profile-seam.md).
-	AbilityUsed abilities.Ability
-
-	// AbilityModifier is the arithmetic selected by a character compiler. It
-	// stays separate from canonical dice and intrinsic monster flat bonuses so
-	// resolution can attribute it to the one marked pool. Monster profiles keep
-	// this at zero.
-	AbilityModifier int
-
-	// Gate is the rider's contest, if the attack declares one (ADR-0039).
-	// Nil means the attack just hits.
-	Gate *saves.SaveGate
-
-	// Imposes is what the rider does to a target who fails the gate's save.
-	//
-	// Gate and Imposes are the two halves of one rider and travel together:
-	// the gate is the contest — which abilities, what DC, what a success buys —
-	// and this is the consequence the contest is about. ADR-0039 deliberately
-	// kept the two apart in the gate's own shape, which left the consequence
-	// with nowhere to live: the machine hardcoded prone, so every gated attack
-	// knocked its target down whatever the attack was (rpg-toolkit#1013).
-	//
-	// Nil whenever Gate is nil, and required whenever Gate is not. BOTH
-	// DIRECTIONS ARE ENFORCED by validate, because a consequence with no
-	// contest is as meaningless as a contest with no consequence: one is a
-	// roll that costs nothing, the other is a cost nothing ever rolls for.
-	// Enforcing only the first half is what let a stranded Imposes pass
-	// validation and then be silently dropped by afterNotify's early exit
-	// (Copilot review, #1014).
-	//
-	// The compiler names it, because translating an action's semantics is the
-	// compiler's job: the wolf's KnockdownDC becomes both the gate and prone in
-	// the same place, rather than the DC here and the meaning in the machine.
-	Imposes Consequence
-
-	// TwoHanded says this swing is being made with both hands on the
-	// weapon. A static fact of the grip and the weapon, threaded onto the
-	// damage chain event the same way AbilityUsed already is — this is the
-	// seam's own precedent (see AbilityUsed's doc above), exercised for
-	// rpg-toolkit#1178: Dueling's eligibility used to be decided by a live
-	// gamectx.CharacterRegistry lookup the session stack never satisfies;
-	// moving the static half of that decision here let Dueling's own
-	// predicate read it off the event instead, the same way Rage does.
-	TwoHanded bool
-
-	// OffHandWeaponRef names the weapon, if any, occupying the attacker's
-	// OTHER hand from the one this profile compiled — nil when that hand
-	// is empty or holds something that is not a weapon (a shield, most
-	// often). Also additive for rpg-toolkit#1178, and also a static
-	// equipment fact rather than something a chain-fold predicate should
-	// have to ask a live registry for.
-	OffHandWeaponRef *core.Ref
-}
-
-// validate refuses a profile that cannot drive a strike, naming what is
-// missing. Constructors produce valid profiles; this catches the hand-built.
-func (p *AttackProfile) validate() error {
-	if p.Ref == nil {
-		return fmt.Errorf("%w: the attack names no ref", ErrBadAttack)
-	}
-	if err := damage.Validate(p.Damage); err != nil {
-		return fmt.Errorf("%w: invalid attack damage: %w", ErrBadAttack, err)
-	}
-
-	abilityMarkers := 0
-	for _, pool := range p.Damage {
-		for _, property := range pool.Properties {
-			if property == damage.AddsAttackAbilityModifier {
-				abilityMarkers++
-			}
-		}
-	}
-
-	if p.AbilityUsed != "" {
-		if abilityMarkers != 1 {
-			return fmt.Errorf(
-				"%w: ability %q requires exactly one %q damage pool",
-				ErrBadAttack, p.AbilityUsed, damage.AddsAttackAbilityModifier)
-		}
-	} else {
-		if p.AbilityModifier != 0 {
-			return fmt.Errorf("%w: an attack with no ability cannot carry ability modifier %+d", ErrBadAttack, p.AbilityModifier)
-		}
-		if abilityMarkers != 0 {
-			return fmt.Errorf(
-				"%w: an attack with no ability cannot mark a %q damage pool",
-				ErrBadAttack, damage.AddsAttackAbilityModifier)
-		}
-	}
-
-	// A gate with nothing riding on it is refused rather than run. The
-	// alternative — contest it and impose nothing — is a save the target rolls,
-	// can fail, and suffers nothing for, which reads as working while meaning
-	// nothing. Same principle the consequence's own validate states: failing at
-	// construction is a bug report, failing soft is a bug that ships.
-	if p.Gate != nil && p.Imposes == nil {
-		return fmt.Errorf("%w: the attack declares a gate but names no consequence", ErrBadAttack)
-	}
-
-	// And the other direction, because the pair is a pair. A consequence with
-	// no gate is never imposed — afterNotify returns early on a nil gate — so
-	// accepting it would silently discard a rule its author believed they had
-	// written. Refusing both directions is what makes "Gate and Imposes travel
-	// together" a contract rather than a comment.
-	if p.Gate == nil && p.Imposes != nil {
-		return fmt.Errorf("%w: the attack names a consequence but declares no gate to contest it", ErrBadAttack)
-	}
-
-	return nil
+	TargetID   string
+	Definition combatActions.Definition
+	Roller     dice.Roller
 }
 
 // StrikeOutcome is what an attack produced, in enough detail to explain it.
@@ -263,10 +75,15 @@ type StrikeOutcome struct {
 	// DamageInstances were calculated. Empty on a miss.
 	DamageComponents []dnd5eEvents.DamageComponent
 
-	// Contest is the interaction that gated the blow's rider, when the action
-	// declared one and the blow landed. Nil when the action carries no gate,
-	// and nil on a miss — a strike that misses rolls no save.
-	Contest *ContestOutcome
+	// Conditions records each declared on-hit application in declaration order.
+	Conditions []ConditionOutcome
+}
+
+// ConditionOutcome records whether one declared on-hit condition landed.
+type ConditionOutcome struct {
+	Ref     core.Ref        `json:"ref"`
+	Contest *ContestOutcome `json:"contest,omitempty"`
+	Applied bool            `json:"applied"`
 }
 
 func (StrikeOutcome) isOutcome() {}
@@ -303,12 +120,20 @@ type strikeMachine struct {
 	// the first needs them and a step's closure is handed only a bus.
 	cast *Participants
 
+	attack           *combatActions.AttackProfile
+	sourceRef        *core.Ref
+	ability          abilities.Ability
+	abilityModifier  int
+	twoHanded        bool
+	offHandWeaponRef *core.Ref
+	prepared         []preparedCondition
+
 	// outcome accumulates across phases. It is the machine's whole state, and
 	// the reason a suspension between any two phases would need nothing else.
 	outcome StrikeOutcome
 }
 
-// Start validates the profile, reads the target's AC, and folds the attack chain.
+// Start validates the profile and produces the first post-payment resolution step.
 func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
@@ -316,11 +141,24 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	if m.in.AttackerID == "" || m.in.TargetID == "" {
 		return nil, fmt.Errorf("%w: a strike needs an attacker and a target", ErrNilInput)
 	}
-	if err := m.in.Attack.validate(); err != nil {
-		return nil, err
+	if err := m.in.Definition.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
 
 	m.cast = cast
+	m.attack = m.in.Definition.Attack
+	m.sourceRef = &m.in.Definition.Ref
+	if m.attack.Weapon != nil {
+		m.twoHanded = m.attack.Weapon.TwoHanded
+		m.offHandWeaponRef = m.attack.Weapon.OffHandWeaponRef
+		if m.attack.Weapon.Ref != nil {
+			m.sourceRef = m.attack.Weapon.Ref
+		}
+	}
+	if m.attack.Ability != nil {
+		m.ability = m.attack.Ability.Ability
+		m.abilityModifier = m.attack.Ability.Modifier
+	}
 
 	if _, err := combatantFor(cast, m.in.AttackerID); err != nil {
 		return nil, err
@@ -331,55 +169,80 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 		return nil, err
 	}
 
-	// The AC the target actually has — armor worn and every effect folded onto
-	// the AC chain — rather than the flat number the sheet happens to carry.
-	//
-	// combat.GetEffectiveAC is bus-free at its signature and dispatches on the
-	// sheet: a character folds combat.ACChain, a monster has no such method and
-	// falls through to its stat block's AC, which is correct for a stat block.
-	//
-	// The character's fold rides the bus parked on the sheet, and under Resolve
-	// that bus IS this interaction's participant view — Attach was handed it —
-	// so the fold runs among the same subscribers everything else in this strike
-	// folds among. That is the legacy shape and it is load-bearing here: a
-	// resolution-owned step (an AC Gather before the attack event is built) is
-	// the eventual form if AC folding ever needs to be inspectable in the step
-	// log or suspendable at a reaction window. Documented rather than built —
-	// nothing asks for it yet, and the fold reaches the right subscribers
-	// either way.
-	//
-	// THE CHAIN EVENT'S COPY IS THE ONE THAT MATTERS. afterAttackChain compares
-	// against the FOLDED event and then assigns m.outcome.TargetAC from it, so
-	// the event's number both decides the hit and replaces whatever the outcome
-	// was built with. Setting only the outcome would report the effective AC
-	// and roll against the flat one — a strike that tells the truth and does
-	// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
-	//
-	// The outcome is seeded with it anyway, and that seed is dead on every
-	// path that exists today: nothing returns a StrikeOutcome before the fold
-	// runs. It stays because a future phase that can end the strike earlier —
-	// a reaction window declining the attack, say — would otherwise hand back
-	// an outcome with a zero AC, and that is a worse failure than a redundant
-	// assignment.
-	effectiveAC := combat.GetEffectiveAC(ctx, target)
-
-	m.outcome = StrikeOutcome{
-		AttackerID: m.in.AttackerID,
-		TargetID:   m.in.TargetID,
-		TargetAC:   effectiveAC,
+	longRange, err := deliveryRangeState(ctx, m.in.AttackerID, m.in.TargetID, m.attack.Delivery)
+	if err != nil {
+		return nil, err
+	}
+	m.prepared = make([]preparedCondition, len(m.attack.OnHit))
+	for index, application := range m.attack.OnHit {
+		if application.Save != nil {
+			if gateErr := validateConditionGate(application.Save); gateErr != nil {
+				return nil, fmt.Errorf("validate on-hit condition %s: %w", application.Ref.String(), gateErr)
+			}
+		}
+		prepared, prepareErr := prepareCondition(application, m.in.TargetID, m.in.Definition.Ref.String())
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		m.prepared[index] = prepared
 	}
 
-	event := dnd5eEvents.AttackChainEvent{
-		AttackerID:        m.in.AttackerID,
-		TargetID:          m.in.TargetID,
-		WeaponRef:         m.in.Attack.Ref,
-		IsMelee:           true,
-		AttackBonus:       m.in.Attack.AttackBonus,
-		TargetAC:          effectiveAC,
-		CriticalThreshold: criticalThreshold,
-	}
+	return m.effectiveACStep(target, longRange), nil
+}
 
-	return gatherAttack(event, m.afterAttackChain), nil
+// effectiveACStep performs the first event-backed work only after the door has
+// accepted payment, then builds the attack event from that folded AC.
+func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool) Gather {
+	return Gather{
+		name: "effective AC",
+		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
+			// The AC the target actually has — armor worn and every effect folded onto
+			// the AC chain — rather than the flat number the sheet happens to carry.
+			//
+			// combat.GetEffectiveAC is bus-free at its signature and dispatches on the
+			// sheet: a character folds combat.ACChain, a monster has no such method and
+			// falls through to its stat block's AC, which is correct for a stat block.
+			//
+			// The character's fold rides the bus parked on the sheet, and under Resolve
+			// that bus IS this interaction's participant view — Attach was handed it —
+			// so the fold runs among the same subscribers everything else in this strike
+			// folds among. Running that read inside this first Gather is load-bearing:
+			// Start is pure preflight, and an action the door refuses publishes nothing.
+			//
+			// THE CHAIN EVENT'S COPY IS THE ONE THAT MATTERS. afterAttackChain compares
+			// against the FOLDED event and then assigns m.outcome.TargetAC from it, so
+			// the event's number both decides the hit and replaces whatever the outcome
+			// was built with. Setting only the outcome would report the effective AC
+			// and roll against the flat one — a strike that tells the truth and does
+			// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
+			effectiveAC := combat.GetEffectiveAC(ctx, target)
+
+			m.outcome = StrikeOutcome{
+				AttackerID: m.in.AttackerID,
+				TargetID:   m.in.TargetID,
+				TargetAC:   effectiveAC,
+			}
+
+			event := dnd5eEvents.AttackChainEvent{
+				AttackerID:        m.in.AttackerID,
+				TargetID:          m.in.TargetID,
+				WeaponRef:         m.sourceRef,
+				IsMelee:           m.attack.Delivery.IsMelee(),
+				AttackBonus:       m.attack.AttackBonus,
+				TargetAC:          effectiveAC,
+				CriticalThreshold: criticalThreshold,
+			}
+			if longRange {
+				event.DisadvantageSources = append(event.DisadvantageSources, dnd5eEvents.AttackModifierSource{
+					SourceRef: &m.in.Definition.Ref,
+					SourceID:  m.in.AttackerID,
+					Reason:    "target is beyond normal range",
+				})
+			}
+
+			return gatherAttack(event, m.afterAttackChain), nil
+		},
+	}
 }
 
 // afterAttackChain rolls the die the fold decided the shape of, and decides
@@ -396,6 +259,12 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 // path is the one that would have to give it up; it retires with #966, which
 // is when this stops being a mirror and starts being the only copy.
 func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents.AttackChainEvent) (Step, error) {
+	m.outcome.TargetAC = folded.TargetAC
+	m.outcome.Folded = folded
+	if folded.IsCancelled() {
+		return Done{Outcome: m.outcome}, nil
+	}
+
 	roller := m.in.Roller
 	if roller == nil {
 		roller = dice.NewRoller()
@@ -421,8 +290,6 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 
 	m.outcome.Roll = roll
 	m.outcome.Total = roll + folded.AttackBonus
-	m.outcome.TargetAC = folded.TargetAC
-	m.outcome.Folded = folded
 
 	// A natural 20 is the only automatic hit and a natural 1 the only
 	// automatic miss; everything between is arithmetic. The crit range is
@@ -485,10 +352,13 @@ func attackModifierRefs(sources []dnd5eEvents.AttackModifierSource) []*core.Ref 
 // rollDamage rolls the action's damage dice and yields the fold that lets
 // effects modify it (ADR-0026's Resolve).
 func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Step, error) {
-	components := make([]dnd5eEvents.DamageComponent, 0, len(m.in.Attack.Damage)+1)
+	if len(m.attack.Damage) == 0 {
+		return m.afterDamage(ctx)
+	}
+	components := make([]dnd5eEvents.DamageComponent, 0, len(m.attack.Damage)+1)
 	var primary *damage.Damage
-	for i := range m.in.Attack.Damage {
-		declared := &m.in.Attack.Damage[i]
+	for i := range m.attack.Damage {
+		declared := &m.attack.Damage[i]
 		component, err := m.rollDamageComponent(ctx, roller, *declared)
 		if err != nil {
 			return nil, err
@@ -503,8 +373,8 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 	if primary != nil {
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source:     dnd5eEvents.DamageSourceAbility,
-			SourceRef:  attackAbilityRef(m.in.Attack.AbilityUsed),
-			FlatBonus:  m.in.Attack.AbilityModifier,
+			SourceRef:  attackAbilityRef(m.ability),
+			FlatBonus:  m.abilityModifier,
 			DamageType: primary.Type,
 			IsCritical: false,
 		})
@@ -527,18 +397,18 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		HasAdvantage:     effectiveAdvantage,
 		WeaponDamageDice: weaponDamageDice,
 		WeaponDamageType: weaponDamageType,
-		IsMelee:          true,
+		IsMelee:          m.attack.Delivery.IsMelee(),
 		// Which ability swung, for the effects that predicate on it — Rage
 		// only pays out on a melee Strength attack. Empty when the compiler
 		// named none, which is a stat block's honest answer.
-		AbilityUsed:     m.in.Attack.AbilityUsed,
-		AbilityModifier: m.in.Attack.AbilityModifier,
-		WeaponRef:       m.in.Attack.Ref,
+		AbilityUsed:     m.ability,
+		AbilityModifier: m.abilityModifier,
+		WeaponRef:       m.sourceRef,
 		// Static equipment facts the compiler already knew (rpg-toolkit#1178)
 		// — Dueling's predicate decides eligibility from these rather than a
 		// live gamectx lookup, the same way Rage decides from AbilityUsed.
-		TwoHanded:        m.in.Attack.TwoHanded,
-		OffHandWeaponRef: m.in.Attack.OffHandWeaponRef,
+		TwoHanded:        m.twoHanded,
+		OffHandWeaponRef: m.offHandWeaponRef,
 	}), m.afterDamageChain), nil
 }
 
@@ -569,9 +439,14 @@ func (m *strikeMachine) rollDamageComponent(
 		rolls = append(rolls, flattenDice(again.Rolls())...)
 	}
 
+	source := dnd5eEvents.DamageSourceWeapon
+	if m.attack.Category == combatActions.AttackCategorySpell {
+		source = dnd5eEvents.DamageSourceSpell
+	}
+
 	return dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		SourceRef:         m.in.Attack.Ref,
+		Source:            source,
+		SourceRef:         m.sourceRef,
 		Dice:              declared.Dice,
 		OriginalDiceRolls: rolls,
 		FinalDiceRolls:    append([]int(nil), rolls...),
@@ -677,157 +552,39 @@ func (m *strikeMachine) afterDamage(ctx context.Context) (Step, error) {
 	return m.afterNotify(ctx)
 }
 
-// afterNotify contests the blow's rider, if it declared one.
+// afterNotify processes declared on-hit conditions in authoring order.
 func (m *strikeMachine) afterNotify(_ context.Context) (Step, error) {
-	if m.in.Attack.Gate == nil {
+	return m.nextCondition(0)
+}
+
+func (m *strikeMachine) nextCondition(index int) (Step, error) {
+	if index >= len(m.prepared) {
 		return Done{Outcome: m.outcome}, nil
+	}
+	prepared := m.prepared[index]
+	application := prepared.declaration
+	if application.Save == nil {
+		return publishPreparedCondition(prepared, m.cast, m.in.TargetID, func() (Step, error) {
+			m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
+				Ref: application.Ref, Applied: true,
+			})
+			return m.nextCondition(index + 1)
+		}), nil
 	}
 
 	return requestContest(&ContestInput{
-		Gate:    m.in.Attack.Gate,
-		SaverID: m.in.TargetID,
-		// What the profile named, not what this machine assumes. Until
-		// rpg-toolkit#1013 this was a hardcoded prone, so a ghoul's paralysis
-		// would have knocked its target over instead — the machine deciding a
-		// rule that belongs to the attack.
-		Consequence: m.in.Attack.Imposes,
+		Gate:        application.Save,
+		SaverID:     m.in.TargetID,
+		Application: application,
 		DamageTaken: m.outcome.Damage,
 		Roller:      m.in.Roller,
+		prepared:    &prepared,
 	}, func(_ context.Context, contest ContestOutcome) (Step, error) {
-		m.outcome.Contest = &contest
-
-		return Done{Outcome: m.outcome}, nil
+		m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
+			Ref: application.Ref, Contest: &contest, Applied: !contest.Succeeded,
+		})
+		return m.nextCondition(index + 1)
 	}), nil
-}
-
-// AttackFromMonsterAction compiles a monster action's persisted data into the
-// neutral profile a strike consumes. This is the monster half of the seam
-// StrikeInput.Attack names; a character's weapon-plus-sheet compiler is its
-// sibling (rpg-toolkit#1003) and the machine cannot tell them apart.
-//
-// Two refs for slice 1: the bite, and the generic melee action every
-// stat-block weapon is authored as (a skeleton's scimitar is a MeleeAction
-// named "scimitar"). An action this build cannot read is refused by name
-// rather than treated as a generic swing, because guessing an attack bonus is
-// how a stat block starts lying again — the ranged action waits on range
-// semantics the strike does not have, and multiattack is turn economy, not a
-// single swing.
-//
-// Reach is not enforced, for melee weapons exactly as for the bite: the
-// strike does not check adjacency at all. Deferred explicitly rather than
-// carried silently — rpg-toolkit#1010 owns the rule inventory (five-foot
-// reach, the reach property, ranged brackets) and it lands with the movement
-// wave, where the MovementChain custody it belongs beside already sits.
-// Positions exist and the room is built, so the check is cheap whenever
-// someone owns the rule.
-func AttackFromMonsterAction(action monster.ActionData) (AttackProfile, error) {
-	switch action.Ref.ID {
-	case refs.MonsterActions.Bite().ID:
-		return attackFromBite(action)
-	case refs.MonsterActions.Melee().ID:
-		return attackFromMelee(action)
-	default:
-		return AttackProfile{}, fmt.Errorf(
-			"%w: %q (the strike compiles the bite and the generic melee action)", ErrBadAttack, action.Ref.ID)
-	}
-}
-
-// attackFromMelee compiles a stat-block weapon — MeleeConfig is the profile's
-// shape already, and a plain weapon declares no gate: the blow just lands.
-func attackFromMelee(action monster.ActionData) (AttackProfile, error) {
-	if _, err := monsterActions.LoadAction(action); err != nil {
-		return AttackProfile{}, fmt.Errorf("%w: invalid melee action: %w", ErrBadAttack, err)
-	}
-
-	var config monsterActions.MeleeConfig
-	if err := json.Unmarshal(action.Config, &config); err != nil {
-		return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
-	}
-
-	ref := action.Ref
-	profile := AttackProfile{
-		Ref: &ref,
-		// The stat block's own authored display name — "shortsword",
-		// "scimitar" — carried through exactly as AttackFromCharacter
-		// already carries a weapon's (rpg-toolkit#866). Previously dropped
-		// (AttackProfile.Name stayed "" for every monster melee action),
-		// harmless only while nothing that compiled a monster's attack
-		// ever reported it to a caller — session's Striker now does
-		// (rpg-project#254).
-		Name:        config.Name,
-		AttackBonus: config.AttackBonus,
-		Damage:      copyDamagePools(config.Damage),
-		// The stat block's own authored reach, in cells — carried through
-		// faithfully rather than clamped or defaulted here: this compiler
-		// trusts the content the same way it already trusts AttackBonus and
-		// Damage. Previously dropped entirely (AttackProfile.Reach stayed
-		// zero for every monster melee action), which was harmless only
-		// because nothing gated a monster's attack by reach yet.
-		Reach: config.Reach,
-	}
-	if err := profile.validate(); err != nil {
-		return AttackProfile{}, err
-	}
-
-	return profile, nil
-}
-
-func attackFromBite(action monster.ActionData) (AttackProfile, error) {
-	if _, err := monsterActions.LoadAction(action); err != nil {
-		return AttackProfile{}, fmt.Errorf("%w: invalid bite action: %w", ErrBadAttack, err)
-	}
-
-	var config monsterActions.BiteConfig
-	if err := json.Unmarshal(action.Config, &config); err != nil {
-		return AttackProfile{}, fmt.Errorf("%w: %w", ErrBadAttack, err)
-	}
-
-	ref := action.Ref
-	profile := AttackProfile{
-		Ref: &ref,
-		// BiteConfig carries no authored display name — every bite is just
-		// "the bite" — so this is a fixed label rather than read off
-		// content, the same way Reach below is a fixed value rather than a
-		// configured one. Kept non-empty for the same reason melee's Name
-		// is carried at all: a caller reporting what was swung (a beat
-		// line, a struck/missed event) reads this rather than a catalog.
-		Name:        "Bite",
-		AttackBonus: config.AttackBonus,
-		Damage:      copyDamagePools(config.Damage),
-		Gate:        config.SaveGate,
-		// BiteConfig carries no configurable reach — a bite is always the
-		// fixed melee reach, the same default a plain weapon or an unarmed
-		// strike compiles to (character_attack.go's defaultMeleeReach).
-		Reach: defaultMeleeReach,
-	}
-
-	// A bite's gate is a KNOCKDOWN — that is what the stat block's
-	// KnockdownDC means, and translating it is this function's job in both
-	// directions: the DC becomes the contest, and knocked-down becomes prone.
-	// Naming it here rather than in the machine is the whole of #1013: the
-	// machine imposed prone on every gated attack because the consequence had
-	// nowhere else to be said.
-	//
-	// Conditional on the gate, so a bite authored without one stays a plain
-	// bite rather than carrying a consequence nothing can trigger.
-	if profile.Gate != nil {
-		profile.Imposes = ImposeCondition(refs.Conditions.Prone(), dnd5eEvents.ConditionProne)
-	}
-	if err := profile.validate(); err != nil {
-		return AttackProfile{}, err
-	}
-
-	return profile, nil
-}
-
-func copyDamagePools(pools []damage.Damage) []damage.Damage {
-	copy := make([]damage.Damage, len(pools))
-	for i, pool := range pools {
-		copy[i] = pool
-		copy[i].Properties = append([]damage.Property(nil), pool.Properties...)
-	}
-
-	return copy
 }
 
 // combatantFor finds a participant's sheet as something that can be hit.

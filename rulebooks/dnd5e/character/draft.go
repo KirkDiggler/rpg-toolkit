@@ -9,7 +9,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -626,7 +625,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		resources:           make(map[coreResources.ResourceKey]*combat.RecoverableResource),
 		features:            charFeatures,
 		combatAbilities:     make([]combatabilities.CombatAbility, 0),
-		actions:             make([]actions.Action, 0),
 		bus:                 bus,
 		conditions:          make([]dnd5eEvents.ConditionBehavior, 0),
 		subscriptionIDs:     make([]string, 0),
@@ -634,9 +632,6 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 
 	// Add standard combat abilities (Attack, Dash, Dodge, Disengage)
 	d.initializeStandardCombatAbilities(char)
-
-	// Add standard actions (Strike, Move)
-	d.initializeStandardActions(char)
 
 	// Initialize class-specific resources
 	d.initializeClassResources(char)
@@ -1749,24 +1744,4 @@ func (d *Draft) initializeStandardCombatAbilities(char *Character) {
 	// Hide - consumes action economy to attempt a Stealth check (become hidden)
 	hideAbility := combatabilities.NewHide(char.id + "-hide")
 	_ = char.AddCombatAbility(hideAbility)
-}
-
-// initializeStandardActions adds standard permanent actions to the character.
-// These are always available: Strike (uses attacks from Attack ability) and Move.
-// Called during ToCharacter after the character struct is created.
-func (d *Draft) initializeStandardActions(char *Character) {
-	// Strike - consumes AttacksRemaining to make weapon attacks
-	strikeAction := actions.NewStrike(actions.StrikeConfig{
-		ID:      char.id + "-strike",
-		OwnerID: char.id,
-		// WeaponID is empty - will be determined at activation time based on equipped weapon
-	})
-	_ = char.AddAction(strikeAction)
-
-	// Move - consumes MovementRemaining to change position
-	moveAction := actions.NewMove(actions.MoveConfig{
-		ID:      char.id + "-move",
-		OwnerID: char.id,
-	})
-	_ = char.AddAction(moveAction)
 }

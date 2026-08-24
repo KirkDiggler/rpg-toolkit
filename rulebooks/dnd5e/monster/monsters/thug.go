@@ -5,14 +5,15 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// NewThug creates a CR 1 thug boss with multiattack (2x mace) and Pack Tactics
+// NewThug creates a CR 1 thug with a mace component attack and Pack Tactics.
+// Multiattack is deferred until a sequence profile and machine exist.
 func NewThug(id string) *monster.Monster {
 	m := monster.New(monster.Config{
 		ID:   id,
@@ -30,18 +31,17 @@ func NewThug(id string) *monster.Monster {
 		},
 	})
 
-	// Mace attack (part of multiattack)
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "mace",
-		AttackBonus: 4, // +2 STR + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 2}},
-		Reach:       5,
-	})))
-
-	// Multiattack - 2x mace
-	m.AddAction(actions.NewMultiattackAction(actions.MultiattackConfig{
-		Attacks: []string{"mace", "mace"},
-	}))
+	// The component attack remains available until a sequence profile exists.
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.ThugMace(),
+		Name: "mace",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 2}},
+		},
+	})
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

@@ -103,6 +103,7 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// before the strike runs, so this arm is the one that catches a
 		// combatant the cast turned out not to hold.
 		{"combatant not in the cast", resolution.ErrNoCombatant, ErrNoSheet},
+		{"target beyond delivery", resolution.ErrOutOfRange, ErrOutOfReach},
 		// Driven for real in sentinels_test.go: a second swing in a turn that
 		// bought one. The PLAYER-facing arm, and the only one of the economy's
 		// three a caller can reach.

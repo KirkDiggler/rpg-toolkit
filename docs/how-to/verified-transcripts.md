@@ -44,7 +44,8 @@ whole scene: sight, the ghost, save/reload, the ending) and
 
 For modules with a big interactive surface, escalate to a terminal
 workbench under `cmd/` — a small `main.go` REPL, no server involved.
-Exemplars: `encounter/cmd/dungeonspec-workbench` (edit a YAML, see the
-compiled dungeon) and `rulebooks/dnd5e/encounter/cmd/freeroam-workbench`
-(walk the crypt, watch beliefs diverge from world truth). Workbenches
-are optional; the transcript is the pattern.
+Exemplars: `rulebooks/dnd5e/encounter/cmd/freeroam-workbench`
+(walk the crypt, watch beliefs diverge from world truth) and
+`rulebooks/dnd5e/session/cmd/session-workbench`
+(drive a whole session through the active host seam). Workbenches are
+optional; the transcript is the pattern.

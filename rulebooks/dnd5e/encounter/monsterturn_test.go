@@ -105,7 +105,7 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDr
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
 				},
 			},
 		},
@@ -134,7 +134,7 @@ func (s *MonsterTurnTestSuite) farSkeletonEncounter(driver encounter.TurnDriver,
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
 				},
 			},
 		},
@@ -183,7 +183,7 @@ func (s *MonsterTurnTestSuite) TestMonsterViewCarriesStaticFactsAndSeen() {
 	s.Equal("closest", view.Targeting)
 	s.Require().Len(view.Actions, 1)
 	s.Equal(testMeleeAction, view.Actions[0].Ref)
-	s.Equal(5, view.Actions[0].ReachFeet)
+	s.Equal(5, view.Actions[0].RangeFeet)
 	s.Equal(1, view.Budget.AttacksLeft)
 	s.Equal(30, view.Budget.MovementFeet)
 
@@ -468,7 +468,7 @@ func (s *MonsterTurnTestSuite) TestMemberFactsRoundTripThroughToDataAndLoadEncou
 		s.Require().Len(m.Actions, 1)
 		s.Equal(testMeleeAction, m.Actions[0].Ref)
 		s.Equal("Shortsword", m.Actions[0].Name)
-		s.Equal(5, m.Actions[0].ReachFeet)
+		s.Equal(5, m.Actions[0].RangeFeet)
 		s.Equal("melee", m.Actions[0].Kind)
 	}
 	s.True(found)
@@ -486,7 +486,7 @@ func (s *MonsterTurnTestSuite) TestRefusingStrikerFailsLoudly() {
 
 // TestSetupRejectsANegativeMemberFact and TestJoinRejectsANegativeMemberFact
 // pin Copilot's PR #1187 review finding: SpeedFeet, SightFeet and an
-// action's ReachFeet are feet CellsFromFeet divides by FeetPerCell, and a
+// action's RangeFeet are feet CellsFromFeet divides by FeetPerCell, and a
 // negative one is a caller defect this composition catches at the door
 // rather than letting it produce a nonsense budget or reach later.
 func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
@@ -494,7 +494,7 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		mi := encounter.MemberInput{
 			ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1},
 			SpeedFeet: 30, SightFeet: 60,
-			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5}},
+			Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5}},
 		}
 		mutate(&mi)
 		return &encounter.SetupInput{
@@ -517,8 +517,8 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.SightFeet = -5 }))
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
 	})
-	s.Run("negative action reach", func() {
-		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.Actions[0].ReachFeet = -5 }))
+	s.Run("negative action range", func() {
+		_, err := encounter.NewEncounter(base(func(mi *encounter.MemberInput) { mi.Actions[0].RangeFeet = -5 }))
 		s.Require().ErrorIs(err, encounter.ErrNoMember)
 	})
 }
@@ -592,7 +592,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -646,7 +646,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 0},
 				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Claw", RangeFeet: 5, Kind: "melee"}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -682,7 +682,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 			{
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 0},
 				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{{Ref: reachWeapon, Name: "Glaive", ReachFeet: 10, Kind: "melee"}},
+				Actions: []encounter.ActionView{{Ref: reachWeapon, Name: "Glaive", RangeFeet: 10, Kind: "melee"}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -702,7 +702,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 
 // TestSeenMemberPathIsEmptyWhenAlreadyWithinReach is the bug the
 // end-to-end behavior.Basic test found: a member already at exactly
-// bestReachCells' distance (no earlier cell to stop at before the
+// bestRangeCells' distance (no earlier cell to stop at before the
 // target's own) must not return a one-element Path onto the target's own
 // cell — Path must be empty, matching its own documented contract ("empty
 // ... or this member is already within reach without moving at all").
@@ -762,7 +762,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 				// right beside the monster's own start (1 step away,
 				// Chebyshev distance 3 from alice) is already in range,
 				// making the detour-vs-shortcut distinction unambiguous.
-				Actions: []encounter.ActionView{{Ref: longReach, Name: "Whip", ReachFeet: 15, Kind: "melee"}},
+				Actions: []encounter.ActionView{{Ref: longReach, Name: "Whip", RangeFeet: 15, Kind: "melee"}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -842,7 +842,7 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
 				},
 			},
 		},
@@ -950,7 +950,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 4, Y: 5},
 				SpeedFeet: 30, Targeting: "closest",
 				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", ReachFeet: 5, Kind: "melee"},
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
 				},
 			},
 		},

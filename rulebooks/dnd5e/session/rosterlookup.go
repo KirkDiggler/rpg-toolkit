@@ -17,6 +17,18 @@ func rosterNames(roster []encounter.Member) map[string]string {
 	return out
 }
 
+// rosterKinds indexes a roster read by member id — the same batching
+// rosterNames does, for Sighting.Kind (rpg-toolkit#1230). The roster is the
+// one place a member's kind lives; this is the only lookup, reused wherever
+// a Sighting is projected rather than invented a second time.
+func rosterKinds(roster []encounter.Member) map[string]MemberKind {
+	out := make(map[string]MemberKind, len(roster))
+	for _, m := range roster {
+		out[string(m.ID)] = MemberKind(m.Kind)
+	}
+	return out
+}
+
 // standingSet batches a down-check over a set of member ids into a lookup —
 // one Standing() call per verb rather than one per sighted subject or
 // participant, and the same batching turn.go's own participantsFor uses.

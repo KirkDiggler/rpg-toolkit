@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit architecture overview
 description: Module dependency map + rules-vs-room seam (two diagrams), persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
-updated: 2026-08-10
-confidence: high — diagrams verified against go.mod files 2026-07-04; encounter boundary per ADR-0034
+updated: 2026-08-23
+confidence: high — module paths re-verified against go.mod files 2026-08-23; retired top-level encounter removed
 ---
 
 # rpg-toolkit architecture overview
@@ -23,26 +23,28 @@ rpg-toolkit is a Go rules engine for tabletop RPG mechanics. Its mandate is to i
 ## Layer rules & module dependency map
 
 **Higher layers may import lower; reversing is a defect.** The diagram shows the
-**decided end-state** (ADR-0034 — the *split*): the D&D 5e encounter loop lives
-**inside** the `rulebooks/dnd5e` module, and the encounter's already-agnostic
-layers become their own modules **below** the rulebook. Everything sits
-at or below the Rulebooks layer, and **nothing imports rpg-api or rpg-api-protos**
-(the toolkit never knows its host). Dashed nodes flag the migration that is
-decided but not yet executed.
+current supported D&D 5e stack after retiring the top-level `encounter/` module:
+`rulebooks/dnd5e` owns rules and content, `rulebooks/dnd5e/encounter` owns the
+D&D 5e composition/world state, `rulebooks/dnd5e/resolution` owns interaction
+resolution, and `rulebooks/dnd5e/session` is the host seam. Everything sits at
+or below the Rulebooks layer, and **nothing imports rpg-api or
+rpg-api-protos** (the toolkit never knows its host).
 
 ```mermaid
 flowchart TD
-  subgraph RB["rulebooks/dnd5e module — D&D 5e rules + encounter loop"]
-    DND["dnd5e rules<br/>character · combat · monsters · conditions"]
-    ENC["encounter loop<br/>verbs · hydration · resolvers · turn logic"]
+  subgraph RB["Rulebooks"]
+    DND["rulebooks/dnd5e<br/>rules + content"]
+    ENC["rulebooks/dnd5e/encounter<br/>world composition"]
+    RESMOD["rulebooks/dnd5e/resolution<br/>interaction resolution"]
+    SESS["rulebooks/dnd5e/session<br/>host seam"]
   end
-  subgraph PRIM["New modules extracted from the encounter"]
-    BROKER["broker<br/>pub/sub + timestamp + Transport seam"]
-    SPINE["eventspine<br/>sealed event interface + audience routing"]
-    PERC["tools/perception<br/>vision projection"]
+  subgraph PLAY["Play primitives"]
+    CLOCK["play/clock"]
+    INTEL["play/intel"]
+    RECORD["play/record"]
   end
   subgraph TOOLS["Tools"]
-    SPATIAL["tools/spatial<br/>hex (absorbs encounter/core)"]
+    SPATIAL["tools/spatial"]
     ENV["tools/environments"]
     SEL["tools/selectables"]
     SPAWN["tools/spawn"]
@@ -64,40 +66,25 @@ flowchart TD
     ITEMS["items"]
   end
 
-  ENC --> BROKER & SPINE & PERC
+  SESS --> ENC & RESMOD & DND & INTEL & RECORD
+  RESMOD --> ENC & DND & SPATIAL & EV & C & DICE
+  ENC --> SPATIAL & CLOCK & INTEL & RECORD & C
   DND --> RES & ENV & SPATIAL & EV & C & DICE
-  BROKER --> SPINE & EV & C
-  SPINE --> EV & C
-  PERC --> SPATIAL
   SPAWN --> ENV & SPATIAL
   ENV --> SPATIAL
   SPATIAL --> GAME & EV & C
   COND --> EFFECTS
   EFFECTS --> EV & C
-
-  MIG["MIGRATION PENDING — ADR-0034<br/>Today: one top-level 'encounter' module requiring rulebooks/dnd5e<br/>by pseudo-version. Post-Beat-2 its dnd5e files merge INTO the<br/>rulebooks/dnd5e module and its agnostic layers become the<br/>primitives shown (broker · eventspine · tools/perception)."]
-  ENC -.->|"scheduled split"| MIG
-
-  style ENC stroke:#d33,stroke-width:2px,stroke-dasharray:6 4
-  style BROKER stroke:#2a7,stroke-width:2px,stroke-dasharray:6 4
-  style SPINE stroke:#2a7,stroke-width:2px,stroke-dasharray:6 4
-  style PERC stroke:#2a7,stroke-width:2px,stroke-dasharray:6 4
-  style MIG fill:#fff3cd,stroke:#d39e00,color:#663c00
 ```
 
-Nodes are modules — **except** `encounter loop`, which in the end-state is a
-*package inside* the `rulebooks/dnd5e` module (drawn separately to show the seam).
-Green dashed nodes are the new modules the split extracts (each lands at its own
-layer — `broker` and `eventspine` as primitives, `tools/perception` in Tools);
-the red dashed loop is the dnd5e code merging into the rulebook module. Arrows are
-dependencies; uniform ones are omitted for legibility — the loop shares the
-`rulebooks/dnd5e` module's dependencies (`core`, `dice`, `events`, `tools/spatial`,
-…), every Mechanics module requires `core` + `events` (`conditions` also
-`effects`, shown), and `rpgerr` / `game` / `items` are Core-layer leaves. **Maintenance
-rule:** update this diagram in the *same* PR as any module move — including when
-the pending split lands. The prose list this replaced went stale (it claimed
-"nothing depends on `rulebooks/dnd5e`" long after the encounter did); a diagram
-that travels with the change cannot.
+Nodes are modules. Arrows are dependencies; uniform ones are omitted for
+legibility — for example, several leaves depend on `core` and `events` without
+needing their own edge here. **Maintenance rule:** update this diagram in the
+same PR as any module move. Historical note: ADR-0034 proposed moving the loop
+inside `rulebooks/dnd5e` and extracting new primitives, but that proposal is
+superseded as current guidance by the shipped separate modules
+`rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, and
+`rulebooks/dnd5e/session`.
 
 ## The persistence pattern
 
@@ -134,51 +121,33 @@ Toolkit implements RULES            → returns rich breakdowns for rendering
 
 Toolkit's job ends when it returns a `Breakdown` struct. The breakdown contains the full modifier chain — base value, per-modifier deltas, sources, labels — so the UI can render the reasoning without re-implementing rules.
 
-## The dnd5e encounter: rules, loop, and primitives
+## The D&D 5e stack: rules, composition, resolution, and host seam
 
-Post-split (ADR-0034), the seam runs three ways. Inside the `rulebooks/dnd5e`
-module the **rules** and the **loop** coexist as packages: the loop asks the rules
-for verdicts and publishes the turn-tick vocabulary; the rules return receipts and
-per-entity state. The loop then *composes* the agnostic **primitives** the split
-extracts below it.
+The current seam runs across four supported modules. `rulebooks/dnd5e` owns the
+rules and content packages. `rulebooks/dnd5e/encounter` owns the D&D 5e world:
+map, perception, story, turn loop, and composition state. `rulebooks/dnd5e/resolution`
+owns attack/interaction resolution over encounter/world data plus participant
+sheets. `rulebooks/dnd5e/session` is the game server seam: repository and event
+interfaces in, ID-based verbs and translated outputs out.
 
 ```mermaid
 flowchart LR
-  subgraph MOD["rulebooks/dnd5e module (post-split)"]
-    direction TB
-    subgraph RULES["what the RULES say"]
-      R1["Resolution math · saves"]
-      R2["Condition behaviors"]
-      R3["Per-entity state<br/>economy · HP · once-per-turn"]
-      R4["Breakdown receipts"]
-    end
-    subgraph LOOP["the dnd5e LOOP — orchestration"]
-      E1["Turn loop + tick publishes"]
-      E2["Hydration cascade"]
-      E3["Verb dispatch — TakeAction"]
-      E4["Audience / observer-set decisions"]
-    end
-    LOOP -->|"asks verdicts · publishes ticks<br/>TurnStart · TurnEnd (live) · combat-ended (designed #596)"| RULES
-    RULES -->|"Breakdown + per-entity state"| LOOP
-  end
-  subgraph PRIM["agnostic PRIMITIVES — extracted below"]
-    direction TB
-    P1["broker + transport<br/>delivery"]
-    P2["eventspine<br/>sealed events + audience routing"]
-    P3["tools/perception · tools/spatial<br/>vision + hex"]
-  end
-  LOOP ==>|"composes"| PRIM
+  HOST["host / rpg-api"]
+  SESS["rulebooks/dnd5e/session<br/>IDs in, verbs out"]
+  ENC["rulebooks/dnd5e/encounter<br/>world composition + turn loop"]
+  RESMOD["rulebooks/dnd5e/resolution<br/>strike + consequence resolution"]
+  DND["rulebooks/dnd5e<br/>rules + content"]
 
-  linkStyle 2 stroke:#2a7,stroke-width:2px,color:#2a7
+  HOST --> SESS
+  SESS --> ENC & RESMOD & DND
+  RESMOD --> ENC & DND
+  ENC --> DND
 ```
 
-The rules-vs-loop seam is a **package boundary within one module** — no
-cross-module pseudo-version tax. The primitives (`broker`, `eventspine`,
-`tools/perception`, and hex folded into `tools/spatial`) are reusable modules
-*beneath* the rulebook, following the pattern already set by `tools/spatial` (hex)
-and `mechanics/effects` (of which dnd5e conditions are the rulebook-specific
-expression). The split is honest on both sides: dnd5e code with the rules, generic
-infrastructure at the general layer.
+That split is the current supported shape. Historical note: ADR-0034 proposed a
+different end-state in which the loop moved inside `rulebooks/dnd5e`; that
+proposal is no longer current guidance, and the deleted top-level `encounter/`
+module is historical only.
 
 ## Module map
 
@@ -204,11 +173,10 @@ infrastructure at the general layer.
 | tools/environments | `tools/environments/` | Tools | Environment persistence, graph generation, multi-room dungeon graph |
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |
 | tools/spawn | `tools/spawn/` | Tools | 4-phase entity spawn engine |
-| rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Currently supported D&D 5e rules and content: character, combat, initiative, spells, monsters, dungeon — **plus the encounter loop** (post-split) |
-| encounter loop | `rulebooks/dnd5e/encounter/` *(migration pending; today `encounter/`)* | Rulebooks (D&D 5e) | The dnd5e game loop: turn loop, hydration cascade, resolver seam, verb dispatch, prompts. A **package inside** the dnd5e module in the end-state — merges in per ADR-0034 (kills the pseudo-version dance). |
-| broker | `broker/` *(new; migration pending)* | Primitive | Pub/sub fan-out + game-event timestamp authority + the `Transport` seam. Extracted from the encounter (ADR-0034). |
-| eventspine | `eventspine/` *(new; migration pending)* | Primitive | Sealed event-interface mechanism + audience routing. Extracted from the encounter; concrete dnd5e events stay with the loop (ADR-0034). |
-| tools/perception | `tools/perception/` *(new; migration pending)* | Tools | Vision projection over `tools/spatial`. Extracted from the encounter (ADR-0034). |
+| rulebooks/dnd5e | `rulebooks/dnd5e/` | Rulebooks | Currently supported D&D 5e rules and content: character, combat, initiative, spells, monsters, dungeon |
+| rulebooks/dnd5e/encounter | `rulebooks/dnd5e/encounter/` | Rulebooks (D&D 5e) | D&D 5e encounter composition and world state: map, perception, story, turn loop, prompts |
+| rulebooks/dnd5e/resolution | `rulebooks/dnd5e/resolution/` | Rulebooks (D&D 5e) | D&D 5e interaction resolution: compiled attacks, chains, consequences, folded outcomes |
+| rulebooks/dnd5e/session | `rulebooks/dnd5e/session/` | Rulebooks (D&D 5e) | Host-facing session seam: repository/event interfaces, ID-based verbs, translated outputs |
 
 ## Code violations against these rules (2026-05-02)
 

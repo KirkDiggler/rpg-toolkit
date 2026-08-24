@@ -241,9 +241,12 @@ func (f *field) compileProps(props []PropInput) error {
 
 		// Fresh pointers: a caller flipping a bool after construction must
 		// not change what ToData writes (the T6 defect one indirection down).
+		// Facing and Offset need no such copy — a string and a value array
+		// are already immune to the aliasing the two flags guard against.
 		blocksMovement, blocksSight := *p.BlocksMovement, *p.BlocksLineOfSight
 		f.props[i] = PropInput{
 			Ref: p.Ref, At: p.At, BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksSight,
+			Facing: p.Facing, Offset: p.Offset,
 		}
 	}
 

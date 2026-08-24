@@ -29,9 +29,11 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   rulebook objects; ADR-0045 replaces them with shared inert definitions.
 - **0022** — `Repository (data) → Loader (domain objects) → Orchestrator (workflow)`.
   *Rule: reconstitution is its own layer; repositories trade in data.*
-- **0034** — The encounter was split along its real seam: the dnd5e game loop moved
-  into `rulebooks/dnd5e`, agnostic infrastructure stayed. *Rule: when one module is
-  "generic" plus "one game's rules", that is two modules.*
+- **0034 (superseded)** — Proposed splitting the old top-level encounter along
+  its generic/rulebook seam; that move never shipped. The session stack was
+  built separately and #1215 retired the old module. *Standing rule: when one
+  module is "generic" plus "one game's rules", its boundary is false.*
+  [0034-where-encounter-logic-lives.md](0034-where-encounter-logic-lives.md)
 
 ## Events and the bus
 

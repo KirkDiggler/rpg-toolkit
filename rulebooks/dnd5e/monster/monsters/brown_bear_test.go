@@ -7,10 +7,9 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
-
-const multiattackActionID = "multiattack"
 
 type BrownBearTestSuite struct {
 	suite.Suite
@@ -46,25 +45,11 @@ func (s *BrownBearTestSuite) TestNewBrownBear() {
 	s.Assert().Equal(40, speed.Walk)
 	s.Assert().Equal(30, speed.Climb)
 
-	// Check actions - should have multiattack, bite, and claw
+	// Component attacks remain; multiattack waits for a sequence profile.
 	actions := bear.Actions()
-	s.Require().Len(actions, 3)
-
-	// Find multiattack, bite, and claw
-	var hasMultiattack, hasBite, hasClaw bool
-	for _, action := range actions {
-		switch action.GetID() {
-		case multiattackActionID:
-			hasMultiattack = true
-		case "bite":
-			hasBite = true
-		case "claw":
-			hasClaw = true
-		}
-	}
-	s.Assert().True(hasMultiattack, "should have multiattack action")
-	s.Assert().True(hasBite, "should have bite action")
-	s.Assert().True(hasClaw, "should have claw action")
+	s.Require().Len(actions, 2)
+	s.Equal(refs.MonsterActions.BrownBearBite(), &actions[0].Ref)
+	s.Equal(refs.MonsterActions.BrownBearClaw(), &actions[1].Ref)
 }
 
 func (s *BrownBearTestSuite) TestBrownBearTraits() {

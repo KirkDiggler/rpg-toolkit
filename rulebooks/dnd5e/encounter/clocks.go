@@ -213,13 +213,11 @@ func (e *Encounter) dropBubbleIfIdle(b *clock.Turn) error {
 // audience-and-timestamp convention the membership beats use (Join, Exit).
 // Tag "clock" matches Pump's tick beat: one tag family for everything the
 // clocks do.
-func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, error) {
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for id := range e.members {
-		memberIDs = append(memberIDs, id)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
-
+//
+// subjects is the bubble's own membership (bubbleBeat, per audienceFor's
+// doc) — passed honestly by every caller even though v1 still sends
+// everyone; rpg-toolkit#940 is where that changes.
+func (e *Encounter) appendClockBeat(payload map[string]interface{}, subjects ...MemberID) (uint64, error) {
 	// Unreachable for today's payloads (strings and ID slices marshal
 	// unconditionally), but this helper is the one seam every clock beat
 	// flows through — a future payload that cannot marshal must fail its
@@ -232,7 +230,7 @@ func (e *Encounter) appendClockBeat(payload map[string]interface{}) (uint64, err
 	}
 	out, err := e.appendBeat(&record.AppendInput{
 		At:       uint64(e.clock.ToData().HighWater),
-		Audience: memberIDs,
+		Audience: e.audienceFor(bubbleBeat, subjects...),
 		Tags:     map[string]string{"tag": "clock"},
 		Payload:  beatBytes,
 	})
@@ -447,11 +445,16 @@ func (e *Encounter) driveOneMonsterTurn(
 		return 0, false, fmt.Errorf("end: %w", eerr)
 	}
 
+	order, oerr := bubble.Order()
+	if oerr != nil {
+		return 0, false, fmt.Errorf("order: %w", oerr)
+	}
+
 	seq, berr := e.appendClockBeat(map[string]interface{}{
 		"beat":   "turn-ended",
 		"member": string(activeID),
 		"next":   out.Next,
-	})
+	}, order...)
 	if berr != nil {
 		return 0, false, fmt.Errorf("append beat: %w", berr)
 	}
@@ -509,7 +512,7 @@ func (e *Encounter) executeTurnIntent(
 		}
 
 		at := uint64(e.clock.ToData().HighWater)
-		audience := e.rosterIDs()
+		audience := e.audienceFor(subjectBeat, activeID)
 		moved := 0
 		for _, cell := range it.Path {
 			action, stepped := e.stepTo(m, cell)
@@ -594,8 +597,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
 
-	// bestReachCells is the farthest this member's own actions can reach,
-	// in cells — the arithmetic max of authored ReachFeet values, not a
+	// bestRangeCells is the farthest this member's own actions can reach,
+	// in cells — the arithmetic max of authored RangeFeet values, not a
 	// rules opinion about which action is "best" in play (this module
 	// still cannot import the rulebook, C1: it takes the number, not the
 	// meaning). Floored at 1 (5 feet, a bare cell) even for a member with
@@ -603,10 +606,10 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// capability — nobody's own Path should ever walk onto another
 	// member's occupied cell, whether or not this member has anything to
 	// do once it arrives.
-	bestReachCells := 1
+	bestRangeCells := 1
 	for _, a := range m.Actions {
-		if c := CellsFromFeet(a.ReachFeet); c > bestReachCells {
-			bestReachCells = c
+		if c := CellsFromFeet(a.RangeFeet); c > bestRangeCells {
+			bestRangeCells = c
 		}
 	}
 
@@ -632,13 +635,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		dist := e.Distance(ownCell, pos)
 		inReach := make(map[core.Ref]bool, len(m.Actions))
 		for _, a := range m.Actions {
-			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.ReachFeet))
+			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
 		}
 
 		// Path ends on the NEAREST WALKABLE cell (to this member's own
 		// position — the shortest route BY STEPS, not "however far along
 		// the route to pos happens to land") from which the sighting is
-		// within bestReachCells (Kirk, rpg-project#254 review — this also
+		// within bestRangeCells (Kirk, rpg-project#254 review — this also
 		// removes the "already in reach, don't bother moving" workaround
 		// behavior.Basic carried before this truncation existed).
 		//
@@ -653,12 +656,12 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// own reach rule). bfsShortestPath's goal predicate stops the
 		// search the moment ANY cell — including this member's own
 		// starting position, handling "already in reach" for free — is
-		// within bestReachCells of pos, which is the actual nearest
+		// within bestRangeCells of pos, which is the actual nearest
 		// walkable answer rather than a proxy for it. One BFS per
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
 		path, _ := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
-			return e.Distance(cell, pos) <= float64(bestReachCells)
+			return e.Distance(cell, pos) <= float64(bestRangeCells)
 		})
 
 		seen = append(seen, SeenMember{
@@ -939,7 +942,7 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	if len(in.Surprised) > 0 {
 		beat["surprised"] = in.Surprised
 	}
-	seq, err := e.appendClockBeat(beat)
+	seq, err := e.appendClockBeat(beat, in.Order...)
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
 	}
@@ -1085,11 +1088,23 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		return nil, fmt.Errorf("transfer %q to %q: %w", in.Member, in.To, ErrBadClock)
 	}
 
+	// The bubble's own membership (bubbleBeat, per audienceFor's doc): the
+	// one just entered for ClockTurn, the one just left for ClockWorld.
+	var subjects []MemberID
+	if in.To == ClockTurn {
+		subjects, err = e.bubbles[0].Order()
+	} else {
+		subjects, err = bubble.Order()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("transfer %q: %w", in.Member, err)
+	}
+
 	seq, err := e.appendClockBeat(map[string]interface{}{
 		"beat":   "transferred",
 		"member": string(in.Member),
 		"to":     string(in.To),
-	})
+	}, subjects...)
 	if err != nil {
 		return nil, fmt.Errorf("transfer append beat: %w", err)
 	}
@@ -1184,11 +1199,16 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, err)
 	}
 
+	order, oerr := bubble.Order()
+	if oerr != nil {
+		return nil, fmt.Errorf("end turn %q: %w", in.Member, oerr)
+	}
+
 	seq, err := e.appendClockBeat(map[string]interface{}{
 		"beat":   "turn-ended",
 		"member": string(in.Member),
 		"next":   out.Next,
-	})
+	}, order...)
 	if err != nil {
 		return nil, fmt.Errorf("end turn append beat: %w", err)
 	}

@@ -238,7 +238,7 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 		return nil, fmt.Errorf("view: %w", err)
 	}
 
-	return projectSightings(holdings, rosterNames(roster), down), nil
+	return projectSightings(holdings, rosterNames(roster), rosterKinds(roster), down), nil
 }
 
 // Story returns the beats a member has witnessed, from FromSeq onward

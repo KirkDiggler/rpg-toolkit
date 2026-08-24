@@ -185,7 +185,7 @@ func (e *Encounter) dissolveBubble(bubble *clock.Turn, cause DissolveCause) (*Di
 		"beat":    "bubble-dissolved",
 		"members": out.Members,
 		"cause":   string(cause.Kind()),
-	})
+	}, out.Members...)
 	if err != nil {
 		return nil, fmt.Errorf("dissolve append beat: %w", err)
 	}

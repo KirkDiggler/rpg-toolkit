@@ -56,12 +56,9 @@ effect's ref. `Load(d).ToData()` is the data it was given.
 
 The older single-step loaders remain for their existing callers.
 `character.LoadFromData` is the two halves in one call, still forgiving about a
-blob it cannot read where `Load` refuses and names it. For monsters the older
-shape is three calls — `monster.LoadFromData`, then
-`monster/actions.LoadMonsterActions`, then
-`monstertraits.LoadMonsterConditions` — and calling only the first does **not**
-restore a complete factory-created monster; worse, `ToData` will then write it
-back without what the skipped calls would have restored.
+blob it cannot read where `Load` refuses and names it. Monster actions are inert definitions loaded directly by `monster.Load`.
+`monstertraits.LoadMonster` plus `AttachMonster` composes the same sheet with
+persisted trait behavior; there is no action behavior loader.
 
 ## Current package map
 
@@ -72,8 +69,8 @@ trying to learn all of them.
 |---|---|---|
 | Boundary vocabulary | `refs`, `abilities`, `damage`, `skills`, `languages`, `weapons`, `armor` | Typed identifiers and rulebook vocabulary |
 | Characters | `character`, `character/choices`, `class`, `classes`, `race`, `races`, `backgrounds`, `packs`, `equipment` | Character authoring, grants, equipment, runtime state, and persistence |
-| Rules | `actions`, `combat`, `combatabilities`, `checks`, `saves`, `initiative`, `features`, `conditions`, `fightingstyles`, `resources`, `spells` | D&D-specific resolution and behavior |
-| Monsters | `monster`, `monster/actions`, `monster/monsters`, `monstertraits` | Runtime/data model, reusable actions, built-in factories/registry, and trait behaviors |
+| Rules | `combat`, `combat/actions`, `combatabilities`, `checks`, `saves`, `initiative`, `features`, `conditions`, `fightingstyles`, `resources`, `spells` | D&D-specific data contracts, resolution rules, and behavior |
+| Monsters | `monster`, `monster/monsters`, `monstertraits` | Runtime/data model, direct definitions, built-in factories/registry, and trait behaviors |
 | Integration/composition helpers | `events`, `gamectx`, `dungeon`, `integration` | D&D event vocabulary, runtime lookup context, dungeon content, and end-to-end rule tests |
 
 The root `dnd5e` package is a small facade containing aliases for selected race,

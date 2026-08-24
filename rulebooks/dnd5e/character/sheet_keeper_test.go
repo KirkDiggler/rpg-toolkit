@@ -43,7 +43,7 @@ func (c *keptCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(map[string]any{"ref": refs.Conditions.Dodging()})
 }
 
-// SheetKeeperTestSuite drives each of the five things a sheet does about the
+// SheetKeeperTestSuite drives each of the three things a sheet does about the
 // world through a real bus. Every test here fails outright for a keeper whose
 // Apply subscribes nothing, which is the mutation this file exists to catch:
 // the wiring it replaced was invisible, so nothing would have noticed its
@@ -165,36 +165,6 @@ func (s *SheetKeeperTestSuite) TestHealingIsCappedAtMaximum() {
 
 	s.Require().NoError(err)
 	s.Require().Equal(30, s.char.GetHitPoints())
-}
-
-func (s *SheetKeeperTestSuite) TestActionGrantedJoinsTheSheet() {
-	action := &mockAction{id: "granted-action", temporary: true}
-
-	err := dnd5eEvents.ActionGrantedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
-		CharacterID: s.char.GetID(),
-		Action:      action,
-		Source:      "test",
-	})
-
-	s.Require().NoError(err)
-	s.Require().Len(s.char.actions, 1)
-	s.Require().True(action.applied, "the keeper applies the action on the bus it was attached to")
-}
-
-func (s *SheetKeeperTestSuite) TestActionRemovedLeavesTheSheet() {
-	action := &mockAction{id: "granted-action", temporary: true}
-	s.Require().NoError(dnd5eEvents.ActionGrantedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ActionGrantedEvent{
-		CharacterID: s.char.GetID(),
-		Action:      action,
-	}))
-
-	err := dnd5eEvents.ActionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ActionRemovedEvent{
-		ActionID: "granted-action",
-		OwnerID:  s.char.GetID(),
-	})
-
-	s.Require().NoError(err)
-	s.Require().Empty(s.char.actions)
 }
 
 // The keeper's other half: the character's recoverable resources are on the

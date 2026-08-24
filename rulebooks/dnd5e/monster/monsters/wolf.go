@@ -5,9 +5,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -35,12 +35,20 @@ func NewWolf(id string) *monster.Monster {
 	// Strength saving throw or be knocked prone" — declared as a gate rather
 	// than as a bare DC, so the stat block says what can be contested and how
 	// (ADR-0039).
-	m.AddAction(mustAction(actions.NewBiteAction(actions.BiteConfig{
-		AttackBonus: 4, // +2 DEX + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
-
-		SaveGate: saves.NewSaveGate(abilities.STR, 11),
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.WolfBite(),
+		Name: "bite",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}},
+			OnHit: []combatActions.ConditionApplication{{
+				Ref:  *refs.Conditions.Prone(),
+				Save: saves.NewSaveGate(abilities.STR, 11),
+			}},
+		},
+	})
 
 	// Set movement speed (wolves are fast)
 	m.SetSpeed(monster.SpeedData{Walk: 40})

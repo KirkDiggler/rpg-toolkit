@@ -6,9 +6,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -32,12 +32,16 @@ func NewBanditMelee(id string) *monster.Monster {
 	})
 
 	// Scimitar melee attack
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "scimitar",
-		AttackBonus: 3, // +1 DEX + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 1}},
-		Reach:       5,
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.BanditScimitar(),
+		Name: "scimitar",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 3, // +1 DEX + 2 proficiency
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: 1}},
+		},
+	})
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})
@@ -64,13 +68,16 @@ func NewBanditRanged(id string) *monster.Monster {
 	})
 
 	// Light crossbow ranged attack
-	m.AddAction(mustAction(actions.NewRangedAction(actions.RangedConfig{
-		Name:        "light crossbow",
-		AttackBonus: 3, // +1 DEX + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 1}},
-		RangeNormal: 80,
-		RangeLong:   320,
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.BanditLightCrossbow(),
+		Name: "light crossbow",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{NormalFeet: 80, LongFeet: 320}},
+			AttackBonus: 3, // +1 DEX + 2 proficiency
+			Damage:      []damage.Damage{{Dice: "1d8", Type: damage.Piercing, FlatBonus: 1}},
+		},
+	})
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

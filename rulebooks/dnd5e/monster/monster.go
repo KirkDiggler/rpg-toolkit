@@ -12,9 +12,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // Monster represents a hostile creature for combat encounters.
@@ -33,8 +33,8 @@ type Monster struct {
 	speed         SpeedData
 	senses        SensesData
 
-	// Actions (typed, ready to use)
-	actions []MonsterAction
+	// Actions are inert shared definitions interpreted by resolution.
+	actions []combatActions.Definition
 
 	// Conditions (wired to bus)
 	conditions []dnd5eEvents.ConditionBehavior
@@ -256,19 +256,33 @@ func (m *Monster) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return m.conditions
 }
 
-// Actions returns all monster actions
-func (m *Monster) Actions() []MonsterAction {
-	return m.actions
+// Actions returns deep copies of the monster's shared action definitions.
+func (m *Monster) Actions() []combatActions.Definition {
+	definitions := make([]combatActions.Definition, len(m.actions))
+	for index, definition := range m.actions {
+		definitions[index] = definition.Clone()
+	}
+	return definitions
 }
 
-// AddAction adds an action to the monster's available actions
-func (m *Monster) AddAction(action MonsterAction) {
-	m.actions = append(m.actions, action)
+// AddAction validates and stores a deep copy of a shared action definition.
+func (m *Monster) AddAction(definition combatActions.Definition) error {
+	if err := definition.Validate(); err != nil {
+		return rpgerr.Wrap(err, "invalid monster action")
+	}
+	m.actions = append(m.actions, definition.Clone())
+	return nil
 }
 
-// AddCondition adds a condition/trait to the monster's active conditions.
-// The condition should already be applied to the event bus before adding.
+// AddCondition records a live condition application and marks the sheet dirty.
 func (m *Monster) AddCondition(condition dnd5eEvents.ConditionBehavior) {
+	m.conditions = append(m.conditions, condition)
+	m.dirty = true
+}
+
+// AddLoadedCondition records a condition reconstructed from persisted data
+// without marking the unchanged sheet dirty.
+func (m *Monster) AddLoadedCondition(condition dnd5eEvents.ConditionBehavior) {
 	m.conditions = append(m.conditions, condition)
 }
 
@@ -291,9 +305,8 @@ func (m *Monster) AddTraitData(data json.RawMessage) {
 // condition blobs in d, because its callers hand the same blobs to
 // monstertraits.LoadMonsterConditions themselves and carrying them here too
 // would write every condition back twice. Load carries them instead, and
-// monstertraits.AttachMonster is what applies them — so the new path cannot
-// lose a monster's conditions by forgetting a second call, which is exactly
-// how the three-call assembly has always been able to.
+// monstertraits.AttachMonster is what applies them — so the composed path cannot
+// lose a monster's conditions by forgetting the trait-attachment call.
 func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Monster, error) {
 	if bus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
@@ -340,314 +353,20 @@ func (m *Monster) onHealingReceived(_ context.Context, event dnd5eEvents.Healing
 	return nil
 }
 
-// TakeTurn executes the monster's turn using utility-based action selection.
-// It loops through available actions, picks the best one based on scoring,
-// and executes until action economy is exhausted.
-func (m *Monster) TakeTurn(ctx context.Context, input *TurnInput) (*TurnResult, error) {
-	result := &TurnResult{
-		MonsterID: m.id,
-		Actions:   make([]ExecutedAction, 0),
-		Movement:  make([]spatial.CubeCoordinate, 0),
-	}
-
-	// Move toward the monster's strategy-chosen target (not necessarily the
-	// closest enemy) if not already adjacent to it. Computed pre-move, from
-	// the full enemy list, so movement and attack target selection agree on
-	// who the monster is engaging this turn (rpg-toolkit#895).
-	var moveTarget *PerceivedEntity
-	if input.Perception != nil {
-		if idx := m.selectStrategyTargetIndex(input.Perception.Enemies); idx >= 0 {
-			moveTarget = &input.Perception.Enemies[idx]
-		}
-	}
-	m.moveTowardEnemy(input, result, moveTarget)
-
-	// Keep selecting actions until resources exhausted
-	for m.hasResources(input.ActionEconomy) {
-		// Score all valid actions and pick the best
-		best := m.selectBestAction(input.ActionEconomy, input.Perception)
-		if best == nil {
-			break // No valid actions available
-		}
-
-		// Select target for this action
-		target := m.selectTarget(best, input.Perception)
-
-		// Skip if action requires target but none available
-		actionType := best.ActionType()
-		requiresTarget := actionType != TypeHeal && actionType != TypeMovement && actionType != TypeStealth
-		if target == nil && requiresTarget {
-			break // No valid target available
-		}
-
-		// Build action input
-		actionInput := MonsterActionInput{
-			Bus:           input.Bus,
-			Perception:    input.Perception,
-			Conditions:    m.conditions,
-			ActionEconomy: input.ActionEconomy,
-			Target:        target,
-			Roller:        input.Roller,
-		}
-
-		// Check if action can be activated (target in range, etc.)
-		if err := best.CanActivate(ctx, m, actionInput); err != nil {
-			// Action can't be used right now - try to find another or end turn
-			break
-		}
-
-		// Execute the action
-		err := best.Activate(ctx, m, actionInput)
-
-		// Record the result (only if we actually attempted it)
-		targetID := ""
-		if target != nil {
-			targetID = target.GetID()
-		}
-		result.Actions = append(result.Actions, ExecutedAction{
-			ActionID:   best.GetID(),
-			ActionType: best.ActionType(),
-			TargetID:   targetID,
-			Success:    err == nil,
-		})
-
-		// Consume action economy based on cost
-		switch best.Cost() {
-		case CostAction:
-			_ = input.ActionEconomy.UseAction()
-		case CostBonusAction:
-			_ = input.ActionEconomy.UseBonusAction()
-		case CostReaction:
-			_ = input.ActionEconomy.UseReaction()
-		}
-	}
-
-	return result, nil
-}
-
-// hasResources returns true if the monster has any action economy resources left
-func (m *Monster) hasResources(economy *combat.ActionEconomy) bool {
-	return economy.CanUseAction() || economy.CanUseBonusAction()
-}
-
-// selectBestAction scores all actions and returns the one with highest score
-func (m *Monster) selectBestAction(economy *combat.ActionEconomy, perception *PerceptionData) MonsterAction {
-	var best MonsterAction
-	bestScore := -1000
-
-	for _, action := range m.actions {
-		// Can we afford this action?
-		if !m.canAfford(economy, action.Cost()) {
-			continue
-		}
-
-		// Score it
-		score := action.Score(m, perception)
-		if score > bestScore {
-			bestScore = score
-			best = action
-		}
-	}
-
-	return best
-}
-
-// canAfford checks if the monster can afford an action's cost
-func (m *Monster) canAfford(economy *combat.ActionEconomy, cost ActionCost) bool {
-	switch cost {
-	case CostAction:
-		return economy.CanUseAction()
-	case CostBonusAction:
-		return economy.CanUseBonusAction()
-	case CostReaction:
-		return economy.CanUseReaction()
-	case CostNone:
-		return true
-	default:
-		return false
-	}
-}
-
-// selectTarget picks an appropriate target based on action type and targeting strategy
-func (m *Monster) selectTarget(action MonsterAction, perception *PerceptionData) core.Entity {
-	switch action.ActionType() {
-	case TypeMeleeAttack:
-		return m.selectTargetByStrategy(perception.Enemies)
-	case TypeRangedAttack:
-		// For ranged attacks, prefer non-adjacent enemies (to avoid disadvantage)
-		nonAdjacent := make([]PerceivedEntity, 0)
-		for _, e := range perception.Enemies {
-			if !e.Adjacent {
-				nonAdjacent = append(nonAdjacent, e)
-			}
-		}
-		// If we have non-adjacent enemies, pick from those
-		if len(nonAdjacent) > 0 {
-			return m.selectTargetByStrategy(nonAdjacent)
-		}
-		// Otherwise fall back to all enemies (including adjacent)
-		return m.selectTargetByStrategy(perception.Enemies)
-	case TypeHeal:
-		// Self
-		return m
-	}
-	return nil
-}
-
-// selectTargetByStrategy applies the monster's targeting strategy to select from available enemies
-func (m *Monster) selectTargetByStrategy(enemies []PerceivedEntity) core.Entity {
-	idx := m.selectStrategyTargetIndex(enemies)
-	if idx < 0 {
+// onConditionApplied applies a live condition delivered to this monster and
+// records the persisted sheet change.
+func (m *Monster) onConditionApplied(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.ConditionAppliedEvent,
+) error {
+	if event.Target == nil || event.Target.GetID() != m.id {
 		return nil
 	}
-	return enemies[idx].Entity
-}
-
-// selectStrategyTargetIndex applies the monster's targeting strategy to pick
-// an index into enemies, or -1 if enemies is empty. It is the shared
-// selection logic behind selectTargetByStrategy (attack targeting, returns
-// core.Entity) and TakeTurn's pre-move target selection (movement, needs the
-// chosen enemy's Position too — rpg-toolkit#895) so the two never disagree
-// about who the monster is engaging.
-func (m *Monster) selectStrategyTargetIndex(enemies []PerceivedEntity) int {
-	if len(enemies) == 0 {
-		return -1
+	if err := event.Condition.Apply(ctx, bus); err != nil {
+		_ = event.Condition.Remove(ctx, bus)
+		return rpgerr.Wrapf(err, "failed to apply monster condition")
 	}
-
-	switch m.targeting {
-	case TargetLowestHP:
-		// Find enemy with lowest HP
-		lowestIdx := 0
-		lowestHP := enemies[0].HP
-		for i, e := range enemies {
-			if e.HP < lowestHP {
-				lowestHP = e.HP
-				lowestIdx = i
-			}
-		}
-		return lowestIdx
-
-	case TargetLowestAC:
-		// Find enemy with lowest AC
-		lowestIdx := 0
-		lowestAC := enemies[0].AC
-		for i, e := range enemies {
-			if e.AC < lowestAC {
-				lowestAC = e.AC
-				lowestIdx = i
-			}
-		}
-		return lowestIdx
-
-	case TargetingUnspecified, TargetClosest:
-		fallthrough
-	default:
-		// Unspecified (a freshly-constructed Monster's zero value) behaves
-		// identically to TargetClosest: pick closest (first in list, as
-		// Enemies is sorted by distance). Named explicitly alongside
-		// TargetClosest rather than left to fall through default only, so
-		// this reads as an intentional decision-time equivalence, not an
-		// accident of the zero value landing in default (rpg-toolkit#895).
-		return 0
-	}
-}
-
-// moveTowardEnemy moves the monster toward target (the strategy-chosen
-// enemy for this turn, computed by TakeTurn — rpg-toolkit#895) if not
-// already adjacent to it. Uses A* pathfinding to navigate around obstacles.
-// Updates perception data to reflect new position after movement.
-//
-// Locked edge policies (rpg-toolkit#895 design): if target is unpathable,
-// the monster stalls in place rather than falling back to the closest
-// enemy — this falls out of the existing "no valid path" bail below with no
-// special-case code. If the monster is currently adjacent to a DIFFERENT
-// enemy than target, it still moves toward target, walking out of that
-// melee and accepting the opportunity attack — this falls out of checking
-// target.Adjacent instead of "is any enemy adjacent."
-func (m *Monster) moveTowardEnemy(input *TurnInput, result *TurnResult, target *PerceivedEntity) {
-	if input.Perception == nil || target == nil {
-		return
-	}
-
-	if target.Adjacent {
-		// Already adjacent to our target - no movement needed
-		return
-	}
-
-	// Calculate how far we can move (use input speed, fall back to monster's speed)
-	// input.Speed is already in hexes, but m.speed.Walk is in feet (5 feet per hex)
-	speed := input.Speed
-	if speed == 0 {
-		speed = m.speed.Walk / 5 // Convert feet to hexes
-	}
-	if speed == 0 {
-		return // Can't move
-	}
-
-	// Build blocked hex map for pathfinding
-	blocked := make(map[spatial.CubeCoordinate]bool)
-	for _, hex := range input.Perception.BlockedHexes {
-		blocked[hex] = true
-	}
-
-	// Find path using A*. A traversal predicate represents barriers between
-	// cells (for example, a closed door boundary) without turning either
-	// endpoint into a blocked cell. Nil preserves the established rulebook
-	// behavior for hosts that only provide BlockedHexes.
-	pathFinder := spatial.NewSimplePathFinder()
-	var path []spatial.CubeCoordinate
-	if input.Perception.TraversalPredicate != nil {
-		path = pathFinder.FindPathWithTraversal(
-			input.Perception.MyPosition,
-			target.Position,
-			blocked,
-			input.Perception.TraversalPredicate,
-			input.Perception.TraversalLimit,
-		)
-	} else {
-		path = pathFinder.FindPath(input.Perception.MyPosition, target.Position, blocked)
-	}
-
-	if len(path) == 0 {
-		return // No valid path - stay put
-	}
-
-	// Calculate how many hexes to move (stop 1 hex short to stay adjacent)
-	hexesToMove := len(path) - 1 // Stop adjacent to target
-	if hexesToMove <= 0 {
-		return // Already close enough
-	}
-	if hexesToMove > speed {
-		hexesToMove = speed
-	}
-
-	// Build movement path (include start position, then each hex moved to)
-	current := input.Perception.MyPosition
-	movementPath := []spatial.CubeCoordinate{current}
-	for i := 0; i < hexesToMove; i++ {
-		current = path[i]
-		movementPath = append(movementPath, current)
-	}
-
-	// Record full path (every hex crossed)
-	result.Movement = movementPath
-
-	// Update perception with new position
-	input.Perception.MyPosition = current
-
-	// Recalculate distances and adjacency for enemies
-	for i := range input.Perception.Enemies {
-		enemy := &input.Perception.Enemies[i]
-		enemy.Distance = current.Distance(enemy.Position)
-		enemy.Adjacent = enemy.Distance == 1
-	}
-
-	// Recalculate distances and adjacency for allies
-	for i := range input.Perception.Allies {
-		ally := &input.Perception.Allies[i]
-		ally.Distance = current.Distance(ally.Position)
-		ally.Adjacent = ally.Distance == 1
-	}
+	m.AddCondition(event.Condition)
+	return nil
 }
 
 // ToData converts the monster to its persistent data form
@@ -664,13 +383,12 @@ func (m *Monster) ToData() *Data {
 		Speed:            m.speed,
 		Senses:           m.senses,
 		Targeting:        m.targeting,
-		Actions:          make([]ActionData, 0, len(m.actions)),
+		Actions:          make([]combatActions.Definition, len(m.actions)),
 		Proficiencies:    make([]ProficiencyData, 0, len(m.proficiencies)),
 	}
 
-	// Convert actions
-	for _, action := range m.actions {
-		data.Actions = append(data.Actions, action.ToData())
+	for index, definition := range m.actions {
+		data.Actions[index] = definition.Clone()
 	}
 
 	// Convert proficiencies

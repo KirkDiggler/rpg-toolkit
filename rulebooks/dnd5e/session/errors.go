@@ -318,16 +318,15 @@ var (
 	ErrDowned = errors.New("member is downed")
 
 	// ErrBadAttack is returned when an attack cannot be compiled from the
-	// attacker's sheet — an empty hand, or a weapon the strike has no
-	// semantics for.
+	// attacker's own sheet or shared persisted definition — an empty hand,
+	// malformed declared action, or a weapon the strike has no semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
 
 	// ErrOutOfReach is returned when Attack names a target further from the
-	// attacker than the compiled weapon's reach permits: one cell for a
-	// melee weapon, two for one carrying the Reach property
-	// (rpg-toolkit#1010). A ranged weapon stays refused as today —
-	// AttackFromCharacter refuses it before a profile with a Reach exists
-	// to check.
+	// attacker than the compiled delivery permits: one cell for ordinary melee,
+	// two for Reach weapons (rpg-toolkit#1010), and beyond long range for a
+	// supported ranged weapon. Targets inside a ranged weapon's normal and long
+	// brackets still resolve; only beyond long range reaches this sentinel.
 	//
 	// Afford's per-target ATTACK declarations are this same gate asked
 	// ahead of time: a target this seam would refuse with ErrOutOfReach is

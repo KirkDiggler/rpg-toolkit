@@ -354,15 +354,11 @@ func (e *Encounter) appendDownBeat(id MemberID) error {
 		return fmt.Errorf("standing beat payload: %w", err)
 	}
 
-	memberIDs := make([]MemberID, 0, len(e.members))
-	for mid := range e.members {
-		memberIDs = append(memberIDs, mid)
-	}
-	sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
-
+	// subjectBeat, subject is the member going down — v1 still sends
+	// everyone (audienceFor's doc).
 	if _, aerr := e.appendBeat(&record.AppendInput{
 		At:       uint64(e.clock.ToData().HighWater),
-		Audience: memberIDs,
+		Audience: e.audienceFor(subjectBeat, id),
 		Tags:     map[string]string{"tag": "outcome"},
 		Payload:  payload,
 	}); aerr != nil {

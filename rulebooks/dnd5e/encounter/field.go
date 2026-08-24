@@ -188,6 +188,27 @@ type PropInput struct {
 	// to the lane rule, so one cell of it obstructs nothing on its own.
 	// REQUIRED, for the same reason and with the same refusal.
 	BlocksLineOfSight *bool
+
+	// Facing is the authored direction this prop faces, in the orientation's
+	// own six-name vocabulary — flat-top: n|s|ne|nw|se|sw; pointy-top:
+	// e|w|ne|nw|se|sw. Optional: "" means the asset's own default facing.
+	// dungeonspec validates the word against the field's declared
+	// [Orientation]; THIS MODULE NEVER DOES, and never turns it into an
+	// angle — angle math is a render concern, not this module's (rpg-project
+	// #261 ruling; ADR-0040's spirit that the wire/model names facts and the
+	// client derives pixels). Not a pointer, unlike the two flags above: a
+	// prop's facing is a presentational fact rather than a required answer,
+	// so "said nothing" and "said the default" are the same by design.
+	Facing string
+
+	// Offset is a within-cell visual nudge: [x,y] fractions of the cell
+	// size, each in [-0.5, 0.5]. Optional: {0,0} means centered, which
+	// omitting the field also means — the two are the same fact by design,
+	// for Facing's reason. VISUAL ONLY (Kirk, rpg-project#261: "offset is
+	// visual only, agreed") — a prop still occupies its whole cell for
+	// [Encounter.Step] and for sight; this field never reaches Sight,
+	// Standing, or the turn loop, the same law Facing follows.
+	Offset [2]float64
 }
 
 // FieldInput describes the map: what the canvas declares, the regions that
@@ -297,8 +318,8 @@ type MemberInput struct {
 
 	// Actions are this member's own static facts about what it can do on
 	// its turn: a character's equipped weapon's swing (and the unarmed
-	// strike when no weapon is equipped), or a monster's authored
-	// [monster.ActionData]. Static join-time facts, the same species as
+	// strike when no weapon is equipped), or a monster's authored action
+	// definitions. Static join-time facts, the same species as
 	// Name (rpg-toolkit#1137) — this module cannot import the rulebook
 	// (C1), so every field on [ActionView] is carried and never
 	// interpreted, exactly as [Member.Name] already is.
@@ -318,12 +339,10 @@ type MemberInput struct {
 // encounter-owned primitive, the same species as [Member.Name] and
 // [AttackIdentity.DamageType]: this composition carries it and never
 // interprets it, per C1 (this module's go.mod cannot import the rulebook,
-// so it cannot know what a Ref like "dnd5e:monster_actions:melee" means, or
+// so it cannot know what a Ref like "dnd5e:monster_actions:skeleton-shortbow" means, or
 // what a Kind string like "melee" means).
 type ActionView struct {
-	// Ref identifies this action's implementation to whoever compiles an
-	// attack from it later — resolution's AttackFromMonsterAction, or a
-	// character's equipped-weapon compiler. Opaque here.
+	// Ref identifies this authored action to its eventual consumer. Opaque here.
 	Ref core.Ref
 
 	// Name is this action's display name — "Shortsword", "Bite" — carried
@@ -331,11 +350,10 @@ type ActionView struct {
 	// is.
 	Name string
 
-	// ReachFeet is how far this action reaches, in FEET (Kirk,
-	// rpg-project#254 review — a cell is 5 feet; see [CellsFromFeet]). The
-	// ONE place that compares this against a grid Distance converts once,
-	// via CellsFromFeet, rather than this record guessing at a conversion.
-	ReachFeet int
+	// RangeFeet is the action delivery's maximum legal distance in FEET:
+	// melee reach or a ranged delivery's long/maximum range. A cell is 5 feet;
+	// the one comparison against grid distance converts once via [CellsFromFeet].
+	RangeFeet int
 
 	// Kind is this action's category, in the rulebook's own words —
 	// "melee", "ranged", "unarmed" — opaque to this composition and never
@@ -345,7 +363,7 @@ type ActionView struct {
 }
 
 // validateMemberFacts rejects a negative SpeedFeet, SightFeet, or any
-// action's ReachFeet — the three feet-denominated member facts
+// action's RangeFeet — the three feet-denominated member facts
 // [CellsFromFeet] divides by [FeetPerCell] (Copilot, PR #1187 review). A
 // negative one is not a shorter distance; it is a caller defect that would
 // otherwise produce a nonsense movement budget or reach the moment a
@@ -360,8 +378,8 @@ func validateMemberFacts(id MemberID, speedFeet, sightFeet int, actions []Action
 		return fmt.Errorf("member %s: sight %d feet is negative: %w", id, sightFeet, ErrNoMember)
 	}
 	for _, a := range actions {
-		if a.ReachFeet < 0 {
-			return fmt.Errorf("member %s: action %q reach %d feet is negative: %w", id, a.Ref, a.ReachFeet, ErrNoMember)
+		if a.RangeFeet < 0 {
+			return fmt.Errorf("member %s: action %q range %d feet is negative: %w", id, a.Ref, a.RangeFeet, ErrNoMember)
 		}
 	}
 	return nil

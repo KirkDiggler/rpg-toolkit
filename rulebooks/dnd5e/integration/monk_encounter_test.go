@@ -713,86 +713,30 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainWithoutGameContext() {
 // LEVEL 2: KI FEATURE TESTS — REAL FEATURE ACTIVATION
 // =============================================================================
 
-func (s *MonkEncounterSuite) TestFlurryOfBlows_GrantsTwoStrikes() {
-	s.Run("Flurry of Blows consumes 1 Ki and grants 2 FlurryStrike actions", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK FLURRY OF BLOWS: Ki + Strike Grants                       ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-
-		// Override with level 2 monk that has Ki and features
+func (s *MonkEncounterSuite) TestFlurryOfBlows_BanksTwoStrikes() {
+	s.Run("Flurry of Blows consumes 1 Ki and banks 2 flurry strikes", func() {
 		if s.monk != nil {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
 		s.lookup.Add(s.monk)
 
-		// Verify Ki is available
-		ki := s.monk.GetResource(resources.Ki)
-		s.Require().NotNil(ki, "Level 2 monk should have Ki resource")
-		s.Require().Equal(2, ki.Current(), "Should start with 2 Ki")
-		s.T().Logf("  Monk: %s (Level 2)", s.monk.GetName())
-		s.T().Logf("  Initial Ki: %d/2", ki.Current())
-		s.T().Log("")
-
-		// Get the Flurry of Blows feature
-		flurry := s.monk.GetFeature("flurry_of_blows")
-		s.Require().NotNil(flurry, "Monk should have Flurry of Blows feature loaded from Data")
-
-		// Verify no extra actions before activation
-		initialActions := s.monk.GetActions()
-		s.T().Logf("  Actions before Flurry: %d", len(initialActions))
-
-		s.T().Log("")
-		s.T().Log("→ Shadow uses Flurry of Blows!")
-		s.T().Log("  [Bonus Action] Spend 1 Ki")
-
-		// Activate Flurry of Blows
-		err := flurry.Activate(s.ctx, s.monk, features.FeatureInput{
-			Bus: s.bus,
-		})
+		_, err := s.monk.StartTurn(s.ctx, &character.StartTurnInput{TurnNumber: 1, Speed: 30})
 		s.Require().NoError(err)
 
-		// Verify Ki was consumed
-		s.Equal(1, ki.Current(), "Should consume 1 Ki point")
-		s.T().Logf("  Ki remaining: %d/2", ki.Current())
+		ki := s.monk.GetResource(resources.Ki)
+		s.Require().NotNil(ki)
+		s.Require().Equal(2, ki.Current())
+		s.Zero(s.monk.CapacityLeft(combat.CapacityFlurryStrike))
 
-		// Verify 2 FlurryStrike actions were granted to the character by ID
-		allActions := s.monk.GetActions()
-		monkID := s.monk.GetID()
-		expectedFlurry1 := monkID + "-flurry-strike-1"
-		expectedFlurry2 := monkID + "-flurry-strike-2"
+		flurry := s.monk.GetFeature("flurry_of_blows")
+		s.Require().NotNil(flurry)
 
-		flurryActions := 0
-		foundFlurry1 := false
-		foundFlurry2 := false
+		err = flurry.Activate(s.ctx, s.monk, features.FeatureInput{})
 
-		for _, action := range allActions {
-			switch action.GetID() {
-			case expectedFlurry1:
-				foundFlurry1 = true
-				s.True(action.IsTemporary(), "FlurryStrike action 1 should be temporary")
-				flurryActions++
-			case expectedFlurry2:
-				foundFlurry2 = true
-				s.True(action.IsTemporary(), "FlurryStrike action 2 should be temporary")
-				flurryActions++
-			}
-		}
-
-		s.True(foundFlurry1, "Expected FlurryStrike action ID %q to exist on monk", expectedFlurry1)
-		s.True(foundFlurry2, "Expected FlurryStrike action ID %q to exist on monk", expectedFlurry2)
-		s.Equal(2, flurryActions, "Should grant 2 FlurryStrike actions")
-
-		s.T().Log("")
-		s.T().Logf("  Actions after Flurry: %d total (%d flurry strikes)", len(allActions), flurryActions)
-		s.T().Log("")
-		s.T().Log("  Flurry of Blows:")
-		s.T().Log("    Cost: 1 Ki point")
-		s.T().Log("    Effect: 2 unarmed strikes as bonus action")
-		s.T().Log("    Timing: Immediately after Attack action")
-		s.T().Log("")
-		s.T().Log("✓ Flurry of Blows consumes Ki AND grants 2 strike actions")
+		s.Require().NoError(err)
+		s.Equal(1, ki.Current())
+		s.Equal(2, s.monk.CapacityLeft(combat.CapacityFlurryStrike))
 	})
 }
 

@@ -186,6 +186,29 @@ type AtlasProp struct {
 
 	// BlocksLineOfSight reports whether sight passes through its cell.
 	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+
+	// Facing is the authored direction this prop faces, in the field's own
+	// orientation vocabulary — carried verbatim from
+	// [encounter.AtlasProp.Facing] and never interpreted here (rpg-project
+	// #261). Optional: "" means the asset's own default facing. Angle math
+	// is a render concern, not this seam's — the wire names the fact, the
+	// client derives pixels.
+	Facing string `json:"facing,omitempty"`
+
+	// Offset is a within-cell VISUAL nudge, [x,y] fractions of the cell
+	// size, carried verbatim from [encounter.AtlasProp.Offset]. {0,0} means
+	// centered — the SAME fact a prop that authored no offset carries, by
+	// design (rpg-project#261).
+	//
+	// No omitempty: Go's encoding/json cannot omit a fixed-size array
+	// regardless of the tag (verified — the key is always written), so a
+	// reading client checks the VALUE for {0,0} rather than the key for
+	// absence, the same way [Lighting.Intensity]'s own zero is an answer
+	// rather than a gap.
+	//
+	// VISUAL ONLY — a prop still occupies its whole cell for movement and
+	// line of sight; this never reaches a rule.
+	Offset [2]float64 `json:"offset"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
@@ -372,6 +395,13 @@ type Sighting struct {
 	// perception question: anything an observer can sight, they can name.
 	// Lands with rpg-toolkit#1137.
 	Name string `json:"name,omitempty"`
+
+	// Kind is the sighted subject's member kind — player or monster. Beside
+	// Name for the same reason: kind is not a perception question either,
+	// anything an observer can sight, they can classify at a glance. A
+	// memory (CurrentVia empty) keeps its kind exactly as it keeps its
+	// name. Lands with rpg-toolkit#1230.
+	Kind MemberKind `json:"kind,omitempty"`
 
 	// Seen is the sight channel's own typed knowledge; see [Seen]. Decoded by
 	// the composition, not by this package — session never unmarshals
@@ -586,16 +616,19 @@ type Event struct {
 
 	// Body is the beat, typed: a sealed interface with one struct per kind
 	// that has one, decoded from the SAME payload this package already
-	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil for
-	// a kind with no typed body member (JOINED, EXITED, ENDED,
-	// SCENE_OPENED, TICK, UNKNOWN) and for a beat this build's decoder does
-	// not recognise — see decodeBeat.
+	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil in
+	// three cases: a kind with no typed body member (ENDED, SCENE_OPENED,
+	// TICK, UNKNOWN); a beat this build's decoder does not recognise; and a
+	// beat whose declared kind IS recognised but whose payload does not
+	// match that kind's required shape — bodyFor's own refusal rather than
+	// a zero-valued body (see TestBodyForRefusesAMissingRequiredField).
 	Body EventBody `json:"-"`
 }
 
 // EventBody is the beat, typed — a sealed interface with one struct per
 // kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
-// MissedBody, FightStartedBody, FightEndedBody, MovedBody. Sealed the way
+// MissedBody, FightStartedBody, FightEndedBody, MovedBody, JoinedBody,
+// ExitedBody. Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
 // this package would be indistinguishable from these to anyone reading the
@@ -696,6 +729,24 @@ type MovedBody struct {
 }
 
 func (MovedBody) isEventBody() {}
+
+// JoinedBody is EventJoined's typed body: who entered the encounter. The
+// same member the beat's audience already includes (Join's own memberIDs),
+// carried here so a client rendering the beat does not have to cross-reference
+// Event.Recipient to learn who arrived.
+type JoinedBody struct {
+	Member string `json:"member"`
+}
+
+func (JoinedBody) isEventBody() {}
+
+// ExitedBody is EventExited's typed body: who left the encounter. See
+// JoinedBody's own doc — the same reasoning, the opposite beat.
+type ExitedBody struct {
+	Member string `json:"member"`
+}
+
+func (ExitedBody) isEventBody() {}
 
 // SaveReport names which aggregates were persisted by a verb and which were
 // not.
