@@ -326,7 +326,7 @@ var (
 	// attacker than the compiled weapon's reach permits: one cell for a
 	// melee weapon, two for one carrying the Reach property
 	// (rpg-toolkit#1010). A ranged weapon stays refused as today —
-	// AttackFromCharacter refuses it before a profile with a Reach exists
+	// character.AssembleAttack refuses it before a shared definition exists
 	// to check.
 	//
 	// Afford's per-target ATTACK declarations are this same gate asked

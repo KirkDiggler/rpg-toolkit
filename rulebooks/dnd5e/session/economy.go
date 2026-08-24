@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -108,7 +107,7 @@ func (m *Manager) priceSwing(
 		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCost, err)
 	}
 
-	profile, err := costOfSwing(sheet)
+	profile, err := character.CostOfSwing(sheet)
 	if err != nil {
 		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCost, err)
 	}
@@ -200,142 +199,4 @@ func readyForTurn(ctx context.Context, sheet *character.Character, turn int) err
 
 	_, err := sheet.RefreshForTurn(ctx, &character.RefreshForTurnInput{TurnNumber: turn, Speed: speed})
 	return err
-}
-
-// costOfSwing composes what ONE swing costs, out of the two prices the rulebook
-// compiles for it.
-//
-// # Why there are two prices and one payment
-//
-// The rulebook prices the two halves of 5e's attack separately, and correctly:
-// [character.CostOfAttack] is the ACTION, which costs a slot and BANKS
-// 1+ExtraAttacks swings, while [character.CostOfStrike] is one swing, which
-// costs a banked attack and no slot. That split is what makes Extra Attack a
-// table lookup instead of somebody counting to three.
-//
-// The door pays exactly one profile, so this seam has to say what a swing costs
-// as one price. Handing over [character.CostOfAttack] alone does not work — it
-// banks swings and never spends one, so a level-5 fighter's second Attack is
-// refused for want of an ACTION exactly like a level-1 fighter's, and Extra
-// Attack is granted capacity nothing can spend.
-//
-// # Nor can the two simply be concatenated
-//
-// A profile carrying Grants{attack:N} and Capacity{attack:1} together is refused
-// on its first use. [combat.Pay] checks affordability over EVERY currency before
-// anything moves and lands grants LAST, both deliberately — so the check asks
-// for a banked attack that the grant in the very same profile is about to
-// provide, and finds none. Atomicity is not negotiable and the grant cannot move
-// earlier, so the netting happens here instead.
-//
-// # What this does NOT do is read a class table
-//
-// The number of swings an Attack action buys is asked of the rulebook and never
-// derived. This function knows only that a strike is paid out of a bank, that an
-// action fills one, and that when the two arrive together the first swing comes
-// out of the grant rather than out of a bank nobody has yet.
-//
-// THAT SAID, this composition belongs upstream. It is 5e's rule about what
-// taking the Attack action and swinging means, and it lives here only because
-// this is the first caller that needed it — the same road CostOfAttack and
-// CostOfStrike travelled. When a second caller appears it should move next to
-// them as character.CostOfSwing, which is a move rather than a redesign.
-// Filed as rpg-toolkit#1100 so it is a decision waiting on its second caller
-// rather than a note that decays into nobody's business.
-func costOfSwing(c *character.Character) (*combat.SpendProfile, error) {
-	strike, err := character.CostOfStrike(c)
-	if err != nil {
-		return nil, err
-	}
-
-	// A bank the Attack action already filled pays for this swing outright.
-	// Asked of the gate rather than of the map, so that the question this seam
-	// asks is exactly the question the door will ask.
-	if combat.CanPay(c, strike) {
-		return strike, nil
-	}
-
-	action, err := character.CostOfAttack(c)
-	if err != nil {
-		return nil, err
-	}
-
-	return asOnePayment(action, strike), nil
-}
-
-// asOnePayment folds a strike into the action that buys it.
-//
-// Every currency is carried, and the totality is the point rather than
-// tidiness. A cost keyed to something this merge dropped is not a cheaper
-// action, it is a FREE one, and nothing downstream would ever say so — which is
-// the same failure [combat.SpendProfile.Validate] exists to refuse and the same
-// reason the gate reads every field it declares. Slots and pools add, because
-// two prices in the same currency are owed together. Requirements take the
-// larger, because a precondition is a floor rather than a bill.
-//
-// Capacity and grants NET, and that is the whole reason this function exists:
-// the swing this payment buys is the first of the ones the action banks, so it
-// is paid out of the grant. What is left over stays banked for the swings after
-// it. A netting that reached zero must leave the key ABSENT rather than present
-// at zero — Validate refuses a grant of nothing as a cost that is not a cost —
-// which is why both loops drop non-positive entries rather than writing them.
-func asOnePayment(action, strike *combat.SpendProfile) *combat.SpendProfile {
-	wants := sum(action.Capacity, strike.Capacity)
-	banks := sum(action.Grants, strike.Grants)
-
-	merged := &combat.SpendProfile{
-		Slots:    sum(action.Slots, strike.Slots),
-		Pools:    sum(action.Pools, strike.Pools),
-		Requires: larger(action.Requires, strike.Requires),
-	}
-
-	for key, want := range wants {
-		if owed := want - banks[key]; owed > 0 {
-			merged.Capacity = put(merged.Capacity, key, owed)
-		}
-	}
-	for key, banked := range banks {
-		if left := banked - wants[key]; left > 0 {
-			merged.Grants = put(merged.Grants, key, left)
-		}
-	}
-
-	return merged
-}
-
-// sum adds two keyed-quantity maps, and returns nil when there is nothing in
-// either — an empty map and an absent one mean the same thing to the gate, and
-// nil is what a profile that names no cost in this currency looks like.
-func sum[K comparable](a, b map[K]int) map[K]int {
-	var out map[K]int
-	for key, n := range a {
-		out = put(out, key, n)
-	}
-	for key, n := range b {
-		out = put(out, key, out[key]+n)
-	}
-	return out
-}
-
-// larger keeps the stricter of two requirements per key.
-func larger[K comparable](a, b map[K]int) map[K]int {
-	var out map[K]int
-	for key, n := range a {
-		out = put(out, key, n)
-	}
-	for key, n := range b {
-		if n > out[key] {
-			out = put(out, key, n)
-		}
-	}
-	return out
-}
-
-// put writes a keyed quantity, allocating the map on first use.
-func put[K comparable](m map[K]int, key K, n int) map[K]int {
-	if m == nil {
-		m = make(map[K]int)
-	}
-	m[key] = n
-	return m
 }

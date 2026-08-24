@@ -5,7 +5,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -313,14 +312,16 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// a sheet that loads fine but names a weapon this build cannot
 	// compile — becomes a declaration instead of a failed read, so the
 	// rest of a UI's turn panel still renders.
-	sheet, profile, err := m.compileAttack(ctx, in.Member)
+	sheet, err := m.loadAttackSheet(ctx, in.Member)
 	if err != nil {
-		if errors.Is(err, ErrBadAttack) {
-			return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
-				Reason: ShortfallUnreadable, Text: err.Error(),
-			})}, nil
-		}
 		return nil, fmt.Errorf("afford: %w", err)
+	}
+	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{Slot: character.SlotMainHand})
+	if err != nil {
+		badAttack := fmt.Errorf("member %q: %w: %v", in.Member, ErrBadAttack, err)
+		return &AffordOutput{Clock: ClockTurn, Declarations: blockedDeclarations(Shortfall{
+			Reason: ShortfallUnreadable, Text: badAttack.Error(),
+		})}, nil
 	}
 
 	price, err := m.priceSwing(ctx, enc, in.Member, sheet)
@@ -359,7 +360,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return nil, fmt.Errorf("afford: %w", translate(err))
 	}
 
-	attackDecls := attackDeclarationsFor(enc, positions, holdings, in.Member, slot, profile.Reach, affordable, why)
+	attackDecls := attackDeclarationsFor(enc, positions, holdings, in.Member, slot, definition.Attack.Delivery.MaxRangeFeet(), affordable, why)
 
 	// affordMove reads the SAME sheet, already readied for this turn by
 	// priceSwing's own call above — never a second ready, which would
@@ -499,7 +500,7 @@ func currencyOfSlot(slot Slot) Currency {
 // SLOT FIRST, AND USUALLY ONLY. slot is the declaration's own answer to
 // "which shape does this price light" (slotOf) — the same SpendProfile,
 // asked the same way — and it covers the whole of v1's reachable economy:
-// costOfSwing's own folding (asOnePayment) means a capacity shortfall
+// character.CostOfSwing's folding means a capacity shortfall
 // always resurfaces as the action slot being spent already, so a profile
 // that draws SlotNone (a purely banked swing) never actually runs out in a
 // way this build can produce. That branch is still handled, defensively,

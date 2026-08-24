@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -66,20 +67,17 @@ func (s strikerSeam) Strike(
 		return fmt.Errorf("strike: attacker %q: %w", attacker, ErrNoSheet)
 	}
 
-	var actionData *monster.ActionData
+	var definition combatActions.Definition
+	var found bool
 	for i := range attackerData.Actions {
 		if attackerData.Actions[i].Ref == action {
-			actionData = &attackerData.Actions[i]
+			definition = attackerData.Actions[i].Clone()
+			found = true
 			break
 		}
 	}
-	if actionData == nil {
+	if !found {
 		return fmt.Errorf("strike: attacker %q: action %q: %w", attacker, action.String(), ErrBadAttack)
-	}
-
-	profile, err := resolution.AttackFromMonsterAction(*actionData)
-	if err != nil {
-		return fmt.Errorf("strike: attacker %q: %w: %v", attacker, ErrBadAttack, err)
 	}
 
 	roster, err := enc.Members()
@@ -94,6 +92,16 @@ func (s strikerSeam) Strike(
 		return fmt.Errorf("strike: %w", err)
 	}
 
+	machine, err := resolution.NewAction(&resolution.ActionInput{
+		Definition: definition,
+		AttackerID: string(attacker),
+		TargetID:   string(target),
+		Roller:     &diceSeam{roller: s.m.dice},
+	})
+	if err != nil {
+		return fmt.Errorf("strike: attacker %q: %w: %v", attacker, ErrBadAttack, err)
+	}
+
 	world := enc.ToData()
 	out, err := resolution.Resolve(ctx, &resolution.Input{
 		World:        world,
@@ -102,13 +110,8 @@ func (s strikerSeam) Strike(
 		Standing:     s.scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   s.m.turnDriver,
-		Machine: resolution.NewStrike(&resolution.StrikeInput{
-			AttackerID: string(attacker),
-			TargetID:   string(target),
-			Attack:     profile,
-			Roller:     &diceSeam{roller: s.m.dice},
-		}),
-		Roller: &diceSeam{roller: s.m.dice},
+		Machine:      machine,
+		Roller:       &diceSeam{roller: s.m.dice},
 	})
 	if err != nil {
 		return fmt.Errorf("strike: %w", translateResolution(err))
@@ -124,7 +127,7 @@ func (s strikerSeam) Strike(
 	}
 
 	in := &AttackInput{Attacker: string(attacker), Target: string(target)}
-	if _, err := enc.Record(recordFor(in, struck, profile)); err != nil {
+	if _, err := enc.Record(recordFor(in, struck, definition)); err != nil {
 		return fmt.Errorf("strike: %w", translate(err))
 	}
 	return nil
