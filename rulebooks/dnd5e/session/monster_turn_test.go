@@ -87,16 +87,16 @@ func (s *MonsterTurnTestSuite) storyBeats(mgr *session.Manager, member string) [
 	return beats
 }
 
-// (a) A skeleton four cells off closes the distance and attacks: moved
-// beats to adjacent, a struck (or missed) beat naming a real attack, then
-// the turn hands cleanly back.
+// (a) A skeleton four cells off attacks with its shortbow without inventing
+// an approach: a struck (or missed) beat naming a real attack, then the turn
+// hands cleanly back.
 //
 // The dice are deliberately plain (testDice{}'s flat 10): the skeleton's
 // shortsword compiles to +4, and armedFighter's effective AC against an
 // unarmoured DEX-14 defender is 12 (see attack_test.go's duelAC) — 14
 // against 12 is a hit with no scripting required, which is the point:
 // nothing about THIS gate is about the dice.
-func (s *MonsterTurnTestSuite) TestSkeletonClosesAndAttacks() {
+func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	ctx := context.Background()
 	mgr := s.tombManager(session.Behavior(), testDice{})
 
@@ -120,7 +120,7 @@ func (s *MonsterTurnTestSuite) TestSkeletonClosesAndAttacks() {
 
 	before := len(s.storyBeats(mgr, "fighter"))
 	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err, "the skeleton's whole turn — move, strike, end — drives inside this one call")
+	s.Require().NoError(err, "the skeleton's whole turn — strike, end — drives inside this one call")
 
 	// Isolated to what THIS EndTurn call itself produced, with the earlier
 	// joined/joined/bubble-formed prefix left out — this gate is about the
@@ -129,16 +129,11 @@ func (s *MonsterTurnTestSuite) TestSkeletonClosesAndAttacks() {
 	s.Require().NotEmpty(beats)
 	s.Equal("turn-ended", beats[0], "fighter's own end-turn beat comes first")
 
-	// At least one moved beat (closing the distance), exactly one struck-or-
-	// missed beat (the swing), and the skeleton's own turn ending last —
-	// the shape the brief itself describes: "moved beats to adjacent, then
-	// struck/missed ... then turn_ended".
+	// Exactly one struck-or-missed beat and the skeleton's own turn ending
+	// last. Four cells is inside shortbow range, so no move beat is authored.
 	middle := beats[1 : len(beats)-1]
-	s.NotEmpty(middle, "the skeleton had four cells to close before it could swing")
-	for _, b := range middle[:len(middle)-1] {
-		s.Equal("moved", b, "everything before the swing is the approach")
-	}
-	swing := middle[len(middle)-1]
+	s.Require().Len(middle, 1, "the shortbow attack needs no approach")
+	swing := middle[0]
 	s.Contains([]string{"struck", "missed"}, swing)
 	s.Equal("turn-ended", beats[len(beats)-1], "the skeleton's own turn closes the round")
 

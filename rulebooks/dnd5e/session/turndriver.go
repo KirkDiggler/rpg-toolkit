@@ -62,7 +62,7 @@ type MonsterView struct {
 // ActionView is this package's own twin of encounter.ActionView: a static
 // fact about one action a member can take.
 type ActionView struct {
-	// Ref identifies this action's implementation, as "module:type:id"
+	// Ref identifies this authored action definition, as "module:type:id"
 	// (core.Ref.String()) rather than core.Ref itself (S2 — core.Ref is not
 	// on this package's contract-type allow-list, and a driver never
 	// constructs one field by field; it only ever echoes this string back
@@ -70,7 +70,7 @@ type ActionView struct {
 	// way back across the boundary (see turnDriverSeam.Act).
 	Ref string
 
-	// Name is this action's display name — "Shortsword", "Bite".
+	// Name is this action's authored display name — "Longsword", "bite".
 	Name string
 
 	// RangeFeet is how far this action reaches, in feet.

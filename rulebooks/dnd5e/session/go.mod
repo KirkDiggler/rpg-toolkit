@@ -8,10 +8,10 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.98.1-0.20260824084146-abb26025a539
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.99.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.32.1-0.20260824084653-f9aab3bde42f
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.11.9-0.20260824091230-ef62493b40bf
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.33.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
 )

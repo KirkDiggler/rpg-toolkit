@@ -96,9 +96,10 @@ type AttackOutput struct {
 // level-5 fighter gets two, and the swing after that is refused with
 // [ErrCannotAfford] naming the currency that ran out.
 //
-// The price is compiled here and charged by resolution's door, before the
-// machine starts — so a refused swing resolves nothing, damages nobody, and
-// writes nothing at all. See [Manager.priceSwing] for what a turn costs and
+// The price is compiled here and charged by resolution's door after pure
+// machine preflight and before its first executable step — so a refused swing
+// rolls nothing, damages nobody, and writes nothing at all. See
+// [Manager.priceSwing] for what a turn costs and
 // [character.CostOfSwing] for how one price is made out of the rulebook's two.
 //
 // IN FREE ROAM IT COSTS NOTHING, which is a ruling rather than the old gap: the

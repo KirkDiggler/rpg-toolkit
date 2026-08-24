@@ -228,11 +228,8 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.Equal("fighter", out3.Next)
 	s.False(out3.RoundWrapped)
 
-	// Round 2, fighter: skel-1 is already adjacent to barbarian from round
-	// 1's own approach, so this round's driven turn is a bare strike —
-	// exactly the "closer standing target already in reach" case
-	// buildMonsterView's own Path-truncation exists for, with no move beat
-	// at all.
+	// Round 2, fighter: skel-1 remains inside shortbow range, so this
+	// round's driven turn is again a bare strike with no move beat.
 	beforeRound2Drive := len(s.stream.published)
 	out4, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
 	s.Require().NoError(err)
@@ -241,7 +238,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 
 	round2Drive := s.stream.published[beforeRound2Drive:]
 	fighterRound2 := recipientSeqs(round2Drive, "fighter")
-	s.Require().Len(fighterRound2, 3, "turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — no move beat once already adjacent")
+	s.Require().Len(fighterRound2, 3, "turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — the shortbow needs no approach")
 
 	// (b): seqs are contiguous per recipient across the whole two-round
 	// window, for BOTH real players — no gap, no duplicate.
