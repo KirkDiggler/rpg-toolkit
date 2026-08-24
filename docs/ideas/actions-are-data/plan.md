@@ -298,17 +298,20 @@ git commit -m "feat(actions)!: define inert shared attack profiles (#1198)"
 
 ### Task 2: Move Character Attack Assembly Beside the Character
 
+**Completed:** `e6ba2a3` (`feat(character)!: assemble shared attack definitions (#1198)`)
+
 **Files:**
 - Create: `rulebooks/dnd5e/character/attack_definition.go`
 - Create: `rulebooks/dnd5e/character/attack_definition_test.go`
 - Modify: `rulebooks/dnd5e/character/spend_profile.go`
+- Modify: `rulebooks/dnd5e/character/spend_profile_test.go`
 - Test reference: `rulebooks/dnd5e/resolution/character_attack_test.go`
 
 **Interfaces:**
 - Consumes: `actions.Definition` from Task 1, character equipment slots, weapon catalog data, and caller-supplied `*combat.SpendProfile`.
 - Produces: `character.AssembleAttack(*Character, *AssembleAttackInput) (actions.Definition, error)` and `character.CostOfSwing(*Character) (*combat.SpendProfile, error)`.
 
-- [ ] **Step 1: Write failing character-assembly tests**
+- [x] **Step 1: Write failing character-assembly tests**
 
 Move `CharacterAttackTestSuite.heroSheet`, `martialHero`, and `load` from `resolution/character_attack_test.go` into `character/attack_definition_test.go`; change the suite package references from `character.X` to local character symbols. Port the existing compiler cases into that suite and add ranged coverage:
 
@@ -340,9 +343,9 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_LongbowIsRanged() {
 
 Retain tests for empty-hand unarmed substitution, corrupt equipment refusal, finesse STR/DEX choice, proficiency, versatile grip, Reach property, multiple damage pools, `TwoHanded`, and `OffHandWeaponRef`. Add a clone assertion proving the returned definition does not alias the supplied cost maps or weapon catalog damage slices.
 
-Add `CostOfSwing` tests by moving the `costOfSwing`/`asOnePayment` cases from `session/economy_test.go`: first swing nets the Attack grant against one Strike capacity, while an already-banked attack costs only one capacity.
+Add `CostOfSwing` tests for the first and already-banked swings, and move the `asOnePayment` cases from `session/economy_internal_test.go`: the first swing nets the Attack grant against one Strike capacity, while an already-banked attack costs only one capacity.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -353,7 +356,7 @@ go test ./character -run 'TestAssembleAttack|TestCostOfSwing'
 
 Expected: FAIL because `AssembleAttack` and `CostOfSwing` do not exist in `character`.
 
-- [ ] **Step 3: Move and generalize the assembly implementation**
+- [x] **Step 3: Move and generalize the assembly implementation**
 
 Move static weapon/sheet logic from `resolution/character_attack.go` into `character/attack_definition.go`. Return:
 
@@ -384,7 +387,7 @@ return combatActions.Definition{
 
 Move `costOfSwing`, `asOnePayment`, `sum`, and `larger` from session into `character.CostOfSwing`. Keep free-roam policy in session by passing nil `Cost`; character only composes a requested price.
 
-- [ ] **Step 4: Run focused and package tests**
+- [x] **Step 4: Run focused and package tests**
 
 Run:
 
@@ -397,12 +400,13 @@ golangci-lint run ./character/...
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add rulebooks/dnd5e/character/attack_definition.go \
         rulebooks/dnd5e/character/attack_definition_test.go \
-        rulebooks/dnd5e/character/spend_profile.go
+        rulebooks/dnd5e/character/spend_profile.go \
+        rulebooks/dnd5e/character/spend_profile_test.go
 git commit -m "feat(character)!: assemble shared attack definitions (#1198)"
 ```
 
