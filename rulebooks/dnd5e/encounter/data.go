@@ -353,7 +353,7 @@ type MemberData struct {
 type ActionViewData struct {
 	Ref       core.Ref `json:"ref"`
 	Name      string   `json:"name,omitempty"`
-	ReachFeet int      `json:"reach_feet,omitempty"`
+	RangeFeet int      `json:"range_feet,omitempty"`
 	Kind      string   `json:"kind,omitempty"`
 }
 

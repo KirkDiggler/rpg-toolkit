@@ -597,8 +597,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("held by: %w", err)
 	}
 
-	// bestReachCells is the farthest this member's own actions can reach,
-	// in cells — the arithmetic max of authored ReachFeet values, not a
+	// bestRangeCells is the farthest this member's own actions can reach,
+	// in cells — the arithmetic max of authored RangeFeet values, not a
 	// rules opinion about which action is "best" in play (this module
 	// still cannot import the rulebook, C1: it takes the number, not the
 	// meaning). Floored at 1 (5 feet, a bare cell) even for a member with
@@ -606,10 +606,10 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// capability — nobody's own Path should ever walk onto another
 	// member's occupied cell, whether or not this member has anything to
 	// do once it arrives.
-	bestReachCells := 1
+	bestRangeCells := 1
 	for _, a := range m.Actions {
-		if c := CellsFromFeet(a.ReachFeet); c > bestReachCells {
-			bestReachCells = c
+		if c := CellsFromFeet(a.RangeFeet); c > bestRangeCells {
+			bestRangeCells = c
 		}
 	}
 
@@ -635,13 +635,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		dist := e.Distance(ownCell, pos)
 		inReach := make(map[core.Ref]bool, len(m.Actions))
 		for _, a := range m.Actions {
-			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.ReachFeet))
+			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
 		}
 
 		// Path ends on the NEAREST WALKABLE cell (to this member's own
 		// position — the shortest route BY STEPS, not "however far along
 		// the route to pos happens to land") from which the sighting is
-		// within bestReachCells (Kirk, rpg-project#254 review — this also
+		// within bestRangeCells (Kirk, rpg-project#254 review — this also
 		// removes the "already in reach, don't bother moving" workaround
 		// behavior.Basic carried before this truncation existed).
 		//
@@ -656,12 +656,12 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// own reach rule). bfsShortestPath's goal predicate stops the
 		// search the moment ANY cell — including this member's own
 		// starting position, handling "already in reach" for free — is
-		// within bestReachCells of pos, which is the actual nearest
+		// within bestRangeCells of pos, which is the actual nearest
 		// walkable answer rather than a proxy for it. One BFS per
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
 		path, _ := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
-			return e.Distance(cell, pos) <= float64(bestReachCells)
+			return e.Distance(cell, pos) <= float64(bestRangeCells)
 		})
 
 		seen = append(seen, SeenMember{
