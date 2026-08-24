@@ -76,8 +76,8 @@ type ActionView struct {
 	// RangeFeet is how far this action reaches, in feet.
 	RangeFeet int
 
-	// Kind is this action's category, in the rulebook's own words — "melee",
-	// "ranged", "unarmed" — opaque here.
+	// Kind is the action's delivery projection: "melee" or "ranged". It is
+	// derived from the shared definition and remains opaque to this seam.
 	Kind string
 }
 
