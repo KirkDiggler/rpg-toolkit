@@ -140,7 +140,7 @@ type SeenMember struct {
 	// InReach maps each of THIS MONSTER'S OWN action refs (see
 	// [MonsterView.Actions]) to whether this sighting is within that
 	// action's reach right now — precomputed so a driver never converts
-	// feet to cells itself (see [ActionView.ReachFeet]'s doc for why that
+	// feet to cells itself (see [ActionView.RangeFeet]'s doc for why that
 	// conversion belongs here, once, rather than on every driver).
 	InReach map[core.Ref]bool
 
@@ -180,7 +180,7 @@ type TurnBudget struct {
 	AttacksLeft int
 
 	// MovementFeet is how much further this member may move this turn, in
-	// FEET (Kirk, rpg-project#254 review — see [ActionView.ReachFeet]'s doc
+	// FEET (Kirk, rpg-project#254 review — see [ActionView.RangeFeet]'s doc
 	// for the feet/cells split) — [Member.SpeedFeet] at the start of a
 	// turn, decremented by 5 feet per cell as [Move] intents execute.
 	MovementFeet int

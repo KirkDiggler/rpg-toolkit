@@ -522,7 +522,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNoMember)
 		}
 
-		// SpeedFeet, SightFeet and each action's ReachFeet are feet-
+		// SpeedFeet, SightFeet and each action's RangeFeet are feet-
 		// denominated facts CellsFromFeet divides by FeetPerCell — a
 		// negative one is not a shorter distance, it is a caller defect
 		// (Copilot, PR #1187), and would otherwise produce a nonsense
