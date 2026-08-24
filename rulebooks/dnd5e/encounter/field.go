@@ -188,6 +188,27 @@ type PropInput struct {
 	// to the lane rule, so one cell of it obstructs nothing on its own.
 	// REQUIRED, for the same reason and with the same refusal.
 	BlocksLineOfSight *bool
+
+	// Facing is the authored direction this prop faces, in the orientation's
+	// own six-name vocabulary — flat-top: n|s|ne|nw|se|sw; pointy-top:
+	// e|w|ne|nw|se|sw. Optional: "" means the asset's own default facing.
+	// dungeonspec validates the word against the field's declared
+	// [Orientation]; THIS MODULE NEVER DOES, and never turns it into an
+	// angle — angle math is a render concern, not this module's (rpg-project
+	// #261 ruling; ADR-0040's spirit that the wire/model names facts and the
+	// client derives pixels). Not a pointer, unlike the two flags above: a
+	// prop's facing is a presentational fact rather than a required answer,
+	// so "said nothing" and "said the default" are the same by design.
+	Facing string
+
+	// Offset is a within-cell visual nudge: [x,y] fractions of the cell
+	// size, each in [-0.5, 0.5]. Optional: {0,0} means centered, which
+	// omitting the field also means — the two are the same fact by design,
+	// for Facing's reason. VISUAL ONLY (Kirk, rpg-project#261: "offset is
+	// visual only, agreed") — a prop still occupies its whole cell for
+	// [Encounter.Step] and for sight; this field never reaches Sight,
+	// Standing, or the turn loop, the same law Facing follows.
+	Offset [2]float64
 }
 
 // FieldInput describes the map: what the canvas declares, the regions that

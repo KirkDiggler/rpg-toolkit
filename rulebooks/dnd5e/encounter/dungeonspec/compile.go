@@ -170,7 +170,9 @@ func regionsOf(spec *Spec) []encounter.RegionInput {
 }
 
 // propsOf is every prop, with both blocking answers copied rather than
-// aliased ([encounter.PropInput] holds them as pointers).
+// aliased ([encounter.PropInput] holds them as pointers), and Facing/Offset
+// carried through exactly as authored — this package validates the word and
+// the bounds; it does not reinterpret them (rpg-project#261).
 func propsOf(spec *Spec) []encounter.PropInput {
 	var out []encounter.PropInput
 	for _, p := range spec.Place {
@@ -178,10 +180,17 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			continue
 		}
 		blocksMovement, blocksLoS := *p.BlocksMovement, *p.BlocksLoS
-		out = append(out, encounter.PropInput{
+		prop := encounter.PropInput{
 			Ref: p.Ref, At: authored(p.At),
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
-		})
+			Facing: p.Facing,
+		}
+		// Validate has already confirmed len(p.Offset) is 0 or 2 by the time
+		// Compile runs; anything else is unreachable here.
+		if len(p.Offset) == 2 {
+			prop.Offset = [2]float64{p.Offset[0], p.Offset[1]}
+		}
+		out = append(out, prop)
 	}
 	return out
 }

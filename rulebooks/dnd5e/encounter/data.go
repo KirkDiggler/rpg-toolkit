@@ -179,6 +179,14 @@ type PropData struct {
 	At                PositionData `json:"at"`
 	BlocksMovement    *bool        `json:"blocks_movement"`
 	BlocksLineOfSight *bool        `json:"blocks_line_of_sight"`
+
+	// Facing and Offset mirror [PropInput.Facing] and [PropInput.Offset]
+	// (rpg-project#261). NEITHER IS REQUIRED AT LOAD, unlike the two flags
+	// above: omitted and written-as-the-zero-value are the same fact by
+	// design, so there is no pointer here and no by-name refusal when
+	// absent — an old blob simply unmarshals both to their zero values.
+	Facing string     `json:"facing,omitempty"`
+	Offset [2]float64 `json:"offset"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -520,6 +528,8 @@ func fieldDataFrom(f *field) FieldData {
 				At:                PositionData{X: p.At.X, Y: p.At.Y},
 				BlocksMovement:    &blocksMovement,
 				BlocksLineOfSight: &blocksSight,
+				Facing:            p.Facing,
+				Offset:            p.Offset,
 			}
 		}
 	}
@@ -1270,6 +1280,8 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			At:                spatial.Position{X: pd.At.X, Y: pd.At.Y},
 			BlocksMovement:    &blocksMovement,
 			BlocksLineOfSight: &blocksSight,
+			Facing:            pd.Facing,
+			Offset:            pd.Offset,
 		})
 	}
 

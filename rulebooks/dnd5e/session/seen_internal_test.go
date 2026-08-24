@@ -37,7 +37,7 @@ func TestProjectSightingsSightChannelGetsASeen(t *testing.T) {
 		Status:     intel.Current,
 	}}
 
-	out := projectSightings(holdings, nil, map[string]bool{"skeleton-1": true})
+	out := projectSightings(holdings, nil, nil, map[string]bool{"skeleton-1": true})
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a sight-channel holding must carry Seen")
 	require.Equal(t, spatial.Position{X: 10, Y: 3}, out[0].Seen.Position)
@@ -60,7 +60,7 @@ func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
 		Status:     intel.Current,
 	}}
 
-	out := projectSightings(holdings, nil, nil)
+	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.Nil(t, out[0].Seen, "a non-sight channel must not carry Seen, however the payload happens to decode")
 }
@@ -79,11 +79,70 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 		Status:     intel.Held,
 	}}
 
-	out := projectSightings(holdings, nil, nil)
+	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a held memory must keep its last Seen")
 	require.Equal(t, spatial.Position{X: 6, Y: 10}, out[0].Seen.Position)
 	require.Equal(t, StandingUp, out[0].Seen.Standing, "not in the down set: reports up")
+}
+
+// TestProjectSightingsCarriesKindFromTheRoster pins rpg-toolkit#1230: kind is
+// a roster fact looked up the same way Name is, not a second perception
+// question. Two holdings, two kinds, so a projection that swapped the map
+// lookup for a constant would still fail.
+func TestProjectSightingsCarriesKindFromTheRoster(t *testing.T) {
+	holdings := []intel.Holding{
+		{
+			Subject:    intel.Subject("fighter"),
+			Payload:    sightPayloadBytes(t, 1, 1),
+			Channel:    intel.Sight,
+			At:         1,
+			CurrentVia: []intel.Channel{intel.Sight},
+			Status:     intel.Current,
+		},
+		{
+			Subject:    intel.Subject("skeleton-1"),
+			Payload:    sightPayloadBytes(t, 2, 2),
+			Channel:    intel.Sight,
+			At:         1,
+			CurrentVia: []intel.Channel{intel.Sight},
+			Status:     intel.Current,
+		},
+	}
+	kinds := map[string]MemberKind{"fighter": KindPlayer, "skeleton-1": KindMonster}
+
+	out := projectSightings(holdings, nil, kinds, nil)
+	require.Len(t, out, 2)
+	for _, s := range out {
+		switch s.Subject {
+		case "fighter":
+			require.Equal(t, KindPlayer, s.Kind)
+		case "skeleton-1":
+			require.Equal(t, KindMonster, s.Kind)
+		default:
+			t.Fatalf("unexpected subject %q", s.Subject)
+		}
+	}
+}
+
+// TestProjectSightingsHeldMemoryKeepsItsKind is TestProjectSightingsHeldMemoryKeepsItsLastSeen's
+// twin for Kind: a subject whose CurrentVia has gone empty (Status == Held, a
+// ghost) still carries the kind the roster reports for it, same as it keeps
+// its name — a memory does not forget what it once classified at a glance.
+func TestProjectSightingsHeldMemoryKeepsItsKind(t *testing.T) {
+	holdings := []intel.Holding{{
+		Subject:    intel.Subject("goblin-1"),
+		Payload:    sightPayloadBytes(t, 6, 10),
+		Channel:    intel.Sight,
+		At:         3,
+		CurrentVia: nil, // faded: no channel currently sustains it
+		Status:     intel.Held,
+	}}
+	kinds := map[string]MemberKind{"goblin-1": KindMonster}
+
+	out := projectSightings(holdings, nil, kinds, nil)
+	require.Len(t, out, 1)
+	require.Equal(t, KindMonster, out[0].Kind, "a held memory must keep its kind")
 }
 
 // TestProjectSeenIsNilWhenASightPayloadFailsToDecode is the defensive arm: an
