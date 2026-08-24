@@ -830,6 +830,8 @@ Expected: PASS.
 
 ### Task 6: Make Resolution Interpret Shared Definitions
 
+**Completed:** `258dbed` (`feat(resolution)!: interpret shared action profiles (#1198)`)
+
 **Files:**
 - Create: `rulebooks/dnd5e/resolution/action.go`
 - Create: `rulebooks/dnd5e/resolution/action_test.go`
@@ -851,29 +853,28 @@ Expected: PASS.
 - Modify: `rulebooks/dnd5e/resolution/strictness_test.go`
 - Modify: `rulebooks/dnd5e/resolution/strike_test.go`
 - Modify: `rulebooks/dnd5e/resolution/world_test.go`
+- Modify: `rulebooks/dnd5e/resolution/testrollers_test.go`
 - Modify: `rulebooks/dnd5e/resolution/go.mod`
 - Modify: `rulebooks/dnd5e/resolution/go.sum`
 
 **Interfaces:**
-- Consumes: pushed root D&D and active encounter provider commits from Tasks 4–5.
+- Consumes: the pushed root D&D provider from Task 4. Resolution uses the existing `CellsFromFeet` contract and does not consume `ActionView.RangeFeet`; pinning the Task 5 encounter provider belongs to session and would force an unrelated rooms-to-regions fixture migration here.
 - Produces: `resolution.NewAction(*ActionInput) (Machine, error)`, Strike over `actions.Definition`, range enforcement, ordered declarative conditions, and start-before-pay execution.
 
-- [ ] **Step 1: Pin the pushed providers locally and commit only published references**
+- [x] **Step 1: Pin the pushed root provider and commit only published references**
 
 Run:
 
 ```bash
 DND5E_PROVIDER_SHA=$(cat /tmp/1198-dnd5e-provider-sha)
-ENCOUNTER_PROVIDER_SHA=$(cat /tmp/1198-encounter-provider-sha)
 cd rulebooks/dnd5e/resolution
 GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e@${DND5E_PROVIDER_SHA}
-GOPROXY=direct go get github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter@${ENCOUNTER_PROVIDER_SHA}
-go mod tidy
+# Keep the existing encounter dependency: CellsFromFeet already exists there.
 ```
 
-Expected: `go.mod` contains pseudo-versions resolving to pushed commits and no `replace` directive.
+Expected: `go.mod` resolves the root provider to the pushed commit and has no `replace` directive. Do not run `go mod tidy` until Step 9 removes resolution's old `monster/actions` import; after the provider hard cut, tidy correctly refuses that deleted package while the old source still imports it.
 
-- [ ] **Step 2: Write failing generic-dispatch and unknown-ref tests**
+- [x] **Step 2: Write failing generic-dispatch and unknown-ref tests**
 
 Add the test as a method on the existing `StrikeTestSuite`, so it reuses that suite's concrete world/cast helpers. Define the fixture in `action_test.go`:
 
@@ -912,7 +913,7 @@ func (s *StrikeTestSuite) TestUnknownContentRefStillDispatchesByProfile() {
 
 Add table tests that nil input, invalid definition, and a definition with no Attack arm fail with `ErrBadAction` before Resolve. Update existing rider assertions to read the ordered `StrikeOutcome.Conditions` field defined in Step 8 instead of the removed singular `Contest` field.
 
-- [ ] **Step 3: Write failing range and delivery tests**
+- [x] **Step 3: Write failing range and delivery tests**
 
 Cover:
 
@@ -925,7 +926,7 @@ Cover:
 
 Use a counting roller and a counting ledger to assert the out-of-range case rolls zero dice and spends zero capacity.
 
-- [ ] **Step 4: Write the start-before-pay regression test**
+- [x] **Step 4: Write the start-before-pay regression test**
 
 Create a machine whose `Start` returns a named error and a payer with one attack capacity. Resolve with a real cost and assert:
 
@@ -937,7 +938,7 @@ s.Equal(1, payer.CapacityLeft(combat.CapacityAttack), "invalid machine start pay
 
 Also assert `Start` is called exactly once on the success path.
 
-- [ ] **Step 5: Implement structural dispatch**
+- [x] **Step 5: Implement structural dispatch**
 
 Add:
 
@@ -970,7 +971,7 @@ func NewAction(in *ActionInput) (Machine, error) {
 
 `StrikeInput` holds `Definition combatActions.Definition`, not a resolution-owned profile. Delete `resolution.AttackProfile`, both producer compilers, JSON config decoding, and monster action/ref imports.
 
-- [ ] **Step 6: Move runtime validation before payment**
+- [x] **Step 6: Move runtime validation before payment**
 
 Split the driver without changing nested Request behavior:
 
@@ -997,7 +998,7 @@ outcome, runErr := driveStep(ctx, surf, first, cast)
 
 Document `Machine.Start` as pure preflight: it may validate/read attached sheets and produce its first step, but it may not roll, spend, publish, or mutate.
 
-- [ ] **Step 7: Implement delivery interpretation**
+- [x] **Step 7: Implement delivery interpretation**
 
 In Strike Start, read the installed room, locate actor/target, calculate grid distance, and compare with `Definition.Attack.Delivery` using `encounter.CellsFromFeet`.
 
@@ -1009,7 +1010,7 @@ In Strike Start, read the installed room, locate actor/target, calculate grid di
 
 Do not keep session's reach rule as Strike's substitute; session may still use range data to answer Afford.
 
-- [ ] **Step 8: Replace executable consequences with prepared condition declarations**
+- [x] **Step 8: Replace executable consequences with prepared condition declarations**
 
 Replace `ContestInput.Consequence` with the shared declaration:
 
@@ -1065,7 +1066,7 @@ After a hit and optional damage:
 
 Delete the exported `Consequence` interface and `ImposeCondition` constructor. Keep condition publication as private resolution step machinery; no executable consequence crosses the shared-data boundary.
 
-- [ ] **Step 9: Run mutation-focused and full resolution verification**
+- [x] **Step 9: Run mutation-focused and full resolution verification**
 
 Run:
 
@@ -1081,7 +1082,7 @@ git diff --check
 
 Expected: PASS. Confirm the new test fails if a content-ref switch is reintroduced by temporarily changing `NewAction` to accept only a known ref, then restore the implementation and rerun GREEN.
 
-- [ ] **Step 10: Commit and push the resolution provider**
+- [x] **Step 10: Commit and push the resolution provider**
 
 ```bash
 cd ../../..
