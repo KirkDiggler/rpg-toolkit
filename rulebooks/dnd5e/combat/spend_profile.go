@@ -62,22 +62,22 @@ type SpendProfile struct {
 	// rather than an entry costing nothing, and movement is not a slot: it is
 	// keyed capacity, because movement is spent in feet across a turn rather
 	// than taken once.
-	Slots map[coreCombat.ActionType]int
+	Slots map[coreCombat.ActionType]int `json:"slots,omitempty"`
 
 	// Capacity is the keyed capacity this action consumes: one banked attack
 	// for a swing, feet of movement for a step.
-	Capacity map[CapacityType]int
+	Capacity map[CapacityType]int `json:"capacity,omitempty"`
 
 	// Grants is the keyed capacity this action banks. The Attack action's
 	// entire effect on the economy is here — it buys 1+ExtraAttacks attacks —
 	// and it ADDS to whatever is already banked, so a second Attack action in
 	// one turn (Action Surge) buys more swings rather than resetting the bank
 	// to the same number.
-	Grants map[CapacityType]int
+	Grants map[CapacityType]int `json:"grants,omitempty"`
 
 	// Pools is the cost in keyed resource points: ki, sorcery points, a
 	// feature's charges. Expressible and unexercised in v1 — see the type doc.
-	Pools map[coreResources.ResourceKey]int
+	Pools map[coreResources.ResourceKey]int `json:"pools,omitempty"`
 
 	// Requires is keyed capacity that must be PRESENT and is never spent — a
 	// precondition rather than a price.
@@ -91,7 +91,7 @@ type SpendProfile struct {
 	//
 	// What it is not is a predicate vocabulary — see the type doc.
 	// Expressible and unexercised in v1.
-	Requires map[CapacityType]int
+	Requires map[CapacityType]int `json:"requires,omitempty"`
 }
 
 // Validate reports whether this profile names a price anything could actually
