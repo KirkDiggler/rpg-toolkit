@@ -403,12 +403,8 @@ func (s *ResolveTestSuite) TestTheWorldRoundTripsUnchanged() {
 	}
 }
 
-// The three-call assembly, pinned. monster.LoadFromData loads neither actions
-// nor conditions, and monster.ToData serializes both — so a resolution that
-// skips LoadMonsterActions does not merely leave the skeleton unable to swing,
-// it writes back a skeleton that has silently lost its shortsword. Asserting the
-// action reconstitutes AND survives ToData is what makes that class of loss a
-// test failure instead of a data-loss bug in a host's repository.
+// The direct-definition round trip is pinned: a monster's authored action
+// survives pure load, attach, and ToData without a behavior loader.
 func (s *ResolveTestSuite) TestAMonstersActionsSurviveResolution() {
 	machine := &captureMachine{}
 

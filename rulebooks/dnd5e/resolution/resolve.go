@@ -461,13 +461,9 @@ func attachCharacter(
 // attachMonster is the same two calls, over the composition that knows what a
 // whole monster is.
 //
-// monstertraits.LoadMonster is the pure load — sheet, actions, and the trait
-// blobs it was persisted with — and it lives in that package because it is the
-// only one that can see both loaders without an import cycle. Calling it rather
-// than assembling the pieces here is safer by construction than by test: the
-// actions round-trip pin would catch a forgotten LoadMonsterActions, but a
-// composition that cannot forget it needs no pin at all, and this caller is the
-// one it was written for.
+// monstertraits.LoadMonster is the pure composition entry point for the sheet,
+// its directly loaded action definitions, and persisted trait blobs. Calling it
+// here keeps the load/attach path uniform for every monster participant.
 //
 // The trait blobs ride on the loaded monster rather than being passed alongside
 // it, so the assembly's other old failure — writing a monster back without the
