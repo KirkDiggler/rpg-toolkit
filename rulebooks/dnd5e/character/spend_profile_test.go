@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -109,8 +110,8 @@ func (s *CostCompilerTestSuite) TestTheAttackActionCostsExactlyOneActionSlot() {
 	s.Empty(profile.Requires, "nothing in v1 prices an action behind a precondition")
 }
 
-// A swing costs one banked attack and no slot — the same two facts
-// actions.Strike already declares about itself (ActionFree, CapacityAttack).
+// A swing costs one banked attack and no slot; the price is inert data rather
+// than an executable Strike object's accessors.
 func (s *CostCompilerTestSuite) TestAStrikeCostsOneBankedAttackAndNoSlot() {
 	profile, err := CostOfStrike(s.sheetOf(classes.Fighter, 5))
 	s.Require().NoError(err)
@@ -172,4 +173,60 @@ func (s *CostCompilerTestSuite) TestALevelOneFighterSwingsOnce() {
 	s.Require().NoError(err)
 	s.Require().NoError(combat.Pay(fighter, strike))
 	s.False(combat.CanPay(fighter, strike))
+}
+
+func (s *CostCompilerTestSuite) TestSwingNettingCarriesCapacityStillOwed() {
+	action := &combat.SpendProfile{
+		Slots:  map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+		Grants: map[combat.CapacityType]int{combat.CapacityAttack: 1},
+	}
+	strike := &combat.SpendProfile{
+		Capacity: map[combat.CapacityType]int{combat.CapacityAttack: 2},
+	}
+
+	merged := asOnePayment(action, strike)
+
+	s.Require().NoError(merged.Validate())
+	s.Equal(1, merged.Capacity[combat.CapacityAttack])
+	s.Empty(merged.Grants)
+	s.Equal(1, merged.Slots[coreCombat.ActionStandard])
+}
+
+func (s *CostCompilerTestSuite) TestSwingNettingLeavesNoZeroEntries() {
+	action := &combat.SpendProfile{
+		Slots:  map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+		Grants: map[combat.CapacityType]int{combat.CapacityAttack: 1},
+	}
+	strike := &combat.SpendProfile{
+		Capacity: map[combat.CapacityType]int{combat.CapacityAttack: 1},
+	}
+
+	merged := asOnePayment(action, strike)
+
+	s.Require().NoError(merged.Validate())
+	s.NotContains(merged.Grants, combat.CapacityAttack)
+	s.NotContains(merged.Capacity, combat.CapacityAttack)
+	s.Equal(1, merged.Slots[coreCombat.ActionStandard])
+}
+
+func (s *CostCompilerTestSuite) TestSwingNettingCarriesEveryCurrency() {
+	const ki = coreResources.ResourceKey("ki")
+	action := &combat.SpendProfile{
+		Slots:    map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+		Pools:    map[coreResources.ResourceKey]int{ki: 1},
+		Requires: map[combat.CapacityType]int{combat.CapacityAttack: 1},
+	}
+	strike := &combat.SpendProfile{
+		Slots:    map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
+		Pools:    map[coreResources.ResourceKey]int{ki: 2},
+		Requires: map[combat.CapacityType]int{combat.CapacityAttack: 3},
+	}
+
+	merged := asOnePayment(action, strike)
+
+	s.Require().NoError(merged.Validate())
+	s.Equal(1, merged.Slots[coreCombat.ActionStandard])
+	s.Equal(1, merged.Slots[coreCombat.ActionBonus])
+	s.Equal(3, merged.Pools[ki])
+	s.Equal(3, merged.Requires[combat.CapacityAttack])
 }
