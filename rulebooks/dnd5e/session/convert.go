@@ -81,6 +81,8 @@ func projectAtlas(in encounter.Atlas) Atlas {
 			At:                prop.At,
 			BlocksMovement:    prop.BlocksMovement,
 			BlocksLineOfSight: prop.BlocksLineOfSight,
+			Facing:            prop.Facing,
+			Offset:            prop.Offset,
 		})
 	}
 
