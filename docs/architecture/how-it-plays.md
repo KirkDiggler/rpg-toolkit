@@ -34,7 +34,7 @@ sequenceDiagram
     API->>S: Attack{Session, Attacker, Target}
     S->>S: openForWrite — load session + encounter blobs via host repositories
     S->>S: character.AssembleAttack(sheet, weapon, cost) — pure data
-    S->>R: Resolve(world + cast + NewAction(definition))
+    S->>R: Resolve(world + cast + resolution.NewAction(definition))
     activate R
     R->>B: create the bus + instrumented surface
     R->>B: attach loop — Raging, Prone … stamped via BusForEffect

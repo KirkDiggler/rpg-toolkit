@@ -37,7 +37,7 @@ The three files have different jobs:
 
 ## Active ideas
 
-- [Actions are data](actions-are-data/) — approved; implementation pending
+- [Actions are data](actions-are-data/) — implemented; includes design, completed plan, and implementation record
 - [Encounter](encounter/)
 - [Encounter anchoring](encounter-anchoring/)
 - [Encounter transitions](encounter-transitions/)

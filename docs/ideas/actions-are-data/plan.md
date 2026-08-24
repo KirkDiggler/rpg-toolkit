@@ -1,6 +1,6 @@
 # Actions Are Data Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to execute this live cross-PR plan task-by-task. Keep each checkbox current on the open idea PR and stop at every provider-tag checkpoint.
+> **Execution record:** Work task-by-task, keep each checkbox current, and stop at every provider-tag checkpoint. Completed and superseded steps remain explicit rather than being rewritten as if the original sequence occurred.
 
 **Goal:** Replace executable producer-specific action objects with one shared, serializable action-definition contract consumed by the active D&D 5e resolution/session stack.
 

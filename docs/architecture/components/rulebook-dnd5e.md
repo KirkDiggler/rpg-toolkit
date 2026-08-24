@@ -49,7 +49,7 @@ This is the dominant consumer-facing surface. The top imports by file count:
 | `armor/` | 3 | Armor data |
 | `gamectx/` | 3 | Combatant registry — the integration shim for chain resolution |
 | `skills/` | 2 | Skill constants and `Skill` type |
-| `monstertraits/` | 2 | `LoadMonsterConditions` |
+| `monstertraits/` | 2 | `LoadMonster` / `AttachMonster` |
 | `fightingstyles/` | 2 | Fighting style constants |
 | `languages/` | 2 | Language constants |
 | `ammunition/`, `packs/`, `tools/`, `proficiencies/`, `saves/`, `equipment/`, `features/`, `events/`, `resources/` | narrow | see current import graph |
