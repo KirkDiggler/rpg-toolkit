@@ -566,9 +566,13 @@ git commit -m "refactor(actions)!: delete executable character actions (#1198)"
 
 ### Task 4: Make Monsters Persist Shared Definitions Directly
 
+**Completed:** `d3d6e30` (`refactor(monster)!: persist shared action definitions (#1198)`)
+
 **Files:**
 - Delete: `rulebooks/dnd5e/monster/actions/`
 - Delete: `rulebooks/dnd5e/monster/action.go`
+- Delete: `rulebooks/dnd5e/monster/behavior_test.go`
+- Delete: `rulebooks/dnd5e/monster/testutil_test.go`
 - Modify: `rulebooks/dnd5e/monster/monsters/actions.go`
 - Modify: `rulebooks/dnd5e/refs/monster_actions.go`
 - Create: `rulebooks/dnd5e/refs/monster_actions_test.go`
@@ -589,6 +593,9 @@ git commit -m "refactor(actions)!: delete executable character actions (#1198)"
 - Modify: `rulebooks/dnd5e/monster/monsters/wolf_test.go`
 - Modify: `rulebooks/dnd5e/monster/monsters/zombie_test.go`
 - Modify: `rulebooks/dnd5e/monster/load_test.go`
+- Modify: `rulebooks/dnd5e/monster/monster_test.go`
+- Modify: `rulebooks/dnd5e/monster/targeting_test.go`
+- Modify: `rulebooks/dnd5e/monster/attach_rollback_test.go`
 - Modify: `rulebooks/dnd5e/monstertraits/loader_test.go`
 - Modify: `rulebooks/dnd5e/monstertraits/load_test.go`
 - Modify: `rulebooks/dnd5e/monstertraits/attach_rollback_test.go`
@@ -597,7 +604,7 @@ git commit -m "refactor(actions)!: delete executable character actions (#1198)"
 - Consumes: `combat/actions.Definition` and content-specific monster action refs.
 - Produces: `monster.Data.Actions []actions.Definition`, `Monster.Actions() []actions.Definition`, and direct factory-authored definitions.
 
-- [ ] **Step 1: Write failing direct-definition and identity tests**
+- [x] **Step 1: Write failing direct-definition and identity tests**
 
 For the wolf, assert the factory data directly contains the complete profile:
 
@@ -624,7 +631,7 @@ Add a skeleton test proving shortsword and shortbow have different content refs 
 
 Add a load/ToData round-trip test that mutates the slice returned by `Monster.Actions()` and proves the monster's stored definitions are unchanged.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -635,7 +642,7 @@ go test ./monster/monsters ./monster ./monstertraits
 
 Expected: FAIL because monster data still contains `monster.ActionData` and factories create runtime actions.
 
-- [ ] **Step 3: Replace implementation refs with content refs**
+- [x] **Step 3: Replace implementation refs with content refs**
 
 Keep the `MonsterActions` namespace but replace generic implementation refs with these exact IDs/methods:
 
@@ -658,7 +665,7 @@ zombie-slam                 ZombieSlam
 
 Delete generic `Melee`, `Ranged`, `Bite`, `Multiattack`, `Shortbow`, and unused Nimble Escape action refs. Test every method for its full identity (for example, `dnd5e:monster_actions:bandit-scimitar`) and prove all fourteen refs are unique.
 
-- [ ] **Step 4: Change monster storage to shared definitions**
+- [x] **Step 4: Change monster storage to shared definitions**
 
 Change the existing `Data.Actions` field to:
 
@@ -682,7 +689,7 @@ func mustAddAction(m *monster.Monster, def combatActions.Definition) {
 
 Make `Monster.AddCondition` mark the monster dirty when called for a live application, and add `Monster.AddLoadedCondition` (or a private equivalent) for hydration that does not dirty. Extend `SheetKeeper` to subscribe to `ConditionAppliedTopic`, apply matching conditions to its bus, append them, and mark the sheet dirty. This makes a declarative on-hit condition work for either participant kind.
 
-- [ ] **Step 5: Rewrite factories as data literals**
+- [x] **Step 5: Rewrite factories as data literals**
 
 Each factory passes a complete `combatActions.Definition` literal to `mustAddAction` with:
 
@@ -697,14 +704,15 @@ Remove current multiattack runtime definitions from brown bear, ghoul, skeleton 
 
 Preserve existing authored numbers during this migration. Do not silently fix the goblin's existing `Reach: 1` unit defect in #1198; file or link a separate rules issue if it is still open.
 
-- [ ] **Step 6: Delete the runtime monster-action package and prove the hard cut**
+- [x] **Step 6: Delete the runtime monster-action package and prove the hard cut**
 
 Run:
 
 ```bash
 cd rulebooks/dnd5e
-if rg -n 'MonsterAction|monster/actions|MeleeConfig|RangedConfig|BiteConfig|MultiattackConfig|LoadMonsterActions' \
-  --glob '*.go' --glob '!**/*_test.go'; then
+if rg -n '\bMonsterAction(?:Input)?\b|monster/actions|MeleeConfig|RangedConfig|BiteConfig|MultiattackConfig|LoadMonsterActions' \
+  --glob '*.go' --glob '!**/*_test.go' \
+  --glob '!resolution/**' --glob '!session/**' --glob '!encounter/**'; then
   echo 'runtime monster action surface remains' >&2
   exit 1
 fi
@@ -714,7 +722,7 @@ golangci-lint run ./refs/... ./monster/... ./monstertraits/...
 
 Expected: grep finds nothing and all tests pass.
 
-- [ ] **Step 7: Run the complete root D&D provider gate**
+- [x] **Step 7: Run the complete root D&D provider gate**
 
 Run:
 
@@ -729,7 +737,7 @@ golangci-lint run ./...
 
 Expected: PASS with no `go.mod`/`go.sum` drift after tidy.
 
-- [ ] **Step 8: Commit and push the root provider**
+- [x] **Step 8: Commit and push the root provider**
 
 ```bash
 git add -A rulebooks/dnd5e
@@ -1258,7 +1266,7 @@ Run from repository root:
 
 ```bash
 if rg -n \
-  'AttackFromMonsterAction|AttackFromCharacter|resolution\.AttackProfile|MonsterAction|LoadMonsterActions|MeleeConfig|RangedConfig|BiteConfig|MultiattackConfig|ActionGrantedTopic|ActionRemovedTopic' \
+  'AttackFromMonsterAction|AttackFromCharacter|resolution\.AttackProfile|\bMonsterAction(?:Input)?\b|LoadMonsterActions|MeleeConfig|RangedConfig|BiteConfig|MultiattackConfig|ActionGrantedTopic|ActionRemovedTopic' \
   --glob '*.go' --glob '!docs/**'; then
   echo 'ADR-0045 hard-cut symbol remains' >&2
   exit 1
