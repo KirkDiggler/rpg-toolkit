@@ -36,6 +36,8 @@
 
 ### Task 1: Add the Shared Action Definition Contract
 
+**Completed:** `fa03101` (`feat(actions)!: define inert shared attack profiles (#1198)`)
+
 **Files:**
 - Create: `rulebooks/dnd5e/combat/actions/doc.go`
 - Create: `rulebooks/dnd5e/combat/actions/definition.go`
@@ -49,7 +51,7 @@
 - Produces: `actions.Definition`, `actions.AttackProfile`, `actions.AttackDelivery`, `actions.ConditionApplication`, `Definition.Validate()`, `Definition.Clone()`, `actions.CloneSpendProfile()`, `AttackDelivery.IsMelee()`, `AttackDelivery.MaxRangeFeet()`, and `AttackDelivery.NormalRangeFeet()`.
 - Consumes: existing `combat.SpendProfile`, `damage.Damage`, `saves.SaveGate`, `abilities.Ability`, and `core.Ref`.
 
-- [ ] **Step 1: Write failing contract and round-trip tests**
+- [x] **Step 1: Write failing contract and round-trip tests**
 
 Create tests covering the exact public shapes and invariants:
 
@@ -156,7 +158,7 @@ func TestAttackProfileValidation(t *testing.T) {
 
 Add a no-damage net-shaped case that passes because `OnHit` is non-empty. Add clone tests that mutate nested maps, damage properties, save abilities, parameters, and refs in the clone and prove the original is unchanged.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -167,7 +169,7 @@ go test ./combat/actions
 
 Expected: FAIL because `combat/actions` does not exist.
 
-- [ ] **Step 3: Implement the shared types and strict validation**
+- [x] **Step 3: Implement the shared types and strict validation**
 
 Use these exact signatures:
 
@@ -256,7 +258,7 @@ Validation rules are the ADR rules, not defaults:
 
 Add explicit JSON tags to all `combat.SpendProfile` maps so the definition round trip writes `slots`, `capacity`, `grants`, `pools`, and `requires` rather than Go field names.
 
-- [ ] **Step 4: Add the import-boundary test**
+- [x] **Step 4: Add the import-boundary test**
 
 Parse non-test Go files in `combat/actions` with `go/parser`. Fail if an import equals or begins with:
 
@@ -271,7 +273,7 @@ var forbidden = []string{
 
 The test must inspect production files only; do not exempt an offending import with a comment or lint directive.
 
-- [ ] **Step 5: Run focused and root-module verification**
+- [x] **Step 5: Run focused and root-module verification**
 
 Run:
 
@@ -285,7 +287,7 @@ git diff --check
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add rulebooks/dnd5e/combat/actions rulebooks/dnd5e/combat/spend_profile.go
