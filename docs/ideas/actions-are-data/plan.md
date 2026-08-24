@@ -756,6 +756,8 @@ printf '%s\n' "$DND5E_PROVIDER_SHA" > /tmp/1198-dnd5e-provider-sha
 
 ### Task 5: Make the Active Encounter Projection Delivery-Neutral
 
+**Completed:** `f591578` (`refactor(encounter)!: carry action range independent of delivery (#1198)`)
+
 **Files:**
 - Modify: `rulebooks/dnd5e/encounter/field.go`
 - Modify: `rulebooks/dnd5e/encounter/data.go`
@@ -773,7 +775,7 @@ printf '%s\n' "$DND5E_PROVIDER_SHA" > /tmp/1198-dnd5e-provider-sha
 - Consumes: opaque action identity/name plus a maximum range in feet supplied by session.
 - Produces: `encounter.ActionView.RangeFeet` and persisted `ActionViewData.RangeFeet`; the composition still does not import the D&D rulebook.
 
-- [ ] **Step 1: Rename the contract in tests first**
+- [x] **Step 1: Rename the contract in tests first**
 
 Update focused fixtures to build:
 
@@ -788,7 +790,7 @@ encounter.ActionView{
 
 Retain tests proving `SeenMember.InReach[actionRef]` is false beyond 320 feet and true at/below 320 feet, and that pathfinding stops at the nearest cell within the longest action range.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -799,11 +801,11 @@ go test ./... -run 'ActionView|InReach|MonsterView|Path'
 
 Expected: FAIL because `RangeFeet` does not exist.
 
-- [ ] **Step 3: Rename `ReachFeet` to `RangeFeet` without aliases**
+- [x] **Step 3: Rename `ReachFeet` to `RangeFeet` without aliases**
 
 Update runtime/persisted structs, validation, copies, and comments. `RangeFeet` means the maximum legal distance of the action's delivery: melee reach or ranged long/max range. Keep `Kind` opaque. Do not add both fields or a deprecated JSON alias.
 
-- [ ] **Step 4: Verify and commit the encounter provider**
+- [x] **Step 4: Verify and commit the encounter provider**
 
 Run:
 
