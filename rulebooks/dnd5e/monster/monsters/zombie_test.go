@@ -54,7 +54,7 @@ func (s *ZombieTestSuite) TestNewZombie() {
 	// Check actions - should have slam attack
 	actions := zombie.Actions()
 	s.Require().Len(actions, 1)
-	s.Assert().Equal("slam", actions[0].GetID())
+	s.Assert().Equal(refs.MonsterActions.ZombieSlam(), &actions[0].Ref)
 }
 
 func (s *ZombieTestSuite) TestZombieTraits() {

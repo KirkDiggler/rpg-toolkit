@@ -12,7 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -141,22 +140,17 @@ func LoadMonsterConditions(
 			return rpgerr.Wrap(err, "failed to apply monster condition")
 		}
 
-		m.AddCondition(condition)
+		m.AddLoadedCondition(condition)
 	}
 	return nil
 }
 
-// LoadMonster is the whole pure load of a monster: the sheet, its actions, and
-// the trait blobs it was persisted with. No event bus is involved and nothing
-// is applied — [AttachMonster] is what puts the result on a bus.
+// LoadMonster is the whole pure load of a monster: the sheet, its shared action
+// definitions, and the trait blobs it was persisted with. No event bus is
+// involved and nothing is applied — [AttachMonster] puts the result on a bus.
 //
-// This lives here for a mechanical reason rather than a conceptual one: the
-// monster package cannot import either loader (both import it), and this
-// package is the only one that can see both without a cycle. What it buys is
-// worth the odd address. The three-call assembly this replaces could lose a
-// monster's actions or conditions by forgetting a call — ToData serializes
-// both, so a monster loaded by two of the three calls is written back with the
-// third one's contents gone. One call cannot be two-thirds made.
+// The monster package now loads inert action definitions directly. This wrapper
+// remains the composition entry point paired with [AttachMonster].
 //
 // LoadMonster(d).ToData() is the data it was given, with the caveats in
 // [monster.Load]'s godoc: Data.Features and Data.Inventory have nowhere to
@@ -165,10 +159,6 @@ func LoadMonster(ctx context.Context, d *monster.Data) (*monster.Monster, error)
 	m, err := monster.Load(ctx, d)
 	if err != nil {
 		return nil, err
-	}
-
-	if err := actions.LoadMonsterActions(m, d.Actions); err != nil {
-		return nil, rpgerr.Wrap(err, "failed to load monster actions")
 	}
 
 	return m, nil
@@ -246,7 +236,7 @@ func AttachMonster(
 	// the monster has no verb for that — which is exactly the kind of missing
 	// undo that makes partial writes permanent.
 	for _, trait := range attached {
-		m.AddCondition(trait.condition)
+		m.AddLoadedCondition(trait.condition)
 	}
 
 	return nil

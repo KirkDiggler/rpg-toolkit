@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -47,7 +48,7 @@ func (s *BanditTestSuite) TestNewBanditMelee() {
 	// Check actions - should have scimitar
 	actions := bandit.Actions()
 	s.Require().Len(actions, 1)
-	s.Assert().Equal("scimitar", actions[0].GetID())
+	s.Assert().Equal(refs.MonsterActions.BanditScimitar(), &actions[0].Ref)
 }
 
 func (s *BanditTestSuite) TestNewBanditRanged() {
@@ -75,7 +76,7 @@ func (s *BanditTestSuite) TestNewBanditRanged() {
 	// Check actions - should have light crossbow
 	actions := bandit.Actions()
 	s.Require().Len(actions, 1)
-	s.Assert().Equal("light crossbow", actions[0].GetID())
+	s.Assert().Equal(refs.MonsterActions.BanditLightCrossbow(), &actions[0].Ref)
 }
 
 func (s *BanditTestSuite) TestBanditTraits() {

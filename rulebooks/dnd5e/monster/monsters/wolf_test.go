@@ -7,7 +7,11 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -47,10 +51,27 @@ func (s *WolfTestSuite) TestNewWolf() {
 	// Check actions - should have bite (with knockdown)
 	actions := wolf.Actions()
 	s.Require().Len(actions, 1)
-	s.Assert().Equal("bite", actions[0].GetID())
+	s.Assert().Equal(refs.MonsterActions.WolfBite(), &actions[0].Ref)
 
 	// Check targeting strategy
 	s.Assert().Equal(monster.TargetLowestHP, wolf.Targeting())
+}
+
+func (s *WolfTestSuite) TestBiteIsACompleteSharedDefinition() {
+	data := NewWolf("wolf-1").ToData()
+	s.Require().Len(data.Actions, 1)
+
+	bite := data.Actions[0]
+	s.Equal(refs.MonsterActions.WolfBite(), &bite.Ref)
+	s.Equal("bite", bite.Name)
+	s.Require().NotNil(bite.Attack)
+	s.Equal(combatActions.AttackCategoryWeapon, bite.Attack.Category)
+	s.Equal(&combatActions.MeleeDelivery{ReachFeet: 5}, bite.Attack.Delivery.Melee)
+	s.Equal(4, bite.Attack.AttackBonus)
+	s.Equal([]damage.Damage{{Dice: "2d4", Type: damage.Piercing, FlatBonus: 2}}, bite.Attack.Damage)
+	s.Require().Len(bite.Attack.OnHit, 1)
+	s.Equal(refs.Conditions.Prone(), &bite.Attack.OnHit[0].Ref)
+	s.Equal(saves.NewSaveGate(abilities.STR, 11), bite.Attack.OnHit[0].Save)
 }
 
 func (s *WolfTestSuite) TestWolfTraits() {

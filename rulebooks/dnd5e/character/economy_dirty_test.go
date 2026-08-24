@@ -137,7 +137,6 @@ func (s *EconomyDirtyTestSuite) TestReadingTheEconomyLeavesTheSheetClean() {
 	s.NotNil(char.GetActionEconomy())
 	s.False(char.HasGranted(GrantedAttacks))
 	s.NotEmpty(char.AvailableAbilities())
-	s.NotEmpty(char.AvailableActions())
 
 	s.False(char.IsDirty(), "asking a sheet what it can do is not a spend")
 }
@@ -170,105 +169,6 @@ func (s *EconomyDirtyTestSuite) TestActivatingAnAbilityMarksThroughTheBridge() {
 	s.Equal(0, char.GetActionEconomy().ActionsRemaining, "the action slot was spent")
 	s.Equal(hitPoints, char.GetHitPoints(), "and no hit point moved")
 	s.True(char.IsDirty(), "an economy-only change still needs saving")
-}
-
-func (s *EconomyDirtyTestSuite) TestStrikingMarks() {
-	char := s.inCombat()
-	_, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.CombatAbilities.Attack()})
-	s.Require().NoError(err)
-	char.MarkClean()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.Strike()})
-	s.Require().NoError(err)
-	s.Require().True(out.Success)
-
-	s.True(char.IsDirty(), "a spent attack is a spend")
-}
-
-func (s *EconomyDirtyTestSuite) TestARefusedStrikeLeavesTheSheetClean() {
-	char := s.inCombat()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.Strike()})
-	s.Require().NoError(err)
-	s.Require().False(out.Success, "no attack was granted, so there is nothing to spend")
-
-	s.False(char.IsDirty(), "a refused action wrote nothing, so there is nothing to save")
-}
-
-func (s *EconomyDirtyTestSuite) TestTheUnarmedStrikeMarks() {
-	char := s.inCombat()
-	char.GrantCapacity(GrantedMartialArtsBonus, 1)
-	char.MarkClean()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.UnarmedStrike()})
-	s.Require().NoError(err)
-	s.Require().True(out.Success)
-
-	s.True(char.IsDirty(), "the granted strike and the bonus action that paid for it both moved")
-}
-
-func (s *EconomyDirtyTestSuite) TestARefusedUnarmedStrikeLeavesTheSheetClean() {
-	char := s.inCombat()
-	char.GrantCapacity(GrantedMartialArtsBonus, 1)
-	char.actionEconomy.BonusActionsRemaining = 0
-	char.MarkClean()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.UnarmedStrike()})
-	s.Require().NoError(err)
-	s.Require().False(out.Success)
-
-	s.False(char.IsDirty())
-}
-
-func (s *EconomyDirtyTestSuite) TestTheOffHandStrikeMarks() {
-	char := s.inCombat()
-	char.GrantCapacity(GrantedOffHandStrikes, 1)
-	char.MarkClean()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.OffHandStrike()})
-	s.Require().NoError(err)
-	s.Require().True(out.Success)
-
-	s.True(char.IsDirty())
-}
-
-func (s *EconomyDirtyTestSuite) TestTheFlurryStrikeMarks() {
-	char := s.inCombat()
-	char.GrantCapacity(GrantedFlurryStrikes, 1)
-	char.MarkClean()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.FlurryStrike()})
-	s.Require().NoError(err)
-	s.Require().True(out.Success)
-
-	s.True(char.IsDirty())
-}
-
-func (s *EconomyDirtyTestSuite) TestMovingMarks() {
-	char := s.inCombat()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
-		ActionRef: refs.Actions.Move(),
-		Distance:  10,
-	})
-	s.Require().NoError(err)
-	s.Require().True(out.Success)
-
-	s.Equal(20, char.GetActionEconomy().MovementRemaining)
-	s.True(char.IsDirty(), "movement spent off a persisted budget has to be written down")
-}
-
-func (s *EconomyDirtyTestSuite) TestARefusedMoveLeavesTheSheetClean() {
-	char := s.inCombat()
-
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{
-		ActionRef: refs.Actions.Move(),
-		Distance:  100,
-	})
-	s.Require().NoError(err)
-	s.Require().False(out.Success, "100ft is over a 30ft budget")
-
-	s.False(char.IsDirty())
 }
 
 func (s *EconomyDirtyTestSuite) TestGrantingCapacityMarks() {
@@ -474,9 +374,7 @@ func (s *EconomyDirtyTestSuite) TestASpendOnALoadedSheetSurvivesToData() {
 	char := s.inCombat()
 	s.Require().NoError(char.UseResource(resources.Ki, 1))
 
-	out, err := char.ExecuteAction(s.ctx, &ExecuteActionInput{ActionRef: refs.Actions.Move(), Distance: 15})
-	s.Require().NoError(err)
-	s.Require().True(out.Success)
+	char.SpendCapacity(combat.CapacityMovement, 15)
 
 	s.Require().True(char.IsDirty(), "so resolution keeps it in DirtyCharacters")
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -32,7 +33,7 @@ type Data struct {
 	Senses SensesData `json:"senses"`
 
 	// Actions this monster can take
-	Actions []ActionData `json:"actions"`
+	Actions []combatActions.Definition `json:"actions"`
 
 	// Features (special abilities like Nimble Escape)
 	Features []json.RawMessage `json:"features,omitempty"`
@@ -68,13 +69,6 @@ type SensesData struct {
 	PassivePerception int `json:"passive_perception"`
 }
 
-// ActionData represents a serializable monster action.
-// The Ref identifies which action implementation to load.
-type ActionData struct {
-	Ref    core.Ref        `json:"ref"`    // e.g., refs.MonsterActions.Melee()
-	Config json.RawMessage `json:"config"` // Action-specific configuration
-}
-
 // InventoryItemData represents a serializable inventory item
 type InventoryItemData struct {
 	ID       string `json:"id"`
@@ -87,28 +81,3 @@ type ProficiencyData struct {
 	Skill string `json:"skill"`
 	Bonus int    `json:"bonus"`
 }
-
-// ActionCost represents the action economy cost of an action
-type ActionCost int
-
-// Action cost constants
-const (
-	CostNone ActionCost = iota
-	CostAction
-	CostBonusAction
-	CostReaction
-)
-
-// ActionType categorizes monster actions for behavior decisions
-type ActionType string
-
-// Action type constants
-const (
-	TypeMeleeAttack  ActionType = "melee_attack"
-	TypeRangedAttack ActionType = "ranged_attack"
-	TypeSpell        ActionType = "spell"
-	TypeHeal         ActionType = "heal"
-	TypeMovement     ActionType = "movement"
-	TypeStealth      ActionType = "stealth"
-	TypeDefend       ActionType = "defend"
-)

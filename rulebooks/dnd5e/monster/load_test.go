@@ -12,6 +12,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -60,10 +62,19 @@ func (s *PureLoadTestSuite) sheet() *Data {
 		ProficiencyBonus: 2,
 		Speed:            SpeedData{Walk: 30},
 		Senses:           SensesData{Darkvision: 60, PassivePerception: 9},
-		Actions:          []ActionData{},
-		Proficiencies:    []ProficiencyData{{Skill: "stealth", Bonus: 4}},
-		Conditions:       []json.RawMessage{s.immunityBlob()},
-		Targeting:        TargetLowestHP,
+		Actions: []combatActions.Definition{{
+			Ref:  *refs.MonsterActions.SkeletonShortsword(),
+			Name: "shortsword",
+			Attack: &combatActions.AttackProfile{
+				Category:    combatActions.AttackCategoryWeapon,
+				Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+				AttackBonus: 4,
+				Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
+			},
+		}},
+		Proficiencies: []ProficiencyData{{Skill: "stealth", Bonus: 4}},
+		Conditions:    []json.RawMessage{s.immunityBlob()},
+		Targeting:     TargetLowestHP,
 	}
 }
 
@@ -74,10 +85,7 @@ func (s *PureLoadTestSuite) marshal(d *Data) string {
 	return string(raw)
 }
 
-// Data in, the same data out, with no bus in the call — conditions included.
-// Actions are the one thing this package cannot load (the action loader imports
-// it); monstertraits.LoadMonster is the composition that does both, and its
-// tests pin the round trip with actions in it.
+// Data in, the same data out, with no bus in the call — actions and conditions included.
 func (s *PureLoadTestSuite) TestRoundTripsByteIdenticalWithNoBus() {
 	data := s.sheet()
 
@@ -91,6 +99,54 @@ func (s *PureLoadTestSuite) TestRoundTripsByteIdenticalWithNoBus() {
 // the same blobs to monstertraits.LoadMonsterConditions themselves, and a
 // caller who forgets writes the monster back without them — the trap the
 // carried blobs close.
+func (s *PureLoadTestSuite) TestActionsReturnsDeepClones() {
+	m, err := Load(s.ctx, s.sheet())
+	s.Require().NoError(err)
+
+	actions := m.Actions()
+	s.Require().Len(actions, 1)
+	actions[0].Name = "changed"
+	actions[0].Attack.Damage[0].Dice = "9d9"
+	actions[0].Ref.ID = "changed"
+
+	fresh := m.Actions()
+	s.Equal("shortsword", fresh[0].Name)
+	s.Equal("1d6", fresh[0].Attack.Damage[0].Dice)
+	s.Equal("skeleton-shortsword", fresh[0].Ref.ID)
+	s.Equal(s.sheet().Actions, m.ToData().Actions)
+}
+
+func (s *PureLoadTestSuite) TestAddActionRejectsInvalidOpaqueConditionParameters() {
+	m, err := Load(s.ctx, &Data{
+		ID:           "bad-action-monster",
+		Name:         "Bad Action Monster",
+		HitPoints:    5,
+		MaxHitPoints: 5,
+		ArmorClass:   10,
+	})
+	s.Require().NoError(err)
+
+	err = m.AddAction(combatActions.Definition{
+		Ref:  *refs.MonsterActions.SkeletonShortsword(),
+		Name: "Bad Shortsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing}},
+			OnHit: []combatActions.ConditionApplication{{
+				Ref:        *refs.Conditions.Prone(),
+				Parameters: json.RawMessage(`{"duration":`),
+			}},
+		},
+	})
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "invalid monster action")
+	s.Contains(err.Error(), "parameters")
+	s.Empty(m.Actions())
+}
+
 func (s *PureLoadTestSuite) TestLegacyLoadDropsTheConditions() {
 	m, err := LoadFromData(s.ctx, s.sheet(), events.NewEventBus())
 	s.Require().NoError(err)
@@ -166,6 +222,23 @@ func (s *PureLoadTestSuite) TestKnownRoundTripGaps() {
 
 // MonsterKeeperTestSuite drives the two things a monster sheet does about the
 // world. Both fail for a keeper whose Apply subscribes nothing.
+type liveMonsterCondition struct {
+	applied bool
+}
+
+func (c *liveMonsterCondition) IsApplied() bool { return c.applied }
+func (c *liveMonsterCondition) Apply(_ context.Context, _ events.EventBus) error {
+	c.applied = true
+	return nil
+}
+func (c *liveMonsterCondition) Remove(_ context.Context, _ events.EventBus) error {
+	c.applied = false
+	return nil
+}
+func (c *liveMonsterCondition) ToJSON() (json.RawMessage, error) {
+	return json.Marshal(map[string]any{"ref": refs.Conditions.Prone()})
+}
+
 type MonsterKeeperTestSuite struct {
 	suite.Suite
 
@@ -210,6 +283,21 @@ func (s *MonsterKeeperTestSuite) TestHealingReceivedMovesHitPoints() {
 
 	s.Require().NoError(err)
 	s.Require().Equal(12, s.mon.HP())
+	s.Require().True(s.mon.IsDirty())
+}
+
+func (s *MonsterKeeperTestSuite) TestConditionAppliedLandsOnTheMonster() {
+	condition := &liveMonsterCondition{}
+
+	err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.mon,
+		Type:      dnd5eEvents.ConditionProne,
+		Condition: condition,
+	})
+
+	s.Require().NoError(err)
+	s.Require().True(condition.applied)
+	s.Require().Len(s.mon.GetConditions(), 1)
 	s.Require().True(s.mon.IsDirty())
 }
 

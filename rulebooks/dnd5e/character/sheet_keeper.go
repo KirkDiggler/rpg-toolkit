@@ -16,9 +16,8 @@ import (
 //
 // A sheet does not merely sit there while an encounter happens around it: a
 // condition applied to this character has to land on its list, a condition
-// removed has to leave it, healing has to move its hit points, and an action
-// granted or removed has to show up among the things it can do. Its recoverable
-// resources have to hear a rest. That is five subscriptions and a handful of
+// removed has to leave it, and healing has to move its hit points. Its
+// recoverable resources have to hear a rest. That is three subscriptions and a handful of
 // resources, and until this type existed they were wired invisibly inside
 // LoadFromData — real behaviour that no caller could see, name, or take back.
 //
@@ -41,7 +40,7 @@ type SheetKeeper struct {
 }
 
 // SheetKeeper returns the attachable that carries this character's own
-// behaviour — the five self-subscriptions and its recoverable resources.
+// behaviour — the three self-subscriptions and its recoverable resources.
 //
 // The keeper is created once and kept, so that two callers asking a character
 // for its keeper get the same one and cannot accidentally subscribe the sheet
@@ -54,7 +53,7 @@ func (c *Character) SheetKeeper() *SheetKeeper {
 	return c.keeper
 }
 
-// Apply subscribes the sheet's five handlers to bus and puts the character's
+// Apply subscribes the sheet's three handlers to bus and puts the character's
 // recoverable resources on it.
 //
 // The handlers close over this bus rather than reading one off the character:
@@ -96,7 +95,7 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 	return nil
 }
 
-// subscribeSelf makes the five self-subscriptions, and nothing else.
+// subscribeSelf makes the three self-subscriptions, and nothing else.
 //
 // Separate from the resources because a freshly finalized character has always
 // had the handlers without its resources on the bus: Character.LongRest
@@ -148,15 +147,6 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 		}},
 		{"healing received", func() (string, error) {
 			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, c.onHealingReceived)
-		}},
-		{"action granted", func() (string, error) {
-			return dnd5eEvents.ActionGrantedTopic.On(bus).Subscribe(ctx,
-				func(ctx context.Context, event dnd5eEvents.ActionGrantedEvent) error {
-					return c.onActionGranted(ctx, bus, event)
-				})
-		}},
-		{"action removed", func() (string, error) {
-			return dnd5eEvents.ActionRemovedTopic.On(bus).Subscribe(ctx, c.onActionRemoved)
 		}},
 	}
 

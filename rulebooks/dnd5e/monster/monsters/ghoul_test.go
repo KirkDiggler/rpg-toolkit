@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -43,25 +44,12 @@ func (s *GhoulTestSuite) TestNewGhoul() {
 	speed := ghoul.Speed()
 	s.Assert().Equal(30, speed.Walk)
 
-	// Check actions - should have multiattack, bite, and claw
+	// Component attacks remain available; multiattack waits for a sequence profile.
 	actions := ghoul.Actions()
-	s.Require().Len(actions, 3)
-
-	// Find multiattack, bite, and claw
-	var hasMultiattack, hasBite, hasClaw bool
-	for _, action := range actions {
-		switch action.GetID() {
-		case "multiattack":
-			hasMultiattack = true
-		case "bite":
-			hasBite = true
-		case "claw":
-			hasClaw = true
-		}
-	}
-	s.Assert().True(hasMultiattack, "should have multiattack action")
-	s.Assert().True(hasBite, "should have bite action")
-	s.Assert().True(hasClaw, "should have claw action")
+	s.Require().Len(actions, 2)
+	s.Equal(refs.MonsterActions.GhoulBite(), &actions[0].Ref)
+	s.Equal(refs.MonsterActions.GhoulClaw(), &actions[1].Ref)
+	s.NotEqual(actions[0].Ref, actions[1].Ref)
 }
 
 func (s *GhoulTestSuite) TestGhoulTraits() {

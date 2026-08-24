@@ -5,9 +5,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -31,12 +31,16 @@ func NewGiantRat(id string) *monster.Monster {
 	})
 
 	// Bite attack
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "bite",
-		AttackBonus: 4, // +2 DEX + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d4", Type: damage.Piercing, FlatBonus: 2}},
-		Reach:       5,
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.GiantRatBite(),
+		Name: "bite",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d4", Type: damage.Piercing, FlatBonus: 2}},
+		},
+	})
 
 	// Set movement speed
 	m.SetSpeed(monster.SpeedData{Walk: 30})

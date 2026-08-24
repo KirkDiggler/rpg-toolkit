@@ -2,8 +2,9 @@
 // These are actions every character can take during combat: Attack, Dash, Dodge, etc.
 // They consume action economy (action, bonus action, reaction) to grant capacity or effects.
 //
-// Abilities are distinct from Features (class/race granted) and Actions (the doing).
-// The flow is: Ability/Feature consumes action economy -> grants capacity/actions/conditions.
+// Abilities are distinct from Features (class/race granted) and inert action
+// definitions (what an actor may attempt). An ability or feature consumes action
+// economy and grants capacity or conditions; resolution later spends that capacity.
 package combatabilities
 
 import (
@@ -23,10 +24,10 @@ const EntityTypeCombatAbility core.EntityType = "combat_ability"
 
 // CombatAbility represents a universal combat action that every character can take.
 // Examples include Attack, Dash, Dodge, Disengage, Help, Hide, and Ready.
-// These consume action economy to grant capacity, actions, or conditions.
+// These consume action economy to grant capacity or conditions.
 //
 // Purpose: Provides the interface for standard combat options available to all characters,
-// implementing the two-level action economy where abilities grant capacity that actions consume.
+// implementing the two-level action economy where abilities grant capacity that resolution consumes.
 type CombatAbility interface {
 	core.Action[CombatAbilityInput] // CanActivate + Activate
 

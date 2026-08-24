@@ -30,8 +30,7 @@ const (
 
 // economySlotForActionType maps the two-level model's primary ActionType to the
 // menu EconomySlot. Reaction and Free pass through; Standard is the "action"
-// slot. This is the single place the mapping lives so abilities and actions
-// share it.
+// slot. This is the single place the mapping lives for abilities and features.
 func economySlotForActionType(at coreCombat.ActionType) EconomySlot {
 	switch at {
 	case coreCombat.ActionStandard:
@@ -89,17 +88,6 @@ type AvailableAbility struct {
 	ResourceMax     int                   // max charges (0 if no resource)
 }
 
-// AvailableAction represents something a character can do that consumes
-// granted capacity (attacks remaining, movement remaining, etc.).
-type AvailableAction struct {
-	Ref         *core.Ref   // e.g. "dnd5e:actions:strike"
-	Name        string      // e.g. "Strike"
-	EconomySlot EconomySlot // which slot this draws from (menu grouping)
-	TargetKind  TargetKind  // what target the UI must prompt for
-	CanUse      bool        // computed from granted capacity
-	Reason      string      // why CanUse is false (empty when true)
-}
-
 // StartTurnInput provides input for initializing the action economy at turn start.
 type StartTurnInput struct {
 	Speed      int // character's movement speed (30ft default)
@@ -109,7 +97,6 @@ type StartTurnInput struct {
 // StartTurnOutput contains the initialized action economy state.
 type StartTurnOutput struct {
 	Abilities []AvailableAbility
-	Actions   []AvailableAction
 }
 
 // RefreshForTurnInput provides input for filling a stale action economy.
@@ -135,7 +122,7 @@ type ActivateAbilityInput struct {
 	AbilityRef *core.Ref // which ability to activate
 
 	// TargetID is the target entity ID (for abilities like Help that target
-	// an ally). Mirrors ExecuteActionInput.TargetID.
+	// an ally).
 	TargetID string
 
 	// Target is the resolved target entity, required alongside TargetID when
@@ -157,24 +144,6 @@ type ActivateAbilityOutput struct {
 	Error           string
 	GrantedCapacity string // e.g. "1 attack", "30ft movement"
 	Abilities       []AvailableAbility
-	Actions         []AvailableAction
-}
-
-// ExecuteActionInput provides input for executing an action that consumes capacity.
-type ExecuteActionInput struct {
-	ActionRef *core.Ref // which action to execute
-	TargetID  string    // target entity ID (for strikes)
-	Distance  int       // feet of movement to spend (for move; #714)
-}
-
-// ExecuteActionOutput contains the result of executing an action.
-// Note: actual attack resolution (damage, hit/miss) happens in the API
-// orchestrator. The Character only manages action economy feasibility.
-type ExecuteActionOutput struct {
-	Success   bool
-	Error     string
-	Abilities []AvailableAbility
-	Actions   []AvailableAction
 }
 
 // EndTurnInput provides input for ending a turn.

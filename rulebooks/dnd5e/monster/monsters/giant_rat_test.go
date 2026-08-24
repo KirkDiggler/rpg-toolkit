@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -47,7 +48,7 @@ func (s *GiantRatTestSuite) TestNewGiantRat() {
 	// Check actions - should have bite
 	actions := rat.Actions()
 	s.Require().Len(actions, 1)
-	s.Assert().Equal("bite", actions[0].GetID())
+	s.Assert().Equal(refs.MonsterActions.GiantRatBite(), &actions[0].Ref)
 }
 
 func (s *GiantRatTestSuite) TestGiantRatTraits() {

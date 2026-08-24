@@ -5,9 +5,9 @@ package monsters
 
 import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -32,12 +32,16 @@ func NewZombie(id string) *monster.Monster {
 	})
 
 	// Slam melee attack
-	m.AddAction(mustAction(actions.NewMeleeAction(actions.MeleeConfig{
-		Name:        "slam",
-		AttackBonus: 3, // +1 STR + 2 proficiency
-		Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 1}},
-		Reach:       5,
-	})))
+	mustAddAction(m, combatActions.Definition{
+		Ref:  *refs.MonsterActions.ZombieSlam(),
+		Name: "slam",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 3,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Bludgeoning, FlatBonus: 1}},
+		},
+	})
 
 	// Set movement speed (zombies are slow)
 	m.SetSpeed(monster.SpeedData{Walk: 20})
