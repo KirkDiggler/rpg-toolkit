@@ -1,7 +1,7 @@
 ---
 name: add a D&D 5e monster
 description: Human + agent contract for legal, supported monster content and its current factory/registry/round-trip path
-updated: 2026-08-10
+updated: 2026-08-23
 ---
 
 # Add a D&D 5e monster
@@ -133,9 +133,11 @@ Be explicit about current limitations:
 - CR, XP, size, creature type, alignment, languages, saving-throw
   proficiencies, legendary/lair actions, recharge, spellcasting, and encounter
   difficulty are not part of the current built-in factory contract.
-- generic melee/ranged actions publish attack events. The top-level encounter
-  module resolves their snapshot attack bonus/damage through its resolver;
-  the actions are not standalone hit-and-damage functions.
+- generic melee/ranged actions are not standalone hit-and-damage functions.
+  In the current live stack, `rulebooks/dnd5e/session` compiles authored
+  `monster.ActionData` into `rulebooks/dnd5e/resolution`, which resolves the
+  attack bonus/damage profile; direct `Activate` still publishes D&D 5e attack
+  events.
 - ranged normal-vs-long range disadvantage is not implemented by the generic
   ranged action; it only gates against long range.
 - `BiteConfig.KnockdownDC` serializes, but knockdown-on-hit is not implemented.
