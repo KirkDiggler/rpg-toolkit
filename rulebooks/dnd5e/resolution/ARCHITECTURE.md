@@ -13,7 +13,7 @@ flowchart TB
 
     subgraph SESSION["Active composition + host seam"]
         VIEW["encounter ActionView\nopaque ref · name · max range · kind"]
-        SEAM["session selects/assembles definition"]
+        SEAM["session selects/assembles definition\nprojects declared cost into resolution.Cost"]
     end
 
     subgraph RESOLUTION["resolution owns the one interaction bus"]
@@ -44,7 +44,7 @@ flowchart TB
 
 | Fact or behavior | Owner |
 |---|---|
-| action identity, name, price, typed profile | `combat/actions.Definition` |
+| action identity, name, declared price, typed profile | `combat/actions.Definition` |
 | monster-authored numbers | `monster/monsters` factory literals |
 | character equipment/ability derivation | `character.AssembleAttack` |
 | opaque action projection for behavior | active `encounter.ActionView` |
@@ -52,7 +52,13 @@ flowchart TB
 | delivery/range, attack roll, ordered damage | Strike |
 | save request | Contest / Save |
 | executable effect and lifecycle | condition implementation |
-| action economy policy | caller/session; resolution only charges the supplied cost |
+| action economy policy | caller/session projects `Definition.Cost` into `Input.Cost`; resolution charges only that supplied runtime cost |
+
+`NewAction` consumes the definition's typed profile but does not infer who pays
+or which turn applies. The caller explicitly projects `Definition.Cost` into a
+`resolution.Cost` carrying that runtime payer/turn context. A definition's cost
+is therefore enforced at the resolution door without making profile dispatch
+own action-economy policy.
 
 Actions never activate themselves, subscribe, apply, remove, or manage a
 lifecycle. There is no producer-specific compiler in resolution and no generic

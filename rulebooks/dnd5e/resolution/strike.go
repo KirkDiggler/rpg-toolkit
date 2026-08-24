@@ -259,6 +259,12 @@ func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool)
 // path is the one that would have to give it up; it retires with #966, which
 // is when this stops being a mirror and starts being the only copy.
 func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents.AttackChainEvent) (Step, error) {
+	m.outcome.TargetAC = folded.TargetAC
+	m.outcome.Folded = folded
+	if folded.IsCancelled() {
+		return Done{Outcome: m.outcome}, nil
+	}
+
 	roller := m.in.Roller
 	if roller == nil {
 		roller = dice.NewRoller()
@@ -284,8 +290,6 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 
 	m.outcome.Roll = roll
 	m.outcome.Total = roll + folded.AttackBonus
-	m.outcome.TargetAC = folded.TargetAC
-	m.outcome.Folded = folded
 
 	// A natural 20 is the only automatic hit and a natural 1 the only
 	// automatic miss; everything between is arithmetic. The crit range is

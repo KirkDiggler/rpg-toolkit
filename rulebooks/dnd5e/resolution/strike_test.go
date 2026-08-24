@@ -5,11 +5,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -252,4 +255,48 @@ func TestSpellAttackDamageKeepsItsSpellSource(t *testing.T) {
 	outcome := out.Outcome.(StrikeOutcome)
 	require.Len(t, outcome.DamageComponents, 1)
 	require.Equal(t, dnd5eEvents.DamageSourceSpell, outcome.DamageComponents[0].Source)
+}
+
+func TestCancelledAttackStopsBeforeDiceAndDamage(t *testing.T) {
+	definition := validMeleeDefinition()
+	roller := &actionRoller{singles: []int{20}, damage: [][]int{{6}}}
+	bus := events.NewEventBus()
+	_, err := dnd5eEvents.AttackChain.On(bus).SubscribeWithChain(context.Background(),
+		func(_ context.Context, _ dnd5eEvents.AttackChainEvent,
+			c chain.Chain[dnd5eEvents.AttackChainEvent],
+		) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
+			cancel := func(_ context.Context, event dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+				event.CancellationSources = append(event.CancellationSources, dnd5eEvents.AttackModifierSource{
+					SourceRef: &definition.Ref,
+					SourceID:  heroID,
+					Reason:    "test cancellation",
+				})
+				return event, nil
+			}
+			return c, c.Add(combat.StageConditions, "cancel_test_attack", cancel)
+		})
+	require.NoError(t, err)
+	machine, err := NewAction(&ActionInput{
+		Definition: definition, AttackerID: wolfID, TargetID: heroID, Roller: roller,
+	})
+	require.NoError(t, err)
+
+	out, err := resolveOn(context.Background(), &Input{
+		World: actionWorld(t, 2),
+		Participants: []Participant{
+			{Monster: monsters.NewWolf(wolfID).ToData()},
+			{Character: actionHero()},
+		},
+		Machine: machine, Initiative: orderAsGiven{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		TurnDriver: passDriver{}, Roller: dice.NewRoller(),
+	}, newSurface(bus))
+
+	require.NoError(t, err)
+	outcome := out.Outcome.(StrikeOutcome)
+	require.Len(t, outcome.Folded.CancellationSources, 1)
+	require.False(t, outcome.Hit)
+	require.Zero(t, outcome.Damage)
+	require.Zero(t, roller.calls)
+	require.Empty(t, out.DirtyCharacters)
+	require.Empty(t, out.DirtyMonsters)
 }
