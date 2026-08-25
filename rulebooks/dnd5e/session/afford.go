@@ -45,6 +45,13 @@ const (
 	// clock. Free-roam movement is not priced and so never appears here —
 	// see [Manager.Afford]'s own doc.
 	VerbMove Verb = "move"
+
+	// VerbEndTurn is [Manager.EndTurn]: ending the member's turn. Like Move it
+	// carries no authored action definition, so its declaration selector uses a
+	// sealed variant string rather than a serialized [actions.Definition].
+	// Spelled here so the declaration selector's verb byte is owned by the seam
+	// that prices it, not borrowed from the rulebook's action vocabulary.
+	VerbEndTurn Verb = "end_turn"
 )
 
 // Slot names which of a turn's three economy shapes a [Declaration] draws
