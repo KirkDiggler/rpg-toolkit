@@ -115,6 +115,61 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 	s.Equal("slashing", attack["damage_type"])
 }
 
+// TestARecordedStrikeCarriesOrderedDetail pins the closed primitive carrier
+// that lets session replay the rulebook's strike evidence without giving this
+// composition rule imports or a prose channel.
+func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
+	immunity := 0.0
+	in := &encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: alice,
+		Targets: []encounter.MemberID{goblin},
+		DamageComponents: []encounter.DamageComponent{
+			{
+				Source: "weapon", SourceRef: "dnd5e:weapons:longsword",
+				Dice: "1d8", FinalRolls: []int{4}, FlatBonus: 0, DamageType: "slashing",
+			},
+			{
+				Source: "monster_trait", SourceRef: "dnd5e:monster-traits:immunity",
+				DamageType: "slashing", Multiplier: &immunity,
+			},
+		},
+		AdvantageSources: []encounter.AttackModifierSource{
+			{SourceRef: "dnd5e:conditions:hidden", SourceID: "alice"},
+		},
+		DisadvantageSources: []encounter.AttackModifierSource{
+			{SourceRef: "dnd5e:conditions:dodging", SourceID: "goblin"},
+		},
+	}
+
+	record := func() []byte {
+		enc := s.scene()
+		_, err := enc.Record(in)
+		s.Require().NoError(err)
+		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
+		s.Require().NoError(serr)
+		s.Require().NotEmpty(story)
+		return story[len(story)-1].Payload
+	}
+
+	first := record()
+	second := record()
+	s.Equal(first, second, "identical ordered input produces identical story bytes")
+	s.NotContains(string(first), `"reason"`, "the carrier has no prose field")
+
+	var beat struct {
+		DamageComponents    []encounter.DamageComponent      `json:"damage_components"`
+		AdvantageSources    []encounter.AttackModifierSource `json:"advantage_sources"`
+		DisadvantageSources []encounter.AttackModifierSource `json:"disadvantage_sources"`
+	}
+	s.Require().NoError(json.Unmarshal(first, &beat))
+	s.Equal(in.DamageComponents, beat.DamageComponents)
+	s.Equal(in.AdvantageSources, beat.AdvantageSources)
+	s.Equal(in.DisadvantageSources, beat.DisadvantageSources)
+	s.Require().NotNil(beat.DamageComponents[1].Multiplier,
+		"zero is a present immunity multiplier, not an absent multiplier")
+	s.Zero(*beat.DamageComponents[1].Multiplier)
+}
+
 // TestARecordedMissCarriesNoCriticalKey pins that a miss's payload never
 // says "critical" at all — a whiff cannot crit, so there is nothing to
 // answer false about, unlike a hit where false is itself a meaningful
@@ -191,9 +246,17 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // Actor/Targets already occupy, not what a caller can SAY — and "no prose"
 // here now holds for presence exactly as it does for the fields beside it;
 // only meaning is still the rulebook's to guarantee.
+//
+// DAMAGE COMPONENTS AND MODIFIER SOURCES MAKE THE SAME TRADE (rpg-project#265).
+// Their nested fields are identifiers, dice notation, numbers, and closed
+// rulebook words carried as primitives. AttackModifierSource deliberately has
+// no Reason string: the rules engine's human-readable explanation does not
+// become caller-authored prose in this transcript.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
-	s.Equal([]string{"Kind", "Actor", "Targets", "Values", "Critical", "Attack"},
-		structFieldNames(encounter.RecordInput{}),
+	s.Equal([]string{
+		"Kind", "Actor", "Targets", "Values", "Critical", "Attack",
+		"DamageComponents", "AdvantageSources", "DisadvantageSources",
+	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")
 }

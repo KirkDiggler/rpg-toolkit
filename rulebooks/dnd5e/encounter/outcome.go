@@ -77,12 +77,12 @@ const (
 
 // RecordInput is one rulebook outcome, offered to the story.
 //
-// THERE IS NO STRING FIELD HERE, and there will not be one. Every member is an
+// THERE IS NO PROSE FIELD HERE, and there will not be one. Every member is an
 // ID the composition validates against its own roster, the kind is a closed
-// enum, and the values are integers under closed keys. Prose is not something
-// this input can express — not discouraged, not filtered, INEXPRESSIBLE — so
-// no caller can narrate into a transcript that other players read, and no
-// future caller can start.
+// enum, and the remaining primitives are catalog/rulebook facts under a closed
+// shape. Prose is not something this input can express — not discouraged, not
+// filtered, INEXPRESSIBLE — so no caller can narrate into a transcript that
+// other players read, and no future caller can start.
 //
 // That is the difference between this and the general "append anything" hole
 // it replaces the need for. The composition stays the only author of its
@@ -115,6 +115,37 @@ type RecordInput struct {
 	// see AttackIdentity's own doc for exactly what this input does and
 	// does not check about that.
 	Attack *AttackIdentity
+
+	// DamageComponents are the ordered primitive facts that produced a struck
+	// outcome. Meaning belongs to the rulebook; this composition preserves the
+	// supplied order and values without interpreting them.
+	DamageComponents []DamageComponent
+
+	// AdvantageSources and DisadvantageSources identify the ordered sources the
+	// attack fold reported. They carry identifiers only, never the rules engine's
+	// human-readable Reason string.
+	AdvantageSources    []AttackModifierSource
+	DisadvantageSources []AttackModifierSource
+}
+
+// DamageComponent carries one ordered, rulebook-neutral damage contribution.
+// It uses only primitives this module can persist without importing the
+// rulebook packages that own their meaning.
+type DamageComponent struct {
+	Source     string   `json:"source"`
+	SourceRef  string   `json:"source_ref,omitempty"`
+	Dice       string   `json:"dice,omitempty"`
+	FinalRolls []int    `json:"final_rolls,omitempty"`
+	FlatBonus  int      `json:"flat_bonus"`
+	DamageType string   `json:"damage_type"`
+	Multiplier *float64 `json:"multiplier,omitempty"`
+}
+
+// AttackModifierSource identifies an entity/content source without carrying
+// prose. Empty strings mean that identifier was absent.
+type AttackModifierSource struct {
+	SourceRef string `json:"source_ref,omitempty"`
+	SourceID  string `json:"source_id,omitempty"`
 }
 
 // AttackIdentity names what was swung — ref, display name, and damage type —
@@ -303,6 +334,15 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// state.
 	if in.Kind == OutcomeStruck {
 		payload["critical"] = in.Critical
+		if len(in.DamageComponents) > 0 {
+			payload["damage_components"] = in.DamageComponents
+		}
+		if len(in.AdvantageSources) > 0 {
+			payload["advantage_sources"] = in.AdvantageSources
+		}
+		if len(in.DisadvantageSources) > 0 {
+			payload["disadvantage_sources"] = in.DisadvantageSources
+		}
 	}
 	if in.Attack != nil {
 		if in.Attack.Ref == "" {
