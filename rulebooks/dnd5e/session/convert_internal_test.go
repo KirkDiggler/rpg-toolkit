@@ -31,7 +31,7 @@ func TestPropFacingAndOffsetCrossTheSeam(t *testing.T) {
 			{
 				Ref: "dnd5e:props:statue-reaper", At: spatial.Position{X: 3, Y: 4},
 				BlocksMovement: true, BlocksLineOfSight: true,
-				Facing: "se", Offset: [2]float64{0.2, -0.1},
+				Facing: "se", Offset: [3]float64{0.2, -0.1, 0.6},
 			},
 			{
 				Ref: "dnd5e:props:candles", At: spatial.Position{X: 5, Y: 6},
@@ -44,8 +44,29 @@ func TestPropFacingAndOffsetCrossTheSeam(t *testing.T) {
 
 	require.Len(t, out.Props, 2)
 	require.Equal(t, "se", out.Props[0].Facing, "the exact authored word, uninterpreted")
-	require.Equal(t, [2]float64{0.2, -0.1}, out.Props[0].Offset, "the exact authored numbers")
+	require.Equal(t, [3]float64{0.2, -0.1, 0.6}, out.Props[0].Offset, "the exact authored numbers, height included")
 
 	require.Equal(t, "", out.Props[1].Facing, "said nothing")
-	require.Equal(t, [2]float64{0, 0}, out.Props[1].Offset, "and said zero/center: the same fact by design")
+	require.Equal(t, [3]float64{0, 0, 0}, out.Props[1].Offset, "and said zero/center-on-the-floor: the same fact by design")
+}
+
+// TestWallHeightCrossesTheSeam — the authored multiplier is copied verbatim
+// (rpg-project#273), and a wall that authored none carries 0: the reader's
+// word for "render the standard height", never a number to multiply by.
+func TestWallHeightCrossesTheSeam(t *testing.T) {
+	in := encounter.Atlas{
+		Orientation: encounter.HexesArePointyTop(),
+		Boundaries: []encounter.AtlasBoundary{
+			{From: spatial.Position{X: 2, Y: 3}, To: spatial.Position{X: 3, Y: 3},
+				BlocksMovement: true, BlocksLineOfSight: true, Height: 2.5},
+			{From: spatial.Position{X: 2, Y: 4}, To: spatial.Position{X: 3, Y: 4},
+				BlocksMovement: true, BlocksLineOfSight: true},
+		},
+	}
+
+	out := projectAtlas(in)
+
+	require.Len(t, out.Boundaries, 2)
+	require.Equal(t, 2.5, out.Boundaries[0].Height, "the exact authored multiplier")
+	require.Zero(t, out.Boundaries[1].Height, "no height authored: the standard height")
 }

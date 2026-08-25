@@ -112,9 +112,9 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 		"a doorway is a door's identity and two cells",
 	)
 	s.Equal(
-		[]string{"From", "To", "BlocksMovement", "BlocksLineOfSight"},
+		[]string{"From", "To", "BlocksMovement", "BlocksLineOfSight", "Height"},
 		fieldsOf(session.AtlasBoundary{}),
-		"a wall is two cells and what it stops",
+		"a wall is two cells, what it stops, and how tall it stands",
 	)
 }
 

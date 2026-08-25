@@ -187,28 +187,31 @@ type AtlasProp struct {
 	// BlocksLineOfSight reports whether sight passes through its cell.
 	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
 
-	// Facing is the authored direction this prop faces, in the field's own
-	// orientation vocabulary — carried verbatim from
-	// [encounter.AtlasProp.Facing] and never interpreted here (rpg-project
-	// #261). Optional: "" means the asset's own default facing. Angle math
-	// is a render concern, not this seam's — the wire names the fact, the
-	// client derives pixels.
+	// Facing is the authored direction this prop faces, one of the eight
+	// true-compass names — carried verbatim from [encounter.AtlasProp.Facing]
+	// and never interpreted here (rpg-project#261, vocabulary redefined by
+	// rpg-project#272: the SAME eight names under both orientations).
+	// Optional: "" means the asset's own default facing. Angle math is a
+	// render concern, not this seam's — the wire names the fact, the client
+	// derives pixels.
 	Facing string `json:"facing,omitempty"`
 
-	// Offset is a within-cell VISUAL nudge, [x,y] fractions of the cell
-	// size, carried verbatim from [encounter.AtlasProp.Offset]. {0,0} means
-	// centered — the SAME fact a prop that authored no offset carries, by
-	// design (rpg-project#261).
+	// Offset is an authored VISUAL displacement, carried verbatim from
+	// [encounter.AtlasProp.Offset]: [x,y] within-cell nudge fractions of
+	// the cell size, plus a third component — height above the floor in the
+	// same unit (rpg-project#272), not bound to the planar ±0.5 clamp. The
+	// zero value means centered on the floor — the SAME fact a prop that
+	// authored no offset carries, by design (rpg-project#261).
 	//
 	// No omitempty: Go's encoding/json cannot omit a fixed-size array
 	// regardless of the tag (verified — the key is always written), so a
-	// reading client checks the VALUE for {0,0} rather than the key for
-	// absence, the same way [Lighting.Intensity]'s own zero is an answer
-	// rather than a gap.
+	// reading client checks the VALUE for the zero value rather than the
+	// key for absence, the same way [Lighting.Intensity]'s own zero is an
+	// answer rather than a gap.
 	//
 	// VISUAL ONLY — a prop still occupies its whole cell for movement and
 	// line of sight; this never reaches a rule.
-	Offset [2]float64 `json:"offset"`
+	Offset [3]float64 `json:"offset"`
 }
 
 // AtlasBoundary is one wall or barrier crossing between adjacent cells.
@@ -224,6 +227,18 @@ type AtlasBoundary struct {
 
 	// BlocksLineOfSight reports whether sight may cross.
 	BlocksLineOfSight bool `json:"blocks_line_of_sight"`
+
+	// Height is the authored wall-height MULTIPLIER of the standard
+	// rendered wall height, carried verbatim from
+	// [encounter.AtlasBoundary.Height] and never interpreted here
+	// (rpg-project#273). 0 means not authored: a reader renders the
+	// STANDARD height — exactly as if 1.0 were written — and never
+	// multiplies by the raw value; the authored bounds are [1, 3]
+	// (raise-only, by ruling), so 0 cannot be an authored fact. omitempty
+	// is safe for exactly that reason. VISUAL ONLY: a wall blocks movement
+	// and sight identically at every height — a wall cannot be seen past
+	// at ANY height (Kirk's ruling, rpg-project#274).
+	Height float64 `json:"height,omitempty"`
 }
 
 // AtlasDoorway is one crossable pair of cells. The two are adjacent in
