@@ -307,8 +307,10 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 // Exact arithmetic rather than "damage is positive". A d20 of 15 plus a
 // proficient Strength longsword (+3 STR, +2 proficiency) totals 20 against
 // AC 12 — a hit, and the damage die scripted to 5 with the +3 modifier deals
-// 8. A loose assertion here would pass on an implementation that dropped the
-// modifier, halved the die, or resolved against the wrong sheet.
+// 8. The same beat now preserves the ordered weapon and ability components
+// resolution produced. A loose assertion here would pass on an implementation
+// that dropped the modifier, halved the die, or resolved against the wrong
+// sheet.
 func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	mgr := s.duel(&sequenceDice{rolls: []int{15, 5}})
 
@@ -329,7 +331,10 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal("outcome", last.Tags["tag"])
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},`+
+			`"damage_components":[`+
+			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[5],"flat_bonus":0,"damage_type":"slashing"},`+
+			`{"source":"ability","source_ref":"dnd5e:abilities:str","flat_bonus":3,"damage_type":"slashing"}]}`,
 		string(last.Payload))
 	s.Equal(session.AttackRef{Ref: "longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -430,17 +431,8 @@ func translateResolution(err error) error {
 }
 
 // recordFor turns a strike into the outcome the composition will stamp.
-//
-// CRITICAL IS NOT RECORDED, and the reason has an expiry date worth writing
-// down. ValueRoll is the RAW d20, so today a beat carrying roll:20 already says
-// the blow was critical — a reader derives it, and adding a kind for it would
-// be vocabulary earning nothing.
-//
-// That holds ONLY while every reachable attack crits on a natural 20 alone.
-// The machine already supports a crit threshold, so an expanded range — a
-// Champion's 19–20 — produces a critical hit at roll:19 that this beat cannot
-// tell from an ordinary one. THAT is the caller that earns recorded crit
-// vocabulary, and when it arrives this comment is where to start.
+// It copies resolution-owned facts once; replay decodes this record rather
+// than reconstructing damage or modifier attribution later.
 func recordFor(
 	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
 ) *encounter.RecordInput {
@@ -456,7 +448,7 @@ func recordFor(
 	}
 
 	ref := attackRefFor(definition)
-	return &encounter.RecordInput{
+	recorded := &encounter.RecordInput{
 		Kind:     kind,
 		Actor:    encounter.MemberID(in.Attacker),
 		Targets:  []encounter.MemberID{encounter.MemberID(in.Target)},
@@ -464,6 +456,55 @@ func recordFor(
 		Critical: struck.Critical,
 		Attack:   &encounter.AttackIdentity{Ref: ref.Ref, Name: ref.Name, DamageType: string(ref.DamageType)},
 	}
+	if struck.Hit {
+		recorded.DamageComponents = recordDamageComponents(struck.DamageComponents)
+		recorded.AdvantageSources = recordAttackModifierSources(struck.Folded.AdvantageSources)
+		recorded.DisadvantageSources = recordAttackModifierSources(struck.Folded.DisadvantageSources)
+	}
+	return recorded
+}
+
+func recordDamageComponents(in []dnd5eEvents.DamageComponent) []encounter.DamageComponent {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]encounter.DamageComponent, 0, len(in))
+	for _, component := range in {
+		var sourceRef string
+		if component.SourceRef != nil {
+			sourceRef = component.SourceRef.String()
+		}
+		var multiplier *float64
+		if component.Multiplier != nil {
+			value := *component.Multiplier
+			multiplier = &value
+		}
+		out = append(out, encounter.DamageComponent{
+			Source: string(component.Source), SourceRef: sourceRef, Dice: component.Dice,
+			FinalRolls: append([]int(nil), component.FinalDiceRolls...),
+			FlatBonus:  component.FlatBonus, DamageType: string(component.DamageType),
+			Multiplier: multiplier,
+		})
+	}
+	return out
+}
+
+func recordAttackModifierSources(in []dnd5eEvents.AttackModifierSource) []encounter.AttackModifierSource {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]encounter.AttackModifierSource, 0, len(in))
+	for _, source := range in {
+		var sourceRef string
+		if source.SourceRef != nil {
+			sourceRef = source.SourceRef.String()
+		}
+		out = append(out, encounter.AttackModifierSource{
+			SourceRef: sourceRef,
+			SourceID:  source.SourceID,
+		})
+	}
+	return out
 }
 
 // loadAttackSheet reconstitutes the attacker's stored sheet for assembly and pricing.

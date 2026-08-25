@@ -21,6 +21,7 @@ import (
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -72,19 +73,37 @@ func (d *scriptedDice) Roll(_ context.Context, _ int) (int, error) {
 	return roll, nil
 }
 
-// TestRecordUsesAggregateFromTypedStrikeOutcome pins the session boundary at
-// the real encounter recording seam: resolution may retain typed damage
-// evidence, but the story stores only the aggregate amount.
-func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
+// TestRecordProjectsSelectedStrikeDetail pins the one session-to-encounter
+// projection. Resolution keeps richer internal evidence; the replay carrier
+// receives only the approved ordered subset and never modifier prose.
+func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
+	immunity := 0.0
 	struck := resolution.StrikeOutcome{
-		Roll:     15,
-		Total:    20,
-		TargetAC: 12,
-		Hit:      true,
-		Damage:   9,
+		Roll: 15, Total: 20, TargetAC: 12, Hit: true, Damage: 9,
 		DamageInstances: []damage.Instance{
 			{Amount: 5, Type: damage.Slashing},
 			{Amount: 4, Type: damage.Fire},
+		},
+		DamageComponents: []dnd5eEvents.DamageComponent{
+			{
+				Source: dnd5eEvents.DamageSourceWeapon, SourceRef: refs.Weapons.Longsword(), Dice: "1d8",
+				OriginalDiceRolls: []int{2}, FinalDiceRolls: []int{4},
+				Rerolls:   []dnd5eEvents.RerollEvent{{DieIndex: 0, Before: 2, After: 4, Reason: "ignored"}},
+				FlatBonus: 0, DamageType: damage.Slashing,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier}, IsCritical: true,
+			},
+			{
+				Source: dnd5eEvents.DamageSourceMonsterTrait, SourceRef: refs.MonsterTraits.Immunity(),
+				DamageType: damage.Slashing, Multiplier: &immunity,
+			},
+		},
+		Folded: dnd5eEvents.AttackChainEvent{
+			AdvantageSources: []dnd5eEvents.AttackModifierSource{
+				{SourceRef: refs.Conditions.Hidden(), SourceID: "alice", Reason: "Hidden"},
+			},
+			DisadvantageSources: []dnd5eEvents.AttackModifierSource{
+				{SourceRef: refs.Conditions.Dodging(), SourceID: "bob", Reason: "Dodging"},
+			},
 		},
 	}
 
@@ -104,13 +123,7 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// A minimal but real profile — Ref and Name non-empty, per
-	// rpg-toolkit#1172/#1175: Record refuses an Attack whose Ref or Name is
-	// empty. This test is about damage aggregation, not attack identity, so
-	// the profile is otherwise bare; DamageType stays unchecked and empty is
-	// still a legal answer for it.
 	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
-
 	recorded, err := enc.Record(recordFor(
 		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition,
 	))
@@ -120,12 +133,22 @@ func TestRecordUsesAggregateFromTypedStrikeOutcome(t *testing.T) {
 	story, err := enc.Story(&encounter.StoryInput{Audience: "bob"})
 	require.NoError(t, err)
 	require.NotEmpty(t, story)
+	payload := string(story[len(story)-1].Payload)
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":""}}`,
-		string(story[len(story)-1].Payload),
-		"the persisted encounter record carries the aggregate and no typed damage collection",
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":""},`+
+			`"damage_components":[`+
+			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[4],"flat_bonus":0,"damage_type":"slashing"},`+
+			`{"source":"monster_trait","source_ref":"dnd5e:monster_traits:immunity","flat_bonus":0,"damage_type":"slashing","multiplier":0}],`+
+			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],`+
+			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}]}`,
+		payload,
 	)
+	for _, excluded := range []string{
+		`"original_dice_rolls"`, `"rerolls"`, `"properties"`, `"is_critical"`, `"reason"`,
+	} {
+		require.NotContains(t, payload, excluded)
+	}
 }
 
 // halfBrokenCharacters writes the first sheet and refuses the second.

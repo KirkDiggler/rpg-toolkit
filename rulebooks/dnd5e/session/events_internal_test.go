@@ -162,6 +162,43 @@ func TestBodyForAcceptsACompleteBeat(t *testing.T) {
 	}, body)
 }
 
+// TestStruckBodyDecodesReplayDetail pins the second half of the projection:
+// the exact primitive payload session authored becomes its own exported body,
+// with a present zero multiplier and the supplied ordering intact.
+func TestStruckBodyDecodesReplayDetail(t *testing.T) {
+	kind, body := decodeBeat([]byte(
+		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,` +
+			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},` +
+			`"damage_components":[` +
+			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[4],"flat_bonus":0,"damage_type":"slashing"},` +
+			`{"source":"monster_trait","damage_type":"slashing","flat_bonus":0,"multiplier":0}],` +
+			`"advantage_sources":[{"source_ref":"dnd5e:conditions:hidden","source_id":"alice"}],` +
+			`"disadvantage_sources":[{"source_ref":"dnd5e:conditions:dodging","source_id":"bob"}]}`))
+	require.Equal(t, EventStruck, kind)
+
+	got, ok := body.(StruckBody)
+	require.True(t, ok, "rich struck payload produces StruckBody, got %T", body)
+	require.Len(t, got.DamageComponents, 2)
+	zero := 0.0
+	require.Equal(t, []DamageComponent{
+		{
+			Source: "weapon", SourceRef: "dnd5e:weapons:longsword", Dice: "1d8",
+			FinalRolls: []int{4}, DamageType: DamageSlashing,
+		},
+		{
+			Source: "monster_trait", DamageType: DamageSlashing, Multiplier: &zero,
+		},
+	}, got.DamageComponents)
+	require.NotNil(t, got.DamageComponents[1].Multiplier)
+	require.Zero(t, *got.DamageComponents[1].Multiplier)
+	require.Equal(t,
+		[]AttackModifierSource{{SourceRef: "dnd5e:conditions:hidden", SourceID: "alice"}},
+		got.AdvantageSources)
+	require.Equal(t,
+		[]AttackModifierSource{{SourceRef: "dnd5e:conditions:dodging", SourceID: "bob"}},
+		got.DisadvantageSources)
+}
+
 // TestJoinedAndExitedBodiesCarryTheMember pins bodyFor's newest arms
 // (rpg-project#260 slice 4, item 2): the encounter composition's join/exit
 // beats already carry "member" (encounter.go's Join and Exit), so this is

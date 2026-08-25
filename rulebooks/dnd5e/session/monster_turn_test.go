@@ -529,6 +529,18 @@ func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 		}
 	}
 	s.Require().NotEmpty(live, "join, spawn and the driven turn must all have addressed fighter")
+	foundRichStrike := false
+	for _, event := range live {
+		if event.Kind != session.EventStruck {
+			continue
+		}
+		body, ok := event.Body.(session.StruckBody)
+		s.Require().True(ok, "live struck event carries StruckBody, got %T", event.Body)
+		s.Require().NotEmpty(body.DamageComponents,
+			"the driven strike must carry the detail whose replay equality this test guards")
+		foundRichStrike = true
+	}
+	s.True(foundRichStrike, "this deterministic driven turn lands a strike")
 
 	caughtUp, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter", FromSeq: 1})
 	s.Require().NoError(err)
