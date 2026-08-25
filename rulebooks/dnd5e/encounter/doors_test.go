@@ -167,7 +167,7 @@ func (s *DoorSuite) TestAClosedDoorStopsBothAndOpeningRestoresBoth() {
 
 	_, err := enc.Step(&encounter.StepInput{Member: nessa, To: orinCell})
 	s.Require().Error(err, "and it stops a step the way any wall does")
-	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Require().ErrorIs(err, encounter.ErrDoorShut)
 	s.Contains(err.Error(), theDoor, "the refusal names the door standing in the way")
 
 	out, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})
@@ -196,7 +196,7 @@ func (s *DoorSuite) TestClosingItAgainStopsBothAgain() {
 
 	s.False(s.sees(enc, nessa, orin), "shut again")
 	_, err = enc.Step(&encounter.StepInput{Member: nessa, To: orinCell})
-	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Require().ErrorIs(err, encounter.ErrDoorShut)
 }
 
 // TestAGateIsOneThingNotFour is Kirk's requirement, and the reason a door is
@@ -583,7 +583,7 @@ func (s *DoorSuite) TestAStepSeveralCellsLongStillMeetsTheDoorInItsPath() {
 	s.Run("shut, and refused by the door's name from four cells away", func() {
 		enc := s.doorway(encounter.DoorIsClosed())
 		_, err := enc.Step(&encounter.StepInput{Member: nessa, To: far})
-		s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+		s.Require().ErrorIs(err, encounter.ErrDoorShut)
 		s.Contains(err.Error(), theDoor, "the door in the middle of the path is what stopped her")
 		s.Contains(err.Error(), string(encounter.DoorClosed), "and the refusal says what state it is in")
 	})
@@ -661,7 +661,7 @@ func (s *DoorSuite) TestTheDoorThatRefusesIsTheOneThatStoppedHer() {
 	enc := s.walkerIn(threeChambers(encounter.DoorIsOpen(), encounter.DoorIsClosed(), gate1, gate2))
 
 	_, err := enc.Step(&encounter.StepInput{Member: nessa, To: spatial.Position{X: 8, Y: 1}})
-	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Require().ErrorIs(err, encounter.ErrDoorShut)
 	s.Contains(err.Error(), gate2, "the SHUT one stopped her")
 	s.NotContains(err.Error(), gate1, "not the open one she walked through first")
 }

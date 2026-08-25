@@ -4,6 +4,7 @@
 package encounter_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -133,8 +134,9 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	s.False(s.sees(wight, delve), "and she is hidden from him — geometry is mutual")
 
 	_, err := s.enc.Step(&encounter.StepInput{Member: delve, To: wightCell})
-	s.Require().ErrorIs(err, encounter.ErrBadPlacement, "and she cannot walk through it")
+	s.Require().ErrorIs(err, encounter.ErrLocked, "and she cannot walk through it — refused as FICTION, not as a bad cell (rpg-toolkit#1135)")
 	s.Contains(err.Error(), cryptDoor)
+	s.Contains(err.Error(), "DC 12", "the walk's refusal names the stakes, exactly as OpenDoor's does")
 
 	_, err = s.enc.OpenDoor(&encounter.OpenDoorInput{Door: cryptDoor})
 	s.Require().ErrorIs(err, encounter.ErrLocked, "nor simply open it")
@@ -145,7 +147,7 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	const missed, met = cryptDC - 1, cryptDC
 
 	failed, err := s.enc.Unlock(&encounter.UnlockInput{
-		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC)})
+		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC), Actor: delve, Total: missed})
 	s.Require().NoError(err, "a failed check is an outcome, not an error")
 	s.False(failed.Beaten)
 	s.Equal(cryptDC, failed.DC, "and it reports the DC it carries, for whoever narrates the near miss")
@@ -153,7 +155,7 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	s.False(s.sees(delve, wight), "and still blind")
 
 	beaten, err := s.enc.Unlock(&encounter.UnlockInput{
-		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC)})
+		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC), Actor: delve, Total: met})
 	s.Require().NoError(err)
 	s.True(beaten.Beaten, "meeting the DC exactly beats it — a tie goes to the roller, per picksTheLock")
 	s.Equal(encounter.DoorOpen, beaten.State, "beaten means open, not merely unlocked")
@@ -167,6 +169,31 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	_, err = s.enc.CloseDoor(&encounter.CloseDoorInput{Door: cryptDoor})
 	s.Require().NoError(err)
 	s.Equal(encounter.DoorClosed, s.doorState(cryptDoor), "closed, and not locked again")
+
+	// The attempts are narrated with their author and their number — "9 vs
+	// DC 12", then "12 vs DC 12" — carried and never compared, the same law
+	// the DC itself lives under (rpg-project#269, full data until v1.0).
+	var attempts []map[string]any
+	for _, beat := range s.doorBeats() {
+		if _, tried := beat["beaten"]; tried {
+			attempts = append(attempts, beat)
+		}
+	}
+	s.Require().Len(attempts, 2, "both attempts are beats — the miss is as much fiction as the hit")
+	s.Equal(string(delve), attempts[0]["actor"], "the story says whose hands")
+	s.Equal(float64(missed), attempts[0]["total"], "and what they rolled")
+	s.Equal(false, attempts[0]["beaten"])
+	s.Equal(float64(met), attempts[1]["total"])
+	s.Equal(true, attempts[1]["beaten"])
+}
+
+// TestAStrangerCannotBeTheActor: a beat crediting a non-member would be the
+// story lying, and the verb refuses it before anything changes.
+func (s *TombDoorSuite) TestAStrangerCannotBeTheActor() {
+	_, err := s.enc.Unlock(&encounter.UnlockInput{
+		Door: cryptDoor, Beaten: true, Actor: "nobody", Total: 20})
+	s.Require().ErrorIs(err, encounter.ErrNotMember)
+	s.Equal(encounter.DoorLocked, s.doorState(cryptDoor), "and the door is untouched")
 }
 
 // TestTheOpenDoorwayAtTheOtherSeamIsUnaffected is the control: the first seam
@@ -253,6 +280,23 @@ func (s *TombDoorSuite) memberCell(id core.EntityID) spatial.Position {
 	s.Require().Fail("no such member", string(id))
 
 	return spatial.Position{}
+}
+
+// doorBeats reads delve's story down to its door beats, decoded.
+func (s *TombDoorSuite) doorBeats() []map[string]any {
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: delve})
+	s.Require().NoError(err)
+
+	beats := make([]map[string]any, 0)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == "door" {
+			beats = append(beats, beat)
+		}
+	}
+
+	return beats
 }
 
 func (s *TombDoorSuite) doorState(id encounter.DoorID) encounter.DoorStateKind {

@@ -407,6 +407,11 @@ func (e *Encounter) enforceRetention() error {
 // verb prefix — each caller wraps its own at the call site.
 func validateEndingTriggers(f *field, endings []EndingInput) error {
 	for _, ei := range endings {
+		// A MemberDown ending must name a member — see TriggerMemberDown's
+		// doc for why empty is refused rather than defaulted.
+		if md, ok := ei.Trigger.(TriggerMemberDown); ok && md.Member == "" {
+			return fmt.Errorf("ending %q names no member: %w", ei.Key, ErrNoEnding)
+		}
 		trigger, ok := ei.Trigger.(TriggerReachedPosition)
 		if !ok {
 			continue
@@ -1072,7 +1077,19 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 //
 // Returns a DEEP COPY (mutation-proof): a caller holding the returned outcome
 // cannot reach into this encounter's own.
-func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Position, at uint64) *Outcome {
+//
+// An ALREADY-CLOSED encounter short-circuits to its outcome: the sight
+// refresh that ran just before this scan can itself close the scene
+// (TriggerMemberDown, evaluated in noticeDown), and a second close here
+// would overwrite the first and narrate a second ended beat. The verb still
+// reports the close on its output — whichever trigger fired it.
+func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Position, at uint64) (*Outcome, error) {
+	if e.outcome != nil {
+		members := make([]MemberOutcome, len(e.outcome.Members))
+		copy(members, e.outcome.Members)
+		return &Outcome{Ending: e.outcome.Ending, At: e.outcome.At, Members: members}, nil
+	}
+
 	for _, de := range e.endings {
 		trigger, ok := de.trigger.(TriggerReachedPosition)
 		if !ok {
@@ -1088,17 +1105,47 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 			continue // Empty filter means players only
 		}
 
-		e.outcome = &Outcome{
-			Ending:  de.key,
-			At:      at,
-			Members: e.buildMemberOutcomes(),
-		}
-
-		members := make([]MemberOutcome, len(e.outcome.Members))
-		copy(members, e.outcome.Members)
-		return &Outcome{Ending: e.outcome.Ending, At: e.outcome.At, Members: members}
+		return e.closeWith(de.key, at)
 	}
-	return nil
+	return nil, nil
+}
+
+// closeWith closes the encounter with the ending that fired: sets the
+// outcome and appends the table-wide "ended" beat every close narrates.
+//
+// ONE PATH: External (End), ReachedPosition and MemberDown all close through
+// here, so "what happens when an encounter ends" has a single answer — the
+// same argument setDoorState makes for doors. Before this, a ReachedPosition
+// close set the outcome and told nobody: the host learned from the verb's
+// output while the story skipped a beat the External path wrote, and a
+// client following the stream never heard the run end.
+//
+// Returns a DEEP COPY (mutation-proof), like every projection.
+func (e *Encounter) closeWith(key string, at uint64) (*Outcome, error) {
+	e.outcome = &Outcome{
+		Ending:  key,
+		At:      at,
+		Members: e.buildMemberOutcomes(),
+	}
+
+	// tableBeat, no subjects: nothing has removed anyone from e.members by
+	// this point, so a fresh call here already matches "everyone".
+	beatBytes, _ := json.Marshal(map[string]interface{}{
+		"beat":   "ended",
+		"ending": key,
+	})
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       at,
+		Audience: e.audienceFor(tableBeat),
+		Tags:     map[string]string{"tag": "scene"},
+		Payload:  beatBytes,
+	}); err != nil {
+		return nil, fmt.Errorf("close append beat: %w", err)
+	}
+
+	members := make([]MemberOutcome, len(e.outcome.Members))
+	copy(members, e.outcome.Members)
+	return &Outcome{Ending: key, At: at, Members: members}, nil
 }
 
 // Pump advances the world by one tick: the exploration clock advances,
@@ -1343,7 +1390,12 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 	// wandering goblin cannot end the scene by standing on the exit.
 	var firedOutcome *Outcome
 	for _, action := range executed {
-		if firedOutcome = e.firedReachedPosition(action.member, action.to, newTickReading); firedOutcome != nil {
+		fired, ferr := e.firedReachedPosition(action.member, action.to, newTickReading)
+		if ferr != nil {
+			return nil, fmt.Errorf("pump ending: %w", ferr)
+		}
+		if fired != nil {
+			firedOutcome = fired
 			break
 		}
 	}
@@ -1710,7 +1762,10 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// movement. The copy existed because Join held a room and a local cell
 	// while the shared path held the member's current room; with one frame
 	// there is nothing left for a second implementation to differ about.
-	firedOutcome := e.firedReachedPosition(member, in.Cell, clockReadingForBeat)
+	firedOutcome, err := e.firedReachedPosition(member, in.Cell, clockReadingForBeat)
+	if err != nil {
+		return nil, fmt.Errorf("join ending: %w", err)
+	}
 
 	placement, err := e.placementOf(member)
 	if err != nil {
@@ -1882,56 +1937,12 @@ func (e *Encounter) End(in *EndInput) (*EndOutput, error) {
 		return nil, fmt.Errorf("end: ending %s is not External: %w", in.Ending, ErrNoEnding)
 	}
 
-	// Build outcome with all current members' positions
-	memberOutcomes := e.buildMemberOutcomes()
-
-	clockReadingInt := e.clock.ToData().HighWater
-	clockReadingForBeat := uint64(clockReadingInt)
-
-	e.outcome = &Outcome{
-		Ending:  in.Ending,
-		At:      clockReadingForBeat,
-		Members: memberOutcomes,
-	}
-
-	// Record the end beat. tableBeat, no subjects: nothing has removed
-	// anyone from e.members by this point, so a fresh call here already
-	// matches "everyone" — unlike Exit, no reordering is needed.
-	audience := e.audienceFor(tableBeat)
-
-	beatPayload := map[string]interface{}{
-		"beat":   "ended",
-		"ending": in.Ending,
-	}
-	beatBytes, _ := json.Marshal(beatPayload)
-
-	_, err := e.appendBeat(&record.AppendInput{
-		At:       clockReadingForBeat,
-		Audience: audience,
-		Tags:     map[string]string{"tag": "scene"},
-		Payload:  beatBytes,
-	})
+	closed, err := e.closeWith(in.Ending, uint64(e.clock.ToData().HighWater))
 	if err != nil {
-		return nil, fmt.Errorf("end append beat: %w", err)
+		return nil, fmt.Errorf("end: %w", err)
 	}
 
-	// Return a deep copy of the outcome (mutation-proof)
-	outcomeMembers := make([]MemberOutcome, len(e.outcome.Members))
-	for i, m := range e.outcome.Members {
-		outcomeMembers[i] = MemberOutcome{
-			ID:       m.ID,
-			Region:   m.Region,
-			Position: m.Position,
-		}
-	}
-
-	return &EndOutput{
-		Outcome: Outcome{
-			Ending:  e.outcome.Ending,
-			At:      e.outcome.At,
-			Members: outcomeMembers,
-		},
-	}, nil
+	return &EndOutput{Outcome: *closed}, nil
 }
 
 // memberEntity is an internal entity for members

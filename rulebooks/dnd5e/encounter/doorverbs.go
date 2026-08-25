@@ -59,10 +59,15 @@ import (
 // mid-flight, and this is something the caller already holds by the time it
 // calls.
 
-// OpenDoorInput names the door to open.
+// OpenDoorInput names the door to open, and who pushes it.
 type OpenDoorInput struct {
 	// Door is the door's identifier.
 	Door DoorID
+
+	// Actor is the member doing it, named on the beat so the story can say
+	// WHO opened the way (rpg-project#269). Optional: empty means the change
+	// has no author to narrate. Non-empty must name a member (ErrNotMember).
+	Actor MemberID
 }
 
 // OpenDoorOutput reports the door's new state and what opening it revealed.
@@ -110,6 +115,9 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open door: %w", err)
 	}
+	if err := e.doorActorOf(in.Actor); err != nil {
+		return nil, fmt.Errorf("open door %q: %w", door.id, err)
+	}
 
 	if lock, locked := door.state.Lock(); locked {
 		return nil, fmt.Errorf("open door %q: locked, DC %d: %w", door.id, lock.DC, ErrLocked)
@@ -118,7 +126,7 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 		return nil, fmt.Errorf("open door %q: it is already open: %w", door.id, ErrBadDoor)
 	}
 
-	changed, err := e.setDoorState(door, DoorIsOpen(), nil)
+	changed, err := e.setDoorState(door, DoorIsOpen(), doorActorExtra(in.Actor))
 	if err != nil {
 		return nil, fmt.Errorf("open door %q: %w", door.id, err)
 	}
@@ -132,10 +140,13 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	}, nil
 }
 
-// CloseDoorInput names the door to close.
+// CloseDoorInput names the door to close, and who shuts it.
 type CloseDoorInput struct {
 	// Door is the door's identifier.
 	Door DoorID
+
+	// Actor is the member doing it — [OpenDoorInput.Actor]'s contract.
+	Actor MemberID
 }
 
 // CloseDoorOutput reports the door's new state and what closing it hid.
@@ -184,12 +195,15 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("close door: %w", err)
 	}
+	if err := e.doorActorOf(in.Actor); err != nil {
+		return nil, fmt.Errorf("close door %q: %w", door.id, err)
+	}
 
 	if door.state.Kind() != DoorOpen {
 		return nil, fmt.Errorf("close door %q: it is already %s: %w", door.id, door.state.Kind(), ErrBadDoor)
 	}
 
-	changed, err := e.setDoorState(door, DoorIsClosed(), nil)
+	changed, err := e.setDoorState(door, DoorIsClosed(), doorActorExtra(in.Actor))
 	if err != nil {
 		return nil, fmt.Errorf("close door %q: %w", door.id, err)
 	}
@@ -221,6 +235,17 @@ type UnlockInput struct {
 	// False is a real answer rather than an absent one: it means somebody tried
 	// and failed, which is a thing that happened and gets a beat.
 	Beaten bool
+
+	// Actor is the member whose hands tried the lock — [OpenDoorInput.Actor]'s
+	// contract.
+	Actor MemberID
+
+	// Total is what the caller's check totalled, CARRIED AND NEVER COMPARED —
+	// the same law the DC itself lives under ([Lock]): it rides the beat so
+	// the story can say "17 vs DC 12" (full data until v1.0,
+	// rpg-project#269), and nothing here reads it against anything. The
+	// verdict is Beaten, alone.
+	Total int
 }
 
 // UnlockOutput reports whether the lock was beaten, and what that revealed.
@@ -292,6 +317,10 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		return nil, fmt.Errorf("unlock: %w", err)
 	}
 
+	if err := e.doorActorOf(in.Actor); err != nil {
+		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
+	}
+
 	lock, locked := door.state.Lock()
 	if !locked {
 		return nil, fmt.Errorf("unlock %q: it is %s, not locked: %w", door.id, door.state.Kind(), ErrBadDoor)
@@ -305,10 +334,15 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		next = DoorIsOpen()
 	}
 
-	changed, err := e.setDoorState(door, next, map[string]interface{}{
-		"dc":     lock.DC,
-		"beaten": in.Beaten,
-	})
+	extra := doorActorExtra(in.Actor)
+	if extra == nil {
+		extra = map[string]interface{}{}
+	}
+	extra["dc"] = lock.DC
+	extra["beaten"] = in.Beaten
+	extra["total"] = in.Total
+
+	changed, err := e.setDoorState(door, next, extra)
 	if err != nil {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
 	}
@@ -415,4 +449,27 @@ func (e *Encounter) appendDoorBeat(door *doorRecord, audience []MemberID, extra 
 	}
 
 	return out.Seq, nil
+}
+
+// doorActorOf validates a door verb's optional actor: empty is fine (a
+// change with no author to narrate), non-empty must name a member of this
+// encounter — a beat crediting a stranger would be the story lying.
+func (e *Encounter) doorActorOf(actor MemberID) error {
+	if actor == "" {
+		return nil
+	}
+	if _, ok := e.members[actor]; !ok {
+		return fmt.Errorf("actor %q: %w", actor, ErrNotMember)
+	}
+	return nil
+}
+
+// doorActorExtra is the actor's ride onto the beat — nil when there is
+// nobody to name, so an authored or unattributed change carries no empty
+// "actor" key.
+func doorActorExtra(actor MemberID) map[string]interface{} {
+	if actor == "" {
+		return nil
+	}
+	return map[string]interface{}{"actor": string(actor)}
 }

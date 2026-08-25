@@ -237,5 +237,10 @@ func TestVaultChase(t *testing.T) {
 		"moved",         // beat 2: she moves deeper into the vault
 		"tick", "moved", // beat 4: pump 1, the goblin comes through after her
 		"moved", // beat 5: alice reaches sanctuary
+		// beat 5: and the close is narrated. A ReachedPosition ending used to
+		// set the outcome and tell nobody — the host learned from the verb's
+		// output while the story skipped the beat the External path wrote.
+		// Every close speaks now (closeWith, rpg-project#268).
+		"ended",
 	}, kinds, "beat 7: the story IS the chase, told in order")
 }

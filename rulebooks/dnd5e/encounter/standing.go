@@ -247,7 +247,45 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 		}
 	}
 
+	// Then whether the world just ended. AFTER the bubble logic above, so a
+	// boss death dissolves its fight first and the run closes on the world
+	// clock — down → bubble-dissolved → ended is the beat order a client
+	// reads (Kirk's ruling, rpg-project#269 §6.6).
+	//
+	// Evaluated against EVERYONE down, not only the newly narrated: the fire
+	// is guarded by the outcome, not by the story ledger, so a down beat
+	// aging out of the retention window and being re-said cannot re-close
+	// anything, and an ending loaded over a member already down still fires
+	// at the next consult.
+	if e.outcome == nil {
+		if err := e.firedMemberDown(down); err != nil {
+			return nil, err
+		}
+	}
+
 	return down, nil
+}
+
+// firedMemberDown evaluates every declared MemberDown ending against who is
+// down, closing the encounter through the one close path if one fires.
+// Declaration order decides when two could fire at once — the same order
+// every ending scan walks.
+func (e *Encounter) firedMemberDown(down map[MemberID]bool) error {
+	for _, de := range e.endings {
+		trigger, ok := de.trigger.(TriggerMemberDown)
+		if !ok {
+			continue
+		}
+		if !down[trigger.Member] {
+			continue
+		}
+		at := uint64(e.clock.ToData().HighWater)
+		if _, err := e.closeWith(de.key, at); err != nil {
+			return fmt.Errorf("member-down ending %q: %w", de.key, err)
+		}
+		return nil
+	}
+	return nil
 }
 
 // fightIsDecided reports whether this bubble has run out of a side: whether the

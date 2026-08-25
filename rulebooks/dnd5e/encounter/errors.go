@@ -365,4 +365,13 @@ var (
 	// looks-like-it-worked shape this composition has spent several slices
 	// deleting.
 	ErrLocked = errors.New("door is locked")
+
+	// ErrDoorShut is returned when a step's travel crosses a door that is
+	// merely closed — shut but not locked (a locked one refuses with
+	// [ErrLocked], naming its DC). Distinct from [ErrBadPlacement] so a
+	// fiction beat and a client bug stop sharing one sentinel
+	// (rpg-toolkit#1135): the cell is real and the way is shut, and a
+	// caller told "bad placement" for a shut door goes looking for
+	// arithmetic that is fine.
+	ErrDoorShut = errors.New("door is shut")
 )

@@ -358,8 +358,9 @@ type ActionViewData struct {
 }
 
 // EndingData is the persistent representation of a declared ending.
-// Kind is one of "reached_position" or "external".
-// At and Member are only populated for reached_position triggers.
+// Kind is one of "reached_position", "external" or "member_down".
+// At is only populated for reached_position triggers; Member is populated
+// for reached_position (optional filter) and member_down (required).
 //
 // At is the authored offset cell under a NEW key (rpg-project#256): the old
 // "room" + room-local "position" pair lands nowhere on this shape, so a blob
@@ -417,6 +418,9 @@ func (e *Encounter) ToData() EncounterData {
 			ed.Member = t.Member
 		case TriggerExternal:
 			ed.Kind = "external"
+		case TriggerMemberDown:
+			ed.Kind = "member_down"
+			ed.Member = t.Member
 		}
 
 		endingsData[i] = ed
@@ -737,7 +741,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		seenEndingKeys[ed.Key] = true
 
-		if ed.Kind != "reached_position" && ed.Kind != "external" {
+		if ed.Kind != "reached_position" && ed.Kind != "external" && ed.Kind != "member_down" {
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}
 
@@ -747,6 +751,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if ed.Kind == "reached_position" && ed.At == nil {
 			return nil, fmt.Errorf(
 				"load encounter: ending %q reached_position has no at — a room-local target from before rpg-project#256, recreate the save: %w: %w",
+				ed.Key, ErrInvalidData, ErrNoEnding)
+		}
+
+		// A member_down ending without a member is the same class of refusal
+		// validateEndingTriggers makes at Setup: empty has no semantics yet
+		// (see TriggerMemberDown's doc), and the trust boundary rejects it
+		// rather than loading an ending that can never fire.
+		if ed.Kind == "member_down" && ed.Member == "" {
+			return nil, fmt.Errorf(
+				"load encounter: ending %q member_down names no member: %w: %w",
 				ed.Key, ErrInvalidData, ErrNoEnding)
 		}
 	}
@@ -1131,7 +1145,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 // something to check) and the "Restore declared endings" construction
 // (which needs it again, once construction is safe to begin, R5) — ONE
 // conversion, not two copies of the same switch (#929 T3 Opus round F5).
-// ed.Kind is already guaranteed to be "reached_position" or "external" by
+// ed.Kind is already guaranteed to be "reached_position", "external" or
+// "member_down" by
 // the key/kind checks earlier in LoadEncounter, and a "reached_position"
 // ed.At is already guaranteed non-nil there too — both preconditions
 // checked before this is ever called, so no error return is needed here.
@@ -1144,6 +1159,8 @@ func endingTriggerFromData(ed EndingData) Trigger {
 		}
 	case "external":
 		return TriggerExternal{}
+	case "member_down":
+		return TriggerMemberDown{Member: ed.Member}
 	}
 	return nil
 }

@@ -410,6 +410,32 @@ type TriggerReachedPosition struct {
 // isTrigger marks TriggerReachedPosition as a Trigger.
 func (t TriggerReachedPosition) isTrigger() {}
 
+// TriggerMemberDown fires when a named member's standing reaches down.
+//
+// Declared like every ending and evaluated at the one place the composition
+// notices a body — [Encounter.noticeDown] — AFTER the bubble logic there: a
+// boss death both dissolves the fight (rpg-toolkit#959 fork (c), untouched)
+// and closes the encounter, in that order, so the run ends on the world
+// clock and the beat order a client reads is down → bubble-dissolved →
+// ended (Kirk's ruling, rpg-project#269 §6.6).
+//
+// "Boss" is a content word and it is not here: dungeonspec authors the flag,
+// the host turns it into one of these naming the member it spawns, and this
+// composition only knows "this member's death ends things"
+// (rpg-project#269 §6.1).
+type TriggerMemberDown struct {
+	// Member is the member whose fall fires the ending. REQUIRED — an empty
+	// filter is refused at construction (ErrNoEnding) rather than given
+	// latent semantics. "Any player member down" and "every player member
+	// down" are different endings — first blood versus a party wipe — and
+	// choosing between them belongs to the wave that brings death saves,
+	// not to a default nobody declares today.
+	Member MemberID
+}
+
+// isTrigger marks TriggerMemberDown as a Trigger.
+func (t TriggerMemberDown) isTrigger() {}
+
 // TriggerExternal fires when the external caller requests it.
 type TriggerExternal struct{}
 

@@ -246,6 +246,9 @@ func TestTombWatch(t *testing.T) {
 		"bubble-formed",
 		"exited", // beat 6: bella (alice and the goblin's watchers free-roam
 		"moved",  // beat 7: on — cormac's fight is localized to cormac)
+		// beat 7: the arrival fired the stairs ending, and the close is
+		// narrated — every close speaks now (closeWith, rpg-project#268).
+		"ended",
 	}, kinds, "beat 8: the story IS the scene, told in order")
 
 	// ---- Beat 9: the sequel seed -----------------------------------
