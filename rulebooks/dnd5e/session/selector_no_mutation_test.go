@@ -191,6 +191,27 @@ func TestEndTurnNotYourTurnPrecedesSelectorAndMutatesNothing(t *testing.T) {
 	f.requireNoMutation(before)
 }
 
+func TestAffordThenEndTurnRejectsRepositorySessionIDMismatch(t *testing.T) {
+	f := newSelectorFixture(t, turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0))
+	id := currentEndTurnID(t, f.mgr, "sess", "alice")
+	f.sessions.byID["sess"].ID = "different-session"
+	f.resetMutationCounters()
+	before := f.state("alice")
+
+	afford, err := f.mgr.Afford(context.Background(), &session.AffordInput{
+		Session: "sess", Member: "alice",
+	})
+	require.ErrorIs(t, err, session.ErrBadRepository)
+	require.Nil(t, afford)
+
+	out, err := f.mgr.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "alice", DeclarationID: id,
+	})
+	require.ErrorIs(t, err, session.ErrBadRepository)
+	require.Nil(t, out)
+	f.requireNoMutation(before)
+}
+
 // actorLoadCheckingDice observes the execution boundary: by the first attack
 // roll, the turn path must have loaded the actor exactly once. The resolution
 // may legitimately consult standing again after the roll and after damage.
@@ -205,6 +226,8 @@ func (d *actorLoadCheckingDice) Roll(_ context.Context, _ int) (int, error) {
 	if d.next == 0 {
 		require.Equal(d.t, 1, d.characters.asked["alice"],
 			"downed verdict and compiled offer must share one strict actor load before execution")
+		require.Equal(d.t, 1, d.characters.asked["bob"],
+			"compiled cast must snapshot each non-actor participant once and execution must not refetch it")
 	}
 	require.Less(d.t, d.next, len(d.rolls), "execution requested an unexpected die roll")
 	roll := d.rolls[d.next]
@@ -228,6 +251,7 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 	require.NoError(t, err)
 	id := currentAttackID(t, mgr, "sess", "alice")
 	characters.asked["alice"] = 0
+	characters.asked["bob"] = 0
 	characters.loads = 0
 
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{

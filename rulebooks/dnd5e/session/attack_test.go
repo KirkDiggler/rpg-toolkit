@@ -778,15 +778,11 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
 }
 
-// TestASheetlessTargetIsRefusedByName covers content standing in a world that
-// nobody spawned.
-//
-// An authored monster has no stored sheet until Spawn records one, so there is
-// nothing to read an armour class off and nothing for damage to land on. The
-// strike would fail on its own, but further from the cause and in the
-// resolution module's vocabulary — this refuses earlier, names who, and keeps
-// that module's sentinels off the seam.
-func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
+// TestAffordThenAttackRefusesASheetlessTargetBeforeExecution covers content
+// standing in a world that nobody spawned. Afford and unchanged Attack must
+// agree before resolution: the candidate remains visible but is Unreadable,
+// the declaration is unavailable, and echoing its selector mutates nothing.
+func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecution() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{
@@ -812,11 +808,27 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 	})
 	s.Require().NoError(err)
 
+	afford, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	decl := requireSingleAttackDeclaration(s.T(), afford.Declarations)
+	s.False(decl.Available, "a sheetless target cannot produce an executable Attack")
+	s.Require().NotNil(decl.Why)
+	s.Equal(session.ShortfallUnreadable, decl.Why.Reason)
+	s.Require().Len(decl.Candidates, 1)
+	s.Equal("ogre", decl.Candidates[0].Member)
+	s.False(decl.Candidates[0].Available)
+	s.Require().NotNil(decl.Candidates[0].Why)
+	s.Equal(session.ShortfallUnreadable, decl.Candidates[0].Why.Reason)
+
+	beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
+		s.sessions.saves, s.encounters.saves, s.characters.saves
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "ogre",
-		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
+		Session: "sess", Attacker: "alice", Target: "ogre", DeclarationID: decl.ID,
 	})
-	s.ErrorIs(err, session.ErrNoSheet)
+	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Equal(beforeSessionSaves, s.sessions.saves)
+	s.Equal(beforeEncounterSaves, s.encounters.saves)
+	s.Equal(beforeCharacterSaves, s.characters.saves)
 }
 
 // duelAmong wires a manager whose world holds the named players and whose
@@ -907,18 +919,76 @@ func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent
 // a member who is neither swinging nor being swung at still joins the cast,
 // because applicability is an effect's own predicate (ADR-0038). Their sheet
 // being absent is the same failure as the attacker's and must read the same way.
-func (s *AttackTestSuite) TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt() {
-	mgr := s.duelAmong([]string{"alice", "bob", "carol"}, armedFighter("alice"), armedFighter("bob"))
+func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnchangedAttack() {
+	tests := []struct {
+		name             string
+		sheets           []*character.Data
+		unreadableMember string
+		candidate        bool
+	}{
+		{
+			name: "unreadable target is a candidate refusal",
+			sheets: []*character.Data{
+				armedFighter("alice"), unreadableFighter("bob"),
+			},
+			unreadableMember: "bob",
+			candidate:        true,
+		},
+		{
+			name: "unreadable non-target participant is a global refusal",
+			sheets: []*character.Data{
+				armedFighter("alice"), armedFighter("bob"), unreadableFighter("carol"),
+			},
+			unreadableMember: "carol",
+			candidate:        false,
+		},
+	}
 
-	_, err := s.swing(mgr)
-	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoCharacter, "carol is in the roster and not in the repository")
-	s.NotErrorIs(err, session.ErrBadCharacter, "absent is not corrupt")
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			members := []string{"alice", "bob"}
+			if tc.unreadableMember == "carol" {
+				members = append(members, "carol")
+			}
+			mgr := s.duelAmong(members, tc.sheets...)
+			if !tc.candidate {
+				// Carol remains a resolution-required roster participant but is
+				// not a live target candidate for Alice.
+				injectHolding(s.T(), s.encounters, tc.unreadableMember, nil)
+			}
 
-	// The role noun earns its keep here more than anywhere else: the host asked
-	// alice to swing at bob and gets back a complaint about carol, who it never
-	// named. "participant" is the word that explains why she was read at all.
-	s.Contains(err.Error(), `participant "carol"`, "say which part the missing member was playing")
+			afford, err := mgr.Afford(context.Background(), &session.AffordInput{
+				Session: "sess", Member: "alice",
+			})
+			s.Require().NoError(err)
+			decl := requireSingleAttackDeclaration(s.T(), afford.Declarations)
+			s.False(decl.Available, "Afford must not advertise an Attack whose cast cannot attach")
+			s.Require().NotNil(decl.Why)
+			s.Equal(session.ShortfallUnreadable, decl.Why.Reason)
+
+			bob := decl.Candidates[0]
+			s.Equal("bob", bob.Member)
+			if tc.candidate {
+				s.False(bob.Available)
+				s.Require().NotNil(bob.Why)
+				s.Equal(session.ShortfallUnreadable, bob.Why.Reason)
+			} else {
+				s.True(bob.Available, "the readable target keeps its independent reach fact")
+				s.Nil(bob.Why)
+			}
+
+			beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
+				s.sessions.saves, s.encounters.saves, s.characters.saves
+			out, err := mgr.Attack(context.Background(), &session.AttackInput{
+				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: decl.ID,
+			})
+			s.ErrorIs(err, session.ErrStaleDeclaration)
+			s.Nil(out)
+			s.Equal(beforeSessionSaves, s.sessions.saves)
+			s.Equal(beforeEncounterSaves, s.encounters.saves)
+			s.Equal(beforeCharacterSaves, s.characters.saves)
+		})
+	}
 }
 func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},

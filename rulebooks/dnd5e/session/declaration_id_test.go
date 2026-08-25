@@ -349,7 +349,7 @@ func TestCompiledOfferCollisionDuplicateIDFailClosed(t *testing.T) {
 
 		require.NoError(t, idx.add(testOffer{name: "alpha"}))
 		err := idx.add(testOffer{name: "beta"})
-		require.ErrorIs(t, err, ErrDeclarationIDCollision)
+		require.ErrorIs(t, err, errDeclarationIDCollision)
 	})
 
 	t.Run("identical offers with the same ID are recurrence, not collision", func(t *testing.T) {
@@ -360,6 +360,39 @@ func TestCompiledOfferCollisionDuplicateIDFailClosed(t *testing.T) {
 
 		require.NoError(t, idx.add(testOffer{name: "alpha"}))
 		require.NoError(t, idx.add(testOffer{name: "alpha"}))
+	})
+
+	t.Run("RFC8785-equivalent map order is recurrence, not collision", func(t *testing.T) {
+		left := goldenAttackDefinition()
+		left.Attack.OnHit = []combatActions.ConditionApplication{{
+			Ref: *refs.Conditions.Prone(), Parameters: json.RawMessage(`{"first":1,"second":2}`),
+			Save: saves.NewSaveGate(abilities.STR, 11),
+		}}
+		right := left.Clone()
+		right.Attack.OnHit[0].Parameters = json.RawMessage(`{"second":2,"first":1}`)
+
+		leftID, err := declarationID(declarationIDInput{
+			Session: "session-1", Member: "fighter-1", Verb: VerbAttack, Slot: SlotAction, Attack: &left,
+		})
+		require.NoError(t, err)
+		rightID, err := declarationID(declarationIDInput{
+			Session: "session-1", Member: "fighter-1", Verb: VerbAttack, Slot: SlotAction, Attack: &right,
+		})
+		require.NoError(t, err)
+		require.Equal(t, leftID, rightID, "RFC8785 canonical selectors are equal")
+		leftVariant, err := selectorVariant(VerbAttack, &left)
+		require.NoError(t, err)
+		rightVariant, err := selectorVariant(VerbAttack, &right)
+		require.NoError(t, err)
+		require.NotEqual(t, string(leftVariant), string(rightVariant),
+			"the fixture must reach equality with different raw object order")
+
+		offers := []compiledOffer{
+			{declaration: Declaration{ID: leftID}, verb: VerbAttack, slot: SlotAction, variant: leftVariant},
+			{declaration: Declaration{ID: rightID}, verb: VerbAttack, slot: SlotAction, variant: rightVariant},
+		}
+		require.NoError(t, guardOfferCollisions(offers),
+			"raw JSON object order must not turn equivalent offers into a collision")
 	})
 
 	t.Run("ID function error propagates", func(t *testing.T) {

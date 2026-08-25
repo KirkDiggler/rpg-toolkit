@@ -38,6 +38,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -213,26 +215,34 @@ var sessionSentinels = map[string]error{
 }
 
 // TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual
-// allow-list rather than a list that can become incomplete unnoticed.
+// allow-list rather than a list that can become incomplete unnoticed. It scans
+// every Go file in the package, not just errors.go, so a stray exported Err*
+// sentinel beside its one caller cannot bypass review.
 func TestExportedSentinelAllowListIsComplete(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "errors.go", nil, 0)
+	paths, err := filepath.Glob("*.go")
 	if err != nil {
-		t.Fatalf("parse errors.go: %v", err)
+		t.Fatalf("glob package Go files: %v", err)
 	}
 	found := map[string]bool{}
-	for _, declaration := range file.Decls {
-		gen, ok := declaration.(*ast.GenDecl)
-		if !ok || gen.Tok != token.VAR {
-			continue
+	for _, path := range paths {
+		file, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if parseErr != nil {
+			t.Fatalf("parse %s: %v", path, parseErr)
 		}
-		for _, spec := range gen.Specs {
-			values, ok := spec.(*ast.ValueSpec)
-			if !ok {
+		for _, declaration := range file.Decls {
+			gen, ok := declaration.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
 				continue
 			}
-			for _, name := range values.Names {
-				if name.IsExported() && len(name.Name) >= 3 && name.Name[:3] == "Err" {
-					found[name.Name] = true
+			for _, spec := range gen.Specs {
+				values, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, name := range values.Names {
+					if name.IsExported() && strings.HasPrefix(name.Name, "Err") {
+						found[name.Name] = true
+					}
 				}
 			}
 		}
@@ -518,21 +528,16 @@ func (s *SentinelSuite) TestASwingWithAnEmptyHandIsNotRefused() {
 	s.NoError(err)
 }
 
-// TestOneSheetStoredUnderTwoNames drives the resolution module's own validation
-// — the arm translateResolution was written for.
-//
-// The roster holds two members and the repository answers both with the same
-// sheet, which is a seeding mistake rather than corruption: the bytes are
-// valid, and only their identity is wrong. Resolution refuses because two
-// sheets under one ID would attach twice and be written back once, and the host
-// is entitled to hear that in this package's vocabulary — its own character
-// data is what needs looking at.
+// TestOneSheetStoredUnderTwoNames pins dependency preflight ahead of
+// resolution. The roster holds two members and the repository answers both
+// with Alice's sheet; Afford marks the Attack Unreadable, and echoing that
+// unavailable selector is stale before resolution or mutation.
 func (s *SentinelSuite) TestOneSheetStoredUnderTwoNames() {
 	chars := newFakeCharacters(armedFighter("alice"))
 	chars.byID["bob"] = armedFighter("alice")
 
 	err := s.swing(s.armedDuel(chars))
-	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+	s.refusedInOurVocabulary(err, session.ErrStaleDeclaration)
 }
 
 // TestASwingWithAnUnreadableSheet is the loader's own refusal on the swing

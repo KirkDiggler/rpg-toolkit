@@ -101,11 +101,12 @@
 // to its authenticated caller.
 //
 // The compiled object never crosses S2. For Attack it privately carries the
-// complete priced definition, matching resolution cost/readied payer, and the
-// shared candidate preflight. Execution reuses those values rather than
-// selecting one definition and independently compiling another. EndTurn is
-// intentionally clock-only; it does not inherit Attack/Move sheet, standing,
-// or economy gates.
+// complete priced definition, matching resolution cost/readied payer, shared
+// candidate preflight, and one raw participant-data cast. Compilation strictly
+// exercises that cast through the same public character/monster load-and-attach
+// APIs resolution uses. Execution reuses those exact raw participant values and
+// never refetches a participant after selection. EndTurn is intentionally
+// clock-only; it does not inherit Attack/Move sheet, standing, or economy gates.
 //
 // # The suspension spine, and where it went
 //

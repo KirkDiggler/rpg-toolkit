@@ -53,7 +53,7 @@ turn it returns exactly one current compiled variant for each supported verb:
 
 | Verb | Selector target | Compiled data | Final execution input |
 |---|---|---|---|
-| Attack | member | complete priced `actions.Definition`, matching resolution cost/readied payer, full-ref `AttackRef`, and one preflight row per live candidate | echoed ID + selected member |
+| Attack | member | complete priced `actions.Definition`, matching resolution cost/readied payer, full-ref `AttackRef`, one preflight row per live candidate, and one strictly preflighted raw resolution cast | echoed ID + selected member |
 | Move | path | readied actor sheet and remaining movement; path price is unknown until execution | echoed ID + path |
 | EndTurn | none | clock-derived selector only | echoed ID |
 
@@ -66,7 +66,9 @@ A compiled Attack definition includes a defensive clone of the **actual**
 `SpendProfile` before selector generation. The matching resolution cost holds a
 second clone. Changing the price therefore changes the selector, and execution
 cannot select one costless weapon definition and independently compile another
-priced definition.
+priced definition. The collision guard compares RFC 8785-canonical variant
+bytes, so equivalent embedded JSON object order is recurrence rather than a
+false collision.
 
 Attack candidates are every current live sight holding (`CurrentVia` non-empty)
 except the actor, sorted by member ID. Stale memories and undisclosed members
@@ -75,8 +77,14 @@ shortfall. Missing position for a live candidate fails closed. Projection
 copies each candidate `Why`, so caller mutation cannot alter internal preflight
 state. The same private target-preflight function is used by Afford and
 regenerated Attack execution; an injected-refusal regression proves they move
-together. Normal target/reach changes therefore refuse as `ErrStaleDeclaration`;
-`ErrOutOfReach` remains final defensive resolution validation.
+together. Offer compilation also gathers every roster member's raw sheet once
+and validates the cast through the same public strict loaders/attach APIs
+resolution uses. A missing/unreadable candidate keeps its row with `UNREADABLE`;
+an unreadable non-target dependency disables Attack globally while preserving
+other candidate reach facts. Selected execution reuses that exact raw cast and
+never refetches participant data. Normal target/reach changes therefore refuse
+as `ErrStaleDeclaration`; `ErrOutOfReach` remains final defensive resolution
+validation.
 
 `AttackRef.Ref` is the complete catalog identity (`dnd5e:weapons:longsword`),
 not a bare ID. The same helper projects Declaration, AttackOutput, and the
@@ -92,6 +100,7 @@ Blockers are per verb rather than an incomplete declaration list:
 | downed | blocked | blocked | clock-valid EndTurn remains compiled |
 | unreadable character | `UNREADABLE`, empty ID | `UNREADABLE`, empty ID | unaffected |
 | unreadable Attack | `UNREADABLE`, empty ID | independently compiled | unaffected |
+| unreadable target/cast participant | compiled but unavailable; candidate/global `UNREADABLE`, rows retained | independently compiled | unaffected |
 | no budget / no available target | compiled but unavailable, non-empty ID | independently compiled | unaffected |
 
 Every blocker keeps its fixed target kind and has empty ID, absent AttackRef,
@@ -118,6 +127,8 @@ offer before mutation:
   cannot become a free move.
 - Unknown, mismatched, now-unavailable, or target-invalid selection returns
   `ErrStaleDeclaration` before dice, movement, writes, or story.
+- A repository returning a `SessionData.ID` different from the requested key is
+  `ErrBadRepository`; selector scope always uses the requested canonical key.
 - Omission returns `ErrNoDeclarationID`.
 
 The intentional pre-selection precedence is explicit: basic identity/path

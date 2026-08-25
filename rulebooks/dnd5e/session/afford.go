@@ -207,18 +207,22 @@ type AffordOutput struct {
 // [compileOffers] assembles and prices one Attack definition, clones the
 // actual SpendProfile into Definition.Cost before hashing it, and asks
 // [combat.CanPay] against the same readied sheet execution will regenerate.
-// Attack then selects and reuses that compiled definition, price, sheet, and
-// shared target preflight. Move likewise reuses its compiled readied sheet;
-// EndTurn compiles from the clock alone.
+// It also gathers and strictly preflights one raw resolution cast. Attack then
+// selects and reuses that compiled definition, price, sheet, shared target
+// preflight, and exact raw cast without refetching participants. Move likewise
+// reuses its compiled readied sheet; EndTurn compiles from the clock alone.
 //
 // # The full current gate
 //
 // The clock-active comparison precedes every sheet load and blocks all three
 // verbs. Downed and unreadable dependencies are then applied per verb: Attack
-// and Move need a standing, readable actor; EndTurn needs only its real clock
-// gate. Candidate and budget failures keep a compiled Attack with a selector
-// and exact reasons, but mark it unavailable; execution treats an echoed
-// now-unavailable selector as [ErrStaleDeclaration].
+// and Move need a standing, readable actor; Attack additionally needs every
+// resolution participant to load and attach strictly; EndTurn needs only its
+// real clock gate. An unreadable candidate keeps its row with Unreadable, while
+// an unreadable cast dependency disables Attack globally without erasing other
+// candidate reach facts. Candidate and budget failures keep a compiled Attack
+// with a selector and exact reasons, but mark it unavailable; execution treats
+// an echoed now-unavailable selector as [ErrStaleDeclaration].
 //
 // # Reads, and reads only
 //
@@ -233,7 +237,10 @@ type AffordOutput struct {
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, or ErrNoMember if the member is not in this encounter.
 // Missing/unreadable actor sheets and attacks are projected as per-verb
-// Unreadable blockers rather than failing the whole read. Returns ErrBadCost if
+// Unreadable blockers rather than failing the whole read. Missing/unreadable
+// resolution participants make the compiled Attack unavailable; target
+// candidates carry their own Unreadable reason and non-target dependencies
+// produce the declaration-level one. Returns ErrBadCost if
 // the rulebook cannot compile this member's own price. Returns a wrapped error
 // when a live candidate holds no position in the roster: a live-sight holding
 // whose subject the encounter no longer places is an internal inconsistency
@@ -290,7 +297,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// repository reads. EndTurn remains clock-only when that actor is downed or
 	// unreadable.
 	actor := m.loadActorSheet(ctx, in.Member)
-	offers, err := m.compileOffers(ctx, enc, data, in.Member, clock, actor)
+	offers, err := m.compileOffers(ctx, enc, data, in.Session, in.Member, clock, actor)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}

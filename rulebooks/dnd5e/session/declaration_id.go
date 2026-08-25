@@ -26,11 +26,11 @@ const (
 	variantEndTurnSealed = "session:end-turn:v1"
 )
 
-// ErrDeclarationIDCollision is returned by [indexCompiledOffers] when two
-// non-identical compiled offers collide on the same declaration ID. Afford and
-// execution fail closed as an internal provider defect rather than selecting
-// either offer; the same offer recurring with the same ID is not a collision.
-var ErrDeclarationIDCollision = errors.New(
+// errDeclarationIDCollision is returned internally when two non-identical
+// compiled offers collide on one declaration ID. It is a provider defect, not
+// a host-facing remedy, so Afford/execution fail closed without exporting a new
+// session sentinel.
+var errDeclarationIDCollision = errors.New(
 	"declaration id collision between non-identical offers")
 
 // declarationIDInput is the material a declaration selector is built from. It
@@ -115,6 +115,26 @@ func declarationID(input declarationIDInput) (string, error) {
 
 	sum := sha256.Sum256(canonical)
 	return declarationPrefix + base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
+	wrapped, err := json.Marshal(struct {
+		Variant json.RawMessage `json:"variant"`
+	}{Variant: raw})
+	if err != nil {
+		return nil, fmt.Errorf("declaration selector variant marshal: %w", err)
+	}
+	canonical, err := jsoncanonicalizer.Transform(wrapped)
+	if err != nil {
+		return nil, fmt.Errorf("declaration selector variant canonicalization: %w", err)
+	}
+	var out struct {
+		Variant json.RawMessage `json:"variant"`
+	}
+	if err := json.Unmarshal(canonical, &out); err != nil {
+		return nil, fmt.Errorf("declaration selector canonical variant read: %w", err)
+	}
+	return out.Variant, nil
 }
 
 // validateDeclarationVerbSlot rejects any verb or slot byte outside the seam's
@@ -205,9 +225,9 @@ func newIndexCompiledOffers[T any](
 	}
 }
 
-// add records offer under its declaration ID. It returns [ErrDeclarationIDCollision]
-// when the ID is already present and the existing offer is not equal to offer.
-// An ID-function error propagates unchanged.
+// add records offer under its declaration ID. It returns
+// errDeclarationIDCollision when the ID is already present and the existing
+// offer is not equal to offer. An ID-function error propagates unchanged.
 func (idx *indexCompiledOffers[T]) add(offer T) error {
 	id, err := idx.id(offer)
 	if err != nil {
@@ -217,7 +237,7 @@ func (idx *indexCompiledOffers[T]) add(offer T) error {
 		if idx.equal(existing, offer) {
 			return nil
 		}
-		return ErrDeclarationIDCollision
+		return errDeclarationIDCollision
 	}
 	idx.entries[id] = offer
 	return nil

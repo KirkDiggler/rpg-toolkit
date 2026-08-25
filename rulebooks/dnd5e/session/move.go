@@ -212,7 +212,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		if in.DeclarationID == "" {
 			return nil, fmt.Errorf("move: %w", ErrNoDeclarationID)
 		}
-		offers, compileErr := m.compileOffers(ctx, scope.enc, scope.data, in.Member, clock, actor)
+		offers, compileErr := m.compileOffers(ctx, scope.enc, scope.data, scope.session, in.Member, clock, actor)
 		if compileErr != nil {
 			return nil, fmt.Errorf("move: %w", compileErr)
 		}

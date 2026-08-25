@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -52,6 +53,11 @@ type compiledOffer struct {
 	// price is the exact Attack price compiled into attack.Cost and handed to
 	// resolution. Nil for Move, EndTurn, and blockers.
 	price *swingPrice
+	// cast is the one raw resolution-participant snapshot gathered and strictly
+	// preflighted while this Attack offer was compiled. Selected execution hands
+	// these exact data pointers to resolution and never refetches a participant.
+	// Empty for Move, EndTurn, and blockers.
+	cast []resolution.Participant
 	// verb and slot are the selector material the declaration ID is derived
 	// from, kept here so the collision guard can compare offers by selector
 	// material rather than candidate state.
@@ -110,11 +116,12 @@ func (m *Manager) compileOffers(
 	ctx context.Context,
 	enc *encounter.Encounter,
 	data *SessionData,
+	sessionID string,
 	member string,
 	clock *encounter.ClockOfOutput,
 	actor actorSheet,
 ) ([]compiledOffer, error) {
-	endTurn, err := m.buildEndTurnOffer(data.ID, member)
+	endTurn, err := m.buildEndTurnOffer(sessionID, member)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +173,7 @@ func (m *Manager) compileOffers(
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 
-	move, err := buildMoveOffer(data.ID, member, sheet)
+	move, err := buildMoveOffer(sessionID, member, sheet)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +241,34 @@ func (m *Manager) compileOffers(
 		return nil, err
 	}
 
-	// Top Attack available requires the global budget gate AND at least one
+	// Compile the raw resolution cast once, then strictly exercise the same
+	// public character/monster load-and-attach APIs resolution uses. Candidate
+	// failures stay on their rows; any unreadable participant also disables the
+	// declaration globally because resolution's pass-everyone cast could not
+	// start against any selected target. The ephemeral attach bus and loaded
+	// runtime values die here; only the exact raw data snapshot is retained.
+	cast, dependencyFailures := m.compileResolutionCast(ctx, data, roster, price.payer)
+	var dependencyWhy *Shortfall
+	for _, failure := range dependencyFailures {
+		why := Shortfall{
+			Reason: ShortfallUnreadable,
+			Text:   fmt.Sprintf("resolution participant %q is unreadable: %v", failure.member, failure.err),
+		}
+		if dependencyWhy == nil {
+			copied := why
+			dependencyWhy = &copied
+		}
+		for i := range candidates {
+			if candidates[i].member == failure.member {
+				candidates[i].available = false
+				candidateWhy := why
+				candidates[i].why = &candidateWhy
+				break
+			}
+		}
+	}
+
+	// Top Attack available requires the global dependency and budget gates AND at least one
 	// candidate in reach. The global budget reason takes precedence over the
 	// no-target-in-reach reason at the declaration level; if the budget
 	// passes but no candidate is in reach, the declaration's Why is
@@ -247,9 +281,11 @@ func (m *Manager) compileOffers(
 			break
 		}
 	}
-	attackAvailable := budgetOK && anyAvailable
+	attackAvailable := dependencyWhy == nil && budgetOK && anyAvailable
 	var attackWhy *Shortfall
 	switch {
+	case dependencyWhy != nil:
+		attackWhy = dependencyWhy
 	case !budgetOK:
 		attackWhy = budgetWhy
 	case !anyAvailable:
@@ -258,7 +294,7 @@ func (m *Manager) compileOffers(
 	}
 
 	attackRef := attackRefFor(definition)
-	attackID, attackVariant, err := selectorIDFor(data.ID, member, VerbAttack, slot, &definition)
+	attackID, attackVariant, err := selectorIDFor(sessionID, member, VerbAttack, slot, &definition)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +319,7 @@ func (m *Manager) compileOffers(
 		targets: targets,
 		sheet:   sheet,
 		price:   price,
+		cast:    cast,
 		verb:    VerbAttack,
 		slot:    slot,
 		variant: attackVariant,
@@ -507,6 +544,10 @@ func selectorIDFor(
 	if err != nil {
 		return "", nil, err
 	}
+	variant, err = canonicalSelectorVariant(variant)
+	if err != nil {
+		return "", nil, err
+	}
 	id, err = declarationID(declarationIDInput{
 		Session: session,
 		Member:  member,
@@ -543,12 +584,23 @@ func guardOfferCollisions(offers []compiledOffer) error {
 }
 
 // offerSelectorEqual reports whether two compiled offers share selector
-// material — verb, slot, and the canonical variant bytes the declaration ID
-// is derived from. Candidate state is deliberately excluded: two offers
-// with the same selector but different candidate positions are the same
-// offer recurring, not a collision.
+// material — verb, slot, and the RFC 8785 canonical variant bytes the
+// declaration ID is derived from. Candidate and raw-cast state are deliberately
+// excluded: two offers with the same selector but different current world data
+// are the same offer recurring, not a collision.
 func offerSelectorEqual(a, b compiledOffer) bool {
-	return a.verb == b.verb && a.slot == b.slot && bytes.Equal(a.variant, b.variant)
+	if a.verb != b.verb || a.slot != b.slot {
+		return false
+	}
+	aVariant, err := canonicalSelectorVariant(a.variant)
+	if err != nil {
+		return false
+	}
+	bVariant, err := canonicalSelectorVariant(b.variant)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(aVariant, bVariant)
 }
 
 // verbRank orders declarations in the deterministic output order the seam

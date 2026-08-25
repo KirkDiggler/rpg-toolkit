@@ -25,14 +25,19 @@ history and must not be read as current support.
 The D&D 5e module now gives every live condition a canonical `Ref`, projects
 immutable feature/condition/non-magical-resource `character.StatusView` data,
 and fails on unknown or conflicting display facts rather than inspecting or
-dropping persistence JSON. Spell slots and legacy class resources are excluded;
-this wave adds no magic system.
+dropping persistence JSON. Its four-build resource catalog is closed by class,
+feature key, and canonical name; strict loads reject malformed owner/private
+bounds while the legacy lenient loader drops them without normalization. Spell
+slots and legacy class resources are excluded; this wave adds no magic system.
 
 The independently versioned session module projects one compiled Attack, Move,
 and EndTurn offer per current turn. Attack selectors hash the complete validated
-definition **with its actual cloned SpendProfile**; execution regenerates and
-reuses that selected definition, matching cost/readied sheet, and shared target
-preflight. Attack/EndTurn require echoed IDs, turn Move requires one, and world
+definition **with its actual cloned SpendProfile**; collision equality uses
+RFC 8785-canonical variant bytes. Compilation gathers and strictly preflights one
+raw resolution cast, projecting unreadable candidates/dependencies before a
+client can select the offer; execution reuses that exact cast without refetching
+participants. It also reuses the selected definition, matching cost/readied
+sheet, and shared target preflight. Attack/EndTurn require echoed IDs, turn Move requires one, and world
 Move requires empty. Unknown, mismatched, unavailable, or target-invalid
 selection is `ErrStaleDeclaration` before dice/movement/write/story; omission is
 `ErrNoDeclarationID`. EndTurn remains clock-only under the per-verb blocker

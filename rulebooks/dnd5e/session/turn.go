@@ -280,7 +280,7 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 	if string(clock.Active) != in.Member {
 		return nil, fmt.Errorf("endturn: %w", ErrNotYourTurn)
 	}
-	current, err := m.buildEndTurnOffer(in.Session, in.Member)
+	current, err := m.buildEndTurnOffer(scope.session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("endturn: %w", err)
 	}

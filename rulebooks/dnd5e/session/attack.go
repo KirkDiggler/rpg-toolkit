@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -143,10 +145,13 @@ type AttackOutput struct {
 // ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed, or ErrSaveFailed
 // with a populated report.
 //
-// ErrNoCharacter and ErrBadCharacter can still identify another participant
-// resolution must load. If the attacker's own sheet is absent or unreadable,
-// Afford instead emits an Unreadable blocker with no selector, so execution has
-// no declaration to echo.
+// Participant dependency failures normally surface before this verb through
+// Afford: unreadable targets keep candidate rows with ShortfallUnreadable, an
+// unreadable non-target cast member disables the declaration globally, and an
+// unreadable actor/Attack emits an early blocker with no selector. Echoing an
+// unavailable compiled selector is ErrStaleDeclaration; resolution receives
+// the exact raw cast compilation already preflighted and performs no repository
+// refetch after selection.
 func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("attack: %w", ErrNilInput)
@@ -219,7 +224,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// exact current offer. compileOffers owns assembly, pricing, selector
 	// identity, and target preflight; execution reuses those compiled values
 	// instead of independently compiling a second attack after selection.
-	offers, err := m.compileOffers(ctx, scope.enc, scope.data, in.Attacker, clock, actor)
+	offers, err := m.compileOffers(ctx, scope.enc, scope.data, scope.session, in.Attacker, clock, actor)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
@@ -231,32 +236,18 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	if !ok || !candidate.available {
 		return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrStaleDeclaration)
 	}
-	if selected.attack == nil || selected.price == nil || selected.sheet == nil {
+	if selected.attack == nil || selected.price == nil || selected.sheet == nil || len(selected.cast) == 0 {
 		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
-	}
-
-	// A member with no stored sheet cannot be swung at: there is nothing to
-	// read an armour class off and nothing for damage to land on. Authored
-	// content placed straight into a world has no sheet until something spawns
-	// it, so this is reachable and worth naming here — the alternative is the
-	// strike failing later, further from the cause.
-	if kinds[in.Target] == encounter.MemberKind(KindMonster) {
-		if _, ok := npcSheet(scope.data, in.Target); !ok {
-			return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrNoSheet)
-		}
 	}
 
 	definition := *selected.attack
 	price := selected.price
 	cost := price.cost
 
-	// The readied sheet goes into the cast rather than the stored one: it is the
-	// sheet whose turn was just lit or refilled, and the door is about to charge
-	// exactly that bank. See swingPrice for why the two travel together.
-	cast, err := m.castFor(ctx, scope, roster, price.payer)
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
+	// The selected offer owns the one exact raw cast snapshot gathered and
+	// strictly preflighted during compilation. Resolution reconstitutes those
+	// bytes; execution performs no participant repository read after selection.
+	cast := selected.cast
 	machine, err := resolution.NewAction(&resolution.ActionInput{
 		Definition: definition,
 		AttackerID: in.Attacker,
@@ -551,18 +542,97 @@ func (m *Manager) loadAttackSheet(ctx context.Context, attacker string) (*charac
 	return loaded, nil
 }
 
-// castFor gathers every member of the encounter as a participant.
-//
-// EVERY member, not the two swinging: scope is the caller's and applicability
-// is the effect's own predicate (ADR-0038). A bard three cells away whose
-// Bless is running has to be in the room for their subscription to fire, and
-// deciding they are irrelevant here would be this package deciding a rule.
-//
-// One member may arrive already in hand. The attacker's sheet has had its turn
-// readied by the time the cast is built (see [Manager.priceSwing]), and that
-// readying is state the stored copy does not have — so the readied sheet is
-// substituted rather than re-fetched. Passing nil means nobody was readied,
-// which is what free roam looks like.
+type resolutionDependencyFailure struct {
+	member string
+	err    error
+}
+
+// compileResolutionCast gathers one raw data snapshot for every roster member
+// and strictly preflights each available sheet through the same public pure
+// loaders and attach APIs resolution uses. It returns all dependency failures
+// so offer compilation can preserve every candidate row while applying
+// candidate-specific and global Unreadable gates.
+func (m *Manager) compileResolutionCast(
+	ctx context.Context,
+	data *SessionData,
+	roster []encounter.Member,
+	readied *character.Data,
+) ([]resolution.Participant, []resolutionDependencyFailure) {
+	npcs := make(map[string]*monster.Data, len(data.NPCs))
+	for i := range data.NPCs {
+		npcs[data.NPCs[i].ID] = &data.NPCs[i]
+	}
+
+	cast := make([]resolution.Participant, 0, len(roster))
+	failures := make([]resolutionDependencyFailure, 0)
+	for _, member := range roster {
+		id := string(member.ID)
+		if member.Kind == encounter.MemberKind(KindMonster) {
+			sheet, ok := npcs[id]
+			if !ok {
+				failures = append(failures, resolutionDependencyFailure{member: id, err: ErrNoSheet})
+				continue
+			}
+			cast = append(cast, resolution.Participant{Monster: sheet})
+			continue
+		}
+
+		if readied != nil && readied.ID == id {
+			cast = append(cast, resolution.Participant{Character: readied})
+			continue
+		}
+
+		sheet, err := m.fetchCharacterData(ctx, "participant", id)
+		if err != nil {
+			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
+			continue
+		}
+		if sheet.ID != id {
+			failures = append(failures, resolutionDependencyFailure{
+				member: id,
+				err:    fmt.Errorf("GetCharacter(%q) returned character %q: %w", id, sheet.ID, ErrBadRepository),
+			})
+			continue
+		}
+		cast = append(cast, resolution.Participant{Character: sheet})
+	}
+
+	// Resolution attaches in sorted participant order (R4). Use that order and
+	// one ephemeral bus here too, so preflight is the same one-cast semantics,
+	// not isolated per-sheet checks that could miss an attach interaction.
+	ordered := append([]resolution.Participant(nil), cast...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
+	bus := newCallBus()
+	for _, participant := range ordered {
+		id := participant.ID()
+		var err error
+		switch {
+		case participant.Character != nil:
+			var loaded *character.Character
+			loaded, err = character.Load(ctx, participant.Character)
+			if err == nil {
+				err = character.Attach(ctx, loaded, bus)
+			}
+		case participant.Monster != nil:
+			var loaded *monster.Monster
+			loaded, err = monstertraits.LoadMonster(ctx, participant.Monster)
+			if err == nil {
+				err = monstertraits.AttachMonster(ctx, loaded, bus, &diceSeam{roller: m.dice})
+			}
+		default:
+			err = fmt.Errorf("empty participant")
+		}
+		if err != nil {
+			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
+		}
+	}
+
+	return cast, failures
+}
+
+// castFor gathers every member for a monster-driven strike. Player Attack
+// offers use compileResolutionCast instead so Afford can validate and retain
+// the exact raw snapshot selected execution consumes.
 func (m *Manager) castFor(
 	ctx context.Context, scope *writeScope, roster []encounter.Member, readied *character.Data,
 ) ([]resolution.Participant, error) {

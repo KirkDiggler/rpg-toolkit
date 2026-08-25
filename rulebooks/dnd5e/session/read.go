@@ -320,6 +320,10 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 		return nil, fmt.Errorf(
 			"%q: GetSession reported success with no data: %w", sessionID, ErrBadRepository)
 	}
+	if data.ID != sessionID {
+		return nil, fmt.Errorf(
+			"GetSession(%q) returned session %q: %w", sessionID, data.ID, ErrBadRepository)
+	}
 	return data, nil
 }
 
