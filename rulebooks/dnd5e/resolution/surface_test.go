@@ -23,6 +23,9 @@ import (
 // behaviour it will rely on.
 type quietEffect struct{}
 
+func (quietEffect) Ref() *core.Ref {
+	return &core.Ref{Module: "dnd5e", Type: "conditions", ID: "quiet"}
+}
 func (quietEffect) IsApplied() bool                                   { return true }
 func (quietEffect) Apply(_ context.Context, _ events.EventBus) error  { return nil }
 func (quietEffect) Remove(_ context.Context, _ events.EventBus) error { return nil }
