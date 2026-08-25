@@ -10,7 +10,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.99.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.33.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.33.1
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
@@ -26,5 +26,3 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter => /home/kirk/game-dev/rpg-toolkit/.worktrees/run-ending/rulebooks/dnd5e/encounter
