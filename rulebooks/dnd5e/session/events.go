@@ -378,14 +378,17 @@ func (a beatAttack) toRef() AttackRef {
 // (recordFor's own shape); a beat with none does not type.
 func structBody(payload []byte, wantAmount bool) EventBody {
 	var p struct {
-		Actor    string     `json:"actor"`
-		Targets  []string   `json:"targets"`
-		Roll     int        `json:"roll"`
-		Total    int        `json:"total"`
-		Against  int        `json:"against"`
-		Amount   int        `json:"amount"`
-		Critical bool       `json:"critical"`
-		Attack   beatAttack `json:"attack"`
+		Actor               string                 `json:"actor"`
+		Targets             []string               `json:"targets"`
+		Roll                int                    `json:"roll"`
+		Total               int                    `json:"total"`
+		Against             int                    `json:"against"`
+		Amount              int                    `json:"amount"`
+		Critical            bool                   `json:"critical"`
+		Attack              beatAttack             `json:"attack"`
+		DamageComponents    []DamageComponent      `json:"damage_components"`
+		AdvantageSources    []AttackModifierSource `json:"advantage_sources"`
+		DisadvantageSources []AttackModifierSource `json:"disadvantage_sources"`
 	}
 	if json.Unmarshal(payload, &p) != nil ||
 		p.Actor == "" || len(p.Targets) != 1 || p.Attack.Ref == "" {
@@ -400,6 +403,8 @@ func structBody(payload []byte, wantAmount bool) EventBody {
 			Attacker: p.Actor, Target: p.Targets[0],
 			Roll: p.Roll, Total: p.Total, Against: p.Against, Damage: p.Amount,
 			Attack: p.Attack.toRef(), Critical: p.Critical,
+			DamageComponents: p.DamageComponents,
+			AdvantageSources: p.AdvantageSources, DisadvantageSources: p.DisadvantageSources,
 		}
 	}
 	return MissedBody{

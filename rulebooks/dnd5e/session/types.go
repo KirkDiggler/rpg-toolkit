@@ -672,6 +672,27 @@ type DownedBody struct {
 
 func (DownedBody) isEventBody() {}
 
+// DamageComponent is the replayable subset of one resolved damage component.
+// Its order and values come from resolution; consumers display rather than
+// recalculate it.
+type DamageComponent struct {
+	Source     string     `json:"source"`
+	SourceRef  string     `json:"source_ref,omitempty"`
+	Dice       string     `json:"dice,omitempty"`
+	FinalRolls []int      `json:"final_rolls,omitempty"`
+	FlatBonus  int        `json:"flat_bonus"`
+	DamageType DamageType `json:"damage_type"`
+	Multiplier *float64   `json:"multiplier,omitempty"`
+}
+
+// AttackModifierSource identifies one replayable advantage/disadvantage
+// source. Human-readable rules-engine reasons deliberately do not cross this
+// seam.
+type AttackModifierSource struct {
+	SourceRef string `json:"source_ref,omitempty"`
+	SourceID  string `json:"source_id,omitempty"`
+}
+
 // StruckBody is EventStruck's typed body: an attack landed. The numbers
 // AttackOutput gives the attacker, here for every witness, plus what was
 // swung.
@@ -689,6 +710,11 @@ type StruckBody struct {
 	// Attack is what was swung — ref, name, damage type.
 	Attack   AttackRef `json:"attack"`
 	Critical bool      `json:"critical"`
+	// DamageComponents are ordered inputs to the authoritative aggregate Damage.
+	DamageComponents []DamageComponent `json:"damage_components,omitempty"`
+	// AdvantageSources and DisadvantageSources preserve the fold's attribution.
+	AdvantageSources    []AttackModifierSource `json:"advantage_sources,omitempty"`
+	DisadvantageSources []AttackModifierSource `json:"disadvantage_sources,omitempty"`
 }
 
 func (StruckBody) isEventBody() {}
