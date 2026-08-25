@@ -150,6 +150,7 @@ func aFight(
 func (s *EconomySuite) swing() (*session.AttackOutput, error) {
 	return s.mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 	})
 }
 
@@ -164,7 +165,10 @@ func (s *EconomySuite) nextTurn() {
 	s.T().Helper()
 	ctx := context.Background()
 
-	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+	})
 	s.Require().NoError(err, "ending alice's turn")
 
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
@@ -218,11 +222,8 @@ func (s *EconomySuite) TestALevel1FightersSecondSwingIsRefused() {
 
 	_, err = s.swing()
 	s.Require().Error(err, "and there is nothing left to buy a second")
-	s.ErrorIs(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), "action",
-		"the refusal names the currency that ran out")
-	s.Contains(err.Error(), "alice",
-		"and who ran out of it")
+	s.ErrorIs(err, session.ErrStaleDeclaration,
+		"a selector whose current offer is unavailable is stale before resolution")
 }
 
 // TestTheRefusalIsOursAndNotResolutions is the #1058/#1066 law reaching the
@@ -241,7 +242,7 @@ func (s *EconomySuite) TestTheRefusalIsOursAndNotResolutions() {
 	_, err = s.swing()
 	s.Require().Error(err)
 
-	s.ErrorIs(err, session.ErrCannotAfford, "the host is answered in this package's vocabulary")
+	s.ErrorIs(err, session.ErrStaleDeclaration, "the host is answered in this package's vocabulary")
 	s.NotErrorIs(err, resolution.ErrCannotPay,
 		"and cannot reach resolution's, which would couple it to a module we intend to replace")
 	s.NotErrorIs(err, resolution.ErrBadCost)
@@ -266,9 +267,7 @@ func (s *EconomySuite) TestExtraAttackBuysASecondSwing() {
 
 	_, err = s.swing()
 	s.Require().Error(err, "swing 3 has nothing left")
-	s.ErrorIs(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), "action",
-		"and it is the action that ran out — the bank was emptied by the swing before")
+	s.ErrorIs(err, session.ErrStaleDeclaration)
 }
 
 // TestARefusedSwingWritesNothing is the #1056 shape asked of the economy.
@@ -294,7 +293,7 @@ func (s *EconomySuite) TestARefusedSwingWritesNothing() {
 	economyBefore := *s.storedEconomy()
 
 	_, err = s.swing()
-	s.Require().ErrorIs(err, session.ErrCannotAfford)
+	s.Require().ErrorIs(err, session.ErrStaleDeclaration)
 
 	s.Equal(hpBefore, s.storedSkeleton(), "a refused swing damaged nobody")
 	s.Len(s.story(), storyBefore, "and recorded no beat")
@@ -322,7 +321,7 @@ func (s *EconomySuite) TestTheFirstSwingSurvivesTheRefusal() {
 	s.Require().Equal(8, first.Damage, "15 + 3 STR + 2 proficiency lands; the die scripted to 5 plus 3 deals 8")
 
 	_, err = s.swing()
-	s.Require().ErrorIs(err, session.ErrCannotAfford)
+	s.Require().ErrorIs(err, session.ErrStaleDeclaration)
 
 	s.Equal(13-8, s.storedSkeleton(), "the blow that landed is still on the stored sheet")
 	s.NotEmpty(s.story(), "and its beat is still in the story")
@@ -342,7 +341,7 @@ func (s *EconomySuite) TestANewTurnRefillsTheBank() {
 	_, err := s.swing()
 	s.Require().NoError(err)
 	_, err = s.swing()
-	s.Require().ErrorIs(err, session.ErrCannotAfford, "spent, on turn one")
+	s.Require().ErrorIs(err, session.ErrStaleDeclaration, "spent, on turn one")
 
 	s.nextTurn()
 
@@ -409,6 +408,6 @@ func (s *EconomySuite) TestTheTurnIsLitOnceAndSpentFromThereafter() {
 	s.Zero(lit.ActionsRemaining, "and the action it cost is spent")
 
 	_, err = s.swing()
-	s.ErrorIs(err, session.ErrCannotAfford,
+	s.ErrorIs(err, session.ErrStaleDeclaration,
 		"a second ask must not re-light the turn — that would refill the bank it just spent")
 }

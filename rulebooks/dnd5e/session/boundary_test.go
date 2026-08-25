@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
 // BoundaryTestSuite enforces S2: no inner type crosses this package's exported
@@ -373,6 +375,18 @@ func fieldIsExported(field *ast.Field) bool {
 func TestBoundarySuite(t *testing.T) {
 	require.NotEmpty(t, forbiddenPrefix)
 	suite.Run(t, new(BoundaryTestSuite))
+}
+
+// TestExecutionInputsCarryOnlyTheSelectorEcho pins the three changed host
+// boundaries exactly. DeclarationID is the sole new authority-bearing field;
+// no compiled definition, spend profile, candidate, or inner type crossed S2.
+func TestExecutionInputsCarryOnlyTheSelectorEcho(t *testing.T) {
+	require.Equal(t, []string{"Session", "Attacker", "Target", "DeclarationID"},
+		structFields(session.AttackInput{}))
+	require.Equal(t, []string{"Session", "Member", "DeclarationID", "Path"},
+		structFields(session.MoveInput{}))
+	require.Equal(t, []string{"Session", "Member", "DeclarationID"},
+		structFields(session.EndTurnInput{}))
 }
 
 // structFields reports the exported field names of a struct value, so a test

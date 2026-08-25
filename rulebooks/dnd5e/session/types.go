@@ -1037,13 +1037,13 @@ const (
 )
 
 // AttackRef identifies WHAT was swung — weapon identity, which this seam
-// dropped on the floor since the first swing (rpg-toolkit#866). Carried on
-// AttackOutput and on the Struck/Missed event bodies, so a beat line can say
-// "6 slashing" and "with a longsword" for every witness, not only the
-// attacker whose own verb response held the compiled profile.
+// dropped on the floor since the first swing (rpg-toolkit#866). Carried on a
+// compiled Declaration, AttackOutput, and the Struck/Missed event bodies, so
+// selection and outcome name the same authored attack for every witness.
 type AttackRef struct {
-	// Ref is the catalog ref the attack compiled from — "longsword",
-	// "unarmed-strike". An OPEN set, so a string: the client already maps
+	// Ref is the full catalog ref the attack compiled from —
+	// "dnd5e:weapons:longsword", "dnd5e:weapons:unarmed-strike". An OPEN set,
+	// so a string: the client already maps
 	// refs to models and icons, and the catalog grows without this type
 	// changing.
 	Ref string `json:"ref"`
@@ -1067,9 +1067,10 @@ type AttackRef struct {
 type ShortfallReason string
 
 const (
-	// ShortfallNoBudget is the currency running out — what Attack refuses
-	// as ErrCannotAfford ("action: 1 needed, 0 left"). Currency, Needed and
-	// Left are populated.
+	// ShortfallNoBudget is the currency running out. Attack exposes it before
+	// execution; echoing that unavailable offer is ErrStaleDeclaration. Move's
+	// path-specific overrun is ErrCannotAfford. Currency, Needed and Left are
+	// populated.
 	ShortfallNoBudget ShortfallReason = "no_budget"
 
 	// ShortfallNotYourTurn is it not being this member's turn — what
@@ -1151,7 +1152,7 @@ type Shortfall struct {
 
 	// Text is the refusal in the SDK's own words — "action: 1 needed, 0
 	// left", "movement: 20 ft needed, 15 ft left", "not your turn", "no
-	// target in reach". The same text Declaration.Shortfall carries and the
+	// target in reach". The same text Declaration.Why carries and the
 	// same text the verb's own refusal error would.
 	Text string `json:"text"`
 }

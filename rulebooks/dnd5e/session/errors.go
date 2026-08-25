@@ -110,6 +110,19 @@ var (
 	// ErrNoMemberID is returned when a verb is given an empty member ID.
 	ErrNoMemberID = errors.New("empty member id")
 
+	// ErrNoDeclarationID is returned when Attack or EndTurn omits the opaque
+	// selector echoed from Afford, or when a turn-clock Move omits it. A
+	// world-clock Move is the deliberate exception: Afford has no world-clock
+	// declarations, so its selector must be empty.
+	ErrNoDeclarationID = errors.New("empty declaration id")
+
+	// ErrStaleDeclaration is returned when an echoed selector does not name the
+	// verb's one current compiled offer, when that offer is now unavailable, or
+	// when Attack's selected target is absent or unavailable in its current
+	// candidate set. It is a current-world refusal: callers refresh Turn and
+	// Afford and never retry the mutation automatically.
+	ErrStaleDeclaration = errors.New("declaration is stale")
+
 	// ErrNoMember is returned when a verb names a member the encounter does
 	// not hold.
 	ErrNoMember = errors.New("no such member")
@@ -336,16 +349,17 @@ var (
 	//
 	// Afford's per-target ATTACK declarations are this same gate asked
 	// ahead of time: a target this seam would refuse with ErrOutOfReach is
-	// a target no declaration names. When no candidate is in reach at all,
-	// Afford still answers once — a single declaration naming no target,
-	// Affordable false, Why.Reason ShortfallNoTargetInReach — rather than
+	// an unavailable candidate row. When no candidate is in reach at all,
+	// Afford still answers once — a single Attack declaration with
+	// Available false, Why.Reason ShortfallNoTargetInReach — rather than
 	// an empty list a client could mistake for "nothing to ask about yet."
 	ErrOutOfReach = errors.New("no target in reach")
 
-	// ErrCannotAfford is returned when an actor cannot pay for what they
-	// declared: a second swing in a turn that bought only one, a level-5
-	// fighter's third, an action after the action was spent, or a walk longer
-	// than the turn's remaining movement (rpg-toolkit#1169).
+	// ErrCannotAfford is returned when the final payment door cannot pay for
+	// what an actor declared. Move reaches it when the selected path is longer
+	// than the turn's remaining movement (rpg-toolkit#1169). Attack normally
+	// exposes exhaustion in Afford and rejects the now-unavailable selector as
+	// ErrStaleDeclaration; this remains its defensive resolution translation.
 	//
 	// THIS IS A FACT ABOUT THE GAME, not about the code, and that is the whole
 	// reason it is separate from ErrBadCost. A player who has run out of actions

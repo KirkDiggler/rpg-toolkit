@@ -103,6 +103,13 @@ type Manager struct {
 	initiative encounter.InitiativeRoller
 	turnDriver encounter.TurnDriver
 
+	// targetPreflight is the one shared target gate used by offer projection
+	// and regenerated Attack execution. It is a pure function seam rather than
+	// host configuration: production always installs buildTargetPreflight, while
+	// an internal mutation test can inject a refusal and prove both callers move
+	// together.
+	targetPreflight targetPreflightFunc
+
 	// dice is the host's randomness, kept as well as wrapped: the initiative
 	// seam needs it wrapped for the composition, and a resolution machine
 	// needs it wrapped for the rulebook. One source, two adapters.
@@ -145,12 +152,13 @@ func NewManager(cfg *Config) (*Manager, error) {
 	}
 
 	return &Manager{
-		sessions:   cfg.Sessions,
-		encounters: cfg.Encounters,
-		characters: cfg.Characters,
-		events:     cfg.Events,
-		initiative: initiativeSeam{dice: cfg.Dice},
-		dice:       cfg.Dice,
-		turnDriver: turnDriverSeam{driver: cfg.TurnDriver},
+		sessions:        cfg.Sessions,
+		encounters:      cfg.Encounters,
+		characters:      cfg.Characters,
+		events:          cfg.Events,
+		initiative:      initiativeSeam{dice: cfg.Dice},
+		dice:            cfg.Dice,
+		turnDriver:      turnDriverSeam{driver: cfg.TurnDriver},
+		targetPreflight: buildTargetPreflight,
 	}, nil
 }

@@ -94,8 +94,7 @@ const (
 // universe lives on the single Attack declaration's Candidates, each carrying
 // its own target-specific availability. The client renders availability,
 // identity, target kind, and candidates verbatim and never derives game rules;
-// Attack, Move, and End Turn regenerate the selected offer before execution
-// (Task 7).
+// Attack, Move, and End Turn regenerate the selected offer before execution.
 type Declaration struct {
 	// Verb is which seam action this prices.
 	Verb Verb `json:"verb"`
@@ -180,21 +179,17 @@ type AffordOutput struct {
 	Declarations []Declaration `json:"declarations"`
 }
 
-// Afford reports what one member can still declare this turn: which of the
-// seam's gated verbs they could pay for right now, and — when they cannot —
-// the same currency-naming text a refused [Manager.Attack] or [Manager.Move]
-// would carry. Move's own declaration (VerbMove, rpg-toolkit#1169) reports
-// Remaining rather than a fixed price, since a walk's cost depends on a path
-// this read is never given — see [affordMove].
+// Afford reports the current compiled Attack, Move, and EndTurn offers for one
+// active turn member. Each carries an opaque selector execution must echo.
+// Move reports Remaining rather than a fixed price because a walk's cost
+// depends on a path this read is never given. On the world clock declarations
+// is the complete empty answer.
 //
 // # The gap this closes
 //
-// Attack refuses a swing nobody can pay for with [ErrCannotAfford], and the
-// refusal is careful to name the currency that ran out. Nothing on the seam
-// said so BEFORE the refusal. A turn UI built against that has exactly two
-// options: offer the button and let the server say no, or re-derive 5e's
-// economy client-side — a level-1 fighter gets one swing, Extra Attack lands
-// at level 5 — which is the Boundary Rule violation this whole seam exists to
+// Without this read a turn UI has exactly two options: offer every button and
+// discover refusals after clicks, or re-derive 5e's economy and target rules
+// client-side. The latter is the Boundary Rule violation this seam exists to
 // prevent. See rpg-toolkit#1138.
 //
 // # A declaration, not the remaining currencies
@@ -209,25 +204,21 @@ type AffordOutput struct {
 //
 // # The same price Attack pays, never a second copy of it
 //
-// This does not reprice the swing by a second route. It calls the identical
-// [Manager.priceSwing] a real swing compiles from, then charges that price
-// through [combat.Pay] — the SAME gate [Manager.Attack]'s door pays through —
-// against a [character.Character] loaded fresh for this call and never saved.
-// A payment that succeeds answers Affordable; one that fails hands back the
-// exact text a refused Attack's door would have produced, because it IS that
-// text: nothing here reimplements what a currency needs or what ran out. If
-// Attack and Afford could ever disagree, one of them would be pricing wrong,
-// and routing both through one gate call is what makes that impossible by
-// construction rather than merely tested for.
+// [compileOffers] assembles and prices one Attack definition, clones the
+// actual SpendProfile into Definition.Cost before hashing it, and asks
+// [combat.CanPay] against the same readied sheet execution will regenerate.
+// Attack then selects and reuses that compiled definition, price, sheet, and
+// shared target preflight. Move likewise reuses its compiled readied sheet;
+// EndTurn compiles from the clock alone.
 //
-// # The economy's answer, not the turn's
+// # The full current gate
 //
-// Attack does not check whose turn it currently is — nothing on this seam
-// does yet, [Manager.EndTurn] aside — so this does not either. Whether a swing
-// would ALSO be refused for arriving out of turn is [Manager.Turn]'s question:
-// folding "not your turn" into a Shortfall here would answer a question this
-// read was never asked, in a currency it does not price. A future turn gate
-// belongs beside Turn's own Active field, not inside a Declaration.
+// The clock-active comparison precedes every sheet load and blocks all three
+// verbs. Downed and unreadable dependencies are then applied per verb: Attack
+// and Move need a standing, readable actor; EndTurn needs only its real clock
+// gate. Candidate and budget failures keep a compiled Attack with a selector
+// and exact reasons, but mark it unavailable; execution treats an echoed
+// now-unavailable selector as [ErrStaleDeclaration].
 //
 // # Reads, and reads only
 //
@@ -241,11 +232,9 @@ type AffordOutput struct {
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, or ErrNoMember if the member is not in this encounter.
-// Returns ErrNoCharacter or ErrBadCharacter if the member is on the turn clock
-// and has no loadable sheet — reachable for a monster or a malformed record,
-// since a character already in a fight has one by construction. Returns
-// ErrBadCost if the rulebook cannot compile this member's own price, which
-// [Manager.Attack] would also refuse the same way. Returns a wrapped error
+// Missing/unreadable actor sheets and attacks are projected as per-verb
+// Unreadable blockers rather than failing the whole read. Returns ErrBadCost if
+// the rulebook cannot compile this member's own price. Returns a wrapped error
 // when a live candidate holds no position in the roster: a live-sight holding
 // whose subject the encounter no longer places is an internal inconsistency
 // this read fails closed on rather than silently omitting the candidate.

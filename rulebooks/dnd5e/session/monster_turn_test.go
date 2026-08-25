@@ -119,7 +119,7 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 	s.Equal([]string{"fighter", "skel-1"}, spawned.Formed.Order, "fighter's ID sorts first, so the tied roll breaks to her")
 
 	before := len(s.storyBeats(mgr, "fighter"))
-	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err, "the skeleton's whole turn — strike, end — drives inside this one call")
 
 	// Isolated to what THIS EndTurn call itself produced, with the earlier
@@ -241,7 +241,7 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 	s.Require().NotNil(spawned.Formed)
 
 	before := len(s.storyBeats(mgr, "fighter"))
-	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err, "a bad intent must not surface as an error on the caller's own verb")
 	s.Equal("fighter", out.Next)
 	s.True(out.RoundWrapped)
@@ -324,7 +324,7 @@ func (s *MonsterTurnTestSuite) TestPassDriverStillPasses() {
 	s.Require().NotNil(spawned.Formed)
 
 	before := len(s.storyBeats(mgr, "fighter"))
-	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Equal("fighter", out.Next)
 	s.True(out.RoundWrapped)
@@ -433,7 +433,7 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	// needs no declared action before EndTurn, and skipping it keeps the
 	// skeleton's own 13 hit points out of this gate's way entirely (the
 	// evidence's own skeleton-1 survived every round it is about).
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	_, ok := skelStruckFighter(stream.published)
 	s.Require().True(ok, "round 1's own struck beat must reach the live subscriber (control)")
@@ -454,7 +454,7 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	// arrived at the client's stream, though the story log recorded it
 	// correctly.
 	stream.published = nil // isolate what THIS EndTurn's own publish call delivers
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(stream.published)
 	round2First := stream.published[0].Seq
@@ -515,7 +515,7 @@ func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
 	s.Require().NoError(err)
 	s.Require().NotNil(spawned.Formed, "the skeleton's driven turn is this test's whole point")
 
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err, "the skeleton's whole turn — strike, end — drives inside this one call")
 
 	// live is everything the fake stream delivered to fighter across the

@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -31,8 +30,13 @@ type AttackInput struct {
 	// Attacker is who swings. Required.
 	Attacker string
 
-	// Target is who they swing at. Required.
+	// Target is who they swing at. Required, and must be an available member
+	// candidate on the selected current declaration.
 	Target string
+
+	// DeclarationID is the opaque current Attack selector returned by Afford.
+	// Required. The client echoes it and never parses it.
+	DeclarationID string
 }
 
 // AttackOutput is what the swing produced.
@@ -83,29 +87,30 @@ type AttackOutput struct {
 // which is its caller, and it earns its shape then. The same discipline
 // [DissolveCause] uses for defeat.
 //
-// Main hand, one-handed, melee. Two-handed grips and the off-hand swing are the
-// compiler's own named gaps, and they did NOT arrive with the economy the way
-// this paragraph used to predict: the economy decides how many swings a turn
-// buys, and what a two-handed grip does to one is a question for whoever
-// compiles the attack rather than for whoever prices it.
+// Main hand with the compiler's authored delivery profile. Off-hand variants
+// remain a named gap; two-handed and ranged semantics come from the selected
+// definition rather than from this seam.
 //
 // # A swing costs something, in a fight
 //
 // A character in a fight pays for the swing before it is resolved: the first in
 // a turn takes the Attack action, and what that action banks is what the swings
 // after it spend. A level-1 fighter therefore gets one swing per turn and a
-// level-5 fighter gets two, and the swing after that is refused with
-// [ErrCannotAfford] naming the currency that ran out.
+// level-5 fighter gets two. Afford reports the exhausted offer with its exact
+// NoBudget shortfall; attempting to execute that now-unavailable selector is
+// [ErrStaleDeclaration] before resolution. [ErrCannotAfford] remains the
+// defensive payment-door translation if state changes beneath that final gate.
 //
-// The price is compiled here and charged by resolution's door after pure
-// machine preflight and before its first executable step — so a refused swing
-// rolls nothing, damages nobody, and writes nothing at all. See
-// [Manager.priceSwing] for what a turn costs and
-// [character.CostOfSwing] for how one price is made out of the rulebook's two.
+// The price is compiled into the selected definition before its selector ID is
+// generated, then the same definition and a cloned matching resolution cost are
+// reused here. Resolution charges after pure machine preflight and before its
+// first executable step — so a refused swing rolls nothing, damages nobody,
+// and writes nothing at all. See [Manager.priceSwing] and
+// [character.CostOfSwing].
 //
-// IN FREE ROAM IT COSTS NOTHING, which is a ruling rather than the old gap: the
-// action economy is a fight's economy, and a member on the world clock has no
-// turn to spend a turn's slots from. TestFreeRoamChargesNothing pins it.
+// ATTACK HAS NO WORLD-CLOCK OFFER. Afford returns no declarations in free roam,
+// so there is no valid selector to echo there; Move alone retains its explicit
+// empty-selector world-clock form.
 //
 // # How it runs, and why the order is not a style choice
 //
@@ -132,16 +137,16 @@ type AttackOutput struct {
 // is what keeps that true. A caller told only "it failed" would retry a swing
 // whose damage is on disk.
 //
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet, ErrNoCharacter,
-// ErrBadCharacter, ErrBadRepository, ErrBadAttack, ErrCannotAfford, ErrBadCost,
-// ErrClosed, or ErrSaveFailed with a populated report.
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
+// ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet,
+// ErrNoCharacter, ErrBadCharacter, ErrBadRepository, ErrBadAttack,
+// ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed, or ErrSaveFailed
+// with a populated report.
 //
-// ErrNoCharacter and ErrBadCharacter mean here exactly what they mean
-// everywhere else in this package: the repository does not hold that sheet,
-// versus it holds bytes that will not reconstitute. A host branches on the
-// difference — re-check the ID, versus go and inspect storage — so the two are
-// worth reading off carefully.
+// ErrNoCharacter and ErrBadCharacter can still identify another participant
+// resolution must load. If the attacker's own sheet is absent or unreadable,
+// Afford instead emits an Unreadable blocker with no selector, so execution has
+// no declaration to echo.
 func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("attack: %w", ErrNilInput)
@@ -165,9 +170,6 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	}
 	if _, ok := kinds[in.Attacker]; !ok {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNoMember)
-	}
-	if _, ok := kinds[in.Target]; !ok {
-		return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrNoMember)
 	}
 	if kinds[in.Attacker] != encounter.MemberKind(KindPlayer) {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
@@ -198,6 +200,40 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", err)
 	}
 
+	// Attack has no world-clock declaration. Its selector is mandatory even
+	// though the turn/downed gates above intentionally keep their historical
+	// precedence: a caller acting out of turn or while downed hears that real
+	// refusal before selection is considered.
+	if ClockKind(clock.Kind) != ClockTurn {
+		if in.DeclarationID == "" {
+			return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
+		}
+		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
+	}
+	if in.DeclarationID == "" {
+		return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
+	}
+
+	// Regenerate under this verb's already-loaded write scope and select the
+	// exact current offer. compileOffers owns assembly, pricing, selector
+	// identity, and target preflight; execution reuses those compiled values
+	// instead of independently compiling a second attack after selection.
+	offers, err := m.compileOffers(ctx, scope.enc, scope.data, in.Attacker, clock, false)
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+	selected, err := selectCompiledOffer(offers, VerbAttack, in.DeclarationID)
+	if err != nil {
+		return nil, fmt.Errorf("attack: %w", err)
+	}
+	candidate, ok := selected.targets[in.Target]
+	if !ok || !candidate.available {
+		return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrStaleDeclaration)
+	}
+	if selected.attack == nil || selected.price == nil || selected.sheet == nil {
+		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
+	}
+
 	// A member with no stored sheet cannot be swung at: there is nothing to
 	// read an armour class off and nothing for damage to land on. Authored
 	// content placed straight into a world has no sheet until something spawns
@@ -209,37 +245,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		}
 	}
 
-	sheet, err := m.loadAttackSheet(ctx, in.Attacker)
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	// THE ONE PLACE A SPEND GOES, and it is the place its own comment predicted.
-	// The economy turned out not to need a machine above this call: the ruling
-	// (docs/ideas/session-sdk/economy-gate.md) put the price on Input as DATA and
-	// the debit at resolution's door, so what belongs here is compiling what this
-	// actor's swing costs — which is a question about a sheet, and this is where
-	// the sheets are. Nothing persistent or wire-shaped assumed attacks were
-	// free, and nothing had to migrate.
-	price, err := m.priceSwing(ctx, scope.enc, in.Attacker, sheet)
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-	var cost = price.cost
-	var profileCost = (*combat.SpendProfile)(nil)
-	if cost != nil {
-		profileCost = cost.Profile
-	}
-	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{
-		Slot: character.SlotMainHand,
-		Cost: profileCost,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("attack: attacker %q: %w: %v", in.Attacker, ErrBadAttack, err)
-	}
-	if cost != nil {
-		cost.Profile = definition.Cost
-	}
+	definition := *selected.attack
+	price := selected.price
+	cost := price.cost
 
 	// The readied sheet goes into the cast rather than the stored one: it is the
 	// sheet whose turn was just lit or refilled, and the door is about to charge
@@ -333,7 +341,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 // The ref is the FULL definition.Ref.String — "dnd5e:weapons:longsword",
 // "dnd5e:monster-actions:unarmed-strike" — so the same identity a client
 // maps to a model and icon on a beat is the one a compiled offer carries,
-// and the one Task 7's execution enforcement regenerates from. The same
+// and the one execution regenerates from. The same
 // helper serves all three call sites so they cannot drift.
 //
 // The damage type reported is the FIRST declared pool's, which is every

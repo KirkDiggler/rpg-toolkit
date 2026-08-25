@@ -361,8 +361,19 @@ func drive(out *bytes.Buffer) error {
 	// refused outright (rpg-toolkit#1169), and it is still her turn: she
 	// leads the vault fight's own initiative order.
 	vaultPath := []spatial.Position{cellAt(7, 1), cellAt(7, 2)}
+	afford, err := mgr.Afford(ctx, &session.AffordInput{Session: "crypt-run", Member: "alice"})
+	if err != nil {
+		return err
+	}
+	var moveID string
+	for _, declaration := range afford.Declarations {
+		if declaration.Verb == session.VerbMove {
+			moveID = declaration.ID
+			break
+		}
+	}
 	aliceWalk, err := mgr.Move(ctx, &session.MoveInput{
-		Session: "crypt-run", Member: "alice", Path: vaultPath,
+		Session: "crypt-run", Member: "alice", Path: vaultPath, DeclarationID: moveID,
 	})
 	if err != nil {
 		return err

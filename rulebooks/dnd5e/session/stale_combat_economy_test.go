@@ -23,8 +23,8 @@ import (
 // Kirk (live, two browsers, 2026-08-24): a member recruited into a fight
 // already in progress started their own first turn with only 5 of 30 feet
 // of movement. The natural first read — "the free-roam approach spent it" —
-// does not hold: [Manager.priceWalk] decides free-roam-vs-turn-clock ONCE,
-// from the clock state at the top of the Move call, before any step runs, so
+// does not hold: Move decides free-roam-vs-turn-clock ONCE, from the clock
+// state at the top of the call, before any step runs, so
 // a walk that starts on the world clock is priced nothing for the whole
 // call regardless of what a mid-path step does. A genuinely first-ever
 // combat entrant seeds a full 30ft via [character.StartTurn] exactly as
@@ -121,6 +121,7 @@ func (s *StaleCombatEconomySuite) killAdjacentSkeleton(id string) {
 	for i := 0; i < runaway && s.storedHP(id) > 0; i++ {
 		_, err := s.mgr.Attack(context.Background(), &session.AttackInput{
 			Session: "sess", Attacker: "alice", Target: id,
+			DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 		})
 		s.Require().NoError(err)
 	}

@@ -18,8 +18,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// compiledOffer is the internal, per-verb compiled declaration Task 6 builds
-// and Task 7 re-validates before execution. It never crosses the host
+// compiledOffer is the internal, per-verb declaration Afford builds and each
+// mutating verb regenerates before execution. It never crosses the host
 // boundary: only its [Declaration] projection does.
 //
 // ONE COMPILED OFFER PER VERB/ACTION/SPEND VARIANT. v1 has exactly one spend
@@ -29,7 +29,7 @@ import (
 // distinct slot, and the collision guard keys the two apart by selector
 // material.
 //
-// The [targets] map is the shared, target-specific gate result Task 7 enforces
+// The [targets] map is the shared, target-specific gate result Attack enforces
 // against a chosen target before executing: it carries each candidate's
 // reach verdict keyed by member ID, independent of the declaration's global
 // turn/economy gate. It is populated for VerbAttack only.
@@ -41,9 +41,17 @@ type compiledOffer struct {
 	// Non-nil for a compiled Attack, nil for Move/EndTurn and every blocker.
 	attack *combatActions.Definition
 	// targets is the per-candidate reach verdict for VerbAttack, keyed by
-	// candidate member ID. Empty for Move/EndTurn and every blocker. Task 7
-	// looks a chosen target up here to re-enforce reach before execution.
+	// candidate member ID. Empty for Move/EndTurn and every blocker. Execution
+	// looks a chosen target up here to re-enforce reach before resolving.
 	targets map[string]targetPreflight
+	// sheet is the already-loaded, turn-readied actor used to compile this
+	// offer. Attack and Move execution reuse it rather than selecting one
+	// definition and independently loading or pricing another. Nil for EndTurn
+	// and blockers.
+	sheet *character.Character
+	// price is the exact Attack price compiled into attack.Cost and handed to
+	// resolution. Nil for Move, EndTurn, and blockers.
+	price *swingPrice
 	// verb and slot are the selector material the declaration ID is derived
 	// from, kept here so the collision guard can compare offers by selector
 	// material rather than candidate state.
@@ -57,9 +65,17 @@ type compiledOffer struct {
 }
 
 // targetPreflight is the shared, target-specific gate result for one
-// candidate. Reused by Task 7's execution enforcement: the executor looks a
+// candidate. Reused by Attack's execution enforcement: the executor looks a
 // chosen target up by member ID and refuses when available is false, echoing
 // why verbatim. Never crosses the host boundary.
+type targetPreflightFunc func(
+	enc *encounter.Encounter,
+	positions map[string]spatial.Position,
+	holdings []intel.Holding,
+	member string,
+	maxRangeFeet int,
+) ([]targetPreflight, error)
+
 type targetPreflight struct {
 	// member is the candidate member ID.
 	member string
@@ -74,8 +90,8 @@ type targetPreflight struct {
 
 // compileOffers builds the full set of compiled offers for one member on the
 // turn clock, applying the per-verb blocker matrix. It is the single
-// producer [Manager.Afford] projects from, and the single source Task 7
-// re-validates against before execution.
+// producer [Manager.Afford] projects from, and the source execution regenerates
+// before selecting an echoed ID.
 //
 // BUILD ORDER FOLLOWS THE BLOCKER MATRIX. EndTurn is built first from the
 // clock alone — it is governed solely by its clock/turn gate, so it stays
@@ -143,11 +159,27 @@ func (m *Manager) compileOffers(
 		return nil, err
 	}
 
+	// Price BEFORE assembly. The complete Definition is selector material, so
+	// compiling a costless weapon and merely pricing beside it would let two
+	// different executable prices hash to the same offer. AssembleAttack clones
+	// this actual profile into Definition.Cost; the resolution Cost receives a
+	// second clone so selector material and execution data cannot alias.
+	price, err := m.priceSwing(ctx, enc, member, sheet)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
+	}
+	// price.cost is never nil here: priceSwing returns a nil cost only on
+	// the world clock, already ruled out by the caller.
+	pricedProfile := combatActions.CloneSpendProfile(price.cost.Profile)
+
 	// BAD ATTACK COMPILATION: a sheet that loads fine but names a weapon
 	// this build cannot compile blocks Attack only — Move and EndTurn
 	// continue, because Move reads the readied sheet's movement capacity and
 	// EndTurn reads only the clock.
-	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{Slot: character.SlotMainHand})
+	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{
+		Slot: character.SlotMainHand,
+		Cost: pricedProfile,
+	})
 	if err != nil {
 		why := Shortfall{
 			Reason: ShortfallUnreadable,
@@ -159,28 +191,18 @@ func (m *Manager) compileOffers(
 			endTurn,
 		}, nil
 	}
-
-	// Price the swing for the budget gate and the slot. priceSwing is the
-	// SAME gate Attack's door pays through; a failure here is a hard error
-	// rather than a declaration, because the rulebook cannot compile this
-	// member's own price and [Manager.Attack] would refuse the same way.
-	price, err := m.priceSwing(ctx, enc, member, sheet)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
-	}
-	// price.cost is never nil here: priceSwing returns a nil cost only on
-	// the world clock, already ruled out by the caller.
-	slot := slotOf(price.cost.Profile)
+	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
+	slot := slotOf(definition.Cost)
 
 	// Budget gate, asked non-mutatingly through the SAME check combat.Pay
 	// runs to completion before touching anything. The sheet this call
 	// loaded is shared with Move above, so the gate must not spend from it;
 	// CanPay is exactly the check, and a failing check leaves the ledger
 	// untouched for the move declaration already built.
-	budgetOK := combat.CanPay(sheet, price.cost.Profile)
+	budgetOK := combat.CanPay(sheet, definition.Cost)
 	var budgetWhy *Shortfall
 	if !budgetOK {
-		sf := shortfallForPay(sheet, price.cost.Profile, slot)
+		sf := shortfallForPay(sheet, definition.Cost, slot)
 		budgetWhy = &sf
 	}
 
@@ -195,7 +217,7 @@ func (m *Manager) compileOffers(
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
 	}
 
-	candidates, err := buildTargetPreflight(enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet())
+	candidates, err := m.targetPreflight(enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet())
 	if err != nil {
 		return nil, err
 	}
@@ -247,6 +269,8 @@ func (m *Manager) compileOffers(
 		},
 		attack:  &definition,
 		targets: targets,
+		sheet:   sheet,
+		price:   price,
 		verb:    VerbAttack,
 		slot:    slot,
 		variant: attackVariant,
@@ -304,7 +328,7 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 	}
 	if left >= 5 {
 		decl.Available = true
-		return compiledOffer{declaration: decl, verb: VerbMove, slot: SlotNone, variant: variant}, nil
+		return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant}, nil
 	}
 	why := Shortfall{
 		Reason:   ShortfallNoBudget,
@@ -319,7 +343,7 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 		Text:   fmt.Sprintf("movement: %d ft left", left),
 	}
 	decl.Why = &why
-	return compiledOffer{declaration: decl, verb: VerbMove, slot: SlotNone, variant: variant}, nil
+	return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant}, nil
 }
 
 // blockedCompiledOffer is the compiledOffer shape every early per-verb
@@ -333,7 +357,7 @@ func blockedCompiledOffer(verb Verb, kind TargetKind, why Shortfall) compiledOff
 	}
 }
 
-// buildTargetPrefflight enumerates the ruled candidate universe for one
+// buildTargetPreflight enumerates the ruled candidate universe for one
 // compiled Attack: every live CurrentVia-nonempty holding except the actor,
 // exactly once, sorted by member ID. Stale memories (empty CurrentVia) and
 // the actor are excluded. A live candidate whose position is missing from the
@@ -398,13 +422,43 @@ func buildTargetPreflight(
 func projectCandidates(candidates []targetPreflight) []TargetCandidate {
 	out := make([]TargetCandidate, 0, len(candidates))
 	for _, c := range candidates {
+		var why *Shortfall
+		if c.why != nil {
+			copied := *c.why
+			why = &copied
+		}
 		out = append(out, TargetCandidate{
 			Member:    c.member,
 			Available: c.available,
-			Why:       c.why,
+			Why:       why,
 		})
 	}
 	return out
+}
+
+// selectCompiledOffer returns the one current, available offer named by an
+// echoed selector. Empty IDs are invalid input; every other miss — unknown ID,
+// wrong verb, collision-shaped ambiguity, or an offer whose current global gate
+// is false — is stale current-world state.
+func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiledOffer, error) {
+	if id == "" {
+		return compiledOffer{}, ErrNoDeclarationID
+	}
+
+	var selected *compiledOffer
+	for i := range offers {
+		if offers[i].verb != verb || offers[i].declaration.ID != id {
+			continue
+		}
+		if selected != nil {
+			return compiledOffer{}, ErrStaleDeclaration
+		}
+		selected = &offers[i]
+	}
+	if selected == nil || !selected.declaration.Available {
+		return compiledOffer{}, ErrStaleDeclaration
+	}
+	return *selected, nil
 }
 
 // selectorIDFor computes both the declaration selector ID and the canonical

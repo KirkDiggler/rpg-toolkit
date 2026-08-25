@@ -70,6 +70,7 @@ func (s *AffordSuite) attackDecl(out *session.AffordOutput) session.Declaration 
 func (s *AffordSuite) swing() (*session.AttackOutput, error) {
 	return s.mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 	})
 }
 
@@ -81,7 +82,10 @@ func (s *AffordSuite) nextTurn() {
 	s.T().Helper()
 	ctx := context.Background()
 
-	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+	})
 	s.Require().NoError(err, "ending alice's turn")
 }
 
@@ -143,9 +147,8 @@ func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 
 	_, err = s.swing()
 	s.Require().Error(err, "and there is nothing left to buy a second")
-	s.ErrorIs(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), decl.Why.Text,
-		"Afford's Why.Text must be the SAME currency text the refusal carries, not a second copy of it")
+	s.ErrorIs(err, session.ErrStaleDeclaration,
+		"a now-unavailable echoed offer is stale before resolution's payment door")
 }
 
 // TestBankedSwingIsAvailableAndLightsNoSlot walks Extra Attack's second
@@ -188,8 +191,7 @@ func (s *AffordSuite) TestExtraAttacksThirdSwingIsUnavailable() {
 
 	_, err = s.swing()
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), decl.Why.Text)
+	s.ErrorIs(err, session.ErrStaleDeclaration)
 }
 
 // TestANewTurnRefillsWhatAffordSees is TestANewTurnRefillsTheBank's own claim,
@@ -301,6 +303,7 @@ func (s *AffordSuite) TestNoTargetInReachIsOneAttackDeclarationNotZero() {
 	// contact (encEveryoneSees keeps sight unlimited), just too far to swing.
 	_, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: pathAwayFromSkeleton(),
+		DeclarationID: currentMoveID(s.T(), mgr, "sess", "alice"),
 	})
 	// alice may not be active in every roll of aFight's own initiative, so a
 	// refusal here would mean this fixture cannot walk — fail loudly rather

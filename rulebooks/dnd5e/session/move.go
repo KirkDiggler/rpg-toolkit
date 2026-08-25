@@ -25,6 +25,10 @@ type MoveInput struct {
 	// Member is the member walking.
 	Member string
 
+	// DeclarationID is the opaque current Move selector returned by Afford.
+	// It is required on the turn clock and must be empty on the world clock.
+	DeclarationID string
+
 	// Path is the cells to walk through, in order, each adjacent to the last
 	// and the first adjacent to where the member currently stands.
 	//
@@ -116,9 +120,10 @@ type MoveOutput struct {
 // # On the turn clock, a walk spends movement (rpg-toolkit#1169)
 //
 // A member IN A FIGHT may still walk — only when it is their turn, and only as
-// far as their turn's movement reaches. [Manager.priceWalk] compiles the whole
-// requested path at 5 feet per cell and charges it through [combat.Pay] BEFORE
-// any cell is entered, the same door [Manager.Attack] pays a swing through: a
+// far as their turn's movement reaches. The echoed Move offer supplies the
+// already-loaded, turn-readied sheet; this verb compiles the whole requested
+// path at 5 feet per cell and charges it through [combat.Pay] BEFORE any cell is
+// entered, the same door [Manager.Attack] pays a swing through: a
 // path that costs more than the turn has left is refused whole, naming the
 // currency, and not one cell of it happens. Whose turn it is is not re-derived
 // here — [encounter.Step] is the one place that gate lives, and its refusal
@@ -141,19 +146,19 @@ type MoveOutput struct {
 // what is crossable, which is the duplication this walk exists without. The
 // caller sees no difference: a refused walk returns an error, and nothing is
 // persisted or published, because the encounter that moved in memory is
-// discarded unsaved. The same is true of a charged sheet: [Manager.priceWalk]
-// mutates a [character.Character] loaded fresh for this call, and a walk that
-// fails after paying simply never hands that sheet to [Manager.saveWalker] —
+// discarded unsaved. The same is true of a charged sheet: offer regeneration
+// loads and readies a [character.Character] fresh for this call, and a walk
+// that fails after paying simply never hands that sheet to [Manager.saveWalker] —
 // nothing durable ever saw the spend.
 //
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrEmptyPath,
-// ErrBrokenPath for a path with a gap in it, ErrNoSession, ErrNoEncounter,
-// ErrNoMember, ErrClosed, ErrBadPosition for a cell no room owns OR a cell the
-// walker is already standing on, ErrNoCrossing for a step into another room
-// with no doorway joining it, ErrNotYourTurn for a bubble member asked to walk
-// out of turn, ErrCannotAfford naming the movement that ran short,
-// ErrBadCharacter or ErrBadCost if the walker's own sheet cannot be priced, or
-// ErrSaveFailed with a populated report.
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
+// ErrStaleDeclaration, ErrEmptyPath, ErrBrokenPath for a path with a gap in it,
+// ErrNoSession, ErrNoEncounter, ErrNoMember, ErrClosed, ErrBadPosition for a
+// cell no room owns OR a cell the walker is already standing on, ErrNoCrossing
+// for a step into another room with no doorway joining it, ErrNotYourTurn for a
+// bubble member asked to walk out of turn, ErrCannotAfford naming the movement
+// that ran short, ErrBadCharacter or ErrBadCost if the walker's own sheet
+// cannot be priced, or ErrSaveFailed with a populated report.
 func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("move: %w", ErrNilInput)
@@ -179,13 +184,13 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	// is loaded at all (Copilot finding on #1171). If it is not your turn,
 	// nothing else about you is this call's business yet: encounter.Step's
 	// own gate would eventually refuse a non-active bubble member's first
-	// step with ErrNotActive regardless, but by then refuseIfDown and
-	// priceWalk would both already have loaded a sheet, and combat.Pay might
+	// step with ErrNotActive regardless, but by then refuseIfDown and offer
+	// compilation would both already have loaded a sheet, and combat.Pay might
 	// already have refused with a MISLEADING currency shortfall — a
 	// non-active member low on movement would be told "movement: X ft
 	// needed" instead of "not your turn", naming the wrong reason. This is
 	// not a second copy of Step's rule: it is the same fact, ClockOf, that
-	// Manager.Turn and priceWalk already read for their own purposes, read
+	// Manager.Turn and offer compilation already read for their own purposes, read
 	// once more here before anything else touches this member at all.
 	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
@@ -212,15 +217,42 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	cost, err := m.priceWalk(ctx, scope, in.Member, clock, len(in.Path))
-	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
+	var cost *walkCost
+	if ClockKind(clock.Kind) == ClockTurn {
+		if in.DeclarationID == "" {
+			return nil, fmt.Errorf("move: %w", ErrNoDeclarationID)
+		}
+		offers, compileErr := m.compileOffers(ctx, scope.enc, scope.data, in.Member, clock, false)
+		if compileErr != nil {
+			return nil, fmt.Errorf("move: %w", compileErr)
+		}
+		selected, selectErr := selectCompiledOffer(offers, VerbMove, in.DeclarationID)
+		if selectErr != nil {
+			return nil, fmt.Errorf("move: %w", selectErr)
+		}
+		if selected.sheet == nil {
+			return nil, fmt.Errorf("move: %w", ErrStaleDeclaration)
+		}
+		feet := 5 * len(in.Path)
+		cost = &walkCost{
+			profile: &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: feet}},
+			sheet:   selected.sheet,
+			feet:    feet,
+		}
+	} else {
+		// Afford deliberately returns no world-clock declarations. Empty is the
+		// only valid selector there; a non-empty ID left over from a dissolved
+		// fight must not turn into a free move.
+		if in.DeclarationID != "" {
+			return nil, fmt.Errorf("move: %w", ErrStaleDeclaration)
+		}
+		cost = &walkCost{}
 	}
 
 	// THE ONE PLACE A SPEND GOES for this verb, mirroring Attack's own comment
-	// at its call site: nil profile means FREE ROAM ONLY — priceWalk refuses
-	// with ErrNoCharacter/ErrBadCharacter for anyone else on the turn clock it
-	// cannot load, rather than silently pricing them as free. combat.Pay
+	// at its call site: nil profile means FREE ROAM ONLY — turn-clock offer
+	// compilation blocks a member whose sheet it cannot load rather than
+	// silently pricing them as free. combat.Pay
 	// treats a nil profile as a free action by its own contract (see
 	// [combat.SpendProfile]), so this branch is a shortcut rather than a
 	// second free-action path.
@@ -278,8 +310,8 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 // reinvented: both fields nil is a price of nothing, never a missing one.
 type walkCost struct {
 	// profile is what the door charges for this walk, or nil to charge
-	// nothing — free roam, or a member the session holds no character sheet
-	// for.
+	// nothing on the world clock. A turn-clock member without a loadable sheet
+	// never produces a selectable Move offer.
 	profile *combat.SpendProfile
 
 	// sheet is the walker's own sheet with its turn readied, ready to be
@@ -290,74 +322,6 @@ type walkCost struct {
 	// feet is the requested path's price, named separately from profile so a
 	// refusal can quote it without re-deriving it from a map lookup.
 	feet int
-}
-
-// priceWalk works out what walking `cells` cells costs this member, and
-// readies the sheet the door will charge for it — [Manager.priceSwing]'s own
-// shape, adapted to a currency priced by the CALL rather than compiled once
-// per actor.
-//
-// clock is the caller's OWN ClockOf read, passed in rather than re-fetched:
-// [Manager.Move] already reads it to gate on whose turn it is before this is
-// ever called, and a second read here would ask the composition the same
-// question twice in one verb.
-//
-// # Free roam charges nothing, the same ruling priceSwing states
-//
-// [combat.Ledger] opens with InCombat and refuses every payment from a holder
-// who is not in one, so a walk off the turn clock is priced nothing rather
-// than being handed a cost the gate would refuse outright — this is the ONLY
-// case that returns a nil profile. A member the session holds no character
-// sheet for — a monster, reachable only if a host calls this verb for one,
-// since the pump moves monsters through [encounter.Encounter]'s own silent
-// stepTo and never through this seam — is NOT priced nothing: it is refused,
-// by the load below, exactly the way [Manager.Afford] already lets that case
-// speak for itself rather than silently treating it as free.
-//
-// # What a path costs is the path's business, never the profile's
-//
-// Movement is 5 feet per cell, computed HERE, per call, rather than compiled
-// onto a [combat.SpendProfile] the way an attack's price is. That split is not
-// this seam's invention — the profile's own doc says per-unit movement cost is
-// "deliberately not here" — and it is the whole of what the movement design
-// addendum (rpg-toolkit#1035) named as the ONE thing E1's foundation had to
-// leave room for: "one key constant [5 feet] and one discipline [per-unit
-// cost stays out of the profile]". This is that constant's first caller.
-//
-// # readyForTurn is shared with priceSwing, not duplicated
-//
-// The same function lights a cold sheet or refreshes a stale one for either
-// verb — whichever of Attack or Move a member's turn asks for FIRST is the one
-// that ignites it, and the other finds it already lit. See readyForTurn's own
-// comment for why the session is the layer that has to do this at all.
-//
-// Returns ErrNoCharacter, ErrBadCharacter, or ErrBadCost.
-func (m *Manager) priceWalk(
-	ctx context.Context, scope *writeScope, member string, clock *encounter.ClockOfOutput, cells int,
-) (*walkCost, error) {
-	if ClockKind(clock.Kind) != ClockTurn {
-		return &walkCost{}, nil
-	}
-
-	data, err := m.fetchCharacterData(ctx, "member", member)
-	if err != nil {
-		return nil, err
-	}
-	sheet, err := character.Load(ctx, data)
-	if err != nil {
-		return nil, fmt.Errorf("member %q: %w: %v", member, ErrBadCharacter, err)
-	}
-
-	if err := readyForTurn(ctx, sheet, clock.Round); err != nil {
-		return nil, fmt.Errorf("member %q: %w: %v", member, ErrBadCost, err)
-	}
-
-	feet := 5 * cells
-	return &walkCost{
-		profile: &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: feet}},
-		sheet:   sheet,
-		feet:    feet,
-	}, nil
 }
 
 // movementShortfall composes the "ft"-suffixed text a refused Move and

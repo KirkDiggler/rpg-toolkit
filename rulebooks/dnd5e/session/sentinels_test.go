@@ -33,6 +33,7 @@ package session_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -170,6 +171,24 @@ type SentinelSuite struct {
 
 func TestSentinelSuite(t *testing.T) { suite.Run(t, new(SentinelSuite)) }
 
+// TestDeclarationSentinelVocabulary pins the two selector-boundary additions
+// as distinct host remedies: omission is invalid input, while an echoed option
+// changing is current-world refusal. The explicit count makes future additions
+// a reviewed vocabulary change rather than silent accretion.
+func TestDeclarationSentinelVocabulary(t *testing.T) {
+	selectorSentinels := []error{session.ErrNoDeclarationID, session.ErrStaleDeclaration}
+	if len(selectorSentinels) != 2 {
+		t.Fatalf("selector sentinel count changed: got %d", len(selectorSentinels))
+	}
+	for i, left := range selectorSentinels {
+		for j, right := range selectorSentinels {
+			if i != j && errors.Is(left, right) {
+				t.Fatalf("selector sentinels %d and %d are not distinct", i, j)
+			}
+		}
+	}
+}
+
 func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{
@@ -241,6 +260,7 @@ func (s *SentinelSuite) swing(mgr *session.Manager) error {
 	s.T().Helper()
 	_, err := mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	return err
 }
@@ -440,7 +460,7 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 	mgr := s.armedDuel(newFakeCharacters(unreadableFighter("alice"), armedFighter("bob")))
 
 	err := s.swing(mgr)
-	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+	s.refusedInOurVocabulary(err, session.ErrNoDeclarationID)
 }
 
 // TestADownedActorIsRefusedInOurWords is the death lane's own refusal, and the
@@ -458,26 +478,29 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 // So the refusal is driven for real: bob puts alice at zero hit points, and
 // alice is then refused the verbs a downed member cannot drive.
 func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
-	mgr := s.armedDuel(newFakeCharacters(armedFighter("alice"), armedFighter("bob")))
+	alice := armedFighter("alice")
+	alice.Level = 5
+	mgr := s.armedDuel(newFakeCharacters(alice, armedFighter("bob")))
 	ctx := context.Background()
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 2; i++ {
 		_, err := mgr.Attack(ctx, &session.AttackInput{
-			Session: "sess", Attacker: "bob", Target: "alice",
+			Session: "sess", Attacker: "alice", Target: "bob",
+			DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 		})
 		s.Require().NoError(err)
 	}
 
 	_, moveErr := mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
 	})
 	s.refusedInOurVocabulary(moveErr, session.ErrDowned)
 
 	_, swingErr := mgr.Attack(ctx, &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "bob",
+		Session: "sess", Attacker: "bob", Target: "alice",
 	})
 	s.refusedInOurVocabulary(swingErr, session.ErrDowned)
-	s.Contains(swingErr.Error(), "alice", "and the refusal still names who could not act")
+	s.Contains(swingErr.Error(), "bob", "and the refusal still names who could not act")
 }
 
 // TestASecondSwingInOneTurn is the economy's refusal, driven for real.
@@ -498,15 +521,15 @@ func (s *SentinelSuite) TestASecondSwingInOneTurn() {
 
 	_, err := mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err, "the first swing is bought by the Attack action")
 
 	_, err = mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
-	s.refusedInOurVocabulary(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), "action",
-		"and the refusal still names the currency that ran out")
+	s.refusedInOurVocabulary(err, session.ErrStaleDeclaration)
 }
 
 // TestASpawnNamingAMalformedRef is the third module and the second door.

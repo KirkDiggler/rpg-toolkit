@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ import (
 // still within encEveryoneSees' unbounded sight. The caller mutates the
 // persisted encounter data through the returned repositories to inject the
 // stale and self holdings runAffordCandidateFixture adds on top.
-func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncounters, *fakeCharacters) {
+func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncounters, *fakeCharacters, *sequenceDice) {
 	t.Helper()
 	alice := armedFighter("alice")
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
@@ -39,8 +40,9 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 
 	// Enough scripted rolls for the fight's initiative and nothing else:
 	// Afford is a read and rolls nothing.
+	roller := &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
 	mgr, err := session.NewManager(&session.Config{
-		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
+		Dice: roller, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
@@ -85,7 +87,7 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, turn.Clock, "alice is on the turn clock")
 	require.Equal(t, 1, turn.Round)
-	return mgr, sessions, encounters, characters
+	return mgr, sessions, encounters, characters, roller
 }
 
 // injectHolding adds one holding for alice as observer, with the given subject
@@ -119,7 +121,7 @@ func injectHolding(
 // projection, sorted by member ID.
 func runAffordCandidateFixture(t *testing.T) *session.AffordOutput {
 	t.Helper()
-	mgr, _, encounters, _ := candidateFight(t)
+	mgr, _, encounters, _, _ := candidateFight(t)
 	// A stale memory: a holding the intel log retains with no live channel.
 	// skeleton-stale is not a roster member, but the CurrentVia-empty filter
 	// excludes it before the position lookup, so the missing position is
@@ -215,7 +217,7 @@ func TestAffordReturnsOneAttackOfferWithEveryLiveCandidate(t *testing.T) {
 // ID and the fixed target kind, Move carries Remaining, EndTurn carries no
 // candidates, and the declarations arrive in the documented verb order.
 func TestAffordProjectsThreeCompiledDeclarationsOnTheTurnClock(t *testing.T) {
-	mgr, _, _, _ := candidateFight(t)
+	mgr, _, _, _, _ := candidateFight(t)
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 
@@ -461,7 +463,9 @@ func TestUnreadableCharacterBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
 
 	// End alice's turn: the skeleton's turn is driven through (Pass driver)
 	// and bob — a player — becomes active.
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice", DeclarationID: currentEndTurnID(t, mgr, "sess", "alice"),
+	})
 	require.NoError(t, err)
 
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
@@ -490,6 +494,12 @@ func TestUnreadableCharacterBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
 	require.True(t, endTurn.Available, "EndTurn follows the clock alone")
 	require.NotEmpty(t, endTurn.ID, "EndTurn is still compiled with a selector ID")
 	require.Equal(t, session.TargetNone, endTurn.TargetKind)
+
+	ended, err := mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "bob", DeclarationID: endTurn.ID,
+	})
+	require.NoError(t, err, "EndTurn execution has no sheet, standing, or economy gate")
+	require.NotNil(t, ended)
 }
 
 // TestLiveCandidateMissingPositionFailsClosed pins the fail-closed law: a
@@ -497,7 +507,7 @@ func TestUnreadableCharacterBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
 // places is an internal inconsistency Afford surfaces as an error rather
 // than silently omitting the candidate.
 func TestLiveCandidateMissingPositionFailsClosed(t *testing.T) {
-	mgr, _, encounters, _ := candidateFight(t)
+	mgr, _, encounters, _, _ := candidateFight(t)
 	// A live holding for a subject that is NOT in the roster: the CurrentVia
 	// filter keeps it in the candidate universe, but the roster has no
 	// position for it, so Afford must fail closed.
@@ -511,6 +521,110 @@ func TestLiveCandidateMissingPositionFailsClosed(t *testing.T) {
 // declaration-level precedence: when the budget passes but no candidate is
 // in reach, the Attack declaration's Why is NoTargetInReach while the
 // candidate rows remain, each carrying its own target-specific verdict.
+// TestAttackSelectorGatesFailBeforeDiceOrDurableMutation pins the execution
+// trust boundary: the client may echo only the current available Attack offer.
+// Unknown IDs, IDs belonging to another verb, and unavailable candidates all
+// fail as stale without rolling or changing a repository-backed fact.
+func TestAttackSelectorGatesFailBeforeDiceOrDurableMutation(t *testing.T) {
+	mgr, sessions, encounters, characters, roller := candidateFight(t)
+	ctx := context.Background()
+
+	afford, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	attack := requireSingleDeclaration(t, afford.Declarations, session.VerbAttack)
+	move := requireSingleDeclaration(t, afford.Declarations, session.VerbMove)
+
+	beforeRolls := roller.next
+	beforeSession, err := json.Marshal(sessions.byID["sess"])
+	require.NoError(t, err)
+	beforeEncounter, err := json.Marshal(encounters.byID["world"])
+	require.NoError(t, err)
+	beforeCharacter := cloneCharacter(characters.byID["alice"])
+	beforeStory, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+
+	cases := []struct {
+		name     string
+		selector string
+		target   string
+	}{
+		{name: "unknown selector", selector: "v1.stale", target: "skeleton-near"},
+		{name: "selector belongs to Move", selector: move.ID, target: "skeleton-near"},
+		{name: "candidate is currently unavailable", selector: attack.ID, target: "skeleton-far"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, attackErr := mgr.Attack(ctx, &session.AttackInput{
+				Session: "sess", Attacker: "alice", Target: tc.target, DeclarationID: tc.selector,
+			})
+			require.ErrorIs(t, attackErr, session.ErrStaleDeclaration)
+			require.Nil(t, out)
+		})
+	}
+
+	require.Equal(t, beforeRolls, roller.next, "selector refusals roll no dice")
+	afterSession, err := json.Marshal(sessions.byID["sess"])
+	require.NoError(t, err)
+	afterEncounter, err := json.Marshal(encounters.byID["world"])
+	require.NoError(t, err)
+	require.JSONEq(t, string(beforeSession), string(afterSession), "selector refusals write no session state")
+	require.JSONEq(t, string(beforeEncounter), string(afterEncounter), "selector refusals record no story")
+	require.Equal(t, beforeCharacter, characters.byID["alice"], "selector refusals spend nothing")
+	afterStory, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	require.Len(t, afterStory, len(beforeStory))
+}
+
+// TestAttackRequiresADeclarationID pins missing selector as invalid input,
+// distinct from a current-world stale selector.
+func TestAttackRequiresADeclarationID(t *testing.T) {
+	mgr, _, _, _, _ := candidateFight(t)
+	out, err := mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton-near",
+	})
+	require.ErrorIs(t, err, session.ErrNoDeclarationID)
+	require.Nil(t, out)
+}
+
+// TestCompiledAttackSelectorIncludesItsActualPrice proves the load-bearing
+// selector material is the priced definition, not the costless weapon profile.
+// Changing only the actor's level changes the first-swing SpendProfile while
+// keeping session/member/verb/slot/weapon fixed, and therefore changes the ID.
+// Executing the new selector then banks the priced level-5 second swing.
+func TestCompiledAttackSelectorIncludesItsActualPrice(t *testing.T) {
+	alice := armedFighter("alice")
+	alice.Level = 3
+	mgr, _, _, characters := aFight(t, alice, []int{1, 1, 1, 1})
+	ctx := context.Background()
+
+	before, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	level3 := requireSingleDeclaration(t, before.Declarations, session.VerbAttack)
+	require.Equal(t, session.SlotAction, level3.Slot)
+
+	characters.byID["alice"].Level = 5
+	after, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	level5 := requireSingleDeclaration(t, after.Declarations, session.VerbAttack)
+	require.Equal(t, session.SlotAction, level5.Slot, "slot stayed fixed; the price is what changed")
+	require.NotEqual(t, level3.ID, level5.ID, "the actual SpendProfile participates in selector identity")
+
+	_, err = mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton", DeclarationID: level5.ID,
+	})
+	require.NoError(t, err)
+
+	banked, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	second := requireSingleDeclaration(t, banked.Declarations, session.VerbAttack)
+	require.Equal(t, session.SlotNone, second.Slot, "the selected priced definition banked Extra Attack")
+	require.True(t, second.Available)
+	_, err = mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton", DeclarationID: second.ID,
+	})
+	require.NoError(t, err, "execution consumes the same priced variant Afford selected")
+}
+
 func TestNoTargetInReachKeepsCandidateRowsWithNoTargetInReach(t *testing.T) {
 	alice := armedFighter("alice")
 	mgr, _, _, _ := aFight(t, alice, []int{1, 1})
@@ -518,7 +632,7 @@ func TestNoTargetInReachKeepsCandidateRowsWithNoTargetInReach(t *testing.T) {
 	// Walk alice five cells from her spawn (1,1), well past a longsword's
 	// one-cell reach from the skeleton at (2,1).
 	_, err := mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice",
+		Session: "sess", Member: "alice", DeclarationID: currentMoveID(t, mgr, "sess", "alice"),
 		Path: []spatial.Position{{X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}, {X: 1, Y: 5}, {X: 1, Y: 6}},
 	})
 	require.NoError(t, err, "test fixture must be able to walk alice out of reach")

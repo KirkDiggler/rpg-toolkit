@@ -1,7 +1,7 @@
 ---
 name: rulebooks/dnd5e module
 description: D&D 5e rules implementation — the consumer-facing surface rpg-api imports across 31 sub-packages (character/ alone in 24 files)
-updated: 2026-08-23
+updated: 2026-08-25
 confidence: high — verified by directory listing, grep over public symbols, rpg-api import-graph audit 049, and Wave 2.11d shipped-code verification
 ---
 
@@ -84,6 +84,29 @@ The toolkit owns the rules; rpg-api orchestrates load → call → save.
 | `shared/` | Shared type aliases (EquipmentID, etc.) | — |
 | `events/` | D&D event payloads, topics, and `ConditionBehavior` | High |
 | `integration/` | Full encounter integration tests (Barbarian/Fighter/Monk/Rogue) | High |
+
+## Owner-private character status projection (#1246)
+
+`character.StatusView` is the immutable, display-ready owner projection beside
+`EquipmentView`. It reports level, current/maximum HP, base speed, sorted owned
+features, active conditions, and non-magical resource counts for the current
+Barbarian/Fighter/Monk/Rogue builds. Values are detached; callers never receive
+a live feature, condition, or resource object.
+
+The identity chain is explicit rather than persistence-driven:
+
+- every `events.ConditionBehavior` implements `Ref() *core.Ref`;
+- rulebook condition descriptors map canonical refs to names/details;
+- feature status providers report their own ref/name/detail and optional
+  resource relationship without serializing feature JSON;
+- private Second Wind and Action Surge resources use stable keys, while Ki
+  consumers report the shared Ki key through the owner reader;
+- matching resource rows deduplicate by key and conflicting facts fail the
+  whole projection.
+
+Unknown/unrenderable loaded effects fail loudly instead of disappearing.
+`SpellSlots` and legacy `ClassResources` are excluded: this wave is explicitly
+non-magical and does not reserve a magic status or action shelf.
 
 ## go.mod status
 
@@ -483,7 +506,7 @@ silently never spent.
 Per audit Section 3 Claim 1, the activation surface has **two halves**:
 
 - **Features** implement `core.Action[T]` (Activate / CanActivate). When a player triggers Rage, rpg-api calls into the feature's Activate flow.
-- **Conditions** implement `dnd5eEvents.ConditionBehavior` (Apply / Remove / IsApplied / ToJSON). They subscribe to the bus when applied and modify chains as events flow through.
+- **Conditions** implement `dnd5eEvents.ConditionBehavior` (`Ref` / Apply / Remove / IsApplied / ToJSON). `Ref` gives live effects canonical identity for status projection; Apply/Remove manage their bus subscriptions and ToJSON remains persistence only.
 
 A feature can both implement Action **and** apply a Condition as part of its
 Activate flow. Rage is the canonical case: `Rage.Activate` (an Action)

@@ -34,7 +34,7 @@ var ErrDeclarationIDCollision = errors.New(
 	"declaration id collision between non-identical offers")
 
 // declarationIDInput is the material a declaration selector is built from. It
-// is the seam-internal shape Task 6's compiled-offer builder feeds to
+// is the seam-internal shape the compiled-offer builder feeds to
 // [declarationID]; it never crosses the host boundary.
 type declarationIDInput struct {
 	// Session is the session the declaration belongs to.
@@ -176,13 +176,13 @@ func selectorVariant(verb Verb, attack *combatActions.Definition) (json.RawMessa
 	}
 }
 
-// indexCompiledOffers is the collision guard Task 6 uses when projecting
+// indexCompiledOffers is the collision guard offer compilation uses when projecting
 // compiled offers. It keys offers by their declaration ID — computed through
 // an injected ID function — and fails closed when two non-identical offers
 // collide on the same ID. Identical offers may share an ID (recurrence), which
 // is not a collision.
 //
-// The primitive is generic over the offer identity so Task 6 can substitute its
+// The primitive is generic over the offer identity so compilation can use its
 // own compiledOffer type without reshaping this guard; it owns no rules and
 // holds no offer beyond the ID index.
 type indexCompiledOffers[T any] struct {

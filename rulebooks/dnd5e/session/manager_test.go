@@ -171,6 +171,37 @@ func testCharacters() *fakeCharacters {
 	)
 }
 
+// currentDeclaration returns the server-authored current offer for one verb.
+// Mutation tests call this exactly where a real client would refresh Afford;
+// no helper guesses or reconstructs a selector.
+func currentDeclaration(
+	t fataler, mgr *session.Manager, sessionID, member string, verb session.Verb,
+) session.Declaration {
+	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: sessionID, Member: member})
+	if err != nil {
+		t.Fatalf("afford %s for %s: %v", verb, member, err)
+	}
+	for _, declaration := range out.Declarations {
+		if declaration.Verb == verb {
+			return declaration
+		}
+	}
+	t.Fatalf("afford returned no %s declaration for %s", verb, member)
+	return session.Declaration{}
+}
+
+func currentAttackID(t fataler, mgr *session.Manager, sessionID, member string) string {
+	return currentDeclaration(t, mgr, sessionID, member, session.VerbAttack).ID
+}
+
+func currentMoveID(t fataler, mgr *session.Manager, sessionID, member string) string {
+	return currentDeclaration(t, mgr, sessionID, member, session.VerbMove).ID
+}
+
+func currentEndTurnID(t fataler, mgr *session.Manager, sessionID, member string) string {
+	return currentDeclaration(t, mgr, sessionID, member, session.VerbEndTurn).ID
+}
+
 // fakeStream records what was published.
 type fakeStream struct {
 	published []session.Event

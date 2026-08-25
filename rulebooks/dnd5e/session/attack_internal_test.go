@@ -14,6 +14,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -259,6 +260,90 @@ func (s *strikeCharacters) GetCharacter(_ context.Context, id string) (*characte
 func (s *strikeCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
 	s.byID[data.ID] = data
 	return nil
+}
+
+func TestProjectCandidatesDefensivelyCopiesWhy(t *testing.T) {
+	why := &Shortfall{Reason: ShortfallTargetOutOfReach, Text: "original"}
+	projected := projectCandidates([]targetPreflight{{member: "bob", available: false, why: why}})
+	require.Len(t, projected, 1)
+	require.NotSame(t, why, projected[0].Why)
+	projected[0].Why.Text = "mutated by caller"
+	require.Equal(t, "original", why.Text)
+}
+
+// TestInjectedTargetPreflightRefusalChangesAffordAndAttack proves projection
+// and execution share one target gate. The injected refusal appears verbatim
+// on Afford's candidate and makes the echoed Attack selector stale before any
+// die rolls; an independent execution preflight would let the attack through.
+func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	characters := &strikeCharacters{byID: map[string]*character.Data{
+		"alice": strikeFixtureFighter("alice"),
+		"bob":   strikeFixtureFighter("bob"),
+	}}
+	roller := &scriptedDice{rolls: []int{17, 4}}
+	mgr, err := NewManager(&Config{
+		Dice: roller, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
+		Characters: characters, Events: DiscardEvents{},
+	})
+	require.NoError(t, err)
+
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	data := world.ToData()
+	delete(data.Clock.Budgets, core.EntityID("alice"))
+	delete(data.Clock.Budgets, core.EntityID("bob"))
+	require.NoError(t, json.Unmarshal(
+		[]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles,
+	))
+	require.NoError(t, func() error {
+		_, startErr := mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+		return startErr
+	}())
+
+	injected := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "injected target refusal"}
+	calls := 0
+	mgr.targetPreflight = func(
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, member string, _ int,
+	) ([]targetPreflight, error) {
+		calls++
+		require.Equal(t, "alice", member)
+		why := injected
+		return []targetPreflight{{member: "bob", available: false, why: &why}}, nil
+	}
+
+	afford, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	var attack Declaration
+	for _, declaration := range afford.Declarations {
+		if declaration.Verb == VerbAttack {
+			attack = declaration
+			break
+		}
+	}
+	require.NotEmpty(t, attack.ID)
+	require.False(t, attack.Available)
+	require.Len(t, attack.Candidates, 1)
+	require.Equal(t, injected, *attack.Candidates[0].Why)
+
+	out, err := mgr.Attack(ctx, &AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: attack.ID,
+	})
+	require.ErrorIs(t, err, ErrStaleDeclaration)
+	require.Nil(t, out)
+	require.Equal(t, 2, calls, "Afford and regenerated Attack each use the shared seam")
+	require.Zero(t, roller.next, "the injected refusal precedes every attack roll")
 }
 
 func strikeFixtureFighter(id string) *character.Data {
