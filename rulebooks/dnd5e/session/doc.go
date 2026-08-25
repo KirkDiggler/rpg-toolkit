@@ -93,8 +93,11 @@
 // require that ID back; Move requires it on the turn clock and requires it
 // empty on the world clock, where Afford deliberately returns no declarations.
 //
-// A mutating verb reloads current state, regenerates the offer, and selects the
-// echoed ID before touching dice, movement, storage, or story. Unknown,
+// A mutating verb reloads current state, regenerates only its own offer, and
+// selects the echoed ID before touching dice, movement, storage, or story.
+// Turn-clock Move therefore never inherits Attack pricing, target-view, or
+// participant-cast dependencies; Afford still compiles all verbs from one actor
+// snapshot. Unknown,
 // mismatched, now-unavailable, and target-invalid selection is
 // ErrStaleDeclaration; omission is ErrNoDeclarationID. IDs are selectors, not
 // authorization or idempotency tokens: the host still binds the acting member

@@ -221,10 +221,12 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	}
 
 	// Regenerate under this verb's already-loaded write scope and select the
-	// exact current offer. compileOffers owns assembly, pricing, selector
+	// exact current offer. compileOffersFor owns assembly, pricing, selector
 	// identity, and target preflight; execution reuses those compiled values
 	// instead of independently compiling a second attack after selection.
-	offers, err := m.compileOffers(ctx, scope.enc, scope.data, scope.session, in.Attacker, clock, actor)
+	offers, err := m.compileOffersFor(
+		ctx, scope.enc, scope.data, scope.session, in.Attacker, clock, actor, VerbAttack,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}

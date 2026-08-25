@@ -55,6 +55,28 @@ func run(w io.Writer) error {
 	return err
 }
 
+// compiledMoveID returns the non-empty Move selector the workbench can echo.
+// A blocked Move is reported before the mutating verb is called, preserving the
+// declaration's own explanation when Afford supplied one.
+func compiledMoveID(declarations []session.Declaration) (string, error) {
+	var why string
+	for _, declaration := range declarations {
+		if declaration.Verb != session.VerbMove {
+			continue
+		}
+		if declaration.ID != "" {
+			return declaration.ID, nil
+		}
+		if declaration.Why != nil && declaration.Why.Text != "" {
+			why = declaration.Why.Text
+		}
+	}
+	if why != "" {
+		return "", fmt.Errorf("no compiled Move declaration: %s", why)
+	}
+	return "", fmt.Errorf("no compiled Move declaration")
+}
+
 // loadedDice is this host's source of randomness, and it is here because a
 // fight now starts by itself: sight starts it, mid-walk, and something must be
 // able to say who acts first at that moment.
@@ -365,12 +387,9 @@ func drive(out *bytes.Buffer) error {
 	if err != nil {
 		return err
 	}
-	var moveID string
-	for _, declaration := range afford.Declarations {
-		if declaration.Verb == session.VerbMove {
-			moveID = declaration.ID
-			break
-		}
+	moveID, err := compiledMoveID(afford.Declarations)
+	if err != nil {
+		return err
 	}
 	aliceWalk, err := mgr.Move(ctx, &session.MoveInput{
 		Session: "crypt-run", Member: "alice", Path: vaultPath, DeclarationID: moveID,

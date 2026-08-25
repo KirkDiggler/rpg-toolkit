@@ -25,8 +25,8 @@ import (
 //
 // ONE COMPILED OFFER PER VERB/ACTION/SPEND VARIANT. v1 has exactly one spend
 // variant per verb — the next swing's profile for Attack, SlotNone for Move
-// and EndTurn — so compileOffers produces one offer per verb. The day a
-// bonus-action strike lands, it arrives as a second Attack offer with a
+// and EndTurn — so full Afford compilation produces one offer per verb. The day
+// a bonus-action strike lands, it arrives as a second Attack offer with a
 // distinct slot, and the collision guard keys the two apart by selector
 // material.
 //
@@ -94,10 +94,11 @@ type targetPreflight struct {
 	why *Shortfall
 }
 
-// compileOffers builds the full set of compiled offers for one member on the
-// turn clock, applying the per-verb blocker matrix. It is the single
-// producer [Manager.Afford] projects from, and the source execution regenerates
-// before selecting an echoed ID.
+// compileOffersFor builds only the requested compiled offers for one member on
+// the turn clock, applying the same per-verb blocker matrix. [Manager.Afford]
+// requests all three verbs from one actor snapshot; Move and Attack each request
+// only their own offer before selecting an echoed ID. EndTurn execution keeps
+// its direct clock-only builder.
 //
 // BUILD ORDER FOLLOWS THE BLOCKER MATRIX. EndTurn is built first from the
 // clock alone — it is governed solely by its clock/turn gate, so it stays
@@ -105,14 +106,16 @@ type targetPreflight struct {
 // use the one strict actorSheet supplied by the caller: combat.IsDown on that
 // sheet blocks both, an unreadable character (ErrBadCharacter) blocks both, and
 // a bad Attack compilation (ErrBadAttack) blocks Attack alone while Move
-// continues off the readied sheet. NotYourTurn is handled before actor loading.
+// continues off the readied sheet. Actor blocking and turn readying happen once
+// regardless of how many verbs were requested. NotYourTurn is handled before
+// actor loading.
 //
 // Every compiled Attack, turn-clock Move, and EndTurn receives a selector ID
 // through [declarationID]; blockers carry an empty ID, no AttackRef, and an
 // empty candidate slice. The collision guard fails closed when two
 // non-identical compiled offers share an ID — offer equality compares selector
 // material (verb, slot, variant), never candidate state.
-func (m *Manager) compileOffers(
+func (m *Manager) compileOffersFor(
 	ctx context.Context,
 	enc *encounter.Encounter,
 	data *SessionData,
@@ -120,10 +123,20 @@ func (m *Manager) compileOffers(
 	member string,
 	clock *encounter.ClockOfOutput,
 	actor actorSheet,
+	verbs ...Verb,
 ) ([]compiledOffer, error) {
-	endTurn, err := m.buildEndTurnOffer(sessionID, member)
-	if err != nil {
-		return nil, err
+	requested := make(map[Verb]bool, len(verbs))
+	for _, verb := range verbs {
+		requested[verb] = true
+	}
+
+	var endTurn compiledOffer
+	if requested[VerbEndTurn] {
+		var err error
+		endTurn, err = m.buildEndTurnOffer(sessionID, member)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// UNREADABLE CHARACTER: actor is the strict load Attack and Move execute
@@ -136,11 +149,11 @@ func (m *Manager) compileOffers(
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadCharacter, actor.err).Error(),
 		}
-		return []compiledOffer{
+		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			endTurn,
-		}, nil
+		)
 	}
 
 	sheet := actor.sheet
@@ -149,20 +162,20 @@ func (m *Manager) compileOffers(
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Errorf("member %q: %w", member, ErrBadCharacter).Error(),
 		}
-		return []compiledOffer{
+		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			endTurn,
-		}, nil
+		)
 	}
 
 	if actor.downed {
 		why := Shortfall{Reason: ShortfallDowned, Text: "member is downed"}
-		return []compiledOffer{
+		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
 			endTurn,
-		}, nil
+		)
 	}
 
 	// Ready the sheet for the turn: Move reads CapacityLeft off the readied
@@ -173,9 +186,16 @@ func (m *Manager) compileOffers(
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 
-	move, err := buildMoveOffer(sessionID, member, sheet)
-	if err != nil {
-		return nil, err
+	var move compiledOffer
+	if requested[VerbMove] {
+		var err error
+		move, err = buildMoveOffer(sessionID, member, sheet)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !requested[VerbAttack] {
+		return finishRequestedOffers(requested, move, endTurn)
 	}
 
 	// Price BEFORE assembly. The complete Definition is selector material, so
@@ -204,11 +224,11 @@ func (m *Manager) compileOffers(
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadAttack, err).Error(),
 		}
-		return []compiledOffer{
+		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			move,
 			endTurn,
-		}, nil
+		)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
 	slot := slotOf(definition.Cost)
@@ -325,7 +345,19 @@ func (m *Manager) compileOffers(
 		variant: attackVariant,
 	}
 
-	offers := []compiledOffer{attack, move, endTurn}
+	return finishRequestedOffers(requested, attack, move, endTurn)
+}
+
+// finishRequestedOffers filters candidate offers to the requested verbs and
+// runs every compiled selector through the collision guard. Zero-value
+// candidates are ignored; blockers are retained by their declaration verb.
+func finishRequestedOffers(requested map[Verb]bool, candidates ...compiledOffer) ([]compiledOffer, error) {
+	offers := make([]compiledOffer, 0, len(requested))
+	for _, offer := range candidates {
+		if requested[offer.declaration.Verb] {
+			offers = append(offers, offer)
+		}
+	}
 	if err := guardOfferCollisions(offers); err != nil {
 		return nil, err
 	}
@@ -333,7 +365,7 @@ func (m *Manager) compileOffers(
 }
 
 // actorSheet is one strict repository snapshot for Attack and turn-clock Move.
-// Its error is carried into compileOffers so Afford can project an Unreadable
+// Its error is carried into compileOffersFor so Afford can project an Unreadable
 // blocker while execution can still select against exactly the same compiled
 // shape. A successful result always has a non-nil sheet.
 type actorSheet struct {
@@ -344,7 +376,7 @@ type actorSheet struct {
 
 // loadActorSheet performs the one strict actor load shared by the downed gate,
 // offer compilation, pricing, and execution. combat.IsDown is evaluated once
-// on that sheet so callers and compileOffers reuse one verdict as well as one
+// on that sheet so callers and compileOffersFor reuse one verdict as well as one
 // repository snapshot.
 func (m *Manager) loadActorSheet(ctx context.Context, member string) actorSheet {
 	sheet, err := m.loadAttackSheet(ctx, member)
@@ -622,7 +654,7 @@ func verbRank(v Verb) int {
 
 // sortDeclarations orders the projected declarations by the seam's
 // documented verb rank, so [Manager.Afford]'s output is deterministic
-// regardless of the build order compileOffers happens to use.
+// regardless of the build order compileOffersFor happens to use.
 func sortDeclarations(decls []Declaration) {
 	sort.SliceStable(decls, func(i, j int) bool {
 		return verbRank(decls[i].Verb) < verbRank(decls[j].Verb)

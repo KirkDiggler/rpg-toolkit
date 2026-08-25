@@ -204,7 +204,7 @@ type AffordOutput struct {
 //
 // # The same price Attack pays, never a second copy of it
 //
-// [compileOffers] assembles and prices one Attack definition, clones the
+// [Manager.compileOffersFor] assembles and prices one Attack definition, clones the
 // actual SpendProfile into Definition.Cost before hashing it, and asks
 // [combat.CanPay] against the same readied sheet execution will regenerate.
 // It also gathers and strictly preflights one raw resolution cast. Attack then
@@ -297,7 +297,10 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// repository reads. EndTurn remains clock-only when that actor is downed or
 	// unreadable.
 	actor := m.loadActorSheet(ctx, in.Member)
-	offers, err := m.compileOffers(ctx, enc, data, in.Session, in.Member, clock, actor)
+	offers, err := m.compileOffersFor(
+		ctx, enc, data, in.Session, in.Member, clock, actor,
+		VerbAttack, VerbMove, VerbEndTurn,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}

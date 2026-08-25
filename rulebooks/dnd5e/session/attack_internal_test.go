@@ -295,6 +295,72 @@ func TestProjectCandidatesDefensivelyCopiesWhy(t *testing.T) {
 	require.Equal(t, "original", why.Text)
 }
 
+// TestMoveRegenerationSkipsAttackTargetPreflight proves a current Move
+// selector does not inherit Attack's target dependencies. The selector comes
+// from a normal full Afford compilation; after that, Attack's shared target
+// gate is made unreadable. Regenerating Move must neither ask that gate nor
+// fail because the unrelated Attack can no longer compile.
+func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	characters := &strikeCharacters{byID: map[string]*character.Data{
+		"alice": strikeFixtureFighter("alice"),
+		"bob":   strikeFixtureFighter("bob"),
+	}}
+	mgr, err := NewManager(&Config{
+		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
+		Characters: characters, Events: DiscardEvents{},
+	})
+	require.NoError(t, err)
+
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	data := world.ToData()
+	delete(data.Clock.Budgets, core.EntityID("alice"))
+	delete(data.Clock.Budgets, core.EntityID("bob"))
+	require.NoError(t, json.Unmarshal([]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles))
+	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+	require.NoError(t, err)
+
+	afford, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	var move Declaration
+	for _, declaration := range afford.Declarations {
+		if declaration.Verb == VerbMove {
+			move = declaration
+			break
+		}
+	}
+	require.True(t, move.Available)
+	require.NotEmpty(t, move.ID)
+
+	calls := 0
+	mgr.targetPreflight = func(
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, _ string, _ int,
+	) ([]targetPreflight, error) {
+		calls++
+		return nil, errors.New("injected Attack target preflight failure")
+	}
+
+	moved, err := mgr.Move(ctx, &MoveInput{
+		Session: "sess", Member: "alice", DeclarationID: move.ID,
+		Path: []spatial.Position{{X: 1, Y: 2}},
+	})
+	require.NoError(t, err)
+	require.Len(t, moved.Steps, 1)
+	require.Zero(t, calls, "Move regeneration must not read Attack target dependencies")
+}
+
 // TestInjectedTargetPreflightRefusalChangesAffordAndAttack proves projection
 // and execution share one target gate. The injected refusal appears verbatim
 // on Afford's candidate and makes the echoed Attack selector stale before any

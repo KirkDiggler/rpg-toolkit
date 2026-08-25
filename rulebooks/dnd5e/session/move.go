@@ -205,6 +205,8 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		// The turn path loads the actor strictly ONCE. Its downed verdict and
 		// regenerated Move offer use this same sheet, preventing a sequenced
 		// repository from changing the answer between the blocker and selector.
+		// Only Move is regenerated: Attack pricing, assembly, target view and
+		// participant preflight are unrelated dependencies of this execution.
 		actor := m.loadActorSheet(ctx, in.Member)
 		if actor.downed {
 			return nil, fmt.Errorf("move: member %q: %w", in.Member, ErrDowned)
@@ -212,7 +214,9 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		if in.DeclarationID == "" {
 			return nil, fmt.Errorf("move: %w", ErrNoDeclarationID)
 		}
-		offers, compileErr := m.compileOffers(ctx, scope.enc, scope.data, scope.session, in.Member, clock, actor)
+		offers, compileErr := m.compileOffersFor(
+			ctx, scope.enc, scope.data, scope.session, in.Member, clock, actor, VerbMove,
+		)
 		if compileErr != nil {
 			return nil, fmt.Errorf("move: %w", compileErr)
 		}

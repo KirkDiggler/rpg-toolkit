@@ -117,8 +117,11 @@ full SHA-256/base64url under the `v1.` prefix. Attack's variant is its validated
 priced complete definition; Move and EndTurn use sealed variant strings.
 Collision detection fails closed.
 
-The mutating verb reloads current state and regenerates the relevant compiled
-offer before mutation:
+The mutating verb reloads current state and regenerates only its relevant
+compiled offer before mutation. Attack rebuilds its priced definition, targets,
+and cast; turn-clock Move rebuilds only Move from the shared actor
+blocker/readying path and does not read Attack price, target view, or resolution
+participants; EndTurn remains its direct clock-only offer.
 
 - Attack and EndTurn require a non-empty ID.
 - Turn-clock Move requires its current Move ID.

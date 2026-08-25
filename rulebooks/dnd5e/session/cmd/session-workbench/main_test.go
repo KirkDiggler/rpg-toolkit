@@ -7,7 +7,69 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
+
+// TestCompiledMoveIDFailsBeforeMove pins the workbench's host-side declaration
+// handoff: an absent or blocked Move is explained before an empty selector ever
+// reaches the mutating verb.
+func TestCompiledMoveIDFailsBeforeMove(t *testing.T) {
+	tests := []struct {
+		name         string
+		declarations []session.Declaration
+		wantID       string
+		wantErr      string
+	}{
+		{
+			name: "compiled Move",
+			declarations: []session.Declaration{
+				{Verb: session.VerbAttack, ID: "attack"},
+				{Verb: session.VerbMove, ID: "move"},
+			},
+			wantID: "move",
+		},
+		{
+			name:    "Move absent",
+			wantErr: "no compiled Move declaration",
+		},
+		{
+			name: "Move blocked without prose",
+			declarations: []session.Declaration{
+				{Verb: session.VerbMove},
+			},
+			wantErr: "no compiled Move declaration",
+		},
+		{
+			name: "Move blocker explains why",
+			declarations: []session.Declaration{
+				{Verb: session.VerbMove, Why: &session.Shortfall{Text: "member is unreadable"}},
+			},
+			wantErr: "member is unreadable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, err := compiledMoveID(tt.declarations)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("compiledMoveID() error = %v, want text %q", err, tt.wantErr)
+				}
+				if id != "" {
+					t.Fatalf("compiledMoveID() id = %q on failure", id)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("compiledMoveID() error = %v", err)
+			}
+			if id != tt.wantID {
+				t.Fatalf("compiledMoveID() id = %q, want %q", id, tt.wantID)
+			}
+		})
+	}
+}
 
 // TestWorkbenchRuns exists because of a lesson this repo learned the expensive
 // way: the encounter's workbench was dead on startup for six review passes,
