@@ -85,6 +85,32 @@
 // persisted in every stored world; kindOf is where the two meet. See ErrDowned
 // and EventDowned.
 //
+// # Compiled declarations are the execution trust boundary
+//
+// Afford is the one current action surface on the turn clock. It compiles an
+// Attack, Move, and EndTurn offer, projects only seam-owned values, and gives
+// each compiled offer an opaque deterministic selector. Attack and EndTurn
+// require that ID back; Move requires it on the turn clock and requires it
+// empty on the world clock, where Afford deliberately returns no declarations.
+//
+// A mutating verb reloads current state, regenerates only its own offer, and
+// selects the echoed ID before touching dice, movement, storage, or story.
+// Turn-clock Move therefore never inherits Attack pricing, target-view, or
+// participant-cast dependencies; Afford still compiles all verbs from one actor
+// snapshot. Unknown,
+// mismatched, now-unavailable, and target-invalid selection is
+// ErrStaleDeclaration; omission is ErrNoDeclarationID. IDs are selectors, not
+// authorization or idempotency tokens: the host still binds the acting member
+// to its authenticated caller.
+//
+// The compiled object never crosses S2. For Attack it privately carries the
+// complete priced definition, matching resolution cost/readied payer, shared
+// candidate preflight, and one raw participant-data cast. Compilation strictly
+// exercises that cast through the same public character/monster load-and-attach
+// APIs resolution uses. Execution reuses those exact raw participant values and
+// never refetches a participant after selection. EndTurn is intentionally
+// clock-only; it does not inherit Attack/Move sheet, standing, or economy gates.
+//
 // # The suspension spine, and where it went
 //
 // S5 and S7 were laws here through v0.2.0: Pending was the one suspension

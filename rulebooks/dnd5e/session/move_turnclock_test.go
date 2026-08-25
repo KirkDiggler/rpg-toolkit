@@ -92,6 +92,14 @@ func (s *MoveTurnClockSuite) afford(member string) *session.AffordOutput {
 	return out
 }
 
+func (s *MoveTurnClockSuite) endTurn(ctx context.Context, member string) (*session.EndTurnOutput, error) {
+	s.T().Helper()
+	return s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: member,
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", member),
+	})
+}
+
 // moveDecl finds the VerbMove declaration, failing loudly if Afford ever
 // stops carrying one — a silent absence would read as "nothing to report"
 // rather than as the regression it is.
@@ -125,7 +133,7 @@ func (s *MoveTurnClockSuite) where(member string) spatial.Position {
 // case: a 3-cell walk, on the turn clock, by the active member.
 func (s *MoveTurnClockSuite) TestActiveMemberSpendsMovementAndAffordSeesIt() {
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice",
+		Session: "sess", Member: "alice", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
 		Path: []spatial.Position{{X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}},
 	})
 	s.Require().NoError(err, "alice is active, and 3 cells cost 15 of her 30 feet")
@@ -148,7 +156,7 @@ func (s *MoveTurnClockSuite) TestActiveMemberSpendsMovementAndAffordSeesIt() {
 	// of the arithmetic.
 	decl := s.moveDecl(s.afford("alice"))
 	s.Equal(session.VerbMove, decl.Verb)
-	s.True(decl.Affordable, "15 feet is still enough for at least one more cell")
+	s.True(decl.Available, "15 feet is still enough for at least one more cell")
 	s.Require().NotNil(decl.Remaining, "Move's declaration always carries Remaining")
 	s.Equal(15, *decl.Remaining)
 	s.Equal(session.SlotNone, decl.Slot, "movement is capacity, never a per-turn slot")
@@ -159,13 +167,13 @@ func (s *MoveTurnClockSuite) TestActiveMemberSpendsMovementAndAffordSeesIt() {
 // the currency, and the sheet it would have spent from is untouched.
 func (s *MoveTurnClockSuite) TestOverBudgetWalkIsRefusedWholeAndNothingIsSaved() {
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice",
+		Session: "sess", Member: "alice", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
 		Path: []spatial.Position{{X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}},
 	})
 	s.Require().NoError(err, "spends 15, leaves 15")
 
 	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice",
+		Session: "sess", Member: "alice", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
 		Path: []spatial.Position{{X: 1, Y: 5}, {X: 1, Y: 6}, {X: 1, Y: 7}, {X: 1, Y: 8}},
 	})
 	s.Require().Error(err, "20 feet needed, 15 left")
@@ -186,16 +194,16 @@ func (s *MoveTurnClockSuite) TestEndTurnRefreshesMovementForTheNextRound() {
 	ctx := context.Background()
 
 	_, err := s.mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice",
+		Session: "sess", Member: "alice", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
 		Path: []spatial.Position{{X: 1, Y: 2}, {X: 1, Y: 3}, {X: 1, Y: 4}},
 	})
 	s.Require().NoError(err, "spends 15 of alice's 30")
 
-	ended, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	ended, err := s.endTurn(ctx, "alice")
 	s.Require().NoError(err)
 	s.Equal("bob", ended.Next, "a real player does not auto-resolve — the order simply advances")
 
-	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "bob"})
+	_, err = s.endTurn(ctx, "bob")
 	s.Require().NoError(err, "bob's own turn, spending nothing, still ends cleanly")
 
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
@@ -204,7 +212,7 @@ func (s *MoveTurnClockSuite) TestEndTurnRefreshesMovementForTheNextRound() {
 	s.Equal(2, turn.Round)
 
 	decl := s.moveDecl(s.afford("alice"))
-	s.True(decl.Affordable)
+	s.True(decl.Available)
 	s.Require().NotNil(decl.Remaining)
 	s.Equal(30, *decl.Remaining, "a new turn re-seeds MovementRemaining from speed, not from where it was left")
 }
@@ -216,7 +224,7 @@ func (s *MoveTurnClockSuite) TestEndTurnRefreshesMovementForTheNextRound() {
 func (s *MoveTurnClockSuite) TestNotActiveMoveIsRefusedWithTheNamedSentinel() {
 	ctx := context.Background()
 
-	ended, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	ended, err := s.endTurn(ctx, "alice")
 	s.Require().NoError(err)
 	s.Require().Equal("bob", ended.Next, "control: it is now genuinely bob's turn")
 
@@ -240,7 +248,7 @@ func (s *MoveTurnClockSuite) TestNotActiveMoveIsRefusedWithTheNamedSentinel() {
 func (s *MoveTurnClockSuite) TestNotActiveWinsOverAffordability() {
 	ctx := context.Background()
 
-	ended, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	ended, err := s.endTurn(ctx, "alice")
 	s.Require().NoError(err)
 	s.Require().Equal("bob", ended.Next, "control: it is now genuinely bob's turn")
 
@@ -262,6 +270,33 @@ func (s *MoveTurnClockSuite) TestNotActiveWinsOverAffordability() {
 
 	s.Equal(before, s.characters.asked["alice"],
 		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
+}
+
+// TestTurnClockMoveRequiresCurrentSelector pins both halves of the Move
+// contract: a turn-clock walk cannot omit its current offer, while a selector
+// that belonged to the fight stays stale after the fight dissolves and must
+// never become permission for a free world-clock move.
+func (s *MoveTurnClockSuite) TestTurnClockMoveRequiresCurrentSelector() {
+	ctx := context.Background()
+	path := []spatial.Position{{X: 1, Y: 2}}
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+	s.ErrorIs(err, session.ErrNoDeclarationID)
+	s.Nil(out)
+	s.Equal(spatial.Position{X: 1, Y: 1}, s.where("alice"))
+
+	selector := s.moveDecl(s.afford("alice")).ID
+	_, err = s.mgr.Dissolve(ctx, &session.DissolveInput{
+		Session: "sess", Member: "alice", Cause: session.ByDecision(),
+	})
+	s.Require().NoError(err)
+
+	out, err = s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", Path: path, DeclarationID: selector,
+	})
+	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Nil(out)
+	s.Equal(spatial.Position{X: 1, Y: 1}, s.where("alice"), "the stale turn selector moved no cell")
 }
 
 // TestWorldClockMoveNeverTouchesTheEconomy is the brief's fifth case: free
@@ -298,7 +333,7 @@ func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 	stored, ok := characters.byID["alice"]
 	s.Require().True(ok)
 	s.Nil(stored.ActionEconomy,
-		"a free-roam walk must never ready, let alone spend from, a sheet — priceWalk skips it by clock kind alone")
+		"a free-roam walk must never ready, let alone spend from, a sheet — world Move skips offer compilation")
 
 	direct, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
@@ -325,6 +360,7 @@ func (s *MoveTurnClockSuite) TestMovedTurnEndedAndFightStartedCarryTypedBodies()
 
 	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+		DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err)
 
@@ -335,7 +371,7 @@ func (s *MoveTurnClockSuite) TestMovedTurnEndedAndFightStartedCarryTypedBodies()
 	s.Equal("alice", movedBody.Member)
 	s.Equal(spatial.Position{X: 1, Y: 2}, movedBody.To)
 
-	ended, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	ended, err := s.endTurn(ctx, "alice")
 	s.Require().NoError(err)
 	s.Equal("bob", ended.Next)
 

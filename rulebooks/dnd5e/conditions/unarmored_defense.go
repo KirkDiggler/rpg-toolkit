@@ -55,6 +55,10 @@ type UnarmoredDefenseCondition struct {
 // Ensure UnarmoredDefenseCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnarmoredDefenseCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (u *UnarmoredDefenseCondition) Ref() *core.Ref { return refs.Conditions.UnarmoredDefense() }
+
 // UnarmoredDefenseInput provides configuration for creating an unarmored defense condition
 type UnarmoredDefenseInput struct {
 	CharacterID string               // ID of the character

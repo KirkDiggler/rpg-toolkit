@@ -15,6 +15,7 @@ import (
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // SecondWind represents the fighter's Second Wind feature.
@@ -40,6 +41,29 @@ type SecondWindData struct {
 
 // Ref returns the unique ref for the Second Wind feature.
 func (s *SecondWind) Ref() *core.Ref { return refs.Features.SecondWind() }
+
+// Status reports the feature's privately-owned Second Wind resource through
+// the non-mutating status surface, without serializing ToJSON. The owner is
+// not required: Second Wind owns its own [RecoverableResource].
+func (s *SecondWind) Status(*StatusInput) (*StatusOutput, error) {
+	if s.resource == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "second wind feature has no resource")
+	}
+	name := s.name
+	if name == "" {
+		name = "Second Wind"
+	}
+	return &StatusOutput{Status: &Status{
+		Ref:  *refs.Features.SecondWind(),
+		Name: name,
+		Resource: &ResourceStatus{
+			Key:     resources.SecondWind,
+			Name:    "Second Wind",
+			Current: s.resource.Current(),
+			Maximum: s.resource.Maximum(),
+		},
+	}}, nil
+}
 
 // Name returns the display name for the Second Wind feature.
 func (s *SecondWind) Name() string { return s.name }
@@ -121,11 +145,16 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 	return nil
 }
 
-// loadJSON loads Second Wind state from JSON
+// loadJSON loads Second Wind state from JSON, rejecting negative or
+// over-maximum persisted uses before constructing its private resource.
 func (s *SecondWind) loadJSON(data json.RawMessage) error {
 	var secondWindData SecondWindData
 	if err := json.Unmarshal(data, &secondWindData); err != nil {
 		return fmt.Errorf("failed to unmarshal second wind data: %w", err)
+	}
+
+	if err := validateResourceBounds("second wind", secondWindData.Uses, secondWindData.MaxUses); err != nil {
+		return err
 	}
 
 	s.id = secondWindData.ID

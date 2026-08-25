@@ -110,6 +110,19 @@ var (
 	// ErrNoMemberID is returned when a verb is given an empty member ID.
 	ErrNoMemberID = errors.New("empty member id")
 
+	// ErrNoDeclarationID is returned when Attack or EndTurn omits the opaque
+	// selector echoed from Afford, or when a turn-clock Move omits it. A
+	// world-clock Move is the deliberate exception: Afford has no world-clock
+	// declarations, so its selector must be empty.
+	ErrNoDeclarationID = errors.New("empty declaration id")
+
+	// ErrStaleDeclaration is returned when an echoed selector does not name the
+	// verb's one current compiled offer, when that offer is now unavailable, or
+	// when Attack's selected target is absent or unavailable in its current
+	// candidate set. It is a current-world refusal: callers refresh Turn and
+	// Afford and never retry the mutation automatically.
+	ErrStaleDeclaration = errors.New("declaration is stale")
+
 	// ErrNoMember is returned when a verb names a member the encounter does
 	// not hold.
 	ErrNoMember = errors.New("no such member")
@@ -328,24 +341,24 @@ var (
 	// malformed declared action, or a weapon the strike has no semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
 
-	// ErrOutOfReach is returned when Attack names a target further from the
-	// attacker than the compiled delivery permits: one cell for ordinary melee,
-	// two for Reach weapons (rpg-toolkit#1010), and beyond long range for a
-	// supported ranged weapon. Targets inside a ranged weapon's normal and long
-	// brackets still resolve; only beyond long range reaches this sentinel.
+	// ErrOutOfReach is Attack's final defensive resolution validation when a
+	// target is further away than the selected definition's delivery permits:
+	// one cell for ordinary melee, two for Reach weapons (rpg-toolkit#1010),
+	// and beyond long range for a supported ranged weapon.
 	//
-	// Afford's per-target ATTACK declarations are this same gate asked
-	// ahead of time: a target this seam would refuse with ErrOutOfReach is
-	// a target no declaration names. When no candidate is in reach at all,
-	// Afford still answers once — a single declaration naming no target,
-	// Affordable false, Why.Reason ShortfallNoTargetInReach — rather than
+	// Normal execution refuses reach changes earlier as ErrStaleDeclaration:
+	// Afford projects the shared preflight as candidate availability, and Attack
+	// regenerates and selects that current candidate before resolution. When no
+	// candidate is in reach, Afford still answers once — a single unavailable
+	// Attack declaration with Why.Reason ShortfallNoTargetInReach — rather than
 	// an empty list a client could mistake for "nothing to ask about yet."
 	ErrOutOfReach = errors.New("no target in reach")
 
-	// ErrCannotAfford is returned when an actor cannot pay for what they
-	// declared: a second swing in a turn that bought only one, a level-5
-	// fighter's third, an action after the action was spent, or a walk longer
-	// than the turn's remaining movement (rpg-toolkit#1169).
+	// ErrCannotAfford is returned when the final payment door cannot pay for
+	// what an actor declared. Move reaches it when the selected path is longer
+	// than the turn's remaining movement (rpg-toolkit#1169). Attack normally
+	// exposes exhaustion in Afford and rejects the now-unavailable selector as
+	// ErrStaleDeclaration; this remains its defensive resolution translation.
 	//
 	// THIS IS A FACT ABOUT THE GAME, not about the code, and that is the whole
 	// reason it is separate from ErrBadCost. A player who has run out of actions

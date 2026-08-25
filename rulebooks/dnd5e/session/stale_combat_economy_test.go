@@ -23,8 +23,8 @@ import (
 // Kirk (live, two browsers, 2026-08-24): a member recruited into a fight
 // already in progress started their own first turn with only 5 of 30 feet
 // of movement. The natural first read — "the free-roam approach spent it" —
-// does not hold: [Manager.priceWalk] decides free-roam-vs-turn-clock ONCE,
-// from the clock state at the top of the Move call, before any step runs, so
+// does not hold: Move decides free-roam-vs-turn-clock ONCE, from the clock
+// state at the top of the call, before any step runs, so
 // a walk that starts on the world clock is priced nothing for the whole
 // call regardless of what a mid-path step does. A genuinely first-ever
 // combat entrant seeds a full 30ft via [character.StartTurn] exactly as
@@ -121,6 +121,7 @@ func (s *StaleCombatEconomySuite) killAdjacentSkeleton(id string) {
 	for i := 0; i < runaway && s.storedHP(id) > 0; i++ {
 		_, err := s.mgr.Attack(context.Background(), &session.AttackInput{
 			Session: "sess", Attacker: "alice", Target: id,
+			DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 		})
 		s.Require().NoError(err)
 	}
@@ -134,12 +135,18 @@ func (s *StaleCombatEconomySuite) afford(member string) *session.AffordOutput {
 	return out
 }
 
-// attackDecl finds the VerbAttack declaration for a specific target.
+// attackDecl finds the VerbAttack declaration whose candidate universe
+// includes the named target, failing loudly if Afford omits it.
 func (s *StaleCombatEconomySuite) attackDecl(out *session.AffordOutput, target string) session.Declaration {
 	s.T().Helper()
 	for _, d := range out.Declarations {
-		if d.Verb == session.VerbAttack && d.Target != nil && *d.Target == target {
-			return d
+		if d.Verb != session.VerbAttack {
+			continue
+		}
+		for _, c := range d.Candidates {
+			if c.Member == target {
+				return d
+			}
 		}
 	}
 	s.Require().Fail("no VerbAttack declaration for "+target, "declarations: %+v", out.Declarations)
@@ -179,6 +186,6 @@ func (s *StaleCombatEconomySuite) TestASecondFightsFirstTurnIsNotChargedForTheFi
 	// sees TurnNumber already matching this round and silently no-ops,
 	// leaving her with no action to swing at all.
 	decl := s.attackDecl(s.afford("alice"), "skel-2")
-	s.True(decl.Affordable,
+	s.True(decl.Available,
 		"alice's first swing in a NEW fight must be affordable — not refused for an action fight 1 already spent")
 }

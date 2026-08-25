@@ -16,6 +16,12 @@ type Feature interface {
 	Name() string             // Returns the feature's display name
 	ToJSON() (json.RawMessage, error)
 	ActionType() combat.ActionType // Returns action economy cost to activate
+
+	// StatusProvider reports the feature's non-mutating status surface
+	// (ref, name, optional detail, optional owned resource) without
+	// serializing ToJSON. Embedded so every loadable feature must name itself
+	// honestly for the character StatusView projection (rpg-toolkit#971).
+	StatusProvider
 }
 
 // LoadJSON loads a feature from JSON based on its ref

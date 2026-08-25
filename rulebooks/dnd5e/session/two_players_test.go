@@ -202,7 +202,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// Round 1, barbarian: passes her own turn (a player's turn needs no
 	// declared action before EndTurn — the same convention every prior
 	// suite's own driven-turn gates use).
-	out1, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian"})
+	out1, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "barbarian")})
 	s.Require().NoError(err)
 	s.Equal("fighter", out1.Next)
 	s.False(out1.RoundWrapped)
@@ -213,7 +213,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// back to barbarian, exactly as TestSkeletonAttacksFromRange's own
 	// single-player shape does with a second real player added.
 	beforeRound1Drive := len(s.stream.published)
-	out2, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out2, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Equal("barbarian", out2.Next)
 	s.True(out2.RoundWrapped, "skel-1 was last in the order — its own end wraps the round")
@@ -223,7 +223,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.Require().Len(fighterRound1, 3, "turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — the shortbow needs no approach")
 
 	// Round 2, barbarian: same shape as round 1's own opening.
-	out3, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian"})
+	out3, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "barbarian")})
 	s.Require().NoError(err)
 	s.Equal("fighter", out3.Next)
 	s.False(out3.RoundWrapped)
@@ -231,7 +231,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// Round 2, fighter: skel-1 remains inside shortbow range, so this
 	// round's driven turn is again a bare strike with no move beat.
 	beforeRound2Drive := len(s.stream.published)
-	out4, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out4, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Equal("barbarian", out4.Next)
 	s.True(out4.RoundWrapped)
@@ -355,14 +355,14 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 		"same tie-break as TestTwoPlayersOneSession's own — barbarian sorts first")
 
 	// Round 1: barbarian passes her own turn.
-	out1, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian"})
+	out1, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian", DeclarationID: currentEndTurnID(t, mgr, "sess", "barbarian")})
 	require.NoError(t, err)
 	require.Equal(t, "fighter", out1.Next)
 
 	// Round 1: fighter's own end drives skel-1's WHOLE turn — the fix under
 	// test is that this is exactly ONE attack, not two.
 	stream.published = nil
-	out2, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out2, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter")})
 	require.NoError(t, err)
 	require.Equal(t, "fighter", out2.Next, "a two-member order (barbarian spliced) wraps skel-1's own end back to fighter")
 	require.True(t, out2.RoundWrapped)
@@ -408,7 +408,7 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// deciding the fight mid-drive: rpg-toolkit#1202's own case, now with
 	// two players in it.
 	stream.published = nil
-	out3, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter"})
+	out3, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter")})
 	require.NoError(t, err, "a driven turn that wins the fight must not abort the caller's own EndTurn")
 	require.Equal(t, "fighter", out3.Next,
 		"there is no bubble left to name a turn IN; EndTurnOutput.Next reports the caller instead (rpg-toolkit#1202)")

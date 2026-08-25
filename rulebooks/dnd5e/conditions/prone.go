@@ -77,6 +77,10 @@ type ProneCondition struct {
 // Ensure ProneCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*ProneCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (p *ProneCondition) Ref() *core.Ref { return refs.Conditions.Prone() }
+
 // NewProneCondition creates a prone condition for the specified creature.
 //
 // It does not remove itself: prone lasts until something stands the creature up,

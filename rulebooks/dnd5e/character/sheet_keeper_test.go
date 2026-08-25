@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -26,6 +27,8 @@ import (
 type keptCondition struct {
 	applied bool
 }
+
+func (c *keptCondition) Ref() *core.Ref { return refs.Conditions.Dodging() }
 
 func (c *keptCondition) IsApplied() bool { return c.applied }
 

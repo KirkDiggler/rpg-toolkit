@@ -59,7 +59,9 @@ type loadedEffect struct {
 //
 // Load is strict where [LoadFromData] is forgiving: a persisted blob it cannot
 // make sense of — a condition, a feature, an inventory item — fails the load,
-// and the error names the blob. LoadFromData drops that blob and carries on,
+// and the error names the blob. Invalid character-owned resource bounds
+// (negative current/maximum or current above maximum) fail before a resource is
+// constructed. LoadFromData drops that blob or malformed resource and carries on,
 // which is the behaviour its callers have today and keep. The divergence is
 // deliberate. A loader that continues past what it cannot read hands back a
 // sheet that is quietly missing something, and the next save persists the
@@ -291,7 +293,11 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		char.conditions = append(char.conditions, effect.behavior)
 	}
 
-	char.resources = loadResources(d.Resources, char.id)
+	loadedResources, err := loadResources(d.Resources, char.id, policy)
+	if err != nil {
+		return nil, err
+	}
+	char.resources = loadedResources
 
 	// Re-register standard combat abilities (not persisted, always available)
 	initStandardCombatAbilities(char)
@@ -408,14 +414,28 @@ func loadEffects(raw []json.RawMessage, policy effectPolicy) ([]loadedEffect, er
 }
 
 // loadResources rebuilds the character's recoverable resources at their
-// persisted values. They are inert until a [SheetKeeper] puts them on a bus,
-// which is what makes them recover on a rest.
+// persisted values. Strict loads reject malformed bounds before construction;
+// lenient loads drop those entries rather than allowing a constructor or failed
+// Use call to normalize them into valid-looking counts. Valid resources are
+// inert until a [SheetKeeper] puts them on a bus, which makes them recover on a rest.
 func loadResources(
-	persisted map[coreResources.ResourceKey]RecoverableResourceData, characterID string,
-) map[coreResources.ResourceKey]*combat.RecoverableResource {
+	persisted map[coreResources.ResourceKey]RecoverableResourceData,
+	characterID string,
+	policy effectPolicy,
+) (map[coreResources.ResourceKey]*combat.RecoverableResource, error) {
 	loaded := make(map[coreResources.ResourceKey]*combat.RecoverableResource, len(persisted))
 
 	for key, resData := range persisted {
+		if err := validatePersistedResource(key, resData); err != nil {
+			if policy == strictEffects {
+				return nil, err
+			}
+			// The lenient loader keeps its forgiving policy by dropping the
+			// malformed entry. It must not feed bad bounds to constructors whose
+			// clamping/failed Use path would turn them into valid-looking counts.
+			continue
+		}
+
 		resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 			ID:          string(key),
 			Maximum:     resData.Maximum,
@@ -423,16 +443,35 @@ func loadResources(
 			ResetType:   resData.ResetType,
 		})
 
-		// Set current value if different from maximum
 		if resData.Current != resData.Maximum {
 			deficit := resData.Maximum - resData.Current
-			_ = resource.Use(deficit) // Ignore error - we know the value is valid
+			if err := resource.Use(deficit); err != nil {
+				// Bounds were validated above, so reaching this is an internal
+				// disagreement between validation and the resource primitive.
+				return nil, rpgerr.Wrapf(err, "failed to restore resource %s", key)
+			}
 		}
 
 		loaded[key] = resource
 	}
 
-	return loaded
+	return loaded, nil
+}
+
+func validatePersistedResource(
+	key coreResources.ResourceKey, data RecoverableResourceData,
+) error {
+	if data.Current < 0 || data.Maximum < 0 {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"resource %s has negative persisted bounds: current=%d maximum=%d",
+			key, data.Current, data.Maximum)
+	}
+	if data.Current > data.Maximum {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"resource %s persisted current %d exceeds maximum %d",
+			key, data.Current, data.Maximum)
+	}
+	return nil
 }
 
 // peekEffectRef reads the ref a persisted effect routes on, which is the same

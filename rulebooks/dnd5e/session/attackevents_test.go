@@ -56,6 +56,7 @@ func (s *AttackEventsTestSuite) duelWithStream(dice session.Roller) *session.Man
 func (s *AttackEventsTestSuite) swing(mgr *session.Manager) *session.AttackOutput {
 	out, err := mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err)
 	return out

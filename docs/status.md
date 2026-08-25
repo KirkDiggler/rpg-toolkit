@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-08-23
-confidence: high — retirement state verified on 2026-08-23; older delivery entries are retained as dated history and are not current-state claims
+updated: 2026-08-25
+confidence: high — active #1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
 # rpg-toolkit: Where We Are
@@ -20,6 +20,30 @@ characters assemble them, and resolution dispatches by typed profile arm.
 Executable character/monster action packages and producer-specific resolution
 compilers are retired. Older sections below retain the legacy module's delivery
 history and must not be read as current support.
+
+**#1246 — production session combat offers and owner-private status (active).**
+The D&D 5e module now gives every live condition a canonical `Ref`, projects
+immutable feature/condition/non-magical-resource `character.StatusView` data,
+and fails on unknown or conflicting display facts rather than inspecting or
+dropping persistence JSON. Its four-build resource catalog is closed by class,
+feature key, and canonical name; strict loads reject malformed owner/private
+bounds while the legacy lenient loader drops them without normalization. Spell
+slots and legacy class resources are excluded; this wave adds no magic system.
+
+The independently versioned session module projects one compiled Attack, Move,
+and EndTurn offer per current turn. Attack selectors hash the complete validated
+definition **with its actual cloned SpendProfile**; collision equality uses
+RFC 8785-canonical variant bytes. Compilation gathers and strictly preflights one
+raw resolution cast, projecting unreadable candidates/dependencies before a
+client can select the offer; execution reuses that exact cast without refetching
+participants. It also reuses the selected definition, matching cost/readied
+sheet, and shared target preflight. Attack/EndTurn require echoed IDs, turn Move requires one, and world
+Move requires empty. Unknown, mismatched, unavailable, or target-invalid
+selection is `ErrStaleDeclaration` before dice/movement/write/story; omission is
+`ErrNoDeclarationID`. EndTurn remains clock-only under the per-verb blocker
+matrix, and AttackRef is full `core.Ref.String()` through declaration, response,
+and typed beat. No release version is predicted here; merge/tag publication
+remains the repository release process.
 
 ## Historical top-level encounter delivery record
 

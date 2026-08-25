@@ -402,6 +402,13 @@ func (f *stubFeature) Name() string             { return "Stub" }
 
 func (f *stubFeature) ActionType() coreCombat.ActionType { return f.actionType }
 
+// Status satisfies features.StatusProvider. The stub owns no resource and
+// reports a minimal, honest status surface so it can stand in for a real
+// feature wherever the character StatusView projection is exercised.
+func (f *stubFeature) Status(*features.StatusInput) (*features.StatusOutput, error) {
+	return &features.StatusOutput{Status: &features.Status{Ref: *stubFeatureRef, Name: "Stub"}}, nil
+}
+
 func (f *stubFeature) CanActivate(_ context.Context, _ core.Entity, _ features.FeatureInput) error {
 	return nil
 }

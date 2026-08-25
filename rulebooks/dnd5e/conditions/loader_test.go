@@ -7,13 +7,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // LoaderTestSuite tests the condition loader functionality
@@ -285,4 +289,107 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripCleanup() {
 
 	// Should only have 2 components: weapon and ability (no rage)
 	s.Require().Len(finalEvent.Components, 2, "Should only have weapon and ability after Remove()")
+}
+
+// TestEveryLoadedConditionNamesItsCanonicalRef pins the rpg-toolkit#971
+// contract: every condition the loader can route names itself through Ref(),
+// and the name it reports is exactly the ref its own ToJSON embeds (and that
+// LoadJSON routed on). A condition that returns a different ref — or nil —
+// breaks per-effect attribution downstream, so this fails the whole table on
+// the first divergence rather than silently dropping one.
+func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
+	cases := []struct {
+		name     string
+		ref      *core.Ref
+		behavior func() dnd5eEvents.ConditionBehavior
+	}{
+		{"raging", refs.Conditions.Raging(), func() dnd5eEvents.ConditionBehavior {
+			return &RagingCondition{CharacterID: "barbarian-1", DamageBonus: 2, Level: 5}
+		}},
+		{"brutal_critical", refs.Conditions.BrutalCritical(), func() dnd5eEvents.ConditionBehavior {
+			return NewBrutalCriticalCondition(BrutalCriticalInput{CharacterID: "barbarian-1", Level: 13})
+		}},
+		{"unarmored_defense", refs.Conditions.UnarmoredDefense(), func() dnd5eEvents.ConditionBehavior {
+			return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
+				CharacterID: "barbarian-1", Type: UnarmoredDefenseBarbarian, Source: "dnd5e:classes:barbarian",
+			})
+		}},
+		{"fighting_style_archery", refs.Conditions.FightingStyleArchery(), func() dnd5eEvents.ConditionBehavior {
+			return NewFightingStyleArcheryCondition("fighter-1")
+		}},
+		{"fighting_style_defense", refs.Conditions.FightingStyleDefense(), func() dnd5eEvents.ConditionBehavior {
+			return NewFightingStyleDefenseCondition("fighter-1")
+		}},
+		{"fighting_style_dueling", refs.Conditions.FightingStyleDueling(), func() dnd5eEvents.ConditionBehavior {
+			return NewFightingStyleDuelingCondition("fighter-1")
+		}},
+		{"fighting_style_great_weapon_fighting", refs.Conditions.FightingStyleGreatWeaponFighting(), func() dnd5eEvents.ConditionBehavior {
+			return NewFightingStyleGreatWeaponFightingCondition("fighter-1", nil)
+		}},
+		{"fighting_style_protection", refs.Conditions.FightingStyleProtection(), func() dnd5eEvents.ConditionBehavior {
+			return NewFightingStyleProtectionCondition("fighter-1")
+		}},
+		{"fighting_style_two_weapon_fighting", refs.Conditions.FightingStyleTwoWeaponFighting(), func() dnd5eEvents.ConditionBehavior {
+			return NewFightingStyleTwoWeaponFightingCondition("fighter-1")
+		}},
+		{"improved_critical", refs.Conditions.ImprovedCritical(), func() dnd5eEvents.ConditionBehavior {
+			return NewImprovedCriticalCondition(ImprovedCriticalInput{CharacterID: "fighter-1", Threshold: 19})
+		}},
+		{"reckless_attack", refs.Conditions.RecklessAttack(), func() dnd5eEvents.ConditionBehavior {
+			return NewRecklessAttackCondition("barbarian-1")
+		}},
+		{"martial_arts", refs.Conditions.MartialArts(), func() dnd5eEvents.ConditionBehavior {
+			return NewMartialArtsCondition(MartialArtsInput{CharacterID: "monk-1", MonkLevel: 3})
+		}},
+		{"unarmored_movement", refs.Conditions.UnarmoredMovement(), func() dnd5eEvents.ConditionBehavior {
+			return NewUnarmoredMovementCondition(UnarmoredMovementInput{CharacterID: "monk-1", MonkLevel: 3})
+		}},
+		{"sneak_attack", refs.Features.SneakAttack(), func() dnd5eEvents.ConditionBehavior {
+			return NewSneakAttackCondition(SneakAttackInput{CharacterID: "rogue-1", Level: 3})
+		}},
+		{"disengaging", refs.Conditions.Disengaging(), func() dnd5eEvents.ConditionBehavior {
+			return NewDisengagingCondition("rogue-1")
+		}},
+		{"dodging", refs.Conditions.Dodging(), func() dnd5eEvents.ConditionBehavior {
+			return NewDodgingCondition("fighter-1")
+		}},
+		{"prone", refs.Conditions.Prone(), func() dnd5eEvents.ConditionBehavior {
+			return NewProneCondition("fighter-1")
+		}},
+		{"hidden", refs.Conditions.Hidden(), func() dnd5eEvents.ConditionBehavior {
+			return NewHiddenCondition("rogue-1")
+		}},
+		{"helped", refs.Conditions.Helped(), func() dnd5eEvents.ConditionBehavior {
+			return NewHelpedCondition("rogue-1", "cleric-1")
+		}},
+		{"unconscious", refs.Conditions.Unconscious(), func() dnd5eEvents.ConditionBehavior {
+			return NewUnconsciousCondition("fighter-1", nil)
+		}},
+		{"opportunity_attack", refs.Conditions.OpportunityAttack(), func() dnd5eEvents.ConditionBehavior {
+			return NewOpportunityAttackCondition("fighter-1")
+		}},
+		{"shield_spell", refs.Spells.Shield(), func() dnd5eEvents.ConditionBehavior {
+			return NewShieldSpellCondition("wizard-1")
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			original := tc.behavior()
+			require.NotNil(t, original)
+			require.NotNil(t, original.Ref(), "original Ref() must never return nil")
+
+			blob, err := original.ToJSON()
+			require.NoError(t, err)
+
+			loaded, err := LoadJSON(blob)
+			require.NoError(t, err)
+			require.NotNil(t, loaded.Ref(), "loaded Ref() must never return nil")
+
+			assert.Equal(t, tc.ref.String(), original.Ref().String(),
+				"original condition must name its own canonical ref")
+			assert.Equal(t, tc.ref.String(), loaded.Ref().String(),
+				"loaded condition must name the same ref its ToJSON embeds")
+		})
+	}
 }

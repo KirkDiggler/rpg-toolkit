@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -226,6 +227,7 @@ type liveMonsterCondition struct {
 	applied bool
 }
 
+func (c *liveMonsterCondition) Ref() *core.Ref  { return refs.Conditions.Prone() }
 func (c *liveMonsterCondition) IsApplied() bool { return c.applied }
 func (c *liveMonsterCondition) Apply(_ context.Context, _ events.EventBus) error {
 	c.applied = true

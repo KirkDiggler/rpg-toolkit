@@ -37,6 +37,10 @@ type immunityCondition struct {
 // Ensure immunityCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*immunityCondition)(nil)
 
+// Ref returns the canonical ref this trait names itself by — the same ref its
+// ToJSON embeds and its loader routes on.
+func (i *immunityCondition) Ref() *core.Ref { return refs.MonsterTraits.Immunity() }
+
 // Immunity creates a new immunity trait that reduces damage of the specified type to 0
 func Immunity(ownerID string, damageType damage.Type) dnd5eEvents.ConditionBehavior {
 	return &immunityCondition{

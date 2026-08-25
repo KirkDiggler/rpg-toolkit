@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -98,8 +99,31 @@ func armedFighter(id string) *character.Data {
 // field to make a swing miss changes nothing at all.
 const duelAC = 12
 
-// duelWorld is two armed characters standing next to each other, which is the
-// smallest world where a swing means anything.
+// turnWorld moves the named members from the world clock into one authored
+// turn clock. Tests author the clock directly so initiative never consumes the
+// attack dice whose exact faces they assert.
+func turnWorld(data *encounter.EncounterData, order []string, active int) *encounter.EncounterData {
+	ids := make([]core.EntityID, 0, len(order))
+	for _, member := range order {
+		delete(data.Clock.Budgets, core.EntityID(member))
+		ids = append(ids, core.EntityID(member))
+	}
+	raw, err := json.Marshal([]struct {
+		Order     []core.EntityID `json:"order"`
+		ActiveIdx int             `json:"active_idx"`
+		Round     int             `json:"round"`
+	}{{Order: ids, ActiveIdx: active, Round: 1}})
+	if err != nil {
+		panic(err)
+	}
+	if err := json.Unmarshal(raw, &data.Bubbles); err != nil {
+		panic(err)
+	}
+	return data
+}
+
+// freeRoamDuelWorld is two armed characters standing next to each other, which
+// is the smallest world where a swing means anything.
 //
 // Both sides are CHARACTERS on purpose: damage dirties the target's stored
 // sheet, which is the case that earns Attack its row in the no-clobber pin.
@@ -107,7 +131,7 @@ const duelAC = 12
 // Shared with the event-kind pins (attackevents_test.go), which need the same
 // duel delivered to a real stream rather than discarded. One world, so a
 // fixture drift cannot make the two suites disagree about what was swung at.
-func duelWorld(t fataler) *encounter.EncounterData {
+func freeRoamDuelWorld(t fataler) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
@@ -124,6 +148,12 @@ func duelWorld(t fataler) *encounter.EncounterData {
 	}
 	data := enc.ToData()
 	return &data
+}
+
+// duelWorld is the same adjacent-character scene on a turn clock with alice
+// active, so Attack can execute only through the selector Afford authored.
+func duelWorld(t fataler) *encounter.EncounterData {
+	return turnWorld(freeRoamDuelWorld(t), []string{"alice", "bob"}, 0)
 }
 
 // duel wires the duel world to a manager whose events go nowhere.
@@ -160,6 +190,7 @@ func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, 
 func (s *AttackTestSuite) swing(mgr *session.Manager) (*session.AttackOutput, error) {
 	return mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 }
 
@@ -214,6 +245,7 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err,
 		"an armed Dueling-eligible fighter's swing must not depend on a GameContext the session stack never installs")
@@ -289,12 +321,13 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 	s.Require().NoError(err)
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &world,
+		Session: "sess", Encounter: "world", World: turnWorld(&world, []string{"alice", "bob", "carol"}, 2),
 	})
 	s.Require().NoError(err)
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "carol", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "carol"),
 	})
 	s.Require().NoError(err,
 		"a third member's Protection condition must not depend on a GameContext the session stack never installs")
@@ -331,12 +364,12 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal("outcome", last.Tags["tag"])
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},`+
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
 			`"damage_components":[`+
 			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[5],"flat_bonus":0,"damage_type":"slashing"},`+
 			`{"source":"ability","source_ref":"dnd5e:abilities:str","flat_bonus":3,"damage_type":"slashing"}]}`,
 		string(last.Payload))
-	s.Equal(session.AttackRef{Ref: "longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
+	s.Equal(session.AttackRef{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
 
 // TestAMissIsRecordedToo pins the other arm, including that a miss carries no
@@ -353,7 +386,7 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	s.Require().NoError(err)
 	s.JSONEq(
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
-			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
+			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(story[len(story)-1].Payload))
 }
 
@@ -394,8 +427,8 @@ func (s *AttackTestSuite) TestASwingNamesTheSheetItWrote() {
 	s.Require().NoError(err)
 	s.Require().True(out.Hit)
 
-	s.Equal([]string{"character:bob", "encounter:world"}, out.Saved.Written,
-		"the damaged sheet is durable and the report has to say so")
+	s.Equal([]string{"character:alice", "character:bob", "encounter:world"}, out.Saved.Written,
+		"the paid attacker and damaged target are durable and the report says so")
 	s.Empty(out.Saved.Failed)
 	s.False(out.Saved.Partial(), "a whole save is not a partial one")
 }
@@ -414,8 +447,8 @@ func (s *AttackTestSuite) TestAMissNamesNoCharacterWrite() {
 	s.Require().NoError(err)
 	s.Require().False(out.Hit)
 
-	s.Equal([]string{"encounter:world"}, out.Saved.Written,
-		"a miss changed no sheet, so the report names no sheet")
+	s.Equal([]string{"character:alice", "encounter:world"}, out.Saved.Written,
+		"a miss changes no target sheet, but the attacker's paid economy is durable")
 }
 
 // TestAFailedWorldSaveStillNamesTheSheetThatLanded is the reason this report
@@ -447,8 +480,8 @@ func (s *AttackTestSuite) TestAFailedWorldSaveStillNamesTheSheetThatLanded() {
 
 	var saved *session.SaveError
 	s.Require().ErrorAs(err, &saved, "the report must survive the error")
-	s.Equal([]string{"character:bob"}, saved.Report.Written,
-		"bob's damaged sheet is already durable — retrying the swing would damage him twice")
+	s.Equal([]string{"character:alice", "character:bob"}, saved.Report.Written,
+		"the paid attacker and damaged target are already durable — retrying would spend and damage twice")
 	s.Equal([]string{"encounter:world"}, saved.Report.Failed,
 		"and the world that would have recorded the blow is what needs repair")
 	s.True(saved.Report.Partial(), "half a save is a repair, not a retry")
@@ -457,45 +490,30 @@ func (s *AttackTestSuite) TestAFailedWorldSaveStillNamesTheSheetThatLanded() {
 		"the write the report names really did land")
 }
 
-// TestFreeRoamChargesNothing is TestNothingSpendsYet, flipped.
-//
-// It used to pin a KNOWN GAP: nothing anywhere spent anything, a character could
-// swing as many times in a turn as the caller asked, and its failure was to be
-// the signal that the economy had landed. The economy has landed
-// (rpg-toolkit#1097), and the same three swings in the same scene still land —
-// which is now a RULING rather than a gap, and that is why the test is renamed
-// instead of deleted.
-//
-// The ruling is that the action economy is a FIGHT's economy. It is not this
-// package's invention: combat.Ledger opens with InCombat and refuses every
-// payment from a holder who is not in a fight, and a member on the world clock
-// has no turn to spend a turn's slots from. The duel below is free roam — two
-// characters standing next to each other, no bubble, no initiative order — so
-// the swing is passed no cost at all.
-//
-// EconomySuite is the other half, and neither test means much alone: the same
-// verb refuses a second swing the moment there is a fight to refuse it in. What
-// would make BOTH wrong is a swing charged where there is no economy to charge
-// it against, which the gate would refuse forever rather than once.
-func (s *AttackTestSuite) TestFreeRoamChargesNothing() {
-	mgr := s.duel(&sequenceDice{rolls: []int{15, 5, 15, 5, 15, 5}})
-
-	turn, err := mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+// TestFreeRoamAttackHasNoDeclaration pins the production contract: Afford is
+// empty on the world clock, so Attack has no selector to echo there. A direct
+// free-roam swing is invalid input and rolls or writes nothing.
+func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
+	roller := &sequenceDice{rolls: []int{15, 5}}
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
+	mgr, err := session.NewManager(&session.Config{
+		Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: session.DiscardEvents{},
+	})
 	s.Require().NoError(err)
-	s.Require().Equal(session.ClockWorld, turn.Clock,
-		"the scene is free roam, which is the whole premise of this test")
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: freeRoamDuelWorld(s.T()),
+	})
+	s.Require().NoError(err)
 
-	for i := 0; i < 3; i++ {
-		out, err := s.swing(mgr)
-		s.Require().NoError(err, "swing %d", i+1)
-		s.True(out.Hit, "swing %d", i+1)
-	}
-
-	s.Equal(28-24, 4, "sanity: the fixture starts damaged, so HP is not clamped at max")
-	s.Less(s.characters.byID["bob"].HitPoints, 24,
-		"three uncharged swings all landed — off the turn clock there is no economy")
-	s.Nil(s.characters.byID["alice"].ActionEconomy,
-		"and nothing lit one on her sheet: free roam is not a turn")
+	out, err := mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob",
+	})
+	s.ErrorIs(err, session.ErrNoDeclarationID)
+	s.Nil(out)
+	s.Zero(roller.next, "the selector gate precedes every attack roll")
+	s.Equal(24, s.characters.byID["bob"].HitPoints)
 }
 
 // TestAMonsterAttackerIsRefused pins v1's scope as a decision with a successor.
@@ -544,7 +562,7 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 // does not change and no host that wrote against it has to. Scope by the case,
 // shape for the future.
 func (s *AttackTestSuite) TestTheInputIsMemberNeutral() {
-	s.Equal([]string{"Session", "Attacker", "Target"}, structFields(session.AttackInput{}),
+	s.Equal([]string{"Session", "Attacker", "Target", "DeclarationID"}, structFields(session.AttackInput{}),
 		"a character-shaped field here would make the v1 scope permanent")
 }
 
@@ -565,8 +583,11 @@ func (s *AttackTestSuite) TestRefusals() {
 	_, err = mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "nobody", Target: "bob"})
 	s.ErrorIs(err, session.ErrNoMember)
 
-	_, err = mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "alice", Target: "nobody"})
-	s.ErrorIs(err, session.ErrNoMember)
+	_, err = mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "nobody",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
+	})
+	s.ErrorIs(err, session.ErrStaleDeclaration)
 }
 
 // TestAnEmptyHandThrowsAnUnarmedStrike pins rpg-toolkit#1168 at the seam: an
@@ -601,7 +622,7 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.Require().NoError(err)
 	data := enc.ToData()
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
+		Session: "sess", Encounter: "world", World: turnWorld(&data, []string{"alice", "bob"}, 0),
 	})
 	s.Require().NoError(err)
 
@@ -637,7 +658,7 @@ func reachWorld(t fataler, bobAt spatial.Position) *encounter.EncounterData {
 		t.Fatalf("building the reach world: %v", err)
 	}
 	data := enc.ToData()
-	return &data
+	return turnWorld(&data, []string{"alice", "bob"}, 0)
 }
 
 // TestOutOfReachIsRefused pins rpg-toolkit#1010 at the seam: a target beyond
@@ -661,8 +682,8 @@ func (s *AttackTestSuite) TestOutOfReachIsRefused() {
 	s.Require().NoError(err)
 
 	_, err = s.swing(mgr)
-	s.ErrorIs(err, session.ErrOutOfReach)
-	s.Contains(err.Error(), "bob")
+	s.ErrorIs(err, session.ErrStaleDeclaration,
+		"a current offer with no available target is unavailable at selection")
 }
 
 // TestReachPropertyExtendsToTwoCells pins the other half: a weapon carrying
@@ -757,15 +778,11 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 		"the clock is asked before the sheet is — a refusal this early must never have loaded it")
 }
 
-// TestASheetlessTargetIsRefusedByName covers content standing in a world that
-// nobody spawned.
-//
-// An authored monster has no stored sheet until Spawn records one, so there is
-// nothing to read an armour class off and nothing for damage to land on. The
-// strike would fail on its own, but further from the cause and in the
-// resolution module's vocabulary — this refuses earlier, names who, and keeps
-// that module's sentinels off the seam.
-func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
+// TestAffordThenAttackRefusesASheetlessTargetBeforeExecution covers content
+// standing in a world that nobody spawned. Afford and unchanged Attack must
+// agree before resolution: the candidate remains visible but is Unreadable,
+// the declaration is unavailable, and echoing its selector mutates nothing.
+func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecution() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{
@@ -787,14 +804,31 @@ func (s *AttackTestSuite) TestASheetlessTargetIsRefusedByName() {
 	s.Require().NoError(err)
 	data := enc.ToData()
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
+		Session: "sess", Encounter: "world", World: turnWorld(&data, []string{"alice", "ogre"}, 0),
 	})
 	s.Require().NoError(err)
 
+	afford, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	decl := requireSingleAttackDeclaration(s.T(), afford.Declarations)
+	s.False(decl.Available, "a sheetless target cannot produce an executable Attack")
+	s.Require().NotNil(decl.Why)
+	s.Equal(session.ShortfallUnreadable, decl.Why.Reason)
+	s.Require().Len(decl.Candidates, 1)
+	s.Equal("ogre", decl.Candidates[0].Member)
+	s.False(decl.Candidates[0].Available)
+	s.Require().NotNil(decl.Candidates[0].Why)
+	s.Equal(session.ShortfallUnreadable, decl.Candidates[0].Why.Reason)
+
+	beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
+		s.sessions.saves, s.encounters.saves, s.characters.saves
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "ogre",
+		Session: "sess", Attacker: "alice", Target: "ogre", DeclarationID: decl.ID,
 	})
-	s.ErrorIs(err, session.ErrNoSheet)
+	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Equal(beforeSessionSaves, s.sessions.saves)
+	s.Equal(beforeEncounterSaves, s.encounters.saves)
+	s.Equal(beforeCharacterSaves, s.characters.saves)
 }
 
 // duelAmong wires a manager whose world holds the named players and whose
@@ -831,7 +865,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 	data := enc.ToData()
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: &data,
+		Session: "sess", Encounter: "world", World: turnWorld(&data, members, 0),
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -868,8 +902,8 @@ func (s *AttackTestSuite) TestAnAbsentAttackerSheetIsAbsentRatherThanCorrupt() {
 
 	_, err := s.swing(mgr)
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoCharacter, "the repository does not hold alice at all")
-	s.NotErrorIs(err, session.ErrBadCharacter, "absent is not corrupt")
+	s.ErrorIs(err, session.ErrNoDeclarationID,
+		"an unreadable dependency produces a blocker, never an executable selector")
 }
 
 func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent() {
@@ -877,26 +911,84 @@ func (s *AttackTestSuite) TestAnUnreadableAttackerSheetIsCorruptRatherThanAbsent
 
 	_, err := s.swing(mgr)
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrBadCharacter, "alice's bytes are there and cannot be read")
-	s.NotErrorIs(err, session.ErrNoCharacter, "corrupt is not absent")
+	s.ErrorIs(err, session.ErrNoDeclarationID,
+		"an unreadable dependency produces a blocker, never an executable selector")
 }
 
 // TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt covers the castFor path:
 // a member who is neither swinging nor being swung at still joins the cast,
 // because applicability is an effect's own predicate (ADR-0038). Their sheet
 // being absent is the same failure as the attacker's and must read the same way.
-func (s *AttackTestSuite) TestAnAbsentBystanderSheetIsAbsentRatherThanCorrupt() {
-	mgr := s.duelAmong([]string{"alice", "bob", "carol"}, armedFighter("alice"), armedFighter("bob"))
+func (s *AttackTestSuite) TestUnreadableTargetAndParticipantBlockAffordBeforeUnchangedAttack() {
+	tests := []struct {
+		name             string
+		sheets           []*character.Data
+		unreadableMember string
+		candidate        bool
+	}{
+		{
+			name: "unreadable target is a candidate refusal",
+			sheets: []*character.Data{
+				armedFighter("alice"), unreadableFighter("bob"),
+			},
+			unreadableMember: "bob",
+			candidate:        true,
+		},
+		{
+			name: "unreadable non-target participant is a global refusal",
+			sheets: []*character.Data{
+				armedFighter("alice"), armedFighter("bob"), unreadableFighter("carol"),
+			},
+			unreadableMember: "carol",
+			candidate:        false,
+		},
+	}
 
-	_, err := s.swing(mgr)
-	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrNoCharacter, "carol is in the roster and not in the repository")
-	s.NotErrorIs(err, session.ErrBadCharacter, "absent is not corrupt")
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			members := []string{"alice", "bob"}
+			if tc.unreadableMember == "carol" {
+				members = append(members, "carol")
+			}
+			mgr := s.duelAmong(members, tc.sheets...)
+			if !tc.candidate {
+				// Carol remains a resolution-required roster participant but is
+				// not a live target candidate for Alice.
+				injectHolding(s.T(), s.encounters, tc.unreadableMember, nil)
+			}
 
-	// The role noun earns its keep here more than anywhere else: the host asked
-	// alice to swing at bob and gets back a complaint about carol, who it never
-	// named. "participant" is the word that explains why she was read at all.
-	s.Contains(err.Error(), `participant "carol"`, "say which part the missing member was playing")
+			afford, err := mgr.Afford(context.Background(), &session.AffordInput{
+				Session: "sess", Member: "alice",
+			})
+			s.Require().NoError(err)
+			decl := requireSingleAttackDeclaration(s.T(), afford.Declarations)
+			s.False(decl.Available, "Afford must not advertise an Attack whose cast cannot attach")
+			s.Require().NotNil(decl.Why)
+			s.Equal(session.ShortfallUnreadable, decl.Why.Reason)
+
+			bob := decl.Candidates[0]
+			s.Equal("bob", bob.Member)
+			if tc.candidate {
+				s.False(bob.Available)
+				s.Require().NotNil(bob.Why)
+				s.Equal(session.ShortfallUnreadable, bob.Why.Reason)
+			} else {
+				s.True(bob.Available, "the readable target keeps its independent reach fact")
+				s.Nil(bob.Why)
+			}
+
+			beforeSessionSaves, beforeEncounterSaves, beforeCharacterSaves :=
+				s.sessions.saves, s.encounters.saves, s.characters.saves
+			out, err := mgr.Attack(context.Background(), &session.AttackInput{
+				Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: decl.ID,
+			})
+			s.ErrorIs(err, session.ErrStaleDeclaration)
+			s.Nil(out)
+			s.Equal(beforeSessionSaves, s.sessions.saves)
+			s.Equal(beforeEncounterSaves, s.encounters.saves)
+			s.Equal(beforeCharacterSaves, s.characters.saves)
+		})
+	}
 }
 func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
@@ -912,7 +1004,7 @@ func rangedDuelWorld(t fataler, targetX float64) *encounter.EncounterData {
 		t.Fatalf("building ranged duel: %v", err)
 	}
 	data := enc.ToData()
-	return &data
+	return turnWorld(&data, []string{"alice", "bob"}, 0)
 }
 
 func (s *AttackTestSuite) rangedDuel(targetX float64, roller *sequenceDice) *session.Manager {
@@ -947,6 +1039,6 @@ func (s *AttackTestSuite) TestCharacterLongbowAttacksAtLongRangeWithDisadvantage
 func (s *AttackTestSuite) TestOutOfRangeAttackRollsNothing() {
 	roller := &sequenceDice{rolls: []int{17, 4}}
 	_, err := s.swing(s.rangedDuel(123, roller)) // 122 cells = 610 feet
-	s.Require().ErrorIs(err, session.ErrOutOfReach)
+	s.Require().ErrorIs(err, session.ErrStaleDeclaration)
 	s.Zero(roller.next)
 }

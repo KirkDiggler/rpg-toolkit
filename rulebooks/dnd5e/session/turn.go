@@ -210,6 +210,10 @@ type EndTurnInput struct {
 
 	// Member is whose turn is ending. Required — and it must be THEIR turn.
 	Member string
+
+	// DeclarationID is the opaque current EndTurn selector returned by Afford.
+	// Required. The client echoes it and never parses it.
+	DeclarationID string
 }
 
 // EndTurnOutput reports what ending the turn produced.
@@ -242,9 +246,10 @@ type EndTurnOutput struct {
 // top-level question again wearing a verb's clothes: it could only mean
 // anything if one clock were privileged.
 //
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, ErrNotInFight, ErrNotYourTurn, ErrClosed, or
-// ErrSaveFailed with a populated report. Ending a turn that is not yours is
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
+// ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotInFight, ErrNotYourTurn,
+// ErrStaleDeclaration, ErrClosed, or ErrSaveFailed with a populated report.
+// Ending a turn that is not yours is
 // refused by the clock itself and translated to ErrNotYourTurn — the same
 // sentinel Move's own turn gate produces (rpg-toolkit#1169) — rather than
 // left unnamed; see translate.
@@ -258,6 +263,28 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 
 	scope, err := m.openForWrite(ctx, in.Session)
 	if err != nil {
+		return nil, fmt.Errorf("endturn: %w", err)
+	}
+
+	// EndTurn's real gate is the clock alone. Keep it ahead of selection so a
+	// world-clock member and a member whose turn it is not retain the specific
+	// refusals this verb has always promised; unlike Attack and Move, no sheet,
+	// standing capability, or economy is consulted to compile this selector.
+	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("endturn: %w", translate(err))
+	}
+	if ClockKind(clock.Kind) != ClockTurn {
+		return nil, fmt.Errorf("endturn: %w", ErrNotInFight)
+	}
+	if string(clock.Active) != in.Member {
+		return nil, fmt.Errorf("endturn: %w", ErrNotYourTurn)
+	}
+	current, err := m.buildEndTurnOffer(scope.session, in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("endturn: %w", err)
+	}
+	if _, err := selectCompiledOffer([]compiledOffer{current}, VerbEndTurn, in.DeclarationID); err != nil {
 		return nil, fmt.Errorf("endturn: %w", err)
 	}
 

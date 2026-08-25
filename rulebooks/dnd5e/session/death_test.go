@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -126,6 +127,7 @@ func (s *DeathTestSuite) spawnSkeleton() {
 func (s *DeathTestSuite) aliceSwings() *session.AttackOutput {
 	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err)
 
@@ -420,14 +422,17 @@ func (s *DeathTestSuite) TestNothingReachesAClientUnnamed() {
 // this package can drive a character to zero in: Attack compiles character
 // attackers only, so a monster cannot be the one who does it.
 func (s *DeathTestSuite) duelAtZero() {
+	s.characters.byID["bob"].Level = 5
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+		Session: "sess", Encounter: "world",
+		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
 	})
 	s.Require().NoError(err)
 
 	for i := 0; i < 4 && s.characters.byID["alice"].HitPoints > 0; i++ {
 		_, err = s.mgr.Attack(context.Background(), &session.AttackInput{
 			Session: "sess", Attacker: "bob", Target: "alice",
+			DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "bob"),
 		})
 		s.Require().NoError(err)
 	}
@@ -446,8 +451,10 @@ func (s *DeathTestSuite) duelAtZero() {
 // Two characters, because Attack compiles character attackers only: bob is the
 // only thing in this package that can drive alice to zero.
 func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
+	s.characters.byID["bob"].Level = 5
 	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+		Session: "sess", Encounter: "world",
+		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
 	})
 	s.Require().NoError(err)
 	s.stream.published = nil
@@ -455,6 +462,7 @@ func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
 	for i := 0; i < 4 && s.characters.byID["alice"].HitPoints > 0; i++ {
 		_, aerr := s.mgr.Attack(context.Background(), &session.AttackInput{
 			Session: "sess", Attacker: "bob", Target: "alice",
+			DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "bob"),
 		})
 		s.Require().NoError(aerr)
 	}
@@ -508,12 +516,14 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	s.Require().NoError(err)
 
 	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+		Session: "sess", Encounter: "world",
+		World: turnWorld(freeRoamDuelWorld(s.T()), []string{"alice", "bob"}, 1),
 	})
 	s.Require().NoError(err)
 
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "bob", Target: "alice",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "bob"),
 	})
 	s.Require().Error(err)
 	s.ErrorIs(err, errStoreWentAway, "the host's own failure is not flattened into ours")
@@ -582,11 +592,20 @@ func (s *DeathTestSuite) TestAMemberStillUpIsNotRefused() {
 func (s *DeathTestSuite) TestAKillingBlowAboutADownedMemberIsStillLegal() {
 	s.duelAtZero()
 
-	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{
-		Session: "sess", Attacker: "bob", Target: "alice",
-	})
-	s.Require().NoError(err, "a down TARGET is not a refused verb")
-	s.NotZero(out.Seq, "and the blow is recorded like any other")
+	story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(story)
+	lastStrike := false
+	for _, event := range story {
+		var beat struct {
+			Beat    string   `json:"beat"`
+			Targets []string `json:"targets"`
+		}
+		if json.Unmarshal(event.Payload, &beat) == nil && beat.Beat == "struck" && slices.Contains(beat.Targets, "alice") {
+			lastStrike = true
+		}
+	}
+	s.True(lastStrike, "the blow that made alice down was still recorded about her")
 }
 
 // TestTheReadsStayOpenToTheDowned is the rest of fork (a): a downed member is

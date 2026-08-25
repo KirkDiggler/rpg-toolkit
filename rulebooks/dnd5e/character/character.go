@@ -772,6 +772,22 @@ var emptyResource = combat.NewRecoverableResource(combat.RecoverableResourceConf
 	Maximum: 0,
 })
 
+// ResourceStatus implements features.ResourceReader by reading the character's
+// actual resources map with presence. It never falls back to GetResource's
+// absent-key zero value: a key the sheet does not carry reports ok=false so a
+// feature's Status (and the StatusView projection) can tell a missing pool
+// from an empty one and fail loudly rather than silently reporting zeros.
+func (c *Character) ResourceStatus(key coreResources.ResourceKey) (int, int, bool) {
+	if c.resources == nil {
+		return 0, 0, false
+	}
+	r, ok := c.resources[key]
+	if !ok {
+		return 0, 0, false
+	}
+	return r.Current(), r.Maximum(), true
+}
+
 // GetResource returns the resource for the given key.
 // If the resource doesn't exist, returns an empty resource (not nil).
 // Use IsEmpty() to check if the resource exists and has uses available.

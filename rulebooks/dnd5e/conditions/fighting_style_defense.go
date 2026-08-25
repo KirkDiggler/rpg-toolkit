@@ -34,6 +34,12 @@ type FightingStyleDefenseCondition struct {
 // Ensure FightingStyleDefenseCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleDefenseCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (f *FightingStyleDefenseCondition) Ref() *core.Ref {
+	return refs.Conditions.FightingStyleDefense()
+}
+
 // NewFightingStyleDefenseCondition creates a new Defense fighting style condition.
 func NewFightingStyleDefenseCondition(characterID string) *FightingStyleDefenseCondition {
 	return &FightingStyleDefenseCondition{

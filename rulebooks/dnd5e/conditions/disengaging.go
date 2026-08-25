@@ -38,6 +38,10 @@ type DisengagingCondition struct {
 // Ensure DisengagingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*DisengagingCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (d *DisengagingCondition) Ref() *core.Ref { return refs.Conditions.Disengaging() }
+
 // NewDisengagingCondition creates a new Disengaging condition for the specified character.
 // The condition will prevent opportunity attacks when the character moves and will
 // automatically remove itself at the end of the character's turn.

@@ -43,6 +43,10 @@ type MartialArtsCondition struct {
 // Ensure MartialArtsCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*MartialArtsCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (ma *MartialArtsCondition) Ref() *core.Ref { return refs.Conditions.MartialArts() }
+
 // IsApplied returns true if this condition is currently applied
 func (ma *MartialArtsCondition) IsApplied() bool {
 	return ma.bus != nil

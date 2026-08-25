@@ -36,6 +36,12 @@ type FightingStyleTwoWeaponFightingCondition struct {
 // Ensure FightingStyleTwoWeaponFightingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleTwoWeaponFightingCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (f *FightingStyleTwoWeaponFightingCondition) Ref() *core.Ref {
+	return refs.Conditions.FightingStyleTwoWeaponFighting()
+}
+
 // NewFightingStyleTwoWeaponFightingCondition creates a new Two-Weapon Fighting condition.
 func NewFightingStyleTwoWeaponFightingCondition(characterID string) *FightingStyleTwoWeaponFightingCondition {
 	return &FightingStyleTwoWeaponFightingCondition{

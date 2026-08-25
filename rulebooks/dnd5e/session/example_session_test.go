@@ -166,6 +166,7 @@ func Example_theFightThatStartsItself() {
 	// the top of the fight.
 	out, err = mgr.Move(ctx, &session.MoveInput{
 		Session: "run", Member: "alice", Path: []spatial.Position{hexCell(1, 3)},
+		DeclarationID: currentMoveID(panicFataler{}, mgr, "run", "alice"),
 	})
 	if err != nil {
 		panic(err)

@@ -49,6 +49,10 @@ type HelpedCondition struct {
 // Ensure HelpedCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*HelpedCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (h *HelpedCondition) Ref() *core.Ref { return refs.Conditions.Helped() }
+
 // NewHelpedCondition creates a new Helped condition granting the given ally
 // advantage, with removal tied to the helper's next turn as a safety net.
 func NewHelpedCondition(characterID, helperID string) *HelpedCondition {

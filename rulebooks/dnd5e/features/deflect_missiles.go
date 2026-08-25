@@ -42,6 +42,21 @@ type DeflectMissilesData struct {
 // Ref returns the unique ref for the Deflect Missiles feature.
 func (d *DeflectMissiles) Ref() *core.Ref { return refs.Features.DeflectMissiles() }
 
+// Status reports the feature's non-mutating status surface, without
+// serializing ToJSON. Deflect Missiles owns no resource pool — the optional
+// 1-Ki catch-and-throw is paid by the owner at activation, not tracked here —
+// so Resource is nil.
+func (d *DeflectMissiles) Status(*StatusInput) (*StatusOutput, error) {
+	name := d.name
+	if name == "" {
+		name = "Deflect Missiles"
+	}
+	return &StatusOutput{Status: &Status{
+		Ref:  *refs.Features.DeflectMissiles(),
+		Name: name,
+	}}, nil
+}
+
 // Name returns the display name for the Deflect Missiles feature.
 func (d *DeflectMissiles) Name() string { return d.name }
 

@@ -7,13 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -31,8 +32,13 @@ type AttackInput struct {
 	// Attacker is who swings. Required.
 	Attacker string
 
-	// Target is who they swing at. Required.
+	// Target is who they swing at. Required, and must be an available member
+	// candidate on the selected current declaration.
 	Target string
+
+	// DeclarationID is the opaque current Attack selector returned by Afford.
+	// Required. The client echoes it and never parses it.
+	DeclarationID string
 }
 
 // AttackOutput is what the swing produced.
@@ -83,29 +89,30 @@ type AttackOutput struct {
 // which is its caller, and it earns its shape then. The same discipline
 // [DissolveCause] uses for defeat.
 //
-// Main hand, one-handed, melee. Two-handed grips and the off-hand swing are the
-// compiler's own named gaps, and they did NOT arrive with the economy the way
-// this paragraph used to predict: the economy decides how many swings a turn
-// buys, and what a two-handed grip does to one is a question for whoever
-// compiles the attack rather than for whoever prices it.
+// Main hand with the compiler's authored delivery profile. Off-hand variants
+// remain a named gap; two-handed and ranged semantics come from the selected
+// definition rather than from this seam.
 //
 // # A swing costs something, in a fight
 //
 // A character in a fight pays for the swing before it is resolved: the first in
 // a turn takes the Attack action, and what that action banks is what the swings
 // after it spend. A level-1 fighter therefore gets one swing per turn and a
-// level-5 fighter gets two, and the swing after that is refused with
-// [ErrCannotAfford] naming the currency that ran out.
+// level-5 fighter gets two. Afford reports the exhausted offer with its exact
+// NoBudget shortfall; attempting to execute that now-unavailable selector is
+// [ErrStaleDeclaration] before resolution. [ErrCannotAfford] remains the
+// defensive payment-door translation if state changes beneath that final gate.
 //
-// The price is compiled here and charged by resolution's door after pure
-// machine preflight and before its first executable step — so a refused swing
-// rolls nothing, damages nobody, and writes nothing at all. See
-// [Manager.priceSwing] for what a turn costs and
-// [character.CostOfSwing] for how one price is made out of the rulebook's two.
+// The price is compiled into the selected definition before its selector ID is
+// generated, then the same definition and a cloned matching resolution cost are
+// reused here. Resolution charges after pure machine preflight and before its
+// first executable step — so a refused swing rolls nothing, damages nobody,
+// and writes nothing at all. See [Manager.priceSwing] and
+// [character.CostOfSwing].
 //
-// IN FREE ROAM IT COSTS NOTHING, which is a ruling rather than the old gap: the
-// action economy is a fight's economy, and a member on the world clock has no
-// turn to spend a turn's slots from. TestFreeRoamChargesNothing pins it.
+// ATTACK HAS NO WORLD-CLOCK OFFER. Afford returns no declarations in free roam,
+// so there is no valid selector to echo there; Move alone retains its explicit
+// empty-selector world-clock form.
 //
 // # How it runs, and why the order is not a style choice
 //
@@ -132,16 +139,19 @@ type AttackOutput struct {
 // is what keeps that true. A caller told only "it failed" would retry a swing
 // whose damage is on disk.
 //
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet, ErrNoCharacter,
-// ErrBadCharacter, ErrBadRepository, ErrBadAttack, ErrCannotAfford, ErrBadCost,
-// ErrClosed, or ErrSaveFailed with a populated report.
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
+// ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNoSheet,
+// ErrNoCharacter, ErrBadCharacter, ErrBadRepository, ErrBadAttack,
+// ErrStaleDeclaration, ErrCannotAfford, ErrBadCost, ErrClosed, or ErrSaveFailed
+// with a populated report.
 //
-// ErrNoCharacter and ErrBadCharacter mean here exactly what they mean
-// everywhere else in this package: the repository does not hold that sheet,
-// versus it holds bytes that will not reconstitute. A host branches on the
-// difference — re-check the ID, versus go and inspect storage — so the two are
-// worth reading off carefully.
+// Participant dependency failures normally surface before this verb through
+// Afford: unreadable targets keep candidate rows with ShortfallUnreadable, an
+// unreadable non-target cast member disables the declaration globally, and an
+// unreadable actor/Attack emits an early blocker with no selector. Echoing an
+// unavailable compiled selector is ErrStaleDeclaration; resolution receives
+// the exact raw cast compilation already preflighted and performs no repository
+// refetch after selection.
 func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("attack: %w", ErrNilInput)
@@ -166,9 +176,6 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	if _, ok := kinds[in.Attacker]; !ok {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNoMember)
 	}
-	if _, ok := kinds[in.Target]; !ok {
-		return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrNoMember)
-	}
 	if kinds[in.Attacker] != encounter.MemberKind(KindPlayer) {
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotACharacter)
 	}
@@ -189,65 +196,60 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
 	}
 
-	// A downed member does not swing. Asked AFTER the roster checks, so naming somebody
-	// who is not here is still ErrNoMember — being down is a fact about a
-	// member, and it means nothing about an ID that is not one. Asked about the
-	// ATTACKER alone: a down target is refused nowhere, deliberately (see
-	// refuseIfDown).
-	if err := refuseIfDown(scope, "attacker", in.Attacker); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	// A member with no stored sheet cannot be swung at: there is nothing to
-	// read an armour class off and nothing for damage to land on. Authored
-	// content placed straight into a world has no sheet until something spawns
-	// it, so this is reachable and worth naming here — the alternative is the
-	// strike failing later, further from the cause.
-	if kinds[in.Target] == encounter.MemberKind(KindMonster) {
-		if _, ok := npcSheet(scope.data, in.Target); !ok {
-			return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrNoSheet)
+	// Attack has no world-clock declaration. Keep its independent standing
+	// gate for historical refusal precedence, then reject every selector: there
+	// is no world-clock offer to select.
+	if ClockKind(clock.Kind) != ClockTurn {
+		if err := refuseIfDown(scope, "attacker", in.Attacker); err != nil {
+			return nil, fmt.Errorf("attack: %w", err)
 		}
+		if in.DeclarationID == "" {
+			return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
+		}
+		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
 	}
 
-	sheet, err := m.loadAttackSheet(ctx, in.Attacker)
+	// The turn path loads the actor strictly ONCE. The downed verdict and every
+	// piece of the regenerated offer are derived from this same snapshot; a
+	// repository cannot answer standing to one gate and downed to compilation.
+	actor := m.loadActorSheet(ctx, in.Attacker)
+	if actor.downed {
+		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrDowned)
+	}
+	if in.DeclarationID == "" {
+		return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
+	}
+
+	// Regenerate under this verb's already-loaded write scope and select the
+	// exact current offer. compileOffersFor owns assembly, pricing, selector
+	// identity, and target preflight; execution reuses those compiled values
+	// instead of independently compiling a second attack after selection.
+	offers, err := m.compileOffersFor(
+		ctx, scope.enc, scope.data, scope.session, in.Attacker, clock, actor, VerbAttack,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
-
-	// THE ONE PLACE A SPEND GOES, and it is the place its own comment predicted.
-	// The economy turned out not to need a machine above this call: the ruling
-	// (docs/ideas/session-sdk/economy-gate.md) put the price on Input as DATA and
-	// the debit at resolution's door, so what belongs here is compiling what this
-	// actor's swing costs — which is a question about a sheet, and this is where
-	// the sheets are. Nothing persistent or wire-shaped assumed attacks were
-	// free, and nothing had to migrate.
-	price, err := m.priceSwing(ctx, scope.enc, in.Attacker, sheet)
+	selected, err := selectCompiledOffer(offers, VerbAttack, in.DeclarationID)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
-	var cost = price.cost
-	var profileCost = (*combat.SpendProfile)(nil)
-	if cost != nil {
-		profileCost = cost.Profile
+	candidate, ok := selected.targets[in.Target]
+	if !ok || !candidate.available {
+		return nil, fmt.Errorf("attack: target %q: %w", in.Target, ErrStaleDeclaration)
 	}
-	definition, err := character.AssembleAttack(sheet, &character.AssembleAttackInput{
-		Slot: character.SlotMainHand,
-		Cost: profileCost,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("attack: attacker %q: %w: %v", in.Attacker, ErrBadAttack, err)
-	}
-	if cost != nil {
-		cost.Profile = definition.Cost
+	if selected.attack == nil || selected.price == nil || selected.sheet == nil || len(selected.cast) == 0 {
+		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
 	}
 
-	// The readied sheet goes into the cast rather than the stored one: it is the
-	// sheet whose turn was just lit or refilled, and the door is about to charge
-	// exactly that bank. See swingPrice for why the two travel together.
-	cast, err := m.castFor(ctx, scope, roster, price.payer)
-	if err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
+	definition := *selected.attack
+	price := selected.price
+	cost := price.cost
+
+	// The selected offer owns the one exact raw cast snapshot gathered and
+	// strictly preflighted during compilation. Resolution reconstitutes those
+	// bytes; execution performs no participant repository read after selection.
+	cast := selected.cast
 	machine, err := resolution.NewAction(&resolution.ActionInput{
 		Definition: definition,
 		AttackerID: in.Attacker,
@@ -326,9 +328,15 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 }
 
 // attackRefFor projects a compiled attack profile's identity onto the wire
-// shape — ref, name, damage type — carried on AttackOutput and, via
-// [encounter.AttackIdentity], on the Struck/Missed beat every witness reads
-// (rpg-toolkit#866).
+// shape — ref, name, damage type — carried on AttackOutput, on the
+// Struck/Missed beat every witness reads (rpg-toolkit#866), and on the
+// compiled Attack declaration's AttackRef (rpg-toolkit#272/273).
+//
+// The ref is the FULL definition.Ref.String — "dnd5e:weapons:longsword",
+// "dnd5e:monster-actions:unarmed-strike" — so the same identity a client
+// maps to a model and icon on a beat is the one a compiled offer carries,
+// and the one execution regenerates from. The same
+// helper serves all three call sites so they cannot drift.
 //
 // The damage type reported is the FIRST declared pool's, which is every
 // weapon this assembler produces today. A weapon
@@ -336,7 +344,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 // means, and that decision belongs beside the day such a weapon compiles,
 // not guessed at here.
 func attackRefFor(definition combatActions.Definition) AttackRef {
-	ref := AttackRef{Ref: string(definition.Ref.ID), Name: definition.Name}
+	ref := AttackRef{Ref: definition.Ref.String(), Name: definition.Name}
 	if definition.Attack != nil && len(definition.Attack.Damage) > 0 {
 		ref.DamageType = DamageType(definition.Attack.Damage[0].Type)
 	}
@@ -536,18 +544,97 @@ func (m *Manager) loadAttackSheet(ctx context.Context, attacker string) (*charac
 	return loaded, nil
 }
 
-// castFor gathers every member of the encounter as a participant.
-//
-// EVERY member, not the two swinging: scope is the caller's and applicability
-// is the effect's own predicate (ADR-0038). A bard three cells away whose
-// Bless is running has to be in the room for their subscription to fire, and
-// deciding they are irrelevant here would be this package deciding a rule.
-//
-// One member may arrive already in hand. The attacker's sheet has had its turn
-// readied by the time the cast is built (see [Manager.priceSwing]), and that
-// readying is state the stored copy does not have — so the readied sheet is
-// substituted rather than re-fetched. Passing nil means nobody was readied,
-// which is what free roam looks like.
+type resolutionDependencyFailure struct {
+	member string
+	err    error
+}
+
+// compileResolutionCast gathers one raw data snapshot for every roster member
+// and strictly preflights each available sheet through the same public pure
+// loaders and attach APIs resolution uses. It returns all dependency failures
+// so offer compilation can preserve every candidate row while applying
+// candidate-specific and global Unreadable gates.
+func (m *Manager) compileResolutionCast(
+	ctx context.Context,
+	data *SessionData,
+	roster []encounter.Member,
+	readied *character.Data,
+) ([]resolution.Participant, []resolutionDependencyFailure) {
+	npcs := make(map[string]*monster.Data, len(data.NPCs))
+	for i := range data.NPCs {
+		npcs[data.NPCs[i].ID] = &data.NPCs[i]
+	}
+
+	cast := make([]resolution.Participant, 0, len(roster))
+	failures := make([]resolutionDependencyFailure, 0)
+	for _, member := range roster {
+		id := string(member.ID)
+		if member.Kind == encounter.MemberKind(KindMonster) {
+			sheet, ok := npcs[id]
+			if !ok {
+				failures = append(failures, resolutionDependencyFailure{member: id, err: ErrNoSheet})
+				continue
+			}
+			cast = append(cast, resolution.Participant{Monster: sheet})
+			continue
+		}
+
+		if readied != nil && readied.ID == id {
+			cast = append(cast, resolution.Participant{Character: readied})
+			continue
+		}
+
+		sheet, err := m.fetchCharacterData(ctx, "participant", id)
+		if err != nil {
+			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
+			continue
+		}
+		if sheet.ID != id {
+			failures = append(failures, resolutionDependencyFailure{
+				member: id,
+				err:    fmt.Errorf("GetCharacter(%q) returned character %q: %w", id, sheet.ID, ErrBadRepository),
+			})
+			continue
+		}
+		cast = append(cast, resolution.Participant{Character: sheet})
+	}
+
+	// Resolution attaches in sorted participant order (R4). Use that order and
+	// one ephemeral bus here too, so preflight is the same one-cast semantics,
+	// not isolated per-sheet checks that could miss an attach interaction.
+	ordered := append([]resolution.Participant(nil), cast...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
+	bus := newCallBus()
+	for _, participant := range ordered {
+		id := participant.ID()
+		var err error
+		switch {
+		case participant.Character != nil:
+			var loaded *character.Character
+			loaded, err = character.Load(ctx, participant.Character)
+			if err == nil {
+				err = character.Attach(ctx, loaded, bus)
+			}
+		case participant.Monster != nil:
+			var loaded *monster.Monster
+			loaded, err = monstertraits.LoadMonster(ctx, participant.Monster)
+			if err == nil {
+				err = monstertraits.AttachMonster(ctx, loaded, bus, &diceSeam{roller: m.dice})
+			}
+		default:
+			err = fmt.Errorf("empty participant")
+		}
+		if err != nil {
+			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
+		}
+	}
+
+	return cast, failures
+}
+
+// castFor gathers every member for a monster-driven strike. Player Attack
+// offers use compileResolutionCast instead so Afford can validate and retain
+// the exact raw snapshot selected execution consumes.
 func (m *Manager) castFor(
 	ctx context.Context, scope *writeScope, roster []encounter.Member, readied *character.Data,
 ) ([]resolution.Participant, error) {

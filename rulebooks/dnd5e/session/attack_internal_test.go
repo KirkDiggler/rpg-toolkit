@@ -14,6 +14,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -136,7 +137,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	payload := string(story[len(story)-1].Payload)
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":""},`+
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
 			`"damage_components":[`+
 			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[4],"flat_bonus":0,"damage_type":"slashing"},`+
 			`{"source":"monster_trait","source_ref":"dnd5e:monster_traits:immunity","flat_bonus":0,"damage_type":"slashing","multiplier":0}],`+
@@ -214,7 +215,10 @@ func cloneFixture[T any](in *T) (*T, error) {
 	return &out, nil
 }
 
-type strikeSessions struct{ byID map[string]*SessionData }
+type strikeSessions struct {
+	byID  map[string]*SessionData
+	saves int
+}
 
 func (s *strikeSessions) GetSession(_ context.Context, id string) (*SessionData, error) {
 	data, ok := s.byID[id]
@@ -225,12 +229,15 @@ func (s *strikeSessions) GetSession(_ context.Context, id string) (*SessionData,
 }
 
 func (s *strikeSessions) SaveSession(_ context.Context, data *SessionData) error {
+	s.saves++
 	s.byID[data.ID] = data
 	return nil
 }
 
 type strikeEncounters struct {
-	byID map[string]*encounter.EncounterData
+	byID    map[string]*encounter.EncounterData
+	saves   int
+	records int
 }
 
 func (s *strikeEncounters) GetEncounter(_ context.Context, id string) (*encounter.EncounterData, error) {
@@ -242,11 +249,28 @@ func (s *strikeEncounters) GetEncounter(_ context.Context, id string) (*encounte
 }
 
 func (s *strikeEncounters) SaveEncounter(_ context.Context, id string, data *encounter.EncounterData) error {
+	s.saves++
+	if previous, ok := s.byID[id]; ok {
+		before, after := strikeNextSeq(previous), strikeNextSeq(data)
+		if after > before {
+			s.records += int(after - before)
+		}
+	}
 	s.byID[id] = data
 	return nil
 }
 
-type strikeCharacters struct{ byID map[string]*character.Data }
+func strikeNextSeq(data *encounter.EncounterData) uint64 {
+	if data == nil || data.Log.NextSeq == 0 {
+		return 1
+	}
+	return data.Log.NextSeq
+}
+
+type strikeCharacters struct {
+	byID  map[string]*character.Data
+	saves int
+}
 
 func (s *strikeCharacters) GetCharacter(_ context.Context, id string) (*character.Data, error) {
 	data, ok := s.byID[id]
@@ -257,8 +281,181 @@ func (s *strikeCharacters) GetCharacter(_ context.Context, id string) (*characte
 }
 
 func (s *strikeCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
+	s.saves++
 	s.byID[data.ID] = data
 	return nil
+}
+
+func TestProjectCandidatesDefensivelyCopiesWhy(t *testing.T) {
+	why := &Shortfall{Reason: ShortfallTargetOutOfReach, Text: "original"}
+	projected := projectCandidates([]targetPreflight{{member: "bob", available: false, why: why}})
+	require.Len(t, projected, 1)
+	require.NotSame(t, why, projected[0].Why)
+	projected[0].Why.Text = "mutated by caller"
+	require.Equal(t, "original", why.Text)
+}
+
+// TestMoveRegenerationSkipsAttackTargetPreflight proves a current Move
+// selector does not inherit Attack's target dependencies. The selector comes
+// from a normal full Afford compilation; after that, Attack's shared target
+// gate is made unreadable. Regenerating Move must neither ask that gate nor
+// fail because the unrelated Attack can no longer compile.
+func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	characters := &strikeCharacters{byID: map[string]*character.Data{
+		"alice": strikeFixtureFighter("alice"),
+		"bob":   strikeFixtureFighter("bob"),
+	}}
+	mgr, err := NewManager(&Config{
+		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
+		Characters: characters, Events: DiscardEvents{},
+	})
+	require.NoError(t, err)
+
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	data := world.ToData()
+	delete(data.Clock.Budgets, core.EntityID("alice"))
+	delete(data.Clock.Budgets, core.EntityID("bob"))
+	require.NoError(t, json.Unmarshal([]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles))
+	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+	require.NoError(t, err)
+
+	afford, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	var move Declaration
+	for _, declaration := range afford.Declarations {
+		if declaration.Verb == VerbMove {
+			move = declaration
+			break
+		}
+	}
+	require.True(t, move.Available)
+	require.NotEmpty(t, move.ID)
+
+	calls := 0
+	mgr.targetPreflight = func(
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, _ string, _ int,
+	) ([]targetPreflight, error) {
+		calls++
+		return nil, errors.New("injected Attack target preflight failure")
+	}
+
+	moved, err := mgr.Move(ctx, &MoveInput{
+		Session: "sess", Member: "alice", DeclarationID: move.ID,
+		Path: []spatial.Position{{X: 1, Y: 2}},
+	})
+	require.NoError(t, err)
+	require.Len(t, moved.Steps, 1)
+	require.Zero(t, calls, "Move regeneration must not read Attack target dependencies")
+}
+
+// TestInjectedTargetPreflightRefusalChangesAffordAndAttack proves projection
+// and execution share one target gate. The injected refusal appears verbatim
+// on Afford's candidate and makes the echoed Attack selector stale before any
+// die rolls; an independent execution preflight would let the attack through.
+func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	characters := &strikeCharacters{byID: map[string]*character.Data{
+		"alice": strikeFixtureFighter("alice"),
+		"bob":   strikeFixtureFighter("bob"),
+	}}
+	roller := &scriptedDice{rolls: []int{17, 4}}
+	mgr, err := NewManager(&Config{
+		Dice: roller, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
+		Characters: characters, Events: DiscardEvents{},
+	})
+	require.NoError(t, err)
+
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	data := world.ToData()
+	delete(data.Clock.Budgets, core.EntityID("alice"))
+	delete(data.Clock.Budgets, core.EntityID("bob"))
+	require.NoError(t, json.Unmarshal(
+		[]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles,
+	))
+	require.NoError(t, func() error {
+		_, startErr := mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+		return startErr
+	}())
+
+	injected := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "injected target refusal"}
+	calls := 0
+	mgr.targetPreflight = func(
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, member string, _ int,
+	) ([]targetPreflight, error) {
+		calls++
+		require.Equal(t, "alice", member)
+		why := injected
+		return []targetPreflight{{member: "bob", available: false, why: &why}}, nil
+	}
+
+	afford, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	var attack Declaration
+	for _, declaration := range afford.Declarations {
+		if declaration.Verb == VerbAttack {
+			attack = declaration
+			break
+		}
+	}
+	require.NotEmpty(t, attack.ID)
+	require.False(t, attack.Available)
+	require.Len(t, attack.Candidates, 1)
+	require.Equal(t, injected, *attack.Candidates[0].Why)
+
+	// Isolate the attempted Attack from setup and Afford. Counters prove no
+	// repository or story mutation occurred; the state comparison separately
+	// pins position and clock.
+	sessions.saves, encounters.saves, encounters.records, characters.saves = 0, 0, 0, 0
+	beforeState, err := json.Marshal(struct {
+		Clock   any
+		Bubbles any
+		Members any
+	}{encounters.byID["world"].Clock, encounters.byID["world"].Bubbles, encounters.byID["world"].Members})
+	require.NoError(t, err)
+
+	out, err := mgr.Attack(ctx, &AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob", DeclarationID: attack.ID,
+	})
+	require.ErrorIs(t, err, ErrStaleDeclaration)
+	require.Nil(t, out)
+	require.Equal(t, 2, calls, "Afford and regenerated Attack each use the shared seam")
+	require.Zero(t, roller.next, "the injected refusal precedes every attack roll")
+	require.Zero(t, characters.saves, "target preflight refusal writes no character")
+	require.Zero(t, sessions.saves, "target preflight refusal writes no session")
+	require.Zero(t, encounters.saves, "target preflight refusal writes no encounter")
+	require.Zero(t, encounters.records, "target preflight refusal records no story beat")
+	afterState, err := json.Marshal(struct {
+		Clock   any
+		Bubbles any
+		Members any
+	}{encounters.byID["world"].Clock, encounters.byID["world"].Bubbles, encounters.byID["world"].Members})
+	require.NoError(t, err)
+	require.JSONEq(t, string(beforeState), string(afterState), "target preflight refusal changes no position or clock")
 }
 
 func strikeFixtureFighter(id string) *character.Data {

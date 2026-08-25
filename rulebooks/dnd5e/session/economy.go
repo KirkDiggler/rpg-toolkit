@@ -79,9 +79,9 @@ type swingPrice struct {
 // It was shipped anyway, deliberately, when nothing read it: movement cost
 // nothing (the ruling's fork (d)), so no profile named CapacityMovement and no
 // path spent it, and this line was named as the one that would have to grow a
-// real answer the day that changed. That day is rpg-toolkit#1169:
-// [Manager.priceWalk] now spends exactly the MovementRemaining this call
-// seeds, through the identical [combat.Pay] gate a swing pays through. The
+// real answer the day that changed. That day is rpg-toolkit#1169: turn-clock
+// [Manager.Move] now spends exactly the MovementRemaining this call seeds,
+// through the identical [combat.Pay] gate a swing pays through. The
 // haste/slow gap is unchanged and still real — a speed computed where
 // conditions can be asked is still above this seam — but it is no longer
 // theoretical, and the day it is closed this comment is where to start.

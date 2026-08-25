@@ -37,6 +37,10 @@ type ImprovedCriticalCondition struct {
 // Ensure ImprovedCriticalCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*ImprovedCriticalCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (ic *ImprovedCriticalCondition) Ref() *core.Ref { return refs.Conditions.ImprovedCritical() }
+
 // IsApplied returns true if this condition is currently applied
 func (ic *ImprovedCriticalCondition) IsApplied() bool {
 	return ic.bus != nil

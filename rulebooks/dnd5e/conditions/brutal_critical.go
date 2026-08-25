@@ -47,6 +47,10 @@ type BrutalCriticalCondition struct {
 // Ensure BrutalCriticalCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*BrutalCriticalCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (b *BrutalCriticalCondition) Ref() *core.Ref { return refs.Conditions.BrutalCritical() }
+
 // BrutalCriticalInput provides configuration for creating a brutal critical condition
 type BrutalCriticalInput struct {
 	CharacterID string      // ID of the barbarian

@@ -52,9 +52,25 @@ func (s *AffordSuite) afford() *session.AffordOutput {
 	return out
 }
 
+// attackDecl returns the single Attack declaration, failing if there is not
+// exactly one.
+func (s *AffordSuite) attackDecl(out *session.AffordOutput) session.Declaration {
+	s.T().Helper()
+	var attack *session.Declaration
+	for i := range out.Declarations {
+		if out.Declarations[i].Verb == session.VerbAttack {
+			s.Require().Nil(attack, "expected exactly one Attack declaration")
+			attack = &out.Declarations[i]
+		}
+	}
+	s.Require().NotNil(attack, "expected exactly one Attack declaration")
+	return *attack
+}
+
 func (s *AffordSuite) swing() (*session.AttackOutput, error) {
 	return s.mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
 	})
 }
 
@@ -66,7 +82,10 @@ func (s *AffordSuite) nextTurn() {
 	s.T().Helper()
 	ctx := context.Background()
 
-	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	_, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+	})
 	s.Require().NoError(err, "ending alice's turn")
 }
 
@@ -79,34 +98,36 @@ func (s *AffordSuite) storedEconomy() *character.ActionEconomyData {
 	return stored.ActionEconomy
 }
 
-// TestAffordableMeansAttackWillNotRefuse is half the load-bearing invariant:
-// Affordable == true implies a following Attack in the same state is NOT
+// TestAvailableMeansAttackWillNotRefuse is half the load-bearing invariant:
+// Available == true implies a following Attack in the same state is NOT
 // refused with ErrCannotAfford.
 //
 // A fresh turn's first swing is the case: nothing has been spent yet, so
 // there is nothing for either verb to disagree about.
-func (s *AffordSuite) TestAffordableMeansAttackWillNotRefuse() {
+func (s *AffordSuite) TestAvailableMeansAttackWillNotRefuse() {
 	s.fightScene(1, 15, 5, 1, 1)
 
 	out := s.afford()
 	s.Equal(session.ClockTurn, out.Clock)
-	s.Require().Len(out.Declarations, 2, "attack and move (rpg-toolkit#1169)")
+	s.Require().Len(out.Declarations, 3, "attack, move and end turn")
 
-	decl := out.Declarations[0]
-	s.Equal(session.VerbAttack, decl.Verb)
-	s.True(decl.Affordable, "a fresh turn can still buy its first swing")
-	s.Empty(decl.Shortfall, "affordable carries no shortfall")
+	decl := s.attackDecl(out)
+	s.True(decl.Available, "a fresh turn can still buy its first swing")
+	s.Nil(decl.Why, "available carries no shortfall")
 	s.Equal(session.SlotAction, decl.Slot, "the first swing of a turn lights the action shape")
+	s.NotEmpty(decl.ID, "a compiled Attack carries a selector ID")
+	s.NotNil(decl.Attack, "a compiled Attack carries its AttackRef")
+	s.Equal(session.TargetMember, decl.TargetKind)
 
 	_, err := s.swing()
 	s.Require().NoError(err, "Afford said yes, so Attack must not refuse with ErrCannotAfford")
 }
 
-// TestUnaffordableMeansAttackRefusesWithTheSameShortfall is the other half:
-// Affordable == false implies a following Attack IS refused with
-// ErrCannotAfford, and Shortfall is the same currency text inside that
+// TestUnavailableMeansAttackRefusesWithTheSameShortfall is the other half:
+// Available == false implies a following Attack IS refused with
+// ErrCannotAfford, and Why.Text is the same currency text inside that
 // refusal — not a paraphrase of it.
-func (s *AffordSuite) TestUnaffordableMeansAttackRefusesWithTheSameShortfall() {
+func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 	s.fightScene(1, 15, 5, 1, 1)
 
 	first, err := s.swing()
@@ -114,32 +135,35 @@ func (s *AffordSuite) TestUnaffordableMeansAttackRefusesWithTheSameShortfall() {
 	s.Require().True(first.Hit)
 
 	out := s.afford()
-	s.Require().Len(out.Declarations, 2, "attack and move (rpg-toolkit#1169)")
-	decl := out.Declarations[0]
-	s.False(decl.Affordable, "nothing left to buy a second swing")
-	s.NotEmpty(decl.Shortfall, "false carries a reason")
+	s.Require().Len(out.Declarations, 3, "attack, move and end turn")
+	decl := s.attackDecl(out)
+	s.False(decl.Available, "nothing left to buy a second swing")
+	s.Require().NotNil(decl.Why)
+	s.NotEmpty(decl.Why.Text, "false carries a reason")
 	s.Equal(session.SlotAction, decl.Slot, "the currency that ran out is the action slot")
+	s.NotEmpty(decl.ID, "a compiled Attack keeps its selector ID even when the budget fails")
+	s.NotNil(decl.Attack, "a compiled Attack keeps its AttackRef even when the budget fails")
+	s.NotEmpty(decl.Candidates, "the candidate rows remain alongside the budget refusal")
 
 	_, err = s.swing()
 	s.Require().Error(err, "and there is nothing left to buy a second")
-	s.ErrorIs(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), decl.Shortfall,
-		"Afford's Shortfall must be the SAME currency text the refusal carries, not a second copy of it")
+	s.ErrorIs(err, session.ErrStaleDeclaration,
+		"a now-unavailable echoed offer is stale before resolution's payment door")
 }
 
-// TestBankedSwingIsAffordableAndLightsNoSlot walks Extra Attack's second
-// swing (the brief's own required fixture): affordable, and Slot is SlotNone
+// TestBankedSwingIsAvailableAndLightsNoSlot walks Extra Attack's second
+// swing (the brief's own required fixture): available, and Slot is SlotNone
 // because a banked swing spends only capacity, never a per-turn slot.
-func (s *AffordSuite) TestBankedSwingIsAffordableAndLightsNoSlot() {
+func (s *AffordSuite) TestBankedSwingIsAvailableAndLightsNoSlot() {
 	s.fightScene(5, 1, 1, 1, 1)
 
 	_, err := s.swing()
 	s.Require().NoError(err, "swing 1, bought by the Attack action")
 
 	out := s.afford()
-	decl := out.Declarations[0]
-	s.True(decl.Affordable, "extra attack banked a second swing")
-	s.Empty(decl.Shortfall)
+	decl := s.attackDecl(out)
+	s.True(decl.Available, "extra attack banked a second swing")
+	s.Nil(decl.Why)
 	s.Equal(session.SlotNone, decl.Slot,
 		"a banked swing spends capacity alone — nothing lights the action/bonus/reaction shapes")
 
@@ -147,10 +171,10 @@ func (s *AffordSuite) TestBankedSwingIsAffordableAndLightsNoSlot() {
 	s.Require().NoError(err, "Afford said yes, so Attack must not refuse")
 }
 
-// TestExtraAttacksThirdSwingIsUnaffordable is the same scene's other end: once
+// TestExtraAttacksThirdSwingIsUnavailable is the same scene's other end: once
 // the bank Extra Attack granted is spent, the action itself has also already
 // been spent, and Afford must say so.
-func (s *AffordSuite) TestExtraAttacksThirdSwingIsUnaffordable() {
+func (s *AffordSuite) TestExtraAttacksThirdSwingIsUnavailable() {
 	s.fightScene(5, 1, 1, 1, 1, 1, 1)
 
 	_, err := s.swing()
@@ -159,15 +183,15 @@ func (s *AffordSuite) TestExtraAttacksThirdSwingIsUnaffordable() {
 	s.Require().NoError(err, "swing 2, bought by Extra Attack")
 
 	out := s.afford()
-	decl := out.Declarations[0]
-	s.False(decl.Affordable, "the bank Extra Attack granted is spent")
-	s.Contains(decl.Shortfall, "action",
+	decl := s.attackDecl(out)
+	s.False(decl.Available, "the bank Extra Attack granted is spent")
+	s.Require().NotNil(decl.Why)
+	s.Contains(decl.Why.Text, "action",
 		"the action itself ran out too — it was spent buying the bank on swing 1")
 
 	_, err = s.swing()
 	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), decl.Shortfall)
+	s.ErrorIs(err, session.ErrStaleDeclaration)
 }
 
 // TestANewTurnRefillsWhatAffordSees is TestANewTurnRefillsTheBank's own claim,
@@ -179,19 +203,19 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 
 	_, err := s.swing()
 	s.Require().NoError(err)
-	s.False(s.afford().Declarations[0].Affordable, "spent, on turn one")
+	s.False(s.attackDecl(s.afford()).Available, "spent, on turn one")
 
 	s.nextTurn()
 
 	out := s.afford()
-	s.Require().Len(out.Declarations, 2, "attack and move (rpg-toolkit#1169)")
-	s.True(out.Declarations[0].Affordable, "a new turn buys a new swing")
-	s.Equal(session.SlotAction, out.Declarations[0].Slot)
+	s.Require().Len(out.Declarations, 3, "attack, move and end turn")
+	s.True(s.attackDecl(out).Available, "a new turn buys a new swing")
+	s.Equal(session.SlotAction, s.attackDecl(out).Slot)
 }
 
 // TestFreeRoamAffordsNothing is TestFreeRoamChargesNothing's own claim, asked
 // of Afford: a member with no bubble has no economy to report, and the answer
-// is EMPTY, not a Declaration reporting Affordable:true for a free action —
+// is EMPTY, not a Declaration reporting Available:true for a free action —
 // the two would look identical on a boolean and mean different things about
 // why nothing is spent.
 func (s *AffordSuite) TestFreeRoamAffordsNothing() {
@@ -227,7 +251,7 @@ func (s *AffordSuite) TestAffordSavesNothing() {
 	s.Nil(s.storedEconomy(), "a stored sheet starts cold: no economy at all")
 
 	before := s.afford()
-	s.True(before.Declarations[0].Affordable)
+	s.True(s.attackDecl(before).Available)
 	s.Nil(s.storedEconomy(),
 		"asking what alice can afford must not light and persist her turn — a read that ignited "+
 			"the ledger on the way to answering would make asking indistinguishable from swinging")
@@ -241,12 +265,12 @@ func (s *AffordSuite) TestAffordSavesNothing() {
 		"asking again must not touch the sheet the real swing already wrote")
 }
 
-// TestOneDeclarationPerTargetInReach pins rpg-toolkit#1010/rpg-project#249
-// §6: a second monster within reach earns its OWN attack declaration rather
-// than being folded into — or silently excluded from — the first's. Each
-// carries the SAME affordable/slot the economy already decided; only Target
-// varies.
-func (s *AffordSuite) TestOneDeclarationPerTargetInReach() {
+// TestAttackDeclarationCarriesEveryCandidateInReach pins rpg-toolkit#1010/
+// rpg-project#249 §6's reshape: a second monster within reach earns its own
+// candidate row on the single Attack declaration rather than a second
+// declaration. Each candidate carries the SAME slot the economy decided; only
+// the member varies.
+func (s *AffordSuite) TestAttackDeclarationCarriesEveryCandidateInReach() {
 	s.fightScene(1, 15, 5, 1, 1)
 
 	_, err := s.mgr.Spawn(context.Background(), &session.SpawnInput{
@@ -255,26 +279,22 @@ func (s *AffordSuite) TestOneDeclarationPerTargetInReach() {
 	})
 	s.Require().NoError(err)
 
-	out := s.afford()
-	var targets []string
-	attackDecls := 0
-	for _, d := range out.Declarations {
-		if d.Verb != session.VerbAttack {
-			continue
-		}
-		attackDecls++
-		s.Require().NotNil(d.Target, "a declaration naming a real candidate always names it")
-		targets = append(targets, *d.Target)
-		s.True(d.Affordable)
+	attack := s.attackDecl(s.afford())
+	s.ElementsMatch([]string{"skeleton", "skeleton-2"}, candidateIDs(attack.Candidates))
+	for _, c := range attack.Candidates {
+		s.True(c.Available, "every in-reach candidate is available")
+		s.Nil(c.Why)
 	}
-	s.Equal(2, attackDecls, "one declaration per target in reach, not one for the fight")
-	s.ElementsMatch([]string{"skeleton", "skeleton-2"}, targets)
+	s.True(attack.Available)
+	s.Equal(session.SlotAction, attack.Slot)
 }
 
-// TestNoTargetInReachIsOneDeclarationNotZero pins the other half: nothing in
-// reach still answers, once — never an empty attack-declaration list a
-// client could mistake for "nothing to ask about yet."
-func (s *AffordSuite) TestNoTargetInReachIsOneDeclarationNotZero() {
+// TestNoTargetInReachIsOneAttackDeclarationNotZero pins the other half:
+// nothing in reach still answers, once — never an empty attack-declaration
+// list a client could mistake for "nothing to ask about yet." The candidate
+// row remains, each carrying its own target-specific verdict, while the
+// declaration-level Why is NoTargetInReach.
+func (s *AffordSuite) TestNoTargetInReachIsOneAttackDeclarationNotZero() {
 	alice := armedFighter("alice")
 	mgr, _, _, _ := aFight(s.T(), alice, []int{1, 1})
 	s.mgr = mgr
@@ -283,6 +303,7 @@ func (s *AffordSuite) TestNoTargetInReachIsOneDeclarationNotZero() {
 	// contact (encEveryoneSees keeps sight unlimited), just too far to swing.
 	_, err := mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: pathAwayFromSkeleton(),
+		DeclarationID: currentMoveID(s.T(), mgr, "sess", "alice"),
 	})
 	// alice may not be active in every roll of aFight's own initiative, so a
 	// refusal here would mean this fixture cannot walk — fail loudly rather
@@ -292,18 +313,14 @@ func (s *AffordSuite) TestNoTargetInReachIsOneDeclarationNotZero() {
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 
-	var attackDecls []session.Declaration
-	for _, d := range out.Declarations {
-		if d.Verb == session.VerbAttack {
-			attackDecls = append(attackDecls, d)
-		}
-	}
-	s.Require().Len(attackDecls, 1, "one declaration, not zero, when nothing is in reach")
-	decl := attackDecls[0]
-	s.False(decl.Affordable)
-	s.Nil(decl.Target)
-	s.Require().NotNil(decl.Why)
-	s.Equal(session.ShortfallNoTargetInReach, decl.Why.Reason)
+	attack := s.attackDecl(out)
+	s.False(attack.Available)
+	s.Require().NotNil(attack.Why)
+	s.Equal(session.ShortfallNoTargetInReach, attack.Why.Reason)
+	s.Require().Len(attack.Candidates, 1, "the candidate row remains, even out of reach")
+	s.False(attack.Candidates[0].Available)
+	s.Require().NotNil(attack.Candidates[0].Why)
+	s.Equal(session.ShortfallTargetOutOfReach, attack.Candidates[0].Why.Reason)
 }
 
 // pathAwayFromSkeleton walks alice five cells from her spawn (1,1), well
@@ -315,7 +332,7 @@ func pathAwayFromSkeleton() []spatial.Position {
 }
 
 // TestShortfallCarriesTheStructuredCurrency pins rpg-toolkit#1010's other
-// half of #1138's own case: Why is not just Text repeated — Reason, Currency,
+// half of #1138's own case: Why is not just text — Reason, Currency,
 // Needed and Left are the figures a UI acts on, agreeing with Text by
 // construction.
 func (s *AffordSuite) TestShortfallCarriesTheStructuredCurrency() {
@@ -324,14 +341,13 @@ func (s *AffordSuite) TestShortfallCarriesTheStructuredCurrency() {
 	_, err := s.swing()
 	s.Require().NoError(err, "spends the action")
 
-	out := s.afford()
-	decl := out.Declarations[0]
+	decl := s.attackDecl(s.afford())
 	s.Require().NotNil(decl.Why)
 	s.Equal(session.ShortfallNoBudget, decl.Why.Reason)
 	s.Equal(session.CurrencyAction, decl.Why.Currency)
 	s.Equal(1, decl.Why.Needed)
 	s.Equal(0, decl.Why.Left)
-	s.Equal(decl.Shortfall, decl.Why.Text, "Shortfall and Why.Text must agree")
+	s.NotEmpty(decl.Why.Text)
 }
 
 // TestNotYourTurnIsAnnouncedByAfford is the seam's own promise: a client
@@ -375,9 +391,12 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 	s.Equal(session.ClockTurn, out.Clock)
-	s.Require().Len(out.Declarations, 2, "attack and move, both blocked the same way")
+	s.Require().Len(out.Declarations, 3, "attack, move and end turn, all blocked the same way")
 	for _, d := range out.Declarations {
-		s.False(d.Affordable)
+		s.False(d.Available)
+		s.Empty(d.ID, "a blocker carries no selector ID")
+		s.Nil(d.Attack)
+		s.Empty(d.Candidates)
 		s.Require().NotNil(d.Why)
 		s.Equal(session.ShortfallNotYourTurn, d.Why.Reason)
 	}

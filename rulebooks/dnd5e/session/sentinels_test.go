@@ -33,7 +33,13 @@ package session_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -158,6 +164,99 @@ var refSentinels = map[string]error{
 // rpg-toolkit#1058.
 var innerSentinels = []map[string]error{compositionSentinels, resolutionSentinels, refSentinels}
 
+// sessionSentinels is the reviewed host-facing sentinel vocabulary. The AST
+// completeness test below compares this allow-list with every exported Err*
+// declaration in errors.go, so additions cannot silently escape review.
+var sessionSentinels = map[string]error{
+	"ErrNilInput":         session.ErrNilInput,
+	"ErrNilConfig":        session.ErrNilConfig,
+	"ErrIncompleteConfig": session.ErrIncompleteConfig,
+	"ErrNotFound":         session.ErrNotFound,
+	"ErrBadRepository":    session.ErrBadRepository,
+	"ErrNoSession":        session.ErrNoSession,
+	"ErrNoEncounter":      session.ErrNoEncounter,
+	"ErrNoCharacter":      session.ErrNoCharacter,
+	"ErrBadCharacter":     session.ErrBadCharacter,
+	"ErrNoRef":            session.ErrNoRef,
+	"ErrBadRef":           session.ErrBadRef,
+	"ErrNoLoader":         session.ErrNoLoader,
+	"ErrUnknownContent":   session.ErrUnknownContent,
+	"ErrNoMemberID":       session.ErrNoMemberID,
+	"ErrNoDeclarationID":  session.ErrNoDeclarationID,
+	"ErrStaleDeclaration": session.ErrStaleDeclaration,
+	"ErrNoMember":         session.ErrNoMember,
+	"ErrStoryTrimmed":     session.ErrStoryTrimmed,
+	"ErrClosed":           session.ErrClosed,
+	"ErrNoEnding":         session.ErrNoEnding,
+	"ErrEmptyPath":        session.ErrEmptyPath,
+	"ErrBrokenPath":       session.ErrBrokenPath,
+	"ErrLocked":           session.ErrLocked,
+	"ErrDoorShut":         session.ErrDoorShut,
+	"ErrNoConnection":     session.ErrNoConnection,
+	"ErrBadPosition":      session.ErrBadPosition,
+	"ErrNoSessionID":      session.ErrNoSessionID,
+	"ErrNoEncounterID":    session.ErrNoEncounterID,
+	"ErrSessionExists":    session.ErrSessionExists,
+	"ErrInvalidWorld":     session.ErrInvalidWorld,
+	"ErrInBubble":         session.ErrInBubble,
+	"ErrNotInFight":       session.ErrNotInFight,
+	"ErrNotYourTurn":      session.ErrNotYourTurn,
+	"ErrNoCause":          session.ErrNoCause,
+	"ErrNotACharacter":    session.ErrNotACharacter,
+	"ErrNoSheet":          session.ErrNoSheet,
+	"ErrDowned":           session.ErrDowned,
+	"ErrBadAttack":        session.ErrBadAttack,
+	"ErrOutOfReach":       session.ErrOutOfReach,
+	"ErrCannotAfford":     session.ErrCannotAfford,
+	"ErrBadCost":          session.ErrBadCost,
+	"ErrInvalidSession":   session.ErrInvalidSession,
+	"ErrSaveFailed":       session.ErrSaveFailed,
+	"ErrBadTurnOutcome":   session.ErrBadTurnOutcome,
+}
+
+// TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual
+// allow-list rather than a list that can become incomplete unnoticed. It scans
+// every Go file in the package, not just errors.go, so a stray exported Err*
+// sentinel beside its one caller cannot bypass review.
+func TestExportedSentinelAllowListIsComplete(t *testing.T) {
+	paths, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob package Go files: %v", err)
+	}
+	found := map[string]bool{}
+	for _, path := range paths {
+		file, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if parseErr != nil {
+			t.Fatalf("parse %s: %v", path, parseErr)
+		}
+		for _, declaration := range file.Decls {
+			gen, ok := declaration.(*ast.GenDecl)
+			if !ok || gen.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				values, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, name := range values.Names {
+					if name.IsExported() && strings.HasPrefix(name.Name, "Err") {
+						found[name.Name] = true
+					}
+				}
+			}
+		}
+	}
+	if len(found) != len(sessionSentinels) {
+		t.Fatalf("exported sentinel count changed: declarations=%d allow-list=%d", len(found), len(sessionSentinels))
+	}
+	for name := range found {
+		if _, ok := sessionSentinels[name]; !ok {
+			t.Errorf("exported sentinel %s is not reviewed in sessionSentinels", name)
+		}
+	}
+}
+
 // SentinelSuite drives each reachable refusal and checks what a host can match
 // on afterwards.
 type SentinelSuite struct {
@@ -169,6 +268,23 @@ type SentinelSuite struct {
 }
 
 func TestSentinelSuite(t *testing.T) { suite.Run(t, new(SentinelSuite)) }
+
+// TestDeclarationSentinelVocabulary pins the selector-boundary additions as
+// distinct host remedies. Completeness belongs to the exported allow-list/count
+// test above rather than a tautological local len-two assertion.
+func TestDeclarationSentinelVocabulary(t *testing.T) {
+	selectorSentinels := []error{
+		sessionSentinels["ErrNoDeclarationID"],
+		sessionSentinels["ErrStaleDeclaration"],
+	}
+	for i, left := range selectorSentinels {
+		for j, right := range selectorSentinels {
+			if i != j && errors.Is(left, right) {
+				t.Fatalf("selector sentinels %d and %d are not distinct", i, j)
+			}
+		}
+	}
+}
 
 func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
@@ -241,6 +357,7 @@ func (s *SentinelSuite) swing(mgr *session.Manager) error {
 	s.T().Helper()
 	_, err := mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	return err
 }
@@ -411,21 +528,16 @@ func (s *SentinelSuite) TestASwingWithAnEmptyHandIsNotRefused() {
 	s.NoError(err)
 }
 
-// TestOneSheetStoredUnderTwoNames drives the resolution module's own validation
-// — the arm translateResolution was written for.
-//
-// The roster holds two members and the repository answers both with the same
-// sheet, which is a seeding mistake rather than corruption: the bytes are
-// valid, and only their identity is wrong. Resolution refuses because two
-// sheets under one ID would attach twice and be written back once, and the host
-// is entitled to hear that in this package's vocabulary — its own character
-// data is what needs looking at.
+// TestOneSheetStoredUnderTwoNames pins dependency preflight ahead of
+// resolution. The roster holds two members and the repository answers both
+// with Alice's sheet; Afford marks the Attack Unreadable, and echoing that
+// unavailable selector is stale before resolution or mutation.
 func (s *SentinelSuite) TestOneSheetStoredUnderTwoNames() {
 	chars := newFakeCharacters(armedFighter("alice"))
 	chars.byID["bob"] = armedFighter("alice")
 
 	err := s.swing(s.armedDuel(chars))
-	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+	s.refusedInOurVocabulary(err, session.ErrStaleDeclaration)
 }
 
 // TestASwingWithAnUnreadableSheet is the loader's own refusal on the swing
@@ -440,7 +552,7 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 	mgr := s.armedDuel(newFakeCharacters(unreadableFighter("alice"), armedFighter("bob")))
 
 	err := s.swing(mgr)
-	s.refusedInOurVocabulary(err, session.ErrBadCharacter)
+	s.refusedInOurVocabulary(err, session.ErrNoDeclarationID)
 }
 
 // TestADownedActorIsRefusedInOurWords is the death lane's own refusal, and the
@@ -458,26 +570,29 @@ func (s *SentinelSuite) TestASwingWithAnUnreadableSheet() {
 // So the refusal is driven for real: bob puts alice at zero hit points, and
 // alice is then refused the verbs a downed member cannot drive.
 func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
-	mgr := s.armedDuel(newFakeCharacters(armedFighter("alice"), armedFighter("bob")))
+	alice := armedFighter("alice")
+	alice.Level = 5
+	mgr := s.armedDuel(newFakeCharacters(alice, armedFighter("bob")))
 	ctx := context.Background()
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 2; i++ {
 		_, err := mgr.Attack(ctx, &session.AttackInput{
-			Session: "sess", Attacker: "bob", Target: "alice",
+			Session: "sess", Attacker: "alice", Target: "bob",
+			DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 		})
 		s.Require().NoError(err)
 	}
 
 	_, moveErr := mgr.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 2}},
+		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},
 	})
 	s.refusedInOurVocabulary(moveErr, session.ErrDowned)
 
 	_, swingErr := mgr.Attack(ctx, &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "bob",
+		Session: "sess", Attacker: "bob", Target: "alice",
 	})
 	s.refusedInOurVocabulary(swingErr, session.ErrDowned)
-	s.Contains(swingErr.Error(), "alice", "and the refusal still names who could not act")
+	s.Contains(swingErr.Error(), "bob", "and the refusal still names who could not act")
 }
 
 // TestASecondSwingInOneTurn is the economy's refusal, driven for real.
@@ -498,15 +613,15 @@ func (s *SentinelSuite) TestASecondSwingInOneTurn() {
 
 	_, err := mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err, "the first swing is bought by the Attack action")
 
 	_, err = mgr.Attack(ctx, &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
-	s.refusedInOurVocabulary(err, session.ErrCannotAfford)
-	s.Contains(err.Error(), "action",
-		"and the refusal still names the currency that ran out")
+	s.refusedInOurVocabulary(err, session.ErrStaleDeclaration)
 }
 
 // TestASpawnNamingAMalformedRef is the third module and the second door.

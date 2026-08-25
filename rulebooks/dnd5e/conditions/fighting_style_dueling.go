@@ -34,6 +34,12 @@ type FightingStyleDuelingCondition struct {
 // Ensure FightingStyleDuelingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleDuelingCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (f *FightingStyleDuelingCondition) Ref() *core.Ref {
+	return refs.Conditions.FightingStyleDueling()
+}
+
 // NewFightingStyleDuelingCondition creates a new Dueling fighting style condition.
 func NewFightingStyleDuelingCondition(characterID string) *FightingStyleDuelingCondition {
 	return &FightingStyleDuelingCondition{

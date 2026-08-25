@@ -39,6 +39,10 @@ type UnarmoredMovementCondition struct {
 // Ensure UnarmoredMovementCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnarmoredMovementCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (u *UnarmoredMovementCondition) Ref() *core.Ref { return refs.Conditions.UnarmoredMovement() }
+
 // UnarmoredMovementInput provides configuration for creating an unarmored movement condition
 type UnarmoredMovementInput struct {
 	CharacterID string // ID of the character

@@ -36,6 +36,14 @@ type StepOfTheWindData struct {
 // Ref returns the unique ref for the Step of the Wind feature.
 func (s *StepOfTheWind) Ref() *core.Ref { return refs.Features.StepOfTheWind() }
 
+// Status reports the monk's character-owned Ki pool through the non-mutating
+// status surface, without serializing ToJSON. Step of the Wind shares the Ki
+// pool with every other monk Ki feature; the key reported is the single shared
+// resources.Ki.
+func (s *StepOfTheWind) Status(in *StatusInput) (*StatusOutput, error) {
+	return reportKiStatus(in, refs.Features.StepOfTheWind(), s.name, "Step of the Wind")
+}
+
 // Name returns the display name for the Step of the Wind feature.
 func (s *StepOfTheWind) Name() string { return s.name }
 

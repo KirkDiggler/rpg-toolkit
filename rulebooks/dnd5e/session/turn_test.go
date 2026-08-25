@@ -111,6 +111,33 @@ func (s *TurnTestSuite) TestStatusNeverLearnsWhoseTurnItIs() {
 			"of a member")
 }
 
+// TestEndTurnRequiresItsCurrentSelector pins EndTurn's entire execution gate.
+// Its selector is compiled from the clock alone: omission is invalid input,
+// while the current echoed selector commits the turn normally.
+func (s *TurnTestSuite) TestEndTurnRequiresItsCurrentSelector() {
+	s.fight()
+	ctx := context.Background()
+
+	out, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	s.ErrorIs(err, session.ErrNoDeclarationID)
+	s.Nil(out)
+
+	out, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice", DeclarationID: "v1.stale",
+	})
+	s.ErrorIs(err, session.ErrStaleDeclaration)
+	s.Nil(out)
+
+	afford, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	decl := requireSingleDeclaration(s.T(), afford.Declarations, session.VerbEndTurn)
+	out, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice", DeclarationID: decl.ID,
+	})
+	s.Require().NoError(err)
+	s.Equal("alice", out.Next)
+}
+
 // TestEndingATurnHandsItOn is rpg-toolkit#1162's headline case at the seam:
 // alice ends her turn, the ogre has no player, and this single call must not
 // return with the clock parked on it. covers the write verb, including that
@@ -119,7 +146,10 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 	s.fight()
 	ctx := context.Background()
 
-	out, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	out, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+	})
 	s.Require().NoError(err)
 	s.Equal("alice", out.Next,
 		"the ogre has no player; TurnDriver passes its turn and the round wraps straight back to her")
@@ -178,7 +208,10 @@ func (s *TurnTestSuite) TestTheRoundComesRound() {
 	s.Require().NoError(err)
 	s.Equal(1, before.Round, "control: the fight opens in round 1")
 
-	last, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "alice"})
+	last, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "alice"),
+	})
 	s.Require().NoError(err)
 	s.True(last.RoundWrapped)
 
@@ -208,7 +241,9 @@ func (s *TurnTestSuite) TestEndingSomebodyElsesTurnIsRefused() {
 	_, err := s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: "sess", Member: "ogre",
 	})
-	s.Require().Error(err, "it is alice's turn, so the ogre cannot end one")
+	s.Require().ErrorIs(err, session.ErrNotYourTurn,
+		"the clock refusal must precede the missing-selector gate")
+	s.NotErrorIs(err, session.ErrNoDeclarationID)
 }
 
 // TestTheTurnEndingReachesClients pins the beat's event kind.
@@ -254,7 +289,10 @@ func (s *TurnTestSuite) TestAPointerPassDrivesThroughTheSameAsAValue() {
 	})
 	s.Require().NoError(err)
 
-	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "ptr", Member: "alice"})
+	out, err := mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "ptr", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "ptr", "alice"),
+	})
 	s.Require().NoError(err, "&Pass{} must drive the ogre through exactly like Pass{} does")
 	s.Equal("alice", out.Next)
 	s.True(out.RoundWrapped)
@@ -272,6 +310,7 @@ func (s *TurnTestSuite) TestTheTurnEndingReachesClients() {
 
 	_, err = mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err)
 

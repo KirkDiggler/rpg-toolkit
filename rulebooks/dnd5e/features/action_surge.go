@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // ActionSurge represents the fighter's Action Surge feature.
@@ -36,6 +37,29 @@ type ActionSurgeData struct {
 
 // Ref returns the unique ref for the Action Surge feature.
 func (a *ActionSurge) Ref() *core.Ref { return refs.Features.ActionSurge() }
+
+// Status reports the feature's privately-owned Action Surge resource through
+// the non-mutating status surface, without serializing ToJSON. The owner is
+// not required: Action Surge owns its own [RecoverableResource].
+func (a *ActionSurge) Status(*StatusInput) (*StatusOutput, error) {
+	if a.resource == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "action surge feature has no resource")
+	}
+	name := a.name
+	if name == "" {
+		name = "Action Surge"
+	}
+	return &StatusOutput{Status: &Status{
+		Ref:  *refs.Features.ActionSurge(),
+		Name: name,
+		Resource: &ResourceStatus{
+			Key:     resources.ActionSurge,
+			Name:    "Action Surge",
+			Current: a.resource.Current(),
+			Maximum: a.resource.Maximum(),
+		},
+	}}, nil
+}
 
 // Name returns the display name for the Action Surge feature.
 func (a *ActionSurge) Name() string { return a.name }
@@ -95,11 +119,16 @@ func (a *ActionSurge) Activate(ctx context.Context, owner core.Entity, input Fea
 	return nil
 }
 
-// loadJSON loads Action Surge state from JSON
+// loadJSON loads Action Surge state from JSON, rejecting negative or
+// over-maximum persisted uses before constructing its private resource.
 func (a *ActionSurge) loadJSON(data json.RawMessage) error {
 	var actionSurgeData ActionSurgeData
 	if err := json.Unmarshal(data, &actionSurgeData); err != nil {
 		return fmt.Errorf("failed to unmarshal action surge data: %w", err)
+	}
+
+	if err := validateResourceBounds("action surge", actionSurgeData.Uses, actionSurgeData.MaxUses); err != nil {
+		return err
 	}
 
 	a.id = actionSurgeData.ID

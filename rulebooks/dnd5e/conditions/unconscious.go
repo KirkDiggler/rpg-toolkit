@@ -40,6 +40,10 @@ type UnconsciousCondition struct {
 // Ensure UnconsciousCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnconsciousCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (c *UnconsciousCondition) Ref() *core.Ref { return refs.Conditions.Unconscious() }
+
 // NewUnconsciousCondition creates a new Unconscious condition for the
 // specified character, using roller for its auto-rolled death saves.
 // Mirrors NewDodgingCondition's constructor pattern; Unconscious additionally

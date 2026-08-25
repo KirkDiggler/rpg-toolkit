@@ -71,6 +71,13 @@ type ShieldSpellCondition struct {
 // Ensure ShieldSpellCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*ShieldSpellCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on. Shield is a spell-named
+// condition; its canonical ref lives under refs.Spells, and it receives Ref()
+// only because the shared interface must stay complete — no magic status,
+// descriptor, resource, or executable offer is added here.
+func (s *ShieldSpellCondition) Ref() *core.Ref { return refs.Spells.Shield() }
+
 // NewShieldSpellCondition creates a Shield condition for the given character.
 // rpg-api Apply()'s this on a character at encounter setup IF the character
 // has Shield prepared. Default readiness is OFF (spell-cost reactions are
