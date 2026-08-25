@@ -200,29 +200,19 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", ErrNotYourTurn)
 	}
 
-	// A downed member does not walk. Asked after the path is VALIDATED and
-	// the TURN GATE has passed, and before a single cell is entered, which is
-	// where R5 puts every other refusal: naming a member who is not here, a
-	// route that is not a walk, or a member whose turn has not come still
-	// answers what it always answered, and a walk this refuses has moved
-	// nobody.
-	//
-	// REACHABLE INSIDE A FIGHT NOW, unlike before rpg-toolkit#1169: a bubble
-	// member used to be refused the verb outright, so a downed one could
-	// never reach this check from here. The active member can now walk, and
-	// nothing in the composition splices a downed member out of initiative on
-	// its own (rpg-toolkit#1077's own ruling) — so this is exactly where a
-	// downed member whose turn the clock IS waiting on still gets refused.
-	if err = refuseIfDown(scope, "member", in.Member); err != nil {
-		return nil, fmt.Errorf("move: %w", err)
-	}
-
 	var cost *walkCost
 	if ClockKind(clock.Kind) == ClockTurn {
+		// The turn path loads the actor strictly ONCE. Its downed verdict and
+		// regenerated Move offer use this same sheet, preventing a sequenced
+		// repository from changing the answer between the blocker and selector.
+		actor := m.loadActorSheet(ctx, in.Member)
+		if actor.downed {
+			return nil, fmt.Errorf("move: member %q: %w", in.Member, ErrDowned)
+		}
 		if in.DeclarationID == "" {
 			return nil, fmt.Errorf("move: %w", ErrNoDeclarationID)
 		}
-		offers, compileErr := m.compileOffers(ctx, scope.enc, scope.data, in.Member, clock, false)
+		offers, compileErr := m.compileOffers(ctx, scope.enc, scope.data, in.Member, clock, actor)
 		if compileErr != nil {
 			return nil, fmt.Errorf("move: %w", compileErr)
 		}
@@ -240,6 +230,12 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 			feet:    feet,
 		}
 	} else {
+		// World Move keeps its independent standing gate. It has no compiled
+		// actor sheet or declaration, and free-roam movement semantics remain
+		// separate from the turn economy.
+		if err = refuseIfDown(scope, "member", in.Member); err != nil {
+			return nil, fmt.Errorf("move: %w", err)
+		}
 		// Afford deliberately returns no world-clock declarations. Empty is the
 		// only valid selector there; a non-empty ID left over from a dissolved
 		// fight must not turn into a free move.

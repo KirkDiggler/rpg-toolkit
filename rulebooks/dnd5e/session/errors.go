@@ -341,17 +341,16 @@ var (
 	// malformed declared action, or a weapon the strike has no semantics for.
 	ErrBadAttack = errors.New("attack cannot be made")
 
-	// ErrOutOfReach is returned when Attack names a target further from the
-	// attacker than the compiled delivery permits: one cell for ordinary melee,
-	// two for Reach weapons (rpg-toolkit#1010), and beyond long range for a
-	// supported ranged weapon. Targets inside a ranged weapon's normal and long
-	// brackets still resolve; only beyond long range reaches this sentinel.
+	// ErrOutOfReach is Attack's final defensive resolution validation when a
+	// target is further away than the selected definition's delivery permits:
+	// one cell for ordinary melee, two for Reach weapons (rpg-toolkit#1010),
+	// and beyond long range for a supported ranged weapon.
 	//
-	// Afford's per-target ATTACK declarations are this same gate asked
-	// ahead of time: a target this seam would refuse with ErrOutOfReach is
-	// an unavailable candidate row. When no candidate is in reach at all,
-	// Afford still answers once — a single Attack declaration with
-	// Available false, Why.Reason ShortfallNoTargetInReach — rather than
+	// Normal execution refuses reach changes earlier as ErrStaleDeclaration:
+	// Afford projects the shared preflight as candidate availability, and Attack
+	// regenerates and selects that current candidate before resolution. When no
+	// candidate is in reach, Afford still answers once — a single unavailable
+	// Attack declaration with Why.Reason ShortfallNoTargetInReach — rather than
 	// an empty list a client could mistake for "nothing to ask about yet."
 	ErrOutOfReach = errors.New("no target in reach")
 

@@ -40,7 +40,8 @@ func copyOf[T any](in *T) (*T, error) {
 // if a test double needed more than get-and-put to satisfy it, the interface
 // would be asking too much of a real store.
 type fakeSessions struct {
-	byID map[string]*session.SessionData
+	byID  map[string]*session.SessionData
+	saves int
 }
 
 func newFakeSessions() *fakeSessions {
@@ -56,13 +57,16 @@ func (f *fakeSessions) GetSession(_ context.Context, id string) (*session.Sessio
 }
 
 func (f *fakeSessions) SaveSession(_ context.Context, data *session.SessionData) error {
+	f.saves++
 	f.byID[data.ID] = data
 	return nil
 }
 
 // fakeEncounters is an in-memory EncounterRepository.
 type fakeEncounters struct {
-	byID map[string]*encounter.EncounterData
+	byID    map[string]*encounter.EncounterData
+	saves   int
+	records int
 }
 
 func newFakeEncounters() *fakeEncounters {
@@ -78,13 +82,32 @@ func (f *fakeEncounters) GetEncounter(_ context.Context, id string) (*encounter.
 }
 
 func (f *fakeEncounters) SaveEncounter(_ context.Context, id string, data *encounter.EncounterData) error {
+	f.saves++
+	if previous, ok := f.byID[id]; ok {
+		before, after := storedNextSeq(previous), storedNextSeq(data)
+		if after > before {
+			f.records += int(after - before)
+		}
+	}
 	f.byID[id] = data
 	return nil
+}
+
+// storedNextSeq normalizes record.LogData's zero encoding for a fresh log to
+// the runtime next sequence, so fakeEncounters can count appended story beats.
+func storedNextSeq(data *encounter.EncounterData) uint64 {
+	if data == nil || data.Log.NextSeq == 0 {
+		return 1
+	}
+	return data.Log.NextSeq
 }
 
 // fakeCharacters is an in-memory CharacterRepository.
 type fakeCharacters struct {
 	byID map[string]*character.Data
+
+	// saves counts durable character writes independently of stored values.
+	saves int
 
 	// loads counts GetCharacter calls, so a test can assert that loading
 	// happens per call rather than being cached between them.
@@ -132,6 +155,7 @@ func cloneCharacter(in *character.Data) *character.Data {
 }
 
 func (f *fakeCharacters) SaveCharacter(_ context.Context, data *character.Data) error {
+	f.saves++
 	f.byID[data.ID] = data
 	return nil
 }

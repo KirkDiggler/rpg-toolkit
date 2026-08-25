@@ -284,22 +284,13 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		}}, nil
 	}
 
-	// DOWNED, asked only once we know this member is even the one the
-	// clock is waiting on: a downed member is spliced out of the turn
-	// order and can never be active, so NotYourTurn already covers a
-	// downed BYSTANDER — this is the specific fact a client renders
-	// differently ("you are down" versus "wait your turn") for the member
-	// who somehow is still active despite being down. Downed blocks
-	// Attack/Move but EndTurn follows the clock alone, so EndTurn is still
-	// compiled below even when the member is downed.
-	standing := m.standingFor(ctx, data)
-	down, err := standing.Standing([]encounter.MemberID{encounter.MemberID(in.Member)})
-	if err != nil {
-		return nil, fmt.Errorf("afford: %w", err)
-	}
-	downed := len(down) > 0
-
-	offers, err := m.compileOffers(ctx, enc, data, in.Member, clock, downed)
+	// Attack and Move compile from one strict actor snapshot. loadActorSheet
+	// asks combat.IsDown on that loaded sheet before reading any offer
+	// material, so the blocker and the declaration cannot disagree across two
+	// repository reads. EndTurn remains clock-only when that actor is downed or
+	// unreadable.
+	actor := m.loadActorSheet(ctx, in.Member)
+	offers, err := m.compileOffers(ctx, enc, data, in.Member, clock, actor)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}

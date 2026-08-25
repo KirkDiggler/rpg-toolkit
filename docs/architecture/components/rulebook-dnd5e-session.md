@@ -75,7 +75,8 @@ shortfall. Missing position for a live candidate fails closed. Projection
 copies each candidate `Why`, so caller mutation cannot alter internal preflight
 state. The same private target-preflight function is used by Afford and
 regenerated Attack execution; an injected-refusal regression proves they move
-together.
+together. Normal target/reach changes therefore refuse as `ErrStaleDeclaration`;
+`ErrOutOfReach` remains final defensive resolution validation.
 
 `AttackRef.Ref` is the complete catalog identity (`dnd5e:weapons:longsword`),
 not a bare ID. The same helper projects Declaration, AttackOutput, and the
@@ -94,8 +95,10 @@ Blockers are per verb rather than an incomplete declaration list:
 | no budget / no available target | compiled but unavailable, non-empty ID | independently compiled | unaffected |
 
 Every blocker keeps its fixed target kind and has empty ID, absent AttackRef,
-and empty candidates. EndTurn has no character-sheet, standing, or economy
-gate.
+and empty candidates. Attack and turn-clock Move strictly load the actor once;
+`combat.IsDown`, declaration compilation, pricing, and execution all use that
+same sheet snapshot. World-clock Move keeps its independent standing gate.
+EndTurn has no character-sheet, standing, or economy gate.
 
 ## Selector trust boundary
 

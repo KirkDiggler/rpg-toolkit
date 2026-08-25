@@ -241,7 +241,9 @@ func (s *TurnTestSuite) TestEndingSomebodyElsesTurnIsRefused() {
 	_, err := s.mgr.EndTurn(context.Background(), &session.EndTurnInput{
 		Session: "sess", Member: "ogre",
 	})
-	s.Require().Error(err, "it is alice's turn, so the ogre cannot end one")
+	s.Require().ErrorIs(err, session.ErrNotYourTurn,
+		"the clock refusal must precede the missing-selector gate")
+	s.NotErrorIs(err, session.ErrNoDeclarationID)
 }
 
 // TestTheTurnEndingReachesClients pins the beat's event kind.

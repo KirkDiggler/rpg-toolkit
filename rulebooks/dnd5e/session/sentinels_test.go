@@ -35,6 +35,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -159,6 +162,91 @@ var refSentinels = map[string]error{
 // rpg-toolkit#1058.
 var innerSentinels = []map[string]error{compositionSentinels, resolutionSentinels, refSentinels}
 
+// sessionSentinels is the reviewed host-facing sentinel vocabulary. The AST
+// completeness test below compares this allow-list with every exported Err*
+// declaration in errors.go, so additions cannot silently escape review.
+var sessionSentinels = map[string]error{
+	"ErrNilInput":         session.ErrNilInput,
+	"ErrNilConfig":        session.ErrNilConfig,
+	"ErrIncompleteConfig": session.ErrIncompleteConfig,
+	"ErrNotFound":         session.ErrNotFound,
+	"ErrBadRepository":    session.ErrBadRepository,
+	"ErrNoSession":        session.ErrNoSession,
+	"ErrNoEncounter":      session.ErrNoEncounter,
+	"ErrNoCharacter":      session.ErrNoCharacter,
+	"ErrBadCharacter":     session.ErrBadCharacter,
+	"ErrNoRef":            session.ErrNoRef,
+	"ErrBadRef":           session.ErrBadRef,
+	"ErrNoLoader":         session.ErrNoLoader,
+	"ErrUnknownContent":   session.ErrUnknownContent,
+	"ErrNoMemberID":       session.ErrNoMemberID,
+	"ErrNoDeclarationID":  session.ErrNoDeclarationID,
+	"ErrStaleDeclaration": session.ErrStaleDeclaration,
+	"ErrNoMember":         session.ErrNoMember,
+	"ErrStoryTrimmed":     session.ErrStoryTrimmed,
+	"ErrClosed":           session.ErrClosed,
+	"ErrNoEnding":         session.ErrNoEnding,
+	"ErrEmptyPath":        session.ErrEmptyPath,
+	"ErrBrokenPath":       session.ErrBrokenPath,
+	"ErrLocked":           session.ErrLocked,
+	"ErrDoorShut":         session.ErrDoorShut,
+	"ErrNoConnection":     session.ErrNoConnection,
+	"ErrBadPosition":      session.ErrBadPosition,
+	"ErrNoSessionID":      session.ErrNoSessionID,
+	"ErrNoEncounterID":    session.ErrNoEncounterID,
+	"ErrSessionExists":    session.ErrSessionExists,
+	"ErrInvalidWorld":     session.ErrInvalidWorld,
+	"ErrInBubble":         session.ErrInBubble,
+	"ErrNotInFight":       session.ErrNotInFight,
+	"ErrNotYourTurn":      session.ErrNotYourTurn,
+	"ErrNoCause":          session.ErrNoCause,
+	"ErrNotACharacter":    session.ErrNotACharacter,
+	"ErrNoSheet":          session.ErrNoSheet,
+	"ErrDowned":           session.ErrDowned,
+	"ErrBadAttack":        session.ErrBadAttack,
+	"ErrOutOfReach":       session.ErrOutOfReach,
+	"ErrCannotAfford":     session.ErrCannotAfford,
+	"ErrBadCost":          session.ErrBadCost,
+	"ErrInvalidSession":   session.ErrInvalidSession,
+	"ErrSaveFailed":       session.ErrSaveFailed,
+	"ErrBadTurnOutcome":   session.ErrBadTurnOutcome,
+}
+
+// TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual
+// allow-list rather than a list that can become incomplete unnoticed.
+func TestExportedSentinelAllowListIsComplete(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "errors.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse errors.go: %v", err)
+	}
+	found := map[string]bool{}
+	for _, declaration := range file.Decls {
+		gen, ok := declaration.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			values, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, name := range values.Names {
+				if name.IsExported() && len(name.Name) >= 3 && name.Name[:3] == "Err" {
+					found[name.Name] = true
+				}
+			}
+		}
+	}
+	if len(found) != len(sessionSentinels) {
+		t.Fatalf("exported sentinel count changed: declarations=%d allow-list=%d", len(found), len(sessionSentinels))
+	}
+	for name := range found {
+		if _, ok := sessionSentinels[name]; !ok {
+			t.Errorf("exported sentinel %s is not reviewed in sessionSentinels", name)
+		}
+	}
+}
+
 // SentinelSuite drives each reachable refusal and checks what a host can match
 // on afterwards.
 type SentinelSuite struct {
@@ -171,14 +259,13 @@ type SentinelSuite struct {
 
 func TestSentinelSuite(t *testing.T) { suite.Run(t, new(SentinelSuite)) }
 
-// TestDeclarationSentinelVocabulary pins the two selector-boundary additions
-// as distinct host remedies: omission is invalid input, while an echoed option
-// changing is current-world refusal. The explicit count makes future additions
-// a reviewed vocabulary change rather than silent accretion.
+// TestDeclarationSentinelVocabulary pins the selector-boundary additions as
+// distinct host remedies. Completeness belongs to the exported allow-list/count
+// test above rather than a tautological local len-two assertion.
 func TestDeclarationSentinelVocabulary(t *testing.T) {
-	selectorSentinels := []error{session.ErrNoDeclarationID, session.ErrStaleDeclaration}
-	if len(selectorSentinels) != 2 {
-		t.Fatalf("selector sentinel count changed: got %d", len(selectorSentinels))
+	selectorSentinels := []error{
+		sessionSentinels["ErrNoDeclarationID"],
+		sessionSentinels["ErrStaleDeclaration"],
 	}
 	for i, left := range selectorSentinels {
 		for j, right := range selectorSentinels {

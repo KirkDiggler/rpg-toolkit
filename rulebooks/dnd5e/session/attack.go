@@ -191,24 +191,25 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
 	}
 
-	// A downed member does not swing. Asked AFTER the roster checks, so naming somebody
-	// who is not here is still ErrNoMember — being down is a fact about a
-	// member, and it means nothing about an ID that is not one. Asked about the
-	// ATTACKER alone: a down target is refused nowhere, deliberately (see
-	// refuseIfDown).
-	if err := refuseIfDown(scope, "attacker", in.Attacker); err != nil {
-		return nil, fmt.Errorf("attack: %w", err)
-	}
-
-	// Attack has no world-clock declaration. Its selector is mandatory even
-	// though the turn/downed gates above intentionally keep their historical
-	// precedence: a caller acting out of turn or while downed hears that real
-	// refusal before selection is considered.
+	// Attack has no world-clock declaration. Keep its independent standing
+	// gate for historical refusal precedence, then reject every selector: there
+	// is no world-clock offer to select.
 	if ClockKind(clock.Kind) != ClockTurn {
+		if err := refuseIfDown(scope, "attacker", in.Attacker); err != nil {
+			return nil, fmt.Errorf("attack: %w", err)
+		}
 		if in.DeclarationID == "" {
 			return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
 		}
 		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
+	}
+
+	// The turn path loads the actor strictly ONCE. The downed verdict and every
+	// piece of the regenerated offer are derived from this same snapshot; a
+	// repository cannot answer standing to one gate and downed to compilation.
+	actor := m.loadActorSheet(ctx, in.Attacker)
+	if actor.downed {
+		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrDowned)
 	}
 	if in.DeclarationID == "" {
 		return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
@@ -218,7 +219,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// exact current offer. compileOffers owns assembly, pricing, selector
 	// identity, and target preflight; execution reuses those compiled values
 	// instead of independently compiling a second attack after selection.
-	offers, err := m.compileOffers(ctx, scope.enc, scope.data, in.Attacker, clock, false)
+	offers, err := m.compileOffers(ctx, scope.enc, scope.data, in.Attacker, clock, actor)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}

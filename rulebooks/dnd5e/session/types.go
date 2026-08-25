@@ -1077,10 +1077,11 @@ const (
 	// Attack, Move and EndTurn refuse as ErrNotYourTurn.
 	ShortfallNotYourTurn ShortfallReason = "not_your_turn"
 
-	// ShortfallNoTargetInReach is nothing to swing at within reach — what
-	// Attack refuses as ErrOutOfReach (rpg-toolkit#1010). The one shortfall
-	// that arrives on a declaration with no Target: when no candidate is
-	// in reach, Afford still says so, once, rather than saying nothing.
+	// ShortfallNoTargetInReach is nothing to swing at within reach. Echoing
+	// that unavailable offer is ErrStaleDeclaration; ErrOutOfReach remains the
+	// final defensive resolution validation (rpg-toolkit#1010). This is the one
+	// shortfall that arrives on a declaration with no Target: when no candidate
+	// is in reach, Afford still says so, once, rather than saying nothing.
 	ShortfallNoTargetInReach ShortfallReason = "no_target_in_reach"
 
 	// ShortfallDowned is the member being downed and unable to act — what

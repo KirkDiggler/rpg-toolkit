@@ -96,10 +96,10 @@ type targetPreflight struct {
 // BUILD ORDER FOLLOWS THE BLOCKER MATRIX. EndTurn is built first from the
 // clock alone — it is governed solely by its clock/turn gate, so it stays
 // compiled through Downed and an unreadable character. Move and Attack both
-// need the sheet: Downed blocks both, an unreadable character (ErrBadCharacter)
-// blocks both, and a bad Attack compilation (ErrBadAttack) blocks Attack alone
-// while Move continues off the readied sheet. NotYourTurn is handled by the
-// caller, which returns all three verbs blocked without loading a sheet.
+// use the one strict actorSheet supplied by the caller: combat.IsDown on that
+// sheet blocks both, an unreadable character (ErrBadCharacter) blocks both, and
+// a bad Attack compilation (ErrBadAttack) blocks Attack alone while Move
+// continues off the readied sheet. NotYourTurn is handled before actor loading.
 //
 // Every compiled Attack, turn-clock Move, and EndTurn receives a selector ID
 // through [declarationID]; blockers carry an empty ID, no AttackRef, and an
@@ -112,15 +112,23 @@ func (m *Manager) compileOffers(
 	data *SessionData,
 	member string,
 	clock *encounter.ClockOfOutput,
-	downed bool,
+	actor actorSheet,
 ) ([]compiledOffer, error) {
 	endTurn, err := m.buildEndTurnOffer(data.ID, member)
 	if err != nil {
 		return nil, err
 	}
 
-	if downed {
-		why := Shortfall{Reason: ShortfallDowned, Text: "member is downed"}
+	// UNREADABLE CHARACTER: actor is the strict load Attack and Move execute
+	// from. The caller performs that load exactly once, so standing and offer
+	// compilation cannot observe different repository snapshots. ErrBadCharacter
+	// blocks Attack and Move while EndTurn, already built from the clock alone,
+	// continues.
+	if actor.err != nil {
+		why := Shortfall{
+			Reason: ShortfallUnreadable,
+			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadCharacter, actor.err).Error(),
+		}
 		return []compiledOffer{
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
@@ -128,17 +136,21 @@ func (m *Manager) compileOffers(
 		}, nil
 	}
 
-	// UNREADABLE CHARACTER: the same load Attack's own door runs, so the two
-	// cannot disagree about whether a sheet exists to answer anything about.
-	// ErrBadCharacter (no sheet, or bytes that will not reconstitute) blocks
-	// Attack and Move — there is no sheet to read movement or compile a swing
-	// from — while EndTurn, already built from the clock alone, continues.
-	sheet, err := m.loadAttackSheet(ctx, member)
-	if err != nil {
+	sheet := actor.sheet
+	if sheet == nil {
 		why := Shortfall{
 			Reason: ShortfallUnreadable,
-			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadCharacter, err).Error(),
+			Text:   fmt.Errorf("member %q: %w", member, ErrBadCharacter).Error(),
 		}
+		return []compiledOffer{
+			blockedCompiledOffer(VerbAttack, TargetMember, why),
+			blockedCompiledOffer(VerbMove, TargetPath, why),
+			endTurn,
+		}, nil
+	}
+
+	if actor.downed {
+		why := Shortfall{Reason: ShortfallDowned, Text: "member is downed"}
 		return []compiledOffer{
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
@@ -281,6 +293,28 @@ func (m *Manager) compileOffers(
 		return nil, err
 	}
 	return offers, nil
+}
+
+// actorSheet is one strict repository snapshot for Attack and turn-clock Move.
+// Its error is carried into compileOffers so Afford can project an Unreadable
+// blocker while execution can still select against exactly the same compiled
+// shape. A successful result always has a non-nil sheet.
+type actorSheet struct {
+	sheet  *character.Character
+	downed bool
+	err    error
+}
+
+// loadActorSheet performs the one strict actor load shared by the downed gate,
+// offer compilation, pricing, and execution. combat.IsDown is evaluated once
+// on that sheet so callers and compileOffers reuse one verdict as well as one
+// repository snapshot.
+func (m *Manager) loadActorSheet(ctx context.Context, member string) actorSheet {
+	sheet, err := m.loadAttackSheet(ctx, member)
+	if err != nil || sheet == nil {
+		return actorSheet{sheet: sheet, err: err}
+	}
+	return actorSheet{sheet: sheet, downed: combat.IsDown(sheet)}
 }
 
 // buildEndTurnOffer builds the compiled EndTurn declaration from the clock
