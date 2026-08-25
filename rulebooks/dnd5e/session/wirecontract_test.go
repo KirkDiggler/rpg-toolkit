@@ -68,6 +68,40 @@ func TestFalseIsAnAnswerOnTheWire(t *testing.T) {
 	}
 }
 
+// TestWallHeightOmitemptyIsDeliberateOnTheWire pins the height field's BYTES
+// both ways, because its contract is the opposite of its two bool siblings
+// above: for blocks_movement/blocks_line_of_sight, false must be SAID; for
+// height, zero must be UNSAID. That asymmetry is safe only because 0 is
+// unauthorable (the YAML bounds are [1,3], raise-only — rpg-project#273), so
+// an absent key can only ever mean "not authored, render the standard
+// height". A nonzero authored multiplier must be emitted verbatim, and the
+// default case must omit the key — a tag regression in either direction
+// passes every Go-value test, so this asserts the bytes.
+func TestWallHeightOmitemptyIsDeliberateOnTheWire(t *testing.T) {
+	atlas := session.Atlas{
+		Boundaries: []session.AtlasBoundary{
+			{From: spatial.Position{X: 0, Y: 0}, To: spatial.Position{X: 1, Y: 0},
+				BlocksMovement: true, BlocksLineOfSight: true, Height: 2.5},
+			{From: spatial.Position{X: 0, Y: 1}, To: spatial.Position{X: 1, Y: 1},
+				BlocksMovement: true, BlocksLineOfSight: true},
+		},
+	}
+
+	raw, err := json.Marshal(atlas)
+	require.NoError(t, err)
+
+	var wire struct {
+		Walls []map[string]json.RawMessage `json:"boundaries"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	require.Len(t, wire.Walls, 2)
+
+	require.Contains(t, wire.Walls[0], "height", "an authored multiplier is emitted: %s", raw)
+	require.Equal(t, "2.5", string(wire.Walls[0]["height"]), "verbatim, never rescaled")
+	require.NotContains(t, wire.Walls[1], "height",
+		"no authored height omits the key — a reader maps absence to the standard height: %s", raw)
+}
+
 // TestEmptyDeclarationsIsAnAnswerOnTheWire is TestFalseIsAnAnswerOnTheWire's
 // own claim asked of a LIST rather than a bool: on the world clock,
 // AffordOutput.Declarations is empty because the economy does not apply, not
