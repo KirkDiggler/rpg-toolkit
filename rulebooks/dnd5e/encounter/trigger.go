@@ -411,6 +411,15 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*intel.SurveilOutput) (*For
 		return nil, err
 	}
 
+	// The consult may have CLOSED the encounter (TriggerMemberDown fires
+	// there). A closed scene forms no new fights: the ended beat is the
+	// story's last word, and a classification after it would mutate a world
+	// that is over — a bubble-formed after an ended is the contradiction
+	// rpg-toolkit#1075 guards against, told forward.
+	if e.outcome != nil {
+		return nil, nil
+	}
+
 	verdict, err := e.classify(deltas, down)
 	if err != nil {
 		return nil, err

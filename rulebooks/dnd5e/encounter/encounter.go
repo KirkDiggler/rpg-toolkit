@@ -1077,7 +1077,19 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 //
 // Returns a DEEP COPY (mutation-proof): a caller holding the returned outcome
 // cannot reach into this encounter's own.
+//
+// An ALREADY-CLOSED encounter short-circuits to its outcome: the sight
+// refresh that ran just before this scan can itself close the scene
+// (TriggerMemberDown, evaluated in noticeDown), and a second close here
+// would overwrite the first and narrate a second ended beat. The verb still
+// reports the close on its output — whichever trigger fired it.
 func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Position, at uint64) (*Outcome, error) {
+	if e.outcome != nil {
+		members := make([]MemberOutcome, len(e.outcome.Members))
+		copy(members, e.outcome.Members)
+		return &Outcome{Ending: e.outcome.Ending, At: e.outcome.At, Members: members}, nil
+	}
+
 	for _, de := range e.endings {
 		trigger, ok := de.trigger.(TriggerReachedPosition)
 		if !ok {
