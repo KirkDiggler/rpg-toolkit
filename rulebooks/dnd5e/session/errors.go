@@ -157,11 +157,17 @@ var (
 	// reason — a host that could only see "bad position" would have nothing to
 	// say and would send somebody hunting a bug in coordinates that are fine.
 	//
-	// NOT yet raised for a walk INTO a locked door. The composition refuses
-	// that with a placement error carrying the door's state as text only, so a
-	// blocked step still arrives here as ErrBadPosition (rpg-toolkit#1135).
-	// This is the translation of the door verb's own refusal until then.
+	// Raised for the door verb's refusal AND for a walk INTO a locked door —
+	// the composition names both with its own sentinel now
+	// (rpg-toolkit#1135), so a blocked step no longer hides behind
+	// ErrBadPosition.
 	ErrLocked = errors.New("door is locked")
+
+	// ErrDoorShut is returned when a walk crosses a door that is merely
+	// closed — shut but not locked. The other half of the rpg-toolkit#1135
+	// split: the cell is real and the way is shut, a fiction beat whose
+	// remedy is OpenDoor, not different coordinates.
+	ErrDoorShut = errors.New("door is shut")
 
 	// ErrNoConnection is the translation of a composition-side refusal to cross
 	// a doorway.

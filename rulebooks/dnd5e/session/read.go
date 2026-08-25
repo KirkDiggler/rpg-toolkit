@@ -439,17 +439,17 @@ func translate(err error) error {
 		errors.Is(err, encounter.ErrBadDoor):
 		return fmt.Errorf("%w", ErrNoConnection)
 	case errors.Is(err, encounter.ErrLocked):
-		// A door refusing to open because it is locked. Checked BEFORE
-		// ErrBadPlacement below: a locked door is a fiction beat with a DC
-		// behind it, and a caller told "bad position" would go looking for
-		// arithmetic that is fine.
-		//
-		// This catches the DOOR VERB's refusal only. A walk into a locked door
-		// still arrives as ErrBadPlacement, because the composition puts the
-		// door's state in text rather than in a sentinel (rpg-toolkit#1135).
-		// When that lands, the walk case joins this one and nothing else here
-		// has to change.
+		// A locked door — the door verb's refusal AND a walk into one, now
+		// that the composition names both with its own sentinel
+		// (rpg-toolkit#1135). Checked BEFORE ErrBadPlacement below: a locked
+		// door is a fiction beat with a DC behind it, and a caller told "bad
+		// position" would go looking for arithmetic that is fine.
 		return fmt.Errorf("%w", ErrLocked)
+	case errors.Is(err, encounter.ErrDoorShut):
+		// A merely-shut door in a walk's path — the other half of the same
+		// split: shut is a state a caller can change (OpenDoor), not a bad
+		// coordinate.
+		return fmt.Errorf("%w", ErrDoorShut)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):
