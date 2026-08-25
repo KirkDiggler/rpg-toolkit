@@ -10,8 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -419,10 +417,3 @@ func newInjectedIDError() error { return &injectedIDError{msg: "injected id fail
 type injectedIDError struct{ msg string }
 
 func (e *injectedIDError) Error() string { return e.msg }
-
-// keep coreCombat/coreResources imports referenced for fixture richness if the
-// golden fixture is later extended with slot/pool costs.
-var (
-	_ = coreCombat.ActionStandard
-	_ = coreResources.ResourceKey("ki")
-)

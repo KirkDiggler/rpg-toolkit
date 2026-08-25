@@ -148,7 +148,7 @@ func (s *MoveTurnClockSuite) TestActiveMemberSpendsMovementAndAffordSeesIt() {
 	// of the arithmetic.
 	decl := s.moveDecl(s.afford("alice"))
 	s.Equal(session.VerbMove, decl.Verb)
-	s.True(decl.Affordable, "15 feet is still enough for at least one more cell")
+	s.True(decl.Available, "15 feet is still enough for at least one more cell")
 	s.Require().NotNil(decl.Remaining, "Move's declaration always carries Remaining")
 	s.Equal(15, *decl.Remaining)
 	s.Equal(session.SlotNone, decl.Slot, "movement is capacity, never a per-turn slot")
@@ -204,7 +204,7 @@ func (s *MoveTurnClockSuite) TestEndTurnRefreshesMovementForTheNextRound() {
 	s.Equal(2, turn.Round)
 
 	decl := s.moveDecl(s.afford("alice"))
-	s.True(decl.Affordable)
+	s.True(decl.Available)
 	s.Require().NotNil(decl.Remaining)
 	s.Equal(30, *decl.Remaining, "a new turn re-seeds MovementRemaining from speed, not from where it was left")
 }

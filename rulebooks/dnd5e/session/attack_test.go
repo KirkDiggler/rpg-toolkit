@@ -331,12 +331,12 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal("outcome", last.Tags["tag"])
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"},`+
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
 			`"damage_components":[`+
 			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[5],"flat_bonus":0,"damage_type":"slashing"},`+
 			`{"source":"ability","source_ref":"dnd5e:abilities:str","flat_bonus":3,"damage_type":"slashing"}]}`,
 		string(last.Payload))
-	s.Equal(session.AttackRef{Ref: "longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
+	s.Equal(session.AttackRef{Ref: "dnd5e:weapons:longsword", Name: "Longsword", DamageType: session.DamageSlashing}, out.Attack)
 }
 
 // TestAMissIsRecordedToo pins the other arm, including that a miss carries no
@@ -353,7 +353,7 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	s.Require().NoError(err)
 	s.JSONEq(
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
-			`"attack":{"ref":"longsword","name":"Longsword","damage_type":"slashing"}}`,
+			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"}}`,
 		string(story[len(story)-1].Payload))
 }
 

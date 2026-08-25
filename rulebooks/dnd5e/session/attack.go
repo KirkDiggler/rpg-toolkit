@@ -326,9 +326,15 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 }
 
 // attackRefFor projects a compiled attack profile's identity onto the wire
-// shape — ref, name, damage type — carried on AttackOutput and, via
-// [encounter.AttackIdentity], on the Struck/Missed beat every witness reads
-// (rpg-toolkit#866).
+// shape — ref, name, damage type — carried on AttackOutput, on the
+// Struck/Missed beat every witness reads (rpg-toolkit#866), and on the
+// compiled Attack declaration's AttackRef (rpg-toolkit#272/273).
+//
+// The ref is the FULL definition.Ref.String — "dnd5e:weapons:longsword",
+// "dnd5e:monster-actions:unarmed-strike" — so the same identity a client
+// maps to a model and icon on a beat is the one a compiled offer carries,
+// and the one Task 7's execution enforcement regenerates from. The same
+// helper serves all three call sites so they cannot drift.
 //
 // The damage type reported is the FIRST declared pool's, which is every
 // weapon this assembler produces today. A weapon
@@ -336,7 +342,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 // means, and that decision belongs beside the day such a weapon compiles,
 // not guessed at here.
 func attackRefFor(definition combatActions.Definition) AttackRef {
-	ref := AttackRef{Ref: string(definition.Ref.ID), Name: definition.Name}
+	ref := AttackRef{Ref: definition.Ref.String(), Name: definition.Name}
 	if definition.Attack != nil && len(definition.Attack.Damage) > 0 {
 		ref.DamageType = DamageType(definition.Attack.Damage[0].Type)
 	}

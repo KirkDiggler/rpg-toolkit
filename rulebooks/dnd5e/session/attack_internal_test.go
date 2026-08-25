@@ -136,7 +136,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	payload := string(story[len(story)-1].Payload)
 	require.JSONEq(t,
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":9,`+
-			`"critical":false,"attack":{"ref":"longsword","name":"Longsword","damage_type":""},`+
+			`"critical":false,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
 			`"damage_components":[`+
 			`{"source":"weapon","source_ref":"dnd5e:weapons:longsword","dice":"1d8","final_rolls":[4],"flat_bonus":0,"damage_type":"slashing"},`+
 			`{"source":"monster_trait","source_ref":"dnd5e:monster_traits:immunity","flat_bonus":0,"damage_type":"slashing","multiplier":0}],`+

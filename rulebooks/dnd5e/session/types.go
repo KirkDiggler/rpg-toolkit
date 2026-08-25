@@ -1092,6 +1092,13 @@ const (
 	// rpg-toolkit#1168). Afford reports it rather than failing the read,
 	// so the rest of the declarations still arrive.
 	ShortfallUnreadable ShortfallReason = "unreadable"
+
+	// ShortfallTargetOutOfReach is the named target failing the attack's
+	// reach gate — a CANDIDATE-level reason, never the declaration's. Each
+	// out-of-reach candidate row carries it while the declaration-level
+	// answer remains ShortfallNoTargetInReach when no candidate is in reach
+	// at all (rpg-toolkit#1010, rpg-project#249 §6).
+	ShortfallTargetOutOfReach ShortfallReason = "target_out_of_reach"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out
@@ -1147,6 +1154,62 @@ type Shortfall struct {
 	// target in reach". The same text Declaration.Shortfall carries and the
 	// same text the verb's own refusal error would.
 	Text string `json:"text"`
+}
+
+// TargetKind tells a client which selector shape a Declaration accepts. A
+// closed set owned at the seam, mirroring the merged proto's TargetKind: the
+// three currently executable verbs fix their kind, and a new kind arrives the
+// day a proven executor for it lands — never in advance.
+//
+// FIXED FOR EVERY COMPILED OR BLOCKED DECLARATION: Attack -> TargetMember,
+// Move -> TargetPath, EndTurn -> TargetNone. A blocker keeps the fixed kind
+// even with empty candidates, so a client always knows which selector shape
+// the verb carries.
+type TargetKind string
+
+const (
+	// TargetNone is EndTurn's selector shape: no target. EndTurn is governed
+	// solely by its clock/turn gate and carries no candidate.
+	TargetNone TargetKind = "none"
+
+	// TargetMember is Attack's selector shape: one member from the compiled
+	// candidate universe. Every live CurrentVia-nonempty holding except the
+	// actor appears exactly once in the declaration's Candidates.
+	TargetMember TargetKind = "member"
+
+	// TargetPath is Move's selector shape: a walk along a path on the turn
+	// clock. Move declarations carry no candidates; the path is chosen at
+	// execution time and priced whole.
+	TargetPath TargetKind = "path"
+)
+
+// TargetCandidate is one member in a compiled Attack's complete candidate
+// universe: every current live-sight holding (CurrentVia non-empty) except the
+// actor appears exactly once, sorted by member ID. Stale memories, undisclosed
+// members, and the actor are excluded. A live holding whose position is
+// missing fails Afford rather than being silently omitted.
+//
+// The candidate's availability is the TARGET-SPECIFIC gate, independent of
+// the declaration's turn/economy gate: a declaration may be unavailable while
+// an in-reach candidate remains available, and an out-of-reach candidate
+// carries ShortfallTargetOutOfReach on itself while the declaration-level
+// reason stays ShortfallNoTargetInReach when no candidate is in reach at all.
+type TargetCandidate struct {
+	// Member is the candidate member ID, as it appears in the encounter
+	// roster and the observer's holdings.
+	Member string `json:"member"`
+
+	// Available is whether this candidate passes the attack's reach gate.
+	// PLAIN bool, not optional: false is an answer (out of reach), not an
+	// absence — the same false-vs-absent law every other bool at this seam
+	// keeps.
+	Available bool `json:"available"`
+
+	// Why is present if and only if Available is false. Carries a
+	// candidate-level reason (ShortfallTargetOutOfReach today); global
+	// turn/economy reasons are never copied here — they live on the
+	// declaration's Why.
+	Why *Shortfall `json:"why,omitempty"`
 }
 
 // Discovery is what changed in one observer's perception.

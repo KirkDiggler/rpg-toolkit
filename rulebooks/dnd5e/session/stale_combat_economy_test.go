@@ -134,12 +134,18 @@ func (s *StaleCombatEconomySuite) afford(member string) *session.AffordOutput {
 	return out
 }
 
-// attackDecl finds the VerbAttack declaration for a specific target.
+// attackDecl finds the VerbAttack declaration whose candidate universe
+// includes the named target, failing loudly if Afford omits it.
 func (s *StaleCombatEconomySuite) attackDecl(out *session.AffordOutput, target string) session.Declaration {
 	s.T().Helper()
 	for _, d := range out.Declarations {
-		if d.Verb == session.VerbAttack && d.Target != nil && *d.Target == target {
-			return d
+		if d.Verb != session.VerbAttack {
+			continue
+		}
+		for _, c := range d.Candidates {
+			if c.Member == target {
+				return d
+			}
 		}
 	}
 	s.Require().Fail("no VerbAttack declaration for "+target, "declarations: %+v", out.Declarations)
@@ -179,6 +185,6 @@ func (s *StaleCombatEconomySuite) TestASecondFightsFirstTurnIsNotChargedForTheFi
 	// sees TurnNumber already matching this round and silently no-ops,
 	// leaving her with no action to swing at all.
 	decl := s.attackDecl(s.afford("alice"), "skel-2")
-	s.True(decl.Affordable,
+	s.True(decl.Available,
 		"alice's first swing in a NEW fight must be affordable — not refused for an action fight 1 already spent")
 }
