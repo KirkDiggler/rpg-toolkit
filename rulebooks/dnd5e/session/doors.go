@@ -216,6 +216,16 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 
 	beaten, total := false, 0
 	if locked {
+		// The authored ability resolves through the rulebook's own lookup
+		// (canonical "dex" and full spellings alike) — an ability it does
+		// not know is a CONTENT defect refused loudly, never a silent -5
+		// from an unknown key reading score zero (Copilot round, #1243).
+		ability, aerr := abilities.GetByID(lock.Ability)
+		if aerr != nil {
+			return nil, fmt.Errorf("unlock %q: lock names no rulebook ability (%q): %w",
+				in.Door, lock.Ability, ErrInvalidWorld)
+		}
+
 		sheet, err := m.loadAttackSheet(ctx, in.Member)
 		if err != nil {
 			return nil, fmt.Errorf("unlock: %w", err)
@@ -224,7 +234,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		check, err := checks.MakeAbilityCheck(ctx, &checks.AbilityCheckInput{
 			Roller:   &diceSeam{roller: m.dice},
 			DC:       lock.DC,
-			Modifier: sheet.GetAbilityModifier(abilities.Ability(lock.Ability)),
+			Modifier: sheet.GetAbilityModifier(ability),
 		})
 		if err != nil {
 			// A foreign error (rpgerr): carried as text, never wrapped into

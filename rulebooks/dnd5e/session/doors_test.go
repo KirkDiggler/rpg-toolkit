@@ -237,6 +237,17 @@ func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
 	s.False(again.Beaten)
 }
 
+func (s *DoorsSuite) TestALockNamingNoRulebookAbilityIsRefusedLoudly() {
+	s.startWith(
+		gatedWorld(s.T(), encounter.DoorIsLocked(encounter.Lock{DC: tombDC, Ability: "luck"})),
+		deftCharacter("alice", 14))
+	_, err := s.mgr.Unlock(context.Background(), &session.UnlockInput{
+		Session: "sess", Member: "alice", Door: "gate"})
+	s.Require().ErrorIs(err, session.ErrInvalidWorld,
+		"a content defect, refused by name — never a silent -5 from an unknown key")
+	s.Contains(err.Error(), "luck")
+}
+
 func (s *DoorsSuite) TestUnlockOfAnUnlockedDoorIsRefused() {
 	s.startWith(hexWorld(s.T()), deftCharacter("alice", 14))
 	_, err := s.mgr.Unlock(context.Background(), &session.UnlockInput{
