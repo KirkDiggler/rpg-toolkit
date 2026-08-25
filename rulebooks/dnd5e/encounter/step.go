@@ -128,11 +128,16 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step refresh sight: %w", err)
 	}
 
+	fired, err := e.firedReachedPosition(member, action.to, at)
+	if err != nil {
+		return nil, fmt.Errorf("step ending: %w", err)
+	}
+
 	out := &StepOutput{
 		Doors:       action.doors,
 		IntelDeltas: intelDeltas,
 		Seq:         seq,
-		Outcome:     e.firedReachedPosition(member, action.to, at),
+		Outcome:     fired,
 		Formed:      formed,
 	}
 	out.Stepped.Member = in.Member
@@ -199,9 +204,18 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 		// one door, and only the first shut one is what stopped this step.
 		if placed {
 			for _, door := range e.doorsAlong(here, to) {
-				if door.state.blocks() {
-					return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrBadPlacement)
+				if !door.state.blocks() {
+					continue
 				}
+				// Three cases, three sentinels (rpg-toolkit#1135): a locked
+				// door is a fiction beat and names its DC, exactly as
+				// OpenDoor's refusal does; a merely-shut door is its own
+				// answer; and ErrBadPlacement goes back to meaning what its
+				// name says — the position itself is not usable.
+				if lock, locked := door.state.Lock(); locked {
+					return executedAction{}, fmt.Errorf("door %q is locked, DC %d: %w", door.id, lock.DC, ErrLocked)
+				}
+				return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
 			}
 		}
 

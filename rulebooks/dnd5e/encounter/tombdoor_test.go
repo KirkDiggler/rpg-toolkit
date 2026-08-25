@@ -133,8 +133,9 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	s.False(s.sees(wight, delve), "and she is hidden from him — geometry is mutual")
 
 	_, err := s.enc.Step(&encounter.StepInput{Member: delve, To: wightCell})
-	s.Require().ErrorIs(err, encounter.ErrBadPlacement, "and she cannot walk through it")
+	s.Require().ErrorIs(err, encounter.ErrLocked, "and she cannot walk through it — refused as FICTION, not as a bad cell (rpg-toolkit#1135)")
 	s.Contains(err.Error(), cryptDoor)
+	s.Contains(err.Error(), "DC 12", "the walk's refusal names the stakes, exactly as OpenDoor's does")
 
 	_, err = s.enc.OpenDoor(&encounter.OpenDoorInput{Door: cryptDoor})
 	s.Require().ErrorIs(err, encounter.ErrLocked, "nor simply open it")
