@@ -134,6 +134,9 @@ func TestBodyForRefusesAMissingRequiredField(t *testing.T) {
 		{"struck with two targets", EventStruck, `{"beat":"struck","actor":"alice","targets":["bob","carol"],"attack":{"ref":"longsword"}}`},
 		{"struck with no attack ref", EventStruck, `{"beat":"struck","actor":"alice","targets":["bob"]}`},
 		{"missed with no actor", EventMissed, `{"beat":"missed","targets":["bob"],"attack":{"ref":"longsword"}}`},
+		{"ended with no ending", EventEnded, `{"beat":"ended"}`},
+		{"door with no door", EventDoor, `{"beat":"door","state":"open"}`},
+		{"door with no state", EventDoor, `{"beat":"door","door":"gate"}`},
 	}
 
 	for _, tc := range cases {
@@ -173,6 +176,15 @@ func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 	}{
 		{"joined", `{"beat":"joined","member":"erin"}`, EventJoined, JoinedBody{Member: "erin"}},
 		{"exited", `{"beat":"exited","member":"erin"}`, EventExited, ExitedBody{Member: "erin"}},
+		// rpg-project#268: the close and the door are narrated from typed
+		// facts too. An ended beat carries its declared key; a door beat
+		// carries the door, its state, and — on an unlock attempt — the
+		// actor and the numbers (full data until v1.0).
+		{"ended", `{"beat":"ended","ending":"boss-down"}`, EventEnded, EndedBody{Ending: "boss-down"}},
+		{"door opened", `{"beat":"door","door":"gate","state":"open","actor":"erin"}`,
+			EventDoor, DoorBody{Door: "gate", State: "open", Actor: "erin"}},
+		{"door attempt", `{"beat":"door","door":"gate","state":"locked","actor":"erin","dc":12,"total":9,"beaten":false}`,
+			EventDoor, DoorBody{Door: "gate", State: "locked", Actor: "erin", DC: 12, Total: 9, Beaten: false}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

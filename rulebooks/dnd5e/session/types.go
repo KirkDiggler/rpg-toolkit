@@ -557,6 +557,14 @@ const (
 	// side by side while narrating one exchange.
 	EventDowned EventKind = "downed"
 
+	// EventDoor reports a door changing — opened, closed, or an unlock
+	// attempt, beaten or not. A failed attempt is as much fiction as a
+	// beaten one, and the composition writes both through one path
+	// (rpg-project#268). Every member of the encounter hears it: door
+	// knowledge is roster-wide until asymmetric perception
+	// (rpg-toolkit#1020) narrows it.
+	EventDoor EventKind = "door"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
@@ -617,8 +625,8 @@ type Event struct {
 	// Body is the beat, typed: a sealed interface with one struct per kind
 	// that has one, decoded from the SAME payload this package already
 	// wrote rather than a second encoding of it (rpg-toolkit#941). Nil in
-	// three cases: a kind with no typed body member (ENDED, SCENE_OPENED,
-	// TICK, UNKNOWN); a beat this build's decoder does not recognise; and a
+	// three cases: a kind with no typed body member (SCENE_OPENED, TICK,
+	// UNKNOWN); a beat this build's decoder does not recognise; and a
 	// beat whose declared kind IS recognised but whose payload does not
 	// match that kind's required shape — bodyFor's own refusal rather than
 	// a zero-valued body (see TestBodyForRefusesAMissingRequiredField).
@@ -628,7 +636,7 @@ type Event struct {
 // EventBody is the beat, typed — a sealed interface with one struct per
 // kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
 // MissedBody, FightStartedBody, FightEndedBody, MovedBody, JoinedBody,
-// ExitedBody. Sealed the way
+// ExitedBody, EndedBody, DoorBody. Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
 // this package would be indistinguishable from these to anyone reading the
@@ -747,6 +755,66 @@ type ExitedBody struct {
 }
 
 func (ExitedBody) isEventBody() {}
+
+// EndedBody is EventEnded's typed body: the declared ending that fired.
+//
+// The key is a content string ("boss-down", "withdrawn", "abandoned"), not
+// an enum — what an ending MEANS is authored, and the client maps key to
+// sentence (rpg-project#269 §6.3). The full outcome is Status's answer;
+// this beat arrives on the WORLD clock, after the fight it may have grown
+// out of has dissolved (ruling §6.6).
+type EndedBody struct {
+	Ending string `json:"ending"`
+}
+
+func (EndedBody) isEventBody() {}
+
+// DoorBody is EventDoor's typed body: which door, what it is now, and — on
+// an unlock attempt — the numbers behind it.
+//
+// DC, Total and Beaten are set only on attempt beats; a plain open or close
+// carries DC zero. Actor is empty when the change has no author to narrate.
+// The total is public down to the number — full data until v1.0.
+type DoorBody struct {
+	Door   string `json:"door"`
+	State  string `json:"state"`
+	Actor  string `json:"actor,omitempty"`
+	DC     int    `json:"dc,omitempty"`
+	Total  int    `json:"total,omitempty"`
+	Beaten bool   `json:"beaten,omitempty"`
+}
+
+func (DoorBody) isEventBody() {}
+
+// Door is one door's identity and live state — the dynamic half of
+// [AtlasDoorway], which carries the same door's edges and never changes.
+// Read via [Manager.Doors] once, then updated from EventDoor beats.
+type Door struct {
+	// ID is the same identifier AtlasDoorway.Door carries.
+	ID string `json:"id"`
+
+	// State is "open", "closed" or "locked" — the composition's own kinds,
+	// projected as strings for the same reason MemberKind is.
+	State string `json:"state"`
+
+	// Lock is set only while State is "locked".
+	Lock *DoorLock `json:"lock,omitempty"`
+}
+
+// DoorLock is an authored lock, carried not interpreted — the DC is public
+// down to the number (full data until v1.0), and what beats it is
+// [Manager.Unlock]'s ruling, never a comparison the composition makes.
+type DoorLock struct {
+	// DC is the authored difficulty. No omitempty: zero would be an answer
+	// if an author wrote one (TestFalseIsAnAnswerOnTheWire's law).
+	DC int `json:"dc"`
+
+	// Ability is the opaque rulebook ref the check uses, e.g. "dex".
+	Ability string `json:"ability,omitempty"`
+
+	// Tool is the opaque item ref a lock may name; empty when none.
+	Tool string `json:"tool,omitempty"`
+}
 
 // SaveReport names which aggregates were persisted by a verb and which were
 // not.

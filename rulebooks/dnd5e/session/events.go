@@ -256,6 +256,8 @@ func kindFor(beat string) EventKind {
 	// rename there would be a migration; a translation here is a line.
 	case "down":
 		return EventDowned
+	case "door":
+		return EventDoor
 	default:
 		return EventUnknown
 	}
@@ -291,6 +293,27 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return ExitedBody{Member: p.Member}
+	case EventEnded:
+		var p struct {
+			Ending string `json:"ending"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Ending == "" {
+			return nil
+		}
+		return EndedBody{Ending: p.Ending}
+	case EventDoor:
+		var p struct {
+			Door   string `json:"door"`
+			State  string `json:"state"`
+			Actor  string `json:"actor"`
+			DC     int    `json:"dc"`
+			Total  int    `json:"total"`
+			Beaten bool   `json:"beaten"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Door == "" || p.State == "" {
+			return nil
+		}
+		return DoorBody{Door: p.Door, State: p.State, Actor: p.Actor, DC: p.DC, Total: p.Total, Beaten: p.Beaten}
 	case EventTurnEnded:
 		var p struct {
 			Member string `json:"member"`
@@ -329,8 +352,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		}
 		return DownedBody{Member: p.Member}
 	default:
-		// EventEnded, EventSceneOpened, EventTick: no body member exists for
-		// these — see EventBody's own doc.
+		// EventSceneOpened, EventTick: no body member exists for these — see
+		// EventBody's own doc.
 		return nil
 	}
 }

@@ -47,12 +47,12 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// arrive as ErrBadPosition — "that is not a place" and "the way is
 		// shut" send whoever reads them somewhere different.
 		{"locked door", encounter.ErrLocked, ErrLocked},
-		// NOTE: this table used to carry `ErrNoCrossing` for a step into an
-		// adjacent cell with no doorway joining it. The composition no longer
-		// distinguishes that case — a walk into a shut door comes back as a
-		// placement refusal carrying the door's state in TEXT — so the sentinel
-		// was removed rather than kept as one nothing can produce.
-		// rpg-toolkit#1135 is what would give it a source again.
+		// The other half of the rpg-toolkit#1135 split, landed: a walk into a
+		// merely-shut door arrives on the composition's own sentinel now, not
+		// as a placement refusal with the state in text. (This table once
+		// carried `ErrNoCrossing` for the sourceless version of this case;
+		// #1135 is what gave the distinction a source again.)
+		{"shut door", encounter.ErrDoorShut, ErrDoorShut},
 		{"bad placement", encounter.ErrBadPlacement, ErrBadPosition},
 		{"already in a fight", encounter.ErrInBubble, ErrInBubble},
 		{"not in a fight", encounter.ErrNoBubble, ErrNotInFight},
