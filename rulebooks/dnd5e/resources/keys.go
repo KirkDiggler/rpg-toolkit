@@ -43,3 +43,25 @@ const (
 	// Recovered on short rest. Used by: Action Surge.
 	ActionSurge coreResources.ResourceKey = "action_surge"
 )
+
+// DisplayName returns the rulebook-owned display name for a resource key.
+// It is the single source of truth for how a resource surfaces in a status
+// view: the character projection never trusts a feature's reported name over
+// this mapping. Unknown keys fall back to their raw string so a future key is
+// still readable, but the four builds only ever carry the named keys below.
+func DisplayName(key coreResources.ResourceKey) string {
+	switch key {
+	case RageCharges:
+		return "Rage"
+	case Ki:
+		return "Ki"
+	case HitDice:
+		return "Hit Dice"
+	case SecondWind:
+		return "Second Wind"
+	case ActionSurge:
+		return "Action Surge"
+	default:
+		return string(key)
+	}
+}
