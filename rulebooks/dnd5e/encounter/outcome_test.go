@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -283,6 +284,24 @@ func (s *OutcomeTestSuite) TestRefusalsAreCheckedAgainstTheRoster() {
 		})
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
+
+	for _, tc := range []struct {
+		name       string
+		multiplier float64
+	}{
+		{"NaN multiplier", math.NaN()},
+		{"positive infinite multiplier", math.Inf(1)},
+		{"negative infinite multiplier", math.Inf(-1)},
+	} {
+		s.Run(tc.name, func() {
+			_, err := s.scene().Record(&encounter.RecordInput{
+				Kind: encounter.OutcomeStruck, Actor: alice,
+				DamageComponents: []encounter.DamageComponent{{Multiplier: &tc.multiplier}},
+			})
+			s.ErrorIs(err, encounter.ErrInvalidData,
+				"an unrepresentable JSON number is structural invalid data")
+		})
+	}
 
 	s.Run("an actor who is not a member", func() {
 		_, err := s.scene().Record(&encounter.RecordInput{

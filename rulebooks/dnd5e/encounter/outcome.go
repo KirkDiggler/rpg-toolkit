@@ -6,6 +6,7 @@ package encounter
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -258,7 +259,8 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know, or an Attack whose Ref or Name is empty), and anything the
+// know, an Attack whose Ref or Name is empty, or a non-finite damage
+// multiplier JSON cannot represent), and anything the
 // [Standing] capability answers with — including ErrNotMember for an answer
 // naming a stranger.
 //
@@ -310,6 +312,15 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 		}
 	}
 	sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+
+	if in.Kind == OutcomeStruck {
+		for i, component := range in.DamageComponents {
+			if component.Multiplier != nil &&
+				(math.IsNaN(*component.Multiplier) || math.IsInf(*component.Multiplier, 0)) {
+				return nil, fmt.Errorf("record: damage component %d multiplier: %w", i, ErrInvalidData)
+			}
+		}
+	}
 
 	payload := map[string]interface{}{
 		"beat":  string(in.Kind),
