@@ -355,7 +355,7 @@ func (s *RegionSetupSuite) TestEdges_MustBeAdjacentUnderOrientation() {
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: o},
 				Regions: []encounter.RegionInput{rectRegion("window", 0, 0, size, size)},
-				Walls:   []spatial.Boundary{wall(a[0], a[1], b[0], b[1])},
+				Walls:   []encounter.WallInput{wall(a[0], a[1], b[0], b[1])},
 			},
 			Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		})
@@ -402,7 +402,7 @@ func (s *RegionSetupSuite) TestEdges_MustBeAdjacentUnderOrientation() {
 
 // TestEdgesMustStandOnTheFloor — the envelope is implied, never written.
 func (s *RegionSetupSuite) TestEdgesMustStandOnTheFloor() {
-	build := func(walls []spatial.Boundary, doors []encounter.DoorInput) error {
+	build := func(walls []encounter.WallInput, doors []encounter.DoorInput) error {
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: threeRegions(), Walls: walls, Doors: doors},
@@ -411,7 +411,7 @@ func (s *RegionSetupSuite) TestEdgesMustStandOnTheFloor() {
 		return err
 	}
 
-	err := build([]spatial.Boundary{wall(6, 4, 5, 4)}, nil)
+	err := build([]encounter.WallInput{wall(6, 4, 5, 4)}, nil)
 	s.Require().ErrorIs(err, encounter.ErrEdgeOffFloor)
 	s.Contains(err.Error(), "walls[0]")
 	s.Contains(err.Error(), "[5,4]")
@@ -424,7 +424,7 @@ func (s *RegionSetupSuite) TestEdgesMustStandOnTheFloor() {
 	s.Require().ErrorIs(err, encounter.ErrEdgeNotAdjacent)
 	s.ErrorIs(err, encounter.ErrBadDoor)
 
-	err = build([]spatial.Boundary{wall(6, 4, 7, 4), wall(7, 4, 6, 4)}, nil)
+	err = build([]encounter.WallInput{wall(6, 4, 7, 4), wall(7, 4, 6, 4)}, nil)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
 	s.Contains(err.Error(), "listed twice", "the same edge either way round is the same edge")
 

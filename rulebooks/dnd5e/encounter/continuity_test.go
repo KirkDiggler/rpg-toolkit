@@ -90,7 +90,7 @@ func vaultChaseChambers() []chamber {
 //
 // Counted in the chamber's own offset rows since rpg-toolkit#1127, so the range
 // is simply its full height.
-func vaultChaseHexSeamWall() []spatial.Boundary {
+func vaultChaseHexSeamWall() []encounter.WallInput {
 	return hexOffsetSeamWall(encounter.HexesArePointyTop(), 9, 0, 9, 5)
 }
 

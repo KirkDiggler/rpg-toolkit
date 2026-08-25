@@ -66,7 +66,7 @@ var (
 // nothing for anybody to hide behind — which is the honest consequence of the
 // field being one canvas (rpg-toolkit#1106), and the reason this fixture has to
 // say where its walls are instead of relying on a room boundary to imply them.
-func pursuitSeamWall() []spatial.Boundary { return seamWallRows(25, 10, 6, 13) }
+func pursuitSeamWall() []encounter.WallInput { return seamWallRows(25, 10, 6, 13) }
 
 func (s *PursuitSuite) SetupTest() {
 	field := encounter.FieldInput{

@@ -59,14 +59,14 @@ func cellAt(col, row int) spatial.Position {
 }
 
 // wall is one authored wall edge between two adjacent cells, blocking both
-// movement and sight.
-func wall(fromCol, fromRow, toCol, toRow int) spatial.Boundary {
-	return spatial.Boundary{
+// movement and sight, at default height.
+func wall(fromCol, fromRow, toCol, toRow int) encounter.WallInput {
+	return encounter.WallInput{Boundary: spatial.Boundary{
 		From:              spatial.Position{X: float64(fromCol), Y: float64(fromRow)},
 		To:                spatial.Position{X: float64(toCol), Y: float64(toRow)},
 		BlocksMovement:    true,
 		BlocksLineOfSight: true,
-	}
+	}}
 }
 
 // seamWallRows is seamWall over rows [row0, row0+rows), leaving the straight
@@ -74,12 +74,12 @@ func wall(fromCol, fromRow, toCol, toRow int) spatial.Boundary {
 // that are actually adjacent under pointy-top are emitted: a hex cell has six
 // neighbours, not eight, and compileField refuses an edge between two cells
 // that do not touch (ErrEdgeNotAdjacent).
-func seamWallRows(west, row0, rows int, gaps ...int) []spatial.Boundary {
+func seamWallRows(west, row0, rows int, gaps ...int) []encounter.WallInput {
 	open := make(map[int]bool, len(gaps))
 	for _, g := range gaps {
 		open[g] = true
 	}
-	var out []spatial.Boundary
+	var out []encounter.WallInput
 	for row := row0; row < row0+rows; row++ {
 		near := cellAt(west, row)
 		for _, dr := range []int{-1, 0, 1} {

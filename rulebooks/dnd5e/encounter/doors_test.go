@@ -71,7 +71,7 @@ var (
 // separate way through, so leaving them open would let sight round the corner
 // of a shut door and the test would be measuring the gap beside the door rather
 // than the door. The wall is everything the door is not.
-func seamWallExcept(atX, height int, doorRows ...int) []spatial.Boundary {
+func seamWallExcept(atX, height int, doorRows ...int) []encounter.WallInput {
 	return seamWallRows(atX, 0, height, doorRows...)
 }
 

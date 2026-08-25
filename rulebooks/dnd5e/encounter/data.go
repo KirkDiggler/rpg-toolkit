@@ -186,7 +186,7 @@ type PropData struct {
 	// design, so there is no pointer here and no by-name refusal when
 	// absent — an old blob simply unmarshals both to their zero values.
 	Facing string     `json:"facing,omitempty"`
-	Offset [2]float64 `json:"offset"`
+	Offset [3]float64 `json:"offset"`
 }
 
 // PositionData is the persistent representation of spatial.Position.
@@ -201,6 +201,13 @@ type BoundaryData struct {
 	To                PositionData `json:"to"`
 	BlocksMovement    bool         `json:"blocks_movement,omitempty"`
 	BlocksLineOfSight bool         `json:"blocks_line_of_sight,omitempty"`
+
+	// Height is the authored wall-height multiplier; 0 = not authored =
+	// standard height ([WallInput.Height]). omitempty is safe for exactly
+	// that reason: an absent key and an authored 0 cannot both exist — 0 is
+	// not an authorable value ([1, 3] bounds) — so absent always means "not
+	// authored," never a lost fact.
+	Height float64 `json:"height,omitempty"`
 }
 
 // DoorData is the persistent representation of a door: what it is called,
@@ -546,6 +553,7 @@ func fieldDataFrom(f *field) FieldData {
 				To:                PositionData{X: w.To.X, Y: w.To.Y},
 				BlocksMovement:    w.BlocksMovement,
 				BlocksLineOfSight: w.BlocksLineOfSight,
+				Height:            w.Height,
 			}
 		}
 	}
@@ -1303,11 +1311,14 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, wd := range fd.Walls {
-		in.Walls = append(in.Walls, spatial.Boundary{
-			From:              spatial.Position{X: wd.From.X, Y: wd.From.Y},
-			To:                spatial.Position{X: wd.To.X, Y: wd.To.Y},
-			BlocksMovement:    wd.BlocksMovement,
-			BlocksLineOfSight: wd.BlocksLineOfSight,
+		in.Walls = append(in.Walls, WallInput{
+			Boundary: spatial.Boundary{
+				From:              spatial.Position{X: wd.From.X, Y: wd.From.Y},
+				To:                spatial.Position{X: wd.To.X, Y: wd.To.Y},
+				BlocksMovement:    wd.BlocksMovement,
+				BlocksLineOfSight: wd.BlocksLineOfSight,
+			},
+			Height: wd.Height,
 		})
 	}
 

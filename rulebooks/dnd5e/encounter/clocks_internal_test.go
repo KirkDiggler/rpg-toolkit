@@ -155,21 +155,21 @@ func TestFormRejections(t *testing.T) {
 // "first light does not start the fight" has to say it. Diagonals are included
 // for the reason testwalls_test.go's squareSeamWall spells out: a square cell
 // has eight neighbours, and a wall of same-row edges leaks at every corner.
-func sealedSeam(atX, height int) []spatial.Boundary {
+func sealedSeam(atX, height int) []WallInput {
 	o := HexesArePointyTop()
-	out := make([]spatial.Boundary, 0, height*2)
+	out := make([]WallInput, 0, height*2)
 	for y := 0; y < height; y++ {
 		for _, dy := range []int{-1, 0, 1} {
 			to := y + dy
 			if to < 0 || to >= height || adjacencyGrid.Distance(HexCellAt(o, atX, y), HexCellAt(o, atX+1, to)) != 1 {
 				continue
 			}
-			out = append(out, spatial.Boundary{
+			out = append(out, WallInput{Boundary: spatial.Boundary{
 				From:              spatial.Position{X: float64(atX), Y: float64(y)},
 				To:                spatial.Position{X: float64(atX + 1), Y: float64(to)},
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
-			})
+			}})
 		}
 	}
 	return out
