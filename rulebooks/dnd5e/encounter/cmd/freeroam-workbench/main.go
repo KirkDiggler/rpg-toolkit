@@ -180,9 +180,9 @@ func rectRegion(id string, col, row, w, h int) encounter.RegionInput {
 // [0,rows), minus the straight crossing on the gap row — asked of the grid,
 // since a hex's crossings stagger and a parity table would be a second
 // answer to which cells touch.
-func seamWall(west, east, gap, rows int) []spatial.Boundary {
+func seamWall(west, east, gap, rows int) []encounter.WallInput {
 	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
-	var out []spatial.Boundary
+	var out []encounter.WallInput
 	for row := 0; row < rows; row++ {
 		for _, dr := range []int{-1, 0, 1} {
 			to := row + dr
@@ -192,10 +192,10 @@ func seamWall(west, east, gap, rows int) []spatial.Boundary {
 			if grid.Distance(cellAt(west, row), cellAt(east, to)) != 1 {
 				continue
 			}
-			out = append(out, spatial.Boundary{
+			out = append(out, encounter.WallInput{Boundary: spatial.Boundary{
 				From: spatial.Position{X: float64(west), Y: float64(row)}, To: spatial.Position{X: float64(east), Y: float64(to)},
 				BlocksMovement: true, BlocksLineOfSight: true,
-			})
+			}})
 		}
 	}
 	return out

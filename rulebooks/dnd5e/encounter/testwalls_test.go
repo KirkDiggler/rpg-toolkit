@@ -131,7 +131,7 @@ func structFieldNames(v any) []string {
 // A gap row is one cell wide in both senses: only the straight crossing
 // (atX,g)-(atX+1,g) is left open, so a doorway is a doorway rather than a
 // diagonal shortcut around its own frame.
-func squareSeamWall(atX, height int, gapRows ...int) []spatial.Boundary {
+func squareSeamWall(atX, height int, gapRows ...int) []encounter.WallInput {
 	return seamWallRows(atX, 0, height, gapRows...)
 }
 
@@ -150,7 +150,7 @@ func squareSeamWall(atX, height int, gapRows ...int) []spatial.Boundary {
 // A gap row leaves only the straight crossing open, exactly as squareSeamWall's
 // does, so a doorway is a doorway rather than a diagonal shortcut around its
 // own frame.
-func hexOffsetSeamWall(o encounter.Orientation, atCol, rowMin, rowMax int, gapRows ...int) []spatial.Boundary {
+func hexOffsetSeamWall(o encounter.Orientation, atCol, rowMin, rowMax int, gapRows ...int) []encounter.WallInput {
 	gap := make(map[int]bool, len(gapRows))
 	for _, g := range gapRows {
 		gap[g] = true
@@ -158,7 +158,7 @@ func hexOffsetSeamWall(o encounter.Orientation, atCol, rowMin, rowMax int, gapRo
 
 	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
 
-	out := make([]spatial.Boundary, 0, (rowMax-rowMin+1)*2)
+	out := make([]encounter.WallInput, 0, (rowMax-rowMin+1)*2)
 	for row := rowMin; row <= rowMax; row++ {
 		near := encounter.HexCellAt(o, atCol, row)
 		for _, dr := range []int{-1, 0, 1} {
@@ -172,12 +172,12 @@ func hexOffsetSeamWall(o encounter.Orientation, atCol, rowMin, rowMax int, gapRo
 			if grid.Distance(near, encounter.HexCellAt(o, atCol+1, to)) != 1 {
 				continue // not a crossing at all on this grid
 			}
-			out = append(out, spatial.Boundary{
+			out = append(out, encounter.WallInput{Boundary: spatial.Boundary{
 				From:              spatial.Position{X: float64(atCol), Y: float64(row)},
 				To:                spatial.Position{X: float64(atCol + 1), Y: float64(to)},
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
-			})
+			}})
 		}
 	}
 

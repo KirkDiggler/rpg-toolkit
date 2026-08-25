@@ -942,13 +942,13 @@ var twoRoomDoor = openDoorway("door1", 9, 5, 10, 5)
 // say before the field became one canvas (rpg-toolkit#1106) — and one these
 // fixtures now have to say, because with one canvas and no wall the two
 // chambers share an open seam ten cells wide.
-func twoRoomWall() []spatial.Boundary { return squareSeamWall(9, 10, 5) }
+func twoRoomWall() []encounter.WallInput { return squareSeamWall(9, 10, 5) }
 
 // twoRoomSealedWall is the same wall with NO opening — for the fixtures that
 // declare no doorway at all. Two chambers side by side with nothing joining
 // them is a solid partition, and saying so is now the fixture's job: it used to
 // be implied by their being different rooms.
-func twoRoomSealedWall() []spatial.Boundary { return squareSeamWall(9, 10) }
+func twoRoomSealedWall() []encounter.WallInput { return squareSeamWall(9, 10) }
 
 // twoRoomField is the field most of this file's two-room fixtures build:
 // room-a at the origin, room-b anchored immediately east of it, joined at

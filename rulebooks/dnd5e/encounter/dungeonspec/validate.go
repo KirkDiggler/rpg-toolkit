@@ -30,17 +30,15 @@ var (
 	// the author never sees.
 	targetings = map[string]bool{"closest": true, "lowest-health": true, "lowest-ac": true}
 
-	// facingsByOrientation is the SIX names each hex orientation actually
-	// has, and the two sets are DIFFERENT (rpg-project#261 ruling): a
-	// flat-top hex has flat top and bottom edges, so its facings are
-	// n|s|ne|nw|se|sw; a pointy-top hex has pointed top and bottom instead,
-	// so its facings are e|w|ne|nw|se|sw. A name from the wrong set is an
-	// ERROR, never a silent snap to the nearest valid one — the vocabulary
-	// and the rendered yaw both derive from the SAME declared orientation
-	// (ideas/dungeon-builder/prop-facing-offset.md).
-	facingsByOrientation = map[encounter.OrientationKind]map[string]bool{
-		encounter.OrientationFlatTop:   {"n": true, "s": true, "ne": true, "nw": true, "se": true, "sw": true},
-		encounter.OrientationPointyTop: {"e": true, "w": true, "ne": true, "nw": true, "se": true, "sw": true},
+	// facings is the ONE eight-name true-compass vocabulary, the same set
+	// under BOTH hex orientations (rpg-project#272 ruling, superseding
+	// #261's orientation-scoped six-name sets): compass directions live in
+	// world space, so which way the hexes point does not change which words
+	// exist. A name outside the set is an ERROR, never a silent snap to the
+	// nearest valid one (ideas/dungeon-builder/cardinal-facings.md).
+	facings = map[string]bool{
+		"n": true, "ne": true, "e": true, "se": true,
+		"s": true, "sw": true, "w": true, "nw": true,
 	}
 
 	keyShape = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -246,7 +244,10 @@ func (v *validation) walls() {
 	v.crossings = map[[2]spatial.Position]string{}
 	for i, w := range v.spec.Walls {
 		p := fmt.Sprintf("walls[%d]", i)
-		c, ok := v.edge(p, w)
+		if w.Height != nil && (*w.Height < 1 || *w.Height > 3) {
+			v.fail(p+".height", "height %g is outside [1,3]: walls raise, they never lower (rpg-project#273)", *w.Height)
+		}
+		c, ok := v.edge(p, w.Between)
 		if !ok {
 			continue
 		}
@@ -373,16 +374,20 @@ func (v *validation) place() {
 			if pl.BlocksLoS == nil {
 				v.fail(p+".blocks_los", "%q does not say whether it blocks line of sight, and there is no default", pl.Ref)
 			}
-			if pl.Facing != "" && !facingsByOrientation[v.orientation.Kind()][pl.Facing] {
-				v.fail(p+".facing", "%s-top has no facing %q", v.orientation.Kind(), pl.Facing)
+			if pl.Facing != "" && !facings[pl.Facing] {
+				v.fail(p+".facing", "%q is not a compass direction: a facing is one of n|ne|e|se|s|sw|w|nw", pl.Facing)
 			}
 			if pl.Offset != nil {
-				if len(pl.Offset) != 2 {
-					v.fail(p+".offset", "offset must be [x,y], got %d value(s)", len(pl.Offset))
+				if len(pl.Offset) != 2 && len(pl.Offset) != 3 {
+					v.fail(p+".offset", "offset must be [x,y] or [x,y,height], got %d value(s)", len(pl.Offset))
 				} else {
 					for j, c := range pl.Offset {
-						if c < -0.5 || c > 0.5 {
-							v.fail(p+".offset", "offset[%d] %g is outside [-0.5,0.5]", j, c)
+						if j < 2 {
+							if c < -0.5 || c > 0.5 {
+								v.fail(p+".offset", "offset[%d] %g is outside [-0.5,0.5]", j, c)
+							}
+						} else if c < 0 || c > 3 {
+							v.fail(p+".offset", "offset[2] %g is outside [0,3]", c)
 						}
 					}
 				}

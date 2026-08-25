@@ -104,10 +104,29 @@ walls:
 func (s *CompileSuite) TestWallsAreEdgesThatBlockBothWays() {
 	c := s.load(s.tomb)
 	s.Require().Len(c.Field.Walls, 28)
-	s.Equal(spatial.Boundary{
+	s.Equal(encounter.WallInput{Boundary: spatial.Boundary{
 		From: spatial.Position{X: 5, Y: 0}, To: spatial.Position{X: 6, Y: 0},
 		BlocksMovement: true, BlocksLineOfSight: true,
-	}, c.Field.Walls[0])
+	}}, c.Field.Walls[0], "a bare entry compiles at height 0: not authored, the standard height")
+}
+
+// TestAWallMayAuthorItsHeight — the object form carries its multiplier
+// through the compile verbatim; every bare sibling stays at 0, the carrier's
+// word for "not authored" (rpg-project#273).
+func (s *CompileSuite) TestAWallMayAuthorItsHeight() {
+	c := s.load(s.tombWith("  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], height: 2.5 }"))
+	s.Require().Len(c.Field.Walls, 28, "the object form is one wall, exactly as the bare form is")
+	raised := c.Field.Walls[1]
+	s.Equal(spatial.Position{X: 5, Y: 1}, raised.From)
+	s.Equal(spatial.Position{X: 6, Y: 0}, raised.To)
+	s.True(raised.BlocksMovement, "height changes nothing about what a wall blocks")
+	s.True(raised.BlocksLineOfSight, "a wall cannot be seen past at ANY height (Kirk's ruling)")
+	s.Equal(2.5, raised.Height)
+	for i, w := range c.Field.Walls {
+		if i != 1 {
+			s.Zero(w.Height, "walls[%d] authored no height", i)
+		}
+	}
 }
 
 // TestADoorIsMintedUnderTheDungeonsKeyInItsAuthoredState — `<key>/<id>`, so two

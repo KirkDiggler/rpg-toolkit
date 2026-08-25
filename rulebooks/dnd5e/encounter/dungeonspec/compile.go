@@ -185,24 +185,34 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			BlocksMovement: &blocksMovement, BlocksLineOfSight: &blocksLoS,
 			Facing: p.Facing,
 		}
-		// Validate has already confirmed len(p.Offset) is 0 or 2 by the time
-		// Compile runs; anything else is unreachable here.
-		if len(p.Offset) == 2 {
-			prop.Offset = [2]float64{p.Offset[0], p.Offset[1]}
+		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
+		// time Compile runs; anything else is unreachable here. A missing
+		// third component is height 0 — on the floor — by design.
+		if len(p.Offset) >= 2 {
+			prop.Offset = [3]float64{p.Offset[0], p.Offset[1], 0}
+			if len(p.Offset) == 3 {
+				prop.Offset[2] = p.Offset[2]
+			}
 		}
 		out = append(out, prop)
 	}
 	return out
 }
 
-// wallsOf carries every wall as an edge that blocks movement and sight.
-func wallsOf(spec *Spec) []spatial.Boundary {
-	out := make([]spatial.Boundary, 0, len(spec.Walls))
+// wallsOf carries every wall as an edge that blocks movement and sight, with
+// its authored height when the entry carried one — nil compiles to 0, the
+// carrier's own word for "not authored" ([encounter.WallInput.Height]).
+func wallsOf(spec *Spec) []encounter.WallInput {
+	out := make([]encounter.WallInput, 0, len(spec.Walls))
 	for _, w := range spec.Walls {
-		out = append(out, spatial.Boundary{
-			From: authored(w[0]), To: authored(w[1]),
+		wall := encounter.WallInput{Boundary: spatial.Boundary{
+			From: authored(w.Between[0]), To: authored(w.Between[1]),
 			BlocksMovement: true, BlocksLineOfSight: true,
-		})
+		}}
+		if w.Height != nil {
+			wall.Height = *w.Height
+		}
+		out = append(out, wall)
 	}
 	return out
 }

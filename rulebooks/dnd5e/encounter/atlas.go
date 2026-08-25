@@ -96,9 +96,9 @@ type AtlasProp struct {
 	// Facing and Offset are the same authored, uninterpreted presentational
 	// facts as [PropInput.Facing] and [PropInput.Offset], carried through
 	// unread. Neither is validated here either — dungeonspec is the layer
-	// that knows the field's orientation and checks the word against it.
+	// that owns the vocabulary and the bounds.
 	Facing string
-	Offset [2]float64
+	Offset [3]float64
 }
 
 // AtlasBoundary is one wall or barrier crossing, with both endpoints in
@@ -115,6 +115,11 @@ type AtlasBoundary struct {
 
 	// BlocksLineOfSight reports whether line of sight may cross this boundary.
 	BlocksLineOfSight bool
+
+	// Height is the authored wall-height multiplier, carried verbatim from
+	// [WallInput.Height] and unread by this module. 0 = not authored =
+	// standard height; see [WallInput.Height] for the full contract.
+	Height float64
 }
 
 // AtlasDoorway is one crossable pair of cells a door stands in.
@@ -194,6 +199,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			To:                edge.To,
 			BlocksMovement:    w.BlocksMovement,
 			BlocksLineOfSight: w.BlocksLineOfSight,
+			Height:            w.Height,
 		})
 	}
 	sort.Slice(out.Boundaries, func(i, j int) bool {

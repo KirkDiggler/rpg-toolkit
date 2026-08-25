@@ -189,26 +189,57 @@ type PropInput struct {
 	// REQUIRED, for the same reason and with the same refusal.
 	BlocksLineOfSight *bool
 
-	// Facing is the authored direction this prop faces, in the orientation's
-	// own six-name vocabulary — flat-top: n|s|ne|nw|se|sw; pointy-top:
-	// e|w|ne|nw|se|sw. Optional: "" means the asset's own default facing.
-	// dungeonspec validates the word against the field's declared
-	// [Orientation]; THIS MODULE NEVER DOES, and never turns it into an
-	// angle — angle math is a render concern, not this module's (rpg-project
-	// #261 ruling; ADR-0040's spirit that the wire/model names facts and the
-	// client derives pixels). Not a pointer, unlike the two flags above: a
-	// prop's facing is a presentational fact rather than a required answer,
-	// so "said nothing" and "said the default" are the same by design.
+	// Facing is the authored direction this prop faces, one of the EIGHT
+	// true-compass names — n|ne|e|se|s|sw|w|nw — valid under BOTH hex
+	// orientations (rpg-project#272 superseded #261's orientation-scoped
+	// six-name sets: compass directions live in world space). Optional: ""
+	// means the asset's own default facing. dungeonspec validates the word;
+	// THIS MODULE NEVER DOES, and never turns it into an angle — angle math
+	// is a render concern, not this module's (ADR-0040's spirit that the
+	// wire/model names facts and the client derives pixels). Not a pointer,
+	// unlike the two flags above: a prop's facing is a presentational fact
+	// rather than a required answer, so "said nothing" and "said the
+	// default" are the same by design.
 	Facing string
 
-	// Offset is a within-cell visual nudge: [x,y] fractions of the cell
-	// size, each in [-0.5, 0.5]. Optional: {0,0} means centered, which
-	// omitting the field also means — the two are the same fact by design,
-	// for Facing's reason. VISUAL ONLY (Kirk, rpg-project#261: "offset is
-	// visual only, agreed") — a prop still occupies its whole cell for
-	// [Encounter.Step] and for sight; this field never reaches Sight,
-	// Standing, or the turn loop, the same law Facing follows.
-	Offset [2]float64
+	// Offset is an authored visual displacement: [x,y] within-cell nudge
+	// fractions of the cell size, each in [-0.5, 0.5], plus a THIRD
+	// component — height above the floor in the same cell-size unit, in
+	// [0, 3] and deliberately not bound to its siblings' planar clamp
+	// (rpg-project#272: "height should be able to gun higher than the 5
+	// ticks we allow on x and y"). Optional: the zero value means centered
+	// on the floor, which omitting the field also means — the two are the
+	// same fact by design, for Facing's reason. VISUAL ONLY (Kirk,
+	// rpg-project#261: "offset is visual only, agreed") — a prop still
+	// occupies its whole cell for [Encounter.Step] and for sight; this
+	// field never reaches Sight, Standing, or the turn loop, the same law
+	// Facing follows.
+	Offset [3]float64
+}
+
+// WallInput is one authored wall: the crossing it blocks, plus the
+// presentational facts the crossing carries. The mechanics half is the
+// embedded [spatial.Boundary] — spatial stays the layer that knows what a
+// boundary DOES, and deliberately never learns what one looks like
+// (rpg-project#273: height is visual-only by ruling, so it lives here at the
+// composition, the same layering call that put Facing and Offset on
+// [PropInput] rather than on a spatial type).
+type WallInput struct {
+	// Boundary is the crossing itself: endpoints in the AUTHORED offset
+	// frame, plus what it blocks. See [FieldInput.Walls] for the frame and
+	// adjacency contract.
+	spatial.Boundary
+
+	// Height is the authored wall-height MULTIPLIER of the standard
+	// rendered wall height, in [1, 3] when authored — raise-only by ruling
+	// (rpg-project#273: "I am looking to raise the walls not lower them").
+	// 0 means not authored: a reader renders the standard height, exactly
+	// as if 1.0 were written — the two are the same fact by design, and
+	// nothing may multiply by the raw value. dungeonspec validates the
+	// bounds; this module carries the number unread, VISUAL ONLY: height
+	// never reaches Sight or movement — a wall cannot be seen past at any
+	// height (Kirk's ruling, rpg-project#274).
+	Height float64
 }
 
 // FieldInput describes the map: what the canvas declares, the regions that
@@ -244,7 +275,7 @@ type FieldInput struct {
 	//
 	// Endpoint ORDER is not carried: spatial normalizes an undirected pair on
 	// registration, so From and To describe the same edge either way round.
-	Walls []spatial.Boundary
+	Walls []WallInput
 
 	// Doors are the doors standing in this field's crossings — each a set of
 	// edges sharing one state (rpg-toolkit#1123), with edges in ABSOLUTE

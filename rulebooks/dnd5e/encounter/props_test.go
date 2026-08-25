@@ -446,7 +446,7 @@ func (s *PropsSuite) TestFacingAndOffsetAreCarriedButNeverInterpreted() {
 			Props: []encounter.PropInput{
 				{Ref: "dnd5e:props:statue-reaper", At: propSeat(1, 1),
 					BlocksMovement: propTrue(), BlocksLineOfSight: propTrue(),
-					Facing: "not-a-real-direction", Offset: [2]float64{9, -9}},
+					Facing: "not-a-real-direction", Offset: [3]float64{9, -9}},
 				{Ref: "dnd5e:props:altar", At: propSeat(9, 3),
 					BlocksMovement: propTrue(), BlocksLineOfSight: propFalse()},
 			},
@@ -465,11 +465,11 @@ func (s *PropsSuite) TestFacingAndOffsetAreCarriedButNeverInterpreted() {
 
 	s.Equal("dnd5e:props:statue-reaper", props[0].Ref)
 	s.Equal("not-a-real-direction", props[0].Facing, "the exact word, uninterpreted")
-	s.Equal([2]float64{9, -9}, props[0].Offset, "the exact numbers, unbounded")
+	s.Equal([3]float64{9, -9}, props[0].Offset, "the exact numbers, unbounded")
 
 	s.Equal("dnd5e:props:altar", props[1].Ref)
 	s.Equal("", props[1].Facing, "said nothing")
-	s.Equal([2]float64{0, 0}, props[1].Offset, "and said zero/center: the same fact by design")
+	s.Equal([3]float64{0, 0}, props[1].Offset, "and said zero/center: the same fact by design")
 
 	_, err = enc.Step(&encounter.StepInput{Member: delver, To: propAbs(1, 1)})
 	s.Require().ErrorIs(err, encounter.ErrBadPlacement,
@@ -488,7 +488,7 @@ func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
 			Props: []encounter.PropInput{
 				{Ref: "dnd5e:props:statue-reaper", At: propSeat(propAtX, 4),
 					BlocksMovement: propTrue(), BlocksLineOfSight: propTrue(),
-					Facing: "ne", Offset: [2]float64{0.25, -0.4}},
+					Facing: "ne", Offset: [3]float64{0.25, -0.4}},
 			},
 		},
 		Members: []encounter.MemberInput{
@@ -501,7 +501,7 @@ func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
 	data := enc.ToData()
 	s.Require().Len(data.Field.Props, 1)
 	s.Equal("ne", data.Field.Props[0].Facing)
-	s.Equal([2]float64{0.25, -0.4}, data.Field.Props[0].Offset)
+	s.Equal([3]float64{0.25, -0.4}, data.Field.Props[0].Offset)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
@@ -513,5 +513,5 @@ func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
 	s.Require().NoError(err)
 	s.Require().Len(atlas.Props, 1)
 	s.Equal("ne", atlas.Props[0].Facing, "still there after a reload")
-	s.Equal([2]float64{0.25, -0.4}, atlas.Props[0].Offset)
+	s.Equal([3]float64{0.25, -0.4}, atlas.Props[0].Offset)
 }

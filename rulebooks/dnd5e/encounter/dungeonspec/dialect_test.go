@@ -135,6 +135,20 @@ func (s *DialectSuite) TestADungeonMustBeOneDocumentOfKnownKeys() {
 
 // TestValidate_PathsNameTheThing — the table: every refusal names the YAML
 // path of the thing that is wrong, because that is where the builder draws it.
+// TestWallObjectFormIsStrict — the wall object form keeps Decode's own
+// strictness even though a custom unmarshaler bypasses KnownFields: an
+// unknown key and an edgeless object are refusals naming the line, not facts
+// silently dropped.
+func (s *DialectSuite) TestWallObjectFormIsStrict() {
+	_, err := dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], hieght: 2 }")))
+	s.Require().Error(err, "a typo'd key is refused, not dropped")
+	s.Contains(err.Error(), "hieght")
+
+	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { height: 2 }")))
+	s.Require().Error(err, "a wall object with no edge is not a wall")
+	s.Contains(err.Error(), "between")
+}
+
 func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 	for _, tc := range []struct {
 		name string
@@ -161,8 +175,18 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"place[0].blocks_los", "there is no default"},
 		{"a monster that says what it blocks", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, blocks_los: true }`,
 			"place[8].blocks_los", "not a prop"},
-		{"a facing from the wrong orientation's set", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, facing: n }`,
-			"place[0].facing", "pointy-top has no facing"},
+		{"a facing that is not a compass word", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, facing: north }`,
+			"place[0].facing", "not a compass direction"},
+		{"an offset height above the ceiling", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1, 0, 3.5] }`,
+			"place[0].offset", "outside [0,3]"},
+		{"an offset height below the floor", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1, 0, -0.2] }`,
+			"place[0].offset", "outside [0,3]"},
+		{"an offset of four numbers", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1, 0, 0, 0] }`,
+			"place[0].offset", "must be [x,y] or [x,y,height]"},
+		{"a wall height below standard", "  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], height: 0.5 }",
+			"walls[1].height", "outside [1,3]"},
+		{"a wall height above the ceiling", "  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], height: 3.5 }",
+			"walls[1].height", "outside [1,3]"},
 		{"an offset component out of range", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.6, 0] }`,
 			"place[0].offset", "outside [-0.5,0.5]"},
 		{"an offset that is not two numbers", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1] }`,

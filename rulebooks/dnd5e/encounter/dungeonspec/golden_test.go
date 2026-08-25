@@ -201,7 +201,7 @@ func TestGolden_ReferenceTombV2MatchesV1Atlas(t *testing.T) {
 	// always means.
 	for _, p := range atlas.Props {
 		require.Equal(t, "", p.Facing, "the reference tomb authors no facing on %q", p.Ref)
-		require.Equal(t, [2]float64{0, 0}, p.Offset, "nor an offset on %q", p.Ref)
+		require.Equal(t, [3]float64{0, 0}, p.Offset, "nor an offset on %q", p.Ref)
 	}
 }
 

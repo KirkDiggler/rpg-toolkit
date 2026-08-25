@@ -50,7 +50,7 @@ type field struct {
 	// — this is what ToData writes back out.
 	regions []RegionInput
 	props   []PropInput
-	walls   []spatial.Boundary
+	walls   []WallInput
 
 	void        Void
 	orientation Orientation
@@ -255,8 +255,8 @@ func (f *field) compileProps(props []PropInput) error {
 
 // compileWalls checks every wall is an edge between two adjacent floor cells
 // and no edge is drawn twice.
-func (f *field) compileWalls(walls []spatial.Boundary) error {
-	f.walls = append([]spatial.Boundary(nil), walls...)
+func (f *field) compileWalls(walls []WallInput) error {
+	f.walls = append([]WallInput(nil), walls...)
 	seen := make(map[DoorEdge]bool, len(walls))
 
 	for i, w := range walls {

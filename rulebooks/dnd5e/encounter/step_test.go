@@ -86,7 +86,7 @@ func stepAbs(origin, local spatial.Position) spatial.Position {
 // stepSeamWall is the wall along the seam between the two chambers: every
 // crossing from the west chamber's last column to the east chamber's first,
 // every row but the doorway's.
-func stepSeamWall() []spatial.Boundary {
+func stepSeamWall() []encounter.WallInput {
 	return seamWallRows(int(stepWestOrigin.X)+5, int(stepWestOrigin.Y), 6, int(stepWestOrigin.Y)+int(stepDoorWestLocal.Y))
 }
 

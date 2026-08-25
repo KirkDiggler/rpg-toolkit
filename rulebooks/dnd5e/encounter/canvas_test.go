@@ -86,7 +86,7 @@ var (
 //
 // The wall is a FIELD fact now (rpg-project#256): both endpoints are authored
 // absolute cells, and nothing about which region "declared" it survives.
-func tombSeamWall(origin spatial.Position, width, height, gapRow int) []spatial.Boundary {
+func tombSeamWall(origin spatial.Position, width, height, gapRow int) []encounter.WallInput {
 	return seamWallRows(int(origin.X)+width-1, int(origin.Y), height, int(origin.Y)+gapRow)
 }
 
@@ -380,7 +380,7 @@ func TestAWallThatCannotBeDrawnIsRefusedAtConstruction(t *testing.T) {
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
-				Regions: []encounter.RegionInput{rectRegion("hall", 4, 4, 6, 6)}, Walls: []spatial.Boundary{b},
+				Regions: []encounter.RegionInput{rectRegion("hall", 4, 4, 6, 6)}, Walls: []encounter.WallInput{{Boundary: b}},
 			},
 			Members: []encounter.MemberInput{
 				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 4}},
