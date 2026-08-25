@@ -36,6 +36,10 @@ type undeadFortitudeCondition struct {
 // Ensure undeadFortitudeCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*undeadFortitudeCondition)(nil)
 
+// Ref returns the canonical ref this trait names itself by — the same ref its
+// ToJSON embeds and its loader routes on.
+func (u *undeadFortitudeCondition) Ref() *core.Ref { return refs.MonsterTraits.UndeadFortitude() }
+
 // UndeadFortitude creates a new undead fortitude trait.
 // When damage would reduce the creature to 0 HP, it makes a CON save (DC = 5 + damage taken).
 // On success, the creature drops to 1 HP instead.

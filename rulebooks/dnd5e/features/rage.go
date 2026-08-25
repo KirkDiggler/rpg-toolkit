@@ -68,6 +68,34 @@ func calculateRageDamage(level int) int {
 // Ref returns the unique ref for the Rage feature.
 func (r *Rage) Ref() *core.Ref { return refs.Features.Rage() }
 
+// Status reports the barbarian's character-owned RageCharges pool through the
+// non-mutating status surface, without serializing ToJSON. Rage does not own
+// its resource — the Character does — so a non-nil [StatusInput.Owner] that
+// carries RageCharges is required.
+func (r *Rage) Status(in *StatusInput) (*StatusOutput, error) {
+	if in == nil || in.Owner == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "rage status requires an owner resource reader")
+	}
+	current, maximum, ok := in.Owner.ResourceStatus(resources.RageCharges)
+	if !ok {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not carry rage_charges")
+	}
+	name := r.name
+	if name == "" {
+		name = "Rage"
+	}
+	return &StatusOutput{Status: &Status{
+		Ref:  *refs.Features.Rage(),
+		Name: name,
+		Resource: &ResourceStatus{
+			Key:     resources.RageCharges,
+			Name:    "Rage",
+			Current: current,
+			Maximum: maximum,
+		},
+	}}, nil
+}
+
 // Name returns the display name for the Rage feature.
 func (r *Rage) Name() string { return r.name }
 

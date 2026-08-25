@@ -42,6 +42,12 @@ type FightingStyleGreatWeaponFightingCondition struct {
 // Ensure FightingStyleGreatWeaponFightingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleGreatWeaponFightingCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (f *FightingStyleGreatWeaponFightingCondition) Ref() *core.Ref {
+	return refs.Conditions.FightingStyleGreatWeaponFighting()
+}
+
 // NewFightingStyleGreatWeaponFightingCondition creates a new Great Weapon Fighting condition.
 func NewFightingStyleGreatWeaponFightingCondition(
 	characterID string, roller dice.Roller,

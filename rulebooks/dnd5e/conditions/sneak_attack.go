@@ -51,6 +51,12 @@ type SneakAttackCondition struct {
 // Ensure SneakAttackCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*SneakAttackCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on. Sneak Attack's canonical ref
+// lives under refs.Features (it is a rogue feature turned active condition),
+// so that is what Ref reports.
+func (s *SneakAttackCondition) Ref() *core.Ref { return refs.Features.SneakAttack() }
+
 // SneakAttackInput provides configuration for creating a sneak attack condition
 type SneakAttackInput struct {
 	CharacterID string      // ID of the rogue

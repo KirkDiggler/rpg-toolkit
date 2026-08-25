@@ -39,6 +39,10 @@ type DodgingCondition struct {
 // Ensure DodgingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*DodgingCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (d *DodgingCondition) Ref() *core.Ref { return refs.Conditions.Dodging() }
+
 // NewDodgingCondition creates a new Dodging condition for the specified character.
 // The condition grants disadvantage on attacks targeting this character and
 // advantage on DEX saves, and removes itself at the start of the character's next turn.

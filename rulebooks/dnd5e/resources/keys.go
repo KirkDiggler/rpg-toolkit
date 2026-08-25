@@ -28,4 +28,18 @@ const (
 	// Recovered on long rest: regain half of maximum (minimum 1).
 	// Used by: Short rest healing
 	HitDice coreResources.ResourceKey = "hit_dice"
+
+	// SecondWind is the fighter's Second Wind feature pool, owned privately by
+	// the SecondWind feature object rather than by Character.resources. The
+	// feature reports it through its non-mutating Status surface so a projection
+	// never has to serialize the feature's persistence JSON to read uses.
+	// Recovered on short rest. Used by: Second Wind.
+	SecondWind coreResources.ResourceKey = "second_wind"
+
+	// ActionSurge is the fighter's Action Surge feature pool, owned privately by
+	// the ActionSurge feature object rather than by Character.resources. The
+	// feature reports it through its non-mutating Status surface so a projection
+	// never has to serialize the feature's persistence JSON to read uses.
+	// Recovered on short rest. Used by: Action Surge.
+	ActionSurge coreResources.ResourceKey = "action_surge"
 )

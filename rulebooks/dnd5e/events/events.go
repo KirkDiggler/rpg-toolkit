@@ -105,6 +105,12 @@ const (
 // ConditionBehavior represents the behavior of an active condition.
 // Conditions subscribe to events to modify game mechanics.
 type ConditionBehavior interface {
+	// Ref returns the canonical ref this condition names itself by — the same
+	// ref its ToJSON embeds and its loader routes on (rpg-toolkit#971). A live
+	// condition can now name itself honestly, so a composition never has to
+	// serialize it back to JSON to recover the pairing. Must never return nil.
+	Ref() *core.Ref
+
 	// IsApplied returns true if this condition is currently applied.
 	// Note: Some conditions may allow stacking (multiple applies), others may not.
 	IsApplied() bool

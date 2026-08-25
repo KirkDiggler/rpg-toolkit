@@ -34,6 +34,19 @@ type RecklessAttackData struct {
 // Ref returns the unique ref for the Reckless Attack feature.
 func (r *RecklessAttack) Ref() *core.Ref { return refs.Features.RecklessAttack() }
 
+// Status reports the feature's non-mutating status surface, without
+// serializing ToJSON. Reckless Attack owns no resource, so Resource is nil.
+func (r *RecklessAttack) Status(*StatusInput) (*StatusOutput, error) {
+	name := r.name
+	if name == "" {
+		name = "Reckless Attack"
+	}
+	return &StatusOutput{Status: &Status{
+		Ref:  *refs.Features.RecklessAttack(),
+		Name: name,
+	}}, nil
+}
+
 // Name returns the display name for the Reckless Attack feature.
 func (r *RecklessAttack) Name() string { return r.name }
 

@@ -37,6 +37,10 @@ type packTacticsCondition struct {
 // Ensure packTacticsCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*packTacticsCondition)(nil)
 
+// Ref returns the canonical ref this trait names itself by — the same ref its
+// ToJSON embeds and its loader routes on.
+func (p *packTacticsCondition) Ref() *core.Ref { return refs.MonsterTraits.PackTactics() }
+
 // PackTactics creates a new pack tactics trait
 func PackTactics(ownerID string) dnd5eEvents.ConditionBehavior {
 	return &packTacticsCondition{

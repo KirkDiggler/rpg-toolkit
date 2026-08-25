@@ -34,6 +34,12 @@ type FightingStyleArcheryCondition struct {
 // Ensure FightingStyleArcheryCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*FightingStyleArcheryCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (f *FightingStyleArcheryCondition) Ref() *core.Ref {
+	return refs.Conditions.FightingStyleArchery()
+}
+
 // NewFightingStyleArcheryCondition creates a new Archery fighting style condition.
 func NewFightingStyleArcheryCondition(characterID string) *FightingStyleArcheryCondition {
 	return &FightingStyleArcheryCondition{

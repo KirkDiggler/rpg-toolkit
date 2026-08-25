@@ -41,6 +41,10 @@ type HiddenCondition struct {
 // Ensure HiddenCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*HiddenCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (h *HiddenCondition) Ref() *core.Ref { return refs.Conditions.Hidden() }
+
 // NewHiddenCondition creates a new Hidden condition for the specified character.
 func NewHiddenCondition(characterID string) *HiddenCondition {
 	return &HiddenCondition{

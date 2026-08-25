@@ -35,6 +35,14 @@ type PatientDefenseData struct {
 // Ref returns the unique ref for the Patient Defense feature.
 func (p *PatientDefense) Ref() *core.Ref { return refs.Features.PatientDefense() }
 
+// Status reports the monk's character-owned Ki pool through the non-mutating
+// status surface, without serializing ToJSON. Patient Defense shares the Ki
+// pool with every other monk Ki feature; the key reported is the single shared
+// resources.Ki.
+func (p *PatientDefense) Status(in *StatusInput) (*StatusOutput, error) {
+	return reportKiStatus(in, refs.Features.PatientDefense(), p.name, "Patient Defense")
+}
+
 // Name returns the display name for the Patient Defense feature.
 func (p *PatientDefense) Name() string { return p.name }
 

@@ -39,6 +39,10 @@ type RecklessAttackCondition struct {
 // Ensure RecklessAttackCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*RecklessAttackCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (r *RecklessAttackCondition) Ref() *core.Ref { return refs.Conditions.RecklessAttack() }
+
 // NewRecklessAttackCondition creates a new reckless attack condition
 func NewRecklessAttackCondition(characterID string) *RecklessAttackCondition {
 	return &RecklessAttackCondition{

@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // ActionSurge represents the fighter's Action Surge feature.
@@ -36,6 +37,29 @@ type ActionSurgeData struct {
 
 // Ref returns the unique ref for the Action Surge feature.
 func (a *ActionSurge) Ref() *core.Ref { return refs.Features.ActionSurge() }
+
+// Status reports the feature's privately-owned Action Surge resource through
+// the non-mutating status surface, without serializing ToJSON. The owner is
+// not required: Action Surge owns its own [RecoverableResource].
+func (a *ActionSurge) Status(*StatusInput) (*StatusOutput, error) {
+	if a.resource == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "action surge feature has no resource")
+	}
+	name := a.name
+	if name == "" {
+		name = "Action Surge"
+	}
+	return &StatusOutput{Status: &Status{
+		Ref:  *refs.Features.ActionSurge(),
+		Name: name,
+		Resource: &ResourceStatus{
+			Key:     resources.ActionSurge,
+			Name:    "Action Surge",
+			Current: a.resource.Current(),
+			Maximum: a.resource.Maximum(),
+		},
+	}}, nil
+}
 
 // Name returns the display name for the Action Surge feature.
 func (a *ActionSurge) Name() string { return a.name }

@@ -66,6 +66,10 @@ type OpportunityAttackCondition struct {
 // Ensure OpportunityAttackCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*OpportunityAttackCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.OpportunityAttack() }
+
 // NewOpportunityAttackCondition creates a new OA condition for the given character.
 // The condition is universal for melee combatants and applied programmatically
 // at encounter setup; it does not require player choice or persistence in

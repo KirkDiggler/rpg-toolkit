@@ -50,6 +50,10 @@ type RagingCondition struct {
 // Ensure RagingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*RagingCondition)(nil)
 
+// Ref returns the canonical ref this condition names itself by — the same ref
+// its ToJSON embeds and its loader routes on.
+func (r *RagingCondition) Ref() *core.Ref { return refs.Conditions.Raging() }
+
 // IsApplied returns true if this condition is currently applied
 func (r *RagingCondition) IsApplied() bool {
 	return r.bus != nil

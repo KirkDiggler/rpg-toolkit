@@ -35,6 +35,14 @@ type FlurryOfBlowsData struct {
 // Ref returns the unique ref for the Flurry of Blows feature.
 func (f *FlurryOfBlows) Ref() *core.Ref { return refs.Features.FlurryOfBlows() }
 
+// Status reports the monk's character-owned Ki pool through the non-mutating
+// status surface, without serializing ToJSON. Flurry of Blows shares the Ki
+// pool with every other monk Ki feature, so a non-nil [StatusInput.Owner] that
+// carries Ki is required; the key reported is the single shared resources.Ki.
+func (f *FlurryOfBlows) Status(in *StatusInput) (*StatusOutput, error) {
+	return reportKiStatus(in, refs.Features.FlurryOfBlows(), f.name, "Flurry of Blows")
+}
+
 // Name returns the display name for the Flurry of Blows feature.
 func (f *FlurryOfBlows) Name() string { return f.name }
 
