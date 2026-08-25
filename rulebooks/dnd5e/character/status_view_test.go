@@ -186,10 +186,10 @@ func TestStatusViewRejectsConflictingDuplicateResourceKey(t *testing.T) {
 	// Drive the merge directly: an owner Ki row that disagrees with a
 	// feature-reported Ki row must fail loudly with no partial output.
 	ownerRows := []resourceReport{
-		{Key: resources.Ki, Current: 3, Maximum: 3},
+		{Key: resources.Ki, Name: "Ki", Current: 3, Maximum: 3},
 	}
 	reports := []resourceReport{
-		{Key: resources.Ki, Current: 2, Maximum: 3},
+		{Key: resources.Ki, Name: "Ki", Current: 2, Maximum: 3},
 	}
 
 	views, err := mergeResources(ownerRows, reports)
@@ -201,7 +201,7 @@ func TestStatusViewRejectsConflictingDuplicateResourceKey(t *testing.T) {
 // on an owner row fails without partial output.
 func TestStatusViewRejectsNegativeResource(t *testing.T) {
 	_, err := mergeResources(
-		[]resourceReport{{Key: resources.Ki, Current: -1, Maximum: 3}},
+		[]resourceReport{{Key: resources.Ki, Name: "Ki", Current: -1, Maximum: 3}},
 		nil,
 	)
 	require.Error(t, err)
@@ -210,10 +210,85 @@ func TestStatusViewRejectsNegativeResource(t *testing.T) {
 // TestStatusViewRejectsCurrentAboveMaximum confirms current > maximum fails.
 func TestStatusViewRejectsCurrentAboveMaximum(t *testing.T) {
 	_, err := mergeResources(
-		[]resourceReport{{Key: resources.Ki, Current: 4, Maximum: 3}},
+		[]resourceReport{{Key: resources.Ki, Name: "Ki", Current: 4, Maximum: 3}},
 		nil,
 	)
 	require.Error(t, err)
+}
+
+func TestStatusViewRejectsUnknownSpellLikeOwnerResourceKey(t *testing.T) {
+	fighter := newLevel3Fighter(t)
+	fighter.resources[coreResources.ResourceKey("spell_slots")] = fighter.resources[resources.HitDice]
+
+	out, err := fighter.StatusView(&StatusViewInput{})
+	require.Error(t, err)
+	require.Nil(t, out)
+}
+
+func TestStatusViewRejectsCrossClassOwnerResourceKey(t *testing.T) {
+	fighter := newLevel3Fighter(t)
+	fighter.resources[resources.Ki] = fighter.resources[resources.HitDice]
+
+	out, err := fighter.StatusView(&StatusViewInput{})
+	require.Error(t, err)
+	require.Nil(t, out)
+}
+
+func TestStatusViewRejectsFeatureResourceKeyOrNameMismatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource features.ResourceStatus
+	}{
+		{
+			name: "wrong key",
+			resource: features.ResourceStatus{
+				Key: resources.ActionSurge, Name: "Action Surge", Current: 1, Maximum: 1,
+			},
+		},
+		{
+			name: "wrong name",
+			resource: features.ResourceStatus{
+				Key: resources.SecondWind, Name: "Wind Points", Current: 1, Maximum: 1,
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fighter := newLevel3Fighter(t)
+			resource := tc.resource
+			fighter.features = append(fighter.features, &reportedStatusFeature{status: features.Status{
+				Ref: *refs.Features.SecondWind(), Name: "Second Wind", Resource: &resource,
+			}})
+
+			out, err := fighter.StatusView(&StatusViewInput{})
+			require.Error(t, err)
+			require.Nil(t, out)
+		})
+	}
+}
+
+func TestStatusViewRejectsFeaturePrivateResourceOnWrongClass(t *testing.T) {
+	monk := newLevel3Monk(t)
+	monk.features = append(monk.features, &reportedStatusFeature{status: features.Status{
+		Ref:  *refs.Features.ActionSurge(),
+		Name: "Action Surge",
+		Resource: &features.ResourceStatus{
+			Key: resources.ActionSurge, Name: "Action Surge", Current: 1, Maximum: 1,
+		},
+	}})
+
+	out, err := monk.StatusView(&StatusViewInput{})
+	require.Error(t, err)
+	require.Nil(t, out)
+}
+
+func TestStatusViewRejectsSameKeyAndCountsWithConflictingName(t *testing.T) {
+	views, err := mergeResources(
+		[]resourceReport{{Key: resources.Ki, Name: "Ki", Current: 3, Maximum: 3}},
+		[]resourceReport{{Key: resources.Ki, Name: "Focus", Current: 3, Maximum: 3}},
+	)
+	require.Error(t, err)
+	require.Nil(t, views)
 }
 
 // TestStatusViewRejectsUnknownConditionRef confirms an unknown condition ref
@@ -654,6 +729,21 @@ func (m *malformedStatusFeature) ToJSON() (json.RawMessage, error)  { return nil
 func (m *malformedStatusFeature) ActionType() coreCombat.ActionType { return "" }
 func (m *malformedStatusFeature) Status(*features.StatusInput) (*features.StatusOutput, error) {
 	return nil, errMalformedStatusForTest
+}
+
+// reportedStatusFeature supplies one authored status report so catalog
+// rejection tests can exercise provider key/name/class mismatches end to end.
+type reportedStatusFeature struct {
+	malformedStatusFeature
+	status features.Status
+}
+
+func (f *reportedStatusFeature) GetID() string  { return f.status.Ref.ID }
+func (f *reportedStatusFeature) Ref() *core.Ref { return &f.status.Ref }
+func (f *reportedStatusFeature) Name() string   { return f.status.Name }
+func (f *reportedStatusFeature) Status(*features.StatusInput) (*features.StatusOutput, error) {
+	status := f.status
+	return &features.StatusOutput{Status: &status}, nil
 }
 
 // errMalformedStatusForTest is the sentinel a malformedStatusFeature returns.

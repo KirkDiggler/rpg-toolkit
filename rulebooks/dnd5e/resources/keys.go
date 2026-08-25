@@ -44,24 +44,23 @@ const (
 	ActionSurge coreResources.ResourceKey = "action_surge"
 )
 
-// DisplayName returns the rulebook-owned display name for a resource key.
-// It is the single source of truth for how a resource surfaces in a status
-// view: the character projection never trusts a feature's reported name over
-// this mapping. Unknown keys fall back to their raw string so a future key is
-// still readable, but the four builds only ever carry the named keys below.
-func DisplayName(key coreResources.ResourceKey) string {
+// DisplayName returns the rulebook-owned display name for a resource key and
+// whether that key belongs to the closed owner-private status catalog. Unknown
+// keys return ("", false); they never fall back to raw persistence bytes and
+// therefore cannot become valid-looking status rows by accident.
+func DisplayName(key coreResources.ResourceKey) (string, bool) {
 	switch key {
 	case RageCharges:
-		return "Rage"
+		return "Rage", true
 	case Ki:
-		return "Ki"
+		return "Ki", true
 	case HitDice:
-		return "Hit Dice"
+		return "Hit Dice", true
 	case SecondWind:
-		return "Second Wind"
+		return "Second Wind", true
 	case ActionSurge:
-		return "Action Surge"
+		return "Action Surge", true
 	default:
-		return string(key)
+		return "", false
 	}
 }

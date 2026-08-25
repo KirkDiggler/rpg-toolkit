@@ -274,6 +274,111 @@ func (s *PureLoadTestSuite) TestLoadRejectsNilData() {
 	s.Require().Error(err)
 }
 
+func (s *PureLoadTestSuite) TestStrictLoadRejectsPersistedOwnerResourceBoundsBeforeStatusView() {
+	tests := []struct {
+		name string
+		data RecoverableResourceData
+	}{
+		{name: "negative current", data: RecoverableResourceData{Current: -1, Maximum: 3}},
+		{name: "negative maximum", data: RecoverableResourceData{Current: 0, Maximum: -1}},
+		{name: "current above maximum", data: RecoverableResourceData{Current: 4, Maximum: 3}},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			data := &Data{
+				ID: "fighter-bounds", ClassID: classes.Fighter,
+				Resources: map[coreResources.ResourceKey]RecoverableResourceData{resources.HitDice: tc.data},
+			}
+			loaded, err := Load(s.ctx, data)
+			s.Require().Error(err)
+			s.Nil(loaded, "strict load must reject before a StatusView can expose normalized counts")
+			s.Contains(err.Error(), string(resources.HitDice))
+		})
+	}
+}
+
+func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedOwnerResourcesWithoutNormalizingThem() {
+	tests := []RecoverableResourceData{
+		{Current: -1, Maximum: 3},
+		{Current: 0, Maximum: -1},
+		{Current: 4, Maximum: 3},
+	}
+	for _, malformed := range tests {
+		data := &Data{
+			ID: "fighter-lenient-bounds", ClassID: classes.Fighter,
+			Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+				resources.HitDice: malformed,
+			},
+		}
+		loaded, err := LoadFromData(s.ctx, data, events.NewEventBus())
+		s.Require().NoError(err)
+
+		out, err := loaded.StatusView(&StatusViewInput{})
+		s.Require().NoError(err)
+		s.Require().NotNil(out)
+		s.Empty(out.View.Resources,
+			"malformed persisted counts are dropped, never clamped into a valid-looking row")
+		s.Empty(loaded.ToData().Resources)
+	}
+}
+
+func (s *PureLoadTestSuite) TestStrictLoadRejectsFeaturePrivateResourceBoundsBeforeStatusView() {
+	tests := []struct {
+		name string
+		blob func() json.RawMessage
+	}{
+		{
+			name: "second wind negative uses",
+			blob: func() json.RawMessage {
+				raw, err := json.Marshal(features.SecondWindData{
+					Ref: refs.Features.SecondWind(), ID: "second_wind", Name: "Second Wind",
+					CharacterID: "fighter-private", Uses: -1, MaxUses: 1,
+				})
+				s.Require().NoError(err)
+				return raw
+			},
+		},
+		{
+			name: "action surge uses above maximum",
+			blob: func() json.RawMessage {
+				raw, err := json.Marshal(features.ActionSurgeData{
+					Ref: refs.Features.ActionSurge(), ID: "action_surge", Name: "Action Surge",
+					CharacterID: "fighter-private", Uses: 2, MaxUses: 1,
+				})
+				s.Require().NoError(err)
+				return raw
+			},
+		},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			data := &Data{ID: "fighter-private", ClassID: classes.Fighter, Features: []json.RawMessage{tc.blob()}}
+			loaded, err := Load(s.ctx, data)
+			s.Require().Error(err)
+			s.Nil(loaded, "strict load must reject before malformed private uses reach StatusView")
+		})
+	}
+}
+
+func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedFeaturePrivateResource() {
+	raw, err := json.Marshal(features.SecondWindData{
+		Ref: refs.Features.SecondWind(), ID: "second_wind", Name: "Second Wind",
+		CharacterID: "fighter-private-lenient", Uses: 2, MaxUses: 1,
+	})
+	s.Require().NoError(err)
+	loaded, err := LoadFromData(s.ctx, &Data{
+		ID: "fighter-private-lenient", ClassID: classes.Fighter, Features: []json.RawMessage{raw},
+	}, events.NewEventBus())
+	s.Require().NoError(err)
+
+	out, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.Empty(out.View.Features)
+	s.Empty(out.View.Resources)
+	s.Empty(loaded.ToData().Features, "existing lenient policy drops the malformed feature blob")
+}
+
 // Two fields of Data survive no loader, because the sheet has nowhere to put
 // them and ToData does not write them. Pinned so the round-trip guarantee above
 // is read with its actual scope, and so closing the gap (a change to ToData,

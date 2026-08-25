@@ -53,6 +53,47 @@ func (s *LoaderTestSuite) TestLoadUnknownFeature() {
 	s.T().Skip("Skipping until we have multiple feature types")
 }
 
+func (s *LoaderTestSuite) TestPrivateResourceLoadsRejectInvalidBounds() {
+	tests := []struct {
+		name string
+		data any
+	}{
+		{
+			name: "second wind negative current",
+			data: SecondWindData{Ref: refs.Features.SecondWind(), Uses: -1, MaxUses: 1},
+		},
+		{
+			name: "second wind negative maximum",
+			data: SecondWindData{Ref: refs.Features.SecondWind(), Uses: 0, MaxUses: -1},
+		},
+		{
+			name: "second wind current above maximum",
+			data: SecondWindData{Ref: refs.Features.SecondWind(), Uses: 2, MaxUses: 1},
+		},
+		{
+			name: "action surge negative current",
+			data: ActionSurgeData{Ref: refs.Features.ActionSurge(), Uses: -1, MaxUses: 1},
+		},
+		{
+			name: "action surge negative maximum",
+			data: ActionSurgeData{Ref: refs.Features.ActionSurge(), Uses: 0, MaxUses: -1},
+		},
+		{
+			name: "action surge current above maximum",
+			data: ActionSurgeData{Ref: refs.Features.ActionSurge(), Uses: 2, MaxUses: 1},
+		},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			raw, err := json.Marshal(tc.data)
+			s.Require().NoError(err)
+			feature, err := LoadJSON(raw)
+			s.Require().Error(err)
+			s.Nil(feature)
+		})
+	}
+}
+
 func (s *LoaderTestSuite) TestRoundTripThroughJSON() {
 	// Create a rage feature
 	originalRage := newRageForTest("rage-roundtrip", 7)

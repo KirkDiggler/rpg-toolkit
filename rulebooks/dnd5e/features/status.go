@@ -98,6 +98,18 @@ type StatusProvider interface {
 // feature's own ref and name. A Ki feature without an owner, or whose owner
 // does not carry Ki, is a malformed sheet — the projection fails loudly
 // rather than dropping the feature.
+func validateResourceBounds(feature string, current, maximum int) error {
+	if current < 0 || maximum < 0 {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"%s resource has negative bounds: current=%d maximum=%d", feature, current, maximum)
+	}
+	if current > maximum {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"%s resource current %d exceeds maximum %d", feature, current, maximum)
+	}
+	return nil
+}
+
 func reportKiStatus(in *StatusInput, ref *core.Ref, name, defaultName string) (*StatusOutput, error) {
 	if in == nil || in.Owner == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "ki feature status requires an owner resource reader")

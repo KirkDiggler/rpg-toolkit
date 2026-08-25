@@ -9,9 +9,11 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
@@ -86,7 +88,9 @@ type ResourceView struct {
 // level, hit points, base speed, features, conditions, and resources. It is
 // built from the live sheet and feature Status reports — never from
 // persistence JSON — and excludes spell slots and legacy class resources by
-// construction.
+// construction. Its resource catalog is closed to the current four builds:
+// Barbarian (RageCharges/HitDice), Fighter (HitDice plus private Second Wind
+// and Action Surge), Monk (Ki/HitDice), and Rogue (HitDice).
 type StatusView struct {
 	// Level is the character's level.
 	Level int
@@ -126,8 +130,9 @@ type StatusViewOutput struct {
 // points, base speed, features, conditions, and resources. It reads the live
 // sheet and each feature's non-mutating Status surface — never persistence
 // JSON — and never publishes. Every validation failure (unknown condition ref,
-// malformed feature status, conflicting duplicate resource key, negative or
-// over-maximum resource) returns an error with no partial output.
+// malformed feature status, unknown/cross-class resource key, provider name
+// mismatch, conflicting duplicate resource, negative or over-maximum count)
+// returns an error with no partial output.
 func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 	featureViews, featureReports, err := c.projectFeatures()
 	if err != nil {
@@ -139,7 +144,10 @@ func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 		return nil, err
 	}
 
-	ownerRows := c.ownerResourceReports()
+	ownerRows, err := c.ownerResourceReports()
+	if err != nil {
+		return nil, err
+	}
 	resourceViews, err := mergeResources(ownerRows, featureReports)
 	if err != nil {
 		return nil, err
@@ -183,23 +191,26 @@ func (c *Character) projectFeatures() ([]FeatureView, []resourceReport, error) {
 				"feature %s reported an empty name", featureID(f))
 		}
 
+		if err := validateFeatureResource(c.classID, st.Ref, st.Resource); err != nil {
+			return nil, nil, err
+		}
+
 		var key *coreResources.ResourceKey
 		if st.Resource != nil {
 			k := st.Resource.Key
 			key = &k
-			// Validate the feature's own counts before merging so a private
-			// resource (Second Wind, Action Surge) is rejected here rather than
-			// silently merged with bad values.
-			if err := validateReport(resourceReport{
-				Key: st.Resource.Key, Current: st.Resource.Current, Maximum: st.Resource.Maximum,
-			}); err != nil {
-				return nil, nil, err
-			}
-			reports = append(reports, resourceReport{
+			report := resourceReport{
 				Key:     st.Resource.Key,
+				Name:    st.Resource.Name,
 				Current: st.Resource.Current,
 				Maximum: st.Resource.Maximum,
-			})
+			}
+			// Validate the provider's key, name, and counts before merging so
+			// deduplication can never hide malformed or conflicting facts.
+			if err := validateReport(report); err != nil {
+				return nil, nil, err
+			}
+			reports = append(reports, report)
 		}
 		views = append(views, FeatureView{
 			Ref:         st.Ref,
@@ -248,27 +259,38 @@ func (c *Character) projectConditions() ([]ConditionView, error) {
 // (every entry in c.resources, including standalone Hit Dice) as reports ready
 // for merging. Spell slots and legacy class resources are never read here, so
 // they are excluded by construction.
-func (c *Character) ownerResourceReports() []resourceReport {
+func (c *Character) ownerResourceReports() ([]resourceReport, error) {
 	if c.resources == nil {
-		return nil
+		return nil, nil
 	}
 	rows := make([]resourceReport, 0, len(c.resources))
 	for key, r := range c.resources {
+		if !ownerResourceAllowed(c.classID, key) {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"resource %s is not in the %s status-view owner catalog", key, c.classID)
+		}
+		name, ok := resources.DisplayName(key)
+		if !ok {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"resource %s has no status-view display catalog entry", key)
+		}
 		rows = append(rows, resourceReport{
 			Key:     key,
+			Name:    name,
 			Current: r.Current(),
 			Maximum: r.Maximum(),
 		})
 	}
-	return rows
+	return rows, nil
 }
 
-// resourceReport is the internal, name-less projection of one resource the
-// projection is considering: its key and current/maximum counts. The display
-// name is always derived from the key via resources.DisplayName, so a report
-// never carries a feature-authored name.
+// resourceReport is the internal projection of one resource the projection is
+// considering: its key, provider/catalog name, and current/maximum counts.
+// Keeping the reported name until after validation makes a same-key/count
+// conflicting name observable rather than silently replacing it during dedup.
 type resourceReport struct {
 	Key     coreResources.ResourceKey
+	Name    string
 	Current int
 	Maximum int
 }
@@ -276,7 +298,7 @@ type resourceReport struct {
 // mergeResources builds the sorted ResourceView slice from owner rows plus
 // feature-reported rows. Owner rows always appear. A feature report whose key
 // matches an owner row dedupes against it — keeping the owner row — but must
-// agree on current and maximum or the merge fails loudly. A feature report
+// agree on name, current, and maximum or the merge fails loudly. A feature report
 // whose key is not in the owner rows (Second Wind, Action Surge) is added.
 // Negative counts, current > maximum, and conflicts all error with no partial
 // output.
@@ -303,11 +325,12 @@ func mergeResources(ownerRows []resourceReport, reports []resourceReport) ([]Res
 		}
 		if owner, exists := byKey[rep.Key]; exists {
 			// Same key already present from the owner (or an earlier feature
-			// report). The counts must agree or the sheet is lying.
-			if owner.Current != rep.Current || owner.Maximum != rep.Maximum {
+			// report). Name and counts must all agree or the sheet is lying.
+			if owner.Name != rep.Name || owner.Current != rep.Current || owner.Maximum != rep.Maximum {
 				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"conflicting resource %s: owner reports %d/%d but feature reports %d/%d",
-					rep.Key, owner.Current, owner.Maximum, rep.Current, rep.Maximum)
+					"conflicting resource %s: existing reports %q %d/%d but feature reports %q %d/%d",
+					rep.Key, owner.Name, owner.Current, owner.Maximum,
+					rep.Name, rep.Current, rep.Maximum)
 			}
 			// Agreeing duplicate: keep the existing row, do not add a second.
 			continue
@@ -319,12 +342,7 @@ func mergeResources(ownerRows []resourceReport, reports []resourceReport) ([]Res
 	out := make([]ResourceView, 0, len(order))
 	for _, key := range order {
 		row := byKey[key]
-		out = append(out, ResourceView{
-			Key:     row.Key,
-			Name:    resources.DisplayName(row.Key),
-			Current: row.Current,
-			Maximum: row.Maximum,
-		})
+		out = append(out, ResourceView(row))
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -333,8 +351,18 @@ func mergeResources(ownerRows []resourceReport, reports []resourceReport) ([]Res
 	return out, nil
 }
 
-// validateReport rejects negative counts and current > maximum.
+// validateReport rejects keys and names outside the closed display catalog,
+// negative counts, and current > maximum.
 func validateReport(r resourceReport) error {
+	name, ok := resources.DisplayName(r.Key)
+	if !ok {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"resource %s has no status-view display catalog entry", r.Key)
+	}
+	if r.Name != name {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"resource %s reports name %q, catalog requires %q", r.Key, r.Name, name)
+	}
 	if r.Current < 0 || r.Maximum < 0 {
 		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
 			"resource %s has negative counts: current=%d maximum=%d", r.Key, r.Current, r.Maximum)
@@ -344,6 +372,68 @@ func validateReport(r resourceReport) error {
 			"resource %s current %d exceeds maximum %d", r.Key, r.Current, r.Maximum)
 	}
 	return nil
+}
+
+func ownerResourceAllowed(class classes.Class, key coreResources.ResourceKey) bool {
+	switch class {
+	case classes.Barbarian:
+		return key == resources.RageCharges || key == resources.HitDice
+	case classes.Fighter, classes.Rogue:
+		return key == resources.HitDice
+	case classes.Monk:
+		return key == resources.Ki || key == resources.HitDice
+	default:
+		return false
+	}
+}
+
+func validateFeatureResource(
+	class classes.Class, ref core.Ref, status *features.ResourceStatus,
+) error {
+	expectedClass, expectedKey, expectsResource := featureResourceCatalog(ref)
+	if status == nil {
+		if expectsResource {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"feature %s reported no required resource %s", ref.String(), expectedKey)
+		}
+		return nil
+	}
+	if !expectsResource {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"feature %s reports resource %s outside the status-view catalog", ref.String(), status.Key)
+	}
+	if class != expectedClass {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"feature %s resource %s belongs to %s, not %s", ref.String(), status.Key, expectedClass, class)
+	}
+	if status.Key != expectedKey {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"feature %s reports resource %s, catalog requires %s", ref.String(), status.Key, expectedKey)
+	}
+	name, ok := resources.DisplayName(status.Key)
+	if !ok || status.Name != name {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"feature %s resource %s reports name %q, catalog requires %q",
+			ref.String(), status.Key, status.Name, name)
+	}
+	return nil
+}
+
+func featureResourceCatalog(ref core.Ref) (classes.Class, coreResources.ResourceKey, bool) {
+	switch ref.String() {
+	case refs.Features.Rage().String():
+		return classes.Barbarian, resources.RageCharges, true
+	case refs.Features.SecondWind().String():
+		return classes.Fighter, resources.SecondWind, true
+	case refs.Features.ActionSurge().String():
+		return classes.Fighter, resources.ActionSurge, true
+	case refs.Features.FlurryOfBlows().String(),
+		refs.Features.PatientDefense().String(),
+		refs.Features.StepOfTheWind().String():
+		return classes.Monk, resources.Ki, true
+	default:
+		return "", "", false
+	}
 }
 
 // featureID returns a feature's ID for error attribution, falling back to its

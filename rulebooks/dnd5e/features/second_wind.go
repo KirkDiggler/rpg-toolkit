@@ -145,11 +145,16 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 	return nil
 }
 
-// loadJSON loads Second Wind state from JSON
+// loadJSON loads Second Wind state from JSON, rejecting negative or
+// over-maximum persisted uses before constructing its private resource.
 func (s *SecondWind) loadJSON(data json.RawMessage) error {
 	var secondWindData SecondWindData
 	if err := json.Unmarshal(data, &secondWindData); err != nil {
 		return fmt.Errorf("failed to unmarshal second wind data: %w", err)
+	}
+
+	if err := validateResourceBounds("second wind", secondWindData.Uses, secondWindData.MaxUses); err != nil {
+		return err
 	}
 
 	s.id = secondWindData.ID

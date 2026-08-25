@@ -101,12 +101,20 @@ The identity chain is explicit rather than persistence-driven:
   resource relationship without serializing feature JSON;
 - private Second Wind and Action Surge resources use stable keys, while Ki
   consumers report the shared Ki key through the owner reader;
-- matching resource rows deduplicate by key and conflicting facts fail the
-  whole projection.
+- the resource catalog is closed by class: Barbarian owns RageCharges+HitDice,
+  Fighter HitDice, Monk Ki+HitDice, and Rogue HitDice; private Second Wind and
+  Action Surge belong only to Fighter, while Rage/Ki feature reports must match
+  their class-owned pools;
+- provider key and name are validated before matching resource rows deduplicate;
+  unknown/spell-like keys, cross-class keys, and any name/count conflict fail
+  the whole projection.
 
 Unknown/unrenderable loaded effects fail loudly instead of disappearing.
 `SpellSlots` and legacy `ClassResources` are excluded: this wave is explicitly
-non-magical and does not reserve a magic status or action shelf.
+non-magical and does not reserve a magic status or action shelf. Strict
+`character.Load` also rejects negative/over-maximum owner and feature-private
+resource persistence before construction; the legacy lenient loader drops a
+malformed resource/feature rather than normalizing it into plausible counts.
 
 ## go.mod status
 

@@ -119,11 +119,16 @@ func (a *ActionSurge) Activate(ctx context.Context, owner core.Entity, input Fea
 	return nil
 }
 
-// loadJSON loads Action Surge state from JSON
+// loadJSON loads Action Surge state from JSON, rejecting negative or
+// over-maximum persisted uses before constructing its private resource.
 func (a *ActionSurge) loadJSON(data json.RawMessage) error {
 	var actionSurgeData ActionSurgeData
 	if err := json.Unmarshal(data, &actionSurgeData); err != nil {
 		return fmt.Errorf("failed to unmarshal action surge data: %w", err)
+	}
+
+	if err := validateResourceBounds("action surge", actionSurgeData.Uses, actionSurgeData.MaxUses); err != nil {
+		return err
 	}
 
 	a.id = actionSurgeData.ID
