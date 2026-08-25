@@ -92,6 +92,7 @@ func projectAtlas(in encounter.Atlas) Atlas {
 			To:                b.To,
 			BlocksMovement:    b.BlocksMovement,
 			BlocksLineOfSight: b.BlocksLineOfSight,
+			Height:            b.Height,
 		})
 	}
 

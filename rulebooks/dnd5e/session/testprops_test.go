@@ -80,7 +80,7 @@ func hexCell(col, row int) spatial.Position {
 // and column Width is the east chamber's first. Only real crossings are
 // emitted: on hex, which pairs are adjacent staggers with the column's parity,
 // so the candidates are filtered by actual cube distance rather than assumed.
-func hexSeamWalls(westWidth, rows, openRow int) []spatial.Boundary {
+func hexSeamWalls(westWidth, rows, openRow int) []encounter.WallInput {
 	return hexSeamWallsFrom(westWidth, 0, rows, openRow)
 }
 
@@ -88,9 +88,9 @@ func hexSeamWalls(westWidth, rows, openRow int) []spatial.Boundary {
 // than 0: the wall between authored column east-1 and column east, over rows
 // [row0, row0+rows), leaving the straight crossing on openRow open (-1 for a
 // solid wall).
-func hexSeamWallsFrom(east, row0, rows, openRow int) []spatial.Boundary {
+func hexSeamWallsFrom(east, row0, rows, openRow int) []encounter.WallInput {
 	westWidth := east
-	out := make([]spatial.Boundary, 0, rows*2)
+	out := make([]encounter.WallInput, 0, rows*2)
 	for row := row0; row < row0+rows; row++ {
 		for _, dr := range []int{-1, 0, 1} {
 			to := row + dr
@@ -103,12 +103,12 @@ func hexSeamWallsFrom(east, row0, rows, openRow int) []spatial.Boundary {
 			if hexSteps(hexCell(westWidth-1, row), hexCell(westWidth, to)) != 1 {
 				continue // not a crossing on this grid
 			}
-			out = append(out, spatial.Boundary{
+			out = append(out, encounter.WallInput{Boundary: spatial.Boundary{
 				From:              spatial.Position{X: float64(westWidth - 1), Y: float64(row)},
 				To:                spatial.Position{X: float64(westWidth), Y: float64(to)},
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
-			})
+			}})
 		}
 	}
 

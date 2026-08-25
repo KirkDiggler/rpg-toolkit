@@ -549,9 +549,9 @@ const sightRadius = 4
 // diagonal through it. Which candidate pairs ARE crossings is the grid's
 // answer: a hex has six neighbours and they stagger with the row's parity,
 // so each is checked by distance rather than assumed.
-func hexSeam(east, rows, openRow int) []spatial.Boundary {
+func hexSeam(east, rows, openRow int) []encounter.WallInput {
 	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1, SpanHeight: 1})
-	out := make([]spatial.Boundary, 0, rows*2)
+	out := make([]encounter.WallInput, 0, rows*2)
 	for row := 0; row < rows; row++ {
 		for _, dr := range []int{-1, 0, 1} {
 			to := row + dr
@@ -564,12 +564,12 @@ func hexSeam(east, rows, openRow int) []spatial.Boundary {
 			if !grid.IsAdjacent(cellAt(east-1, row), cellAt(east, to)) {
 				continue // not a crossing on this grid
 			}
-			out = append(out, spatial.Boundary{
+			out = append(out, encounter.WallInput{Boundary: spatial.Boundary{
 				From:              spatial.Position{X: float64(east - 1), Y: float64(row)},
 				To:                spatial.Position{X: float64(east), Y: float64(to)},
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
-			})
+			}})
 		}
 	}
 
