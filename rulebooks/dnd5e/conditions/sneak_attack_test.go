@@ -47,11 +47,11 @@ func (s *SneakAttackTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 	s.roller = mock_dice.NewMockRoller(s.ctrl)
 
-	// Set up room for spatial tests
-	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-		Width:  20,
-		Height: 20,
-	})
+	// The grid the game actually compiles. encounter/compilefield.go builds an
+	// AxialHexGrid and nothing else; square and gridless remain supported by
+	// tools/spatial but nothing in the product uses them. A positional rule
+	// proven only on a square grid is proven on a configuration we do not ship.
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
 	s.room = spatial.NewBasicRoom(spatial.BasicRoomConfig{
 		ID:   "test-room",
 		Type: "dungeon",
