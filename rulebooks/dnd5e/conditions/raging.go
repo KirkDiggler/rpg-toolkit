@@ -255,6 +255,9 @@ func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5eEvents.
 	if event.TargetID != r.CharacterID {
 		return nil
 	}
+	if r.WasHitThisTurn {
+		return nil // already recorded this turn; nothing changed
+	}
 	r.WasHitThisTurn = true
 	r.markDirty()
 	return nil
@@ -280,10 +283,10 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 		return r.endRage(ctx, "duration_expired")
 	}
 
-	// Reset combat activity flags for next turn
+	// Reset combat activity flags for next turn. Already marked dirty by the
+	// TurnsActive increment above, which changes on every turn end.
 	r.DidAttackThisTurn = false
 	r.WasHitThisTurn = false
-	r.markDirty()
 
 	return nil
 }
@@ -496,7 +499,7 @@ func (r *RagingCondition) onPostAttackRoll(
 	event *dnd5eEvents.PostAttackRollEvent,
 	c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
 ) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
-	if event.AttackerID == r.CharacterID {
+	if event.AttackerID == r.CharacterID && !r.DidAttackThisTurn {
 		r.DidAttackThisTurn = true
 		r.markDirty()
 	}

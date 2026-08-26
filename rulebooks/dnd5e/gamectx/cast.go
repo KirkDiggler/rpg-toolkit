@@ -12,12 +12,16 @@ import (
 // Cast is what an effect may ask about the OTHER participants in the
 // interaction it is resolving.
 //
-// It is installed by resolution on every path, exactly like the room, and it
-// dies with that call. Two registries answered pieces of this question before
-// and neither was ever installed — gamectx.CharacterRegistry (character-shaped,
-// so it could not serve a monster at all) and combat.CombatantLookup (a second
-// mechanism in a second package, with its own context key). Both are gone; this
-// is the one seam.
+// Resolution will install it on every path, exactly like the room, and it will
+// die with that call. That wiring is rpg-toolkit#1252 and is NOT in the tree
+// yet: there is no WithCast call site today, so CastOf currently returns
+// ok=false everywhere and every consumer takes its "cannot answer" branch.
+//
+// Two registries answered pieces of this question before and neither was ever
+// installed either — gamectx.CharacterRegistry (character-shaped, so it could
+// not serve a monster at all) and combat.CombatantLookup (a second mechanism
+// in a second package, with its own context key). Both are gone; this is the
+// one seam.
 //
 // # Questions, not fields
 //
@@ -78,19 +82,24 @@ type castContextKey struct{}
 // WithCast wraps a context.Context with the cast of the interaction being
 // resolved.
 //
-// Resolution installs this unconditionally, beside the room. It is not
-// optional and there is no "no cast" mode: an ambient dependency that is
-// sometimes absent fails silently, which is the defect this seam replaces.
+// Resolution is intended to call this unconditionally, beside the room, so
+// that there is no "no cast" mode — an ambient dependency that is sometimes
+// absent fails silently, which is the defect this seam exists to replace.
+//
+// That call site does not exist yet (rpg-toolkit#1252). Until it lands, read
+// CastOf's second return exactly as documented rather than assuming a cast is
+// present.
 func WithCast(ctx context.Context, c Cast) context.Context {
 	return context.WithValue(ctx, castContextKey{}, c)
 }
 
 // CastOf retrieves the Cast from the context, and whether one was there.
 //
-// Read it defensively even though resolution always installs one. An effect
-// can be attached by something other than a resolution — session's standing
-// and preflight paths both do — and "I could not ask" has to stay expressible
-// rather than becoming a panic or a rule invented out of missing data.
+// Read it defensively. Nothing installs a cast yet (rpg-toolkit#1252), and
+// even once resolution does, an effect can be attached by something other than
+// a resolution — session's standing and preflight paths both do. "I could not
+// ask" has to stay expressible rather than becoming a panic or a rule invented
+// out of missing data.
 func CastOf(ctx context.Context) (Cast, bool) {
 	if c, ok := ctx.Value(castContextKey{}).(Cast); ok && c != nil {
 		return c, true

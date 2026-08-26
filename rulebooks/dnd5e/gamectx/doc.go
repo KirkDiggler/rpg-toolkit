@@ -17,9 +17,12 @@
 //   - [WithReactionReadiness] / [IsReactionReady] — who has opted in to spend
 //     a reaction.
 //
-// Resolution installs the first two on every path. It installs neither
-// conditionally and there is no mode in which they are absent, because that is
-// exactly what went wrong here before.
+// Resolution installs [WithRoom] on every path today. [WithCast] is defined
+// here but NOT yet installed anywhere — that wiring is rpg-toolkit#1252 — so
+// [CastOf] currently returns ok=false and every consumer takes its "cannot
+// answer" branch. When it lands it goes in unconditionally beside the room,
+// because an ambient dependency that is sometimes present is exactly what went
+// wrong here before.
 //
 // # What used to live here
 //
