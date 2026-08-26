@@ -21,13 +21,12 @@ import (
 
 // proneReachCells is "within 5 feet" in the units a grid answers in: one cell.
 //
-// Every grid in tools/spatial reports distance in cells — Chebyshev on a square
-// grid, hex distance on a hex grid, Euclidean cell-widths when gridless — and a
-// cell is 5 feet. Comparing against 1 rather than 5 is therefore the correct
-// reading of the rule, not an approximation of it; the same conversion is
-// spelled out in FightingStyleProtectionCondition ("adjacent on grid = distance
-// 1") and in SneakAttackCondition ("1 square = 5ft").
-const proneReachCells = 1.0
+// This comment used to explain the conversion here, and note that
+// FightingStyleProtectionCondition and SneakAttackCondition spelled out the
+// same one. They did — and sneak attack's copy nonetheless used 1.5. The
+// rationale now lives once, on [combat.AdjacentCells], and this is an alias so
+// the two cannot drift apart again (rpg-toolkit#1255 review).
+const proneReachCells = combat.AdjacentCells
 
 // ProneConditionData is the serializable form of the prone condition.
 // This is stored by the game server as an opaque JSON blob.

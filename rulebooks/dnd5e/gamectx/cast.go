@@ -74,6 +74,22 @@ type Cast interface {
 	//
 	// known is false when the question cannot be answered at all.
 	IsHostile(a, b string) (hostile, known bool)
+
+	// IsAllied answers whether b is on a's side, right now.
+	//
+	// NOT the negation of IsHostile, and the difference is the whole reason
+	// both exist. Once a third faction can be neutral toward you, "not my
+	// enemy" and "my ally" stop being the same set, and a rule that assumed
+	// they were would silently start counting bystanders. Sneak Attack asks
+	// the first question ("another enemy OF THE TARGET is within 5 feet of
+	// it"); Pack Tactics asks the second ("one of the attacker's ALLIES").
+	//
+	// Both are answered as "same MemberKind" today, so they are momentarily
+	// each other's complement. They are not the same question, and the rules
+	// must not be written as though they are.
+	//
+	// known is false when the question cannot be answered at all.
+	IsAllied(a, b string) (allied, known bool)
 }
 
 // castContextKey is the key type for storing a Cast in context.Context.

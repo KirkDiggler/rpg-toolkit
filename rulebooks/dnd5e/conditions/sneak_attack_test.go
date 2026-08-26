@@ -47,11 +47,11 @@ func (s *SneakAttackTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 	s.roller = mock_dice.NewMockRoller(s.ctrl)
 
-	// Set up room for spatial tests
-	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{
-		Width:  20,
-		Height: 20,
-	})
+	// The grid the game actually compiles. encounter/compilefield.go builds an
+	// AxialHexGrid and nothing else; square and gridless remain supported by
+	// tools/spatial but nothing in the product uses them. A positional rule
+	// proven only on a square grid is proven on a configuration we do not ship.
+	grid := spatial.NewAxialHexGrid(spatial.AxialHexGridConfig{SpanWidth: 1e6, SpanHeight: 1e6})
 	s.room = spatial.NewBasicRoom(spatial.BasicRoomConfig{
 		ID:   "test-room",
 		Type: "dungeon",
@@ -473,13 +473,18 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
 	s.Require().NoError(err)
 
-	// Fighter (ally) at (5, 6) - adjacent to goblin, character type = ally
+	// Fighter at (5, 6) - adjacent to the goblin. What qualifies it is not
+	// that it is a "character": it is that it is an enemy OF THE TARGET.
 	fighter := &mockEntity{id: "fighter-1", entityType: "character"}
 	err = s.room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 6})
 	s.Require().NoError(err)
 
-	// Create context with room
 	ctx := gamectx.WithRoom(s.ctx, s.room)
+	ctx = gamectx.WithCast(ctx, &fakeCast{side: map[string]string{
+		"rogue-1":   "party",
+		"fighter-1": "party",
+		"goblin-1":  "goblins",
+	}})
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
 		CharacterID: "rogue-1",
@@ -525,6 +530,111 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 
 	// Should have sneak attack due to ally adjacent
 	s.Require().Len(finalEvent.Components, 2, "Should have sneak attack with ally adjacent")
+}
+
+// TestSneakAttackDoesNotTriggerWhenAdjacentCreatureIsTheTargetsAlly pins the
+// half of the rule the old entity-type proxy could not express at all.
+//
+// RAW is "another ENEMY OF THE TARGET is within 5 feet of it". A second goblin
+// standing beside the first is the target's ally, and grants the rogue nothing.
+// The old code asked whether the adjacent entity's type was "character", so it
+// answered this correctly by luck rather than by rule — and answered the
+// three-faction case below incorrectly for the same reason.
+func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAdjacentCreatureIsTheTargetsAlly() {
+	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
+	err := s.room.PlaceEntity(rogue, spatial.Position{X: 1, Y: 1})
+	s.Require().NoError(err)
+
+	goblin := &mockEntity{id: "goblin-1", entityType: "monster"}
+	err = s.room.PlaceEntity(goblin, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	// Another goblin, adjacent to the target and on the target's own side.
+	goblinFriend := &mockEntity{id: "goblin-2", entityType: "monster"}
+	err = s.room.PlaceEntity(goblinFriend, spatial.Position{X: 5, Y: 6})
+	s.Require().NoError(err)
+
+	ctx := gamectx.WithRoom(s.ctx, s.room)
+	ctx = gamectx.WithCast(ctx, &fakeCast{side: map[string]string{
+		"rogue-1":  "party",
+		"goblin-1": "goblins",
+		"goblin-2": "goblins",
+	}})
+
+	sneak := NewSneakAttackCondition(SneakAttackInput{CharacterID: "rogue-1", Level: 1, Roller: s.roller})
+	s.Require().NoError(sneak.Apply(ctx, s.bus))
+
+	finalEvent := s.runDamageChain(ctx, "rogue-1", "goblin-1")
+	s.Require().Len(finalEvent.Components, 1, "the target's own ally must not enable sneak attack")
+}
+
+// TestSneakAttackTriggersWhenAThirdFactionIsAdjacentToTheTarget is the case the
+// old rule could not reach and the new one gets for free.
+//
+// The rogue stabs a duergar. A hobgoblin — hostile to the party AND hostile to
+// the duergar — is standing next to it. That hobgoblin is an enemy of the
+// target, so RAW the rogue sneak attacks. The old code asked "is it a
+// character?", the hobgoblin is not, and the rogue lost the bonus.
+//
+// This is the emergent bit of a dungeon with two monster factions in it: the
+// party benefits from their infighting without anybody scripting it.
+func (s *SneakAttackTestSuite) TestSneakAttackTriggersWhenAThirdFactionIsAdjacentToTheTarget() {
+	rogue := &mockEntity{id: "rogue-1", entityType: "character"}
+	err := s.room.PlaceEntity(rogue, spatial.Position{X: 1, Y: 1})
+	s.Require().NoError(err)
+
+	duergar := &mockEntity{id: "duergar-1", entityType: "monster"}
+	err = s.room.PlaceEntity(duergar, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+
+	hobgoblin := &mockEntity{id: "hobgoblin-1", entityType: "monster"}
+	err = s.room.PlaceEntity(hobgoblin, spatial.Position{X: 5, Y: 6})
+	s.Require().NoError(err)
+
+	ctx := gamectx.WithRoom(s.ctx, s.room)
+	ctx = gamectx.WithCast(ctx, &fakeCast{side: map[string]string{
+		"rogue-1":     "party",
+		"duergar-1":   "duergar",
+		"hobgoblin-1": "hobgoblins",
+	}})
+
+	sneak := NewSneakAttackCondition(SneakAttackInput{CharacterID: "rogue-1", Level: 1, Roller: s.roller})
+	s.Require().NoError(sneak.Apply(ctx, s.bus))
+
+	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
+
+	finalEvent := s.runDamageChain(ctx, "rogue-1", "duergar-1")
+	s.Require().Len(finalEvent.Components, 2,
+		"an enemy of the target enables sneak attack even when it is nobody's ally")
+}
+
+// runDamageChain folds one no-advantage DEX weapon hit and returns the result.
+func (s *SneakAttackTestSuite) runDamageChain(
+	ctx context.Context, attackerID, targetID string,
+) *dnd5eEvents.DamageChainEvent {
+	s.T().Helper()
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID: attackerID,
+		TargetID:   targetID,
+		Components: []dnd5eEvents.DamageComponent{{
+			Source:            dnd5eEvents.DamageSourceWeapon,
+			Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
+			OriginalDiceRolls: []int{5},
+			FinalDiceRolls:    []int{5},
+			DamageType:        damage.Piercing,
+		}},
+		HasAdvantage: false,
+		AbilityUsed:  abilities.DEX,
+	}
+
+	c := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(ctx, damageEvent, c)
+	s.Require().NoError(err)
+
+	finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
+	s.Require().NoError(err)
+	return finalEvent
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() {
