@@ -108,7 +108,7 @@ func (s *BarbarianEncounterSuite) SetupSubTest() {
 	s.lookup.Add(s.goblin)
 
 	// Set up context with combatant lookup for encounter fixtures.
-	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
+	s.ctx = context.Background()
 
 	// Place in room - adjacent for melee
 	_ = s.room.PlaceEntity(s.barbarian, spatial.Position{X: 2, Y: 2})

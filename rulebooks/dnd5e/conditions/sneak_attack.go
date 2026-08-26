@@ -46,6 +46,25 @@ type SneakAttackCondition struct {
 	subscriptionIDs []string
 	bus             events.EventBus
 	roller          dice.Roller
+	owner           selfPersisting
+}
+
+// Ensure SneakAttackCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*SneakAttackCondition)(nil)
+
+// SetOwner hands this condition the sheet its once-per-turn flag is persisted
+// on. See [selfPersisting] in raging.go.
+func (s *SneakAttackCondition) SetOwner(owner any) {
+	if o, ok := owner.(selfPersisting); ok {
+		s.owner = o
+	}
+}
+
+// markDirty records that the once-per-turn flag changed.
+func (s *SneakAttackCondition) markDirty() {
+	if s.owner != nil {
+		s.owner.MarkDirty()
+	}
 }
 
 // Ensure SneakAttackCondition implements dnd5eEvents.ConditionBehavior
@@ -142,6 +161,7 @@ func (s *SneakAttackCondition) Remove(ctx context.Context, bus events.EventBus) 
 func (s *SneakAttackCondition) onTurnEnd(_ context.Context, event dnd5eEvents.TurnEndEvent) error {
 	if event.CharacterID == s.CharacterID {
 		s.UsedThisTurn = false
+		s.markDirty()
 	}
 	return nil
 }
@@ -218,6 +238,7 @@ func (s *SneakAttackCondition) onDamageChain(
 
 	// Mark as used this turn
 	s.UsedThisTurn = true
+	s.markDirty()
 
 	err = c.Add(combat.StageFeatures, "sneak_attack", modifyDamage)
 	if err != nil {

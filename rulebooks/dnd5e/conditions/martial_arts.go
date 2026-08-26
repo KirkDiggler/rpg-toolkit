@@ -18,8 +18,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -38,10 +38,31 @@ type MartialArtsCondition struct {
 	subscriptionIDs []string
 	bus             events.EventBus
 	roller          dice.Roller
+	owner           martialArtsOwner
+}
+
+// martialArtsOwner is the minimal view of this condition's OWN sheet it needs:
+// the scores behind the STR-vs-DEX comparison monks get on unarmed strikes and
+// monk weapons. See [dnd5eEvents.OwnerAware] for why this is an interface the
+// condition declares rather than a concrete type.
+type martialArtsOwner interface {
+	AbilityScores() shared.AbilityScores
 }
 
 // Ensure MartialArtsCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*MartialArtsCondition)(nil)
+
+// Ensure MartialArtsCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*MartialArtsCondition)(nil)
+
+// SetOwner hands this condition its own character's live sheet, in place of a
+// context-installed registry nothing ever installed — which meant the monk's
+// damage die and DEX substitution silently did not apply, on either chain.
+func (ma *MartialArtsCondition) SetOwner(owner any) {
+	if o, ok := owner.(martialArtsOwner); ok {
+		ma.owner = o
+	}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -144,17 +165,12 @@ func (ma *MartialArtsCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Get character registry to check weapon and ability scores
-	registry, err := gamectx.RequireCharacters(ctx)
-	if err != nil {
-		return c, err
-	}
-
-	// Get ability scores for DEX vs STR comparison
-	abilityScores := registry.GetCharacterAbilityScores(ma.CharacterID)
-	if abilityScores == nil {
+	// Own sheet, handed over at attach time. No owner means no comparison to
+	// make — leave the chain untouched rather than erroring.
+	if ma.owner == nil {
 		return c, nil
 	}
+	abilityScores := ma.owner.AbilityScores()
 
 	// Check if this is an unarmed strike or monk weapon
 	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
@@ -166,8 +182,8 @@ func (ma *MartialArtsCondition) onDamageChain(
 
 	// Add modifier to scale unarmed damage and ensure DEX is used when beneficial
 	modifyDamage := func(modCtx context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
-		dexMod := abilityScores.DexterityMod()
-		strMod := abilityScores.StrengthMod()
+		dexMod := abilityScores.Modifier(abilities.DEX)
+		strMod := abilityScores.Modifier(abilities.STR)
 
 		// For unarmed strikes, we need to replace the weapon damage dice with martial arts dice
 		if isUnarmed {
@@ -236,7 +252,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 		return e, nil
 	}
 
-	if err = c.Add(combat.StageFeatures, "martial_arts", modifyDamage); err != nil {
+	if err := c.Add(combat.StageFeatures, "martial_arts", modifyDamage); err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply martial arts for character %s", ma.CharacterID)
 	}
 
@@ -257,15 +273,11 @@ func (ma *MartialArtsCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Get character registry to check ability scores
-	registry, err := gamectx.RequireCharacters(ctx)
-	if err != nil {
-		return c, err
-	}
-	abilityScores := registry.GetCharacterAbilityScores(ma.CharacterID)
-	if abilityScores == nil {
+	// Own sheet, handed over at attach time.
+	if ma.owner == nil {
 		return c, nil
 	}
+	abilityScores := ma.owner.AbilityScores()
 
 	// Only modify if it's an unarmed strike or monk weapon
 	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
@@ -280,8 +292,8 @@ func (ma *MartialArtsCondition) onAttackChain(
 	}
 
 	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-		dexMod := abilityScores.DexterityMod()
-		strMod := abilityScores.StrengthMod()
+		dexMod := abilityScores.Modifier(abilities.DEX)
+		strMod := abilityScores.Modifier(abilities.STR)
 		if dexMod > strMod {
 			// The base bonus used STR (melee, non-finesse); replace it with
 			// DEX by applying the difference — same rule the damage chain
@@ -291,7 +303,7 @@ func (ma *MartialArtsCondition) onAttackChain(
 		return e, nil
 	}
 
-	if err = c.Add(combat.StageFeatures, "martial_arts", modifyAttack); err != nil {
+	if err := c.Add(combat.StageFeatures, "martial_arts", modifyAttack); err != nil {
 		return c, rpgerr.Wrapf(err, "failed to apply martial arts attack bonus for character %s", ma.CharacterID)
 	}
 

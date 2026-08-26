@@ -1,120 +1,70 @@
-// Copyright (C) 2024 Kirk Diggler
+// Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package gamectx provides queryable game state through context.Context for event processing.
+// Package gamectx carries what is TRUE about an interaction, for effects that
+// have to ask.
 //
-// THE PROBLEM: Conditions and features need to make decisions based on current
-// game state (equipment, spatial positioning, etc.), but events shouldn't carry
-// all possible data that might ever be needed. This creates a design tension:
-// either bloat events with rarely-needed data, or give conditions no way to
-// make intelligent decisions.
+// An event says what is HAPPENING — who swung at whom, with what, for how
+// much. That is the bus, and it is the channel effects already had. This
+// package is the other one: where everybody is standing, who they are to each
+// other, what they are. Things no single participant owns, scoped to one
+// interaction, installed by whoever raised it.
 //
-// THE SOLUTION: GameContext wraps context.Context with access to loaded game state.
-// Events remain lightweight, but conditions/features can query whatever state they
-// need during processing.
+// # What lives here, and why so little
 //
-// Example - Dueling Fighting Style:
+//   - [WithRoom] / [Room] — the world the interaction happens on.
+//   - [WithCast] / [CastOf] — the participants in it.
+//   - [WithReactionReadiness] / [IsReactionReady] — who has opted in to spend
+//     a reaction.
 //
-// The D&D 5e Dueling fighting style grants +2 damage when wielding a melee weapon
-// in one hand with nothing in the other hand (a shield is allowed). This requires
-// checking the character's equipped weapons during damage calculation.
+// Resolution installs the first two on every path. It installs neither
+// conditionally and there is no mode in which they are absent, because that is
+// exactly what went wrong here before.
 //
-// Without gamectx:
+// # What used to live here
 //
-//	// ❌ BAD - Bloat every attack event with equipment data
-//	type AttackEvent struct {
-//	    AttackerID     string
-//	    Damage         dice.Dice
-//	    MainHandWeapon *Weapon      // Most conditions won't need this
-//	    OffHandWeapon  *Weapon       // Most conditions won't need this
-//	    AllEquipment   []Item        // Most conditions won't need this
-//	    // ... dozens of other rarely-needed fields
-//	}
+// Five installers, one of them installed. GameContext/CharacterRegistry,
+// CombatantRegistry, and CombatState were all defined against an imagined
+// need, and combat.CombatantLookup was a sixth mechanism answering the same
+// question from a different package with its own context key. Between them
+// they had zero installs.
 //
-// With gamectx:
+// That was not harmless. Three conditions READ CharacterRegistry —
+// UnarmoredDefense, MartialArts, UnarmoredMovement — and returned its
+// "no registry" error straight into a chain fold. Character.EffectiveAC
+// swallows fold errors, so a barbarian with Unarmored Defense attached fought
+// at 10+DEX, and every other contributor to that AC was dropped along with it.
+// Nothing was logged, and every test of those conditions passed, because every
+// test installed a registry by hand that production never installed.
 //
-//	// ✅ GOOD - Event remains focused, condition queries what it needs
-//	type AttackEvent struct {
-//	    AttackerID string
-//	    Damage     dice.Dice
-//	}
+// The lesson is not that ambient state is bad. The room is ambient and is the
+// healthiest thing in this package. It is that an ambient dependency must be
+// MANDATORY and SINGULAR, and its absent value must say what the author meant.
 //
-//	// In the Dueling condition's OnApply:
-//	func (d *Dueling) OnApply(ctx context.Context, event events.Event) error {
-//	    registry, ok := gamectx.Characters(ctx)
-//	    if !ok {
-//	        return nil  // No game context available, skip bonus
-//	    }
+// # Reaction readiness is the counter-example, and it stays
 //
-//	    character := registry.GetCharacter(attackEvent.AttackerID)
-//	    weapons := character.(*gamectx.CharacterWeapons)
+// [IsReactionReady] returns false when no map is installed, and no map is ever
+// installed today. It survived the deletion above because that is not the same
+// bug: not-ready is the CORRECT answer while nothing in the stack lets a
+// player ready a reaction, and the code says so at the point of failure rather
+// than leaving it to be discovered. Opportunity Attack and Shield decline to
+// fire, on purpose, and will keep declining until reactions are built.
 //
-//	    // Check if character meets Dueling requirements
-//	    mainHand := weapons.MainHand()
-//	    if mainHand != nil && mainHand.IsMelee && !mainHand.IsTwoHanded {
-//	        if weapons.OffHand() == nil {  // No weapon in off-hand (shield is OK)
-//	            attackEvent.Damage.Add(dice.Constant(2))  // Grant +2 damage
-//	        }
-//	    }
-//	    return nil
-//	}
+// Fail-closed by design is not fail-silent by accident. The test for an
+// ambient dependency is not "is it installed" — it is "does its absent value
+// say what the author meant".
 //
-// Usage Pattern:
+// # Reading anything here
 //
-//	// 1. Game server creates GameContext with loaded state
-//	registry := gamectx.NewBasicCharacterRegistry()
+// Defensively, and never as an error. Accessors return (value, ok); an effect
+// that cannot answer its question leaves the chain unchanged. See
+// conditions/prone.go's attackerIsWithinReach for the shape: "not within
+// reach" and "nobody knows where these two are standing" are different
+// answers, and a rule that conflates them is a rule invented out of missing
+// data.
 //
-//	// 2. Populate registry with character equipment
-//	weapons := gamectx.NewCharacterWeapons(
-//	    &gamectx.EquippedWeapon{
-//	        ID:          "longsword-1",
-//	        Name:        "Longsword",
-//	        Slot:        "main_hand",
-//	        IsMelee:     true,
-//	        IsTwoHanded: false,
-//	    },
-//	    nil,  // No off-hand weapon
-//	)
-//	registry.Add("hero-1", weapons)
-//
-//	// 3. Wrap context with GameContext
-//	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-//	    CharacterRegistry: registry,
-//	})
-//	ctx = gamectx.WithGameContext(ctx, gameCtx)
-//
-//	// 4. Process events with enriched context
-//	eventBus.Publish(ctx, "attack.executed", attackEvent)
-//
-//	// 5. Conditions query state during event processing
-//	// (shown in Dueling example above)
-//
-// Scope:
-//   - Context wrapping for game state access
-//   - CharacterRegistry interface for querying character data
-//   - BasicCharacterRegistry implementation for weapon queries
-//   - EquippedWeapon struct for weapon information
-//   - CharacterWeapons helper for main/off-hand weapon queries
-//
-// Non-Goals:
-//   - Event definitions: Events remain in their respective modules
-//   - Game state storage: Game servers manage their own state
-//   - Condition implementations: Conditions remain in rulebooks
-//   - Serialization: GameContext is ephemeral per request
-//   - Validation: Game servers validate state before creating GameContext
-//
-// Integration:
-// This package integrates with:
-//   - events: Provides context enrichment for event processing
-//   - conditions: Enables state-aware condition evaluation
-//   - features: Enables state-aware feature calculations
-//
-// Future Extensions:
-// As more conditions require game state, GameContext can grow to include:
-//   - SpatialRegistry: Query entity positions for range-dependent effects
-//   - EffectsRegistry: Query active effects for stacking/interaction logic
-//   - ResourceRegistry: Query spell slots, abilities for availability checks
-//
-// The pattern scales: add new registries as interfaces on GameContext,
-// conditions opt-in by checking if the registry is available.
+// An effect's OWN sheet does not come from here. That arrives by injection at
+// attach time — see [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware]
+// — because it has an owner, and ambient delivery of an owned thing is what
+// rpg-toolkit#1178 already walked back once.
 package gamectx

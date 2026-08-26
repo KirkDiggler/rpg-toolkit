@@ -63,27 +63,6 @@ func (r *sequenceRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
 // Verify sequenceRoller implements dice.Roller
 var _ dice.Roller = (*sequenceRoller)(nil)
 
-// combatantRegistry implements combat.CombatantLookup for integration tests.
-type combatantRegistry struct {
-	combatants map[string]combat.Combatant
-}
-
-func newCombatantRegistry() *combatantRegistry {
-	return &combatantRegistry{combatants: make(map[string]combat.Combatant)}
-}
-
-func (r *combatantRegistry) Register(c combat.Combatant) {
-	r.combatants[c.GetID()] = c
-}
-
-func (r *combatantRegistry) Get(id string) (combat.Combatant, error) {
-	c, ok := r.combatants[id]
-	if !ok {
-		return nil, rpgerr.New(rpgerr.CodeNotFound, fmt.Sprintf("combatant %s not found", id))
-	}
-	return c, nil
-}
-
 type testGoblin struct {
 	id string
 }
@@ -194,12 +173,6 @@ func (s *MovementIntegrationSuite) TestDisengagingPreventsOpportunityAttack() {
 
 		fmt.Printf("  Fighter at (5,5), Goblin at (5,6) - adjacent\n")
 
-		// Register combatants for OA resolution
-		registry := newCombatantRegistry()
-		registry.Register(fighter)
-		registry.Register(goblin)
-		s.ctx = combat.WithCombatantLookup(s.ctx, registry)
-
 		// Apply DisengagingCondition to the fighter
 		disengaging := conditions.NewDisengagingCondition("fighter-move")
 		err = disengaging.Apply(s.ctx, s.bus)
@@ -250,12 +223,6 @@ func (s *MovementIntegrationSuite) TestDisengagingPreventsOpportunityAttack() {
 		s.Require().NoError(err)
 
 		fmt.Printf("  Fighter at (5,5), Goblin at (5,6) - adjacent (NO disengaging)\n")
-
-		// Register combatants
-		registry := newCombatantRegistry()
-		registry.Register(fighter)
-		registry.Register(goblin)
-		s.ctx = combat.WithCombatantLookup(s.ctx, registry)
 
 		// Move fighter away - should trigger OA from goblin
 		path := []spatial.Position{

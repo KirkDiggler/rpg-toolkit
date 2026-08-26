@@ -12,7 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -173,21 +172,17 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseACChainIntegration() {
 	err := ud.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// Set up game context with ability scores
+	// Own sheet, handed over the way attach hands it over.
 	// DEX 16 (+3), WIS 14 (+2) -> Unarmored Defense adds +2 (WIS mod)
-	registry := gamectx.NewBasicCharacterRegistry()
-	registry.AddAbilityScores(characterID, &gamectx.AbilityScores{
-		Strength:     10, // +0
-		Dexterity:    16, // +3
-		Constitution: 12, // +1
-		Intelligence: 10, // +0
-		Wisdom:       14, // +2
-		Charisma:     10, // +0
-	})
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+	ud.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{
+		abilities.STR: 10, // +0
+		abilities.DEX: 16, // +3
+		abilities.CON: 12, // +1
+		abilities.INT: 10, // +0
+		abilities.WIS: 14, // +2
+		abilities.CHA: 10, // +0
+	}})
+	ctx := s.ctx
 
 	// Create AC event for unarmored character
 	// Base would be 10 + 3 (DEX) = 13, Unarmored Defense should add +2 (WIS) = 15
@@ -238,16 +233,11 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseIgnoredWhenWearingArmor(
 	err := ud.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// Set up game context
-	registry := gamectx.NewBasicCharacterRegistry()
-	registry.AddAbilityScores(characterID, &gamectx.AbilityScores{
-		Dexterity: 16,
-		Wisdom:    14,
-	})
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+	ud.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{
+		abilities.DEX: 16,
+		abilities.WIS: 14,
+	}})
+	ctx := s.ctx
 
 	// Create AC event for character WEARING ARMOR
 	breakdown := &combat.ACBreakdown{

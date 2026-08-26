@@ -45,7 +45,6 @@ type RogueEncounterSuite struct {
 	mockRoller *mock_dice.MockRoller
 	lookup     *integrationLookup
 	room       spatial.Room
-	registry   *gamectx.BasicCharacterRegistry
 
 	rogue  *mockRogueCharacter
 	ally   *mockAllyCharacter
@@ -133,15 +132,7 @@ func (s *RogueEncounterSuite) SetupSubTest() {
 	s.lookup.Add(s.rogue)
 	s.lookup.Add(s.goblin)
 
-	s.registry = gamectx.NewBasicCharacterRegistry()
-	scores := &gamectx.AbilityScores{
-		Strength: 10, Dexterity: 16, Constitution: 14, Intelligence: 12, Wisdom: 10, Charisma: 14,
-	}
-	s.registry.AddAbilityScores(s.rogue.GetID(), scores)
-
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{CharacterRegistry: s.registry})
-	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
-	s.ctx = gamectx.WithGameContext(s.ctx, gameCtx)
+	s.ctx = context.Background()
 	s.ctx = gamectx.WithRoom(s.ctx, s.room)
 
 	_ = s.room.PlaceEntity(s.rogue, spatial.Position{X: 2, Y: 2})
