@@ -343,6 +343,24 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
+	// The other half of the read channel: the room says where everyone is
+	// standing, and this says who they are to each other.
+	//
+	// EVERY TIME, for the same reason and with the same pin. Five registries
+	// in gamectx and a sixth in combat tried to answer pieces of this and
+	// between them were installed zero times, so three conditions read a
+	// registry nobody supplied and returned its error into a chain fold that
+	// swallows errors — a barbarian fought at base AC in every real fight and
+	// nothing was logged (rpg-toolkit#1251). An ambient dependency that is
+	// SOMETIMES present is the defect; being always present is the fix, and
+	// TestNoCodePathProducesACastlessInteraction holds that structurally
+	// rather than by example.
+	//
+	// It goes in after attachAll because that is the call that loads the
+	// sheets. Nothing reads it before then: effects subscribe during Apply and
+	// ask their questions at fold time, which is after this line.
+	ctx = gamectx.WithCast(ctx, &castView{cast: cast})
+
 	// Start is pure preflight and runs before payment. Invalid participant,
 	// delivery, or condition declarations therefore consume nothing.
 	first, startErr := start(ctx, in.Machine, cast)

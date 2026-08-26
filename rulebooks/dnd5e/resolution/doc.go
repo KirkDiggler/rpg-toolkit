@@ -168,28 +168,51 @@
 // outcome), so the case where the answer comes from outside the process is a
 // new step rather than a redesign of this one.
 //
-// No game context is installed. Effect predicates read world state through
-// five separate installers in the gamectx package, and neither a saving throw's
-// predicates nor a contest's read any of them — [conditions.RagingCondition]
-// decides on the event alone. Resolution is where they will be populated,
-// because it is the one place that holds both the world and the effects; the
-// first predicate that needs one brings its installer with it. Populating a
-// registry nothing reads would be building the wrong thing convincingly.
+// Two game-context installers are populated, both unconditionally.
 //
-// One installer is now populated, by the machine that forced it. The strike
-// folds the attack chain, and prone's predicate reads positions off that chain —
-// advantage from within five feet, disadvantage beyond — so [Resolve] installs
-// the world the interaction happens on.
+// This paragraph used to say "No game context is installed", and describe five
+// gamectx registries waiting for a predicate to force them: the first predicate
+// that needs one brings its installer with it, and populating a registry
+// nothing reads would be building the wrong thing convincingly. The policy was
+// right. It was not enforced, and the failure was invisible in exactly the
+// direction nobody was looking.
 //
-// ONE world, installed EVERY time, and it is THE world rather than a copy of
-// it. The composition compiles the authored chambers into a single canvas in a
-// single absolute frame and hands that room over to be read
-// (rpg-toolkit#1105, rpg-toolkit#1114), so "which room describes this
-// interaction" stopped being a question anybody has to answer. It used to be
-// one, and the answer this package gave when the cast spanned two rooms —
-// install nothing — silently switched off every predicate that reads positions
-// the moment a party member wandered off, which in a dungeon is most of the
-// time (rpg-toolkit#1090).
+// FOUR predicates arrived without their installer. UnarmoredDefense,
+// MartialArts twice, and UnarmoredMovement all read
+// gamectx.RequireCharacters — a registry with zero non-test call sites in the
+// whole toolkit — and returned its "no game context" error into a chain fold.
+// [character.Character.EffectiveAC] swallows fold errors, so a barbarian with
+// Unarmored Defense attached was struck at 10+DEX in every real fight, every
+// other contributor to that AC was discarded along with the one that failed,
+// and nothing was logged. Every test of those rules passed throughout, because
+// every one of them installed a registry by hand that production never
+// installed (rpg-toolkit#1251).
+//
+// So the mirror of the warning above is the one that actually bit: defining
+// registries nothing populates is the same mistake as populating registries
+// nothing reads, and it fails silently instead of loudly.
+//
+// What is installed now, on every path and inside no condition:
+//
+//   - [gamectx.WithRoom] — the world the interaction happens on. ONE world,
+//     installed EVERY time, and it is THE world rather than a copy of it. The
+//     composition compiles the authored chambers into a single canvas in a
+//     single absolute frame and hands that room over to be read
+//     (rpg-toolkit#1105, rpg-toolkit#1114), so "which room describes this
+//     interaction" stopped being a question anybody has to answer. It used to
+//     be one, and the answer this package gave when the cast spanned two rooms
+//     — install nothing — silently switched off every predicate that reads
+//     positions the moment a party member wandered off, which in a dungeon is
+//     most of the time (rpg-toolkit#1090).
+//   - [gamectx.WithCast] — who the participants are to each other. This
+//     package is the only one that can answer it: R3 passes everyone in, so
+//     this is the only place that holds them all. See [castView].
+//
+// TestNoCodePathProducesARoomlessInteraction and
+// TestNoCodePathProducesACastlessInteraction hold both structurally rather than
+// by example, by reading this file's source. A behavioural suite cannot make
+// the claim: the defect is that tests supply what production does not, so the
+// tests are the last place it shows up.
 //
 // This package builds no geometry of its own. It held a room it assembled out
 // of the encounter's persisted description, carrying a second copy of grid
@@ -197,8 +220,13 @@
 // composition enforces are now the same object, which is a stronger guarantee
 // than any test over two of them could be.
 //
-// Nothing else is installed. The other four registries stay empty until a
-// predicate that reads one arrives with its own consumer.
+// The registries that were never populated are gone rather than waiting:
+// CharacterRegistry (character-shaped, so it could not describe a monster at
+// all), CombatantRegistry, CombatState, and combat.CombatantLookup, a sixth
+// mechanism answering the same question from another package with its own
+// context key. gamectx.ReactionReadiness stays — it has two live readers and
+// its absent value is correct on purpose, which is a different thing from an
+// installer nobody wired.
 //
 // The machine for a saving throw lives here rather than in the rules package
 // that owns saves, because `rulebooks/dnd5e` cannot import this module — this

@@ -138,6 +138,89 @@ func (s *EffectiveACTestSuite) biteAt(hero *character.Data, roll int) StrikeOutc
 	return outcome
 }
 
+// unarmoredBarbarian wears nothing at all.
+//
+// No armor on purpose: Unarmored Defense only applies when unarmored, so the
+// whole number has to come from the sheet's own ability scores through the AC
+// chain. DEX 14 (+2) and CON 14 (+2) put the answer at 10+2+2 = 14, and the
+// flat ArmorClass is 10 so that reading the sheet reports a number that says
+// so.
+func (s *EffectiveACTestSuite) unarmoredBarbarian(conds ...json.RawMessage) *character.Data {
+	return &character.Data{
+		ID:       heroID,
+		PlayerID: "player-1",
+		Name:     "Standre",
+		Level:    1,
+		ClassID:  classes.Barbarian,
+		RaceID:   races.Human,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14, // +2
+			abilities.CON: 14, // +2
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:        14,
+		MaxHitPoints:     14,
+		ArmorClass:       10,
+		ProficiencyBonus: 2,
+		Conditions:       conds,
+	}
+}
+
+func (s *EffectiveACTestSuite) unarmoredDefense() json.RawMessage {
+	raw, err := (&conditions.UnarmoredDefenseCondition{
+		CharacterID: heroID,
+		Type:        conditions.UnarmoredDefenseBarbarian,
+		Source:      "dnd5e:classes:barbarian",
+	}).ToJSON()
+	s.Require().NoError(err)
+
+	return raw
+}
+
+// THE TEST THIS WHOLE SLICE EXISTS FOR. Unarmored Defense reaches the strike.
+//
+// It did not, in any real fight, for as long as the rule has existed. The
+// condition read gamectx.RequireCharacters — a registry with zero non-test
+// install sites — and returned its error into the AC fold, which
+// Character.EffectiveAC swallows. So a barbarian with Unarmored Defense
+// attached was struck at 10+DEX, every other AC contributor was discarded with
+// it, and nothing was logged. Kirk found it by playing: his barbarian fought
+// the tomb at 11 instead of 14 (rpg-api#842, rpg-toolkit#1251).
+//
+// Every test of the rule passed throughout, because every one of them
+// installed a registry by hand that production never installed. Which is why
+// this one lives HERE and goes through Resolve: the condition now reads its own
+// sheet, handed over by the same Attach the interaction performs, and there is
+// nothing in this test for a bug to hide behind.
+func (s *EffectiveACTestSuite) TestUnarmoredDefenseReachesTheStrike() {
+	bare := s.biteAt(s.unarmoredBarbarian(), 12)
+	defended := s.biteAt(s.unarmoredBarbarian(s.unarmoredDefense()), 12)
+
+	s.Require().Equal(12, bare.TargetAC,
+		"unarmored and without the feature: 10 + DEX(+2)")
+	s.Require().Equal(14, defended.TargetAC,
+		"Unarmored Defense adds CON(+2) through the AC chain: 10 + DEX + CON")
+	s.Require().Equal(2, defended.TargetAC-bare.TargetAC,
+		"exactly the feature's contribution, folded on this interaction's bus")
+}
+
+// And it decides the hit, which is the part that was costing hit points.
+//
+// The wolf's +4 against 12 needs an 8; against 14 it needs a 10. The same 8
+// must therefore land on the barbarian who lost the feature and miss the one
+// who has it — one roll, two points of Constitution between them.
+func (s *EffectiveACTestSuite) TestUnarmoredDefenseDecidesTheHit() {
+	bare := s.biteAt(s.unarmoredBarbarian(), 8)
+	s.Require().True(bare.Hit, "8 + 4 = 12 meets AC 12")
+
+	defended := s.biteAt(s.unarmoredBarbarian(s.unarmoredDefense()), 8)
+	s.Require().False(defended.Hit, "the same 12 falls short of AC 14")
+	s.Require().Zero(defended.Damage, "and a miss deals nothing")
+}
+
 // THE PROVING TEST. Worn armor reaches the strike.
 //
 // Chain mail is AC 16 with no DEX contribution. The sheet's flat ArmorClass
