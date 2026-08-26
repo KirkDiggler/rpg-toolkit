@@ -29,7 +29,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -49,7 +48,6 @@ type FighterEncounterSuite struct {
 	mockRoller *mock_dice.MockRoller
 	lookup     *integrationLookup
 	room       spatial.Room
-	registry   *gamectx.BasicCharacterRegistry
 
 	fighter *mockFighterCharacter
 	goblin  *monster.Monster
@@ -162,15 +160,7 @@ func (s *FighterEncounterSuite) SetupSubTest() {
 	s.lookup.Add(s.fighter)
 	s.lookup.Add(s.goblin)
 
-	s.registry = gamectx.NewBasicCharacterRegistry()
-	scores := &gamectx.AbilityScores{
-		Strength: 16, Dexterity: 14, Constitution: 14, Intelligence: 10, Wisdom: 12, Charisma: 10,
-	}
-	s.registry.AddAbilityScores(s.fighter.GetID(), scores)
-
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{CharacterRegistry: s.registry})
-	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
-	s.ctx = gamectx.WithGameContext(s.ctx, gameCtx)
+	s.ctx = context.Background()
 	s.ctx = gamectx.WithRoom(s.ctx, s.room)
 
 	_ = s.room.PlaceEntity(s.fighter, spatial.Position{X: 2, Y: 2})
@@ -498,18 +488,10 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_TwoHanded() {
 		s.T().Log("║  FIGHTER DUELING: No Bonus With Two-Handed                       ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Fighter wielding a greatsword (two-handed)
-		mainHand := &gamectx.EquippedWeapon{
-			ID:          "greatsword-1",
-			WeaponID:    weapons.Greatsword,
-			Name:        "Greatsword",
-			Slot:        "main_hand",
-			IsMelee:     true,
-			IsTwoHanded: true,
-		}
-		weaponSet := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand})
-		s.registry.Add(s.fighter.GetID(), weaponSet)
-
+		// Two-handedness is a static fact the compiler already knew, and
+		// Dueling reads it off the event (rpg-toolkit#1178). Stating it on
+		// the event is what makes this test actually exercise the rule — the
+		// registry it used to build was never consulted.
 		dueling := conditions.NewFightingStyleDuelingCondition(s.fighter.GetID())
 		err := dueling.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -519,6 +501,9 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_TwoHanded() {
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
 			AbilityUsed: abilities.STR,
+			WeaponRef:   refs.Weapons.Greatsword(),
+			IsMelee:     true,
+			TwoHanded:   true,
 			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
 		}
 
@@ -543,26 +528,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_DualWielding() 
 		s.T().Log("║  FIGHTER DUELING: No Bonus When Dual Wielding                    ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Fighter dual wielding shortswords
-		mainHand := &gamectx.EquippedWeapon{
-			ID:          "shortsword-1",
-			WeaponID:    weapons.Shortsword,
-			Name:        "Shortsword",
-			Slot:        "main_hand",
-			IsMelee:     true,
-			IsTwoHanded: false,
-		}
-		offHand := &gamectx.EquippedWeapon{
-			ID:          "shortsword-2",
-			WeaponID:    weapons.Shortsword,
-			Name:        "Shortsword",
-			Slot:        "off_hand",
-			IsMelee:     true,
-			IsTwoHanded: false,
-		}
-		weaponSet := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{mainHand, offHand})
-		s.registry.Add(s.fighter.GetID(), weaponSet)
-
+		// An occupied off hand is likewise read off the event.
 		dueling := conditions.NewFightingStyleDuelingCondition(s.fighter.GetID())
 		err := dueling.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)

@@ -6,7 +6,6 @@ package combat
 import (
 	"context"
 
-	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -106,30 +105,4 @@ func GetEffectiveAC(ctx context.Context, c Combatant) int {
 		return breakdown.Total
 	}
 	return c.AC()
-}
-
-// CombatantLookup provides combatant lookup from context.
-// This interface is satisfied by gamectx.CombatantRegistry.
-type CombatantLookup interface {
-	// Get retrieves a combatant by ID
-	Get(id string) (Combatant, error)
-}
-
-// combatantLookupKey is the context key for CombatantLookup
-type combatantLookupKey struct{}
-
-// WithCombatantLookup adds a CombatantLookup to the context.
-// Use this to enable Strike resolution to look up combatants by ID.
-func WithCombatantLookup(ctx context.Context, lookup CombatantLookup) context.Context {
-	return context.WithValue(ctx, combatantLookupKey{}, lookup)
-}
-
-// GetCombatantFromContext retrieves a combatant by ID from context.
-// Returns error if no lookup is in context or combatant not found.
-func GetCombatantFromContext(ctx context.Context, id string) (Combatant, error) {
-	lookup, ok := ctx.Value(combatantLookupKey{}).(CombatantLookup)
-	if !ok || lookup == nil {
-		return nil, rpgerr.New(rpgerr.CodeNotFound, "no combatant lookup in context")
-	}
-	return lookup.Get(id)
 }

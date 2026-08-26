@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -136,91 +135,32 @@ func (s *UnarmoredMovementTestSuite) TestCalculateSpeedBonus() {
 	}
 }
 
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithoutContext() {
-	// Without context, should return error
-	bonus, err := s.condition.GetSpeedBonus(s.ctx)
-	s.Require().Error(err, "Should error when game context is not available")
+func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithoutOwner() {
+	// No owner: the question cannot be answered, which is NOT the same as
+	// "wearing a shield". Reporting known=false keeps a monk from silently
+	// losing their speed on missing data rather than on a rule.
+	bonus, known := s.condition.GetSpeedBonus()
+	s.Assert().False(known, "no owner means the question cannot be answered")
 	s.Assert().Equal(0, bonus)
 }
 
 func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusUnarmored() {
-	// Create registry with no weapons
-	registry := gamectx.NewBasicCharacterRegistry()
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+	s.condition.SetOwner(&fakeConditionOwner{shield: false})
 
-	// No weapons equipped (unarmored)
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
-	registry.Add("monk-1", weapons)
-
-	bonus, err := s.condition.GetSpeedBonus(ctx)
-	s.Require().NoError(err)
+	bonus, known := s.condition.GetSpeedBonus()
+	s.Require().True(known)
 	s.Assert().Equal(10, bonus, "Unarmored monk should get speed bonus")
 }
 
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithWeaponNoShield() {
-	// Create registry with weapon but no shield
-	registry := gamectx.NewBasicCharacterRegistry()
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithShield() {
+	s.condition.SetOwner(&fakeConditionOwner{shield: true})
 
-	// Equip quarterstaff (not a shield)
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{
-		{
-			ID:       "quarterstaff-1",
-			Name:     "Quarterstaff",
-			Slot:     gamectx.SlotMainHand,
-			IsShield: false,
-			IsMelee:  true,
-		},
-	})
-	registry.Add("monk-1", weapons)
-
-	bonus, err := s.condition.GetSpeedBonus(ctx)
-	s.Require().NoError(err)
-	s.Assert().Equal(10, bonus, "Monk with weapon but no shield should get speed bonus")
-}
-
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithShieldInMainHand() {
-	// Create registry with shield
-	registry := gamectx.NewBasicCharacterRegistry()
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
-
-	// Equip shield in main hand
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{
-		{
-			ID:       "shield-1",
-			Name:     "Shield",
-			Slot:     gamectx.SlotMainHand,
-			IsShield: true,
-		},
-	})
-	registry.Add("monk-1", weapons)
-
-	bonus, err := s.condition.GetSpeedBonus(ctx)
-	s.Require().NoError(err)
+	bonus, known := s.condition.GetSpeedBonus()
+	s.Require().True(known, "a shielded monk is a known answer, not an unknown one")
 	s.Assert().Equal(0, bonus, "Monk with shield should not get speed bonus")
 }
 
 func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithDifferentLevels() {
-	// Create registry
-	registry := gamectx.NewBasicCharacterRegistry()
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: registry,
-	})
-	ctx := gamectx.WithGameContext(s.ctx, gameCtx)
-
-	// No equipment (unarmored)
-	weapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
-	registry.Add("monk-1", weapons)
-
 	testCases := []struct {
 		name          string
 		monkLevel     int
@@ -237,8 +177,10 @@ func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithDifferentLevels() {
 				CharacterID: "monk-1",
 				MonkLevel:   tc.monkLevel,
 			})
-			bonus, err := condition.GetSpeedBonus(ctx)
-			s.Require().NoError(err)
+			condition.SetOwner(&fakeConditionOwner{shield: false})
+
+			bonus, known := condition.GetSpeedBonus()
+			s.Require().True(known)
 			s.Assert().Equal(tc.expectedBonus, bonus)
 		})
 	}

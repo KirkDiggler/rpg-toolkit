@@ -20,7 +20,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -46,11 +45,10 @@ import (
 
 type MonkEncounterSuite struct {
 	suite.Suite
-	ctx      context.Context
-	bus      events.EventBus
-	lookup   *integrationLookup
-	room     spatial.Room
-	registry *gamectx.BasicCharacterRegistry
+	ctx    context.Context
+	bus    events.EventBus
+	lookup *integrationLookup
+	room   spatial.Room
 
 	monk       *character.Character
 	goblin     *monster.Monster
@@ -87,24 +85,7 @@ func (s *MonkEncounterSuite) SetupSubTest() {
 	s.lookup.Add(s.monk)
 	s.lookup.Add(s.goblin)
 
-	// Set up character registry for ability score lookups
-	s.registry = gamectx.NewBasicCharacterRegistry()
-	scores := &gamectx.AbilityScores{
-		Strength:     10, // +0
-		Dexterity:    16, // +3
-		Constitution: 14, // +2
-		Intelligence: 10, // +0
-		Wisdom:       16, // +3
-		Charisma:     8,  // -1
-	}
-	s.registry.AddAbilityScores(s.monk.GetID(), scores)
-
-	// Set up context with combatant lookup and game context
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: s.registry,
-	})
-	s.ctx = combat.WithCombatantLookup(context.Background(), s.lookup)
-	s.ctx = gamectx.WithGameContext(s.ctx, gameCtx)
+	s.ctx = context.Background()
 
 	// Place in room - adjacent for melee
 	_ = s.room.PlaceEntity(s.monk, spatial.Position{X: 2, Y: 2})
@@ -580,21 +561,11 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 		s.Require().NoError(err)
 		defer func() { _ = monk.Cleanup(s.ctx) }()
 
-		// Set up registry with the monk's ability scores so the
-		// UnarmoredDefenseCondition.onACChain can look them up.
-		registry := gamectx.NewBasicCharacterRegistry()
-		registry.AddAbilityScores(monk.GetID(), &gamectx.AbilityScores{
-			Strength:     10,
-			Dexterity:    16, // +3
-			Constitution: 12,
-			Intelligence: 10,
-			Wisdom:       14, // +2
-			Charisma:     8,
-		})
-		gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-			CharacterRegistry: registry,
-		})
-		ctx := gamectx.WithGameContext(s.ctx, gameCtx)
+		// No registry, deliberately. This test used to build one by hand and
+		// pass while the game returned 13 — LoadFromData attaches the
+		// condition and Attach hands it the monk's own sheet, which is the
+		// only wiring production has. If that wiring breaks, this fails.
+		ctx := s.ctx
 
 		// Verify EffectiveAC includes WIS modifier via the AC chain.
 		// Expected: 10 (base) + 3 (DEX) + 2 (WIS from UnarmoredDefense) = 15
@@ -625,20 +596,33 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 	})
 }
 
-// TestUnarmoredDefense_ACChainWithoutGameContext verifies that when a Monk with
-// Unarmored Defense is the defender but game context is NOT set up (missing
-// character ability score registry), the AC chain returns only the base + DEX
-// value. This documents the API wiring requirement: game context with character
-// ability scores MUST be present for Unarmored Defense to work.
-func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainWithoutGameContext() {
-	s.Run("Monk AC chain without game context is missing WIS modifier", func() {
+// TestUnarmoredDefense_ACChainNeedsNoGameContext verifies that a Monk with
+// Unarmored Defense gets the WIS modifier with NOTHING installed in the
+// context — because the condition reads its own sheet, handed over by Attach.
+//
+// This test used to assert the opposite, and that is the whole point of it.
+// It was called TestUnarmoredDefense_ACChainWithoutGameContext, it expected
+// 13, and it explained the missing +2 as an "API WIRING REQUIREMENT: the
+// context MUST include a GameContext with the defender's ability scores".
+//
+// Nothing ever met that requirement. gamectx.WithGameContext had zero non-test
+// call sites in the entire toolkit, so every monk and every barbarian fought
+// at base AC in every real fight, and this test certified it as correct. Worse
+// than the missing bonus: the condition returned an ERROR into the AC fold and
+// Character.EffectiveAC swallows fold errors, so every other AC contributor
+// went with it.
+//
+// A bare context is now the honest case rather than the degraded one. If this
+// ever returns 13 again, the owner handle stopped being wired at attach.
+func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainNeedsNoGameContext() {
+	s.Run("Monk AC chain includes WIS with nothing installed in context", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMORED DEFENSE: AC Without Game Context (API wiring)   ║")
+		s.T().Log("║  MONK UNARMORED DEFENSE: AC With A Bare Context                  ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
-		s.T().Log("  This test documents the API wiring requirement:")
-		s.T().Log("  The game context (with character ability scores) MUST be present")
-		s.T().Log("  when EffectiveAC is called, or the WIS modifier is silently dropped.")
+		s.T().Log("  Nothing is installed in the context here. The condition reads")
+		s.T().Log("  the monk's own sheet, handed to it by Attach — the only wiring")
+		s.T().Log("  production has ever had.")
 		s.T().Log("")
 
 		monkWithUD := &character.Data{
@@ -688,24 +672,24 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainWithoutGameContext() {
 		s.Require().NoError(err)
 		defer func() { _ = monk.Cleanup(s.ctx) }()
 
-		// Call EffectiveAC WITHOUT a game context (no ability score registry).
-		// The UnarmoredDefenseCondition.onACChain will fail to find the registry
-		// and silently return without adding the WIS component.
-		ctxWithoutGameCtx := context.Background()
-		breakdown := monk.EffectiveAC(ctxWithoutGameCtx)
+		// A completely bare context. No room, no cast, no registry.
+		bareCtx := context.Background()
+		breakdown := monk.EffectiveAC(bareCtx)
 
-		s.T().Logf("  Monk EffectiveAC (no game context):")
-		s.T().Logf("    Total: %d (expected 13, WIS silently dropped)", breakdown.Total)
+		s.T().Logf("  Monk EffectiveAC (bare context):")
+		s.T().Logf("    Total: %d", breakdown.Total)
 
-		// Without game context, WIS modifier is silently dropped: only 10 + DEX = 13
-		s.Equal(13, breakdown.Total,
-			"Without game context, AC chain should return only 10 + DEX = 13 (WIS silently dropped)")
+		// 10 (base) + 3 (DEX) + 2 (WIS via Unarmored Defense) = 15
+		s.Equal(15, breakdown.Total,
+			"Unarmored Defense reads the monk's own sheet: 10 + DEX(+3) + WIS(+2) = 15")
 
-		s.T().Log("")
-		s.T().Log("  API WIRING REQUIREMENT:")
-		s.T().Log("  When calling EffectiveAC during attack resolution, the context")
-		s.T().Log("  MUST include a GameContext with the defender's ability scores.")
-		s.T().Log("  See: gamectx.WithGameContext + gamectx.BasicCharacterRegistry")
+		hasWIS := false
+		for _, comp := range breakdown.Components {
+			if comp.Type == combat.ACSourceFeature && comp.Value == 2 {
+				hasWIS = true
+			}
+		}
+		s.True(hasWIS, "the WIS component must be attributed in the breakdown, not just folded into the total")
 	})
 }
 
@@ -939,20 +923,21 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		s.monk = s.createLevel2Monk()
 		s.lookup.Add(s.monk)
 
-		// Set up weapons registry (no weapons = unarmored)
-		charWeapons := gamectx.NewCharacterWeapons([]*gamectx.EquippedWeapon{})
-		s.registry.Add(s.monk.GetID(), charWeapons)
+		// No weapons registry, deliberately. The monk's own sheet answers the
+		// shield question now, and Attach hands the condition that sheet —
+		// the same wiring production has. The registry this used to build was
+		// never installed outside a test.
 
 		s.T().Logf("  Monk: %s (Level 2, unarmored)", s.monk.GetName())
 		s.T().Log("")
 
 		// Find the UnarmoredMovementCondition from loaded conditions
 		var umCondition interface {
-			GetSpeedBonus(context.Context) (int, error)
+			GetSpeedBonus() (int, bool)
 		}
 		for _, cond := range s.monk.GetConditions() {
 			if getter, ok := cond.(interface {
-				GetSpeedBonus(context.Context) (int, error)
+				GetSpeedBonus() (int, bool)
 			}); ok {
 				umCondition = getter
 				break
@@ -961,8 +946,8 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		s.Require().NotNil(umCondition, "Monk should have UnarmoredMovementCondition loaded from Data")
 
 		// Verify speed bonus
-		bonus, err := umCondition.GetSpeedBonus(s.ctx)
-		s.Require().NoError(err)
+		bonus, known := umCondition.GetSpeedBonus()
+		s.Require().True(known, "the monk's own sheet answers this; unknown means Attach did not wire the owner")
 		s.Equal(10, bonus, "Level 2 monk should get +10 ft speed bonus")
 
 		s.T().Log("  Speed bonus by level:")

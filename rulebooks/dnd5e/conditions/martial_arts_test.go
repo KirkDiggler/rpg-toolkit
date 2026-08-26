@@ -17,8 +17,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -29,7 +29,7 @@ type MartialArtsTestSuite struct {
 	ctx         context.Context
 	mockRoller  *mock_dice.MockRoller
 	characterID string
-	registry    *gamectx.BasicCharacterRegistry
+	scores      shared.AbilityScores
 }
 
 func TestMartialArtsTestSuite(t *testing.T) {
@@ -42,23 +42,18 @@ func (s *MartialArtsTestSuite) SetupTest() {
 	s.characterID = "monk-1"
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
 
-	// Set up registry with ability scores
-	s.registry = gamectx.NewBasicCharacterRegistry()
-	scores := &gamectx.AbilityScores{
-		Strength:     10, // +0 modifier
-		Dexterity:    16, // +3 modifier
-		Constitution: 14,
-		Intelligence: 10,
-		Wisdom:       15,
-		Charisma:     8,
+	// The scores this monk's own sheet reports. Handed to each condition the
+	// way attach hands it over, not installed ambiently — nothing installs a
+	// character registry in production, which is why this rule was inert.
+	s.scores = shared.AbilityScores{
+		abilities.STR: 10, // +0 modifier
+		abilities.DEX: 16, // +3 modifier
+		abilities.CON: 14,
+		abilities.INT: 10,
+		abilities.WIS: 15,
+		abilities.CHA: 8,
 	}
-	s.registry.AddAbilityScores(s.characterID, scores)
-
-	// Set up context with game context
-	gameCtx := gamectx.NewGameContext(gamectx.GameContextConfig{
-		CharacterRegistry: s.registry,
-	})
-	s.ctx = gamectx.WithGameContext(context.Background(), gameCtx)
+	s.ctx = context.Background()
 }
 
 func (s *MartialArtsTestSuite) TearDownTest() {
@@ -71,6 +66,7 @@ func (s *MartialArtsTestSuite) TestApplyAndRemove() {
 		CharacterID: s.characterID,
 		MonkLevel:   1,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 	// Verify not applied initially
 	s.False(condition.IsApplied())
@@ -135,6 +131,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 				MonkLevel:   tc.monkLevel,
 				Roller:      s.mockRoller,
 			})
+			condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 			err := condition.Apply(s.ctx, s.bus)
 			s.Require().NoError(err)
@@ -220,6 +217,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 		MonkLevel:   5, // 1d6 martial arts die
 		Roller:      s.mockRoller,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 	err := condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -285,6 +283,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsSh
 		MonkLevel:   1,
 		Roller:      s.mockRoller,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -337,6 +336,7 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDoesNotDoubleMarkedDoesNotCritPo
 		MonkLevel:   1,
 		Roller:      s.mockRoller,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -384,6 +384,7 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -428,20 +429,11 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 	s.Run("STR higher than DEX - use STR", func() {
 		// Create a monk with higher STR than DEX
 		strongMonk := "monk-str"
-		scores := &gamectx.AbilityScores{
-			Strength:     16, // +3 modifier
-			Dexterity:    14, // +2 modifier
-			Constitution: 14,
-			Intelligence: 10,
-			Wisdom:       15,
-			Charisma:     8,
-		}
-		s.registry.AddAbilityScores(strongMonk, scores)
-
 		condition := NewMartialArtsCondition(MartialArtsInput{
 			CharacterID: strongMonk,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14, abilities.INT: 10, abilities.WIS: 15, abilities.CHA: 8}})
 
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -494,6 +486,7 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -544,20 +537,11 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 	s.Run("SourceRef label stays STR when STR is higher than DEX", func() {
 		// Create a monk with higher STR than DEX
 		strongMonk := "monk-str-label"
-		scores := &gamectx.AbilityScores{
-			Strength:     16, // +3 modifier
-			Dexterity:    14, // +2 modifier
-			Constitution: 14,
-			Intelligence: 10,
-			Wisdom:       15,
-			Charisma:     8,
-		}
-		s.registry.AddAbilityScores(strongMonk, scores)
-
 		condition := NewMartialArtsCondition(MartialArtsInput{
 			CharacterID: strongMonk,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14, abilities.INT: 10, abilities.WIS: 15, abilities.CHA: 8}})
 
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -609,6 +593,7 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -708,6 +693,7 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 		CharacterID: s.characterID,
 		MonkLevel:   1,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 	err := condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -756,6 +742,7 @@ func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 		CharacterID: s.characterID,
 		MonkLevel:   1,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 	err := condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -823,6 +810,7 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -842,14 +830,11 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 
 	s.Run("unarmed strike with STR >= DEX - attack bonus unchanged", func() {
 		strongMonk := "monk-str-attack"
-		s.registry.AddAbilityScores(strongMonk, &gamectx.AbilityScores{
-			Strength:  16, // +3
-			Dexterity: 14, // +2
-		})
 		condition := NewMartialArtsCondition(MartialArtsInput{
 			CharacterID: strongMonk,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14, abilities.INT: 10, abilities.WIS: 15, abilities.CHA: 8}})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -870,6 +855,7 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -892,6 +878,7 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -912,6 +899,7 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -932,6 +920,7 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 			CharacterID: s.characterID,
 			MonkLevel:   1,
 		})
+		condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
 
@@ -954,6 +943,7 @@ func (s *MartialArtsTestSuite) TestSerialization() {
 		CharacterID: s.characterID,
 		MonkLevel:   5,
 	})
+	original.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 	// Serialize
 	jsonData, err := original.ToJSON()
@@ -983,6 +973,7 @@ func (s *MartialArtsTestSuite) TestOtherCharacterNotModified() {
 		CharacterID: s.characterID,
 		MonkLevel:   5,
 	})
+	condition.SetOwner(&fakeConditionOwner{scores: s.scores})
 
 	err := condition.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)

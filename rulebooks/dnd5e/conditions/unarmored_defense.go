@@ -16,7 +16,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -50,10 +49,39 @@ type UnarmoredDefenseCondition struct {
 	Source          string // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 	subscriptionIDs []string
 	bus             events.EventBus
+	owner           unarmoredDefenseOwner
+}
+
+// unarmoredDefenseOwner is the minimal view of this condition's OWN sheet that
+// its formula needs. A *character.Character satisfies it without conditions
+// importing character (which would cycle); see [dnd5eEvents.OwnerAware].
+type unarmoredDefenseOwner interface {
+	AbilityScores() shared.AbilityScores
 }
 
 // Ensure UnarmoredDefenseCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnarmoredDefenseCondition)(nil)
+
+// Ensure UnarmoredDefenseCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*UnarmoredDefenseCondition)(nil)
+
+// SetOwner hands this condition its own character's live sheet, in place of
+// the context-installed registry it used to reach for.
+//
+// That registry was never installed by anything, so this condition returned
+// its "no game context" error into the AC fold on every single attack — and
+// Character.EffectiveAC swallows fold errors, so the character silently fought
+// at base AC with Unarmored Defense attached, losing every other AC
+// contributor along with this one. rpg-toolkit#1178 walked the same path for
+// Protection; this is the rest of it.
+//
+// An owner that does not satisfy [unarmoredDefenseOwner] is ignored: the
+// condition simply never finds itself eligible.
+func (u *UnarmoredDefenseCondition) SetOwner(owner any) {
+	if o, ok := owner.(unarmoredDefenseOwner); ok {
+		u.owner = o
+	}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -177,7 +205,7 @@ func (u *UnarmoredDefenseCondition) SecondaryAbility() abilities.Ability {
 
 // onACChain adds the secondary ability modifier to AC when unarmored.
 func (u *UnarmoredDefenseCondition) onACChain(
-	ctx context.Context,
+	_ context.Context,
 	event *combat.ACChainEvent,
 	c chain.Chain[*combat.ACChainEvent],
 ) (chain.Chain[*combat.ACChainEvent], error) {
@@ -191,19 +219,15 @@ func (u *UnarmoredDefenseCondition) onACChain(
 		return c, nil
 	}
 
-	// Get ability scores from game context
-	registry, err := gamectx.RequireCharacters(ctx)
-	if err != nil {
-		return c, err
-	}
-
-	abilityScores := registry.GetCharacterAbilityScores(u.CharacterID)
-	if abilityScores == nil {
+	// Own sheet, handed over at attach time. No owner means this condition
+	// cannot answer its own question — leave the chain untouched rather than
+	// erroring, which would drop every other AC contributor with it.
+	if u.owner == nil {
 		return c, nil
 	}
 
-	// Get the secondary ability modifier (WIS for Monk, CON for Barbarian)
-	secondaryMod := abilityScores.Modifier(u.SecondaryAbility())
+	// The secondary ability modifier (WIS for Monk, CON for Barbarian)
+	secondaryMod := u.owner.AbilityScores().Modifier(u.SecondaryAbility())
 
 	// Add secondary ability modifier at StageFeatures
 	modifyAC := func(_ context.Context, e *combat.ACChainEvent) (*combat.ACChainEvent, error) {

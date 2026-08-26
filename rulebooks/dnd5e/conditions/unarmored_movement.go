@@ -11,7 +11,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -34,10 +33,30 @@ type UnarmoredMovementCondition struct {
 	CharacterID string
 	MonkLevel   int
 	bus         events.EventBus
+	owner       unarmoredMovementOwner
+}
+
+// unarmoredMovementOwner is the minimal view of this condition's OWN sheet it
+// needs. The sheet answers the shield question directly; the registry this
+// replaced could only see "equipped weapons" and carried a standing TODO
+// admitting it could not see armor at all.
+type unarmoredMovementOwner interface {
+	HasShieldEquipped() bool
 }
 
 // Ensure UnarmoredMovementCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnarmoredMovementCondition)(nil)
+
+// Ensure UnarmoredMovementCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*UnarmoredMovementCondition)(nil)
+
+// SetOwner hands this condition its own character's live sheet, in place of a
+// context-installed registry nothing ever installed.
+func (u *UnarmoredMovementCondition) SetOwner(owner any) {
+	if o, ok := owner.(unarmoredMovementOwner); ok {
+		u.owner = o
+	}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -110,57 +129,34 @@ func (u *UnarmoredMovementCondition) loadJSON(data json.RawMessage) error {
 // - Level 10-13: +20 ft
 // - Level 14-17: +25 ft
 // - Level 18+: +30 ft
-func (u *UnarmoredMovementCondition) GetSpeedBonus(ctx context.Context) (int, error) {
-	// Check if character is wearing armor or shield
-	unarmored, err := u.isUnarmored(ctx)
-	if err != nil {
-		return 0, err
+func (u *UnarmoredMovementCondition) GetSpeedBonus() (bonus int, known bool) {
+	unarmored, known := u.isUnarmored()
+	if !known {
+		return 0, false
 	}
 	if !unarmored {
-		return 0, nil
+		return 0, true
 	}
 
-	// Calculate bonus based on monk level
-	return u.calculateSpeedBonus(), nil
+	return u.calculateSpeedBonus(), true
 }
 
-// isUnarmored checks if the character is not wearing armor or using a shield.
-// Currently only checks for shield via weapons registry.
-// Full armor checking would require extending gamectx.CharacterRegistry.
-func (u *UnarmoredMovementCondition) isUnarmored(ctx context.Context) (bool, error) {
-	// Get character registry to check equipment
-	registry, err := gamectx.RequireCharacters(ctx)
-	if err != nil {
-		return false, err
+// isUnarmored reports whether the character is not using a shield, and whether
+// that could be answered at all.
+//
+// The second return is the whole reason this is not a plain bool: "wearing a
+// shield" and "nobody handed this condition its sheet" call for different
+// answers, and collapsing them would silently deny a monk their speed on
+// missing data rather than on a rule.
+//
+// TODO(rpg-toolkit): armor is not checked, only shields. That predates this
+// change — the registry this replaced could not see armor either, and said so.
+// The sheet can answer it; the accessor has to exist first.
+func (u *UnarmoredMovementCondition) isUnarmored() (unarmored, known bool) {
+	if u.owner == nil {
+		return false, false
 	}
-
-	// Check for shield in equipped weapons
-	weapons := registry.GetCharacterWeapons(u.CharacterID)
-	if weapons == nil {
-		// No weapons data, assume unarmored
-		return true, nil
-	}
-
-	// Check main hand for shield
-	if mainHand := weapons.MainHand(); mainHand != nil && mainHand.IsShield {
-		return false, nil
-	}
-
-	// Check off hand for shield
-	// Note: OffHand() returns nil if a shield is equipped, so we need to check directly
-	// However, we can't access the private offHand field, so we'll use a workaround
-	// by checking if AllEquipped is empty when we know there's equipment
-	// This is a limitation of the current gamectx API
-
-	// For now, we'll rely on the fact that if either hand has a shield, isUnarmored will be false
-	// A more complete implementation would require:
-	// 1. Adding GetArmor() method to CharacterRegistry
-	// 2. Checking both armor slot and shield slot
-
-	// TODO: When armor tracking is added to gamectx, check for equipped armor here
-	// For now, we assume no armor unless a shield is found
-
-	return true, nil
+	return !u.owner.HasShieldEquipped(), true
 }
 
 // calculateSpeedBonus returns the speed bonus based on monk level

@@ -45,10 +45,45 @@ type RagingCondition struct {
 	DidAttackThisTurn bool
 	subscriptionIDs   []string
 	bus               events.EventBus
+	owner             selfPersisting
+}
+
+// selfPersisting is the write half of an effect's owner handle.
+//
+// A condition that keeps its own turn-scoped memory — was I hit this turn, did
+// I already spend my sneak attack — stores that memory in its own fields, and
+// those fields are serialized as part of its owner's sheet. Nothing else
+// notices when one changes, and resolution.Resolve hands back only
+// participants that report IsDirty, so a condition that updates itself in
+// silence has its update discarded.
+//
+// Until this existed that survived on coincidence: the rogue who spent a sneak
+// attack also paid an action, and paying an action marked the sheet. An
+// interaction whose entire purpose is condition state — ending a turn, ending
+// a fight, taking a rest — has no such coincidence to lean on.
+type selfPersisting interface {
+	MarkDirty()
 }
 
 // Ensure RagingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*RagingCondition)(nil)
+
+// Ensure RagingCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*RagingCondition)(nil)
+
+// SetOwner hands this condition the sheet its upkeep state is persisted on.
+func (r *RagingCondition) SetOwner(owner any) {
+	if o, ok := owner.(selfPersisting); ok {
+		r.owner = o
+	}
+}
+
+// markDirty records that this condition's persisted upkeep state changed.
+func (r *RagingCondition) markDirty() {
+	if r.owner != nil {
+		r.owner.MarkDirty()
+	}
+}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -220,7 +255,11 @@ func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5eEvents.
 	if event.TargetID != r.CharacterID {
 		return nil
 	}
+	if r.WasHitThisTurn {
+		return nil // already recorded this turn; nothing changed
+	}
 	r.WasHitThisTurn = true
+	r.markDirty()
 	return nil
 }
 
@@ -232,6 +271,7 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 
 	// Increment turns active
 	r.TurnsActive++
+	r.markDirty()
 
 	// Check if rage ends due to no combat activity
 	if !r.DidAttackThisTurn && !r.WasHitThisTurn {
@@ -243,7 +283,8 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 		return r.endRage(ctx, "duration_expired")
 	}
 
-	// Reset combat activity flags for next turn
+	// Reset combat activity flags for next turn. Already marked dirty by the
+	// TurnsActive increment above, which changes on every turn end.
 	r.DidAttackThisTurn = false
 	r.WasHitThisTurn = false
 
@@ -458,8 +499,9 @@ func (r *RagingCondition) onPostAttackRoll(
 	event *dnd5eEvents.PostAttackRollEvent,
 	c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
 ) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
-	if event.AttackerID == r.CharacterID {
+	if event.AttackerID == r.CharacterID && !r.DidAttackThisTurn {
 		r.DidAttackThisTurn = true
+		r.markDirty()
 	}
 	return c, nil
 }
