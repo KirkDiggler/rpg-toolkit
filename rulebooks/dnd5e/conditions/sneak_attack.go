@@ -193,12 +193,8 @@ func (s *SneakAttackCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Check sneak attack conditions: advantage OR ally within 5ft of target
-	meetsConditions, err := s.checkSneakAttackConditions(ctx, event)
-	if err != nil {
-		return c, err
-	}
-	if !meetsConditions {
+	// Advantage, OR another enemy of the target adjacent to it.
+	if !s.sneakAttackApplies(ctx, event) {
 		return c, nil
 	}
 
@@ -244,7 +240,7 @@ func (s *SneakAttackCondition) onDamageChain(
 	s.UsedThisTurn = true
 	s.markDirty()
 
-	err = c.Add(combat.StageFeatures, "sneak_attack", modifyDamage)
+	err := c.Add(combat.StageFeatures, "sneak_attack", modifyDamage)
 	if err != nil {
 		return c, rpgerr.Wrap(err, "failed to add sneak attack modifier")
 	}
@@ -252,57 +248,62 @@ func (s *SneakAttackCondition) onDamageChain(
 	return c, nil
 }
 
-// checkSneakAttackConditions checks if sneak attack conditions are met.
-// Returns true if:
-// - Attacker has advantage on the attack roll, OR
-// - An ally (another "character" type entity) is within 5ft of the target
-// Returns an error if room context is required but not available.
-func (s *SneakAttackCondition) checkSneakAttackConditions(
+// sneakAttackReachCells is 5 feet in grid cells, widened to 1.5 so the four
+// diagonals count as adjacent.
+const sneakAttackReachCells = 1.5
+
+// sneakAttackApplies reports whether sneak attack's positional requirement is
+// met: the attacker has advantage, or another enemy OF THE TARGET is within
+// five feet of it.
+//
+// Note whose enemy. RAW is "another enemy of the target is within 5 feet of
+// it" — the relation is measured from the TARGET's point of view, not the
+// attacker's. With two factions those coincide and nobody notices. With three
+// they come apart: a hobgoblin standing beside the duergar you are stabbing is
+// an enemy of your target and enables this, and it is nobody's ally.
+//
+// This used to ask whether the adjacent entity's type was "character", which
+// baked a two-sided world into the rule and got it wrong in both directions —
+// a fellow player counted even when fighting you, and a rival monster never
+// counted at all.
+//
+// Returns a plain bool. A question this cannot answer is not an error: the
+// caller folds this into the damage chain, and an errored fold discards every
+// other damage component along with this one, exactly as an errored AC fold
+// discarded every other AC contributor (rpg-toolkit#1254).
+func (s *SneakAttackCondition) sneakAttackApplies(
 	ctx context.Context,
 	event *dnd5eEvents.DamageChainEvent,
-) (bool, error) {
-	// Condition 1: Has advantage
+) bool {
 	if event.HasAdvantage {
-		return true, nil
+		return true
 	}
 
-	// Condition 2: Ally within 5ft of target
-	// Need Room context to check positions
-	room, err := gamectx.RequireRoom(ctx)
-	if err != nil {
-		return false, err
+	room, ok := gamectx.Room(ctx)
+	if !ok {
+		return false
+	}
+	cast, ok := gamectx.CastOf(ctx)
+	if !ok {
+		return false
 	}
 
-	// Get target position
 	targetPos, found := room.GetEntityPosition(event.TargetID)
 	if !found {
-		return false, nil
+		return false
 	}
 
-	// Query entities within 5ft (1 square = 5ft, use radius 1.5 to include diagonals)
-	entitiesNearTarget := room.GetEntitiesInRange(targetPos, 1.5)
-
-	// Check if any "character" type entity (ally) is near the target
-	for _, entity := range entitiesNearTarget {
-		entityID := entity.GetID()
-
-		// Skip the target itself
-		if entityID == event.TargetID {
+	for _, entity := range room.GetEntitiesInRange(targetPos, sneakAttackReachCells) {
+		id := entity.GetID()
+		if id == event.TargetID || id == event.AttackerID {
 			continue
 		}
-
-		// Skip the attacker (they might be adjacent but don't count as "ally")
-		if entityID == event.AttackerID {
-			continue
-		}
-
-		// Allies are "character" type entities (players/NPCs, not monsters)
-		if entity.GetType() == "character" {
-			return true, nil
+		if hostile, known := cast.IsHostile(event.TargetID, id); known && hostile {
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // ToJSON converts the condition to JSON for persistence

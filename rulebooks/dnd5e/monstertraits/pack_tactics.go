@@ -11,7 +11,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -25,9 +27,11 @@ type PackTacticsData struct {
 // Pack Tactics grants advantage on attack rolls against a creature if at least
 // one of the attacker's allies is within 5 feet of the target and not incapacitated.
 //
-// Note: This is a simplified implementation. The full logic of determining if an ally
-// is adjacent to the target would be handled by the game server using spatial/perception
-// data. This trait simply provides the advantage bonus when applicable.
+// This was a stub until rpg-toolkit#1251. It could not be written before,
+// because a trait had no way to ask who anybody was to anybody else — the
+// registry that would have answered was never installed, and the only other
+// signal available was entity type, which cannot tell one monster faction from
+// another. gamectx.Cast answers it now.
 type packTacticsCondition struct {
 	ownerID string
 	bus     events.EventBus
@@ -110,43 +114,85 @@ func (p *packTacticsCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// onAttackChain grants advantage on attacks when ally is adjacent to target.
+// packTacticsReachCells is 5 feet in grid cells, widened to 1.5 so the four
+// diagonals count as adjacent.
+const packTacticsReachCells = 1.5
+
+// onAttackChain grants advantage when an ally of the attacker is within five
+// feet of the target.
 //
-// Note: This is a placeholder implementation. The full Pack Tactics logic requires:
-// 1. Access to spatial/perception data to know where allies are
-// 2. Checking if any ally (same faction, not incapacitated) is within 5 feet of target
+// Asks IsAllied rather than IsHostile. Those are momentarily each other's
+// complement — both answer "same MemberKind" today — but they are different
+// questions and the rule has to ask the one it means. The moment a third
+// faction can be neutral, "not my enemy" would start counting bystanders as
+// pack-mates.
 //
-// For now, this demonstrates the chain pattern. The actual ally-checking logic
-// would be implemented by the game server before publishing attack events, or this
-// function would need access to a perception/spatial service.
+// A question that cannot be answered leaves the chain untouched. Never an
+// error: this folds into the attack chain, and an errored fold discards every
+// other contribution to that roll along with this one (rpg-toolkit#1254).
 func (p *packTacticsCondition) onAttackChain(
-	_ context.Context,
+	ctx context.Context,
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	// Only process if we're the attacker
 	if event.AttackerID != p.ownerID {
 		return c, nil
 	}
+	if !p.allyAdjacentToTarget(ctx, event) {
+		return c, nil
+	}
 
-	// TODO: In full implementation, check if ally is adjacent to target
-	// For now, this is a no-op that preserves the chain pattern
-	// The game server would determine if Pack Tactics applies before creating the attack
+	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+		e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
+			SourceRef: refs.MonsterTraits.PackTactics(),
+			SourceID:  p.ownerID,
+			Reason:    "Pack Tactics - ally adjacent to target",
+		})
+		return e, nil
+	}
 
-	// Example of how advantage would be granted:
-	// modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
-	// 	e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
-	// 		SourceRef: refs.MonsterTraits.PackTactics(),
-	// 		SourceID:  p.ownerID,
-	// 		Reason:    "Pack Tactics - ally adjacent to target",
-	// 	})
-	// 	return e, nil
-	// }
-	//
-	// err := c.Add(combat.StageFeatures, "pack_tactics", modifyAttack)
-	// if err != nil {
-	// 	return c, rpgerr.Wrapf(err, "error applying pack tactics for owner %s", p.ownerID)
-	// }
+	if err := c.Add(combat.StageFeatures, "pack_tactics", modifyAttack); err != nil {
+		return c, rpgerr.Wrapf(err, "error applying pack tactics for owner %s", p.ownerID)
+	}
 
 	return c, nil
+}
+
+// allyAdjacentToTarget reports whether any ally of this creature stands within
+// five feet of the target.
+//
+// TODO(rpg-toolkit): RAW adds "and isn't incapacitated". That clause cannot be
+// written yet — Incapacitated is one of thirteen standard conditions with no
+// implementation, so there is nothing truthful to test. Deliberately left
+// unenforced rather than approximated by something that happens to be nearby
+// (downed, say), which would be a different rule wearing this one's name.
+func (p *packTacticsCondition) allyAdjacentToTarget(
+	ctx context.Context,
+	event dnd5eEvents.AttackChainEvent,
+) bool {
+	room, ok := gamectx.Room(ctx)
+	if !ok {
+		return false
+	}
+	cast, ok := gamectx.CastOf(ctx)
+	if !ok {
+		return false
+	}
+
+	targetPos, found := room.GetEntityPosition(event.TargetID)
+	if !found {
+		return false
+	}
+
+	for _, entity := range room.GetEntitiesInRange(targetPos, packTacticsReachCells) {
+		id := entity.GetID()
+		if id == event.TargetID || id == p.ownerID {
+			continue
+		}
+		if allied, known := cast.IsAllied(p.ownerID, id); known && allied {
+			return true
+		}
+	}
+
+	return false
 }

@@ -134,6 +134,11 @@ func (s *RogueEncounterSuite) SetupSubTest() {
 
 	s.ctx = context.Background()
 	s.ctx = gamectx.WithRoom(s.ctx, s.room)
+	s.ctx = gamectx.WithCast(s.ctx, &fakeCast{side: map[string]string{
+		s.rogue.GetID():  "party",
+		s.ally.GetID():   "party",
+		s.goblin.GetID(): "goblins",
+	}})
 
 	_ = s.room.PlaceEntity(s.rogue, spatial.Position{X: 2, Y: 2})
 	_ = s.room.PlaceEntity(s.goblin, spatial.Position{X: 3, Y: 2})
