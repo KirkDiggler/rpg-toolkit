@@ -251,6 +251,73 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 		"an armed Dueling-eligible fighter's swing must not depend on a GameContext the session stack never installs")
 }
 
+// unarmoredBarbarian defends with nothing but a sheet.
+//
+// Same DEX 14 as every other fixture, so the baseline is duelAC's 12, and CON
+// 14 so Unarmored Defense has two points to add. The sheet's flat ArmorClass
+// is 16 and inert, exactly as armedFighter's is — if the seam ever reads the
+// stored number instead of folding, these tests report 16 and say so.
+func (s *AttackTestSuite) unarmoredBarbarian(id string) *character.Data {
+	sheet := armedFighter(id)
+	sheet.ClassID = classes.Barbarian
+	sheet.Inventory = nil
+	sheet.EquipmentSlots = character.EquipmentSlots{}
+
+	raw, err := (&conditions.UnarmoredDefenseCondition{
+		CharacterID: id,
+		Type:        conditions.UnarmoredDefenseBarbarian,
+		Source:      "dnd5e:classes:barbarian",
+	}).ToJSON()
+	s.Require().NoError(err)
+	sheet.Conditions = []json.RawMessage{raw}
+
+	return sheet
+}
+
+// TestUnarmoredDefenseDefendsOnTheSessionStack is the number rpg-api receives.
+//
+// This is the last seam between the fix and the game. resolution proves the
+// fold (effective_ac_test.go); this proves the fold survives the verb, because
+// AttackOutput.Against is what crosses the wire and what a player watches on
+// the dock.
+//
+// The rule was inert here for as long as it has existed. Unarmored Defense read
+// gamectx.RequireCharacters, a registry with zero non-test install sites, and
+// returned its error into the AC fold — which Character.EffectiveAC swallows,
+// so the defender silently dropped to 10+DEX and every other AC contributor
+// went with it. Kirk found it by playing the tomb: his barbarian fought at 11
+// instead of 14 (rpg-api#842, rpg-toolkit#1251).
+//
+// No gamectx.WithGameContext is installed anywhere in this test, matching the
+// real session stack — that absence is the point being pinned, the same way it
+// is for Dueling and Protection above.
+func (s *AttackTestSuite) TestUnarmoredDefenseDefendsOnTheSessionStack() {
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(armedFighter("alice"), s.unarmoredBarbarian("bob"))
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(context.Background(), &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	out, err := mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "bob",
+		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
+	})
+	s.Require().NoError(err)
+
+	s.Equal(duelAC+2, out.Against,
+		"Unarmored Defense adds CON(+2) to the 10+DEX every other fixture defends with: "+
+			"14, not duelAC's 12 and not the sheet's inert 16")
+}
+
 // protectionBlob is the persisted Protection fighting style condition.
 func (s *AttackTestSuite) protectionBlob(id string) json.RawMessage {
 	raw, err := (&conditions.FightingStyleProtectionCondition{CharacterID: id}).ToJSON()
