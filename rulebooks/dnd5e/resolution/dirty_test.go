@@ -192,9 +192,18 @@ func (s *DirtyTestSuite) TestAnUntouchedParticipantIsNotReturned() {
 	})
 	s.Require().NoError(err)
 
+	// Assert the positive first. A loop that only says "none of these is the
+	// bystander" passes when the list is EMPTY, which is the state where the
+	// writeback guarantee has actually collapsed — the test would go green on
+	// the worst outcome it could see.
+	returned := make([]string, 0, len(out.DirtyMonsters))
 	for _, m := range out.DirtyMonsters {
-		s.Require().NotEqual(secondWolfID, m.ID,
-			"a participant nothing happened to must not be written back (R3 says pass "+
-				"everyone in; it does not say charge for everyone)")
+		returned = append(returned, m.ID)
 	}
+	s.Require().Contains(returned, wolfID,
+		"the wolf that was hit must come back to be stored — without this the "+
+			"bystander check below proves nothing")
+	s.Require().NotContains(returned, secondWolfID,
+		"a participant nothing happened to must not be written back (R3 says pass "+
+			"everyone in; it does not say charge for everyone)")
 }
