@@ -248,10 +248,6 @@ func (s *SneakAttackCondition) onDamageChain(
 	return c, nil
 }
 
-// sneakAttackReachCells is 5 feet in grid cells, widened to 1.5 so the four
-// diagonals count as adjacent.
-const sneakAttackReachCells = 1.5
-
 // sneakAttackApplies reports whether sneak attack's positional requirement is
 // met: the attacker has advantage, or another enemy OF THE TARGET is within
 // five feet of it.
@@ -293,7 +289,7 @@ func (s *SneakAttackCondition) sneakAttackApplies(
 		return false
 	}
 
-	for _, entity := range room.GetEntitiesInRange(targetPos, sneakAttackReachCells) {
+	for _, entity := range room.GetEntitiesInRange(targetPos, combat.AdjacentCells) {
 		id := entity.GetID()
 		if id == event.TargetID || id == event.AttackerID {
 			continue

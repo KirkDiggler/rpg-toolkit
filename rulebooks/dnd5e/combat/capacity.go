@@ -74,3 +74,20 @@ func IsCapacity(key CapacityType) bool {
 	_, ok := capacities[key]
 	return ok
 }
+
+// AdjacentCells is "within 5 feet" expressed in the units a grid answers in:
+// one cell.
+//
+// Every grid in tools/spatial reports distance in cells — Chebyshev on a square
+// grid (SquareGrid.Distance is max(|dx|,|dy|), so a diagonal neighbour is 1),
+// hex distance on a hex grid, Euclidean cell-widths when gridless — and a cell
+// is 5 feet. Comparing against 1 is therefore the correct reading of the rule
+// rather than an approximation of it.
+//
+// It lives here because three rules had independently written it down and one
+// of them had it wrong: prone said 1.0, while sneak attack said 1.5 "to include
+// diagonals" — a correction the square grid does not need and which reads as
+// 7.5 feet on a gridless room. Two copies that agree are a coincidence waiting
+// to end; this is the constant they should all have been reading
+// (rpg-toolkit#1255 review).
+const AdjacentCells = 1.0

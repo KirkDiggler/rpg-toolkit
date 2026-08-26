@@ -114,10 +114,6 @@ func (p *packTacticsCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// packTacticsReachCells is 5 feet in grid cells, widened to 1.5 so the four
-// diagonals count as adjacent.
-const packTacticsReachCells = 1.5
-
 // onAttackChain grants advantage when an ally of the attacker is within five
 // feet of the target.
 //
@@ -184,7 +180,7 @@ func (p *packTacticsCondition) allyAdjacentToTarget(
 		return false
 	}
 
-	for _, entity := range room.GetEntitiesInRange(targetPos, packTacticsReachCells) {
+	for _, entity := range room.GetEntitiesInRange(targetPos, combat.AdjacentCells) {
 		id := entity.GetID()
 		if id == event.TargetID || id == p.ownerID {
 			continue

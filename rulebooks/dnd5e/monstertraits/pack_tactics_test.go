@@ -39,7 +39,8 @@ func (s *PackTacticsTestSuite) SetupTest() {
 	s.packTactics = nil // Will be created in each test
 }
 
-// place puts a body on the grid and registers which side it is on.
+// place puts a body on the grid. Which side it is on is a separate matter,
+// declared to the fakeCast in each test.
 func (s *PackTacticsTestSuite) place(id string, x, y float64) *fakeEntity {
 	s.T().Helper()
 	e := &fakeEntity{id: id}
@@ -148,6 +149,46 @@ func (s *PackTacticsTestSuite) TestPackTacticsWithoutACastLeavesTheChainAlone() 
 	result := s.swing(ctx, "pc-1")
 	s.Empty(result.AdvantageSources)
 	s.Equal(4, result.AttackBonus, "the rest of the attack must survive an unanswerable question")
+}
+
+// TestPackTacticsReachIsFiveFeetOnAGridlessRoom pins the bug the #1255 review
+// caught: the radius used to be 1.5 cells "to include diagonals".
+//
+// A square grid does not need that correction — SquareGrid.Distance is
+// max(|dx|,|dy|), so a diagonal neighbour is already 1 — and nothing on a
+// square grid ever lands between 1 and 1.5, which is why it looked harmless.
+// A gridless room measures Euclidean, where 1.5 cells is 7.5 feet, and a
+// packmate standing seven feet away would have granted advantage.
+func (s *PackTacticsTestSuite) TestPackTacticsReachIsFiveFeetOnAGridlessRoom() {
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "open-field",
+		Type: "wilderness",
+		Grid: spatial.NewGridlessRoom(spatial.GridlessConfig{Width: 20, Height: 20}),
+	})
+	for id, pos := range map[string]spatial.Position{
+		"wolf-1": {X: 1, Y: 1},
+		"pc-1":   {X: 5, Y: 5},
+		"wolf-2": {X: 5, Y: 6.4}, // 1.4 cells from the target — seven feet
+	} {
+		s.Require().NoError(room.PlaceEntity(&fakeEntity{id: id}, pos))
+	}
+
+	ctx := gamectx.WithRoom(s.ctx, room)
+	ctx = gamectx.WithCast(ctx, &fakeCast{side: map[string]string{
+		"wolf-1": "wolves", "wolf-2": "wolves", "pc-1": "party",
+	}})
+
+	s.packTactics = PackTactics("wolf-1").(*packTacticsCondition)
+	s.Require().NoError(s.packTactics.Apply(ctx, s.bus))
+
+	result := s.swing(ctx, "pc-1")
+	s.Empty(result.AdvantageSources, "a packmate seven feet away is not within five feet")
+
+	// And one that genuinely is adjacent still counts, so this is a boundary
+	// fix rather than the rule being switched off.
+	s.Require().NoError(room.RemoveEntity("wolf-2"))
+	s.Require().NoError(room.PlaceEntity(&fakeEntity{id: "wolf-2"}, spatial.Position{X: 5, Y: 6}))
+	s.Require().Len(s.swing(ctx, "pc-1").AdvantageSources, 1)
 }
 
 func (s *PackTacticsTestSuite) TestPackTacticsIgnoresOtherAttackers() {
