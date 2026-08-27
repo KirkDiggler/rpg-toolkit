@@ -287,8 +287,8 @@ func (RefusingStriker) Strike(context.Context, *Encounter, MemberID, MemberID, c
 
 // BoundaryKind names a temporal boundary a clock verb crossed.
 //
-// TWO KINDS, because two are what anything publishes. play/clock also reports
-// RoundStarted, and this composition translates it to nothing — losing nothing,
+// THREE KINDS, because three are what anything publishes. play/clock also
+// reports RoundStarted, and this composition translates it to nothing — losing nothing,
 // because clock.Turn.End increments the round BEFORE stamping the TurnStarted
 // that follows a wrap. The round advancing is therefore already visible as a
 // changed Round on the next turn boundary, and a second way to say it would be
@@ -308,6 +308,16 @@ const (
 	TurnStarted BoundaryKind = "turn_started"
 	// TurnEnded marks Subject's turn ending.
 	TurnEnded BoundaryKind = "turn_ended"
+
+	// CombatEnded marks the fight Subject was in ending, by either cause.
+	//
+	// ONE PER MEMBER, unlike the turn kinds which are about one member by
+	// nature. A fight ends once and ends for everybody it held, so this kind
+	// arrives as a run of boundaries rather than a single one — see
+	// combatEndBoundaries for why the fan-out lives in this module, and
+	// dnd5e/events.CombatEndEvent for why a subject-less ending would expire
+	// nothing at all.
+	CombatEnded BoundaryKind = "combat_ended"
 )
 
 // Boundary is one temporal boundary this composition crossed, in this
@@ -321,11 +331,19 @@ type Boundary struct {
 	// Kind is which boundary was crossed.
 	Kind BoundaryKind
 
-	// Subject is whose turn it is about. Never empty: both kinds are about
-	// somebody.
+	// Subject is who it is about. Never empty: every kind is about somebody,
+	// including [CombatEnded] — a fight ends for each of its members, and the
+	// only subscriber that exists asks whether an ending is its own.
 	Subject MemberID
 
-	// Round is which round of the fight the boundary belongs to.
+	// Round is which round of the fight the boundary belongs to — for
+	// [CombatEnded], the round it ended on.
+	//
+	// A COORDINATE, and one that does not survive its fight: play/clock's
+	// Turn.Dissolve sets the round back to zero, because round numbers are
+	// per-fight and there is no session-global counter. Anything storing a
+	// round to compare against a later one is only sound if it cannot outlive
+	// the clock the number came from — which is what CombatEnded is for.
 	Round int
 }
 
