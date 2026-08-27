@@ -1428,3 +1428,36 @@ func (s *RagingConditionTestSuite) TestARoundlessTurnEndDoesNotREADAsAClockReset
 	s.Nil(removed(), "a turn end with no round is unevaluable, not a reset")
 	s.Equal(3, raging.RoundActivated, "and it does not disturb the anchor")
 }
+
+// TestANegativeRoundNeverBecomesTheAnchor pins the `event.Round > 0` guard on
+// the initial anchor, which mutation testing showed was otherwise asserting
+// nothing.
+//
+// Zero cannot distinguish it: assigning 0 to a field that is already 0 is a
+// no-op, so removing the guard passes every test above. Only a NEGATIVE round
+// tells the two apart -- and it matters, because a negative anchor poisons the
+// arithmetic rather than merely disabling it. Anchored at -5, a later round 1
+// computes 1 - (-5) == 6 and the rage silently runs six rounds' worth of
+// duration it never earned, while the backwards-check (1 < -5) never fires.
+//
+// play/clock cannot produce one. TurnEndEvent.Round is a plain int with no
+// validation, so nothing between a publisher and here says it may not.
+func (s *RagingConditionTestSuite) TestANegativeRoundNeverBecomesTheAnchor() {
+	raging, removed := s.ragingWithRemovalWatch()
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: -5,
+	}))
+	s.Require().Zero(raging.RoundActivated, "a negative round is not a round to measure from")
+	s.Require().True(raging.SawTurnEnd, "though it does spend the grace, like any other turn end")
+
+	// And the rage recovers: the next real round anchors it honestly.
+	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 2,
+	}))
+	s.Require().Nil(removed())
+	s.Equal(2, raging.RoundActivated)
+	s.Equal(1, raging.TurnsActive, "and its first counted turn is that one, not a number derived from -5")
+}
