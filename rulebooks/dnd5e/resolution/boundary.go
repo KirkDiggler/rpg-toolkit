@@ -114,6 +114,18 @@ var boundaryTopics = map[encounter.BoundaryKind]func(
 			Round:     b.Round,
 		})
 	},
+	// No Round on the way out, and that is not an omission. A fight ending is
+	// not a coordinate in a clock that no longer exists — play/clock's
+	// Turn.Dissolve sets the round back to zero because round numbers are
+	// per-fight. Boundary.Round still says WHICH round it ended on, for the
+	// record; there is simply nothing on the event for it to become, and
+	// inventing a field so the mapping looks symmetrical would be inventing a
+	// number subscribers could compare against a later fight's.
+	encounter.CombatEnded: func(ctx context.Context, bus events.EventBus, b encounter.Boundary) error {
+		return dnd5eEvents.CombatEndTopic.On(bus).Publish(ctx, dnd5eEvents.CombatEndEvent{
+			SubjectID: string(b.Subject),
+		})
+	},
 }
 
 type boundaryMachine struct {
