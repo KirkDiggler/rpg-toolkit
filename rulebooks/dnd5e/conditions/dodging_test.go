@@ -232,8 +232,8 @@ func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 
 		// Publish turn start for this character
 		err = dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			CharacterID: s.characterID,
-			Round:       1,
+			SubjectID: s.characterID,
+			Round:     1,
 		})
 		s.Require().NoError(err)
 
@@ -252,8 +252,8 @@ func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 
 		// Publish turn start for different character
 		err = dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			CharacterID: "other-character",
-			Round:       1,
+			SubjectID: "other-character",
+			Round:     1,
 		})
 		s.Require().NoError(err)
 

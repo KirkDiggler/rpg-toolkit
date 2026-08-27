@@ -580,16 +580,31 @@ func (p Position) Equals(other Position) bool {
 // Simple Events (pub/sub notifications)
 // =============================================================================
 
-// TurnStartEvent is published when a character's turn begins
+// TurnStartEvent is published when a turn begins.
+//
+// SubjectID is whoever is taking that turn — a player's character or a monster
+// the composition drove. It is named for what it denotes rather than for what
+// happens to be plugged into it today: monsters take turns, and a fight's
+// unplayed members have their turns ended several at a time inside a single
+// EndTurn (rpg-toolkit#1162), so a field called CharacterID here would be the
+// same character-shaped mistake that got gamectx.CharacterRegistry deleted —
+// "character-shaped, so it could not describe a monster at all".
+//
+// Round is which round of the fight this turn belongs to. It is a COORDINATE,
+// not a trigger: 5e measures durations in rounds but resolves every one of them
+// on a turn ("until the start of your next turn", "at the end of its turn"),
+// which is why there is no round topic beside this one and no publisher wanting
+// one. See rpg-project's ideas/session-combat/clock/design.md §3.1.
 type TurnStartEvent struct {
-	CharacterID string // ID of the character whose turn is starting
-	Round       int    // Current round number
+	SubjectID string // whoever is taking the turn that is starting
+	Round     int    // which round of the fight it belongs to
 }
 
-// TurnEndEvent is published when a character's turn ends
+// TurnEndEvent is published when a turn ends. See [TurnStartEvent] for what
+// SubjectID and Round mean and why they are named that way.
 type TurnEndEvent struct {
-	CharacterID string // ID of the character whose turn is ending
-	Round       int    // Current round number
+	SubjectID string // whoever is taking the turn that is ending
+	Round     int    // which round of the fight it belongs to
 }
 
 // DamageReceivedEvent is published when a character takes damage

@@ -163,7 +163,7 @@ func (d *DisengagingCondition) onMovementChain(
 // onTurnEnd handles turn end events to remove this condition when the character's turn ends.
 func (d *DisengagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
 	// Only remove on this character's turn end
-	if event.CharacterID != d.CharacterID {
+	if event.SubjectID != d.CharacterID {
 		return nil
 	}
 

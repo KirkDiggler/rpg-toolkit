@@ -147,8 +147,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionSustainsOnMissedAttack() {
 	// End the barbarian's turn.
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "barbarian-1",
-		Round:       1,
+		SubjectID: "barbarian-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -212,8 +212,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 	// Publish turn end event without any combat activity
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "barbarian-1",
-		Round:       1,
+		SubjectID: "barbarian-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -254,8 +254,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	// Publish turn end event
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "barbarian-1",
-		Round:       1,
+		SubjectID: "barbarian-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -301,8 +301,8 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 
 		// End turn
 		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-			CharacterID: "barbarian-1",
-			Round:       round,
+			SubjectID: "barbarian-1",
+			Round:     round,
 		})
 		s.Require().NoError(err)
 

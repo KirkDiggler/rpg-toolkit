@@ -265,7 +265,7 @@ func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5eEvents.
 
 // onTurnEnd handles turn end events to check if rage continues
 func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
-	if event.CharacterID != r.CharacterID {
+	if event.SubjectID != r.CharacterID {
 		return nil
 	}
 

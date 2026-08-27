@@ -183,7 +183,7 @@ func (r *RecklessAttackCondition) onAttackChain(
 
 // onTurnStart removes the condition when the barbarian's turn starts.
 func (r *RecklessAttackCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.CharacterID != r.CharacterID {
+	if event.SubjectID != r.CharacterID {
 		return nil
 	}
 

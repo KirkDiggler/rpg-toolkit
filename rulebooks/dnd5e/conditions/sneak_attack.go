@@ -163,7 +163,7 @@ func (s *SneakAttackCondition) onTurnEnd(_ context.Context, event dnd5eEvents.Tu
 	// flag every rogue dirty at the end of every turn they did not sneak
 	// attack, and a turn boundary is about to become an interaction that
 	// runs for every participant.
-	if event.CharacterID == s.CharacterID && s.UsedThisTurn {
+	if event.SubjectID == s.CharacterID && s.UsedThisTurn {
 		s.UsedThisTurn = false
 		s.markDirty()
 	}

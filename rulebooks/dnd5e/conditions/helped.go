@@ -187,7 +187,7 @@ func (h *HelpedCondition) onAttackChain(
 // is removed at the start of the HELPER's next turn (not the ally's —
 // PHB p.192: "before the start of your [the helper's] next turn").
 func (h *HelpedCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.CharacterID != h.HelperID {
+	if event.SubjectID != h.HelperID {
 		return nil
 	}
 
