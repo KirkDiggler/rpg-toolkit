@@ -87,6 +87,20 @@ type ActivateOutput struct {
 // [ErrBadCost]'s, for the same reason — one wants a different verb, the other
 // wants a developer.
 //
+// [ErrCannotActivate] is NOT reachable through this verb today, and saying so
+// is better than implying a path. [Manager.Afford] consults the same gates the
+// sheet does, so an unavailable ability is refused as a stale selector before
+// the sheet is ever asked, and the one combat ability with a precondition
+// beyond the economy is Help — whose missing target the activation machine
+// catches first, as [ErrBadActivation].
+//
+// The arm exists anyway, and not as a placeholder. The sheet's contract
+// genuinely answers refusals as a successful call carrying a false, so a verb
+// that ASSUMED the two gates always agree would report a refusal as a
+// successful activation that did nothing. This is that assumption declined.
+// Pinned in translate_internal_test.go, where the reachability is written down
+// beside it.
+//
 // # Nothing is charged here
 //
 // [resolution.Input.Cost] stays nil, deliberately. The ability spends its own
