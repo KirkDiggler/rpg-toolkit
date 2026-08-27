@@ -105,7 +105,17 @@ type ActivateOutput struct {
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoDeclarationID,
 // ErrNoSession, ErrNoEncounter, ErrNoMember, ErrNotACharacter, ErrNotYourTurn,
-// ErrDowned, ErrStaleDeclaration, ErrCannotActivate, or ErrBadActivation.
+// ErrDowned, ErrStaleDeclaration, ErrNoSheet, ErrNoCharacter, ErrBadCharacter,
+// ErrBadRepository, ErrBadCost, ErrCannotActivate, ErrBadActivation,
+// ErrInvalidWorld, ErrClosed, or ErrSaveFailed with a populated report.
+//
+// The two the list gains over an obvious reading, since both come from paths
+// this verb walks rather than from the ones it names: ErrBadCharacter covers a
+// cast member whose sheet will not load — everyone is a participant here (see
+// above), so ANY unreadable member refuses the whole activation rather than
+// just the actor's own — and ErrInvalidWorld covers a machine that returned an
+// outcome this verb has no case for, which is a provider defect this fails
+// closed on rather than reporting as a successful activation that did nothing.
 func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("activate: %w", ErrNilInput)

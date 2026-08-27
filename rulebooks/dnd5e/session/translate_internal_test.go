@@ -116,6 +116,29 @@ func TestTranslateResolutionLetsNoResolutionSentinelThrough(t *testing.T) {
 		// split one layer further out (rpg-toolkit#1097).
 		{"a price nobody could be charged", resolution.ErrBadCost, ErrBadCost},
 		{"a payer this cast cannot charge", resolution.ErrNoPayer, ErrBadCost},
+		// The activation pair, split for the economy pair's reason and worth
+		// the same note about what each can actually be reached by.
+		//
+		// ErrBadActivation IS reachable from a caller: Manager.Activate passes
+		// Target through, and naming one for an ability that takes none is
+		// refused at the machine's preflight. Driven end to end by
+		// TestAMalformedActivationIsNotAnAbilityRefusing.
+		{"an activation nobody could run", resolution.ErrBadActivation, ErrBadActivation},
+		// ErrActivationRefused is NOT reachable through Manager.Activate today,
+		// and saying so is better than implying a path. Afford consults the same
+		// gates ActivateAbility does, so an unavailable ability is refused as a
+		// stale selector before the sheet is ever asked; the one combat ability
+		// with a precondition beyond the economy is Help, whose missing target
+		// the machine catches first as ErrBadActivation.
+		//
+		// The arm exists anyway, and not as a placeholder. The sheet's contract
+		// genuinely answers refusals as (output{Success:false}, nil), so a verb
+		// that assumed the two gates always agree would report a refusal as a
+		// SUCCESSFUL activation that did nothing. This is that assumption
+		// declined, and it is tested here rather than through a scenario
+		// because inventing one would mean building a disagreement that does
+		// not exist.
+		{"an ability that said no", resolution.ErrActivationRefused, ErrCannotActivate},
 		// Defects here rather than in the call, and unreachable for that
 		// reason.
 		{"no input at all", resolution.ErrNilInput, ErrNilInput},

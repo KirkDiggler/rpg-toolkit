@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -301,4 +302,34 @@ func TestAMonsterCannotActivate(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, session.ErrNotACharacter)
+}
+
+// THE OTHER HALF OF THE SPLIT. ErrCannotActivate is an ability saying no;
+// this is a call nobody could run, and the two must not be reachable from one
+// another — a developer chasing ErrBadActivation must never be handed a
+// barbarian who is simply out of rages, and a player must never be told their
+// rage is malformed.
+//
+// Rage takes no target. Naming one is refused rather than ignored, because a
+// target quietly dropped is a client that believes it aimed somewhere and a
+// server that knows better.
+func TestAMalformedActivationIsNotAnAbilityRefusing(t *testing.T) {
+	alice, bob := ragingBarbarian("alice", 2), ragingBarbarian("bob", 2)
+	mgr, _ := aTwoPlayerFight(t, alice, bob)
+
+	ctx := context.Background()
+	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	active := string(turn.Active)
+
+	id := activationSelector(t, mgr, active, "dnd5e:features:rage")
+	_, err = mgr.Activate(ctx, &session.ActivateInput{
+		Session: "sess", Member: active, DeclarationID: id, Target: "bob",
+	})
+
+	require.ErrorIs(t, err, session.ErrBadActivation)
+	require.NotErrorIs(t, err, session.ErrCannotActivate)
+	// And the inner module's sentinel does not ride along — the translation
+	// uses %v, so a host never sees resolution's vocabulary.
+	require.NotErrorIs(t, err, resolution.ErrBadActivation)
 }
