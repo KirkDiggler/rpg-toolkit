@@ -60,34 +60,47 @@ func (probeOutcome) isOutcome() {}
 func walledWorld(t *testing.T) encounter.EncounterData {
 	t.Helper()
 
-	var seam []spatial.Boundary
+	// SAME-ROW PAIRS ONLY. This loop used to author the diagonals too — "every
+	// edge, diagonals included, because spatial registers a boundary between
+	// ANY two adjacent cells and a same-row wall has a hole at each corner
+	// (rpg-toolkit#1106's lesson)". That lesson was learned on a SQUARE grid,
+	// where (9,y) and (10,y±1) touch at a corner. The product runs on pointy-top
+	// hex exclusively, where they do not touch at all, and the composition now
+	// refuses a wall between cells that are not adjacent — by name, which is how
+	// this surfaced rather than compiling into a wall that blocks nothing.
+	//
+	// Whether a hex seam needs its own hole-free pattern is the composition's
+	// question and not this package's. What this fixture owes the tests below is
+	// one authored wall on the installed map, at the pair they probe.
+	var seam []encounter.WallInput
 	for y := 0; y < 8; y++ {
-		for _, dy := range []int{-1, 0, 1} {
-			to := y + dy
-			if to < 0 || to >= 8 {
-				continue
-			}
-			seam = append(seam, spatial.Boundary{
-				From:              spatial.Position{X: 9, Y: float64(y)},
-				To:                spatial.Position{X: 10, Y: float64(to)},
-				BlocksMovement:    true,
-				BlocksLineOfSight: true,
-			})
-		}
+		seam = append(seam, encounter.WallInput{Boundary: spatial.Boundary{
+			From:              spatial.Position{X: 9, Y: float64(y)},
+			To:                spatial.Position{X: 10, Y: float64(y)},
+			BlocksMovement:    true,
+			BlocksLineOfSight: true,
+		}})
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms: []encounter.RoomInput{
-				{ID: "room-1", Width: 10, Height: 8, Boundaries: seam},
-				{ID: "room-2", Width: 10, Height: 8, Origin: spatial.Position{X: 10}},
+			Canvas: hexCanvas(),
+			// Two regions on ONE canvas in ONE absolute frame: room-1 owns
+			// columns 0-9, room-2 owns 10-19. They used to be Rooms with
+			// their own Origins and their own local coordinates; the seam
+			// between them is now a wall on the field rather than a boundary
+			// belonging to a room, which is the same fact said by the layer
+			// that actually owns it.
+			Regions: []encounter.RegionInput{
+				rectRegion("room-1", 0, 0, 10, 8),
+				rectRegion("room-2", 10, 0, 10, 8),
 			},
+			Walls: seam,
 		},
 		Members: []encounter.MemberInput{
-			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 9, Y: 4}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 4}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -141,8 +154,16 @@ func TestTheInstalledWorldKnowsAboutWallsThisPackageNeverBuilt(t *testing.T) {
 	probe := runProbe(t, walledWorld(t), []Participant{{Character: probeSheet(heroID)}})
 	require.True(t, probe.found, "a world was installed")
 
-	west := spatial.Position{X: 9, Y: 4}
-	east := spatial.Position{X: 10, Y: 4}
+	// ASKED IN THE ROOM'S OWN FRAME, not in the authored one. These used to be
+	// the literal authored cells, and they were the same numbers: rooms were
+	// local and square. The canvas is one absolute pointy-top hex field now, so
+	// what is authored as offset column 9 of row 4 is not the position the room
+	// reports back — and a test that hardcodes one frame while the composition
+	// speaks the other passes or fails for reasons that have nothing to do with
+	// walls. Compare rpg-toolkit#1150.
+	west, ok := probe.room.GetEntityPosition(heroID)
+	require.True(t, ok, "the hero is on the installed world")
+	east := spatial.Position{X: west.X + 1, Y: west.Y}
 
 	require.Equal(t, float64(1), probe.room.GetGrid().Distance(west, east),
 		"the two cells are adjacent, so nothing but a wall can separate them")
@@ -178,12 +199,20 @@ func TestAWorldIsInstalledForEveryInteraction(t *testing.T) {
 func TestTheInstalledWorldRefusesToBeWrittenTo(t *testing.T) {
 	probe := runProbe(t, walledWorld(t), []Participant{{Character: probeSheet(heroID)}})
 
+	before, ok := probe.room.GetEntityPosition(heroID)
+	require.True(t, ok)
+
 	err := probe.room.MoveEntity(heroID, spatial.Position{X: 1, Y: 1})
 	require.ErrorIs(t, err, encounter.ErrReadOnly)
 
-	at, ok := probe.room.GetEntityPosition(heroID)
+	// UNCHANGED, not merely "not where we aimed". The authored cell used to be
+	// written here as a literal; reading it back first says the same thing
+	// without asserting which coordinate frame the room answers in, and says
+	// the stronger half — that the refusal left the position alone — rather
+	// than only that the move did not land.
+	after, ok := probe.room.GetEntityPosition(heroID)
 	require.True(t, ok)
-	require.Equal(t, spatial.Position{X: 9, Y: 4}, at, "and the hero did not move")
+	require.Equal(t, before, after, "and the hero did not move")
 }
 
 // TestNoCodePathProducesARoomlessInteraction is the STRUCTURAL half, and it is

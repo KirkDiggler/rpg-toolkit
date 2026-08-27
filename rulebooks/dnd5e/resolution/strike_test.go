@@ -59,14 +59,14 @@ func (r *actionRoller) RollN(_ context.Context, count, sides int) ([]int, error)
 
 func actionWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room", Width: 30, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 30, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: heroID, Kind: encounter.KindPlayer, Room: "room", Position: spatial.Position{X: targetX, Y: 1}},
+			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: targetX, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -107,14 +107,14 @@ func resolveActionDefinitionAgainstMonster(
 	t *testing.T, definition combatActions.Definition, roller dice.Roller,
 ) (*Output, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room", Width: 10, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: secondWolfID, Kind: encounter.KindMonster, Room: "room", Position: spatial.Position{X: 2, Y: 1}},
+			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: secondWolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})

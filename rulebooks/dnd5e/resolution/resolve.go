@@ -302,6 +302,16 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		// was never built for; RefusingStriker names that loudly rather
 		// than fabricating a hit.
 		Striker: encounter.RefusingStriker{},
+		// And a construction-only Announcer, for the same reason and by the
+		// same argument. It READS like recursion — an Announcer's job is to
+		// call this package, and here this package is handing one over — and
+		// it is not: no clock advances inside a resolution. Boundaries are
+		// crossed by EndTurn and form, and the sentence directly above is
+		// that this package calls neither. A boundary reaching here would
+		// mean this reconstruction is being asked to do something it was
+		// never built for; RefusingAnnouncer names that loudly rather than
+		// swallowing it.
+		Announcer: encounter.RefusingAnnouncer{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)

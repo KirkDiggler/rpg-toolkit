@@ -97,6 +97,19 @@ func (noAttacksExpected) Strike(
 	return errors.New("resolution fixtures: no scene here ever attacks")
 }
 
+// quietAnnouncer hears every boundary and does nothing with it.
+//
+// UNLIKE noAttacksExpected this really is called — any pair of fixtures
+// standing in contact forms a bubble at first light, and forming one starts
+// round 1 and somebody's turn. It succeeds silently because these fixtures are
+// about what Resolve does with a world, not about what a turn boundary means
+// to a condition; boundary_test.go uses a recording one.
+type quietAnnouncer struct{}
+
+func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}
+
 // unlimitedSight is the range these fixtures hand out. Further than the longest
 // sightline any field in this package draws, because light is not this
 // package's subject — and stated as a number rather than left to a default,
