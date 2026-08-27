@@ -42,7 +42,7 @@ func deftCharacter(id string, dex int) *character.Data {
 // and alice standing at its west cell, one step from crossing it.
 func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),

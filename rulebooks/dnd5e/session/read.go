@@ -334,7 +334,8 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 // and View directly) that never drives a turn, so a driven turn landing here
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
-	enc, _, _, err := m.loadWorldWithBaseline(ctx, data, encounter.RefusingStriker{}, &sightSeam{})
+	enc, _, _, err := m.loadWorldWithBaseline(
+		ctx, data, encounter.RefusingStriker{}, encounter.RefusingAnnouncer{}, &sightSeam{})
 	return enc, err
 }
 
@@ -361,7 +362,8 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // member's own Join asks Sight about it; a read verb's caller passes a
 // throwaway that nothing reaches again.
 func (m *Manager) loadWorldWithBaseline(
-	ctx context.Context, data *SessionData, striker encounter.Striker, sight *sightSeam,
+	ctx context.Context, data *SessionData,
+	striker encounter.Striker, announcer encounter.Announcer, sight *sightSeam,
 ) (*encounter.Encounter, uint64, encounter.Standing, error) {
 	encID := data.Encounter
 
@@ -390,6 +392,12 @@ func (m *Manager) loadWorldWithBaseline(
 		// scope, or RefusingStriker{} for a read that must never drive a
 		// turn. See [Manager.loadWorld] and [Manager.openForWrite].
 		Striker: striker,
+		// And the same, one capability over. A read verb cannot advance a
+		// clock, so a boundary announced on a read path is a bug rather
+		// than an event — RefusingAnnouncer says so at the point of
+		// failure, where a silently-succeeding no-op would be
+		// indistinguishable from the boundary that never got published.
+		Announcer: announcer,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot

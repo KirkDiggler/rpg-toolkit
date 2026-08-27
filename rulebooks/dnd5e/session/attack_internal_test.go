@@ -108,7 +108,7 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 		},
 	}
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{},
 		Sight:      aggregateRecordEveryoneSees{},
 		Standing:   aggregateRecordEveryoneStanding{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{},
@@ -315,7 +315,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
@@ -381,7 +381,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
 		Members: []encounter.MemberInput{
@@ -500,7 +500,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	require.NoError(t, err)
 
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Sight: aggregateRecordEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
 		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
 		Field:     encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
 		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
