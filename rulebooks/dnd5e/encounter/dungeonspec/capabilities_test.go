@@ -81,3 +81,12 @@ func (noAttacksExpected) Strike(
 ) error {
 	return errors.New("dungeonspec_test: no scene here ever attacks")
 }
+
+// quietAnnouncer hears every boundary and does nothing. These scenes are about
+// geometry, not about what a turn boundary means to a condition — but unlike
+// noAttacksExpected it really is called, so it succeeds rather than refusing.
+type quietAnnouncer struct{}
+
+func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}

@@ -535,6 +535,13 @@ type SetupInput struct {
 	// [Striker]'s own doc.
 	Striker Striker
 
+	// Announcer publishes the temporal boundaries a clock advance crossed —
+	// a turn ending, a fight forming. REQUIRED, refused at construction
+	// (ErrNoAnnouncer). There is no default, and the reason it cannot have
+	// one is in [Announcer]'s own doc: a silent Announcer and a missing one
+	// look identical, and one of them is the bug.
+	Announcer Announcer
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.

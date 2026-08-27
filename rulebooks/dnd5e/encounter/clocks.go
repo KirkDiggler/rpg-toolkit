@@ -458,7 +458,67 @@ func (e *Encounter) driveOneMonsterTurn(
 	if berr != nil {
 		return 0, false, fmt.Errorf("append beat: %w", berr)
 	}
+
+	// ANNOUNCE HERE, not from the caller once the whole drive is done. This
+	// call has just ended one driven member's turn and the clock has already
+	// named the next; the loop above will drive that member NEXT. Announcing
+	// from out there would publish this member's turn-end and the next one's
+	// turn-start after the next one had already swung — the exact ordering
+	// [Announcer]'s own doc exists to explain.
+	if aerr := e.announce(out.Milestones); aerr != nil {
+		return 0, false, fmt.Errorf("announce: %w", aerr)
+	}
 	return seq, out.RoundWrapped, nil
+}
+
+// boundariesFrom translates the leaf's milestones into this composition's own
+// vocabulary, keeping the two kinds anything publishes.
+//
+// clock.RoundStarted translates to NOTHING, and loses nothing: clock.Turn.End
+// increments the round before stamping the TurnStarted that follows a wrap, so
+// the round advancing is already visible as a changed Round on the next turn
+// boundary. See [BoundaryKind] for why there is no round boundary at all.
+//
+// Anything else the leaf may grow — Ticked, MemberJoined, Merged — is skipped
+// rather than mapped, so a new milestone kind cannot silently become a boundary
+// nobody decided to publish.
+func boundariesFrom(ms []clock.Milestone) []Boundary {
+	crossed := make([]Boundary, 0, len(ms))
+	for _, m := range ms {
+		var kind BoundaryKind
+		switch m.Kind {
+		case clock.TurnStarted:
+			kind = TurnStarted
+		case clock.TurnEnded:
+			kind = TurnEnded
+		default:
+			continue
+		}
+		crossed = append(crossed, Boundary{
+			Kind:    kind,
+			Subject: MemberID(m.Subject),
+			Round:   m.Round,
+		})
+	}
+	return crossed
+}
+
+// announce hands one clock advance's boundaries to the Announcer capability,
+// at the moment they were crossed.
+//
+// context.Background() for the reason Strike below already uses it: this
+// module's verbs take no context.Context, and threading one through every clock
+// verb to reach here is a wider change than this slice asks for.
+//
+// An empty set is not announced. That is not an optimization — an advance that
+// crossed nothing is not an event, and calling a capability to tell it nothing
+// happened is how a capability learns to ignore its argument.
+func (e *Encounter) announce(ms []clock.Milestone) error {
+	crossed := boundariesFrom(ms)
+	if len(crossed) == 0 {
+		return nil
+	}
+	return e.announcer.Announce(context.Background(), e, crossed)
 }
 
 // executeTurnIntent runs one Act call's answer and reports whether this
@@ -927,7 +987,8 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 		}
 	}
 	bubble := &clock.Turn{}
-	if _, serr := bubble.SetOrder(&clock.SetOrderInput{Order: in.Order}); serr != nil {
+	formed, serr := bubble.SetOrder(&clock.SetOrderInput{Order: in.Order})
+	if serr != nil {
 		return nil, fmt.Errorf("form set order: %w", serr)
 	}
 	e.bubbles = append(e.bubbles, bubble)
@@ -945,6 +1006,16 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	seq, err := e.appendClockBeat(beat, in.Order...)
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
+	}
+
+	// The first turn of the fight starts here, and until this line nothing
+	// ever said so: SetOrder has always returned TurnStarted for whoever won
+	// initiative, and this composition has always dropped it. A condition
+	// carried into the fight — one applied while exploring — would wait for a
+	// turn-start that only arrived after somebody else's turn had already
+	// ended.
+	if aerr := e.announce(formed.Milestones); aerr != nil {
+		return nil, fmt.Errorf("form announce: %w", aerr)
 	}
 
 	// If initiative rolled an unplayed member first, nobody has reached this
@@ -1211,6 +1282,12 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	}, order...)
 	if err != nil {
 		return nil, fmt.Errorf("end turn append beat: %w", err)
+	}
+
+	// The caller's own turn end, announced BEFORE any unplayed member is
+	// driven below — same ordering rule as driveOneMonsterTurn's.
+	if aerr := e.announce(out.Milestones); aerr != nil {
+		return nil, fmt.Errorf("end turn %q: announce: %w", in.Member, aerr)
 	}
 
 	next := MemberID(out.Next)

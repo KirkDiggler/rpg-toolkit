@@ -285,6 +285,112 @@ func (RefusingStriker) Strike(context.Context, *Encounter, MemberID, MemberID, c
 	return ErrRefusingStriker
 }
 
+// BoundaryKind names a temporal boundary a clock verb crossed.
+//
+// TWO KINDS, because two are what anything publishes. play/clock also reports
+// RoundStarted, and this composition translates it to nothing — losing nothing,
+// because clock.Turn.End increments the round BEFORE stamping the TurnStarted
+// that follows a wrap. The round advancing is therefore already visible as a
+// changed Round on the next turn boundary, and a second way to say it would be
+// a second way to disagree.
+//
+// Nor is a round boundary merely unpublished-for-now. 5e measures durations in
+// rounds and resolves every one of them on a turn — "until the start of your
+// next turn", "at the end of its turn" — so the round is a COORDINATE rather
+// than a trigger. Kirk ruled it 2026-08-27: "rage is from my turn to my turn.
+// If I am last in initiative I keep rage until the end of my next turn. what
+// would need round end?" Nothing did. The day something does, the kind arrives
+// with its publisher and its first subscriber together.
+type BoundaryKind string
+
+const (
+	// TurnStarted marks Subject's turn beginning.
+	TurnStarted BoundaryKind = "turn_started"
+	// TurnEnded marks Subject's turn ending.
+	TurnEnded BoundaryKind = "turn_ended"
+)
+
+// Boundary is one temporal boundary this composition crossed, in this
+// composition's own vocabulary.
+//
+// A translation of [clock.Milestone] rather than a re-export of it, for the
+// reason every other clock report here is translated: the leaf speaks
+// core.EntityID and this module speaks MemberID, and a host must never come to
+// name an inner type.
+type Boundary struct {
+	// Kind is which boundary was crossed.
+	Kind BoundaryKind
+
+	// Subject is whose turn it is about. Never empty: both kinds are about
+	// somebody.
+	Subject MemberID
+
+	// Round is which round of the fight the boundary belongs to.
+	Round int
+}
+
+// Announcer publishes the temporal boundaries a clock advance crossed.
+//
+// SUPPLIED, NEVER DEFAULTED (rpg-toolkit#1033), like every other
+// rulebook-facing capability on this module and for the same reason: this
+// module's go.mod cannot import the rulebook (C1), so it cannot know what a
+// turn boundary MEANS to a condition. What it can do is notice the boundary —
+// which is its job, since "the composition is the first layer allowed to have
+// an opinion about the game" — and hand it to something that can.
+//
+// # Why a capability rather than a return value
+//
+// This is the whole reason this type exists instead of another output field.
+//
+// [Encounter.EndTurn] drives every consecutive unplayed member forward inside
+// one call (rpg-toolkit#1162), and those members ATTACK during the drive,
+// through [Striker]. Boundaries merely returned and published afterwards would
+// put every driven member's turn-start AFTER that member had already swung.
+//
+// Today that is invisible: nothing on a monster's sheet subscribes to a turn
+// boundary. Which is exactly the shape of defect worth refusing to build —
+// correct by coincidence, silent the moment the coincidence ends. So the
+// boundary is announced AT the crossing, before the member the clock landed on
+// acts, and an implementation gets the live *Encounter for the same reason
+// Striker does.
+//
+// # Required, never defaulted
+//
+// A nil Announcer is not "boundaries are switched off". It is "every condition
+// scoped to a turn silently never expires" — which is the bug this capability
+// was introduced to fix, and it went unnoticed for months precisely because
+// nothing said anything. Refused at the door, exactly as [TurnDriver],
+// [Striker], Standing and Sight are.
+type Announcer interface {
+	// Announce publishes the boundaries one clock advance crossed, in the
+	// causal order given, before the next member acts.
+	//
+	// An error here is an ANNOUNCER MALFUNCTION and aborts the caller's
+	// whole verb, exactly as [TurnDriver.Act] and [Striker.Strike] errors
+	// do. Nothing is persisted until the caller's own commit, so a failure
+	// costs the retry and nothing else.
+	Announce(ctx context.Context, enc *Encounter, crossed []Boundary) error
+}
+
+// RefusingAnnouncer is an Announcer for construction-only worlds — the exact
+// twin of [RefusingStriker], and for the identical reason.
+//
+// A clock cannot advance on a world built only to be inspected: rpg-api's
+// placement probes, a template's acceptance test, resolution's own reconstructed
+// snapshot (which never calls EndTurn or form, so no boundary can be crossed
+// inside one). Reaching this is therefore a HOST BUG.
+//
+// NOT A NO-OP, and the difference is the whole point. A silently-succeeding
+// default would be indistinguishable from a boundary nobody published — which
+// is the defect this capability exists to end. The test for an absent value is
+// not "is it harmless" but "does it say what the author meant".
+type RefusingAnnouncer struct{}
+
+// Announce always fails with ErrRefusingAnnouncer.
+func (RefusingAnnouncer) Announce(context.Context, *Encounter, []Boundary) error {
+	return ErrRefusingAnnouncer
+}
+
 // Striker resolves and records one member's attack against another.
 //
 // SUPPLIED, NEVER DEFAULTED (rpg-toolkit#1033), for the same reason every

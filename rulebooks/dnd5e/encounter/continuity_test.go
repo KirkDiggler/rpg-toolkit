@@ -129,7 +129,7 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 	}
 	pursuit := &pursuitDecider{doorways: doorwaysFrom(field), target: alice}
 	return &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 5}},
@@ -346,7 +346,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	beforeReload := alicePath[len(alicePath)-1]
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 			goblin: &pursuitDecider{doorways: doorwaysFrom(vaultChaseHexSetup().Field), target: alice},
 		}})
 	require.NoError(t, err, "the suspended chase crosses a process boundary")
