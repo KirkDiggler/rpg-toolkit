@@ -150,16 +150,32 @@ func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() 
 // This is also the case Kirk used to rule out round boundaries: rage runs from
 // your turn to your turn, so ending ALICE's turn is what decides it, whatever
 // the round is doing.
+//
+// TWO turn ends, since rpg-project#295 part 2: the turn a rage STARTED is not
+// checked (Kirk's ruling — "I cannot imagine activating rage would end at the
+// end of the turn activated"). The intermediate assertion is what makes this a
+// test of the grace rather than of a count, and it is the acceptance for that
+// ruling from the far end of the chain: the grace has to survive the trip
+// through resolution, the announcer seam, and the persisted sheet, not just
+// the condition's own unit test.
 func (s *ClockBoundaryTestSuite) TestRageLapsesWhenTheBarbarianDidNothing() {
 	mgr := s.fight(s.raw(&conditions.RagingCondition{
 		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
 	}))
 	s.Require().Len(s.storedConditions("alice"), 1, "alice starts raging")
 
+	// Alice's own turn ends: graced, and anchored to the round the clock says.
+	s.endTurn(mgr, "alice")
+	s.Require().Len(s.storedConditions("alice"), 1,
+		"the turn a rage started is not checked — it survives its own activation turn ending")
+
+	// Round the order back to alice so she gets a SECOND turn end, this one
+	// checked. Still no attack and no damage taken.
+	s.endTurn(mgr, "bob")
 	s.endTurn(mgr, "alice")
 
 	s.Empty(s.storedConditions("alice"),
-		"a barbarian who neither swung nor was hit stops raging when their turn ends")
+		"a barbarian who neither swung nor was hit stops raging when their NEXT turn ends")
 }
 
 // TestOneAdvanceReachesEveryoneAndEachDecidesForItself.
