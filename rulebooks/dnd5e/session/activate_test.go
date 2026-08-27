@@ -191,6 +191,18 @@ func aTwoPlayerFight(
 	t *testing.T, alice, bob *character.Data,
 ) (*session.Manager, *fakeCharacters) {
 	t.Helper()
+	// (1,1) and (5,5) — deliberately far apart, so the default fixture has
+	// nobody within Help's reach. aTwoPlayerFightAt places them on purpose.
+	return aTwoPlayerFightAt(t, alice, spatial.Position{X: 1, Y: 1}, bob, spatial.Position{X: 5, Y: 5})
+}
+
+// aTwoPlayerFightAt is aTwoPlayerFight with the seating chosen, for the tests
+// that are about who is standing next to whom.
+func aTwoPlayerFightAt(
+	t *testing.T, alice *character.Data, aliceAt spatial.Position,
+	bob *character.Data, bobAt spatial.Position,
+) (*session.Manager, *fakeCharacters) {
+	t.Helper()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	chars := newFakeCharacters(alice, bob)
 	mgr, err := session.NewManager(&session.Config{
@@ -209,9 +221,9 @@ func aTwoPlayerFight(
 		},
 		Members: []encounter.MemberInput{
 			{ID: encounter.MemberID(alice.ID), Kind: encounter.KindPlayer,
-				Position: spatial.Position{X: 1, Y: 1}},
+				Position: aliceAt},
 			{ID: encounter.MemberID(bob.ID), Kind: encounter.KindPlayer,
-				Position: spatial.Position{X: 5, Y: 5}},
+				Position: bobAt},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,

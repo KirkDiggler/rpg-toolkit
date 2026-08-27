@@ -195,10 +195,35 @@ func (m *Manager) compileOffersFor(
 	// blocker and a compiled offer, scaled by a verb that compiles more than
 	// one: a member whose sheet will not load has no abilities to enumerate,
 	// so there is nothing to emit N of.
+	// The roster, its positions, and this member's own sighted holdings —
+	// hoisted here because BOTH Attack and Activate need them now: Attack for
+	// its candidate universe, Help for its own (rpg-project#300).
+	//
+	// GUARDED, so EndTurn stays clock-only. That property is documented and
+	// tested ("EndTurn remains clock-only when that actor is downed or
+	// unreadable"), and reading a roster it does not need would quietly end it.
+	var (
+		roster    []encounter.Member
+		positions map[string]spatial.Position
+		holdings  []intel.Holding
+	)
+	if requested[VerbAttack] || requested[VerbActivate] {
+		var err error
+		if roster, err = enc.Members(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		}
+		positions = rosterPositions(roster)
+		if holdings, err = enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)}); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		}
+	}
+
 	var activations []compiledOffer
 	if requested[VerbActivate] {
 		var err error
-		activations, err = m.buildActivationOffers(sessionID, member, sheet)
+		activations, err = m.buildActivationOffers(
+			enc, m.standingFor(ctx, data), sessionID, member, sheet, roster, positions, holdings,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -262,17 +287,6 @@ func (m *Manager) compileOffersFor(
 	if !budgetOK {
 		sf := shortfallForPay(sheet, definition.Cost, slot)
 		budgetWhy = &sf
-	}
-
-	roster, err := enc.Members()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
-	}
-	positions := rosterPositions(roster)
-
-	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
 	}
 
 	candidates, err := m.targetPreflight(enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet())
