@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -71,6 +72,30 @@ func TestBoundarySuite(t *testing.T) { suite.Run(t, new(BoundaryTestSuite)) }
 func (s *BoundaryTestSuite) adjacentFight(
 	driver encounter.TurnDriver, striker encounter.Striker, announcer encounter.Announcer,
 ) (*encounter.Encounter, error) {
+	return s.fightWithMonsters(driver, striker, announcer, goblin)
+}
+
+// fightWithMonsters puts alice and every named monster shoulder to shoulder in
+// one room, in the order given — so TWO monsters after alice really are driven
+// back to back inside a single EndTurn, which is the case
+// driveOneMonsterTurn's own announce exists for.
+func (s *BoundaryTestSuite) fightWithMonsters(
+	driver encounter.TurnDriver, striker encounter.Striker, announcer encounter.Announcer,
+	monsters ...core.EntityID,
+) (*encounter.Encounter, error) {
+	members := []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+	}
+	for i, id := range monsters {
+		members = append(members, encounter.MemberInput{
+			ID: id, Kind: encounter.KindMonster,
+			Position:  spatial.Position{X: float64(3 + i), Y: 2},
+			SpeedFeet: 30, Targeting: "closest",
+			Actions: []encounter.ActionView{
+				{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+			},
+		})
+	}
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: driver, Striker: striker, Announcer: announcer,
@@ -78,16 +103,7 @@ func (s *BoundaryTestSuite) adjacentFight(
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
-		Members: []encounter.MemberInput{
-			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
-			{
-				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2},
-				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{
-					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-				},
-			},
-		},
+		Members: members,
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 	})
 }
@@ -121,6 +137,67 @@ func (s *BoundaryTestSuite) TestADrivenMemberHearsItsTurnStartBeforeItSwings() {
 	s.Require().NotEqual(-1, swung, "the goblin never swung: %v", j.entries)
 	s.Less(started, swung,
 		"a driven member must hear its turn start BEFORE it acts, not after: %v", j.entries)
+}
+
+// TestTheSECONDDrivenMemberAlsoHearsItsTurnStartFirst is the test the one
+// above could not be.
+//
+// With a single monster after alice, that monster's turn-start is announced by
+// ALICE's EndTurn — driveOneMonsterTurn's own announce never enters into it. A
+// mutant that deleted the announce from the drive loop entirely left the test
+// above passing, which is the whole reason this one exists.
+//
+// Two consecutive unplayed members is the real case: gob1's turn ends and
+// gob2's begins INSIDE the drive loop, with nobody's EndTurn in between. If
+// that crossing is not announced where it happens, gob2 swings before anything
+// says its turn started.
+func (s *BoundaryTestSuite) TestTheSECONDDrivenMemberAlsoHearsItsTurnStartFirst() {
+	j := &journal{}
+	striker := journalStriker{j: j, inner: &scriptedStriker{kind: encounter.OutcomeMissed}}
+	enc, err := s.fightWithMonsters(
+		killEveryoneStandingDriver{action: testMeleeAction}, striker, journalAnnouncer{j: j},
+		goblin, bob)
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	// WHO is driven second is initiative's business, not this test's, so it
+	// is derived rather than assumed — the observed order here is
+	// [alice, bob, goblin], and hardcoding that would make this test about
+	// orderAsGiven instead of about announcement.
+	var drivenOrder []string
+	for _, e := range j.entries {
+		if id, ok := strings.CutPrefix(e, "turn_started:"); ok {
+			id = strings.Split(id, ":")[0]
+			if id != string(alice) {
+				drivenOrder = append(drivenOrder, id)
+			}
+		}
+	}
+	s.Require().Len(drivenOrder, 2, "both monsters must have had a turn announced: %v", j.entries)
+	first, second := drivenOrder[0], drivenOrder[1]
+
+	// The crossing INSIDE the drive loop: the first driven member's turn ends
+	// and the second's begins with nobody's EndTurn in between. This is the
+	// pair that driveOneMonsterTurn's own announce is responsible for, and the
+	// pair a mutant that deletes it destroys.
+	s.Less(j.indexOf("turn_ended:"+first+":r1"), j.indexOf("turn_started:"+second+":r1"),
+		"boundaries arrive in causal order: %v", j.entries)
+	s.Less(j.indexOf("turn_started:"+second+":r1"), j.indexOf("strike:"+second),
+		"the second driven member must hear its turn start BEFORE it acts: %v", j.entries)
+
+	// And the invariant in general: nobody swings before their turn is
+	// announced, whoever they are.
+	for i, e := range j.entries {
+		id, ok := strings.CutPrefix(e, "strike:")
+		if !ok {
+			continue
+		}
+		started := j.indexOf("turn_started:" + id + ":r1")
+		s.Require().NotEqual(-1, started, "%s swung with no turn-start at all: %v", id, j.entries)
+		s.Less(started, i, "%s swung before its turn was announced: %v", id, j.entries)
+	}
 }
 
 // TestAFightsFirstTurnIsAnnounced closes a gap that existed for as long as
