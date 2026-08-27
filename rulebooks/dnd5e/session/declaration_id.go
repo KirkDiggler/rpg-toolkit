@@ -24,6 +24,10 @@ const (
 	declarationPrefix    = "v1."
 	variantMoveSealed    = "session:move:v1"
 	variantEndTurnSealed = "session:end-turn:v1"
+	// variantActivatePrefix namespaces an activation's variant so an ability
+	// ref can never collide with a sealed string, however the ref catalog
+	// grows.
+	variantActivatePrefix = "session:activate:v1:"
 )
 
 // errDeclarationIDCollision is returned internally when two non-identical
@@ -49,10 +53,23 @@ type declarationIDInput struct {
 	// rejected.
 	Slot Slot
 	// Attack is the complete validated [combatActions.Definition] for
-	// [VerbAttack]. It must be non-nil for [VerbAttack] and nil for
-	// [VerbMove]/[VerbEndTurn], whose selectors use sealed variant strings
+	// [VerbAttack]. It must be non-nil for [VerbAttack] and nil for every
+	// other verb, whose selectors use sealed or ref-derived variant strings
 	// instead.
 	Attack *combatActions.Definition
+
+	// Ability is the ref of the thing being activated, for [VerbActivate]. It
+	// must be non-empty for [VerbActivate] and empty for every other verb.
+	//
+	// IT IS THE WHOLE VARIANT, and that is a deliberate difference from
+	// Attack's. Attack serializes its complete priced definition, so a price
+	// change makes the selector change and a stale offer is caught by the ID
+	// alone. An activation's price lives on the ability rather than in a
+	// compiled definition, so this selector survives a price change that
+	// Attack's would not — which is safe because nothing alters an ability's
+	// ActionType mid-turn, and Afford regenerates the offer before execution
+	// either way (rpg-project#301 §4).
+	Ability string
 }
 
 // selectorDocument is the canonical JSON value a declaration ID is derived
@@ -89,7 +106,7 @@ func declarationID(input declarationIDInput) (string, error) {
 		return "", err
 	}
 
-	variant, err := selectorVariant(input.Verb, input.Attack)
+	variant, err := selectorVariant(input.Verb, input.Attack, input.Ability)
 	if err != nil {
 		return "", err
 	}
@@ -142,7 +159,7 @@ func canonicalSelectorVariant(raw json.RawMessage) (json.RawMessage, error) {
 // under the current version without an explicit bump.
 func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 	switch verb {
-	case VerbAttack, VerbMove, VerbEndTurn:
+	case VerbAttack, VerbMove, VerbEndTurn, VerbActivate:
 	default:
 		return fmt.Errorf("unsupported declaration verb %q", verb)
 	}
@@ -155,19 +172,35 @@ func validateDeclarationVerbSlot(verb Verb, slot Slot) error {
 }
 
 // selectorVariant builds the variant JSON value for one verb. Move and EndTurn
-// use sealed strings; Attack serializes the complete validated definition.
-func selectorVariant(verb Verb, attack *combatActions.Definition) (json.RawMessage, error) {
+// use sealed strings, Activate a namespaced ability ref, and Attack serializes
+// the complete validated definition.
+func selectorVariant(
+	verb Verb, attack *combatActions.Definition, ability string,
+) (json.RawMessage, error) {
+	// Cross-verb material is refused rather than ignored. A verb carrying the
+	// other verb's material is a producer defect, and a selector that silently
+	// dropped it would hash to something that looks legitimate.
+	if verb != VerbAttack && attack != nil {
+		return nil, fmt.Errorf("%s declaration must not carry an attack definition", verb)
+	}
+	if verb != VerbActivate && ability != "" {
+		return nil, fmt.Errorf("%s declaration must not carry an ability ref", verb)
+	}
+
 	switch verb {
 	case VerbMove:
-		if attack != nil {
-			return nil, fmt.Errorf("move declaration must not carry an attack definition")
-		}
 		return json.RawMessage(`"` + variantMoveSealed + `"`), nil
 	case VerbEndTurn:
-		if attack != nil {
-			return nil, fmt.Errorf("end-turn declaration must not carry an attack definition")
-		}
 		return json.RawMessage(`"` + variantEndTurnSealed + `"`), nil
+	case VerbActivate:
+		if ability == "" {
+			return nil, fmt.Errorf("activate declaration requires an ability ref")
+		}
+		raw, err := json.Marshal(variantActivatePrefix + ability)
+		if err != nil {
+			return nil, fmt.Errorf("activation ref marshal: %w", err)
+		}
+		return json.RawMessage(raw), nil
 	case VerbAttack:
 		if attack == nil {
 			return nil, fmt.Errorf("attack declaration requires an attack definition")

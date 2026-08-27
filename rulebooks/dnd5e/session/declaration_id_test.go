@@ -380,9 +380,9 @@ func TestCompiledOfferCollisionDuplicateIDFailClosed(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, leftID, rightID, "RFC8785 canonical selectors are equal")
-		leftVariant, err := selectorVariant(VerbAttack, &left)
+		leftVariant, err := selectorVariant(VerbAttack, &left, "")
 		require.NoError(t, err)
-		rightVariant, err := selectorVariant(VerbAttack, &right)
+		rightVariant, err := selectorVariant(VerbAttack, &right, "")
 		require.NoError(t, err)
 		require.NotEqual(t, string(leftVariant), string(rightVariant),
 			"the fixture must reach equality with different raw object order")

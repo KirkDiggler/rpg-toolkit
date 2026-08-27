@@ -216,33 +216,42 @@ func TestAffordReturnsOneAttackOfferWithEveryLiveCandidate(t *testing.T) {
 // of a full compiled turn: Attack, Move and EndTurn each carry a selector
 // ID and the fixed target kind, Move carries Remaining, EndTurn carries no
 // candidates, and the declarations arrive in the documented verb order.
-func TestAffordProjectsThreeCompiledDeclarationsOnTheTurnClock(t *testing.T) {
+func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 	mgr, _, _, _, _ := candidateFight(t)
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 
 	require.Equal(t, session.ClockTurn, out.Clock)
-	require.Len(t, out.Declarations, 3, "Attack, Move and EndTurn")
+	// Attack, Move, EndTurn, and the FIVE activations a plain fighter carries:
+	// Dash, Disengage, Dodge, Help, Hide. The sixth combat ability every
+	// character has is Attack, and it is deliberately not among them —
+	// swinging is VerbAttack's job, and offering the Attack action separately
+	// would put two buttons on the panel for one thing.
+	require.Len(t, out.Declarations, 8)
 
-	// Documented verb order: Attack, Move, EndTurn.
+	// Documented verb order: Attack, Move, Activate, EndTurn — and EndTurn is
+	// no longer at a fixed index, which is why every lookup below is BY VERB.
+	// Positional indexing was only ever valid while each verb compiled exactly
+	// one offer, and it read as a statement about order when it was really a
+	// statement about count.
 	require.Equal(t, session.VerbAttack, out.Declarations[0].Verb)
 	require.Equal(t, session.VerbMove, out.Declarations[1].Verb)
-	require.Equal(t, session.VerbEndTurn, out.Declarations[2].Verb)
+	require.Equal(t, session.VerbEndTurn, out.Declarations[len(out.Declarations)-1].Verb)
 
-	attack := out.Declarations[0]
+	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.NotEmpty(t, attack.ID, "compiled Attack has a selector ID")
 	require.NotNil(t, attack.Attack)
 	require.Equal(t, session.TargetMember, attack.TargetKind)
 	require.NotEmpty(t, attack.Candidates)
 
-	move := out.Declarations[1]
+	move := requireSingleDeclaration(t, out.Declarations, session.VerbMove)
 	require.NotEmpty(t, move.ID, "compiled Move has a selector ID")
 	require.Nil(t, move.Attack)
 	require.Equal(t, session.TargetPath, move.TargetKind)
 	require.NotNil(t, move.Remaining, "Move carries remaining feet")
 	require.Empty(t, move.Candidates, "Move carries no candidates")
 
-	endTurn := out.Declarations[2]
+	endTurn := requireSingleDeclaration(t, out.Declarations, session.VerbEndTurn)
 	require.NotEmpty(t, endTurn.ID, "compiled EndTurn has a selector ID")
 	require.Nil(t, endTurn.Attack)
 	require.Equal(t, session.TargetNone, endTurn.TargetKind)
@@ -253,7 +262,7 @@ func TestAffordProjectsThreeCompiledDeclarationsOnTheTurnClock(t *testing.T) {
 // TestNotYourTurnBlocksAllThreeVerbs pins the cheap, sheet-free blocker:
 // every verb is blocked with the same NotYourTurn reason, an empty selector
 // ID, no AttackRef, an empty candidate slice, and the fixed target kind.
-func TestNotYourTurnBlocksAllThreeVerbs(t *testing.T) {
+func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{
@@ -289,7 +298,10 @@ func TestNotYourTurnBlocksAllThreeVerbs(t *testing.T) {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	require.Len(t, out.Declarations, 3)
+	// One blocker per verb. Activate is ONE verb however many things it could
+	// compile when the sheet is readable: a member who cannot act cannot
+	// activate any of them, and the reason is identical for every one.
+	require.Len(t, out.Declarations, 4)
 
 	for _, d := range out.Declarations {
 		require.False(t, d.Available)
@@ -313,7 +325,7 @@ func TestNotYourTurnBlocksAllThreeVerbs(t *testing.T) {
 // fight first (alice active on the turn clock) and only then dropping her
 // stored sheet to zero hit points, so the encounter's clock still names her
 // active while the session's sheet-based standing seam reads her downed.
-func TestDownedBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
+func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	alice := armedFighter("alice")
 	mgr, _, _, characters := aFight(t, alice, []int{1, 1})
 
@@ -325,7 +337,10 @@ func TestDownedBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	require.Len(t, out.Declarations, 3)
+	// One blocker per verb. Activate is ONE verb however many things it could
+	// compile when the sheet is readable: a member who cannot act cannot
+	// activate any of them, and the reason is identical for every one.
+	require.Len(t, out.Declarations, 4)
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
@@ -398,7 +413,12 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	require.Len(t, out.Declarations, 3)
+	// Attack, Move, EndTurn, and the FIVE activations a plain fighter carries:
+	// Dash, Disengage, Dodge, Help, Hide. The sixth combat ability every
+	// character has is Attack, and it is deliberately not among them —
+	// swinging is VerbAttack's job, and offering the Attack action separately
+	// would put two buttons on the panel for one thing.
+	require.Len(t, out.Declarations, 8)
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
@@ -425,7 +445,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 // repository does not hold blocks Attack and Move — there is no sheet to
 // compile a swing or read movement from — while EndTurn, governed by the
 // clock alone, stays compiled with a selector ID.
-func TestUnreadableCharacterBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
+func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	// alice is armed and in the repository; bob is a player member the
 	// repository does not hold, so loading bob's sheet fails with
 	// ErrNoCharacter once bob is the active member.
@@ -471,7 +491,10 @@ func TestUnreadableCharacterBlocksAttackAndMoveButNotEndTurn(t *testing.T) {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	require.Len(t, out.Declarations, 3)
+	// One blocker per verb. Activate is ONE verb however many things it could
+	// compile when the sheet is readable: a member who cannot act cannot
+	// activate any of them, and the reason is identical for every one.
+	require.Len(t, out.Declarations, 4)
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)

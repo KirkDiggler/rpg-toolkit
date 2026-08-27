@@ -44,6 +44,22 @@ const (
 	// see [Manager.Afford]'s own doc.
 	VerbMove Verb = "move"
 
+	// VerbActivate is [Manager.Activate]: using a combat ability or feature the
+	// character already carries — Dodge, Dash, Disengage, Help, Hide, Rage,
+	// Second Wind.
+	//
+	// THE FIRST VERB THAT COMPILES MORE THAN ONE OFFER. Attack, Move and
+	// EndTurn each compile exactly one, so "one offer per verb" and "one
+	// declaration per verb" were the same sentence for three verbs and nothing
+	// said which one a reader relied on. A level-1 barbarian gets seven of
+	// these, and [Slot] is what separates Rage on the bonus shape from Dodge
+	// on the action one — they cannot share a row, because Slot is per
+	// declaration.
+	//
+	// Its selector variant is the ability's own ref rather than a sealed
+	// string: one verb, seven offers, and the ref is what tells them apart.
+	VerbActivate Verb = "activate"
+
 	// VerbEndTurn is [Manager.EndTurn]: ending the member's turn. Like Move it
 	// carries no authored action definition, so its declaration selector uses a
 	// sealed variant string rather than a serialized [actions.Definition].
@@ -149,6 +165,13 @@ type Declaration struct {
 	// which still carries its compiled ref — and absent for Move, EndTurn,
 	// and early per-verb blockers.
 	Attack *AttackRef `json:"attack,omitempty"`
+
+	// Ability is the sole public activation identity, present on every
+	// compiled Activate declaration — including one disabled by a budget,
+	// charge or feature gate — and absent for Attack, Move, EndTurn and every
+	// early per-verb blocker. The same presence law [Declaration.Attack]
+	// keeps, for the same reason.
+	Ability *AbilityRef `json:"ability,omitempty"`
 
 	// TargetKind is fixed for every compiled or blocked declaration: Attack
 	// -> TargetMember, Move -> TargetPath, EndTurn -> TargetNone. A blocker
@@ -287,6 +310,11 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{
 			blockedDeclaration(VerbAttack, TargetMember, notYourTurn),
 			blockedDeclaration(VerbMove, TargetPath, notYourTurn),
+			// ONE Activate row, not seven. A member whose turn it is not
+			// cannot activate ANY of them, and the reason is identical for
+			// every one — so seven rows would be seven copies of "not your
+			// turn" and a panel that looks like it has choices.
+			blockedDeclaration(VerbActivate, TargetNone, notYourTurn),
 			blockedDeclaration(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
 	}
@@ -299,7 +327,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	actor := m.loadActorSheet(ctx, in.Member)
 	offers, err := m.compileOffersFor(
 		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbEndTurn,
+		VerbAttack, VerbMove, VerbActivate, VerbEndTurn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)

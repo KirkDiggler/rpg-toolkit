@@ -1040,6 +1040,23 @@ const (
 // dropped on the floor since the first swing (rpg-toolkit#866). Carried on a
 // compiled Declaration, AttackOutput, and the Struck/Missed event bodies, so
 // selection and outcome name the same authored attack for every witness.
+type AbilityRef struct {
+	// Ref is the ability's full core.Ref.String() —
+	// "dnd5e:combat_abilities:dodge", "dnd5e:features:rage". An OPEN set, so a
+	// string, for [AttackRef.Ref]'s reason: the catalog grows without this
+	// type changing.
+	//
+	// It is also the SELECTOR MATERIAL for an Activate declaration. One verb
+	// compiles seven offers and this is what makes their IDs differ, the way a
+	// serialized definition makes two Attack offers differ.
+	Ref string `json:"ref"`
+
+	// Name is the ability's own display name — "Dodge", "Rage", "Second
+	// Wind". Authored by the ability, never derived from the ref by a reader.
+	Name string `json:"name"`
+}
+
+// AttackRef is the sole public identity of a compiled Attack.
 type AttackRef struct {
 	// Ref is the full catalog ref the attack compiled from —
 	// "dnd5e:weapons:longsword", "dnd5e:weapons:unarmed-strike". An OPEN set,
@@ -1101,6 +1118,17 @@ const (
 	// answer remains ShortfallNoTargetInReach when no candidate is in reach
 	// at all (rpg-toolkit#1010, rpg-project#249 §6).
 	ShortfallTargetOutOfReach ShortfallReason = "target_out_of_reach"
+
+	// ShortfallUnavailable is the ability's own precondition refusing: already
+	// raging, already at full hit points. NOT a budget — nothing ran out,
+	// Currency is empty, and waiting will not help the way it does for
+	// [ShortfallNoBudget].
+	//
+	// This is the seam's word for what features.Feature.CanActivate refuses,
+	// which is a different question from what the economy refuses. A projection
+	// that collapsed the two would tell a raging barbarian to come back next
+	// turn.
+	ShortfallUnavailable ShortfallReason = "unavailable"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out
@@ -1123,6 +1151,15 @@ const (
 	// CurrencyMovement is feet, not a count — Needed and Left on a MOVEMENT
 	// shortfall are in feet, at the server's five per cell.
 	CurrencyMovement Currency = "movement"
+
+	// CurrencyCharges is charges of a named feature resource — rage uses,
+	// Second Wind uses, ki points. A count, like the three slots.
+	//
+	// WHICH resource is named only in Text. This seam does not enumerate the
+	// rulebook's resource keys, for the reason [Verb] does not enumerate the
+	// rulebook's actions: the catalog grows without this contract changing,
+	// and a client that branched on a specific pool would be deriving rules.
+	CurrencyCharges Currency = "charges"
 )
 
 // Shortfall is the structured reason a declaration cannot be paid for.
