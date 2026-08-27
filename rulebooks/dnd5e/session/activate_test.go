@@ -287,3 +287,18 @@ func TestActivatingOnSomebodyElsesTurnIsRefused(t *testing.T) {
 	require.ErrorIs(t, err, session.ErrNotYourTurn)
 	require.NotContains(t, storedConditionRefs(t, chars, idle), "dnd5e:conditions:raging")
 }
+
+// A monster is IN the roster and still cannot declare: its abilities are
+// driven by behaviour rather than chosen, and its economy belongs to whoever
+// runs its turn rather than to its sheet. The refusal names that rather than
+// saying the member is missing, because the member is right there.
+func TestAMonsterCannotActivate(t *testing.T) {
+	alice := ragingBarbarian("alice", 2)
+	mgr, _, _, _ := aFight(t, alice, []int{1, 1})
+
+	_, err := mgr.Activate(context.Background(), &session.ActivateInput{
+		Session: "sess", Member: "skeleton", DeclarationID: "v1.any-selector-at-all",
+	})
+
+	require.ErrorIs(t, err, session.ErrNotACharacter)
+}
