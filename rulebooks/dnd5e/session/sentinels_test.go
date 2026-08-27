@@ -128,6 +128,16 @@ var resolutionSentinels = map[string]error{
 	"resolution.ErrCannotPay": resolution.ErrCannotPay,
 	"resolution.ErrBadCost":   resolution.ErrBadCost,
 	"resolution.ErrNoPayer":   resolution.ErrNoPayer,
+	// The activation pair, added with the verb that made them reachable
+	// (rpg-project#300), and split the same way for the same reason:
+	// ErrActivationRefused is what a PLAYER produces (no charges, already
+	// raging) and ErrBadActivation is wiring being wrong. Both are listed
+	// because an unlisted sentinel reaching a host is a leak whether or not
+	// anybody wrote an arm — Manager.Activate translates both to this
+	// package's own vocabulary with %v, so neither is in the chain a host
+	// sees.
+	"resolution.ErrActivationRefused": resolution.ErrActivationRefused,
+	"resolution.ErrBadActivation":     resolution.ErrBadActivation,
 }
 
 // refSentinels is core's identifier vocabulary — what a malformed ref is
@@ -206,6 +216,8 @@ var sessionSentinels = map[string]error{
 	"ErrNoSheet":          session.ErrNoSheet,
 	"ErrDowned":           session.ErrDowned,
 	"ErrBadAttack":        session.ErrBadAttack,
+	"ErrCannotActivate":   session.ErrCannotActivate,
+	"ErrBadActivation":    session.ErrBadActivation,
 	"ErrOutOfReach":       session.ErrOutOfReach,
 	"ErrCannotAfford":     session.ErrCannotAfford,
 	"ErrBadCost":          session.ErrBadCost,

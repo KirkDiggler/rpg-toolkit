@@ -422,6 +422,14 @@ func translateResolution(err error) error {
 		// Reporting it as "out of actions" would send whoever debugs it to a
 		// player's sheet to look for a bug that is in the code.
 		return fmt.Errorf("%w: %v", ErrBadCost, err)
+	case errors.Is(err, resolution.ErrActivationRefused):
+		// The activation half of the same split, and the same argument: an
+		// ability that said no is a fact about the game, and its own words
+		// ("no rage uses remaining") ride along so the refusal is something a
+		// client can say out loud.
+		return fmt.Errorf("%w: %v", ErrCannotActivate, err)
+	case errors.Is(err, resolution.ErrBadActivation):
+		return fmt.Errorf("%w: %v", ErrBadActivation, err)
 	case errors.Is(err, resolution.ErrOutOfRange):
 		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
