@@ -90,6 +90,14 @@ var (
 	// ErrBadAction indicates an invalid or unsupported shared action definition.
 	ErrBadAction = errors.New("resolution: invalid action definition")
 
+	// ErrBadBoundary indicates a boundary set this package cannot announce:
+	// empty, a crossing with no subject, or a kind this build has no topic
+	// for. The last is the load-bearing one — the composition's boundary
+	// kinds and this package's topic table are the same set by
+	// construction, so a kind added on one side is REFUSED here rather than
+	// silently published as nothing.
+	ErrBadBoundary = errors.New("resolution: invalid boundary set")
+
 	// ErrOutOfRange indicates a valid attack whose target lies beyond its delivery.
 	ErrOutOfRange = errors.New("resolution: target is out of range")
 
