@@ -168,7 +168,29 @@ func (c *Character) AvailableAbilities() []AvailableAbility {
 // ActivateAbility activates a combat ability or feature by ref.
 // Routes to the appropriate handler based on whether the ref matches a combat ability or feature.
 // Returns success=false with an error message if activation fails.
+//
+// # A call with nothing in it is refused, not answered
+//
+// "Not in combat" and "unknown ability" are ANSWERS: a question was asked and
+// the sheet has a reply. A nil input, or one naming no ability, is not a
+// question — the caller has a bug, and handing it back a well-formed
+// Success:false would report that bug as a barbarian who cannot rage. So it is
+// an error by name at the door, the same door [Character.StartTurn] and
+// [Character.RefreshForTurn] keep over the same state (rpg-toolkit#1093).
+//
+// The refusal PRECEDES the combat check, and that ordering is the fix rather
+// than incidental to it. Before this, a nil input from a character out of
+// combat came back "not in combat" — true about the world, false about what
+// went wrong — and the same nil from a character IN combat panicked. One
+// mistake, two behaviours, neither of them the truth.
 func (c *Character) ActivateAbility(_ context.Context, input *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
+	if input == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no ability to activate")
+	}
+	if input.AbilityRef == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "no ability ref to activate")
+	}
+
 	if !c.InCombat() {
 		return &ActivateAbilityOutput{
 			Success: false,
