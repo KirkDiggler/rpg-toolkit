@@ -727,9 +727,17 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsOnCombatEnd() {
 	// Publish a combat-end event for this character (no attack, no hit,
 	// no rest — just the encounter ending, e.g. the killing blow that ended
 	// the fight).
+	//
+	// PUBLISHED BY HAND, and worth being honest about: until rpg-project#295
+	// nothing in production published this topic at all, so this test was green
+	// against a publisher that did not exist. It proves the handler, which is
+	// all a unit test here can prove. What proves the CHAIN is in the session
+	// package, driven through a real Dissolve and read out of the persisted
+	// sheet — see rpg-project's ideas/session-combat/combat-end/design.md §6.
+	// (That doc lives in the rpg-project repo, not this one.)
 	combatEndTopic := dnd5eEvents.CombatEndTopic.On(s.bus)
 	err = combatEndTopic.Publish(s.ctx, dnd5eEvents.CombatEndEvent{
-		CharacterID: "barbarian-1",
+		SubjectID: "barbarian-1",
 	})
 	s.Require().NoError(err)
 
@@ -770,10 +778,16 @@ func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterComba
 	})
 	s.Require().NoError(err)
 
-	// Publish a combat-end event for a DIFFERENT character
+	// Publish a combat-end event for a DIFFERENT character.
+	//
+	// This is the test the whole shape of combat end rests on: because the
+	// handler answers "is this about me?" by comparing subjects, a fight's
+	// ending has to be announced ONCE PER MEMBER. A single subject-less event
+	// would match nobody and expire nothing — rpg-project's
+	// ideas/session-combat/combat-end/design.md §1.1.
 	combatEndTopic := dnd5eEvents.CombatEndTopic.On(s.bus)
 	err = combatEndTopic.Publish(s.ctx, dnd5eEvents.CombatEndEvent{
-		CharacterID: "barbarian-2", // Different character
+		SubjectID: "barbarian-2", // Different character
 	})
 	s.Require().NoError(err)
 

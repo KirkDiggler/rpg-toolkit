@@ -522,7 +522,21 @@ func (c *Character) ShortRest(ctx context.Context) error {
 
 // EndCombat publishes CombatEndEvent so combat-scoped conditions can remove
 // themselves (RAW: rage ends when combat ends) — mirrors LongRest/ShortRest's
-// RestEvent publish. A condition opts into combat-scoped lifetime by
+// RestEvent publish.
+//
+// DEAD, AND KNOWN TO BE: this method has no callers anywhere — not in the
+// toolkit, not in rpg-api, not in a test. What actually ends a fight for its
+// members is the composition noticing the fight end and announcing a
+// CombatEnded boundary through its Announcer, once per member
+// (rpg-project#295). This is the second publisher of a topic that finally has
+// a real one, and it is a footgun besides: calling it ends ONE character's
+// rage without any fight having ended.
+//
+// Left in place deliberately rather than deleted here. combat.TurnManager is
+// in exactly the same position for the turn topics after rpg-project#294, and
+// the two should go together in one pass rather than one at a time as each
+// slice happens to walk past. Tracked so it is a decision rather than a
+// leftover. A condition opts into combat-scoped lifetime by
 // subscribing to CombatEndTopic in its own Apply (see
 // RagingCondition.onCombatEnd); a condition that should outlive combat (e.g.
 // a curse) simply does not subscribe, so this is not a lifetime taxonomy on
@@ -536,7 +550,7 @@ func (c *Character) EndCombat(ctx context.Context) error {
 
 	combatEndTopic := dnd5eEvents.CombatEndTopic.On(c.bus)
 	err := combatEndTopic.Publish(ctx, dnd5eEvents.CombatEndEvent{
-		CharacterID: c.id,
+		SubjectID: c.id,
 	})
 	if err != nil {
 		return rpgerr.Wrapf(err, "failed to publish combat end event")
