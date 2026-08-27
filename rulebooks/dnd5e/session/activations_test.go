@@ -283,3 +283,28 @@ func TestARefusedHelpKeepsItsSelector(t *testing.T) {
 	require.NotEmpty(t, help.ID)
 	require.Equal(t, "Help", help.Ability.Name)
 }
+
+// A BODY IS NOT SOMEBODY YOU CAN HELP, and this is where Help deliberately
+// differs from Attack: Attack's candidates include the downed, because
+// attacking an unconscious creature is legal 5e. There is no action for a
+// downed ally to take advantage on, so they are offered with a reason rather
+// than as a choice.
+func TestHelpOffersADownedAllyWithAReasonRatherThanAsAChoice(t *testing.T) {
+	alice, bob := ragingBarbarian("alice", 2), ragingBarbarian("bob", 2)
+	mgr, chars := aTwoPlayerFightAt(t, alice, spatial.Position{X: 1, Y: 1},
+		bob, spatial.Position{X: 2, Y: 1})
+
+	// Adjacent and in sight — everything except conscious.
+	chars.byID["bob"].HitPoints = 0
+
+	help := helpOffer(t, mgr, "alice")
+
+	require.Len(t, help.Candidates, 1, "a body keeps its row")
+	require.Equal(t, "bob", help.Candidates[0].Member)
+	require.False(t, help.Candidates[0].Available)
+	require.NotNil(t, help.Candidates[0].Why)
+	require.Equal(t, session.ShortfallDowned, help.Candidates[0].Why.Reason)
+
+	require.False(t, help.Available, "nobody left to help")
+	require.Equal(t, session.ShortfallNoTargetInReach, help.Why.Reason)
+}

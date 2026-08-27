@@ -47,6 +47,7 @@ import (
 // as the turn goes on.
 func (m *Manager) buildActivationOffers(
 	enc *encounter.Encounter,
+	standing encounter.Standing,
 	session, member string,
 	sheet *character.Character,
 	roster []encounter.Member,
@@ -95,7 +96,7 @@ func (m *Manager) buildActivationOffers(
 		// while carrying no candidate universe is a control nothing can
 		// drive — the client would arm targeting against an empty list.
 		if declaration.TargetKind == TargetMember {
-			allies, err := helpCandidates(enc, roster, positions, holdings, member)
+			allies, err := helpCandidates(enc, standing, roster, positions, holdings, member)
 			if err != nil {
 				return nil, err
 			}
@@ -281,11 +282,25 @@ const helpReachFeet = 5
 // cannot currently see is not offered as one they can help. A ghost is not an
 // ally you can reach out and steady.
 //
-// A candidate that is out of reach keeps its ROW with its own reason, the way
-// Attack's do: the panel shows who is there and why they cannot be helped,
-// rather than a list that changes length as people move.
+// # Standing, UNLIKE Attack's — and the difference is the rule, not an
+// inconsistency
+//
+// Attack's candidates deliberately include the downed: attacking an
+// unconscious creature is legal 5e, and the seam would be wrong to hide one.
+// Helping one is meaningless — there is no action for them to take advantage
+// on — so a body is offered with a reason rather than as a choice.
+//
+// The consult is over THE ALLY CANDIDATES ONLY, never the roster. Standing
+// loads a sheet per member it is asked about, and this read runs on every
+// Afford; asking about the two party members in sight is a cost worth paying,
+// asking about every skeleton in the dungeon is not.
+//
+// A candidate that is out of reach or down keeps its ROW with its own reason,
+// the way Attack's do: the panel shows who is there and why they cannot be
+// helped, rather than a list that changes length as people move.
 func helpCandidates(
 	enc *encounter.Encounter,
+	standing encounter.Standing,
 	roster []encounter.Member,
 	positions map[string]spatial.Position,
 	holdings []intel.Holding,
@@ -321,18 +336,31 @@ func helpCandidates(
 	}
 	sort.Strings(seen)
 
+	ids := make([]encounter.MemberID, 0, len(seen))
+	for _, id := range seen {
+		ids = append(ids, encounter.MemberID(id))
+	}
+	down, err := standingSet(standing, ids)
+	if err != nil {
+		return nil, fmt.Errorf("help offers: %w", err)
+	}
+
 	out := make([]targetPreflight, 0, len(seen))
 	for _, id := range seen {
 		to, ok := positions[id]
 		if !ok {
 			return nil, fmt.Errorf("help offers: live candidate %q has no position in the roster", id)
 		}
-		if inRange(enc, from, to, helpReachFeet) {
+		switch {
+		case down[id]:
+			why := Shortfall{Reason: ShortfallDowned, Text: "ally is down"}
+			out = append(out, targetPreflight{member: id, available: false, why: &why})
+		case inRange(enc, from, to, helpReachFeet):
 			out = append(out, targetPreflight{member: id, available: true})
-			continue
+		default:
+			why := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "ally out of reach"}
+			out = append(out, targetPreflight{member: id, available: false, why: &why})
 		}
-		why := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "ally out of reach"}
-		out = append(out, targetPreflight{member: id, available: false, why: &why})
 	}
 	return out, nil
 }
