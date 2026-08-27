@@ -663,14 +663,31 @@ type RestEvent struct {
 	CharacterID string              // ID of the character resting
 }
 
-// CombatEndEvent is published when the combat/encounter a character was
-// participating in has ended. Combat-scoped conditions (e.g. RagingCondition)
-// subscribe to CombatEndTopic in their Apply to remove themselves — RAW: rage
-// ends when combat ends. This is an opt-in, per-condition lifetime: a
-// condition that should outlive combat (e.g. a curse) simply does not
-// subscribe. Mirrors the RestEvent self-termination pattern.
+// CombatEndEvent is published when a fight a member was in has ended.
+//
+// ONE PER MEMBER, never one for the fight. Every attached effect hears every
+// publish on the interaction's single bus (R1), so a subscriber answers "is
+// this about me?" by comparing the subject against its own owner — which is
+// exactly what conditions.RagingCondition.onCombatEnd does. A subject-less
+// "the fight ended" would match nobody and expire nothing.
+//
+// SubjectID is whoever that fight ended for: a player's character, or a monster
+// that was in it. Named for what it denotes rather than for what happens to be
+// plugged into it today, for the same reason [TurnStartEvent] is — the
+// composition ends a fight for everyone it held, and it holds monsters.
+//
+// NO ROUND, unlike the turn events. A fight ending is not a coordinate in a
+// clock that no longer exists: play/clock's Turn.Dissolve sets the round back
+// to zero, because round numbers are per-fight and always were. That fact is
+// also why this event has to exist at all — see rpg-project's
+// ideas/session-combat/combat-end/design.md §0.
+//
+// Combat-scoped conditions subscribe to CombatEndTopic in their Apply to remove
+// themselves — RAW: rage ends when combat ends. This is an opt-in,
+// per-condition lifetime: a condition that should outlive combat (e.g. a curse)
+// simply does not subscribe. Mirrors the RestEvent self-termination pattern.
 type CombatEndEvent struct {
-	CharacterID string // ID of the character whose combat just ended
+	SubjectID string // whoever the fight just ended for
 }
 
 // ResourceConsumedEvent is published when a character uses a resource

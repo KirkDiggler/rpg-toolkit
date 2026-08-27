@@ -316,7 +316,7 @@ func (r *RagingCondition) onRest(ctx context.Context, event dnd5eEvents.RestEven
 // silently re-apply it in the next encounter (rpg-toolkit#752).
 func (r *RagingCondition) onCombatEnd(ctx context.Context, event dnd5eEvents.CombatEndEvent) error {
 	// Only end rage if this is our character
-	if event.CharacterID != r.CharacterID {
+	if event.SubjectID != r.CharacterID {
 		return nil
 	}
 	return r.endRage(ctx, "combat_ended")
