@@ -28,6 +28,8 @@ type RagingData struct {
 	DamageBonus       int       `json:"damage_bonus"`
 	Level             int       `json:"level"`
 	Source            string    `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
+	SawTurnEnd        bool      `json:"saw_turn_end"`
+	RoundActivated    int       `json:"round_activated"`
 	TurnsActive       int       `json:"turns_active"`
 	WasHitThisTurn    bool      `json:"was_hit_this_turn"`
 	DidAttackThisTurn bool      `json:"did_attack_this_turn"`
@@ -40,6 +42,8 @@ type RagingCondition struct {
 	DamageBonus       int
 	Level             int
 	Source            string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
+	SawTurnEnd        bool
+	RoundActivated    int
 	TurnsActive       int
 	WasHitThisTurn    bool
 	DidAttackThisTurn bool
@@ -225,6 +229,8 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 		DamageBonus:       r.DamageBonus,
 		Level:             r.Level,
 		Source:            r.Source,
+		SawTurnEnd:        r.SawTurnEnd,
+		RoundActivated:    r.RoundActivated,
 		TurnsActive:       r.TurnsActive,
 		WasHitThisTurn:    r.WasHitThisTurn,
 		DidAttackThisTurn: r.DidAttackThisTurn,
@@ -243,6 +249,8 @@ func (r *RagingCondition) loadJSON(data json.RawMessage) error {
 	r.DamageBonus = ragingData.DamageBonus
 	r.Level = ragingData.Level
 	r.Source = ragingData.Source
+	r.SawTurnEnd = ragingData.SawTurnEnd
+	r.RoundActivated = ragingData.RoundActivated
 	r.TurnsActive = ragingData.TurnsActive
 	r.WasHitThisTurn = ragingData.WasHitThisTurn
 	r.DidAttackThisTurn = ragingData.DidAttackThisTurn
@@ -263,30 +271,119 @@ func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5eEvents.
 	return nil
 }
 
-// onTurnEnd handles turn end events to check if rage continues
+// rageDurationRounds is 2014's "1 minute": ten rounds, ending at the end of the
+// barbarian's own turn on the tenth.
+//
+// Named so the arithmetic below has something to be one less than. Rage spans
+// rounds RoundActivated through RoundActivated+9 inclusive, so the comparison is
+// against rageDurationRounds-1 rather than rageDurationRounds — the one place a
+// duration like this grows an off-by-one.
+const rageDurationRounds = 10
+
+// onTurnEnd decides, at the end of the barbarian's own turn, whether the rage
+// goes on.
+//
+// # 2014, with the activation turn graced
+//
+// RAW 2014: rage lasts 1 minute and ends early if you are knocked unconscious,
+// or if your turn ends and you have neither attacked a hostile creature since
+// your last turn nor taken damage since then.
+//
+// Kirk ruled 2026-08-27 that the turn a rage STARTED is not checked: "I cannot
+// imagine activating rage would end at the end of the turn activated so i think
+// it lasts 1 full turn... this game does not need to follow RAW to the letter."
+// By the letter, a barbarian who rages and then does nothing else drops it the
+// instant their turn ends, which is a bad moment rather than an interesting one.
+// The divergence is exactly this one branch.
+//
+// # The anchor comes from the CLOCK, never from the sheet
+//
+// event.Round is stamped by play/clock itself and is the only round in the
+// system that cannot be stale. The character also carries one --
+// ActionEconomy.TurnNumber -- and it is deliberately NOT used: that is a
+// sheet-local mirror with a documented staleness bug across fights
+// (rpg-project#253, a member starting a fight with the movement their previous
+// one left behind). Anchoring a duration to it would reintroduce the class of
+// defect combat end was built to close.
+//
+// So the rage DISCOVERS its anchor instead of being handed one: the first turn
+// end it hears both establishes RoundActivated and is the graced turn. Zero
+// means "not yet anchored", which is play/clock's own vocabulary for "no round"
+// rather than an invented sentinel -- a Turn clock holds round 0 only while
+// idle.
 func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
 	if event.SubjectID != r.CharacterID {
 		return nil
 	}
 
-	// Increment turns active
-	r.TurnsActive++
-	r.markDirty()
+	if !r.SawTurnEnd {
+		// The first turn end this rage has seen: it passes unchecked, and it
+		// anchors the duration if it carries a round to anchor to.
+		r.SawTurnEnd = true
+		if event.Round > 0 {
+			r.RoundActivated = event.Round
+		}
+	} else {
+		// The activity check needs no round at all, so it runs regardless of
+		// whether the duration below can be evaluated.
+		if !r.DidAttackThisTurn && !r.WasHitThisTurn {
+			return r.endRage(ctx, "no_combat_activity")
+		}
 
-	// Check if rage ends due to no combat activity
-	if !r.DidAttackThisTurn && !r.WasHitThisTurn {
-		return r.endRage(ctx, "no_combat_activity")
+		switch {
+		case r.RoundActivated == 0:
+			// Never anchored, because no turn end has carried a round yet.
+			// Anchor late if this one finally does; the cap simply does not
+			// apply until there is something to measure from.
+			if event.Round > 0 {
+				r.RoundActivated = event.Round
+			}
+
+		case event.Round <= 0:
+			// A turn end that does not say which round it is. The cap cannot
+			// be evaluated and is skipped rather than evaluated against zero,
+			// which would read as a clock reset below and end the rage on a
+			// malformed event.
+
+		case event.Round < r.RoundActivated:
+			// The round went BACKWARDS, so this rage has outlived the clock
+			// its anchor came from -- rounds are per-fight and restart at 1.
+			// Combat end exists to make this unreachable (rpg-project#295
+			// part 1), so reaching it means that removal did not happen.
+			// Ending here is both the right rules answer -- the fight it
+			// belonged to is over -- and a net under the thing that should
+			// have caught it. Re-anchoring instead would silently hand out a
+			// fresh ten rounds and hide the regression.
+			return r.endRage(ctx, "clock_reset")
+
+		case event.Round-r.RoundActivated >= rageDurationRounds-1:
+			return r.endRage(ctx, "duration_expired")
+		}
 	}
 
-	// Check if rage ends due to duration (10 rounds = 1 minute)
-	if r.TurnsActive >= 10 {
-		return r.endRage(ctx, "duration_expired")
+	// DERIVED, never incremented. TurnsActive is display state that the web
+	// client reads (rpg-dnd5e-web's ConditionBadge, and its isRagingData type
+	// guard, which duck-types on this key being present -- deleting the field
+	// would make every rage silently stop rendering as one). Recomputing it
+	// from the anchor keeps the values the client already shows while removing
+	// the reason it was wrong: an accumulated counter is only correct if no
+	// turn end is ever missed, and turn ends went missing for months.
+	//
+	// NO RULE READS THIS. Everything above decides on RoundActivated.
+	//
+	// Only recomputed when there is an anchor to recompute from. An unanchored
+	// rage keeps whatever it had rather than being handed a number derived
+	// from a zero it never agreed to.
+	if r.RoundActivated > 0 && event.Round >= r.RoundActivated {
+		r.TurnsActive = event.Round - r.RoundActivated + 1
 	}
 
-	// Reset combat activity flags for next turn. Already marked dirty by the
-	// TurnsActive increment above, which changes on every turn end.
+	// Reset for the next turn. On the graced turn too: RAW's window is "since
+	// your last turn", so the activation turn's swing must not pay for the next
+	// turn's check.
 	r.DidAttackThisTurn = false
 	r.WasHitThisTurn = false
+	r.markDirty()
 
 	return nil
 }
