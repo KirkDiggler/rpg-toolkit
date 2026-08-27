@@ -28,6 +28,7 @@ type RagingData struct {
 	DamageBonus       int       `json:"damage_bonus"`
 	Level             int       `json:"level"`
 	Source            string    `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
+	SawTurnEnd        bool      `json:"saw_turn_end"`
 	RoundActivated    int       `json:"round_activated"`
 	TurnsActive       int       `json:"turns_active"`
 	WasHitThisTurn    bool      `json:"was_hit_this_turn"`
@@ -41,6 +42,7 @@ type RagingCondition struct {
 	DamageBonus       int
 	Level             int
 	Source            string // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")
+	SawTurnEnd        bool
 	RoundActivated    int
 	TurnsActive       int
 	WasHitThisTurn    bool
@@ -227,6 +229,7 @@ func (r *RagingCondition) ToJSON() (json.RawMessage, error) {
 		DamageBonus:       r.DamageBonus,
 		Level:             r.Level,
 		Source:            r.Source,
+		SawTurnEnd:        r.SawTurnEnd,
 		RoundActivated:    r.RoundActivated,
 		TurnsActive:       r.TurnsActive,
 		WasHitThisTurn:    r.WasHitThisTurn,
@@ -246,6 +249,7 @@ func (r *RagingCondition) loadJSON(data json.RawMessage) error {
 	r.DamageBonus = ragingData.DamageBonus
 	r.Level = ragingData.Level
 	r.Source = ragingData.Source
+	r.SawTurnEnd = ragingData.SawTurnEnd
 	r.RoundActivated = ragingData.RoundActivated
 	r.TurnsActive = ragingData.TurnsActive
 	r.WasHitThisTurn = ragingData.WasHitThisTurn
@@ -312,15 +316,47 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 		return nil
 	}
 
-	if r.RoundActivated == 0 {
-		// The first turn end this rage has seen: anchor it here, and let it
-		// pass unchecked. The grace and the anchor are the same event.
-		r.RoundActivated = event.Round
+	if !r.SawTurnEnd {
+		// The first turn end this rage has seen: it passes unchecked, and it
+		// anchors the duration if it carries a round to anchor to.
+		r.SawTurnEnd = true
+		if event.Round > 0 {
+			r.RoundActivated = event.Round
+		}
 	} else {
+		// The activity check needs no round at all, so it runs regardless of
+		// whether the duration below can be evaluated.
 		if !r.DidAttackThisTurn && !r.WasHitThisTurn {
 			return r.endRage(ctx, "no_combat_activity")
 		}
-		if event.Round-r.RoundActivated >= rageDurationRounds-1 {
+
+		switch {
+		case r.RoundActivated == 0:
+			// Never anchored, because no turn end has carried a round yet.
+			// Anchor late if this one finally does; the cap simply does not
+			// apply until there is something to measure from.
+			if event.Round > 0 {
+				r.RoundActivated = event.Round
+			}
+
+		case event.Round <= 0:
+			// A turn end that does not say which round it is. The cap cannot
+			// be evaluated and is skipped rather than evaluated against zero,
+			// which would read as a clock reset below and end the rage on a
+			// malformed event.
+
+		case event.Round < r.RoundActivated:
+			// The round went BACKWARDS, so this rage has outlived the clock
+			// its anchor came from -- rounds are per-fight and restart at 1.
+			// Combat end exists to make this unreachable (rpg-project#295
+			// part 1), so reaching it means that removal did not happen.
+			// Ending here is both the right rules answer -- the fight it
+			// belonged to is over -- and a net under the thing that should
+			// have caught it. Re-anchoring instead would silently hand out a
+			// fresh ten rounds and hide the regression.
+			return r.endRage(ctx, "clock_reset")
+
+		case event.Round-r.RoundActivated >= rageDurationRounds-1:
 			return r.endRage(ctx, "duration_expired")
 		}
 	}
@@ -334,7 +370,13 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 	// turn end is ever missed, and turn ends went missing for months.
 	//
 	// NO RULE READS THIS. Everything above decides on RoundActivated.
-	r.TurnsActive = event.Round - r.RoundActivated + 1
+	//
+	// Only recomputed when there is an anchor to recompute from. An unanchored
+	// rage keeps whatever it had rather than being handed a number derived
+	// from a zero it never agreed to.
+	if r.RoundActivated > 0 && event.Round >= r.RoundActivated {
+		r.TurnsActive = event.Round - r.RoundActivated + 1
+	}
 
 	// Reset for the next turn. On the graced turn too: RAW's window is "since
 	// your last turn", so the activation turn's swing must not pay for the next
