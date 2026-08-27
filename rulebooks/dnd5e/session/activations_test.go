@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/stretchr/testify/require"
 )
 
@@ -197,4 +198,88 @@ func TestARefusedActivationKeepsItsRow(t *testing.T) {
 	require.NotEmpty(t, rage.ID, "a compiled-but-refused offer still carries its selector")
 	require.NotNil(t, rage.Ability, "and still says what it is")
 	require.Equal(t, "Rage", rage.Ability.Name)
+}
+
+// --- Help's candidate universe (rpg-project#300, Kirk's ruling) ---
+
+func helpOffer(t *testing.T, mgr *session.Manager, member string) session.Declaration {
+	t.Helper()
+	out, err := mgr.Afford(context.Background(), &session.AffordInput{
+		Session: "sess", Member: member,
+	})
+	require.NoError(t, err)
+	for _, d := range out.Declarations {
+		if d.Verb == session.VerbActivate &&
+			d.Ability != nil && d.Ability.Ref == "dnd5e:combat_abilities:help" {
+			return d
+		}
+	}
+	t.Fatal("no Help offer")
+	return session.Declaration{}
+}
+
+// AN ALLY STANDING NEXT TO YOU IS SOMEBODY YOU CAN HELP. Kirk's ruling: "I
+// think that ally next to us is fine. we can add complexity later if we want."
+func TestHelpOffersTheAllyStandingNextToYou(t *testing.T) {
+	alice, bob := ragingBarbarian("alice", 2), ragingBarbarian("bob", 2)
+	mgr, _ := aTwoPlayerFightAt(t, alice, spatial.Position{X: 1, Y: 1},
+		bob, spatial.Position{X: 2, Y: 1})
+
+	help := helpOffer(t, mgr, "alice")
+
+	require.True(t, help.Available)
+	require.Len(t, help.Candidates, 1)
+	require.Equal(t, "bob", help.Candidates[0].Member)
+	require.True(t, help.Candidates[0].Available)
+}
+
+// An ally across the room KEEPS HIS ROW and says why, the way Attack's
+// candidates do — the panel shows who is there and why they cannot be helped,
+// rather than a list that changes length as people move.
+func TestHelpKeepsAnOutOfReachAllyAsARowWithAReason(t *testing.T) {
+	alice, bob := ragingBarbarian("alice", 2), ragingBarbarian("bob", 2)
+	mgr, _ := aTwoPlayerFightAt(t, alice, spatial.Position{X: 1, Y: 1},
+		bob, spatial.Position{X: 5, Y: 5})
+
+	help := helpOffer(t, mgr, "alice")
+
+	require.Len(t, help.Candidates, 1)
+	require.Equal(t, "bob", help.Candidates[0].Member)
+	require.False(t, help.Candidates[0].Available)
+	require.NotNil(t, help.Candidates[0].Why)
+	require.Equal(t, session.ShortfallTargetOutOfReach, help.Candidates[0].Why.Reason)
+
+	// And the declaration itself goes dark with the declaration-level reason —
+	// the same precedence Attack keeps.
+	require.False(t, help.Available)
+	require.NotNil(t, help.Why)
+	require.Equal(t, session.ShortfallNoTargetInReach, help.Why.Reason)
+}
+
+// A MONSTER IS NOT AN ALLY. Same-kind is the whole of hostility this seam has,
+// and it is what keeps a barbarian from offering to steady a skeleton.
+func TestHelpDoesNotOfferAMonsterAsAnAlly(t *testing.T) {
+	alice := ragingBarbarian("alice", 2)
+	mgr, _, _, _ := aFight(t, alice, []int{1, 1})
+
+	help := helpOffer(t, mgr, "alice")
+
+	// The skeleton spawned adjacent to her is in reach and in sight, and is
+	// still not a candidate.
+	require.Empty(t, help.Candidates, "a monster is never a Help candidate")
+	require.False(t, help.Available)
+	require.Equal(t, session.ShortfallNoTargetInReach, help.Why.Reason)
+}
+
+// Help still carries its selector when it is dark, like every other refused
+// offer — so a client renders a disabled button rather than dropping the row.
+func TestARefusedHelpKeepsItsSelector(t *testing.T) {
+	alice := ragingBarbarian("alice", 2)
+	mgr, _, _, _ := aFight(t, alice, []int{1, 1})
+
+	help := helpOffer(t, mgr, "alice")
+
+	require.False(t, help.Available)
+	require.NotEmpty(t, help.ID)
+	require.Equal(t, "Help", help.Ability.Name)
 }

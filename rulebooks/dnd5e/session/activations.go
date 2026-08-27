@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // buildActivationOffers compiles one offer per thing this member can activate.
@@ -43,7 +46,12 @@ import (
 // about Dodge on the turns it could Dodge would have a menu that changes size
 // as the turn goes on.
 func (m *Manager) buildActivationOffers(
-	session, member string, sheet *character.Character,
+	enc *encounter.Encounter,
+	session, member string,
+	sheet *character.Character,
+	roster []encounter.Member,
+	positions map[string]spatial.Position,
+	holdings []intel.Holding,
 ) ([]compiledOffer, error) {
 	available := sheet.AvailableAbilities()
 	economy := sheet.GetActionEconomy()
@@ -80,6 +88,29 @@ func (m *Manager) buildActivationOffers(
 		if !ability.CanUse {
 			why := activationWhy(ability, slot, economy)
 			declaration.Why = &why
+		}
+
+		// THE ONE THAT TAKES SOMEBODY. Help is the only level-1 activation
+		// with TargetMember, and a declaration that says it needs a target
+		// while carrying no candidate universe is a control nothing can
+		// drive — the client would arm targeting against an empty list.
+		if declaration.TargetKind == TargetMember {
+			allies, err := helpCandidates(enc, roster, positions, holdings, member)
+			if err != nil {
+				return nil, err
+			}
+			declaration.Candidates = projectCandidates(allies)
+
+			// The same precedence Attack keeps: a budget refusal outranks
+			// "nobody to help", and no-one-in-reach does not erase the rows.
+			if declaration.Available && !anyAvailable(allies) {
+				noAlly := Shortfall{
+					Reason: ShortfallNoTargetInReach,
+					Text:   "no ally within reach",
+				}
+				declaration.Available = false
+				declaration.Why = &noAlly
+			}
 		}
 
 		offers = append(offers, compiledOffer{
@@ -220,4 +251,98 @@ func targetKindOfAbility(kind character.TargetKind) TargetKind {
 	default:
 		return TargetNone
 	}
+}
+
+// helpReachFeet is how far Help reaches: an adjacent ally, one cell.
+//
+// Kirk's ruling (rpg-project#300): *"I think that ally next to us is fine. we
+// can add complexity later if we want."* RAW 2014 is fiddlier — it aids an
+// ability check at any range, or an ally attacking a creature within 5 feet of
+// YOU, which is a constraint about where the enemy stands rather than the
+// friend. Both are deliberately not built: "stand next to a friend and help
+// them" is one sentence a player already understands, and the divergence is
+// named here rather than discovered.
+const helpReachFeet = 5
+
+// helpCandidates is Help's candidate universe: allies this member can
+// currently see, standing, within reach.
+//
+// # Allies are members of the same kind
+//
+// A player helps a player; a monster would help a monster. That is the whole
+// of hostility this seam has — encounter.Member carries Kind and nothing
+// finer — and it is correct for the game as it stands rather than a
+// simplification with a cost. A rulebook that grows factions replaces this
+// one predicate.
+//
+// # Live sightings only, like Attack's
+//
+// Built from the same holdings Attack's candidates are, so a member the actor
+// cannot currently see is not offered as one they can help. A ghost is not an
+// ally you can reach out and steady.
+//
+// A candidate that is out of reach keeps its ROW with its own reason, the way
+// Attack's do: the panel shows who is there and why they cannot be helped,
+// rather than a list that changes length as people move.
+func helpCandidates(
+	enc *encounter.Encounter,
+	roster []encounter.Member,
+	positions map[string]spatial.Position,
+	holdings []intel.Holding,
+	member string,
+) ([]targetPreflight, error) {
+	kinds := make(map[string]encounter.MemberKind, len(roster))
+	for _, r := range roster {
+		kinds[string(r.ID)] = r.Kind
+	}
+	own, ok := kinds[member]
+	if !ok {
+		return nil, fmt.Errorf("help offers: actor %q is not in the roster", member)
+	}
+
+	from, ok := positions[member]
+	if !ok {
+		// The same fail-closed law buildTargetPreflight keeps: an actor the
+		// encounter no longer places is an internal inconsistency, not a
+		// shorter candidate list.
+		return nil, fmt.Errorf("help offers: actor %q has no position in the roster", member)
+	}
+
+	seen := make([]string, 0, len(holdings))
+	for _, h := range holdings {
+		subject := string(h.Subject)
+		if subject == member || len(h.CurrentVia) == 0 {
+			continue
+		}
+		if kinds[subject] != own {
+			continue
+		}
+		seen = append(seen, subject)
+	}
+	sort.Strings(seen)
+
+	out := make([]targetPreflight, 0, len(seen))
+	for _, id := range seen {
+		to, ok := positions[id]
+		if !ok {
+			return nil, fmt.Errorf("help offers: live candidate %q has no position in the roster", id)
+		}
+		if inRange(enc, from, to, helpReachFeet) {
+			out = append(out, targetPreflight{member: id, available: true})
+			continue
+		}
+		why := Shortfall{Reason: ShortfallTargetOutOfReach, Text: "ally out of reach"}
+		out = append(out, targetPreflight{member: id, available: false, why: &why})
+	}
+	return out, nil
+}
+
+// anyAvailable reports whether any candidate can actually be chosen.
+func anyAvailable(candidates []targetPreflight) bool {
+	for _, c := range candidates {
+		if c.available {
+			return true
+		}
+	}
+	return false
 }
