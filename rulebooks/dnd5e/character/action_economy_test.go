@@ -443,3 +443,40 @@ func (s *ActionEconomyTestSuite) TestAnUnknownAbilityIsStillAnAnswer() {
 	s.False(out.Success)
 	s.Equal("unknown ability", out.Error)
 }
+
+// --- rpg-project#300: the target table has to answer for features too ---
+
+// The behavioural half: a fighter's Second Wind reaches a caller with a target
+// kind, not with the blank that means "the producer forgot to say".
+func (s *ActionEconomyTestSuite) TestAFeatureCarriesItsTargetKind() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+
+	var secondWind *AvailableAbility
+	for i, a := range char.AvailableAbilities() {
+		if a.Ref != nil && a.Ref.ID == refs.Features.SecondWind().ID {
+			secondWind = &char.AvailableAbilities()[i]
+		}
+	}
+
+	s.Require().NotNil(secondWind, "the fighter should offer Second Wind")
+	s.Equal(TargetKindSelf, secondWind.TargetKind)
+}
+
+// The table half. Rage has no helper on this suite, and the point being pinned
+// is the table rather than the barbarian, so it is asked directly.
+func (s *ActionEconomyTestSuite) TestTheTargetTableKnowsTheLevelOneFeatures() {
+	s.Equal(TargetKindSelf, targetKindForRef(refs.Features.Rage()))
+	s.Equal(TargetKindSelf, targetKindForRef(refs.Features.SecondWind()))
+}
+
+// AND THE DEFAULT IS STILL A DEFAULT. Teaching the table two refs must not
+// turn its safety net into a guess: a feature nobody has ruled on yet still
+// comes back Unspecified, which is what makes the next gap visible the way
+// this one was.
+func (s *ActionEconomyTestSuite) TestAnUnruledFeatureStillSurfacesAsUnspecified() {
+	s.Equal(TargetKindUnspecified, targetKindForRef(refs.Features.ActionSurge()))
+	s.Equal(TargetKindUnspecified, targetKindForRef(refs.Features.FlurryOfBlows()))
+	s.Equal(TargetKindUnspecified, targetKindForRef(nil))
+}

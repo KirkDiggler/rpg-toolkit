@@ -246,6 +246,16 @@ func (c *Character) HasGranted(key GrantedActionKey) bool {
 // owns "what does this action target") — the game server never computes it.
 // An unknown ref returns TargetKindUnspecified so a new ref surfaces as a
 // visible defect rather than silently defaulting.
+//
+// # It answers for features too, and did not used to
+//
+// The table was written when only combat abilities reached a menu, so every
+// FEATURE fell to the default and came back Unspecified. That defaulting did
+// exactly what it was designed to do — it stayed silent while nothing read the
+// answer, and it surfaced the moment something did (rpg-project#300). Rage and
+// Second Wind are here because they are the level-1 features a player can
+// activate; the rest of the module's features are deliberately absent rather
+// than guessed, and arrive with the slice that makes each of them reachable.
 func targetKindForRef(ref *core.Ref) TargetKind {
 	if ref == nil {
 		return TargetKindUnspecified
@@ -264,6 +274,12 @@ func targetKindForRef(ref *core.Ref) TargetKind {
 	// Deliberately untargeted (fire without a prompt).
 	case refs.CombatAbilities.Dash().ID:
 		return TargetKindNone
+	// Features that act on the character who used them. Self rather than None:
+	// both mean "do not prompt", and only Self also says whose sheet the effect
+	// lands on — which is the half a caller other than a prompt cares about.
+	case refs.Features.Rage().ID,
+		refs.Features.SecondWind().ID:
+		return TargetKindSelf
 	default:
 		return TargetKindUnspecified
 	}
