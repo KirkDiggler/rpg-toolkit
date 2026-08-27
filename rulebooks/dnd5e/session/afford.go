@@ -44,6 +44,22 @@ const (
 	// see [Manager.Afford]'s own doc.
 	VerbMove Verb = "move"
 
+	// VerbActivate is [Manager.Activate]: using a combat ability or feature the
+	// character already carries — Dodge, Dash, Disengage, Help, Hide, Rage,
+	// Second Wind.
+	//
+	// THE FIRST VERB THAT COMPILES MORE THAN ONE OFFER. Attack, Move and
+	// EndTurn each compile exactly one, so "one offer per verb" and "one
+	// declaration per verb" were the same sentence for three verbs and nothing
+	// said which one a reader relied on. A level-1 barbarian gets seven of
+	// these, and [Slot] is what separates Rage on the bonus shape from Dodge
+	// on the action one — they cannot share a row, because Slot is per
+	// declaration.
+	//
+	// Its selector variant is the ability's own ref rather than a sealed
+	// string: one verb, seven offers, and the ref is what tells them apart.
+	VerbActivate Verb = "activate"
+
 	// VerbEndTurn is [Manager.EndTurn]: ending the member's turn. Like Move it
 	// carries no authored action definition, so its declaration selector uses a
 	// sealed variant string rather than a serialized [actions.Definition].
@@ -90,11 +106,23 @@ const (
 // server-side, behind [combat.SpendProfile]. See
 // docs/adr/0042-afford-answers-in-declarations-not-currencies.md.
 //
-// ONE COMPILED OFFER PER VERB, not one declaration per target: the candidate
-// universe lives on the single Attack declaration's Candidates, each carrying
-// its own target-specific availability. The client renders availability,
-// identity, target kind, and candidates verbatim and never derives game rules;
-// Attack, Move, and End Turn regenerate the selected offer before execution.
+// ONE DECLARATION PER COMPILED OFFER — which is NOT one per verb, and was
+// never quite the same claim.
+//
+// Attack, Move and EndTurn each compile exactly one, so for three verbs the
+// two readings coincided and nothing said which one a reader relied on.
+// [VerbActivate] separates them: a level-1 barbarian gets six Activate
+// declarations, and [Slot] is what distinguishes Rage on the bonus shape from
+// Dodge on the action one — they cannot share a row, because Slot is per
+// declaration. A consumer that indexes declarations BY VERB, or treats a
+// second row for a verb as a producer defect, is reading a coincidence as a
+// contract.
+//
+// It is still not one declaration per TARGET: the candidate universe lives on
+// the single Attack declaration's Candidates, each carrying its own
+// target-specific availability. The client renders availability, identity,
+// target kind, and candidates verbatim and never derives game rules; every
+// verb regenerates the selected offer before execution.
 type Declaration struct {
 	// Verb is which seam action this prices.
 	Verb Verb `json:"verb"`
@@ -150,6 +178,13 @@ type Declaration struct {
 	// and early per-verb blockers.
 	Attack *AttackRef `json:"attack,omitempty"`
 
+	// Ability is the sole public activation identity, present on every
+	// compiled Activate declaration — including one disabled by a budget,
+	// charge or feature gate — and absent for Attack, Move, EndTurn and every
+	// early per-verb blocker. The same presence law [Declaration.Attack]
+	// keeps, for the same reason.
+	Ability *AbilityRef `json:"ability,omitempty"`
+
 	// TargetKind is fixed for every compiled or blocked declaration: Attack
 	// -> TargetMember, Move -> TargetPath, EndTurn -> TargetNone. A blocker
 	// keeps the fixed kind even with empty candidates, so a client always
@@ -170,7 +205,8 @@ type AffordOutput struct {
 	// and that IS the answer rather than a shorter way of asking again.
 	Clock ClockKind `json:"clock"`
 
-	// Declarations is one entry per compiled verb the seam prices, empty on
+	// Declarations is one entry per compiled OFFER — one each for Attack, Move
+	// and EndTurn, and one per activatable thing the member carries — empty on
 	// the world clock — where empty IS the answer rather than a shorter way
 	// of asking again, so it is never omitted from the wire either: the same
 	// false-vs-absent law types.go keeps for every bool at this seam applies
@@ -179,8 +215,10 @@ type AffordOutput struct {
 	Declarations []Declaration `json:"declarations"`
 }
 
-// Afford reports the current compiled Attack, Move, and EndTurn offers for one
-// active turn member. Each carries an opaque selector execution must echo.
+// Afford reports the current compiled Attack, Move, Activate and EndTurn
+// offers for one active turn member. Activate compiles one per thing the
+// member carries rather than one for the verb; the rest compile exactly one
+// each. Each offer carries an opaque selector execution must echo.
 // Move reports Remaining rather than a fixed price because a walk's cost
 // depends on a path this read is never given. On the world clock declarations
 // is the complete empty answer.
@@ -287,6 +325,11 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{
 			blockedDeclaration(VerbAttack, TargetMember, notYourTurn),
 			blockedDeclaration(VerbMove, TargetPath, notYourTurn),
+			// ONE Activate row, not seven. A member whose turn it is not
+			// cannot activate ANY of them, and the reason is identical for
+			// every one — so seven rows would be seven copies of "not your
+			// turn" and a panel that looks like it has choices.
+			blockedDeclaration(VerbActivate, TargetNone, notYourTurn),
 			blockedDeclaration(VerbEndTurn, TargetNone, notYourTurn),
 		}}, nil
 	}
@@ -299,7 +342,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	actor := m.loadActorSheet(ctx, in.Member)
 	offers, err := m.compileOffersFor(
 		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbEndTurn,
+		VerbAttack, VerbMove, VerbActivate, VerbEndTurn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)

@@ -109,7 +109,10 @@ func (s *AffordSuite) TestAvailableMeansAttackWillNotRefuse() {
 
 	out := s.afford()
 	s.Equal(session.ClockTurn, out.Clock)
-	s.Require().Len(out.Declarations, 3, "attack, move and end turn")
+	// Attack, Move, EndTurn, and the five activations a plain fighter
+	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
+	// ability is excluded: swinging is VerbAttack's job here.
+	s.Require().Len(out.Declarations, 8)
 
 	decl := s.attackDecl(out)
 	s.True(decl.Available, "a fresh turn can still buy its first swing")
@@ -135,7 +138,10 @@ func (s *AffordSuite) TestUnavailableMeansAttackRefusesWithTheSameShortfall() {
 	s.Require().True(first.Hit)
 
 	out := s.afford()
-	s.Require().Len(out.Declarations, 3, "attack, move and end turn")
+	// Attack, Move, EndTurn, and the five activations a plain fighter
+	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
+	// ability is excluded: swinging is VerbAttack's job here.
+	s.Require().Len(out.Declarations, 8)
 	decl := s.attackDecl(out)
 	s.False(decl.Available, "nothing left to buy a second swing")
 	s.Require().NotNil(decl.Why)
@@ -208,7 +214,10 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 	s.nextTurn()
 
 	out := s.afford()
-	s.Require().Len(out.Declarations, 3, "attack, move and end turn")
+	// Attack, Move, EndTurn, and the five activations a plain fighter
+	// carries — Dash, Disengage, Dodge, Help, Hide. Attack the combat
+	// ability is excluded: swinging is VerbAttack's job here.
+	s.Require().Len(out.Declarations, 8)
 	s.True(s.attackDecl(out).Available, "a new turn buys a new swing")
 	s.Equal(session.SlotAction, s.attackDecl(out).Slot)
 }
@@ -391,7 +400,9 @@ func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	out, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 	s.Equal(session.ClockTurn, out.Clock)
-	s.Require().Len(out.Declarations, 3, "attack, move and end turn, all blocked the same way")
+	// One blocker per VERB, all blocked the same way — Activate is one verb
+	// however many things it would compile on a turn that were hers.
+	s.Require().Len(out.Declarations, 4)
 	for _, d := range out.Declarations {
 		s.False(d.Available)
 		s.Empty(d.ID, "a blocker carries no selector ID")
