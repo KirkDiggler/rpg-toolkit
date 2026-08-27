@@ -265,14 +265,14 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 // Real content, and the case a synthetic subscriber cannot pin: a raging
 // barbarian takes half from the wolf's piercing bite.
 func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamageType() {
-	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	world, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
-			{ID: wolfID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -396,14 +396,14 @@ func (s *DamageCustodyTestSuite) addFlatOnBus(bus events.EventBus, amount int, t
 // it keeps a character's AC chain out of the arithmetic under test, and the
 // damage fold is the same fold whoever is swinging.
 func (s *DamageCustodyTestSuite) roomWith(attacker, target encounter.MemberID) encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: attacker, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
-			{ID: target, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 6}},
+			{ID: attacker, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: target, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})

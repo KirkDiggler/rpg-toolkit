@@ -145,6 +145,19 @@
 // argument reverses with it. At that point the question comes back as an ADR
 // with the new tally as its evidence. Until then there is nothing to decide.
 //
+// THE TALLY HAS MOVED, and this is the paragraph that asked to be told.
+// [NewBoundary] yields one pure-effect step per boundary a clock advance
+// crossed — two on an ordinary turn end, and as many as a driven fight
+// produces — so pure effects now outnumber folds in any interaction that is a
+// boundary at all. It does NOT force a fifth step kind: a crossing is "do this
+// on the bus and hand me the next step", which is exactly what [Gather] already
+// does for the imposition above, and extending a sealed set against one more
+// example is the mistake [ADR-0007] exists to remember. What has changed is
+// that the ratio argument can no longer be the reason. If the question comes
+// back, it comes back on whether "fold a chain" and "announce something" want
+// to be told apart by TYPE rather than by [Gather.Name] — which is a different
+// question from the one this section settled, and a better one.
+//
 // All three folds are this package's own. The damage chain was the last one
 // held elsewhere: slice 1 handed resolution's bus to combat.ResolveDamage,
 // because every exported attack and damage entry point in that package required

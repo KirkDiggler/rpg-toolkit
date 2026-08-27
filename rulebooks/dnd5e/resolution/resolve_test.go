@@ -69,14 +69,14 @@ func (s *ResolveTestSuite) SetupTest() {
 // world is a two-member encounter, already normalised by a load/save cycle so
 // that "unchanged" can be asserted literally.
 func (s *ResolveTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
-			{ID: skeletonID, Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 5, Y: 5}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: skeletonID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -637,13 +637,13 @@ func (c *countingStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberI
 // zero is how that stays a decision rather than a coincidence.
 func TestTheStandingCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
@@ -703,13 +703,13 @@ func (c *countingSight) Sight(members []encounter.MemberID) (map[encounter.Membe
 // darkvision it holds nothing of.
 func TestTheSightCapabilityIsCarriedAndNeverAsked(t *testing.T) {
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
-		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: heroID, Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 1, Y: 1}},
+			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 	})
