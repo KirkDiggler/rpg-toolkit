@@ -351,6 +351,17 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	require.NotNil(t, attack.Why)
 	require.Equal(t, session.ShortfallDowned, attack.Why.Reason)
 
+	// The Activate blocker carries the SAME reason, one row, no ability named:
+	// a downed member has not compiled any of the things they carry, so there
+	// is nothing to emit six of.
+	activate := requireSingleDeclaration(t, out.Declarations, session.VerbActivate)
+	require.False(t, activate.Available)
+	require.Empty(t, activate.ID)
+	require.Nil(t, activate.Ability)
+	require.Equal(t, session.TargetNone, activate.TargetKind)
+	require.NotNil(t, activate.Why)
+	require.Equal(t, session.ShortfallDowned, activate.Why.Reason)
+
 	move := requireSingleDeclaration(t, out.Declarations, session.VerbMove)
 	require.False(t, move.Available)
 	require.Empty(t, move.ID)
