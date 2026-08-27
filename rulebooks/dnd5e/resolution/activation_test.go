@@ -356,3 +356,69 @@ func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing(
 	// ...and the barbarian is not raging.
 	s.NotContains(conditionRefs(data), "dnd5e:conditions:raging")
 }
+
+// --- The target contract, which the doc promised before the code kept it ---
+
+// Help takes somebody. A Help with nobody named is a malformed call, not an
+// ability refusing.
+func (s *ActivationTestSuite) TestAnAbilityThatNeedsATargetRefusesWithoutOne() {
+	_, err := s.run(
+		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Help()},
+		s.world(),
+		[]Participant{{Character: s.barbarian(2)}},
+	)
+
+	s.Require().ErrorIs(err, ErrBadActivation)
+	s.Contains(err.Error(), "needs a target")
+}
+
+// And the other way: a target on Dodge is REFUSED rather than ignored. A
+// target quietly dropped is a client that believes it aimed Dodge at somebody
+// and a server that knows better — a disagreement nobody finds until it
+// matters.
+func (s *ActivationTestSuite) TestAnUntargetedAbilityRefusesATarget() {
+	_, err := s.run(
+		&ActivationInput{
+			MemberID: heroID, Ability: refs.CombatAbilities.Dodge(), TargetID: heroID,
+		},
+		s.world(),
+		[]Participant{{Character: s.barbarian(2)}},
+	)
+
+	s.Require().ErrorIs(err, ErrBadActivation)
+	s.Contains(err.Error(), "takes no target")
+}
+
+// THE CONTRACT CHECK STAYS QUIET WHEN THE SHEET CANNOT ANSWER.
+//
+// AvailableAbilities is empty out of combat, so nothing can be looked up. That
+// is an actor-state refusal, not a caller defect, and reporting it as
+// ErrBadActivation would send somebody hunting a malformed request that does
+// not exist — the confusion the two sentinels are there to prevent.
+func (s *ActivationTestSuite) TestOutOfCombatIsARefusalNotAMalformedCall() {
+	cold := s.barbarian(2)
+	cold.ActionEconomy = nil
+
+	_, err := s.run(
+		&ActivationInput{MemberID: heroID, Ability: refs.CombatAbilities.Help()},
+		s.world(),
+		[]Participant{{Character: cold}},
+	)
+
+	s.Require().ErrorIs(err, ErrActivationRefused)
+	s.False(errors.Is(err, ErrBadActivation))
+	s.Contains(err.Error(), "not in combat")
+}
+
+// The ability ref is copied too, not just the observer slice. core.Ref is a
+// mutable struct, so keeping the caller's pointer would let a reused ref change
+// WHICH ABILITY this machine activates after it was built.
+func (s *ActivationTestSuite) TestTheAbilityRefIsCopied() {
+	ref := *refs.Features.Rage()
+	machine, err := NewActivation(&ActivationInput{MemberID: heroID, Ability: &ref})
+	s.Require().NoError(err)
+
+	ref.ID = "second_wind"
+
+	s.Equal("rage", machine.(*activationMachine).ability.ID)
+}

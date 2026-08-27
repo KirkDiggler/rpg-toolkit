@@ -122,12 +122,20 @@ func NewActivation(in *ActivationInput) (Machine, error) {
 			ErrBadActivation, in.MemberID, err)
 	}
 
+	// BOTH pieces of caller-owned material are copied, not just the obvious
+	// one. core.Ref is a mutable struct, so keeping the caller's pointer would
+	// let a reused ref change WHICH ABILITY this machine activates after it was
+	// constructed — a worse version of the observer-slice hazard, and one that
+	// is easy to miss precisely because the slice copy right beside it looks
+	// like the defence was already made.
+	ability := *in.Ability
+
 	observers := make([]int, len(in.ObserverPassivePerceptions))
 	copy(observers, in.ObserverPassivePerceptions)
 
 	return &activationMachine{
 		member:    in.MemberID,
-		ability:   in.Ability,
+		ability:   &ability,
 		targetID:  in.TargetID,
 		observers: observers,
 	}, nil
@@ -162,6 +170,10 @@ func (m *activationMachine) Start(_ context.Context, cast *Participants) (Step, 
 		return nil, fmt.Errorf("%w: %q is not a participant", ErrBadActivation, m.member)
 	}
 
+	if err := m.checkTargetContract(actor); err != nil {
+		return nil, err
+	}
+
 	var target core.Entity
 	if m.targetID != "" {
 		found, err := memberEntity(cast, m.targetID)
@@ -172,6 +184,53 @@ func (m *activationMachine) Start(_ context.Context, cast *Participants) (Step, 
 	}
 
 	return m.step(actor, target), nil
+}
+
+// checkTargetContract enforces what ActivationInput.TargetID promises: required
+// when the ability takes somebody, empty when it does not.
+//
+// # The rulebook answers, this does not decide
+//
+// Which abilities take a target is rules knowledge, and re-stating it here
+// would be a second table to disagree with the first. So it ASKS: the sheet's
+// own AvailableAbilities carries each ability's TargetKind, authored by the
+// same table Afford projects into a declaration. This reads that answer and
+// enforces it; it does not have an opinion about Help.
+//
+// # It stays quiet when the sheet cannot answer
+//
+// AvailableAbilities is empty for a character who is not in combat, and an
+// ability this character does not carry is simply absent. NEITHER is a
+// malformed call — the first is an actor-state refusal and the second is
+// "unknown ability", and both belong to ErrActivationRefused. Refusing them
+// here would report a barbarian out of combat as a caller defect, which is the
+// exact confusion the two sentinels exist to prevent.
+func (m *activationMachine) checkTargetContract(actor *character.Character) error {
+	var kind character.TargetKind
+	found := false
+	for _, available := range actor.AvailableAbilities() {
+		if available.Ref != nil && available.Ref.ID == m.ability.ID {
+			kind, found = available.TargetKind, true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+
+	wantsTarget := kind == character.TargetKindSingleEntity
+	switch {
+	case wantsTarget && m.targetID == "":
+		return fmt.Errorf("%w: %s needs a target and none was named",
+			ErrBadActivation, m.ability.String())
+	case !wantsTarget && m.targetID != "":
+		// Refused rather than ignored. A target quietly dropped is a client
+		// that believes it aimed Dodge at somebody and a server that knows
+		// better, which is a disagreement nobody finds until it matters.
+		return fmt.Errorf("%w: %s takes no target, but %q was named",
+			ErrBadActivation, m.ability.String(), m.targetID)
+	}
+	return nil
 }
 
 // step is the one thing this machine does.
