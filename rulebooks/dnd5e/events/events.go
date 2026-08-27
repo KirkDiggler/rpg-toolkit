@@ -74,6 +74,13 @@ const (
 	// Attackers have disadvantage against the character and the character has
 	// advantage on DEX saves, until the start of the character's next turn.
 	ConditionDodging ConditionType = "dodging"
+
+	// ConditionDisengaging is applied when a character takes the Disengage
+	// action, or a monk spends Step of the Wind on it. It arrives late
+	// (rpg-toolkit#1272) because Disengage applied its condition directly to
+	// the bus instead of publishing one, so there was never an event to
+	// name — which is exactly why the condition never reached a sheet.
+	ConditionDisengaging ConditionType = "disengaging"
 	// ConditionHidden is applied when a character successfully hides
 	// (a Stealth check beating observers' passive Perception). Grants
 	// advantage on the hidden character's attacks and disadvantage on
