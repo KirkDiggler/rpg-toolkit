@@ -96,3 +96,17 @@ type encPassDriver struct{}
 func (encPassDriver) Act(encounter.MonsterView) (encounter.TurnIntent, error) {
 	return encounter.Pass{}, nil
 }
+
+// encQuietAnnouncer is the construction-only Announcer these fixtures wire.
+//
+// UNLIKE encounter.RefusingStriker beside it, a boundary really can be crossed
+// while a fixture builds its world — a pair standing in contact forms a bubble
+// at first light, and forming one starts somebody's turn. It succeeds silently
+// because these are worlds being SHAPED, not played: the real announcer is the
+// one the Manager installs at its own load sites (announcerSeam), and that is
+// what every behavioural test below actually exercises.
+type encQuietAnnouncer struct{}
+
+func (encQuietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}

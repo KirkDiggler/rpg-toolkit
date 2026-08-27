@@ -91,6 +91,18 @@ func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*cha
 		return nil, fmt.Errorf(
 			"%s %q: GetCharacter reported success with no data: %w", role, id, ErrBadRepository)
 	}
+	if data.ID != id {
+		// The same contract, one field over, and the failure it prevents is
+		// quieter than the nil above. A sheet returned under the wrong ID is
+		// perfectly loadable: the caller attaches SOMEBODY, so nothing errors,
+		// and what actually happened is that the character who was asked for
+		// was never in the interaction at all. On a boundary announcement that
+		// means their turn-scoped conditions silently do not expire — which is
+		// the exact defect this whole slice exists to close, arriving by a
+		// different door (Copilot, rpg-toolkit#1261).
+		return nil, fmt.Errorf(
+			"%s %q: GetCharacter returned %q instead: %w", role, id, data.ID, ErrBadRepository)
+	}
 	return data, nil
 }
 

@@ -596,7 +596,8 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		data:      data,
 		sight:     &sightSeam{},
 	}
-	enc, baseline, standing, err := m.loadWorldWithBaseline(ctx, data, strikerSeam{m: m, scope: scope}, scope.sight)
+	enc, baseline, standing, err := m.loadWorldWithBaseline(
+		ctx, data, strikerSeam{m: m, scope: scope}, announcerSeam{m: m, scope: scope}, scope.sight)
 	if err != nil {
 		return nil, err
 	}
@@ -683,6 +684,11 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		// strikerSeam only ever reads scope.enc from inside a later Strike
 		// call, well after this assignment lands (rpg-project#254).
 		Striker: strikerSeam{m: m, scope: scope},
+		// Bound to the same scope for the same reason, and rebound here for
+		// a sharper one: adopt REPLACES scope.enc, and the composition
+		// announces from inside its own verbs, so the seam the new
+		// encounter carries must be the one that reads this scope.
+		Announcer: announcerSeam{m: m, scope: scope},
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)

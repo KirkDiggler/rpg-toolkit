@@ -111,6 +111,15 @@ func (encOrderAsGiven) RollInitiative(m []encounter.MemberID) ([]encounter.Membe
 	return m, nil
 }
 
+// encQuietAnnouncer is this construction's Announcer. It hears the boundaries
+// assembling the scene crosses and does nothing with them: there is no rulebook
+// attached to a world being built, so a turn boundary means nothing here yet.
+type encQuietAnnouncer struct{}
+
+func (encQuietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}
+
 // encPassDriver is this construction's TurnDriver: every unplayed member
 // passes. Matched to session.Pass, the workbench's own answer, for the same
 // reason encEveryoneStanding is matched to session's — the scene reads the
@@ -447,8 +456,13 @@ func drive(out *bytes.Buffer) error {
 // cellAt makes of them.
 func authoredCrypt() (*encounter.EncounterData, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
-		Striker:  encounter.RefusingStriker{},
-		Standing: encEveryoneStanding{},
+		Striker: encounter.RefusingStriker{},
+		// Governs THIS construction only, exactly as the sight seam below
+		// does: session installs its own announcer the moment it loads this
+		// world, and the walk runs on that one. Quiet rather than refusing
+		// because a bubble can form while the scene is being assembled.
+		Announcer: encQuietAnnouncer{},
+		Standing:  encEveryoneStanding{},
 		// Governs THIS construction only: once session loads the world it
 		// supplies its own sight seam, so the walk below runs on session's
 		// answer rather than this one. Matched to it anyway, so the scene
