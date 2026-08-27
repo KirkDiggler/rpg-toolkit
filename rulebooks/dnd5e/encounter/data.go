@@ -645,6 +645,14 @@ type LoadEncounterInput struct {
 	// reconstituted. Refused at the door, never guarded at the use site, and
 	// never defaulted.
 	Striker Striker
+
+	// Announcer publishes the temporal boundaries a clock advance crossed.
+	// REQUIRED, exactly as it is on SetupInput and for the same reason: a
+	// loaded encounter's clock can advance the moment it is reconstituted,
+	// and a boundary nobody announced is a turn-scoped condition that never
+	// expires. Refused at the door, never guarded at the use site, and never
+	// defaulted.
+	Announcer Announcer
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -673,6 +681,10 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Striker == nil {
 		return fmt.Errorf("load encounter: Striker is required: %w", ErrNoStriker)
+	}
+
+	if in.Announcer == nil {
+		return fmt.Errorf("load encounter: Announcer is required: %w", ErrNoAnnouncer)
 	}
 
 	return nil
@@ -1023,6 +1035,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		sight:       input.Sight,
 		turnDriver:  input.TurnDriver,
 		striker:     input.Striker,
+		announcer:   input.Announcer,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),
 		logFloor:    logFloorOf(data.Log),

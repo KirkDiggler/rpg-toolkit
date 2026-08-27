@@ -311,6 +311,22 @@ var (
 	// world, not a legal outcome any caller is meant to recover from.
 	ErrRefusingStriker = errors.New("encounter: RefusingStriker: a driven turn reached a construction-only world")
 
+	// ErrNoAnnouncer is what both constructors return when no Announcer was
+	// supplied. Every clock advance crosses boundaries — a turn ending, a
+	// fight forming — and this module refuses to guess what one MEANS to a
+	// condition, exactly as it refuses to guess how a strike resolves or
+	// what an unplayed member does. Never defaulted: an Announcer that
+	// silently did nothing would let every turn-scoped condition live
+	// forever, which is precisely the bug this capability closed
+	// (rpg-project#294).
+	ErrNoAnnouncer = errors.New("encounter: no announcer capability")
+
+	// ErrRefusingAnnouncer is what [RefusingAnnouncer.Announce] always
+	// returns: a clock advanced on a world built only to be inspected. A
+	// host bug — nothing should reach EndTurn or form against such a
+	// world — not a legal outcome any caller is meant to recover from.
+	ErrRefusingAnnouncer = errors.New("encounter: RefusingAnnouncer: a clock advanced on a construction-only world")
+
 	// ErrBadIntent indicates a TurnDriver returned a syntactically valid
 	// TurnIntent this composition cannot execute: an Attack naming a target
 	// that is not currently Seen, not Standing, or out of the named

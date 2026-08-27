@@ -56,7 +56,7 @@ func TestTombWatch(t *testing.T) {
 	// cannot get through.
 	goblinPatrol := &patrolDecider{positions: []spatial.Position{cellAt(7, 10), cellAt(6, 10)}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),
@@ -129,7 +129,7 @@ func TestTombWatch(t *testing.T) {
 	// does not — beliefs are state and traveled in the aggregate).
 	data := enc.ToData()
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 			goblin: &patrolDecider{positions: []spatial.Position{cellAt(7, 10), cellAt(6, 10)}},
 		}})
 	require.NoError(t, err, "beat 4: the suspended scene crosses a process boundary")
@@ -267,7 +267,7 @@ func TestTombWatch(t *testing.T) {
 		})
 	}
 	sequel, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(cryptRoom, 0, 0, 12, 12)}, Props: wallRow(6, 5, 7),

@@ -72,7 +72,7 @@ type DataTestSuite struct {
 // for g1's pass, and next_seq incremented to match.
 func (s *DataTestSuite) TestGoldenJSONRich() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{
@@ -125,7 +125,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 // ending order changes which outcome the campaign receives.
 func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion("r1", 0, 0, 5, 5)}},
 		Members: []encounter.MemberInput{
 			{ID: "p1", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -138,7 +138,7 @@ func (s *DataTestSuite) TestEndingsOrderSurvivesReload() {
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: enc1.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: enc1.ToData()})
 	s.Require().NoError(err)
 
 	out, err := enc2.Step(&encounter.StepInput{Member: "p1", To: cellAt(3, 3)})
@@ -174,7 +174,7 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 	raised := wall(4, 1, 5, 1)
 	raised.Height = 2.5
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("r1", 0, 1, 5, 5), rectRegion("r2", 5, 0, 5, 5)},
@@ -201,7 +201,7 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 	s.ElementsMatch([]float64{2.5, 0}, heights(enc), "the atlas carries the authored multiplier, and 0 where none was authored")
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Data: enc.ToData(),
 	})
 	s.Require().NoError(err)
@@ -210,7 +210,7 @@ func (s *DataTestSuite) TestWallHeightSurvivesPersistenceAndAtlas() {
 
 func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("r1", 0, 1, 5, 5), rectRegion("r2", 5, 0, 5, 5)},
@@ -242,7 +242,7 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 }
 
@@ -266,7 +266,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 	s.Run("post-setup open encounter survives round-trip", func() {
 		// Create a simple encounter
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)}, Props: wallColumn(5, 3, 7), Walls: []encounter.WallInput{{Boundary: spatial.Boundary{
@@ -305,7 +305,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 
 		// Load from data (without decider for goblin)
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Convert to data again
@@ -326,7 +326,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 	s.Run("mid-fade ghost survives reload still Held", func() {
 		// Create encounter with a wall that will cause a ghost to form
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -387,7 +387,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 
 		// Load and verify ghost is still there
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Get holdings - ghost should still be Held (not Current)
@@ -412,7 +412,7 @@ func (s *DataTestSuite) TestRoundTripMidFade() {
 func (s *DataTestSuite) TestRoundTripPostExit() {
 	s.Run("exited member persists in everMembers and can Story", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -450,7 +450,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 
 		// Load and verify everMembers includes the exited player
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Story should work for the exited member
@@ -465,7 +465,7 @@ func (s *DataTestSuite) TestRoundTripPostExit() {
 func (s *DataTestSuite) TestRoundTripClosed() {
 	s.Run("closed encounter with ending outcome round-trips", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -511,7 +511,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 
 		// Load and verify outcome matches
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		status2, _ := enc2.Status()
@@ -527,7 +527,7 @@ func (s *DataTestSuite) TestRoundTripClosed() {
 func (s *DataTestSuite) TestPumpContinuesTick() {
 	s.Run("Pump continues tick sequence post-reload", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -568,7 +568,7 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 		s.Require().Equal(2, data1.Clock.HighWater, "precondition: two ticks persisted")
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1})
 		s.Require().NoError(err)
 
 		out, err := enc2.Pump(&encounter.PumpInput{})
@@ -581,7 +581,7 @@ func (s *DataTestSuite) TestPumpContinuesTick() {
 func (s *DataTestSuite) TestMoveWorksPostReload() {
 	s.Run("Move works on reloaded encounter", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -615,7 +615,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 
 		// Load
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Move should work
@@ -634,7 +634,7 @@ func (s *DataTestSuite) TestMoveWorksPostReload() {
 func (s *DataTestSuite) TestGoldenJSONOpen() {
 	s.Run("small open encounter golden JSON", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -675,7 +675,7 @@ func (s *DataTestSuite) TestGoldenJSONOpen() {
 func (s *DataTestSuite) TestGoldenJSONClosed() {
 	s.Run("small closed encounter golden JSON", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -739,7 +739,7 @@ func (s *DataTestSuite) TestGoldenJSONClosed() {
 func (s *DataTestSuite) TestAliasImmunityToData() {
 	s.Run("mutating ToData result doesn't affect aggregate", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -800,7 +800,7 @@ func (s *DataTestSuite) TestAliasImmunityToData() {
 func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 	s.Run("mutating caller's Data after LoadEncounter doesn't affect loaded aggregate", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -828,7 +828,7 @@ func (s *DataTestSuite) TestAliasImmunityLoadEncounter() {
 		// Load FIRST, then vandalize the caller's Data: the loaded
 		// aggregate must be untouched (load-side deep copy).
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().NoError(err)
 
 		data.Members[0].ID = "mutated"
@@ -856,7 +856,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		// persisted holding says Held (a ghost). A load that re-runs
 		// first-light surveil would resurrect it to Current.
 		enc1, err := encounter.NewEncounter(&encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)}},
 			Members: []encounter.MemberInput{
 				{ID: "playerA", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -877,7 +877,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 		data.Intel.Holdings["playerA"]["goblin"] = holding
 
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().NoError(err)
 
 		view, err := enc2.View(&encounter.ViewInput{Member: "playerA"})
@@ -890,7 +890,7 @@ func (s *DataTestSuite) TestNoSurveilOnLoad() {
 func (s *DataTestSuite) TestDeciderReattachment() {
 	s.Run("reload with decider resumes monster decision", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -935,7 +935,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 			},
 		}
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 				encounter.MemberID("goblin"): decider,
 			}})
 		s.Require().NoError(err)
@@ -955,7 +955,7 @@ func (s *DataTestSuite) TestDeciderReattachment() {
 func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 	s.Run("reload without decider makes monster hold", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -995,7 +995,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 
 		// Load WITHOUT goblin's decider
 		enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		s.Require().NoError(err)
 
 		// Pump should succeed (goblin holds)
@@ -1015,7 +1015,7 @@ func (s *DataTestSuite) TestDeciderReattachmentWithoutDecider() {
 // nil entry is equivalent to an absent one: the monster simply holds.
 func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -1033,7 +1033,7 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 	data1 := enc1.ToData()
 
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 			"goblin": nil,
 		}})
 	s.Require().NoError(err, "a present-but-nil reattachment entry must load, not reject")
@@ -1050,7 +1050,7 @@ func (s *DataTestSuite) TestDeciderReattachmentNilEntryHolds() {
 // same reattachment map: the real one decides normally, the nil one holds.
 func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 	setup := &encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10), rectRegion("antechamber", 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
@@ -1071,7 +1071,7 @@ func (s *DataTestSuite) TestDeciderReattachmentMixedNilAndReal() {
 
 	ratDecider := &testDecider{intent: encounter.IntentMoveTo{To: cellAt(3, 8)}}
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{
 			"goblin": nil,
 			"rat":    ratDecider,
 		}})
@@ -1170,7 +1170,7 @@ func (s *DataTestSuite) TestLoadNilInputRejected() {
 // call sites, so it is stated once rather than left implied by them.
 func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Data: validEncounterData(),
 	})
 	s.Require().NoError(err)
@@ -1190,7 +1190,7 @@ func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err, "a prop on a room's boundary cell, including a corner, must be legal at Load too")
 }
 
@@ -1207,7 +1207,7 @@ func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoField)
@@ -1229,7 +1229,7 @@ func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 		},
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
 	s.Require().ErrorIs(err, encounter.ErrNoEnding)
@@ -1312,7 +1312,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 			data := validEncounterData()
 			tc.mutate(&data)
 			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 			s.Require().Error(err, tc.name)
 			s.Require().ErrorIs(err, encounter.ErrInvalidData, tc.name)
 			s.Require().Contains(err.Error(), tc.fragment,
@@ -1326,7 +1326,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 	// The valid base itself must load — the one-defect discipline only
 	// means something if zero defects pass.
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: validEncounterData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: validEncounterData()})
 	s.Require().NoError(err, "the valid base fixture must load")
 }
 
@@ -1342,7 +1342,7 @@ func (s *DataTestSuite) TestLoadRejections() {
 func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
 	data := validEncounterData()
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 			"p1": &spyDecider{},
 		}})
 	s.Require().ErrorIs(err, encounter.ErrInvalidData)
@@ -1352,7 +1352,7 @@ func (s *DataTestSuite) TestLoadRejectsPlayerWithDecider() {
 func (s *DataTestSuite) TestMutation1ToDataAliases() {
 	s.Run("mutation 1: ToData aliases slices", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1390,7 +1390,7 @@ func (s *DataTestSuite) TestMutation1ToDataAliases() {
 func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 	s.Run("mutation 2: wire tag renamed", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1419,7 +1419,7 @@ func (s *DataTestSuite) TestMutation2WireTagRenamed() {
 func (s *DataTestSuite) TestMutation3StowawayField() {
 	s.Run("mutation 3: stowaway field in EncounterData", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1450,7 +1450,7 @@ func (s *DataTestSuite) TestMutation3StowawayField() {
 func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 	s.Run("mutation 4: leaf data substitution (Intel/Log swapped)", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 5, 5)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1481,7 +1481,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 
 		// Control: loading dataA verbatim, p1 holds p2.
 		ctrl, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: dataA})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: dataA})
 		s.Require().NoError(err)
 		ctrlView, err := ctrl.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -1492,7 +1492,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 		// is genuinely consumed, never re-derived from the field.
 		dataA.Intel = dataB.Intel
 		swapped, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: dataA})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: dataA})
 		s.Require().NoError(err)
 		swappedView, err := swapped.View(&encounter.ViewInput{Member: "p1"})
 		s.Require().NoError(err)
@@ -1504,7 +1504,7 @@ func (s *DataTestSuite) TestMutation4LeafSubstitution() {
 func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 	s.Run("mutation 6: no re-surveil on load (ghost stays ghost)", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("crypt", 0, 0, 10, 10)},
@@ -1550,7 +1550,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 
 		data := enc1.ToData()
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{}})
 
 		holdings2, _ := enc2.View(&encounter.ViewInput{Member: "playerA"})
 		var goblinStatusAfter intel.Status
@@ -1571,7 +1571,7 @@ func (s *DataTestSuite) TestMutation6ReSurveilOnLoad() {
 func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 	s.Run("mutation 7: tick continuation (clock not reset)", func() {
 		setup := &encounter.SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion("room1", 0, 0, 10, 10)}, Props: []encounter.PropInput{}, Walls: []encounter.WallInput{},
@@ -1589,7 +1589,7 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		tick1 := data1.Clock.HighWater
 
 		enc2, _ := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data1, Deciders: map[encounter.MemberID]encounter.Decider{}})
 		data2 := enc2.ToData()
 		tick2 := data2.Clock.HighWater
 

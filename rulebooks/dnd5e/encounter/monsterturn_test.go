@@ -94,7 +94,7 @@ func (s *scriptedStriker) Strike(
 func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDriver, striker encounter.Striker) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker,
+		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -123,7 +123,7 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDr
 func (s *MonsterTurnTestSuite) farSkeletonEncounter(driver encounter.TurnDriver, striker encounter.Striker) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker,
+		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -451,7 +451,7 @@ func (s *MonsterTurnTestSuite) TestMemberFactsRoundTripThroughToDataAndLoadEncou
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  saved,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
 
@@ -499,7 +499,7 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		mutate(&mi)
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 8, 8)},
@@ -582,7 +582,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 5, 3)}, Walls: wall,
@@ -633,7 +633,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
 			// of void between the two rooms is still not floor for either
@@ -672,7 +672,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 3)},
@@ -748,7 +748,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 5, 3)}, Walls: wall,
@@ -831,7 +831,7 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker,
+		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -938,7 +938,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker,
+		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},

@@ -188,6 +188,12 @@ type Encounter struct {
 	// [Striker].
 	striker Striker
 
+	// announcer publishes the temporal boundaries a clock advance crossed.
+	// Required at both constructors for the same reason striker is; see
+	// [Announcer], whose doc explains why it is a capability rather than a
+	// return value.
+	announcer Announcer
+
 	// driving is true for the duration of ONE driveMonsterTurns call, at
 	// any depth of Go call stack — runtime state, never persisted (there is
 	// no stack mid-verb for ToData to capture, and none is needed: a fresh
@@ -493,6 +499,15 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoStriker)
 	}
 
+	// And once more, one seam further on: a fight forming starts round 1 and
+	// somebody's first turn, so an encounter that cannot announce a boundary
+	// would let every turn-scoped condition in it live forever — silently,
+	// which is how this went unnoticed for months. Never defaulted — see
+	// [Announcer]'s own doc.
+	if in.Announcer == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoAnnouncer)
+	}
+
 	// Check ending keys: empty/reserved, and duplicate (#929 hardening
 	// round E — two endings sharing a key both used to load; End scans
 	// in declaration order, so a reached_position twin declared FIRST
@@ -582,6 +597,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		sight:       in.Sight,
 		turnDriver:  in.TurnDriver,
 		striker:     in.Striker,
+		announcer:   in.Announcer,
 		endings:     nil,
 		retention:   normalizeRetention(in.Retention),
 	}

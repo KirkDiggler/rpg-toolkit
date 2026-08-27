@@ -107,7 +107,7 @@ func solidPillar(x, y float64) encounter.PropInput {
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
-		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{},
+		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Announcer: nobodyIsListening{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two regions do not
 			// cover — the fiction is the mountain they were cut from, and the
@@ -585,7 +585,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Announcer: nobodyIsListening{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -649,6 +649,18 @@ type rollAllStanding struct{}
 
 func (rollAllStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
 	return nil, nil
+}
+
+// nobodyIsListening is the workbench's Announcer capability. The workbench
+// drives clocks — turns end here — so unlike noAttacksExpected this really is
+// called. It succeeds silently: there is no rulebook attached to this scene,
+// so there is nothing a turn boundary could mean to anything in it.
+type nobodyIsListening struct{}
+
+func (nobodyIsListening) Announce(
+	context.Context, *encounter.Encounter, []encounter.Boundary,
+) error {
+	return nil
 }
 
 // noAttacksExpected is the workbench's Striker capability. The workbench

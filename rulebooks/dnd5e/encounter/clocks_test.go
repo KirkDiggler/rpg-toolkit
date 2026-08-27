@@ -26,7 +26,7 @@ type ClocksTestSuite struct {
 // monster in one room.
 func (s *ClocksTestSuite) twoMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			// The goblin waits in the NEXT ROOM, which is how real content is
@@ -136,7 +136,7 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 	}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -190,7 +190,7 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 	}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
 	fighting, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -224,7 +224,7 @@ func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter(
 	data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
 	out, err := reloaded.ClockOf(&encounter.ClockOfInput{Member: alice})
@@ -248,7 +248,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -264,7 +264,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -290,7 +290,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data.Clock.Budgets["ghost"] = 0
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -304,7 +304,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -317,7 +317,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		}}
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 		s.Require().Error(err)
 		s.ErrorIs(err, encounter.ErrInvalidData)
 	})
@@ -337,7 +337,7 @@ func (s *ClocksTestSuite) TestABlobFromBeforeClockMembershipLoadsEveryoneOntoThe
 	data.Bubbles = nil
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
 	for _, id := range []core.EntityID{alice, goblin} {
@@ -363,7 +363,7 @@ const (
 // monster in one room, plus an external ending so closure is reachable.
 func (s *ClocksTestSuite) fiveMemberEncounter() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
@@ -406,7 +406,7 @@ func (s *ClocksTestSuite) assertR6(enc *encounter.Encounter, members ...core.Ent
 		s.Require().NoError(err, "member %q must be on exactly one clock", id)
 	}
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: enc.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: enc.ToData()})
 	s.Require().NoError(err, "the persisted shape must pass the trust boundary (R6)")
 }
 
@@ -710,7 +710,7 @@ func (s *ClocksTestSuite) TestTheActiveFightMemberCanStep() {
 func (s *ClocksTestSuite) TestPumpDoesNotThinkForAFightMonster() {
 	wanderer := &patrolDecider{positions: []spatial.Position{{X: 5, Y: 5}, {X: 6, Y: 5}}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -783,7 +783,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 	data.Bubbles = []clock.TurnData{{}}
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: data})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrInvalidData)
 }
@@ -803,7 +803,7 @@ func (s *ClocksTestSuite) TestAMidFightBlobRoundTrips() {
 	enc := s.fiveMemberEncounter()
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Data: enc.ToData()})
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: enc.ToData()})
 	s.Require().NoError(err)
 
 	// Reached through a member of the fight — bob is exploring next door.
@@ -901,7 +901,7 @@ func (r monstersBeforePlayers) RollInitiative(members []core.EntityID) ([]core.E
 // EndTurn (see form's own doc).
 func (s *ClocksTestSuite) TestFightStartDrivesAnUnplayedMemberFirstInInitiative() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, TurnDriver: passDriver{}, Striker: passStriker{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		Initiative: monstersBeforePlayers{kinds: map[core.EntityID]encounter.MemberKind{
 			alice: encounter.KindPlayer, goblin: encounter.KindMonster,
 		}},

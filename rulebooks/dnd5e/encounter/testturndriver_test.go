@@ -44,3 +44,16 @@ type passStriker struct{}
 func (passStriker) Strike(context.Context, *encounter.Encounter, encounter.MemberID, encounter.MemberID, core.Ref) error {
 	return errPassStrikerNeverAttacks
 }
+
+// quietAnnouncer hears every boundary and does nothing with it.
+//
+// UNLIKE passStriker, this one really is called — every fixture that ends a
+// turn crosses a boundary — so it cannot refuse. It succeeds silently because
+// these fixtures are about clocks, geometry and members rather than about what
+// a turn boundary MEANS, which is the rulebook's question and not this
+// module's (C1). The test that IS about announcement uses a recording one.
+type quietAnnouncer struct{}
+
+func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}

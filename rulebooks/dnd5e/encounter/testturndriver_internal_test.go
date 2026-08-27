@@ -30,3 +30,11 @@ type passStriker struct{}
 func (passStriker) Strike(context.Context, *Encounter, MemberID, MemberID, core.Ref) error {
 	return errPassStrikerNeverAttacks
 }
+
+// quietAnnouncer is the internal-package twin of encounter_test's own — see
+// its doc.
+type quietAnnouncer struct{}
+
+func (quietAnnouncer) Announce(context.Context, *Encounter, []Boundary) error {
+	return nil
+}
