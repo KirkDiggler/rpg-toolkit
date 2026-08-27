@@ -1036,10 +1036,13 @@ const (
 	DamageThunder     DamageType = "thunder"
 )
 
-// AttackRef identifies WHAT was swung — weapon identity, which this seam
-// dropped on the floor since the first swing (rpg-toolkit#866). Carried on a
-// compiled Declaration, AttackOutput, and the Struck/Missed event bodies, so
-// selection and outcome name the same authored attack for every witness.
+// AbilityRef identifies WHAT is being activated — the combat ability or
+// feature behind a [VerbActivate] declaration.
+//
+// It exists for the reason [AttackRef] does: a declaration a client renders
+// verbatim needs an identity, and "Rage" is not derivable from the verb the
+// way "Move" is from [VerbMove]. Attack has one identity per weapon; Activate
+// has one per thing the character carries.
 type AbilityRef struct {
 	// Ref is the ability's full core.Ref.String() —
 	// "dnd5e:combat_abilities:dodge", "dnd5e:features:rage". An OPEN set, so a
@@ -1047,7 +1050,7 @@ type AbilityRef struct {
 	// type changing.
 	//
 	// It is also the SELECTOR MATERIAL for an Activate declaration. One verb
-	// compiles seven offers and this is what makes their IDs differ, the way a
+	// compiles many offers and this is what makes their IDs differ, the way a
 	// serialized definition makes two Attack offers differ.
 	Ref string `json:"ref"`
 
@@ -1056,7 +1059,10 @@ type AbilityRef struct {
 	Name string `json:"name"`
 }
 
-// AttackRef is the sole public identity of a compiled Attack.
+// AttackRef identifies WHAT was swung — weapon identity, which this seam
+// dropped on the floor since the first swing (rpg-toolkit#866). Carried on a
+// compiled Declaration, AttackOutput, and the Struck/Missed event bodies, so
+// selection and outcome name the same authored attack for every witness.
 type AttackRef struct {
 	// Ref is the full catalog ref the attack compiled from —
 	// "dnd5e:weapons:longsword", "dnd5e:weapons:unarmed-strike". An OPEN set,
@@ -1091,7 +1097,7 @@ const (
 	ShortfallNoBudget ShortfallReason = "no_budget"
 
 	// ShortfallNotYourTurn is it not being this member's turn — what
-	// Attack, Move and EndTurn refuse as ErrNotYourTurn.
+	// Attack, Move, Activate and EndTurn all refuse as ErrNotYourTurn.
 	ShortfallNotYourTurn ShortfallReason = "not_your_turn"
 
 	// ShortfallNoTargetInReach is nothing to swing at within reach. Echoing
@@ -1197,7 +1203,9 @@ type Shortfall struct {
 
 // TargetKind tells a client which selector shape a Declaration accepts. A
 // closed set owned at the seam, mirroring the merged proto's TargetKind: the
-// three currently executable verbs fix their kind, and a new kind arrives the
+// currently executable verbs fix their kind — Activate by which ABILITY it is
+// rather than by the verb, since Help prompts for an ally and the rest prompt
+// for nobody — and a new kind arrives the
 // day a proven executor for it lands — never in advance.
 //
 // FIXED FOR EVERY COMPILED OR BLOCKED DECLARATION: Attack -> TargetMember,

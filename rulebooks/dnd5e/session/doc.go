@@ -88,8 +88,9 @@
 // # Compiled declarations are the execution trust boundary
 //
 // Afford is the one current action surface on the turn clock. It compiles an
-// Attack, Move, and EndTurn offer, projects only seam-owned values, and gives
-// each compiled offer an opaque deterministic selector. Attack and EndTurn
+// Attack, Move and EndTurn offer plus one Activate offer per thing the member
+// carries, projects only seam-owned values, and gives each compiled offer an
+// opaque deterministic selector. Attack and EndTurn
 // require that ID back; Move requires it on the turn clock and requires it
 // empty on the world clock, where Afford deliberately returns no declarations.
 //

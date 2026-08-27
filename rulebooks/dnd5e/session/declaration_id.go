@@ -46,7 +46,9 @@ type declarationIDInput struct {
 	// Member is the acting member the declaration is priced for.
 	Member string
 	// Verb is the seam verb. Must be one of [VerbAttack], [VerbMove],
-	// [VerbEndTurn]; any other byte is rejected.
+	// [VerbActivate], [VerbEndTurn]; any other byte is rejected by
+	// validateDeclarationVerbSlot, which holds the same list and is the one
+	// that actually enforces it.
 	Verb Verb
 	// Slot is the economy shape this declaration would spend. Must be one of
 	// [SlotNone], [SlotAction], [SlotBonus], [SlotReaction]; any other byte is

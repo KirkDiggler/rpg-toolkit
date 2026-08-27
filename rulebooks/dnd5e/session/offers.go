@@ -23,7 +23,8 @@ import (
 // mutating verb regenerates before execution. It never crosses the host
 // boundary: only its [Declaration] projection does.
 //
-// ONE COMPILED OFFER PER VERB/ACTION/SPEND VARIANT. v1 has exactly one spend
+// ONE COMPILED OFFER PER ACTION/SPEND VARIANT — per VERB only for the verbs
+// that have exactly one variant, which is every verb except Activate. v1 has exactly one spend
 // variant per verb — the next swing's profile for Attack, SlotNone for Move
 // and EndTurn — so full Afford compilation produces one offer per verb. The day
 // a bonus-action strike lands, it arrives as a second Attack offer with a
@@ -96,7 +97,7 @@ type targetPreflight struct {
 
 // compileOffersFor builds only the requested compiled offers for one member on
 // the turn clock, applying the same per-verb blocker matrix. [Manager.Afford]
-// requests all three verbs from one actor snapshot; Move and Attack each request
+// requests all four verbs from one actor snapshot; Move and Attack each request
 // only their own offer before selecting an echoed ID. EndTurn execution keeps
 // its direct clock-only builder.
 //
@@ -684,11 +685,14 @@ func sortDeclarations(decls []Declaration) {
 		if verbRank(decls[i].Verb) != verbRank(decls[j].Verb) {
 			return verbRank(decls[i].Verb) < verbRank(decls[j].Verb)
 		}
-		// WITHIN a verb, and only Activate ever has two. Verb rank alone was a
-		// total order while every verb compiled one offer; with seven Activate
-		// rows it leaves their order to whatever the caller appended, which is
-		// stable today and stable by accident. Ability ref is a fact about the
-		// character, so the panel's order is too.
+		// WITHIN a verb, and only Activate ever has more than one — six at
+		// level 1, and however many the character carries after that, which is
+		// the point: the count is a fact about the sheet, not a constant.
+		//
+		// Verb rank alone was a total order while every verb compiled exactly
+		// one offer. With many Activate rows it leaves their order to whatever
+		// the caller appended — stable today, and stable by accident. Ability
+		// ref is a fact about the character, so the panel's order is too.
 		if decls[i].Ability != nil && decls[j].Ability != nil {
 			return decls[i].Ability.Ref < decls[j].Ability.Ref
 		}
