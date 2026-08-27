@@ -247,7 +247,7 @@ func (c *Character) HasGranted(key GrantedActionKey) bool {
 // An unknown ref returns TargetKindUnspecified so a new ref surfaces as a
 // visible defect rather than silently defaulting.
 //
-// # It answers for features too, and did not used to
+// # It answers for features too, and until now it did not
 //
 // The table was written when only combat abilities reached a menu, so every
 // FEATURE fell to the default and came back Unspecified. That defaulting did

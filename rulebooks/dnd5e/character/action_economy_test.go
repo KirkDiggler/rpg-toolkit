@@ -453,10 +453,16 @@ func (s *ActionEconomyTestSuite) TestAFeatureCarriesItsTargetKind() {
 	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
 
+	// One call, held. AvailableAbilities builds a fresh slice every time, so
+	// indexing a second call would take a pointer into a different slice than
+	// the one being ranged over — harmless here and a trap the moment the
+	// builder does anything order- or state-dependent.
+	abilities := char.AvailableAbilities()
+
 	var secondWind *AvailableAbility
-	for i, a := range char.AvailableAbilities() {
-		if a.Ref != nil && a.Ref.ID == refs.Features.SecondWind().ID {
-			secondWind = &char.AvailableAbilities()[i]
+	for i := range abilities {
+		if abilities[i].Ref != nil && abilities[i].Ref.ID == refs.Features.SecondWind().ID {
+			secondWind = &abilities[i]
 		}
 	}
 
