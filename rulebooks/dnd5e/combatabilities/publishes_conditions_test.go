@@ -83,6 +83,12 @@ func TestNothingAppliesAConditionToTheBusItself(t *testing.T) {
 // entirely correct. An earlier draft of this guard flagged both, and a guard
 // that cries wolf gets deleted by the third person who trips over it.
 func appliedConditionsIn(path string, fn *ast.FuncDecl) []string {
+	// Two shapes reach the same bug, and an earlier draft of this guard only
+	// caught the first — Copilot's finding on #1273. A guard with a loophole is
+	// worse than none, because it is read as coverage.
+	//
+	//   cond := conditions.NewX(...); cond.Apply(ctx, bus)   // via a local
+	//   conditions.NewX(...).Apply(ctx, bus)                 // chained
 	built := map[string]bool{}
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
 		assign, ok := n.(*ast.AssignStmt)
@@ -90,16 +96,7 @@ func appliedConditionsIn(path string, fn *ast.FuncDecl) []string {
 			return true
 		}
 		for i, rhs := range assign.Rhs {
-			call, ok := rhs.(*ast.CallExpr)
-			if !ok || i >= len(assign.Lhs) {
-				continue
-			}
-			selector, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				continue
-			}
-			pkg, ok := selector.X.(*ast.Ident)
-			if !ok || pkg.Name != "conditions" || !strings.HasPrefix(selector.Sel.Name, "New") {
+			if i >= len(assign.Lhs) || !isConditionConstructor(rhs) {
 				continue
 			}
 			if name, ok := assign.Lhs[i].(*ast.Ident); ok {
@@ -108,9 +105,6 @@ func appliedConditionsIn(path string, fn *ast.FuncDecl) []string {
 		}
 		return true
 	})
-	if len(built) == 0 {
-		return nil
-	}
 
 	var found []string
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
@@ -122,12 +116,35 @@ func appliedConditionsIn(path string, fn *ast.FuncDecl) []string {
 		if !ok || selector.Sel.Name != "Apply" {
 			return true
 		}
-		receiver, ok := selector.X.(*ast.Ident)
-		if !ok || !built[receiver.Name] {
-			return true
+
+		switch receiver := selector.X.(type) {
+		case *ast.Ident:
+			if built[receiver.Name] {
+				found = append(found, path+": "+fn.Name.Name+" applies "+receiver.Name)
+			}
+		case *ast.CallExpr:
+			// The chained form. No local ever exists, so nothing above sees it.
+			if isConditionConstructor(receiver) {
+				found = append(found, path+": "+fn.Name.Name+" applies a condition inline")
+			}
 		}
-		found = append(found, path+": "+fn.Name.Name+" applies "+receiver.Name)
 		return true
 	})
 	return found
+}
+
+// isConditionConstructor reports whether an expression is a conditions.NewX
+// call — the one thing that makes an Apply below it a bug rather than a
+// feature attaching its own recoverable resource.
+func isConditionConstructor(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	return ok && pkg.Name == "conditions" && strings.HasPrefix(selector.Sel.Name, "New")
 }
