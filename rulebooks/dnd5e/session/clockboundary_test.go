@@ -329,3 +329,108 @@ func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
 	s.Require().Error(err, "a repository handing back the wrong sheet is named, not absorbed")
 	s.Contains(err.Error(), "instead", "and the refusal says which sheet came back")
 }
+
+// dissolve ends the fight through the real verb, reached through whoever is
+// named — which is the point of half of what follows.
+func (s *ClockBoundaryTestSuite) dissolve(mgr *session.Manager, through string) {
+	s.T().Helper()
+	_, err := mgr.Dissolve(s.ctx, &session.DissolveInput{
+		Session: "sess", Member: through, Cause: session.ByDecision(),
+	})
+	s.Require().NoError(err)
+}
+
+// enrage puts a rage on a member who is already in the fight, through the
+// repository rather than through the fixture — bob is built by fight() and the
+// tests that need him raging are about him NOT being the one named.
+func (s *ClockBoundaryTestSuite) enrage(id string) {
+	s.T().Helper()
+	sheet, err := s.characters.GetCharacter(s.ctx, id)
+	s.Require().NoError(err)
+	sheet.Conditions = []json.RawMessage{s.raw(&conditions.RagingCondition{
+		CharacterID: id, DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+	})}
+	s.Require().NoError(s.characters.SaveCharacter(s.ctx, sheet))
+}
+
+// TestRageEndsWhenTheFightDoes is the acceptance for rpg-project#295, and it is
+// shaped so that combat end is the ONLY thing that can produce the result.
+//
+// No turn is ended anywhere in it. That matters: rage has three other ways out
+// — the RAW activity check at its owner's turn end, a rest, unconsciousness —
+// and the first of those is what #294 made work. Ending the fight without
+// ending a turn leaves exactly one path open.
+//
+// RAW: rage ends when combat ends. Before this slice CombatEndTopic had one
+// publisher (character.EndCombat) with zero callers anywhere, so this had never
+// once happened in the product.
+func (s *ClockBoundaryTestSuite) TestRageEndsWhenTheFightDoes() {
+	mgr := s.fight(s.raw(&conditions.RagingCondition{
+		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+	}))
+	s.Require().Len(s.storedConditions("alice"), 1, "alice starts the fight raging")
+
+	s.dissolve(mgr, "alice")
+
+	s.Empty(s.storedConditions("alice"),
+		"the fight ending is what ends the rage — no turn ended in this test at all")
+}
+
+// TestTheFightEndsForMembersTheCallerNeverNamed is the fan-out, from the far
+// end of the chain.
+//
+// DissolveInput names ONE member because a fight has no name and is reached
+// through anybody in it. But the fight ends for everybody, and the condition
+// that cares decides by comparing the ending's subject against its own owner —
+// so an ending announced once, for the member the caller happened to name,
+// would leave every other barbarian at the table raging into an empty room.
+//
+// alice is named. BOB is the assertion.
+func (s *ClockBoundaryTestSuite) TestTheFightEndsForMembersTheCallerNeverNamed() {
+	mgr := s.fight()
+	s.enrage("bob")
+	s.Require().Len(s.storedConditions("bob"), 1, "bob starts the fight raging")
+
+	s.dissolve(mgr, "alice")
+
+	s.Empty(s.storedConditions("bob"),
+		"bob was in the fight and was never named — his rage ends with everyone else's")
+}
+
+// TestTheEconomyClearDoesNotUndoTheBoundary pins an ordering that is currently
+// safe for a reason with a shelf life.
+//
+// Ending a fight writes the same sheet TWICE in one verb: the boundary
+// announcement removes rage and saves (saveDirty), and then commit's
+// exitDissolvedCombatants loads the sheet again to clear the action economy and
+// saves it again. The second write only preserves the first because
+// fetchCharacterData reads through to the repository with no cache — so it sees
+// the rage already gone.
+//
+// Give either half a cache and this test is what says so, instead of a
+// barbarian quietly raging forever because the cleanup wrote back a sheet it
+// had read before the boundary ran.
+func (s *ClockBoundaryTestSuite) TestTheEconomyClearDoesNotUndoTheBoundary() {
+	mgr := s.fight()
+	s.enrage("bob")
+
+	// A lit economy on the stored sheet, seeded the same way the condition
+	// above is: character.InCombat is exactly "actionEconomy != nil", so this
+	// is the state exitDissolvedCombatants exists to put back out, and it is
+	// the state a member who has taken a turn in this fight is left in.
+	bob, err := s.characters.GetCharacter(s.ctx, "bob")
+	s.Require().NoError(err)
+	bob.ActionEconomy = &character.ActionEconomyData{
+		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
+		ReactionsRemaining: 1, MovementRemaining: 30,
+	}
+	s.Require().NoError(s.characters.SaveCharacter(s.ctx, bob))
+
+	s.dissolve(mgr, "alice")
+
+	after, err := s.characters.GetCharacter(s.ctx, "bob")
+	s.Require().NoError(err)
+	s.Nil(after.ActionEconomy, "leaving a fight puts the action economy out")
+	s.Empty(after.Conditions,
+		"and the boundary's removal survived the write that came after it")
+}
