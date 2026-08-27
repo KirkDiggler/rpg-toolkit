@@ -153,7 +153,7 @@ func (tm *TurnManager) StartTurn(ctx context.Context) (*StartTurnResult, error) 
 	// Publish turn start event
 	topic := dnd5eEvents.TurnStartTopic.On(tm.bus)
 	if err := topic.Publish(ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: tm.character.GetID(),
+		SubjectID: tm.character.GetID(),
 	}); err != nil {
 		return nil, fmt.Errorf("failed to publish turn start event: %w", err)
 	}
@@ -176,7 +176,7 @@ func (tm *TurnManager) EndTurn(ctx context.Context) (*EndTurnResult, error) {
 	// Publish turn end event
 	topic := dnd5eEvents.TurnEndTopic.On(tm.bus)
 	if err := topic.Publish(ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: tm.character.GetID(),
+		SubjectID: tm.character.GetID(),
 	}); err != nil {
 		return nil, fmt.Errorf("failed to publish turn end event: %w", err)
 	}

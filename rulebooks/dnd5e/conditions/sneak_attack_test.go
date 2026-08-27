@@ -292,8 +292,8 @@ func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 	// End turn
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "rogue-1",
-		Round:       1,
+		SubjectID: "rogue-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 

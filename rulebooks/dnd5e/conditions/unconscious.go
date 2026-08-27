@@ -159,7 +159,7 @@ func (c *UnconsciousCondition) loadJSON(data json.RawMessage) error {
 
 // onTurnStart handles turn start events to auto-roll death saves
 func (c *UnconsciousCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.CharacterID != c.CharacterID {
+	if event.SubjectID != c.CharacterID {
 		return nil
 	}
 	if c.deathSaveState.Stabilized || c.deathSaveState.Dead {

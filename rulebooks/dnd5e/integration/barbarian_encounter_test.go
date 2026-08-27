@@ -256,8 +256,8 @@ func (s *BarbarianEncounterSuite) TestRage_EndsAfter10Turns() {
 
 			// End turn
 			err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-				CharacterID: s.barbarian.GetID(),
-				Round:       round,
+				SubjectID: s.barbarian.GetID(),
+				Round:     round,
 			})
 			s.Require().NoError(err)
 
@@ -473,8 +473,8 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 
 		// End round 1
 		_ = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-			CharacterID: s.barbarian.GetID(),
-			Round:       1,
+			SubjectID: s.barbarian.GetID(),
+			Round:     1,
 		})
 
 		s.True(rageActive, "Rage should continue (attacked this turn)")
@@ -496,8 +496,8 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		s.T().Log("─── After combat ───")
 		s.T().Log("→ With no enemies left, Grog doesn't attack")
 		_ = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-			CharacterID: s.barbarian.GetID(),
-			Round:       2,
+			SubjectID: s.barbarian.GetID(),
+			Round:     2,
 		})
 		s.False(rageActive, "Rage should end with no combat activity")
 		s.Equal("no_combat_activity", rageEndReason)

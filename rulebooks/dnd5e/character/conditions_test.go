@@ -283,8 +283,8 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	// Simulate rage expiring by publishing turn end event without combat activity
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "char-1",
-		Round:       1,
+		SubjectID: "char-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 

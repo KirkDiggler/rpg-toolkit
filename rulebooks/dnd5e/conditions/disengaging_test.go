@@ -142,8 +142,8 @@ func (s *DisengagingConditionTestSuite) TestRemovedOnTurnEnd() {
 	// Publish turn end for the disengaging character
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "rogue-1",
-		Round:       1,
+		SubjectID: "rogue-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -165,8 +165,8 @@ func (s *DisengagingConditionTestSuite) TestNotRemovedOnOtherCharactersTurnEnd()
 	// Publish turn end for a DIFFERENT character
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		CharacterID: "fighter-1", // Not the disengaging character
-		Round:       1,
+		SubjectID: "fighter-1", // Not the disengaging character
+		Round:     1,
 	})
 	s.Require().NoError(err)
 

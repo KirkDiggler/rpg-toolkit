@@ -427,7 +427,7 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 
 		// End the turn
 		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{CharacterID: s.rogue.GetID()})
+		err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: s.rogue.GetID()})
 		s.Require().NoError(err)
 
 		// Next turn - sneak attack should work again

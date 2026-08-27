@@ -103,8 +103,8 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_RollsDeathSave() {
 	// Publish turn start
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "char-1",
-		Round:       1,
+		SubjectID: "char-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -133,8 +133,8 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_IgnoresOtherCharacters()
 	// Publish turn start for a different character - no roller mock expected
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "char-2",
-		Round:       1,
+		SubjectID: "char-2",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -159,8 +159,8 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_CriticalFail_TwoFailures
 
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "char-1",
-		Round:       1,
+		SubjectID: "char-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -206,8 +206,8 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_CriticalSuccess_RegainsC
 
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "char-1",
-		Round:       1,
+		SubjectID: "char-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -252,8 +252,8 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_ThreeFailures_Dies() {
 
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "char-1",
-		Round:       1,
+		SubjectID: "char-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -282,8 +282,8 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_ThreeSuccesses_Stabilize
 
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "char-1",
-		Round:       1,
+		SubjectID: "char-1",
+		Round:     1,
 	})
 	s.Require().NoError(err)
 
@@ -520,8 +520,8 @@ func (s *UnconsciousConditionTestSuite) TestReload_NoRollerAfterReload_StillRoll
 
 	s.Require().NotPanics(func() {
 		err = dnd5eEvents.TurnStartTopic.On(freshBus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			CharacterID: "char-reload",
-			Round:       1,
+			SubjectID: "char-reload",
+			Round:     1,
 		})
 	}, "a nil Roller after reload must not panic")
 	s.Require().NoError(err)

@@ -254,8 +254,8 @@ func (s *RecklessAttackTestSuite) TestRemovedOnTurnStart() {
 	// Publish turn start for the barbarian
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "barbarian-1",
-		Round:       2,
+		SubjectID: "barbarian-1",
+		Round:     2,
 	})
 	s.Require().NoError(err)
 
@@ -276,8 +276,8 @@ func (s *RecklessAttackTestSuite) TestNotRemovedOnOtherTurnStart() {
 	// Publish turn start for a different character
 	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
 	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		CharacterID: "goblin-1",
-		Round:       2,
+		SubjectID: "goblin-1",
+		Round:     2,
 	})
 	s.Require().NoError(err)
 

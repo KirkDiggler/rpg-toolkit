@@ -151,8 +151,8 @@ func (s *HelpedConditionTestSuite) TestTurnStartRemoval_SafetyNetAtHelpersTurn()
 
 	s.Run("does not remove on the ally's own turn start", func() {
 		err = dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			CharacterID: s.characterID,
-			Round:       1,
+			SubjectID: s.characterID,
+			Round:     1,
 		})
 		s.Require().NoError(err)
 		s.True(condition.IsApplied(), "the trigger is the HELPER's turn, not the ally's")
@@ -160,8 +160,8 @@ func (s *HelpedConditionTestSuite) TestTurnStartRemoval_SafetyNetAtHelpersTurn()
 
 	s.Run("removes on the helper's turn start", func() {
 		err = dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			CharacterID: s.helperID,
-			Round:       1,
+			SubjectID: s.helperID,
+			Round:     1,
 		})
 		s.Require().NoError(err)
 		s.False(condition.IsApplied())

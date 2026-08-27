@@ -205,7 +205,7 @@ func (d *DodgingCondition) onSavingThrowChain(
 // onTurnStart handles turn start events to remove this condition at the start of the character's next turn.
 func (d *DodgingCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
 	// Only remove on this character's turn start
-	if event.CharacterID != d.CharacterID {
+	if event.SubjectID != d.CharacterID {
 		return nil
 	}
 
