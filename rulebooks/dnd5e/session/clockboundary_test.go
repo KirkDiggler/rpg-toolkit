@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/stretchr/testify/suite"
@@ -265,4 +266,66 @@ func TestNoCodePathLoadsAWorldWithoutNamingAnAnnouncer(t *testing.T) {
 	if literals == 0 {
 		t.Fatal("found no LoadEncounterInput literals at all: this test has stopped testing anything")
 	}
+}
+
+// impersonatingCharacters answers a lookup with the WRONG sheet, once armed. A
+// repository cannot do this legitimately; the point is what happens when one
+// does anyway.
+type impersonatingCharacters struct {
+	*fakeCharacters
+	armed  bool
+	always *character.Data
+}
+
+func (i *impersonatingCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+	if i.armed {
+		return i.always, nil
+	}
+	return i.fakeCharacters.GetCharacter(ctx, id)
+}
+
+// TestASheetReturnedUnderTheWrongIDIsRefused.
+//
+// Copilot's catch on this PR, and it is the slice's own defect arriving by a
+// different door. A sheet returned under the wrong ID is perfectly LOADABLE:
+// the caller attaches somebody, nothing errors, and what actually happened is
+// that the character who was asked for was never in the interaction at all — so
+// their turn-scoped conditions silently do not expire.
+//
+// The guard sits at the fetch rather than in boundaryCast, beside the nil check
+// whose comment already states the principle: "a repository reporting success
+// with no data has violated its contract... guessing in either direction is
+// worse than saying so." One field over, same contract, quieter failure.
+//
+// Armed AFTER the world is built, because the interesting moment is the
+// boundary: the fight is already real, the clock is already running, and the
+// only thing that has gone wrong is one lookup.
+func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
+	alice := armedFighter("alice")
+	alice.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{CharacterID: "alice"})}
+
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(alice, armedFighter("bob"))
+	liar := &impersonatingCharacters{fakeCharacters: s.characters, always: armedFighter("bob")}
+
+	mgr, err := session.NewManager(&session.Config{
+		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: liar,
+		Events: session.DiscardEvents{},
+	})
+	s.Require().NoError(err)
+
+	_, err = mgr.StartSession(s.ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: duelWorld(s.T()),
+	})
+	s.Require().NoError(err)
+
+	declaration := currentEndTurnID(s.T(), mgr, "sess", "alice")
+	liar.armed = true
+
+	_, err = mgr.EndTurn(s.ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice", DeclarationID: declaration,
+	})
+	s.Require().Error(err, "a repository handing back the wrong sheet is named, not absorbed")
+	s.Contains(err.Error(), "instead", "and the refusal says which sheet came back")
 }
