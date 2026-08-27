@@ -319,3 +319,40 @@ func (s *ActivationTestSuite) TestTheInputIsCopied() {
 
 	s.Equal([]int{10, 12}, machine.(*activationMachine).observers)
 }
+
+// THE TRAP, MADE EXECUTABLE.
+//
+// This is the failure NewActivation exists to prevent, run deliberately: the
+// same barbarian, the same ability, the same call — on a sheet that was LOADED
+// but never ATTACHED. Rage's Activate guards its publish with
+// `if input.Bus != nil`, so with no bus it skips the publish, spends the
+// charge, and RETURNS NIL.
+//
+// Every signal a caller has says it worked. The call succeeded. Success is
+// true. The charge came off. And the sheet that would be written carries no
+// condition at all — which is the shape that bit the equip path (rpg-api#842)
+// and the reason the assertions above are about Data rather than about the
+// object in hand.
+//
+// If this test ever starts finding the condition, one of two good things
+// happened — Rage learned to attach its own, or something else did — and the
+// machine's whole justification needs re-reading. That is worth being told
+// about, which is why this is a test and not a comment.
+func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing() {
+	sheet, err := character.Load(s.ctx, s.barbarian(2))
+	s.Require().NoError(err)
+
+	out, err := sheet.ActivateAbility(s.ctx, &character.ActivateAbilityInput{
+		AbilityRef: refs.Features.Rage(),
+	})
+
+	// Nothing complained.
+	s.Require().NoError(err)
+	s.Require().True(out.Success, "the sheet reports success with no bus to publish on")
+
+	data := sheet.ToData()
+	// The charge is gone, so something definitely happened...
+	s.Equal(1, data.Resources[resources.RageCharges].Current)
+	// ...and the barbarian is not raging.
+	s.NotContains(conditionRefs(data), "dnd5e:conditions:raging")
+}
