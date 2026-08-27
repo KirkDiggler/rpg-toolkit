@@ -373,3 +373,116 @@ func (s *ActionEconomyTestSuite) TestEndTurn_ResetsButStaysInCombat() {
 	// But still in combat
 	s.True(char.InCombat())
 }
+
+// --- rpg-toolkit#1093: a call with nothing in it is refused, not answered ---
+
+// The panic case. In combat, the ref lookup dereferenced the input directly.
+func (s *ActionEconomyTestSuite) TestActivatingWithoutInputIsRefused() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+	char.MarkClean()
+
+	out, err := char.ActivateAbility(s.ctx, nil)
+
+	s.Require().Error(err)
+	s.Nil(out)
+	// A refusal spends nothing: the action is still there to take once the
+	// caller passes an ability.
+	s.Equal(1, char.GetActionEconomy().ActionsRemaining)
+	s.False(char.IsDirty())
+}
+
+// THE ORDERING TEST, and the reason the nil check sits above the combat check
+// rather than below it. Out of combat, a nil input never reached the
+// dereference — it came back Success:false, "not in combat", which is a true
+// statement about the world and a false one about what the caller did wrong.
+// A test that only ever passed nil to a character IN combat cannot tell the
+// two orderings apart, because both panic-free versions look identical there.
+func (s *ActionEconomyTestSuite) TestActivatingWithoutInputIsRefusedEvenOutOfCombat() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	s.Require().False(char.InCombat())
+
+	out, err := char.ActivateAbility(s.ctx, nil)
+
+	s.Require().Error(err)
+	s.Nil(out)
+	s.NotContains(err.Error(), "not in combat")
+}
+
+// The other half of the same mistake: an input that exists but names nothing.
+// It dereferences one field further in, so it survives a fix that only guards
+// the outer pointer.
+func (s *ActionEconomyTestSuite) TestActivatingWithoutARefIsRefused() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+	char.MarkClean()
+
+	out, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{})
+
+	s.Require().Error(err)
+	s.Nil(out)
+	s.Equal(1, char.GetActionEconomy().ActionsRemaining)
+	s.False(char.IsDirty())
+}
+
+// The refusals are refusals and not a new way to fail an ordinary call: an
+// ability this character does not have is still an ANSWER, not an error.
+func (s *ActionEconomyTestSuite) TestAnUnknownAbilityIsStillAnAnswer() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+
+	out, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{
+		AbilityRef: refs.Features.Rage(),
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.False(out.Success)
+	s.Equal("unknown ability", out.Error)
+}
+
+// --- rpg-project#300: the target table has to answer for features too ---
+
+// The behavioural half: a fighter's Second Wind reaches a caller with a target
+// kind, not with the blank that means "the producer forgot to say".
+func (s *ActionEconomyTestSuite) TestAFeatureCarriesItsTargetKind() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+
+	// One call, held. AvailableAbilities builds a fresh slice every time, so
+	// indexing a second call would take a pointer into a different slice than
+	// the one being ranged over — harmless here and a trap the moment the
+	// builder does anything order- or state-dependent.
+	abilities := char.AvailableAbilities()
+
+	var secondWind *AvailableAbility
+	for i := range abilities {
+		if abilities[i].Ref != nil && abilities[i].Ref.ID == refs.Features.SecondWind().ID {
+			secondWind = &abilities[i]
+		}
+	}
+
+	s.Require().NotNil(secondWind, "the fighter should offer Second Wind")
+	s.Equal(TargetKindSelf, secondWind.TargetKind)
+}
+
+// The table half. Rage has no helper on this suite, and the point being pinned
+// is the table rather than the barbarian, so it is asked directly.
+func (s *ActionEconomyTestSuite) TestTheTargetTableKnowsTheLevelOneFeatures() {
+	s.Equal(TargetKindSelf, targetKindForRef(refs.Features.Rage()))
+	s.Equal(TargetKindSelf, targetKindForRef(refs.Features.SecondWind()))
+}
+
+// AND THE DEFAULT IS STILL A DEFAULT. Teaching the table two refs must not
+// turn its safety net into a guess: a feature nobody has ruled on yet still
+// comes back Unspecified, which is what makes the next gap visible the way
+// this one was.
+func (s *ActionEconomyTestSuite) TestAnUnruledFeatureStillSurfacesAsUnspecified() {
+	s.Equal(TargetKindUnspecified, targetKindForRef(refs.Features.ActionSurge()))
+	s.Equal(TargetKindUnspecified, targetKindForRef(refs.Features.FlurryOfBlows()))
+	s.Equal(TargetKindUnspecified, targetKindForRef(nil))
+}
