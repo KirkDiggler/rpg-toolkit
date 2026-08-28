@@ -6,11 +6,14 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -30,6 +33,133 @@ func TestBehaviorRoundTripsRememberedRoute(t *testing.T) {
 	intent, err := session.Behavior().Act(view)
 	require.NoError(t, err)
 	require.Equal(t, session.Move{Path: []spatial.Position{{X: 1, Y: 2}}}, intent)
+}
+
+// task6ArrivalFixture starts a real session fight, then arranges a persisted
+// held-known sighting whose remembered cell is the skeleton's next step. The
+// fighter's live cell is moved out of sight in the persisted encounter so the
+// driven arrival must correct the stale testimony rather than refresh it.
+func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncounters, *fakeStream) {
+	t.Helper()
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	stream := &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Sessions: sessions, Encounters: encounters,
+		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
+	})
+	require.NoError(t, err)
+	ctx := context.Background()
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: tombRoom(40, 6),
+	})
+	require.NoError(t, err)
+	_, err = mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "fighter", Position: spatial.Position{X: 0, Y: 0},
+	})
+	require.NoError(t, err)
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 1, Y: 0},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spawned.Formed)
+
+	data, err := encounters.GetEncounter(ctx, "world")
+	require.NoError(t, err)
+	oldCell := spatial.Position{X: 0, Y: 0}
+	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{
+		State: encounter.LocationKnown, Position: oldCell,
+	})
+	require.NoError(t, err)
+	holdings := data.Intel.Holdings[core.EntityID("skel-1")]
+	holding, ok := holdings[intel.Subject("fighter")]
+	require.True(t, ok, "fight-time skeleton must hold sight testimony for fighter")
+	holding.Payload, holding.CurrentVia = payload, nil
+	holdings[intel.Subject("fighter")] = holding
+	for i := range data.Members {
+		if data.Members[i].ID == encounter.MemberID("fighter") {
+			data.Members[i].Cell = &encounter.PositionData{X: 30, Y: 5}
+		}
+	}
+	require.NoError(t, encounters.SaveEncounter(ctx, "world", data))
+	stream.published = nil
+	return mgr, sessions, encounters, stream
+}
+
+func task6StoredLocation(t *testing.T, encounters *fakeEncounters) encounter.LocationKnowledge {
+	t.Helper()
+	data, err := encounters.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
+	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	require.True(t, ok, "stored sight testimony must be canonical")
+	return location
+}
+
+// TestSessionMonsterArrivalSaveFailureRollsBackCorrection proves the session
+// verb's save-before-publish law around the real driven monster arrival.
+func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
+	mgr, sessions, encounters, stream := task6ArrivalFixture(t)
+	declarationID := currentEndTurnID(t, mgr, "sess", "fighter")
+	errSave := errors.New("encounter store unavailable")
+	failing, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Sessions: sessions, Encounters: &failingEncounters{fakeEncounters: encounters, saveErr: errSave},
+		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
+	})
+	require.NoError(t, err)
+
+	out, err := failing.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "fighter", DeclarationID: declarationID,
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, session.ErrSaveFailed)
+	require.Nil(t, out)
+	location := task6StoredLocation(t, encounters)
+	require.Equal(t, encounter.LocationKnown, location.State)
+	require.Equal(t, spatial.Position{X: 0, Y: 0}, location.Position)
+	require.Empty(t, stream.published, "a failed save publishes no driven-turn events")
+}
+
+// TestSessionMonsterArrivalPersistsCorrection proves the success twin through
+// the same load-act-save path and exposes only the correction's identities.
+func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
+	mgr, _, encounters, _ := task6ArrivalFixture(t)
+	out, err := mgr.EndTurn(context.Background(), &session.EndTurnInput{
+		Session: "sess", Member: "fighter",
+		DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, []session.IntelCorrection{{Observer: "skel-1", Subject: "fighter"}}, out.Corrected)
+	location := task6StoredLocation(t, encounters)
+	require.Equal(t, encounter.LocationUnknown, location.State)
+}
+
+// TestMalformedSightTestimonyFailsSessionLoadBeforeProjection proves a
+// malformed persisted sight payload is rejected by the real session load path
+// and never reaches a projected View result.
+func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
+	_, sessions, encounters, _ := task6ArrivalFixture(t)
+	data, err := encounters.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
+	holding.Payload = nil
+	data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")] = holding
+	require.NoError(t, encounters.SaveEncounter(context.Background(), "world", data))
+
+	// Use a fresh manager to make this a load-path assertion, not an in-memory
+	// object assertion.
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Behavior(),
+		Sessions: sessions, Encounters: encounters,
+		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
+	})
+	require.NoError(t, err)
+	out, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "fighter"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, session.ErrInvalidWorld)
+	require.Nil(t, out)
 }
 
 // MonsterTurnTestSuite is the tomb: the gate this whole wave (rpg-project#254)

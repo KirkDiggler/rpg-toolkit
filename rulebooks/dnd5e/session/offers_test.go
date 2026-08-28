@@ -97,6 +97,11 @@ func injectHolding(
 	t *testing.T, encounters *fakeEncounters, subject string, currentVia []intel.Channel,
 ) {
 	t.Helper()
+	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{
+		State:    encounter.LocationKnown,
+		Position: spatial.Position{X: 1, Y: 1},
+	})
+	require.NoError(t, err)
 	stored, err := encounters.GetEncounter(context.Background(), "world")
 	require.NoError(t, err)
 	if stored.Intel.Holdings == nil {
@@ -109,7 +114,7 @@ func injectHolding(
 	stored.Intel.Holdings[obs][intel.Subject(subject)] = intel.HoldingData{
 		Channel:    intel.Sight,
 		CurrentVia: currentVia,
-		Payload:    nil,
+		Payload:    payload,
 	}
 	require.NoError(t, encounters.SaveEncounter(context.Background(), "world", stored))
 }
