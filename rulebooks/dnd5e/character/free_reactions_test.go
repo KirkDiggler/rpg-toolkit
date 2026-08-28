@@ -141,22 +141,27 @@ func TestACarriedReactionIsNeverWrittenToTheCharacterSheet(t *testing.T) {
 	require.False(t, sheet.IsDirty(), "gaining a reaction is not a change worth saving")
 }
 
-// A COLD SHEET CANNOT REACT, and this is the honest consequence of Kirk's
-// ruling that characters pay: the purse a character pays from is the action
-// economy, a sheet that has not acted in a fight has none, and combat.Ledger
+// A SHEET WITH NO ECONOMY CANNOT REACT, which is this package answering
+// honestly rather than a rule about fights.
+//
+// The purse a character pays from is the action economy, and combat.Ledger
 // answers "nothing left" rather than "unlimited" for a holder who is not in
-// combat.
+// combat — the same refusal that stops an out-of-combat sheet spending an
+// action it does not have.
 //
-// So a character carries the condition from the moment they attach, and it
-// stays silent until they have taken a turn. In initiative order that is the
-// window before their first turn.
+// WHOSE JOB IT IS TO MAKE SURE THIS NEVER HAPPENS IN A FIGHT: the session's.
+// Kirk ruled 2026-08-28 (rpg-project#316) that "characters should start with
+// their full economy... when we go into a combat bubble, all players should
+// have economy", which supersedes the lazy ignition recorded in
+// session/economy.go ("the session lights the sheet when an actor on the fight
+// clock first acts"). A combatant is lit when the bubble forms, so the state
+// this test describes does not arise in play.
 //
-// Pinned rather than fixed because fixing it is a ruling about when a sheet is
-// lit, not a bug in this file — the session lights a sheet when an actor on the
-// fight clock first acts (rpg-toolkit#1091), and moving that is its own
-// decision. Written down so it is found deliberately instead of reported as a
-// mystery.
-func TestACharacterWhoHasNotActedYetCarriesTheReactionButCannotSpendIt(t *testing.T) {
+// It is still pinned, because the sheet must keep giving this answer for a
+// holder who genuinely has no economy — and because "cannot consume it when it
+// is not your turn" is the turn gate's job, not this refusal's. A reaction is
+// spent on somebody else's turn by definition, so the two must not be confused.
+func TestASheetWithNoEconomyCarriesTheReactionButCannotSpendIt(t *testing.T) {
 	ctx := context.Background()
 	sheet, err := character.Load(ctx, plainFighter("fighter-1"))
 	require.NoError(t, err)
