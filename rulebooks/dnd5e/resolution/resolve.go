@@ -554,6 +554,14 @@ type attachAllInput struct {
 
 	// Roller reconstitutes effects that roll when they are triggered rather
 	// than when they are loaded. Reached only through the monster branch.
+	//
+	// REQUIRED WHENEVER A PARTICIPANT IS A MONSTER, and unlike DropUnreadable
+	// below it has no safe zero value to fall back on: a nil travels down into
+	// monstertraits and surfaces at whatever later moment a trait first rolls,
+	// which is a long way from the call that omitted it. An entry that never
+	// builds a monster participant says so by passing refusingRoller, which
+	// turns a path believed unreachable into a named refusal rather than a
+	// panic if the belief is ever wrong.
 	Roller dice.Roller
 
 	// DropUnreadable keeps whatever parsed when a persisted blob will not load,

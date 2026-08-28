@@ -59,8 +59,10 @@ type ProjectCharacterOutput struct {
 // [Resolve] does the opposite with the same record and is also right, because
 // it hands back sheets to be persisted — a silently dropped condition there is
 // a condition deleted by whatever verb happened to run (rpg-toolkit#948). One
-// attach mechanism, policy per entry; see [loadPolicy], and
-// TestTheProjectionReadsWhatResolveRefuses for the two answers side by side.
+// attach mechanism, policy per entry: the difference between the two entries is
+// DropUnreadable on [attachAllInput], which this one sets and Resolve leaves at
+// its zero value. TestTheProjectionReadsWhatResolveRefuses runs one record
+// through both and pins the two answers side by side.
 //
 // That the drop is AUDIBLE rather than merely tolerated is the whole point of
 // the ruling behind this — fail loudly means observable, not refused. Getting
