@@ -9,15 +9,12 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Participant is one member's sheet on the way in. Exactly one of Character or
@@ -319,23 +316,12 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
 	}
 
-	// INSTALL THE WORLD. One world, and it is installed every time.
-	//
-	// This is the map the encounter itself runs on — its own room, handed over
-	// to be read (rpg-toolkit#1114). Not a reconstruction of it: this package
-	// used to build a room out of the encounter's persisted description, with
-	// its own copy of grid construction and a comment promising the two would
-	// be kept in step, and no walls in it at all. What the rules read now is
-	// what the composition enforces, because they are the same object.
-	//
-	// EVERY TIME, which is the other half. "Which room describes this
-	// interaction" used to be a question, and the answer this package gave
-	// when it could not decide — install nothing — silently switched off every
-	// predicate that reads positions the moment one party member wandered off,
-	// which in a dungeon is most of the time (rpg-toolkit#1090). There is one
-	// map, so there is nothing to choose between, and no input can produce an
-	// interaction without a world. TestNoCodePathProducesARoomlessInteraction
-	// holds that structurally rather than by example.
+	// The map the encounter itself runs on — its own room, handed over to be
+	// read (rpg-toolkit#1114). Not a reconstruction of it: this package used to
+	// build a room out of the encounter's persisted description, with its own
+	// copy of grid construction and a comment promising the two would be kept in
+	// step, and no walls in it at all. What the rules read now is what the
+	// composition enforces, because they are the same object.
 	//
 	// It is READ-ONLY: the composition refuses a write through it by name, and
 	// this package has no business making one. Moving somebody is a verb of the
@@ -344,7 +330,6 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadWorld, err)
 	}
-	ctx = gamectx.WithRoom(ctx, room)
 
 	cast, err := attachAll(ctx, surf, in.Participants, roller)
 	if err != nil {
@@ -355,44 +340,13 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
-	// The other half of the read channel: the room says where everyone is
-	// standing, and this says who they are to each other.
-	//
-	// EVERY TIME, for the same reason and with the same pin. Five registries
-	// in gamectx and a sixth in combat tried to answer pieces of this and
-	// between them were installed zero times, so three conditions read a
-	// registry nobody supplied and returned its error into a chain fold that
-	// swallows errors — a barbarian fought at base AC in every real fight and
-	// nothing was logged (rpg-toolkit#1251). An ambient dependency that is
-	// SOMETIMES present is the defect; being always present is the fix, and
-	// TestNoCodePathProducesACastlessInteraction holds that structurally
-	// rather than by example.
-	//
-	// It goes in after attachAll because that is the call that loads the
-	// sheets. Nothing reads it before then: effects subscribe during Apply and
-	// ask their questions at fold time, which is after this line.
-	ctx = gamectx.WithCast(ctx, &castView{cast: cast})
-
-	// The SIXTH registry in the family rpg-toolkit#1251 was about, installed
-	// zero times until now.
-	//
-	// gamectx.IsReactionReady fails closed by design, so every reaction
-	// condition in the rulebook has been gated behind a map nobody supplied —
-	// the opportunity attack could not fire in any real interaction, and the
-	// only reason its own suite is green is that each test installs a map by
-	// hand. That is the same shape as the barbarian who fought at base AC in
-	// every real fight, and it gets the same fix: ALWAYS PRESENT, derived
-	// here, held structurally by TestNoCodePathProducesAReadinesslessInteraction
-	// rather than by example.
-	//
-	// Free reactions are readied for everyone; costed ones are not readied at
-	// all. That is the Wave 2.11d ruling reused rather than re-derived — "free-
-	// cost reactions like OA are default-on for melee combatants, spell-cost
-	// reactions like Shield are default-off" — and it is why Shield is absent
-	// from the set below rather than present-and-false. Opting INTO a costed
-	// reaction is a decision a player makes, and this package is not where a
-	// player is asked anything.
-	ctx = gamectx.WithReactionReadiness(ctx, defaultReadiness(cast))
+	// INSTALL THE TRUTH, through the one door. Every ambient fact this
+	// interaction can be asked about goes in here, in one call, on the only path
+	// there is: the room the encounter compiled, the cast attachAll just loaded,
+	// and the readiness derived from that cast. What goes in, why each of them is
+	// unconditional, and why the order reads the way it does are all in
+	// installTruth — this line's job is to be the only place it is called from.
+	ctx = installTruth(ctx, room, cast)
 
 	// Start is pure preflight and runs before payment. Invalid participant,
 	// delivery, or condition declarations therefore consume nothing.
@@ -564,35 +518,4 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 	}
 
 	return out
-}
-
-// freeReactions are the reactions a member has readied simply by being in the
-// interaction, because they cost nothing to hold ready.
-//
-// ONE ENTRY, and the list is the rule rather than an optimisation of it. A
-// costed reaction — Shield burns a spell slot, Uncanny Dodge burns the class
-// feature — is not readied by existing, so adding one here would silently opt
-// every caster into spending a slot they never agreed to spend.
-var freeReactions = []*core.Ref{
-	refs.Conditions.OpportunityAttack(),
-}
-
-// defaultReadiness readies every participant for every free reaction.
-//
-// EVERY participant, not "every melee combatant". Whether a particular member
-// can actually take an opportunity attack is the condition's own predicate —
-// it is only seated on someone who has it, it checks its own reach, its own
-// meter and its own purse — and deciding it out here would put a rule in the
-// wiring, which is the same objection boundaryCast makes one file over.
-func defaultReadiness(cast *Participants) gamectx.ReactionReadinessMap {
-	ready := make(gamectx.ReactionReadinessMap, len(cast.order))
-	for _, id := range cast.order {
-		per := make(map[string]bool, len(freeReactions))
-		for _, ref := range freeReactions {
-			per[ref.String()] = true
-		}
-		ready[id] = per
-	}
-
-	return ready
 }
