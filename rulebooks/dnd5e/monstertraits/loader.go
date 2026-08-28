@@ -11,17 +11,25 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
-// LoadJSON loads a monster trait from its JSON representation.
-// The game server stores traits as opaque JSON blobs;
-// this function deserializes them into strongly-typed structs.
+// LoadJSON loads one persisted entry of a monster's sheet — a monster TRAIT or
+// an ordinary CONDITION — from its JSON representation.
 //
-// Note: This loader requires a dice.Roller for traits like Undead Fortitude
+// Both, because monster.Data.Conditions holds both: the four traits this
+// package owns (immunity, vulnerability, pack tactics, undead fortitude), which
+// are authored on the stat block, and the runtime conditions its own field
+// comment has always named — poisoned, hidden, and now the universal
+// opportunity attack. A condition is recognised by its ref TYPE and handed to
+// conditions.LoadJSON; anything else routes through this package's own dispatch
+// and an unknown ref is refused.
+//
+// Note: this loader requires a dice.Roller for traits like Undead Fortitude
 // that need to make saving throws.
 func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBehavior, error) {
 	// Peek at the ref to determine trait type
@@ -31,6 +39,29 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 
 	if err := json.Unmarshal(data, &peek); err != nil {
 		return nil, rpgerr.Wrap(err, "failed to peek at monster trait ref")
+	}
+
+	// A CONDITION IS NOT A TRAIT, and this loader used to answer for neither.
+	//
+	// monster.Data.Conditions has always been documented as "runtime state:
+	// poisoned, hidden, etc." while this switch knew four traits and errored on
+	// everything else — so a monster that ever persisted an ordinary condition
+	// could not be loaded again. Nothing had put one there, which is why the
+	// gap was invisible; seating the universal opportunity attack is what puts
+	// one there (rpg-project#316), and without this the FIRST interaction
+	// writes an OA blob onto a wolf and the SECOND fails to load it.
+	//
+	// Routed by ref TYPE rather than by adding one more ID case, because the
+	// question "is this a condition" is answered by the ref itself, and the
+	// alternative is this switch growing a copy of the conditions package's own
+	// dispatch — the drift risk AllTraitRefs already documents, doubled.
+	if peek.Ref.Type == refs.TypeConditions {
+		condition, err := conditions.LoadJSON(data)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to load monster condition %s", peek.Ref.ID)
+		}
+
+		return condition, nil
 	}
 
 	// Route based on ref ID
@@ -129,9 +160,13 @@ func LoadMonsterConditions(
 		// A plain bus returns itself, so this is a no-op for every caller that
 		// is not an attach site keeping a registration list; a bus that
 		// implements dnd5eEvents.EffectScoper gets to record which trait made
-		// each subscription. The ref is the one LoadJSON just routed on, peeked
-		// again here because a ConditionBehavior cannot name itself.
-		traitBus := dnd5eEvents.BusForEffect(bus, peekTraitRef(data))
+		// each subscription.
+		//
+		// ASKED OF THE CONDITION, not peeked back out of its JSON.
+		// ConditionBehavior.Ref exists precisely so a live effect can name
+		// itself honestly (rpg-toolkit#971), and the comment that used to sit
+		// here — "a ConditionBehavior cannot name itself" — predated it.
+		traitBus := dnd5eEvents.BusForEffect(bus, refOf(condition))
 
 		// Apply the condition so it subscribes to events
 		if err := condition.Apply(ctx, traitBus); err != nil {
@@ -216,9 +251,26 @@ func AttachMonster(
 			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
 		}
 
-		// The ref LoadJSON just routed on, peeked again because a
-		// ConditionBehavior cannot name itself.
-		traitBus := dnd5eEvents.BusForEffect(bus, peekTraitRef(blob))
+		// Asked of the condition rather than peeked back out of the blob — see
+		// LoadMonsterConditions for why, and refOf for what happens when a
+		// condition breaks its own contract.
+		traitBus := dnd5eEvents.BusForEffect(bus, refOf(condition))
+
+		// A condition that wants its own live sheet gets it here, before Apply
+		// subscribes it to anything — the same handoff character.Attach has made
+		// since rpg-toolkit#1178, which until now happened for characters only.
+		//
+		// The asymmetry was invisible while no monster trait implemented
+		// OwnerAware, and stops being invisible the moment a monster carries a
+		// condition that keeps turn-scoped memory: the opportunity attack's
+		// once-per-turn flag is stored on the condition, serialized as part of
+		// this sheet, and dropped unless the condition can say the sheet
+		// changed. What a monster does NOT satisfy is combat.Ledger, and that
+		// asymmetry is deliberate — Kirk ruled that characters pay a reaction
+		// slot and monsters are metered by the flag alone (rpg-project#316).
+		if aware, ok := condition.(dnd5eEvents.OwnerAware); ok {
+			aware.SetOwner(m)
+		}
 
 		if err := condition.Apply(ctx, traitBus); err != nil {
 			// Clean up any partial subscriptions from the failed Apply.
@@ -276,17 +328,17 @@ func unattachMonster(
 	}
 }
 
-// peekTraitRef reads the ref a persisted trait routes on, which is the same
-// field LoadJSON routes on. It returns the zero Ref for a blob that has none
-// rather than an error: LoadJSON has already accepted the blob by this point,
-// and the only thing a missing ref costs is attribution.
-func peekTraitRef(data json.RawMessage) core.Ref {
-	var peek struct {
-		Ref core.Ref `json:"ref"`
-	}
-	if err := json.Unmarshal(data, &peek); err != nil {
-		return core.Ref{}
+// refOf is ConditionBehavior.Ref with the nil case answered.
+//
+// The interface says Ref "must never return nil", and this is what happens when
+// one does anyway: the zero Ref, which is exactly what the JSON peek this
+// replaced returned for a blob with no ref, and costs the same thing —
+// attribution, not correctness. A panic here would take down an attach over a
+// label.
+func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
+	if ref := condition.Ref(); ref != nil {
+		return *ref
 	}
 
-	return peek.Ref
+	return core.Ref{}
 }
