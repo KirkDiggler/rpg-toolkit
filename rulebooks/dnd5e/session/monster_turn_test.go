@@ -14,6 +14,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -715,4 +716,412 @@ func (reachlessAttacker) Act(view session.MonsterView) (session.TurnIntent, erro
 		}
 	}
 	return session.Pass{}, nil
+}
+
+// recordingBehavior keeps independent, plain-data copies of every view and
+// intent that crosses the session seam. The fixture assertions deliberately
+// read these recordings rather than a live encounter, so a concealed member's
+// true placement cannot accidentally become test input.
+type recordingBehavior struct {
+	views   []session.MonsterView
+	intents []session.TurnIntent
+	next    session.TurnDriver
+}
+
+func (r *recordingBehavior) Act(view session.MonsterView) (session.TurnIntent, error) {
+	r.views = append(r.views, cloneMonsterView(view))
+	intent, err := r.next.Act(view)
+	if err != nil {
+		return nil, err
+	}
+	r.intents = append(r.intents, cloneTurnIntent(intent))
+	return intent, nil
+}
+
+func cloneMonsterView(in session.MonsterView) session.MonsterView {
+	out := in
+	out.Actions = append([]session.ActionView(nil), in.Actions...)
+	out.Seen = make([]session.SeenMember, len(in.Seen))
+	for i, member := range in.Seen {
+		out.Seen[i] = member
+		out.Seen[i].Path = append([]spatial.Position(nil), member.Path...)
+		out.Seen[i].InReach = make(map[string]bool, len(member.InReach))
+		for ref, reachable := range member.InReach {
+			out.Seen[i].InReach[ref] = reachable
+		}
+	}
+	out.Remembered = make([]session.RememberedMember, len(in.Remembered))
+	for i, member := range in.Remembered {
+		out.Remembered[i] = member
+		out.Remembered[i].Path = append([]spatial.Position(nil), member.Path...)
+	}
+	return out
+}
+
+func cloneTurnIntent(in session.TurnIntent) session.TurnIntent {
+	switch intent := in.(type) {
+	case session.Move:
+		intent.Path = append([]spatial.Position(nil), intent.Path...)
+		return intent
+	case *session.Move:
+		if intent == nil {
+			return (*session.Move)(nil)
+		}
+		copy := *intent
+		copy.Path = append([]spatial.Position(nil), intent.Path...)
+		return &copy
+	case session.Attack:
+		return intent
+	case *session.Attack:
+		if intent == nil {
+			return (*session.Attack)(nil)
+		}
+		copy := *intent
+		return &copy
+	case session.Pass:
+		return intent
+	case *session.Pass:
+		if intent == nil {
+			return (*session.Pass)(nil)
+		}
+		copy := *intent
+		return &copy
+	default:
+		return in
+	}
+}
+
+func requireRecordedView(t *testing.T, views []session.MonsterView, match func(session.MonsterView) bool) session.MonsterView {
+	t.Helper()
+	for _, view := range views {
+		if match(view) {
+			return view
+		}
+	}
+	t.Fatalf("no recorded monster view matched among %d calls", len(views))
+	return session.MonsterView{}
+}
+
+func seen(view session.MonsterView, subject string) bool {
+	for _, member := range view.Seen {
+		if member.ID == subject {
+			return true
+		}
+	}
+	return false
+}
+
+func remembered(view session.MonsterView, subject string) bool {
+	for _, member := range view.Remembered {
+		if member.ID == subject {
+			return true
+		}
+	}
+	return false
+}
+
+func rememberedAt(view session.MonsterView, subject string, position spatial.Position) bool {
+	for _, member := range view.Remembered {
+		if member.ID == subject && member.Position == position {
+			return true
+		}
+	}
+	return false
+}
+
+func requireNeverContainsPosition(t *testing.T, views []session.MonsterView, subject string, forbidden spatial.Position) {
+	t.Helper()
+	for i, view := range views {
+		for _, member := range view.Seen {
+			if member.ID == subject {
+				require.NotEqual(t, forbidden, member.Position, "view %d Seen leaked concealed %s position", i, subject)
+				for _, position := range member.Path {
+					require.NotEqual(t, forbidden, position, "view %d Seen path leaked concealed %s position", i, subject)
+				}
+			}
+		}
+		for _, member := range view.Remembered {
+			if member.ID == subject {
+				require.NotEqual(t, forbidden, member.Position, "view %d Remembered leaked concealed %s position", i, subject)
+				for _, position := range member.Path {
+					require.NotEqual(t, forbidden, position, "view %d Remembered path leaked concealed %s position", i, subject)
+				}
+			}
+		}
+	}
+}
+
+func requireNeverContainsIntentPosition(t *testing.T, intents []session.TurnIntent, forbidden spatial.Position) {
+	t.Helper()
+	for i, intent := range intents {
+		move, ok := intent.(session.Move)
+		if !ok {
+			if pointer, pointerOK := intent.(*session.Move); pointerOK && pointer != nil {
+				move, ok = *pointer, true
+			}
+		}
+		if !ok {
+			continue
+		}
+		for _, position := range move.Path {
+			require.NotEqual(t, forbidden, position, "intent %d leaked concealed Billy position", i)
+		}
+	}
+}
+
+func persistedMonsterPosition(t *testing.T, repo *fakeEncounters, id string) spatial.Position {
+	t.Helper()
+	data, err := repo.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	for _, member := range data.Members {
+		if string(member.ID) != id {
+			continue
+		}
+		require.NotNil(t, member.Cell, "persisted %s member must have a cell", id)
+		return spatial.Position{X: member.Cell.X, Y: member.Cell.Y}
+	}
+	t.Fatalf("persisted encounter has no member %q", id)
+	return spatial.Position{}
+}
+
+func requireUnknownStoredLocation(t *testing.T, repo *fakeEncounters, observer, subject string) {
+	t.Helper()
+	data, err := repo.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
+	require.True(t, ok, "persisted %s testimony for %s must remain held", observer, subject)
+	require.Empty(t, holding.CurrentVia)
+	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	require.True(t, ok, "persisted testimony must remain canonical")
+	require.Equal(t, encounter.LocationUnknown, location.State)
+}
+
+func requireHeldKnownStoredLocation(
+	t *testing.T, repo *fakeEncounters, observer, subject string, want spatial.Position,
+) {
+	t.Helper()
+	data, err := repo.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
+	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
+	require.Empty(t, holding.CurrentVia, "broken sight must leave held testimony")
+	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	require.True(t, ok, "persisted testimony must remain canonical")
+	require.Equal(t, encounter.LocationKnown, location.State)
+	require.Equal(t, want, location.Position)
+}
+
+func persistedKnownLocation(t *testing.T, repo *fakeEncounters, observer, subject string) spatial.Position {
+	t.Helper()
+	data, err := repo.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	holding, ok := data.Intel.Holdings[core.EntityID(observer)][intel.Subject(subject)]
+	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
+	require.NotEmpty(t, holding.CurrentVia, "initial testimony must be current")
+	location, ok := encounter.DecodeLocationPayload(holding.Payload)
+	require.True(t, ok, "persisted testimony must be canonical")
+	require.Equal(t, encounter.LocationKnown, location.State)
+	return location.Position
+}
+
+func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
+	t.Helper()
+	walls := append(hexSeamWallsFrom(20, 0, 5, 1), hexSeamWallsFrom(22, 0, 5, -1)...)
+	filtered := walls[:0]
+	from, to := spatial.Position{X: 21, Y: 1}, spatial.Position{X: 22, Y: 0}
+	for _, wall := range walls {
+		if wall.Boundary.From == from && wall.Boundary.To == to {
+			continue
+		}
+		filtered = append(filtered, wall)
+	}
+	walls = filtered
+	if withDavid {
+		// This wall blocks David from the goblin's starting cell, but not from
+		// the cell reached by the first remembered-directed move. The next
+		// refresh therefore makes David lawfully current-visible without any
+		// recorder-side world access or manufactured view data.
+		walls = append(walls, encounter.WallInput{Boundary: spatial.Boundary{
+			From: spatial.Position{X: 0, Y: 1}, To: spatial.Position{X: 1, Y: 2},
+			BlocksMovement: true, BlocksLineOfSight: true,
+		}})
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
+		Field: encounter.FieldInput{
+			Canvas: pointyCanvas(),
+			Regions: []encounter.RegionInput{
+				rectRegion("left", 0, 0, 20, 5),
+				rectRegion("carpet", 20, 0, 2, 5),
+				rectRegion("right", 22, 0, 4, 5),
+			},
+			Walls: walls,
+			Doors: []encounter.DoorInput{
+				{ID: "door-a", Edges: []encounter.DoorEdge{{From: hexCell(19, 1), To: hexCell(20, 1)}}, State: encounter.DoorIsOpen()},
+				{ID: "door-b", Edges: []encounter.DoorEdge{{From: hexCell(21, 1), To: hexCell(22, 0)}}, State: encounter.DoorIsOpen()},
+			},
+		},
+		Endings:   []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+		Retention: encounter.RetentionUnbounded,
+	})
+	require.NoError(t, err)
+	data := enc.ToData()
+	return &data
+}
+
+func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSessions, *fakeEncounters, *recordingBehavior) {
+	t.Helper()
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	characters := []*character.Data{armedFighter("billy")}
+	if withDavid {
+		characters = append(characters, armedFighter("david"))
+	}
+	recorder := &recordingBehavior{next: session.Behavior()}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: recorder, Sessions: sessions, Encounters: encounters,
+		Characters: newFakeCharacters(characters...), Events: session.DiscardEvents{},
+	})
+	require.NoError(t, err)
+	ctx := context.Background()
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: doubleDoorWorld(t, withDavid)})
+	require.NoError(t, err)
+	doors, err := mgr.Doors(ctx, &session.DoorsInput{Session: "sess"})
+	require.NoError(t, err)
+	require.Equal(t, []session.Door{
+		{ID: "door-a", State: "open"},
+		{ID: "door-b", State: "open"},
+	}, doors.Doors, "the scene must contain two real open session doors")
+	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "billy", Position: hexCell(21, 1)})
+	require.NoError(t, err)
+	if withDavid {
+		_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "david", Position: hexCell(2, 3)})
+		require.NoError(t, err)
+	}
+	spawned, err := mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "goblin", Ref: refs.Monsters.Goblin().String(), Position: hexCell(0, 1),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spawned.Formed, "the open first door must make Billy's carpet sight start a fight")
+	return mgr, sessions, encounters, recorder
+}
+
+func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
+	ctx := context.Background()
+	mgr, _, repo, recorder := doubleDoorFixture(t, false)
+	firstSeen := hexCell(21, 1)
+	carpet := hexCell(21, 1)
+	hiddenRightCell := hexCell(23, 1)
+
+	// Spawn's real sight refresh persists the first current testimony at the
+	// carpet. Read that repository copy before any driven turn so the proof
+	// does not confuse the driver's later stale-memory view with first sight.
+	require.Equal(t, firstSeen, persistedKnownLocation(t, repo, "goblin", "billy"))
+
+	var err error
+
+	// Billy crosses the intervening carpet and passes behind Door B. The final
+	// interior step is what puts the second seam's wall between him and the
+	// goblin; no concealed location is supplied to the monster driver.
+	_, err = mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "billy", DeclarationID: currentMoveID(t, mgr, "sess", "billy"),
+		Path: []spatial.Position{hexCell(22, 0), hexCell(23, 0), hiddenRightCell},
+	})
+	require.NoError(t, err)
+	requireHeldKnownStoredLocation(t, repo, "goblin", "billy", carpet)
+
+	// Drive until the stale carpet is reached and corrected. The bounded loop
+	// is only a safety guard; every assertion below is a narrative milestone,
+	// not a prescribed turn count.
+	for i := 0; i < 12; i++ {
+		_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+			Session: "sess", Member: "billy", DeclarationID: currentEndTurnID(t, mgr, "sess", "billy"),
+		})
+		require.NoError(t, err)
+		data, loadErr := repo.GetEncounter(ctx, "world")
+		require.NoError(t, loadErr)
+		location, ok := encounter.DecodeLocationPayload(data.Intel.Holdings[core.EntityID("goblin")][intel.Subject("billy")].Payload)
+		require.True(t, ok)
+		if location.State == encounter.LocationUnknown {
+			break
+		}
+	}
+	ghostView := requireRecordedView(t, recorder.views, func(view session.MonsterView) bool {
+		return rememberedAt(view, "billy", carpet) && !seen(view, "billy")
+	})
+	require.Empty(t, ghostView.Seen, "no current-visible player may explain the remembered pursuit")
+	for _, memory := range ghostView.Remembered {
+		if memory.ID == "billy" {
+			require.NotEmpty(t, memory.Path)
+			require.Equal(t, carpet, memory.Path[len(memory.Path)-1], "the remembered path must end on the exact ghost cell")
+		}
+	}
+	require.Equal(t, carpet, persistedMonsterPosition(t, repo, "goblin"))
+	requireUnknownStoredLocation(t, repo, "goblin", "billy")
+	requireRecordedView(t, recorder.views, func(view session.MonsterView) bool {
+		return !seen(view, "billy") && !remembered(view, "billy")
+	})
+	requireNeverContainsPosition(t, recorder.views, "billy", hiddenRightCell)
+	requireNeverContainsIntentPosition(t, recorder.intents, hiddenRightCell)
+}
+
+func TestSessionDoubleDoorVisibleInterruptsGhostPursuit(t *testing.T) {
+	ctx := context.Background()
+	mgr, _, _, recorder := doubleDoorFixture(t, true)
+	carpet := hexCell(21, 1)
+	hiddenRightCell := hexCell(23, 1)
+
+	_, err := mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "billy", DeclarationID: currentMoveID(t, mgr, "sess", "billy"),
+		Path: []spatial.Position{hexCell(22, 0), hexCell(23, 0), hiddenRightCell},
+	})
+	require.NoError(t, err)
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "billy", DeclarationID: currentEndTurnID(t, mgr, "sess", "billy"),
+	})
+	require.NoError(t, err)
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "david", DeclarationID: currentEndTurnID(t, mgr, "sess", "david"),
+	})
+	require.NoError(t, err)
+
+	var interruptionAt = -1
+	for i := 0; i+1 < len(recorder.views); i++ {
+		before, after := recorder.views[i], recorder.views[i+1]
+		if rememberedAt(before, "billy", carpet) && len(before.Seen) == 0 && seen(after, "david") {
+			interruptionAt = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, interruptionAt, "a lawful first remembered step must bring David into current sight on the next driver call")
+
+	before, after := recorder.views[interruptionAt], recorder.views[interruptionAt+1]
+	firstMove, ok := recorder.intents[interruptionAt].(session.Move)
+	require.True(t, ok, "the first no-visible-player decision must pursue remembered Billy")
+	var billyMemory session.RememberedMember
+	for _, member := range before.Remembered {
+		if member.ID == "billy" && member.Position == carpet {
+			billyMemory = member
+			break
+		}
+	}
+	require.NotEmpty(t, billyMemory.Path, "remembered Billy must supply the first delegated path")
+	require.Equal(t, billyMemory.Path[:1], firstMove.Path)
+	require.False(t, seen(after, "billy"), "concealed Billy must not become current while David interrupts")
+
+	var david session.SeenMember
+	for _, member := range after.Seen {
+		if member.ID == "david" {
+			david = member
+			break
+		}
+	}
+	require.NotEmpty(t, david.Path, "newly visible David must have a live path")
+	require.NotEqual(t, billyMemory.Path[:1], david.Path[:1], "David's live route must discriminate visible priority from continued ghost pursuit")
+	delegatedMove, ok := recorder.intents[interruptionAt+1].(session.Move)
+	require.True(t, ok, "visible David outside reach must cause a one-cell move")
+	require.Equal(t, david.Path[:1], delegatedMove.Path, "current-visible David must interrupt the stale Billy route")
+
+	requireNeverContainsPosition(t, recorder.views, "billy", hiddenRightCell)
+	requireNeverContainsIntentPosition(t, recorder.intents, hiddenRightCell)
 }
