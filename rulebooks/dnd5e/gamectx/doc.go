@@ -14,8 +14,9 @@
 //
 //   - [WithRoom] / [Room] — the world the interaction happens on.
 //   - [WithCast] / [CastOf] — the participants in it.
-//   - [WithReactionReadiness] / [IsReactionReady] — who has opted in to spend
-//     a reaction.
+//   - [WithReactionReadiness] / [IsReactionReady] — who is ready to spend a
+//     reaction (free reactions are default-ready for everyone; costed ones
+//     require opting in — see below).
 //
 // Resolution installs all three unconditionally on every resolve path — the
 // room first, the cast beside it once the sheets are loaded, and a default

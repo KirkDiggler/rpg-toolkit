@@ -4,11 +4,15 @@ Date: 2024-12-03
 
 ## Status
 
-Superseded (2026-08-26) by the effect-context design in rpg-project
-(`ideas/session-combat/effect-context/design.md`).
+Superseded by the effect-context design in rpg-project (2026-08-26)
+
+## Superseded — what replaced this
+
+The superseding decision is not an ADR: it is the ruled design at
+`rpg-project/ideas/session-combat/effect-context/design.md`.
 
 Everything this ADR decided has since been split in two: reads of an effect's
-OWN sheet moved to owner injection at attach time (`events.OwnerAware`), and
+OWN sheet moved to owner injection at attach time (`rulebooks/dnd5e/events.OwnerAware`), and
 only facts owned by nobody stay ambient — carried by `gamectx.WithRoom`,
 `WithCast`, and `WithReactionReadiness`, installed unconditionally by
 `resolution` on every resolve path. `GameContext`, `CharacterRegistry`,
