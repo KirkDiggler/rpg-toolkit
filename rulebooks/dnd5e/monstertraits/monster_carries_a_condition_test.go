@@ -168,3 +168,45 @@ func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 			peek.Ref)
 	}
 }
+
+// The monster half of Kirk's ruling: a monster has NO action economy at all, so
+// the condition's own UsedThisTurn is the only meter there is — and a meter that
+// is not written down is a wolf that reacts again on the very next call.
+//
+// So unlike a character, whose carried reaction stays live-but-unwritten because
+// ActionEconomy.ReactionsRemaining is already its persisted meter, a monster's
+// joins the sheet and is serialized by ToData.
+func TestAnAttachedMonsterCarriesItsFreeReactionOnTheSheet(t *testing.T) {
+	ctx := context.Background()
+	data := &monster.Data{ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13}
+
+	m, err := monster.Load(ctx, data)
+	require.NoError(t, err)
+	require.Empty(t, m.ToData().Conditions, "load is a pure read and grants nothing")
+
+	require.NoError(t, monstertraits.AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
+
+	require.Len(t, m.GetConditions(), 1)
+	require.Equal(t, refs.Conditions.OpportunityAttack().String(), m.GetConditions()[0].Ref().String())
+	require.Len(t, m.ToData().Conditions, 1,
+		"written down, because UsedThisTurn is the only meter a monster has")
+	require.False(t, m.IsDirty(),
+		"but gaining it is not a change worth saving — only spending the meter is")
+}
+
+// A monster that already persisted one — every monster, from its second attach
+// onward — is not given a duplicate on top of it.
+func TestAMonsterIsNotGivenASecondCopyOfWhatItAlreadyCarries(t *testing.T) {
+	ctx := context.Background()
+	data := &monster.Data{
+		ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13,
+		Conditions: []json.RawMessage{carriedOA(t, "wolf-1")},
+	}
+
+	m, err := monster.Load(ctx, data)
+	require.NoError(t, err)
+	require.NoError(t, monstertraits.AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
+
+	require.Len(t, m.GetConditions(), 1, "the persisted one is kept and no second is carried on top")
+	require.Len(t, m.ToData().Conditions, 1)
+}
