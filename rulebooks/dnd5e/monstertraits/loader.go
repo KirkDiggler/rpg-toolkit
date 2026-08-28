@@ -246,6 +246,13 @@ func AttachMonster(
 	carried := m.TakeUnappliedConditions()
 	blobs, err := carryingFreeReactions(carried, m.GetID())
 	if err != nil {
+		// The blobs are already DRAINED and the keeper is already APPLIED, so
+		// returning here without undoing both would leave the monster mutated
+		// by an attach that failed: its traits gone from the sheet and its
+		// keeper still listening. Every other failure in this function rolls
+		// back; this one has to as well.
+		unattachMonster(ctx, m, bus, nil, carried)
+
 		return err
 	}
 	attached := make([]attachedTrait, 0, len(blobs))
@@ -353,8 +360,23 @@ func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 // freeReactionRefs are the reactions a combatant carries by existing. ONE
 // ENTRY, and the list is the rule rather than an optimisation of it: a COSTED
 // reaction is not had by existing and does not belong here.
-var freeReactionRefs = []*core.Ref{
-	refs.Conditions.OpportunityAttack(),
+var freeReactions = []freeReaction{
+	{
+		ref:   refs.Conditions.OpportunityAttack(),
+		build: func(id string) dnd5eEvents.ConditionBehavior { return conditions.NewOpportunityAttackCondition(id) },
+	},
+}
+
+// freeReaction pairs the ref a combatant carries with the way to build one.
+//
+// It carries its own constructor rather than being a bare ref so the failure
+// path below is reachable from a test: writing a blob can only fail if a
+// condition's ToJSON does, which the opportunity attack's never will, and a
+// rollback guard no test can enter is the built-and-unwired shape this whole
+// slice exists to undo.
+type freeReaction struct {
+	ref   *core.Ref
+	build func(id string) dnd5eEvents.ConditionBehavior
 }
 
 // carryingFreeReactions gives a monster the reactions every combatant has, the
@@ -388,14 +410,14 @@ var freeReactionRefs = []*core.Ref{
 // condition live and never writes it down. A monster has no action economy at
 // all, so its UsedThisTurn is the only meter there is and it has to be written.
 func carryingFreeReactions(blobs []json.RawMessage, id string) ([]json.RawMessage, error) {
-	for _, ref := range freeReactionRefs {
-		if carriesRef(blobs, ref) {
+	for _, reaction := range freeReactions {
+		if carriesRef(blobs, reaction.ref) {
 			continue
 		}
 
-		blob, err := conditions.NewOpportunityAttackCondition(id).ToJSON()
+		blob, err := reaction.build(id).ToJSON()
 		if err != nil {
-			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", ref)
+			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", reaction.ref)
 		}
 		blobs = append(blobs, blob)
 	}
