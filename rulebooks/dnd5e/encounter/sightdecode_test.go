@@ -73,8 +73,16 @@ func TestDecodeLocationPayloadRejectsMalformedOrContradictoryShapes(t *testing.T
 		{name: "unknown with y", payload: `{"state":"unknown","y":2}`},
 		{name: "unknown with null x", payload: `{"state":"unknown","x":null}`},
 		{name: "extra field", payload: `{"state":"known","x":1,"y":2,"extra":true}`},
+		{name: "case variant state", payload: `{"State":"unknown"}`},
+		{name: "case variant coordinate", payload: `{"state":"known","X":1,"y":2}`},
 		{name: "non numeric x", payload: `{"state":"known","x":"1","y":2}`},
 		{name: "non numeric y", payload: `{"state":"known","x":1,"y":"2"}`},
+		{name: "duplicate state", payload: `{"state":"known","state":"known","x":1,"y":2}`},
+		{name: "conflicting state", payload: `{"state":"known","state":"unknown","x":1,"y":2}`},
+		{name: "duplicate x", payload: `{"state":"known","x":1,"x":1,"y":2}`},
+		{name: "conflicting x", payload: `{"state":"known","x":1,"x":2,"y":2}`},
+		{name: "duplicate y", payload: `{"state":"known","x":1,"y":2,"y":2}`},
+		{name: "conflicting y", payload: `{"state":"known","x":1,"y":2,"y":3}`},
 		{name: "trailing json", payload: `{"state":"known","x":1,"y":2}{}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

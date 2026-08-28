@@ -58,6 +58,9 @@ func DecodeLocationPayload(payload []byte) (LocationKnowledge, bool) {
 	if len(payload) == 0 {
 		return LocationKnowledge{}, false
 	}
+	if !hasStrictLocationFields(payload) {
+		return LocationKnowledge{}, false
+	}
 
 	dec := json.NewDecoder(bytes.NewReader(payload))
 	dec.DisallowUnknownFields()
@@ -100,6 +103,50 @@ func DecodeLocationPayload(payload []byte) (LocationKnowledge, bool) {
 	default:
 		return LocationKnowledge{}, false
 	}
+}
+
+func hasStrictLocationFields(payload []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	tok, err := dec.Token()
+	if err != nil {
+		return false
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok || delim != '{' {
+		return false
+	}
+
+	seen := make(map[string]struct{}, 3)
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		key, ok := tok.(string)
+		if !ok || (key != "state" && key != "x" && key != "y") {
+			return false
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return false
+		}
+		seen[key] = struct{}{}
+
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return false
+		}
+	}
+	tok, err = dec.Token()
+	if err != nil {
+		return false
+	}
+	closeDelim, ok := tok.(json.Delim)
+	if !ok || closeDelim != '}' {
+		return false
+	}
+
+	var trailing json.RawMessage
+	return dec.Decode(&trailing) == io.EOF
 }
 
 // DecodeSightPayload is the compatibility seam for callers that only need a
