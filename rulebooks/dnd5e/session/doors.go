@@ -74,6 +74,9 @@ type OpenDoorOutput struct {
 	// an opened door is the whole reason the verb refreshes sight.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
 
+	// Corrected reports location-belief corrections made by driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
+
 	// Formed is present when what the door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
 
@@ -126,6 +129,7 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 	return &OpenDoorOutput{
 		Door:       Door{ID: opened.Door, State: string(opened.State)},
 		Discovered: projectDiscoveries(opened.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(opened.IntelDeltas),
 		Formed:     projectFormed(opened.Formed),
 		Seq:        opened.Seq,
 		Saved:      report,
@@ -167,6 +171,9 @@ type UnlockOutput struct {
 
 	// Discovered is what a beaten lock brought into view.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
+
+	// Corrected reports location-belief corrections made by driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
 	// Formed is present when what the opened door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
@@ -270,6 +277,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		DC:         unlocked.DC,
 		Door:       Door{ID: unlocked.Door, State: string(unlocked.State)},
 		Discovered: projectDiscoveries(unlocked.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(unlocked.IntelDeltas),
 		Formed:     projectFormed(unlocked.Formed),
 		Seq:        unlocked.Seq,
 		Saved:      report,

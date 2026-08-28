@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -15,6 +16,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
+
+func TestBehaviorRoundTripsRememberedRoute(t *testing.T) {
+	view := session.MonsterView{
+		Self: "goblin",
+		Remembered: []session.RememberedMember{{
+			ID: "billy", Kind: session.KindPlayer,
+			DistanceCells: 2,
+			Path:          []spatial.Position{{X: 1, Y: 2}, {X: 2, Y: 3}},
+		}},
+		Budget: session.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := session.Behavior().Act(view)
+	require.NoError(t, err)
+	require.Equal(t, session.Move{Path: []spatial.Position{{X: 1, Y: 2}}}, intent)
+}
 
 // MonsterTurnTestSuite is the tomb: the gate this whole wave (rpg-project#254)
 // lands or does not land on. Five claims, one seam under test throughout —

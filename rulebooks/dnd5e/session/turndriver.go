@@ -52,11 +52,26 @@ type MonsterView struct {
 	// sight intel on.
 	Seen []SeenMember
 
+	// Remembered are stale positions held from prior sight testimony. They
+	// are plain knowledge only: a driver may move toward one, but it is not
+	// an attack target and carries no concealed current-state facts.
+	Remembered []RememberedMember
+
 	// Budget is what remains of this member's turn.
 	Budget TurnBudget
 
 	// Round is the fight's own round counter.
 	Round int
+}
+
+// RememberedMember is one other member's last-known position. Path is an
+// exact-cell route to Position, with no attack reach or standing information.
+type RememberedMember struct {
+	ID            string
+	Kind          MemberKind
+	Position      spatial.Position
+	DistanceCells float64
+	Path          []spatial.Position
 }
 
 // ActionView is this package's own twin of encounter.ActionView: a static
@@ -245,14 +260,25 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 			Path:          append([]spatial.Position(nil), sm.Path...),
 		}
 	}
+	remembered := make([]RememberedMember, len(view.Remembered))
+	for i, rm := range view.Remembered {
+		remembered[i] = RememberedMember{
+			ID:            string(rm.ID),
+			Kind:          MemberKind(rm.Kind),
+			Position:      rm.Position,
+			DistanceCells: rm.DistanceCells,
+			Path:          append([]spatial.Position(nil), rm.Path...),
+		}
+	}
 
 	return MonsterView{
-		Self:      string(view.Self),
-		Position:  view.Position,
-		Actions:   actions,
-		Targeting: view.Targeting,
-		Seen:      seen,
-		Budget:    TurnBudget{AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet},
-		Round:     view.Round,
+		Self:       string(view.Self),
+		Position:   view.Position,
+		Actions:    actions,
+		Targeting:  view.Targeting,
+		Seen:       seen,
+		Remembered: remembered,
+		Budget:     TurnBudget{AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet},
+		Round:      view.Round,
 	}
 }

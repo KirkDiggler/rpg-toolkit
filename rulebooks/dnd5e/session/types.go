@@ -345,13 +345,15 @@ type MemberOutcome struct {
 //
 // On [Sighting], present when BOTH hold: the sighting was produced by sight
 // (gated on Holding.Channel) AND the composition's payload actually decodes
-// as a sight payload (encounter.DecodeSightPayload succeeds). Nil for every
+// as a known location payload (encounter.DecodeLocationPayload succeeds). Nil for every
 // other channel — that is the ordinary, expected case. Nil on a sight-channel
 // holding whose payload fails to decode is NOT a legal state a caller should
 // plan for; it means the composition wrote something projectSeen cannot
 // read, which is a defect in that layer, not a case this seam is choosing to
-// represent as "no sighting". A memory (CurrentVia empty) keeps the Seen it
-// last had — the last-known cell a client draws a faded marker on.
+// represent as "no sighting". A known memory (CurrentVia empty) keeps the Seen
+// it last had — the last-known cell a client draws a faded marker on. An
+// explicit unknown location has no Seen and is represented by
+// Sighting.LocationState.
 //
 // On [Report] this is weaker (Copilot review, PR #1159): intel.Report carries
 // no Channel of its own, so a Report's Seen is inferred by decoding its
@@ -423,6 +425,10 @@ type Sighting struct {
 	// Payload itself.
 	Seen *Seen `json:"seen,omitempty"`
 
+	// LocationState distinguishes a known coordinate from explicit unknown
+	// location testimony. It is set for sight-channel holdings only.
+	LocationState LocationState `json:"location_state,omitempty"`
+
 	// Payload is what the observer knows about it, encoded by the composition.
 	// Retained for channels the SDK has not typed; sight itself is typed
 	// through Seen above rather than asking a client to decode this.
@@ -440,6 +446,21 @@ type Sighting struct {
 
 	// Status distinguishes a live sighting from a stale memory.
 	Status string `json:"status,omitempty"`
+}
+
+// LocationState is the encounter-authored state of location knowledge.
+type LocationState string
+
+const (
+	LocationKnown   LocationState = "known"
+	LocationUnknown LocationState = "unknown"
+)
+
+// IntelCorrection reports that an observer corrected a subject's location
+// knowledge. It contains identifiers only and never exposes concealed truth.
+type IntelCorrection struct {
+	Observer string `json:"observer"`
+	Subject  string `json:"subject"`
 }
 
 // EventKind names what an event reports.

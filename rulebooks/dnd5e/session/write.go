@@ -50,6 +50,9 @@ type JoinOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
+	// Corrected reports location-belief corrections made by driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
+
 	// Seq is the story sequence of the recorded join.
 	Seq uint64
 
@@ -102,6 +105,9 @@ type SpawnOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
+	// Corrected reports location-belief corrections made by driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
+
 	// Seq is the story sequence of the recorded arrival.
 	Seq uint64
 
@@ -137,6 +143,12 @@ type ExitOutput struct {
 	// Carry is what the member knew on the way out — the knowledge that
 	// leaves with them rather than staying with the encounter.
 	Carry []Sighting
+
+	// Discovered is what changed in remaining observers' perception.
+	Discovered map[string]Discovery `json:"discovered,omitempty"`
+
+	// Corrected reports location-belief corrections made by driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
 	// Seq is the story sequence of the recorded exit.
 	Seq uint64
@@ -236,6 +248,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Member:     projectMember(placed.Member),
 		Character:  projectCharacter(ch),
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(placed.IntelDeltas),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
@@ -373,6 +386,7 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 		Member:     projectMember(placed.Member),
 		NPC:        projectMonster(sheet),
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(placed.IntelDeltas),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
@@ -523,12 +537,14 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 	}
 
 	return &ExitOutput{
-		Outcome:  projectMemberOutcome(left.Outcome),
-		Carry:    projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), down),
-		Seq:      left.Seq,
-		Closed:   projectOutcome(left.Closed),
-		Saved:    report,
-		Delivery: delivery,
+		Outcome:    projectMemberOutcome(left.Outcome),
+		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), down),
+		Discovered: projectDiscoveries(left.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(left.IntelDeltas),
+		Seq:        left.Seq,
+		Closed:     projectOutcome(left.Closed),
+		Saved:      report,
+		Delivery:   delivery,
 	}, nil
 }
 
