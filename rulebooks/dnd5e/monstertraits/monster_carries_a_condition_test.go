@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -108,10 +109,15 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 		gamectx.ReactionReadinessMap{"wolf-1": {refs.Conditions.OpportunityAttack().String(): true}})
 
 	event := &dnd5eEvents.MovementChainEvent{
-		EntityID:     "rogue-1",
-		EntityType:   "character",
+		EntityID:   "rogue-1",
+		EntityType: "character",
+		// ONE CELL. MovementChainEvent documents a single step, and the
+		// predicate does not need more than one: the wolf is at (5,5), so
+		// (5,6) is inside its reach and (5,7) is outside it. A three-cell jump
+		// exercised a shape the event contract does not permit and would hide a
+		// step-specific bug behind the extra distance.
 		FromPosition: dnd5eEvents.Position{X: 5, Y: 6},
-		ToPosition:   dnd5eEvents.Position{X: 5, Y: 9},
+		ToPosition:   dnd5eEvents.Position{X: 5, Y: 7},
 	}
 	staged := events.NewStagedChain[*dnd5eEvents.MovementChainEvent](combat.ModifierStages)
 	folded, err := dnd5eEvents.MovementChain.On(bus).PublishWithChain(runCtx, event, staged)
@@ -122,4 +128,43 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 	require.Equal(t, 1, fired, "the carried condition really is live on the bus")
 	require.True(t, m.IsDirty(),
 		"the condition spent its meter and said so — a silent update is a dropped save")
+}
+
+// The substitution this package now depends on: a loaded entry names itself
+// with the SAME ref its persisted blob routes on.
+//
+// Attribution used to be taken by peeking the ref back out of the JSON, and is
+// now taken from ConditionBehavior.Ref (rpg-toolkit#971). Those are only
+// interchangeable if every routed entry agrees with its own blob — a trait whose
+// Ref returned something else would silently file its subscriptions under the
+// wrong effect, which no behavioural test would notice because the subscriptions
+// still work.
+func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
+	built := []dnd5eEvents.ConditionBehavior{
+		monstertraits.Immunity("wolf-1", damage.Fire),
+		monstertraits.Vulnerability("wolf-1", damage.Cold),
+		monstertraits.PackTactics("wolf-1"),
+		monstertraits.UndeadFortitude("wolf-1", 3, dice.NewRoller()),
+		conditions.NewOpportunityAttackCondition("wolf-1"),
+	}
+	require.Len(t, built, len(monstertraits.AllTraitRefs())+1,
+		"every routed trait is covered here, plus the condition route this PR adds")
+
+	for _, entry := range built {
+		blob, err := entry.ToJSON()
+		require.NoError(t, err)
+
+		var peek struct {
+			Ref core.Ref `json:"ref"`
+		}
+		require.NoError(t, json.Unmarshal(blob, &peek))
+
+		loaded, err := monstertraits.LoadJSON(blob, dice.NewRoller())
+		require.NoError(t, err, "%s must round-trip through the loader", peek.Ref)
+
+		require.NotNil(t, loaded.Ref(), "%s: Ref must never return nil", peek.Ref)
+		require.Equal(t, peek.Ref.String(), loaded.Ref().String(),
+			"%s names itself differently than its blob routes on — attribution would be filed wrong",
+			peek.Ref)
+	}
 }
