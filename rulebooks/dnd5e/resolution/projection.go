@@ -48,6 +48,27 @@ type ProjectCharacterOutput struct {
 // the way out; a caller holding a cast would be a caller able to fold without a
 // door, which is the disease rather than the cure.
 //
+// # It reads leniently, because refusing would be the wrong kind of loud
+//
+// A record carrying a condition this build cannot parse — homebrew, a body
+// written by a newer version, a partial write — still projects. What parsed is
+// folded; what did not is dropped, and the loader warns about it by name. This
+// entry only reads, so a drop here cannot delete anything: nothing on this path
+// writes a sheet back.
+//
+// [Resolve] does the opposite with the same record and is also right, because
+// it hands back sheets to be persisted — a silently dropped condition there is
+// a condition deleted by whatever verb happened to run (rpg-toolkit#948). One
+// attach mechanism, policy per entry: the difference between the two entries is
+// DropUnreadable on [attachAllInput], which this one sets and Resolve leaves at
+// its zero value. TestTheProjectionReadsWhatResolveRefuses runs one record
+// through both and pins the two answers side by side.
+//
+// That the drop is AUDIBLE rather than merely tolerated is the whole point of
+// the ruling behind this — fail loudly means observable, not refused. Getting
+// the drop out somewhere a player can see it, rather than into a log, is a
+// named shelf in the design.
+//
 // # There is no world here, and that is an answer rather than a gap
 //
 // A character joining a session is not standing anywhere — a join is not an
@@ -93,7 +114,14 @@ func projectCharacterOn(
 		return nil, err
 	}
 
-	cast, err := attachAll(ctx, surf, []Participant{one}, refusingRoller{})
+	cast, err := attachAll(ctx, surf, &attachAllInput{
+		Participants: []Participant{one},
+		Roller:       refusingRoller{},
+		// Asked for in writing, because the default cannot destroy anything and
+		// this is the entry that opts out of it. Safe here for a reason about
+		// this entry rather than about loading — see the field's own comment.
+		DropUnreadable: true,
+	})
 	if err != nil {
 		// Tear down whatever did attach before giving up, exactly as the
 		// interaction path does: a half-attached bus is garbage either way, and

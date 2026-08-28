@@ -331,7 +331,13 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("%w: %w", ErrBadWorld, err)
 	}
 
-	cast, err := attachAll(ctx, surf, in.Participants, roller)
+	cast, err := attachAll(ctx, surf, &attachAllInput{
+		Participants: in.Participants,
+		Roller:       roller,
+		// DropUnreadable is not set, and its absence is the statement: this
+		// entry hands back sheets to be persisted, so it refuses a blob it
+		// cannot read rather than writing one back without it.
+	})
 	if err != nil {
 		// Tear down whatever did attach before giving up: a half-attached bus
 		// is about to be garbage either way, but leaving revocation to the
@@ -390,11 +396,9 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 // order (R4). Two resolutions over identical data must grant identical
 // registrations in an identical order, or a suspension cannot be resumed into
 // the world it left.
-func attachAll(
-	ctx context.Context, surf *surface, participants []Participant, roller dice.Roller,
-) (*Participants, error) {
-	ordered := make([]Participant, len(participants))
-	copy(ordered, participants)
+func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
+	ordered := make([]Participant, len(in.Participants))
+	copy(ordered, in.Participants)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
 
 	cast := &Participants{
@@ -412,14 +416,19 @@ func attachAll(
 
 		switch {
 		case p.Character != nil:
-			ch, err := attachCharacter(ctx, view, p.Character)
+			ch, err := attachCharacter(ctx, view, p.Character, in.DropUnreadable)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
 			}
 			cast.characters[id] = ch
 
 		case p.Monster != nil:
-			m, err := attachMonster(ctx, view, p.Monster, roller)
+			// No policy here, and none is missing: monstertraits has one loader
+			// and it refuses what it cannot read. The only entry that loads
+			// leniently builds a character participant and never a monster one,
+			// so a lenient monster is unreachable rather than unhandled — the
+			// same argument refusingRoller makes about the roller above.
+			m, err := attachMonster(ctx, view, p.Monster, in.Roller)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)
 			}
@@ -449,8 +458,17 @@ func attachAll(
 // it hands back sheets to be persisted, so an effect quietly dropped on the way
 // in is an effect deleted on the way out (rpg-toolkit#948).
 func attachCharacter(
-	ctx context.Context, view *surface, data *character.Data,
+	ctx context.Context, view *surface, data *character.Data, dropUnreadable bool,
 ) (*character.Character, error) {
+	// The lenient half is character.LoadFromData, which is the same two calls
+	// with the other policy — loadSheet then Attach, onto this same view, so
+	// attribution is made here either way. It is called rather than
+	// reimplemented: the two halves of one loader must not disagree about what
+	// a failure means, and there is exactly one place that decides.
+	if dropUnreadable {
+		return character.LoadFromData(ctx, data, view)
+	}
+
 	ch, err := character.Load(ctx, data)
 	if err != nil {
 		return nil, err
@@ -518,4 +536,55 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 	}
 
 	return out
+}
+
+// attachAllInput is everything one attach needs. All of it is data.
+//
+// An input struct rather than a fourth and fifth positional argument, which is
+// the house rule for a reason this function reached the moment it grew a
+// policy: `attachAll(ctx, surf, participants, roller, dropUnreadable)` reads as
+// three anonymous values at the call site, and the one that decides whether a
+// character's conditions can be silently discarded is a bare true at the end of
+// a line.
+type attachAllInput struct {
+	// Participants are the sheets to reconstitute, in any order — the attach
+	// sorts them, because two attaches over identical data must grant identical
+	// registrations in an identical order.
+	Participants []Participant
+
+	// Roller reconstitutes effects that roll when they are triggered rather
+	// than when they are loaded. Reached only through the monster branch.
+	//
+	// REQUIRED WHENEVER A PARTICIPANT IS A MONSTER, and unlike DropUnreadable
+	// below it has no safe zero value to fall back on: a nil travels down into
+	// monstertraits and surfaces at whatever later moment a trait first rolls,
+	// which is a long way from the call that omitted it. An entry that never
+	// builds a monster participant says so by passing refusingRoller, which
+	// turns a path believed unreachable into a named refusal rather than a
+	// panic if the belief is ever wrong.
+	Roller dice.Roller
+
+	// DropUnreadable keeps whatever parsed when a persisted blob will not load,
+	// instead of failing the attach and naming the blob.
+	//
+	// FALSE IS THE SAFE ANSWER AND IT IS THE ZERO VALUE, deliberately. An entry
+	// that can write must refuse: a sheet loaded past a condition it silently
+	// dropped is a sheet that, written back, has had that condition deleted by
+	// a verb that merely moved somebody (rpg-toolkit#948). So refusing is what
+	// a call site GETS, and dropping is what a call site must ask for in
+	// writing — a new entry added by somebody who never read this comment
+	// inherits the answer that cannot destroy anything.
+	//
+	// The one entry that asks is the projection, and it is safe there for a
+	// reason that is about the ENTRY rather than about loading: it only reads,
+	// nothing on its path writes a sheet back, and refusing would put one
+	// unreadable blob between a player and the game. The drop is not silent —
+	// the loader warns by name — which is D10: fail loudly means OBSERVABLE,
+	// not refused.
+	//
+	// ONE ATTACH MECHANISM, policy per entry. Both entries reach this same
+	// function, and the difference between them is this field rather than a
+	// second path — a second path is how the two halves of one loader come to
+	// disagree about what a failure means.
+	DropUnreadable bool
 }
