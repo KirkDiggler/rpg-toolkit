@@ -175,6 +175,51 @@ func (s *BasicTestSuite) TestChoosesClosestReachableRemembered() {
 	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
 }
 
+// TestIgnoresCloserReachableRememberedNonPlayer catches a remembered-target
+// selector that pursues a monster instead of the closest remembered player.
+func (s *BasicTestSuite) TestIgnoresCloserReachableRememberedNonPlayer() {
+	view := encounter.MonsterView{
+		Remembered: []encounter.RememberedMember{
+			{ID: "wolf", Kind: encounter.KindMonster, DistanceCells: 1, Path: []spatial.Position{{X: -1}}},
+			{ID: "alice", Kind: encounter.KindPlayer, DistanceCells: 2, Path: []spatial.Position{{X: 1}}},
+		},
+		Budget: encounter.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+}
+
+// TestPassesWithOnlyRememberedNonPlayers catches a remembered-target
+// selector that treats non-player knowledge as actionable pursuit.
+func (s *BasicTestSuite) TestPassesWithOnlyRememberedNonPlayers() {
+	view := encounter.MonsterView{
+		Remembered: []encounter.RememberedMember{{
+			ID: "wolf", Kind: encounter.KindMonster, DistanceCells: 1,
+			Path: []spatial.Position{{X: -1}},
+		}},
+		Budget: encounter.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Pass{}, intent)
+}
+
+// TestRememberedMoveUsesOnlyTheFirstCell catches a remembered pursuit that
+// consumes an entire route in one turn instead of one movement step.
+func (s *BasicTestSuite) TestRememberedMoveUsesOnlyTheFirstCell() {
+	view := encounter.MonsterView{
+		Remembered: []encounter.RememberedMember{{
+			ID: "alice", Kind: encounter.KindPlayer, DistanceCells: 3,
+			Path: []spatial.Position{{X: 1}, {X: 2}, {X: 3}},
+		}},
+		Budget: encounter.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+}
+
 func (s *BasicTestSuite) TestRememberedTieBreaksByIDRegardlessOfSliceOrder() {
 	view := encounter.MonsterView{
 		Remembered: []encounter.RememberedMember{
