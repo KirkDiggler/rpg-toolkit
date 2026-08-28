@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -16,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // Participant is one member's sheet on the way in. Exactly one of Character or
@@ -371,6 +373,27 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	// ask their questions at fold time, which is after this line.
 	ctx = gamectx.WithCast(ctx, &castView{cast: cast})
 
+	// The SIXTH registry in the family rpg-toolkit#1251 was about, installed
+	// zero times until now.
+	//
+	// gamectx.IsReactionReady fails closed by design, so every reaction
+	// condition in the rulebook has been gated behind a map nobody supplied —
+	// the opportunity attack could not fire in any real interaction, and the
+	// only reason its own suite is green is that each test installs a map by
+	// hand. That is the same shape as the barbarian who fought at base AC in
+	// every real fight, and it gets the same fix: ALWAYS PRESENT, derived
+	// here, held structurally by TestNoCodePathProducesAReadinesslessInteraction
+	// rather than by example.
+	//
+	// Free reactions are readied for everyone; costed ones are not readied at
+	// all. That is the Wave 2.11d ruling reused rather than re-derived — "free-
+	// cost reactions like OA are default-on for melee combatants, spell-cost
+	// reactions like Shield are default-off" — and it is why Shield is absent
+	// from the set below rather than present-and-false. Opting INTO a costed
+	// reaction is a decision a player makes, and this package is not where a
+	// player is asked anything.
+	ctx = gamectx.WithReactionReadiness(ctx, defaultReadiness(cast))
+
 	// Start is pure preflight and runs before payment. Invalid participant,
 	// delivery, or condition declarations therefore consume nothing.
 	first, startErr := start(ctx, in.Machine, cast)
@@ -541,4 +564,35 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 	}
 
 	return out
+}
+
+// freeReactions are the reactions a member has readied simply by being in the
+// interaction, because they cost nothing to hold ready.
+//
+// ONE ENTRY, and the list is the rule rather than an optimisation of it. A
+// costed reaction — Shield burns a spell slot, Uncanny Dodge burns the class
+// feature — is not readied by existing, so adding one here would silently opt
+// every caster into spending a slot they never agreed to spend.
+var freeReactions = []*core.Ref{
+	refs.Conditions.OpportunityAttack(),
+}
+
+// defaultReadiness readies every participant for every free reaction.
+//
+// EVERY participant, not "every melee combatant". Whether a particular member
+// can actually take an opportunity attack is the condition's own predicate —
+// it is only seated on someone who has it, it checks its own reach, its own
+// meter and its own purse — and deciding it out here would put a rule in the
+// wiring, which is the same objection boundaryCast makes one file over.
+func defaultReadiness(cast *Participants) gamectx.ReactionReadinessMap {
+	ready := make(gamectx.ReactionReadinessMap, len(cast.order))
+	for _, id := range cast.order {
+		per := make(map[string]bool, len(freeReactions))
+		for _, ref := range freeReactions {
+			per[ref.String()] = true
+		}
+		ready[id] = per
+	}
+
+	return ready
 }
