@@ -141,9 +141,18 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 	pending := c.pendingEffects
 	c.pendingEffects = nil
 
-	attached := make([]attachedEffect, 0, len(pending))
+	// Applied ALONGSIDE the pending effects and never mixed into them. A
+	// rollback must return the sheet to what Attach found, and what it found
+	// did not include these — so unattach below is handed `pending`, not
+	// `applying`.
+	carried := c.freeReactionsToCarry()
+	applying := make([]loadedEffect, 0, len(pending)+len(carried))
+	applying = append(applying, pending...)
+	applying = append(applying, carried...)
 
-	for _, effect := range pending {
+	attached := make([]attachedEffect, 0, len(applying))
+
+	for _, effect := range applying {
 		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
 
 		// A condition that wants its own live sheet — rather than a
@@ -487,4 +496,70 @@ func peekEffectRef(raw json.RawMessage) core.Ref {
 	}
 
 	return peek.Ref
+}
+
+// freeReactionsToCarry names the reactions every combatant has, the
+// way a class grant gives it a class feature — as part of what this creature
+// IS, rather than seated by whatever happens to be running.
+//
+// Kirk ruled the shape 2026-08-28 (rpg-project#316): "when we initialize
+// monsters they should have the condition on them like a character grant... and
+// only dirty if they fire the OA."
+//
+// # Why not a real Grant.Conditions entry
+//
+// Because an opportunity attack is not a class feature. Every melee combatant
+// has one, monsters included, which is why it is correctly absent from all
+// twelve grant lists — and a grant is applied by Draft.Finalize at CREATION, so
+// every character made before today would have been permanently unable to take
+// one. Added here instead, it reaches every sheet on its next load with no
+// backfill and no migration.
+//
+// # Why it must not mark the sheet dirty
+//
+// Because gaining it changed nothing a player did. resolution states the
+// invariant in its own test — "a participant nothing happened to must not be
+// written back (R3 says pass everyone in; it does not say charge for
+// everyone)" — and an earlier draft of this slice seated the condition through
+// ConditionAppliedEvent, which marks dirty unconditionally, and failed 21 tests
+// across six suites for exactly that reason. Appending to the pending effects
+// is the load path, and the load path is silent by construction.
+//
+// The condition still marks the sheet dirty when it SPENDS its meter, which is
+// the only moment anything worth persisting has happened.
+func (c *Character) freeReactionsToCarry() []loadedEffect {
+	var carried []loadedEffect
+	for _, ref := range freeReactionRefs {
+		if carriesRef(c.conditions, ref) {
+			continue
+		}
+		carried = append(carried, loadedEffect{
+			ref:      *ref,
+			behavior: conditions.NewOpportunityAttackCondition(c.id),
+		})
+	}
+
+	return carried
+}
+
+// freeReactionRefs are the reactions a combatant carries by existing. ONE
+// ENTRY, and the list is the rule rather than an optimisation of it: a COSTED
+// reaction (Shield burns a spell slot, Uncanny Dodge burns a class feature) is
+// not had by existing and does not belong here.
+var freeReactionRefs = []*core.Ref{
+	refs.Conditions.OpportunityAttack(),
+}
+
+// carriesRef reports whether the sheet already holds this ref — asked of
+// c.conditions rather than of the pending list, because pendingEffects is
+// DRAINED by Attach and a second Attach would otherwise stack a second copy on
+// top of the one the first put there.
+func carriesRef(carried []dnd5eEvents.ConditionBehavior, ref *core.Ref) bool {
+	for _, condition := range carried {
+		if got := condition.Ref(); got != nil && got.String() == ref.String() {
+			return true
+		}
+	}
+
+	return false
 }

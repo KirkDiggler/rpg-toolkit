@@ -150,7 +150,8 @@ func (s *AttachMonsterRollbackTestSuite) TestARefusedTraitRollsTheAttachBack() {
 
 	m, err := LoadMonster(s.ctx, data)
 	s.Require().NoError(err)
-	before := s.marshal(m.ToData())
+	beforeData := *m.ToData()
+	before := s.marshal(&beforeData)
 
 	bus := newFailingBus(3)
 	err = AttachMonster(s.ctx, m, bus, nil)
@@ -163,8 +164,23 @@ func (s *AttachMonsterRollbackTestSuite) TestARefusedTraitRollsTheAttachBack() {
 
 	good := events.NewEventBus()
 	s.Require().NoError(AttachMonster(s.ctx, m, good, nil))
-	s.Require().Len(m.GetConditions(), 2, "the retry attached both traits")
-	s.Require().Equal(before, s.marshal(m.ToData()), "and the monster still writes back the same bytes")
+	s.Require().Len(m.GetConditions(), 3, "the retry attached both traits, plus the carried reaction")
+
+	// The sheet gained EXACTLY the carried reaction and changed in no other
+	// way. Asserted in two halves rather than as one substring check, because
+	// "the OA id appears somewhere in the JSON" would pass just as happily for
+	// a sheet that had lost its authored traits.
+	afterData := *m.ToData()
+	s.Require().Len(afterData.Conditions, 3)
+	s.Require().Equal(beforeData.Conditions, afterData.Conditions[:2],
+		"the authored traits come back byte-identical, in order")
+	s.Require().Contains(string(afterData.Conditions[2]), refs.Conditions.OpportunityAttack().ID,
+		"and the third is the reaction, which is how a spent meter survives")
+
+	strippedBefore, strippedAfter := beforeData, afterData
+	strippedBefore.Conditions, strippedAfter.Conditions = nil, nil
+	s.Require().Equal(s.marshal(&strippedBefore), s.marshal(&strippedAfter),
+		"nothing else about the monster changed")
 
 	s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(good).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID: m.GetID(),
