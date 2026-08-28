@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -31,6 +32,29 @@ func LoadJSON(data json.RawMessage, roller dice.Roller) (dnd5eEvents.ConditionBe
 
 	if err := json.Unmarshal(data, &peek); err != nil {
 		return nil, rpgerr.Wrap(err, "failed to peek at monster trait ref")
+	}
+
+	// A CONDITION IS NOT A TRAIT, and this loader used to answer for neither.
+	//
+	// monster.Data.Conditions has always been documented as "runtime state:
+	// poisoned, hidden, etc." while this switch knew four traits and errored on
+	// everything else — so a monster that ever persisted an ordinary condition
+	// could not be loaded again. Nothing had put one there, which is why the
+	// gap was invisible; seating the universal opportunity attack is what puts
+	// one there (rpg-project#316), and without this the FIRST interaction
+	// writes an OA blob onto a wolf and the SECOND fails to load it.
+	//
+	// Routed by ref TYPE rather than by adding one more ID case, because the
+	// question "is this a condition" is answered by the ref itself, and the
+	// alternative is this switch growing a copy of the conditions package's own
+	// dispatch — the drift risk AllTraitRefs already documents, doubled.
+	if peek.Ref.Type == refs.TypeConditions {
+		condition, err := conditions.LoadJSON(data)
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to load monster condition %s", peek.Ref.ID)
+		}
+
+		return condition, nil
 	}
 
 	// Route based on ref ID
@@ -219,6 +243,22 @@ func AttachMonster(
 		// The ref LoadJSON just routed on, peeked again because a
 		// ConditionBehavior cannot name itself.
 		traitBus := dnd5eEvents.BusForEffect(bus, peekTraitRef(blob))
+
+		// A condition that wants its own live sheet gets it here, before Apply
+		// subscribes it to anything — the same handoff character.Attach has made
+		// since rpg-toolkit#1178, which until now happened for characters only.
+		//
+		// The asymmetry was invisible while no monster trait implemented
+		// OwnerAware, and stops being invisible the moment a monster carries a
+		// condition that keeps turn-scoped memory: the opportunity attack's
+		// once-per-turn flag is stored on the condition, serialized as part of
+		// this sheet, and dropped unless the condition can say the sheet
+		// changed. What a monster does NOT satisfy is combat.Ledger, and that
+		// asymmetry is deliberate — Kirk ruled that characters pay a reaction
+		// slot and monsters are metered by the flag alone (rpg-project#316).
+		if aware, ok := condition.(dnd5eEvents.OwnerAware); ok {
+			aware.SetOwner(m)
+		}
 
 		if err := condition.Apply(ctx, traitBus); err != nil {
 			// Clean up any partial subscriptions from the failed Apply.
