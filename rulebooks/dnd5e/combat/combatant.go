@@ -92,17 +92,32 @@ type Combatant interface {
 // Combatants that don't implement this will use their base AC() value.
 type EffectiveACCalculator interface {
 	// EffectiveAC calculates AC through the modifier chain, allowing conditions/spells to adjust it.
-	// Returns an ACBreakdown with the final AC and all contributing components.
-	EffectiveAC(ctx context.Context) *ACBreakdown
+	// Returns an ACBreakdown with the final AC and all contributing components, or an
+	// error when the sheet cannot answer — see
+	// [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character.Character.EffectiveAC].
+	EffectiveAC(ctx context.Context) (*ACBreakdown, error)
 }
 
 // GetEffectiveAC returns the effective AC for a combatant.
-// If the combatant implements EffectiveACCalculator (like Character), uses the chain-based calculation.
-// Otherwise, returns the base AC() value.
-func GetEffectiveAC(ctx context.Context, c Combatant) int {
-	if calc, ok := c.(EffectiveACCalculator); ok {
-		breakdown := calc.EffectiveAC(ctx)
-		return breakdown.Total
+//
+// A combatant that folds a chain is asked to fold it, and a failure to fold is
+// returned rather than papered over. The old shape fell back to c.AC() on any
+// trouble, which turned "this sheet could not answer" into "this sheet has no
+// features" — a wrong number that looks exactly like a right one. See
+// [EffectiveACCalculator].
+//
+// A combatant that does NOT implement the interface is a different case
+// entirely and keeps its AC(): a monster's stat block AC is a real authored
+// value, not a cached derivation, so reading it is correct rather than a
+// fallback.
+func GetEffectiveAC(ctx context.Context, c Combatant) (int, error) {
+	calc, ok := c.(EffectiveACCalculator)
+	if !ok {
+		return c.AC(), nil
 	}
-	return c.AC()
+	breakdown, err := calc.EffectiveAC(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return breakdown.Total, nil
 }

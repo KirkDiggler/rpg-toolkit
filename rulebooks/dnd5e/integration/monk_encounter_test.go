@@ -569,7 +569,8 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 
 		// Verify EffectiveAC includes WIS modifier via the AC chain.
 		// Expected: 10 (base) + 3 (DEX) + 2 (WIS from UnarmoredDefense) = 15
-		breakdown := monk.EffectiveAC(ctx)
+		breakdown, acErr := monk.EffectiveAC(ctx)
+		s.Require().NoError(acErr)
 
 		s.T().Logf("  Monk EffectiveAC breakdown:")
 		s.T().Logf("    Total: %d", breakdown.Total)
@@ -674,7 +675,8 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainNeedsNoGameContext() {
 
 		// A completely bare context. No room, no cast, no registry.
 		bareCtx := context.Background()
-		breakdown := monk.EffectiveAC(bareCtx)
+		breakdown, acErr := monk.EffectiveAC(bareCtx)
+		s.Require().NoError(acErr)
 
 		s.T().Logf("  Monk EffectiveAC (bare context):")
 		s.T().Logf("    Total: %d", breakdown.Total)
