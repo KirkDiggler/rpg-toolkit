@@ -225,16 +225,21 @@ func TestTheInstalledWorldRefusesToBeWrittenTo(t *testing.T) {
 // spanned two rooms, which no test in this package did, for two releases.
 //
 // So the source is the assertion. The install is one statement at the top level
-// of resolveOn's body, and a condition wrapped around it is the defect, by
+// of the door's body, and a condition wrapped around it is the defect, by
 // construction: whatever the condition said, there would be inputs it answered
 // no for. Reintroducing one fails here whether or not anybody writes a scene
 // that reaches it.
+//
+// It reads [installTruth] rather than resolveOn because that is where the
+// install moved when the door was extracted. That the door is reached at all —
+// the half this test cannot see from inside it — is
+// TestOnlyTheDoorInstallsGameContext's.
 func TestNoCodePathProducesARoomlessInteraction(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "resolve.go", nil, 0)
+	file, err := parser.ParseFile(fset, doorFile, nil, 0)
 	require.NoError(t, err)
 
-	fn := funcDecl(t, file, "resolveOn")
+	fn := funcDecl(t, doorFile, file, "installTruth")
 
 	var installs []token.Pos
 	ast.Inspect(fn, func(n ast.Node) bool {
@@ -250,23 +255,14 @@ func TestNoCodePathProducesARoomlessInteraction(t *testing.T) {
 	})
 	require.Len(t, installs, 1, "the world is installed in exactly one place")
 
-	ast.Inspect(fn, func(n ast.Node) bool {
-		branch, ok := n.(*ast.IfStmt)
-		if !ok {
-			return true
-		}
-		require.False(t, branch.Pos() <= installs[0] && installs[0] < branch.End(),
-			"resolve.go:%d installs the world inside a condition — some input answers no, "+
-				"and that is rpg-toolkit#1090",
-			fset.Position(installs[0]).Line)
-
-		return true
-	})
+	requireUnconditional(t, fset, fn, installs[0],
+		"installs the world inside a condition — some input answers no, and that is "+
+			"rpg-toolkit#1090")
 }
 
-// funcDecl finds a top-level function by name, and says so if it has been
-// renamed out from under the pin above.
-func funcDecl(t *testing.T, file *ast.File, name string) *ast.FuncDecl {
+// funcDecl finds a top-level function by name in filename's parsed source, and
+// says so if it has been renamed out from under the pin that asked for it.
+func funcDecl(t *testing.T, filename string, file *ast.File, name string) *ast.FuncDecl {
 	t.Helper()
 
 	for _, decl := range file.Decls {
@@ -276,7 +272,7 @@ func funcDecl(t *testing.T, file *ast.File, name string) *ast.FuncDecl {
 		}
 	}
 
-	t.Fatalf("resolve.go has no function %q — if it was renamed, this pin must follow it", name)
+	t.Fatalf("%s has no function %q — if it was renamed, this pin must follow it", filename, name)
 
 	return nil
 }

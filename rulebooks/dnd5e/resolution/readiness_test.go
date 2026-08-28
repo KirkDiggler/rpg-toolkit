@@ -25,15 +25,20 @@ import (
 //
 // That is the same failure a behavioural suite is structurally unable to catch,
 // for the same reason: the tests supply what production does not. So the source
-// is the assertion. The install is one statement at the top level of resolveOn's
+// is the assertion. The install is one statement at the top level of the door's
 // body, and a condition wrapped around it is the defect by construction —
 // whatever the condition said, there would be inputs it answered no for.
+//
+// It reads [installTruth] rather than resolveOn because that is where the
+// install moved when the door was extracted. That the door is reached at all —
+// the half this test cannot see from inside it — is
+// TestOnlyTheDoorInstallsGameContext's.
 func TestNoCodePathProducesAReadinesslessInteraction(t *testing.T) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "resolve.go", nil, 0)
+	file, err := parser.ParseFile(fset, doorFile, nil, 0)
 	require.NoError(t, err)
 
-	fn := funcDecl(t, file, "resolveOn")
+	fn := funcDecl(t, doorFile, file, "installTruth")
 
 	var installs []token.Pos
 	ast.Inspect(fn, func(n ast.Node) bool {
@@ -49,17 +54,8 @@ func TestNoCodePathProducesAReadinesslessInteraction(t *testing.T) {
 	})
 	require.Len(t, installs, 1, "reaction readiness is installed in exactly one place")
 
-	ast.Inspect(fn, func(n ast.Node) bool {
-		branch, ok := n.(*ast.IfStmt)
-		if !ok {
-			return true
-		}
-		require.False(t, branch.Pos() <= installs[0] && installs[0] < branch.End(),
-			"resolve.go:%d installs reaction readiness inside a condition — some input "+
-				"answers no, and a reaction gate that is sometimes absent fails CLOSED, "+
-				"which is a reaction that silently never fires",
-			fset.Position(installs[0]).Line)
-
-		return true
-	})
+	requireUnconditional(t, fset, fn, installs[0],
+		"installs reaction readiness inside a condition — some input answers no, and a "+
+			"reaction gate that is sometimes absent fails CLOSED, which is a reaction "+
+			"that silently never fires")
 }
