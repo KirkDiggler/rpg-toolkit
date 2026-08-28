@@ -162,10 +162,16 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, subID)
 
+	// Roll the movement subscription back rather than dropping the bus on the
+	// floor, which is what DisengagingCondition does at the same seam and for
+	// the same reason. Nil-ing o.bus with a live subscription still recorded
+	// leaves the WORST of both: IsApplied reports false, Remove early-returns
+	// on the nil bus and unsubscribes nothing, and the orphaned handler keeps
+	// receiving movement on a bus this condition no longer admits to holding.
 	turnStarts := dnd5eEvents.TurnStartTopic.On(bus)
 	resetID, err := turnStarts.Subscribe(ctx, o.onTurnStart)
 	if err != nil {
-		o.bus = nil
+		_ = o.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to turn start")
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, resetID)

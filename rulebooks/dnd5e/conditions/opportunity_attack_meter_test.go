@@ -6,6 +6,7 @@ package conditions_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 
@@ -67,6 +68,35 @@ func (f *fakeReactor) BankCapacity(_ combat.CapacityType, _ int)    {}
 type purseless struct{ dirtied int }
 
 func (p *purseless) MarkDirty() { p.dirtied++ }
+
+// failAfterBus is a real bus that refuses the Nth subscribe, and remembers
+// every Unsubscribe it was asked for.
+//
+// A wrapper rather than a hand-rolled fake so the SUCCESSFUL subscribes are
+// the genuine article: the point of the test is what happens to a real, live
+// subscription when a later one fails, and a fake that never actually
+// registered anything could not tell a rollback from a no-op.
+type failAfterBus struct {
+	events.EventBus
+	allow        int
+	seen         int
+	unsubscribed []string
+}
+
+func (b *failAfterBus) Subscribe(ctx context.Context, topic events.Topic, handler any) (string, error) {
+	b.seen++
+	if b.seen > b.allow {
+		return "", errRefusedSubscribe
+	}
+	return b.EventBus.Subscribe(ctx, topic, handler)
+}
+
+func (b *failAfterBus) Unsubscribe(ctx context.Context, id string) error {
+	b.unsubscribed = append(b.unsubscribed, id)
+	return b.EventBus.Unsubscribe(ctx, id)
+}
+
+var errRefusedSubscribe = errors.New("bus refused the subscription")
 
 // oaMeterEntity implements core.Entity for room placement.
 type oaMeterEntity struct {
@@ -334,4 +364,30 @@ func (s *OpportunityAttackMeterSuite) TestTheMeterSurvivesTheJSONRoundTrip() {
 	restored, ok := reloaded.(*conditions.OpportunityAttackCondition)
 	s.Require().True(ok, "the loader must route this ref back to an OA condition")
 	s.True(restored.UsedThisTurn, "the meter must survive the load, not just the save")
+}
+
+// A half-applied condition is worse than an unapplied one. Nil-ing the bus with
+// a live subscription still recorded leaves IsApplied reporting false, Remove
+// early-returning and unsubscribing nothing, and the orphaned movement handler
+// still receiving events on a bus the condition no longer admits to holding.
+func (s *OpportunityAttackMeterSuite) TestAFailedSecondSubscribeRollsTheFirstOneBack() {
+	s.place("fighter-1", "character", 5, 5)
+	s.place("wolf-1", "monster", 5, 6)
+
+	// Allow the MovementChain subscribe, refuse the TurnStart one after it.
+	bus := &failAfterBus{EventBus: s.bus, allow: 1}
+
+	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	err := oa.Apply(s.ctx, bus)
+	s.Require().Error(err, "a condition that could not finish applying must say so")
+
+	s.False(oa.IsApplied(), "a half-applied condition does not report itself applied")
+	s.Require().Len(bus.unsubscribed, 1, "the movement subscription must be rolled back, not orphaned")
+
+	// The real proof: the orphaned handler is gone from the underlying bus, so
+	// a qualifying walk publishes nothing.
+	collected := s.triggers()
+	s.walkAway(s.readyCtx("fighter-1"), "wolf-1",
+		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
+	s.Empty(*collected, "a rolled-back condition must not still be listening")
 }

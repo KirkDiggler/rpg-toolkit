@@ -189,6 +189,29 @@ func (m *Monster) MarkClean() {
 	m.dirty = false
 }
 
+// MarkDirty records that something this sheet persists has changed.
+//
+// The counterpart to MarkClean, and the write half of the owner handle a
+// condition keeping its own turn-scoped memory needs — see the conditions
+// package's selfPersisting. Every other writer here sets m.dirty inline
+// because it is also the one changing the field; a condition stores its memory
+// in its OWN fields, which are serialized as part of this sheet, so nothing
+// else notices the change and the save is dropped unless it says so.
+//
+// It exists AHEAD of its caller, deliberately and narrowly. The opportunity
+// attack is the first monster-side case — without this, a wolf that used its
+// reaction is reloaded having used nothing and the once-per-turn rule silently
+// does not exist for monsters — and the caller is the session-side seating that
+// applies that condition programmatically, in a module that pins this one by
+// version and so cannot be written until this ships. What is NOT here is the
+// owner handoff itself: monstertraits.AttachMonster routes four traits, none of
+// them OwnerAware and none of them the opportunity attack, so a SetOwner branch
+// there would be unreachable. The handoff belongs where the condition is
+// actually constructed (rpg-project#316).
+func (m *Monster) MarkDirty() {
+	m.dirty = true
+}
+
 // AbilityScores returns the monster's ability scores (implements Combatant interface)
 func (m *Monster) AbilityScores() shared.AbilityScores {
 	return m.abilityScores
