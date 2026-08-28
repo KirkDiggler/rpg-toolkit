@@ -206,7 +206,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	ch, err := m.loadCharacter(ctx, newCallBus(), in.Member)
+	ch, record, err := m.loadCharacter(ctx, newCallBus(), in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -228,11 +228,12 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	}
 
 	// Projected BEFORE commit, for the reason discoveryStanding spells out
-	// below: projectCharacter folds the AC chain and can refuse, and a refusal
-	// after the write would return an error on a join that had really happened
-	// — the member seated, the caller told it failed. R5 atomicity, and the
-	// same discipline every other pre-commit check in this file keeps.
-	state, err := projectCharacter(ctx, ch)
+	// below: projectCharacter reaches resolution to fold the AC chain and can
+	// come back with an error, and an error after the write would be returned on
+	// a join that had really happened — the member seated, the caller told it
+	// failed. R5 atomicity, and the same discipline every other pre-commit check
+	// in this file keeps.
+	state, err := projectCharacter(ctx, ch, record)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
