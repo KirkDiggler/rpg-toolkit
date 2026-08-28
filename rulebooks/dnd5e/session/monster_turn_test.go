@@ -134,6 +134,10 @@ func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
 	require.Equal(t, []session.IntelCorrection{{Observer: "skel-1", Subject: "fighter"}}, out.Corrected)
 	location := task6StoredLocation(t, encounters)
 	require.Equal(t, encounter.LocationUnknown, location.State)
+	data, err := encounters.GetEncounter(context.Background(), "world")
+	require.NoError(t, err)
+	holding := data.Intel.Holdings[core.EntityID("skel-1")][intel.Subject("fighter")]
+	require.Empty(t, holding.CurrentVia, "persisted corrected sight holding must remain Held")
 }
 
 // TestMalformedSightTestimonyFailsSessionLoadBeforeProjection proves a
