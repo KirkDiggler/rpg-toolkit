@@ -5,7 +5,9 @@ package character
 
 import (
 	"context"
+	"log/slog"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -238,6 +240,8 @@ func (k *SheetKeeper) applyResources(ctx context.Context, bus events.EventBus) e
 			}
 
 			// Lenient: the legacy path kept only the resources that applied.
+			warnDropped(c.id, "resource", core.Ref{}, err,
+				slog.String("resource", string(key)), slog.String("phase", "apply"))
 			delete(c.resources, key)
 
 			continue
