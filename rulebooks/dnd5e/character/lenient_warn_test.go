@@ -17,14 +17,22 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// captureHandler collects the records written to it, so a test can assert on
+// captureHandler collects the WARNINGS written to it, so a test can assert on
 // what a lenient load said rather than on whether it stayed quiet.
+//
+// Warnings only, deliberately. These tests are about one claim — a drop is
+// audible — and a handler that collected every level would make them fail the
+// day somebody adds an unrelated Info line to a loader, which is a failure that
+// teaches nothing. It also lets TestACleanLoadSaysNothing mean what it says:
+// nothing was DROPPED, rather than nothing was logged at all.
 type captureHandler struct {
 	mu      sync.Mutex
 	records []slog.Record
 }
 
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *captureHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelWarn
+}
 
 func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
