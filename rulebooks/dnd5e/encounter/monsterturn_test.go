@@ -184,6 +184,41 @@ func (s *MonsterTurnTestSuite) TestRememberedArrivalCorrectsHeldKnownLocation() 
 	requireUnknownLocation(s.T(), after.Payload)
 }
 
+// TestRecordSurfacesCorrectionDrivenByNoticingTheActiveMemberDown reproduces
+// the silent correction path through Record: noticing the fallen active
+// player transfers them out, that transfer drives the next monster, and the
+// monster corrects its stale arrival testimony. Record must return that
+// correction because it caused the nested drive.
+func (s *MonsterTurnTestSuite) TestRecordSurfacesCorrectionDrivenByNoticingTheActiveMemberDown() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	sight := &sightList{fallback: 0}
+	seeded := s.drivenArrivalEncounter(driver, sight, arrival, cellAt(7, 7), false)
+	down := &downList{}
+
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: seeded.ToData(), Sight: sight, Standing: down, Initiative: arrivalOrder{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	down.down = []encounter.MemberID{alice}
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: billy, Targets: []encounter.MemberID{alice},
+	})
+	s.Require().NoError(err)
+	delta := out.IntelDeltas[goblin]
+	s.Require().NotNil(delta, "Record must surface the nested driven correction")
+	s.Require().Contains(delta.Corrected, intel.Subject(billy))
+
+	after := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, after.Status)
+	requireUnknownLocation(s.T(), after.Payload)
+}
+
 // TestRememberedArrivalDoesNotCorrectBeforeExactCellArrival keeps the stale
 // testimony when the driven path ends somewhere other than the remembered
 // cell, even though the refresh still found nobody.

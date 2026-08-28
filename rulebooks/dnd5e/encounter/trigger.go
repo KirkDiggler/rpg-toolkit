@@ -401,15 +401,20 @@ func (e *Encounter) sidesInContactOrder(down map[MemberID]bool) (players, monste
 // calling its check from two call sites (encounter/combat.go's
 // checkCombatEntry, reached from Move AND AddMonster); this sits at the one
 // place all of them already pass through.
-func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble, error) {
+func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble, map[MemberID]*IntelDelta, error) {
 	// The world notices who is down BEFORE it works out who is fighting whom.
 	// Both halves of that order matter: a body must not be classified as an
 	// enemy, and the beat saying so must not land after a bubble-formed beat
 	// it contradicts (rpg-toolkit#1075).
-	down, err := e.noticeDown()
+	down, noticedDeltas, err := e.noticeDown()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	// The deltas noticeDown returns were already classified by the nested
+	// driven refresh that produced them. Compose them for the caller without
+	// feeding them through classification a second time below.
+	outputDeltas := mergeIntelDeltas(nil, deltas)
+	outputDeltas = mergeIntelDeltas(outputDeltas, noticedDeltas)
 
 	// The consult may have CLOSED the encounter (TriggerMemberDown fires
 	// there). A closed scene forms no new fights: the ended beat is the
@@ -417,12 +422,12 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 	// that is over — a bubble-formed after an ended is the contradiction
 	// rpg-toolkit#1075 guards against, told forward.
 	if e.outcome != nil {
-		return nil, nil
+		return nil, outputDeltas, nil
 	}
 
 	verdict, err := e.classify(deltas, down)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(verdict.joined) > 0 {
@@ -433,34 +438,34 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 				Pos:    e.bubbleSize(),
 			})
 			if err != nil {
-				return nil, fmt.Errorf("trigger transfer %q: %w", id, err)
+				return nil, nil, fmt.Errorf("trigger transfer %q: %w", id, err)
 			}
-			deltas = mergeIntelDeltas(deltas, transferred.IntelDeltas)
+			outputDeltas = mergeIntelDeltas(outputDeltas, transferred.IntelDeltas)
 		}
 
-		return nil, nil
+		return nil, outputDeltas, nil
 	}
 
 	if len(verdict.form) == 0 {
-		return nil, nil
+		return nil, outputDeltas, nil
 	}
 
 	order, err := e.initiative.RollInitiative(append([]MemberID(nil), verdict.form...))
 	if err != nil {
-		return nil, fmt.Errorf("trigger roll initiative: %w", err)
+		return nil, nil, fmt.Errorf("trigger roll initiative: %w", err)
 	}
 
 	formed, err := e.form(&FormInput{Order: order, Surprised: verdict.surprised})
 	if err != nil {
-		return nil, fmt.Errorf("trigger form: %w", err)
+		return nil, nil, fmt.Errorf("trigger form: %w", err)
 	}
-	deltas = mergeIntelDeltas(deltas, formed.IntelDeltas)
+	outputDeltas = mergeIntelDeltas(outputDeltas, formed.IntelDeltas)
 
 	return &FormedBubble{
 		Order:     order,
 		Surprised: verdict.surprised,
 		Seq:       formed.Seq,
-	}, nil
+	}, outputDeltas, nil
 }
 
 // bubbleSize reports how many members the running bubble holds, which is the

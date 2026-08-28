@@ -651,7 +651,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// everywhere else: every awareness that exists was created by some
 	// refreshSight, and this is the first one, so no awareness predates
 	// classification and no stale asymmetry can be missed.
-	if _, terr := e.applyTrigger(firstLight); terr != nil {
+	if _, _, terr := e.applyTrigger(firstLight); terr != nil {
 		return nil, fmt.Errorf("newencounter first light: %w", terr)
 	}
 
@@ -1433,7 +1433,7 @@ func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*IntelDelta
 		return deltas, nil, nil
 	}
 
-	formed, err := e.applyTrigger(deltas)
+	formed, deltas, err := e.applyTrigger(deltas)
 	if err != nil {
 		return nil, nil, err
 	}
