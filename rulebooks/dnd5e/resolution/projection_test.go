@@ -307,3 +307,32 @@ func (s *ProjectionTestSuite) TestTheProjectionReadsWhatResolveRefuses() {
 	s.Require().Contains(err.Error(), "nonsense",
 		"and names the blob it could not read")
 }
+
+// TestTheDefaultAttachRefuses pins the shape Kirk asked for on #1289: the
+// policy is a field whose ZERO VALUE is the answer that cannot destroy
+// anything.
+//
+// It reaches past both entries on purpose. Resolve refusing and the projection
+// dropping are pinned by the contrast above, and both of those pass whichever
+// way round the default sits — each entry says what it wants. What no
+// behavioural test covers is the entry NOT WRITTEN YET: somebody adds a third
+// caller, does not read the field's comment, and gets whatever the zero value
+// happens to mean. This asserts that what they get is the refusal.
+func (s *ProjectionTestSuite) TestTheDefaultAttachRefuses() {
+	surf := newSurface(events.NewEventBus())
+
+	cast, err := attachAll(s.ctx, surf, &attachAllInput{
+		Participants: []Participant{{
+			Character: s.barbarian(s.unarmoredDefense(), json.RawMessage(`{"ref":"nonsense","x":`)),
+		}},
+		Roller: refusingRoller{},
+		// DropUnreadable deliberately unset — this is the whole test.
+	})
+
+	s.Require().Error(err,
+		"an attach that was asked for nothing gets the policy that cannot delete a condition")
+	s.Require().Nil(cast)
+	s.Require().Contains(err.Error(), "nonsense", "and names the blob it refused")
+
+	s.Require().NoError(surf.teardown(s.ctx))
+}

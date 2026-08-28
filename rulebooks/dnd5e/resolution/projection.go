@@ -112,7 +112,14 @@ func projectCharacterOn(
 		return nil, err
 	}
 
-	cast, err := attachAll(ctx, surf, []Participant{one}, refusingRoller{}, dropUnreadable)
+	cast, err := attachAll(ctx, surf, &attachAllInput{
+		Participants: []Participant{one},
+		Roller:       refusingRoller{},
+		// Asked for in writing, because the default cannot destroy anything and
+		// this is the entry that opts out of it. Safe here for a reason about
+		// this entry rather than about loading — see the field's own comment.
+		DropUnreadable: true,
+	})
 	if err != nil {
 		// Tear down whatever did attach before giving up, exactly as the
 		// interaction path does: a half-attached bus is garbage either way, and
