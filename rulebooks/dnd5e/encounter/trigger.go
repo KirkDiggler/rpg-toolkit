@@ -151,7 +151,7 @@ type trigger struct {
 //
 // # Transitions, not states
 //
-// Only intel.SurveilOutput.FirstContact is read — never Refreshed. A subject
+// Only IntelDelta.FirstContact is read — never Refreshed. A subject
 // already being watched is not news, so a player who spotted a wolf and keeps
 // walking with it in view does not re-trigger on every step: the sneak-past
 // works by construction rather than by a "have I already reported this" flag.
@@ -205,7 +205,7 @@ type trigger struct {
 // PLAYER has been watching the whole time and is plainly not surprised, while
 // FirstContact-only surprise would say they were, because the player's own
 // first contact happened long ago and is not in this delta.
-func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput, down map[MemberID]bool) (*trigger, error) {
+func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, down map[MemberID]bool) (*trigger, error) {
 	sawFirst := func(observer, subject MemberID) bool {
 		delta, ok := deltas[observer]
 		if !ok || delta == nil {
@@ -401,7 +401,7 @@ func (e *Encounter) sidesInContactOrder(down map[MemberID]bool) (players, monste
 // calling its check from two call sites (encounter/combat.go's
 // checkCombatEntry, reached from Move AND AddMonster); this sits at the one
 // place all of them already pass through.
-func (e *Encounter) applyTrigger(deltas map[MemberID]*intel.SurveilOutput) (*FormedBubble, error) {
+func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble, error) {
 	// The world notices who is down BEFORE it works out who is fighting whom.
 	// Both halves of that order matter: a body must not be classified as an
 	// enemy, and the beat saying so must not land after a bubble-formed beat

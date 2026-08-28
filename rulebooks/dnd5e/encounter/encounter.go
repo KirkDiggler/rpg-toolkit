@@ -1421,7 +1421,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 // [Encounter.rebuildPercepts] is the half without the rule, and Setup is its
 // only caller — Setup needs the two halves separated so its scene-opened beat
 // can land between them.
-func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.SurveilOutput, *FormedBubble, error) {
+func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*IntelDelta, *FormedBubble, error) {
 	deltas, err := e.rebuildPercepts(observers)
 	if err != nil {
 		return nil, nil, err
@@ -1442,13 +1442,14 @@ func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.Surv
 }
 
 // rebuildPercepts rebuilds the complete percept for all given observers,
-// surveils each, and returns a map of member IDs to their SurveilOutput deltas.
+// surveils each, and returns a map of member IDs to encounter-owned intel
+// deltas.
 // The current clock reading is stamped on each Surveil call.
-func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.SurveilOutput, error) {
+func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDelta, error) {
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)
-	deltas := make(map[MemberID]*intel.SurveilOutput)
+	deltas := make(map[MemberID]*IntelDelta)
 
 	// Asked ONCE per refresh and never carried between them — see [Sight] for
 	// why remembering the answer would be the smallest possible version of the
@@ -1548,7 +1549,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 		if serr != nil {
 			return nil, fmt.Errorf("refreshsight surveil: %w", serr)
 		}
-		deltas[observerID] = out
+		deltas[observerID] = intelDeltaFromSurveil(out)
 	}
 
 	return deltas, nil
