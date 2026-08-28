@@ -108,8 +108,18 @@ func (s *MonsterCompositionTestSuite) TestAttachAppliesTheTraitsItCarried() {
 	s.Require().NoError(err)
 	s.Require().NoError(AttachMonster(s.ctx, m, events.NewEventBus(), nil))
 
-	s.Require().Len(m.GetConditions(), 1)
-	s.Require().Equal(s.marshal(data), s.marshal(m.ToData()))
+	// The authored trait, plus the reaction every combatant carries. The sheet
+	// genuinely gains that one at attach — which is what lets a SPENT
+	// once-per-turn meter survive to the next call, since a monster has no
+	// action economy to spend from.
+	s.Require().Len(m.GetConditions(), 2)
+	s.Require().Equal(*refs.MonsterTraits.Immunity(), *m.GetConditions()[0].Ref())
+	s.Require().Equal(*refs.Conditions.OpportunityAttack(), *m.GetConditions()[1].Ref())
+
+	// LOAD is still a pure read, which is the half that must not drift: the
+	// data this monster was built from is untouched, and only the attached
+	// sheet knows about the carried reaction.
+	s.Require().Equal(s.marshal(data), s.marshal(reloaded(s, data)))
 }
 
 // Attribution, pinned: each trait goes on through the bus scoped to its own
@@ -121,7 +131,9 @@ func (s *MonsterCompositionTestSuite) TestAttachScopesEachTraitToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(AttachMonster(s.ctx, m, bus, nil))
 
-	s.Require().Equal([]core.Ref{*refs.MonsterTraits.Immunity()}, bus.record.asked)
+	s.Require().Equal(
+		[]core.Ref{*refs.MonsterTraits.Immunity(), *refs.Conditions.OpportunityAttack()},
+		bus.record.asked, "the authored trait, then the carried reaction")
 	s.Require().NotEmpty(bus.record.byRef[*refs.MonsterTraits.Immunity()])
 	s.Require().NotEmpty(bus.record.byRef[unattributed], "the monster's own hooks are its own")
 }
@@ -168,4 +180,13 @@ func (s *MonsterCompositionTestSuite) TestAttachRejectsMissingArguments() {
 
 func TestMonsterCompositionSuite(t *testing.T) {
 	suite.Run(t, new(MonsterCompositionTestSuite))
+}
+
+// reloaded parses the same data again, so a test can say what LOAD produces
+// without the attach that follows it having had a say.
+func reloaded(s *MonsterCompositionTestSuite, data *monster.Data) *monster.Data {
+	again, err := LoadMonster(s.ctx, data)
+	s.Require().NoError(err)
+
+	return again.ToData()
 }

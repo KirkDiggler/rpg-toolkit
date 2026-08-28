@@ -240,13 +240,20 @@ func AttachMonster(
 		return rpgerr.Wrap(err, "failed to attach monster sheet keeper")
 	}
 
-	blobs := m.TakeUnappliedConditions()
+	// CARRIED separately from what the sheet actually had, because a rollback
+	// must put back what this attach was handed and nothing else. Every
+	// unattachMonster below is given `carried`, never `blobs`.
+	carried := m.TakeUnappliedConditions()
+	blobs, err := carryingFreeReactions(carried, m.GetID())
+	if err != nil {
+		return err
+	}
 	attached := make([]attachedTrait, 0, len(blobs))
 
 	for i, blob := range blobs {
 		condition, err := LoadJSON(blob, roller)
 		if err != nil {
-			unattachMonster(ctx, m, bus, attached, blobs)
+			unattachMonster(ctx, m, bus, attached, carried)
 
 			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
 		}
@@ -275,7 +282,7 @@ func AttachMonster(
 		if err := condition.Apply(ctx, traitBus); err != nil {
 			// Clean up any partial subscriptions from the failed Apply.
 			_ = condition.Remove(ctx, traitBus)
-			unattachMonster(ctx, m, bus, attached, blobs)
+			unattachMonster(ctx, m, bus, attached, carried)
 
 			return rpgerr.Wrapf(err, "failed to apply monster condition %d: %s", i, blob)
 		}
@@ -341,4 +348,75 @@ func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 	}
 
 	return core.Ref{}
+}
+
+// freeReactionRefs are the reactions a combatant carries by existing. ONE
+// ENTRY, and the list is the rule rather than an optimisation of it: a COSTED
+// reaction is not had by existing and does not belong here.
+var freeReactionRefs = []*core.Ref{
+	refs.Conditions.OpportunityAttack(),
+}
+
+// carryingFreeReactions gives a monster the reactions every combatant has, the
+// way a class grant gives a character a class feature.
+//
+// Kirk ruled the shape 2026-08-28 (rpg-project#316): "when we initialize
+// monsters they should have the condition on them like a character grant... and
+// only dirty if they fire the OA."
+//
+// # Here rather than in monster.Load
+//
+// Because Load must stay a pure read. Carrying the blob there made
+// Load(d).ToData() stop being byte-identical to d, and
+// TestRoundTripsByteIdenticalWithNoBus said so immediately — for the monster
+// sheet exactly as it did for the character one. Attach is where a sheet becomes
+// a participant, which is when having a reaction starts to mean anything.
+//
+// # A blob, and it DOES join the sheet
+//
+// A blob rather than a live condition because that is how a monster carries
+// every other one, and this loop is the single path that turns trait data into
+// behaviour. It joins the sheet through AddLoadedCondition below, which does not
+// mark it dirty — gaining a reaction is not something that happened in the
+// world — and from then on ToData serializes it, which is what lets a SPENT
+// meter survive to the next call.
+//
+// That last part is where a monster differs from a character, and the asymmetry
+// is the ruling rather than an oversight: a character's meter is
+// ActionEconomy.ReactionsRemaining, already persisted and already what
+// Protection fighting style competes for, so character.Attach carries the
+// condition live and never writes it down. A monster has no action economy at
+// all, so its UsedThisTurn is the only meter there is and it has to be written.
+func carryingFreeReactions(blobs []json.RawMessage, id string) ([]json.RawMessage, error) {
+	for _, ref := range freeReactionRefs {
+		if carriesRef(blobs, ref) {
+			continue
+		}
+
+		blob, err := conditions.NewOpportunityAttackCondition(id).ToJSON()
+		if err != nil {
+			return nil, rpgerr.Wrapf(err, "failed to write the %s a combatant carries", ref)
+		}
+		blobs = append(blobs, blob)
+	}
+
+	return blobs, nil
+}
+
+// carriesRef reports whether one of these blobs names this ref, so a reattach
+// does not stack a second copy on the persisted one.
+func carriesRef(blobs []json.RawMessage, ref *core.Ref) bool {
+	for _, raw := range blobs {
+		var peek struct {
+			Ref core.Ref `json:"ref"`
+		}
+		if err := json.Unmarshal(raw, &peek); err != nil {
+			continue
+		}
+		if peek.Ref.String() == ref.String() {
+			return true
+		}
+	}
+
+	return false
 }

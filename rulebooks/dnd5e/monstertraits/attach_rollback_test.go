@@ -163,8 +163,9 @@ func (s *AttachMonsterRollbackTestSuite) TestARefusedTraitRollsTheAttachBack() {
 
 	good := events.NewEventBus()
 	s.Require().NoError(AttachMonster(s.ctx, m, good, nil))
-	s.Require().Len(m.GetConditions(), 2, "the retry attached both traits")
-	s.Require().Equal(before, s.marshal(m.ToData()), "and the monster still writes back the same bytes")
+	s.Require().Len(m.GetConditions(), 3, "the retry attached both traits, plus the carried reaction")
+	s.Require().Contains(s.marshal(m.ToData()), refs.Conditions.OpportunityAttack().ID,
+		"an attached monster carries its reaction, which is how a spent meter survives")
 
 	s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(good).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
 		TargetID: m.GetID(),
