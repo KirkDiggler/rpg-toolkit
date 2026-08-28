@@ -40,8 +40,25 @@ const doorFile = "truth.go"
 // each call site that needed a fact installed it where it stood, every one of
 // them individually reasonable, and the set of them was what nobody checked
 // (rpg-toolkit#1251). The count is the assertion, so the source is the
-// assertion: this reads every file in the package, test files included, because
-// "the tests supply what production does not" is the shape of the original bug.
+// assertion.
+//
+// TEST FILES ARE INCLUDED, and that is the half worth defending. "Every test
+// installed a registry by hand that production never installed" is not a
+// footnote to rpg-toolkit#1251, it is the whole reason the bug survived two
+// releases with a green suite — so a pin that exempts _test.go cannot see the
+// thing it was written for. A test in THIS package that needs an installed
+// context calls installTruth, the same door production calls. There is no
+// second way in, for tests either, and that is the point.
+//
+// ITS SCOPE IS THIS PACKAGE. It reads the .go files in resolution and no
+// others. conditions/ and monstertraits/ hand-install a context 43 times
+// between their suites, and none of that is in violation or even visible here:
+// they are separate modules whose sources are not on disk at test time, and
+// standing one fold up without running Resolve is what those tests are for.
+// Phase 3 takes those readers off the hand-installed path. Until then they are
+// out of this pin's reach rather than exempt from it — a distinction worth
+// keeping, because the day resolution grows a test that installs by hand is the
+// day this pin has something real to say.
 func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 	fset := token.NewFileSet()
 
