@@ -93,8 +93,8 @@ type Combatant interface {
 type EffectiveACCalculator interface {
 	// EffectiveAC calculates AC through the modifier chain, allowing conditions/spells to adjust it.
 	// Returns an ACBreakdown with the final AC and all contributing components, or an
-	// error when the sheet cannot answer — see [github.com/KirkDiggler/rpg-toolkit/
-	// rulebooks/dnd5e/character.Character.EffectiveAC].
+	// error when the sheet cannot answer — see
+	// [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character.Character.EffectiveAC].
 	EffectiveAC(ctx context.Context) (*ACBreakdown, error)
 }
 
