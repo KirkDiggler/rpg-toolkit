@@ -10,10 +10,14 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // EntitiesTestSuite covers loading a character through the host's repository:
@@ -61,6 +65,12 @@ func (s *EntitiesTestSuite) joinBob() (*session.JoinOutput, error) {
 // 25 exists only because the stored bytes were reconstituted into a character
 // and asked, so this single number distinguishes "the repository returned
 // something" from "a character actually loaded".
+//
+// ARMOUR CLASS now carries the same weight for a different reason. It IS a
+// field of character.Data — the fixture stores 16 — but projectCharacter folds
+// it through the AC chain instead of reading that scalar, and the fold produces
+// 12 from DEX 14. The fixture's stored value and its derived value disagree
+// deliberately, so echoing the sheet fails this test.
 func (s *EntitiesTestSuite) TestJoiningAPlayerLoadsTheirCharacter() {
 	out, err := s.joinBob()
 	s.Require().NoError(err)
@@ -70,7 +80,9 @@ func (s *EntitiesTestSuite) TestJoiningAPlayerLoadsTheirCharacter() {
 	s.Equal(25, out.Character.Speed, "a dwarf's speed is derived from race, not stored")
 	s.Equal(24, out.Character.HitPoints)
 	s.Equal(28, out.Character.MaxHitPoints)
-	s.Equal(16, out.Character.ArmorClass)
+	s.Equal(12, out.Character.ArmorClass,
+		"AC is FOLDED (10 + DEX +2), not echoed: the sheet stores 16 and the two "+
+			"disagree on purpose, so this cannot pass by reading the scalar")
 	s.Equal(3, out.Character.Level)
 }
 
@@ -343,4 +355,52 @@ func BenchmarkSpawnMonster(b *testing.B) {
 			b.Fatalf("spawn: %v", err)
 		}
 	}
+}
+
+// TestAMonksUnarmoredDefenseReachesTheJoinedAC is the bug this whole chain
+// exists for, measured at the seam a player actually sees.
+//
+// In production three of six characters were carrying a base-only AC —
+// monks missing WIS, barbarians missing CON — because character.Data.ArmorClass
+// is written once at creation and refreshed only by rpg-api's equip patch.
+// Nothing recomputed it, so a monk who never changed gear reported 10+DEX
+// forever.
+//
+// The fixture makes echoing impossible: the stored scalar says 13 (the exact
+// wrong-but-plausible base-armour number this bug produced) while the folded
+// answer is 15. A projection that read the sheet would return 13 and fail here.
+func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
+	monk := dwarfCharacter("bob")
+	monk.RaceID = races.Human
+	monk.ClassID = classes.Monk
+	monk.AbilityScores = shared.AbilityScores{
+		abilities.STR: 12,
+		abilities.DEX: 16, // +3
+		abilities.CON: 14,
+		abilities.INT: 10,
+		abilities.WIS: 14, // +2
+		abilities.CHA: 8,
+	}
+	// The stale value the bug leaves behind: 10 + DEX, no Unarmored Defense.
+	monk.ArmorClass = 13
+
+	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
+		CharacterID: "bob",
+		Type:        conditions.UnarmoredDefenseMonk,
+		Source:      "dnd5e:classes:monk",
+	})
+	raw, err := ud.ToJSON()
+	s.Require().NoError(err)
+	monk.Conditions = []json.RawMessage{raw}
+
+	s.characters.byID["bob"] = monk
+
+	out, joinErr := s.joinBob()
+	s.Require().NoError(joinErr)
+	s.Require().NotNil(out.Character)
+
+	s.Equal(15, out.Character.ArmorClass,
+		"10 base + 3 DEX + 2 WIS: Unarmored Defense must reach the joined AC")
+	s.NotEqual(13, out.Character.ArmorClass,
+		"13 is the stale scalar on the sheet — reading it is the bug")
 }

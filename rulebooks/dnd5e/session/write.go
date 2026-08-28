@@ -232,9 +232,14 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	state, err := projectCharacter(ctx, ch)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
 	return &JoinOutput{
 		Member:     projectMember(placed.Member),
-		Character:  projectCharacter(ch),
+		Character:  state,
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),

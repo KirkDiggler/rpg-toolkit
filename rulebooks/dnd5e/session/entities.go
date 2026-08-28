@@ -251,11 +251,34 @@ func projectMonster(data *monster.Data) *MonsterState {
 // Speed is the field that carries the weight here. It is not stored on the
 // character at all — it is derived from race when asked — so it is the one value
 // that cannot be produced by echoing bytes, and the one the tests lean on to
-// prove reconstitution actually happened. The rest are reported as loaded.
-func projectCharacter(ch *character.Character) *CharacterState {
+// prove reconstitution actually happened.
+//
+// # ArmorClass is DERIVED, which is why this is fallible
+//
+// It used to read ch.AC() — the flat scalar off the sheet. That scalar is
+// written once at character creation and refreshed only by rpg-api's
+// equip/unequip patch, so nothing recomputes it and a monk who never changed
+// gear reported 10+DEX for the rest of the character's life, missing Unarmored
+// Defense entirely. Kirk's ruling (2026-08-28) is to derive on every read and
+// optimise later if the fold ever costs anything measurable.
+//
+// The sheet handed here is attached — [Manager.loadCharacter] puts it on a bus —
+// so the fold has its subscribers. If it ever is not, EffectiveAC refuses rather
+// than quietly reporting base armour (rpg-toolkit#1276), and that refusal comes
+// back out of here instead of being flattened into a plausible number.
+//
+// A MONSTER keeps its stat block AC in [projectMonster]: that value is authored,
+// not derived, so reading it is correct rather than a cache.
+func projectCharacter(ctx context.Context, ch *character.Character) (*CharacterState, error) {
 	if ch == nil {
-		return nil
+		return nil, nil
 	}
+
+	breakdown, err := ch.EffectiveAC(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("character %q armour class: %w", ch.GetID(), err)
+	}
+
 	return &CharacterState{
 		ID:               ch.GetID(),
 		Name:             ch.GetName(),
@@ -263,7 +286,7 @@ func projectCharacter(ch *character.Character) *CharacterState {
 		Speed:            ch.GetSpeed(),
 		HitPoints:        ch.GetHitPoints(),
 		MaxHitPoints:     ch.GetMaxHitPoints(),
-		ArmorClass:       ch.AC(),
+		ArmorClass:       breakdown.Total,
 		ProficiencyBonus: ch.ProficiencyBonus(),
-	}
+	}, nil
 }
