@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -36,6 +38,12 @@ const defaultMeleeReach = 1.0
 type OpportunityAttackConditionData struct {
 	Ref         *core.Ref `json:"ref"`
 	CharacterID string    `json:"character_id"`
+
+	// UsedThisTurn is persisted rather than kept in memory for the reason
+	// SneakAttackData gives for its own copy of this field: every call
+	// reconstructs the condition from JSON, so a runtime-only flag is a flag
+	// that resets on each RPC and meters nothing at all.
+	UsedThisTurn bool `json:"used_this_turn"`
 }
 
 // OpportunityAttackCondition publishes a ReactionTriggerEvent when an enemy
@@ -58,9 +66,36 @@ type OpportunityAttackConditionData struct {
 // Reach defaults to 5ft (1 grid unit). Reach weapons + action-economy reaction
 // availability are future extensions; the predicate is conservative today.
 type OpportunityAttackCondition struct {
-	CharacterID     string
+	CharacterID string
+
+	// UsedThisTurn is the meter EVERY reactor has, character and monster
+	// alike. It is cleared at the start of this reactor's OWN turn, which is
+	// when 5e refreshes a spent reaction — see onTurnStart.
+	UsedThisTurn bool
+
 	bus             events.EventBus
 	subscriptionIDs []string
+
+	// dirty persists a change to UsedThisTurn. Without it the flag updates in
+	// silence and resolution.Resolve discards the update, because it hands
+	// back only participants that report IsDirty (see selfPersisting).
+	dirty selfPersisting
+
+	// purse is the reactor's own action economy, and IS ALLOWED TO BE NIL.
+	//
+	// A *character.Character has one; a monster does not — monsters carry no
+	// action economy in this rulebook at all, so there is no reaction slot for
+	// a gate to read. Kirk ruled 2026-08-28: "characters have to pay for it.
+	// the condition can still track it was used but players have a cost." So
+	// the asymmetry is the rule rather than a hole in it: UsedThisTurn meters
+	// everyone, and the reaction slot is an additional cost only a sheet can
+	// be charged. A purse-less reactor is metered by the flag alone, never
+	// unmetered and never refused for lacking an economy it was never given.
+	//
+	// Paying also keeps OA and Protection fighting style mutually exclusive,
+	// which they are in the rules: both spend the one reaction, and the second
+	// one to ask finds it gone.
+	purse combat.Ledger
 }
 
 // Ensure OpportunityAttackCondition implements dnd5eEvents.ConditionBehavior
@@ -69,6 +104,33 @@ var _ dnd5eEvents.ConditionBehavior = (*OpportunityAttackCondition)(nil)
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
 func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.OpportunityAttack() }
+
+// Ensure OpportunityAttackCondition implements dnd5eEvents.OwnerAware
+var _ dnd5eEvents.OwnerAware = (*OpportunityAttackCondition)(nil)
+
+// SetOwner hands this condition its own reactor's live sheet.
+//
+// The two halves are asserted INDEPENDENTLY because they are independently
+// available: every reactor that persists condition state satisfies
+// selfPersisting, while only one with an action economy satisfies
+// combat.Ledger. An owner satisfying neither is not an error — the condition
+// simply meters itself in memory and charges nothing, the same "nothing to do"
+// default every other unmet check here already takes.
+func (o *OpportunityAttackCondition) SetOwner(owner any) {
+	if d, ok := owner.(selfPersisting); ok {
+		o.dirty = d
+	}
+	if p, ok := owner.(combat.Ledger); ok {
+		o.purse = p
+	}
+}
+
+// markDirty records that this condition's persisted meter changed.
+func (o *OpportunityAttackCondition) markDirty() {
+	if o.dirty != nil {
+		o.dirty.MarkDirty()
+	}
+}
 
 // NewOpportunityAttackCondition creates a new OA condition for the given character.
 // The condition is universal for melee combatants and applied programmatically
@@ -99,6 +161,35 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 		return rpgerr.Wrap(err, "failed to subscribe to movement chain")
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, subID)
+
+	turnStarts := dnd5eEvents.TurnStartTopic.On(bus)
+	resetID, err := turnStarts.Subscribe(ctx, o.onTurnStart)
+	if err != nil {
+		o.bus = nil
+		return rpgerr.Wrap(err, "failed to subscribe to turn start")
+	}
+	o.subscriptionIDs = append(o.subscriptionIDs, resetID)
+	return nil
+}
+
+// onTurnStart refreshes the spent reaction at the start of the reactor's own
+// turn.
+//
+// TURN START, NOT TURN END, and the difference is the whole point of the
+// field. A reaction is spent on somebody ELSE's turn — that is what makes it a
+// reaction — so a meter cleared at the end of its holder's turn would be full
+// again for the entire window it is supposed to govern. 2014 PHB: "you regain
+// a spent reaction at the start of each of your turns."
+//
+// Only when the flag actually changes, for SneakAttackCondition's stated
+// reason: marking unconditionally would flag every combatant dirty at the
+// start of every turn they did not react on, and a boundary already runs for
+// every participant.
+func (o *OpportunityAttackCondition) onTurnStart(_ context.Context, event dnd5eEvents.TurnStartEvent) error {
+	if event.SubjectID == o.CharacterID && o.UsedThisTurn {
+		o.UsedThisTurn = false
+		o.markDirty()
+	}
 	return nil
 }
 
@@ -125,8 +216,9 @@ func (o *OpportunityAttackCondition) Remove(ctx context.Context, bus events.Even
 // ToJSON converts the condition to its JSON representation.
 func (o *OpportunityAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := OpportunityAttackConditionData{
-		Ref:         refs.Conditions.OpportunityAttack(),
-		CharacterID: o.CharacterID,
+		Ref:          refs.Conditions.OpportunityAttack(),
+		CharacterID:  o.CharacterID,
+		UsedThisTurn: o.UsedThisTurn,
 	}
 	return json.Marshal(data)
 }
@@ -138,6 +230,7 @@ func (o *OpportunityAttackCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal opportunity attack data")
 	}
 	o.CharacterID = oaData.CharacterID
+	o.UsedThisTurn = oaData.UsedThisTurn
 	return nil
 }
 
@@ -159,6 +252,18 @@ func (o *OpportunityAttackCondition) onMovementChain(
 
 	// Disengaging (or any other source) prevented OAs for this step.
 	if event.IsOAPrevented() {
+		return c, nil
+	}
+
+	// Already reacted. Cleared at the start of this reactor's own turn.
+	if o.UsedThisTurn {
+		return c, nil
+	}
+
+	// A reactor with a sheet PAYS; one without a purse is metered by
+	// UsedThisTurn alone. See the purse field for why that asymmetry is the
+	// rule rather than a gap.
+	if o.purse != nil && o.purse.SlotsLeft(coreCombat.ActionReaction) <= 0 {
 		return c, nil
 	}
 
@@ -196,6 +301,16 @@ func (o *OpportunityAttackCondition) onMovementChain(
 	}); pubErr != nil {
 		return c, rpgerr.Wrap(pubErr, "failed to publish OA reaction trigger event")
 	}
+
+	// Spend AFTER the publish, never before: a trigger that failed to reach
+	// the orchestrator is a reaction that did not happen, and charging for it
+	// would leave the reactor unable to react to the next mover for a swing
+	// nobody made.
+	o.UsedThisTurn = true
+	if o.purse != nil {
+		o.purse.SpendSlots(coreCombat.ActionReaction, 1)
+	}
+	o.markDirty()
 
 	return c, nil
 }
