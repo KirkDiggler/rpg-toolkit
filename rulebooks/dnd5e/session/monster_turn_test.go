@@ -1033,11 +1033,21 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 	// Drive until the stale carpet is reached and corrected. The bounded loop
 	// is only a safety guard; every assertion below is a narrative milestone,
 	// not a prescribed turn count.
+	finalRememberedMoveAt := -1
 	for i := 0; i < 12; i++ {
+		viewOffset := len(recorder.views)
 		_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
 			Session: "sess", Member: "billy", DeclarationID: currentEndTurnID(t, mgr, "sess", "billy"),
 		})
 		require.NoError(t, err)
+		require.Equal(t, len(recorder.views), len(recorder.intents), "each recorded pursuit view must have its delegated intent")
+		for call := viewOffset; call < len(recorder.views); call++ {
+			move, moving := recorder.intents[call].(session.Move)
+			if rememberedAt(recorder.views[call], "billy", carpet) && moving &&
+				len(move.Path) == 1 && move.Path[0] == carpet {
+				finalRememberedMoveAt = call
+			}
+		}
 		data, loadErr := repo.GetEncounter(ctx, "world")
 		require.NoError(t, loadErr)
 		location, ok := encounter.DecodeLocationPayload(data.Intel.Holdings[core.EntityID("goblin")][intel.Subject("billy")].Payload)
@@ -1058,9 +1068,15 @@ func TestSessionDoubleDoorGhostPursuit(t *testing.T) {
 	}
 	require.Equal(t, carpet, persistedMonsterPosition(t, repo, "goblin"))
 	requireUnknownStoredLocation(t, repo, "goblin", "billy")
-	requireRecordedView(t, recorder.views, func(view session.MonsterView) bool {
-		return !seen(view, "billy") && !remembered(view, "billy")
-	})
+	require.NotEqual(t, -1, finalRememberedMoveAt, "one remembered-directed move must arrive on the exact carpet")
+	postArrivalAt := finalRememberedMoveAt + 1
+	require.Less(t, postArrivalAt, len(recorder.views), "arrival correction must be followed by a new driver decision")
+	postArrival := recorder.views[postArrivalAt]
+	require.Equal(t, carpet, postArrival.Position, "the post-correction decision must be recorded from the arrived carpet cell")
+	require.False(t, seen(postArrival, "billy"), "the arrived view must not regain concealed Billy")
+	require.False(t, remembered(postArrival, "billy"), "the arrived view must not repeat the resolved ghost")
+	_, passed := recorder.intents[postArrivalAt].(session.Pass)
+	require.True(t, passed, "the immediate post-correction decision must pass instead of pursuing the carpet again")
 	requireNeverContainsPosition(t, recorder.views, "billy", hiddenRightCell)
 	requireNeverContainsIntentPosition(t, recorder.intents, hiddenRightCell)
 }
@@ -1076,27 +1092,19 @@ func TestSessionDoubleDoorVisibleInterruptsGhostPursuit(t *testing.T) {
 		Path: []spatial.Position{hexCell(22, 0), hexCell(23, 0), hiddenRightCell},
 	})
 	require.NoError(t, err)
+	viewOffset, intentOffset := len(recorder.views), len(recorder.intents)
+	require.Equal(t, viewOffset, intentOffset, "each recorded pre-interruption view must have its delegated intent")
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "billy", DeclarationID: currentEndTurnID(t, mgr, "sess", "billy"),
 	})
 	require.NoError(t, err)
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
-		Session: "sess", Member: "david", DeclarationID: currentEndTurnID(t, mgr, "sess", "david"),
-	})
-	require.NoError(t, err)
 
-	var interruptionAt = -1
-	for i := 0; i+1 < len(recorder.views); i++ {
-		before, after := recorder.views[i], recorder.views[i+1]
-		if rememberedAt(before, "billy", carpet) && len(before.Seen) == 0 && seen(after, "david") {
-			interruptionAt = i
-			break
-		}
-	}
-	require.NotEqual(t, -1, interruptionAt, "a lawful first remembered step must bring David into current sight on the next driver call")
-
-	before, after := recorder.views[interruptionAt], recorder.views[interruptionAt+1]
-	firstMove, ok := recorder.intents[interruptionAt].(session.Move)
+	require.GreaterOrEqual(t, len(recorder.views), viewOffset+2, "Billy's EndTurn must drive the remembered step and its immediate follow-up")
+	require.Equal(t, len(recorder.views), len(recorder.intents), "each recorded interruption view must have its delegated intent")
+	before, after := recorder.views[viewOffset], recorder.views[viewOffset+1]
+	require.Empty(t, before.Seen, "the first new driver call must have no current-visible player")
+	require.True(t, rememberedAt(before, "billy", carpet), "the first new driver call must remember Billy at the carpet")
+	firstMove, ok := recorder.intents[intentOffset].(session.Move)
 	require.True(t, ok, "the first no-visible-player decision must pursue remembered Billy")
 	var billyMemory session.RememberedMember
 	for _, member := range before.Remembered {
@@ -1118,7 +1126,7 @@ func TestSessionDoubleDoorVisibleInterruptsGhostPursuit(t *testing.T) {
 	}
 	require.NotEmpty(t, david.Path, "newly visible David must have a live path")
 	require.NotEqual(t, billyMemory.Path[:1], david.Path[:1], "David's live route must discriminate visible priority from continued ghost pursuit")
-	delegatedMove, ok := recorder.intents[interruptionAt+1].(session.Move)
+	delegatedMove, ok := recorder.intents[intentOffset+1].(session.Move)
 	require.True(t, ok, "visible David outside reach must cause a one-cell move")
 	require.Equal(t, david.Path[:1], delegatedMove.Path, "current-visible David must interrupt the stale Billy route")
 
