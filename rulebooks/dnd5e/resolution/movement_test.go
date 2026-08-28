@@ -309,3 +309,31 @@ func (s *MovementTestSuite) TestTheStepIsCopiedNotBorrowed() {
 	s.Contains(step.(Gather).Name(), "to (5,1)",
 		"changing the caller's struct must not change what this machine announces")
 }
+
+// The outcome must READ the folded event, endpoints included, not echo the
+// input back. They are the same values today — nothing in the rulebook moves a
+// step's endpoints — which is exactly what lets an echo survive the whole suite
+// while being wrong. The same warning is written into runWalk's loop one layer
+// up, about the same mistake.
+func (s *MovementTestSuite) TestTheOutcomeReportsWhereTheStepACTUALLYWent() {
+	out, err := s.runStep(s.stepInput(), func(ctx context.Context, bus events.EventBus) {
+		_, _ = dnd5eEvents.MovementChain.On(bus).SubscribeWithChain(ctx,
+			func(_ context.Context, _ *dnd5eEvents.MovementChainEvent,
+				c chain.Chain[*dnd5eEvents.MovementChainEvent],
+			) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
+				// A shove, a slide, a door that opens onto a different cell.
+				err := c.Add(combat.StageConditions, "test_shove",
+					func(_ context.Context, e *dnd5eEvents.MovementChainEvent) (*dnd5eEvents.MovementChainEvent, error) {
+						e.ToPosition = dnd5eEvents.Position{X: 7, Y: 3}
+						return e, nil
+					})
+				return c, err
+			})
+	})
+	s.Require().NoError(err)
+
+	moved := out.Outcome.(MovementOutcome)
+	s.Equal(spatial.Position{X: 7, Y: 3}, moved.To,
+		"a modifier moved the step and the outcome must say so, not repeat the request")
+	s.Equal(spatial.Position{X: 2, Y: 1}, moved.From, "the origin was untouched and still reads back")
+}

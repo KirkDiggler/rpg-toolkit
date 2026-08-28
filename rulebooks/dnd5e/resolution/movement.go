@@ -318,6 +318,18 @@ func (m *movementMachine) react(i int) Step {
 
 // outcome reads the step's result off the FOLDED event rather than the input,
 // so a modifier that changed something is reported rather than echoed over.
+//
+// THE ENDPOINTS TOO, not only the flags. They are the same values today —
+// nothing in the rulebook moves a step's From or To — and that is exactly what
+// makes echoing them survive the whole suite while being wrong. runWalk's own
+// loop carries the same warning about the same mistake one layer up: the day a
+// step can land somewhere other than where it was aimed (a shove, a slide, a
+// door that opens onto a different cell), echoing the input reports a movement
+// that did not happen, and reading the answer keeps being right without anyone
+// noticing it had to change.
+//
+// The input is the fallback ONLY for a machine whose fold never ran, which is
+// the Start-without-drive path a test can reach and production cannot.
 func (m *movementMachine) outcome() MovementOutcome {
 	out := MovementOutcome{
 		Mover:     string(m.in.Mover),
@@ -326,6 +338,8 @@ func (m *movementMachine) outcome() MovementOutcome {
 		Reactions: m.reactions,
 	}
 	if m.folded != nil {
+		out.From = spatial.Position{X: m.folded.FromPosition.X, Y: m.folded.FromPosition.Y}
+		out.To = spatial.Position{X: m.folded.ToPosition.X, Y: m.folded.ToPosition.Y}
 		out.Prevented = m.folded.MovementPrevented
 		out.PreventionReason = m.folded.PreventionReason
 		out.OAPrevented = m.folded.IsOAPrevented()
