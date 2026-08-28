@@ -61,7 +61,7 @@ func (s *BasicTestSuite) TestIgnoresADownedPlayer() {
 func (s *BasicTestSuite) TestAttacksTheClosestStandingPlayerWhenInReach() {
 	intent, err := (behavior.Basic{}).Act(encounter.MonsterView{
 		Self:    "goblin",
-		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5}},
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
 		Budget:  encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
 		Seen: []encounter.SeenMember{
 			{ID: "alice", Kind: encounter.KindPlayer, Standing: true, DistanceCells: 1, InReach: map[core.Ref]bool{meleeRef: true}},
@@ -75,7 +75,7 @@ func (s *BasicTestSuite) TestAttacksTheClosestStandingPlayerWhenInReach() {
 func (s *BasicTestSuite) TestPicksTheClosestOfTwoEquallyReachableTargetsDeterministically() {
 	view := encounter.MonsterView{
 		Self:    "goblin",
-		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5}},
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
 		Budget:  encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
 		Seen: []encounter.SeenMember{
 			{ID: "bob", Kind: encounter.KindPlayer, Standing: true, DistanceCells: 1, InReach: map[core.Ref]bool{meleeRef: true}},
@@ -97,7 +97,7 @@ func (s *BasicTestSuite) TestPicksTheClosestOfTwoEquallyReachableTargetsDetermin
 func (s *BasicTestSuite) TestNoAttacksLeftFallsThroughToMovement() {
 	intent, err := (behavior.Basic{}).Act(encounter.MonsterView{
 		Self:    "goblin",
-		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5}},
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
 		Budget:  encounter.TurnBudget{AttacksLeft: 0, MovementFeet: 30},
 		Seen: []encounter.SeenMember{
 			{
@@ -114,7 +114,7 @@ func (s *BasicTestSuite) TestNoAttacksLeftFallsThroughToMovement() {
 func (s *BasicTestSuite) TestOutOfReachWithNoMovementLeftPasses() {
 	intent, err := (behavior.Basic{}).Act(encounter.MonsterView{
 		Self:    "goblin",
-		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5}},
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
 		Budget:  encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 0},
 		Seen: []encounter.SeenMember{
 			{
@@ -131,7 +131,7 @@ func (s *BasicTestSuite) TestOutOfReachWithNoMovementLeftPasses() {
 func (s *BasicTestSuite) TestOutOfReachWithNoPathAvailablePasses() {
 	intent, err := (behavior.Basic{}).Act(encounter.MonsterView{
 		Self:    "goblin",
-		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5}},
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
 		Budget:  encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
 		Seen: []encounter.SeenMember{
 			{
@@ -140,6 +140,106 @@ func (s *BasicTestSuite) TestOutOfReachWithNoPathAvailablePasses() {
 				Path: nil, // sighted but unreachable — see SeenMember.Path's own doc
 			},
 		},
+	})
+	s.Require().NoError(err)
+	s.Equal(encounter.Pass{}, intent)
+}
+
+func (s *BasicTestSuite) TestPrefersSeenOverRemembered() {
+	view := encounter.MonsterView{
+		Seen: []encounter.SeenMember{{
+			ID: "david", Kind: encounter.KindPlayer, Standing: true,
+			DistanceCells: 1, Path: []spatial.Position{{X: 1}},
+		}},
+		Remembered: []encounter.RememberedMember{{
+			ID: "billy", Kind: encounter.KindPlayer, DistanceCells: 1,
+			Path: []spatial.Position{{X: -1}},
+		}},
+		Budget: encounter.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+}
+
+func (s *BasicTestSuite) TestChoosesClosestReachableRemembered() {
+	view := encounter.MonsterView{
+		Remembered: []encounter.RememberedMember{
+			{ID: "alice", Kind: encounter.KindPlayer, DistanceCells: 1},
+			{ID: "billy", Kind: encounter.KindPlayer, DistanceCells: 2, Path: []spatial.Position{{X: 1}}},
+		},
+		Budget: encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+}
+
+func (s *BasicTestSuite) TestRememberedTieBreaksByIDRegardlessOfSliceOrder() {
+	view := encounter.MonsterView{
+		Remembered: []encounter.RememberedMember{
+			{ID: "bob", Kind: encounter.KindPlayer, DistanceCells: 2, Path: []spatial.Position{{X: 2}}},
+			{ID: "alice", Kind: encounter.KindPlayer, DistanceCells: 2, Path: []spatial.Position{{X: 1}}},
+		},
+		Budget: encounter.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+
+	view.Remembered[0], view.Remembered[1] = view.Remembered[1], view.Remembered[0]
+	intent, err = (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+}
+
+func (s *BasicTestSuite) TestNeverAttacksRememberedTarget() {
+	view := encounter.MonsterView{
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
+		Remembered: []encounter.RememberedMember{{
+			ID: "alice", Kind: encounter.KindPlayer, DistanceCells: 1,
+			Path: []spatial.Position{{X: 1}},
+		}},
+		Budget: encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Move{Path: []spatial.Position{{X: 1}}}, intent)
+}
+
+func (s *BasicTestSuite) TestVisibleStandingTargetOwnsDecisionWhenNonActionable() {
+	view := encounter.MonsterView{
+		Seen: []encounter.SeenMember{{
+			ID: "david", Kind: encounter.KindPlayer, Standing: true,
+			DistanceCells: 1,
+		}},
+		Remembered: []encounter.RememberedMember{{
+			ID: "billy", Kind: encounter.KindPlayer, DistanceCells: 2,
+			Path: []spatial.Position{{X: -1}},
+		}},
+		Budget: encounter.TurnBudget{MovementFeet: 30},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Pass{}, intent)
+}
+
+func (s *BasicTestSuite) TestRememberedWithNoMovementPasses() {
+	view := encounter.MonsterView{
+		Remembered: []encounter.RememberedMember{{
+			ID: "alice", Kind: encounter.KindPlayer, DistanceCells: 1,
+			Path: []spatial.Position{{X: 1}},
+		}},
+		Budget: encounter.TurnBudget{MovementFeet: 0},
+	}
+	intent, err := (behavior.Basic{}).Act(view)
+	s.Require().NoError(err)
+	s.Equal(encounter.Pass{}, intent)
+}
+
+func (s *BasicTestSuite) TestNoKnowledgePasses() {
+	intent, err := (behavior.Basic{}).Act(encounter.MonsterView{
+		Budget: encounter.TurnBudget{MovementFeet: 30},
 	})
 	s.Require().NoError(err)
 	s.Equal(encounter.Pass{}, intent)
@@ -154,7 +254,7 @@ func (s *BasicTestSuite) TestOutOfReachWithNoPathAvailablePasses() {
 func (s *BasicTestSuite) TestInReachWithNoAttacksLeftPassesInsteadOfClosingFurther() {
 	intent, err := (behavior.Basic{}).Act(encounter.MonsterView{
 		Self:    "goblin",
-		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5}},
+		Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5}},
 		Budget:  encounter.TurnBudget{AttacksLeft: 0, MovementFeet: 30},
 		Seen: []encounter.SeenMember{
 			{
@@ -177,17 +277,17 @@ func (s *BasicTestSuite) TestBasicEndToEndAgainstARealEncounter() {
 	striker := &recordingStriker{kind: encounter.OutcomeMissed}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: behavior.Basic{}, Striker: striker,
+		TurnDriver: behavior.Basic{}, Striker: striker, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
-			Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque()},
-			Rooms:  []encounter.RoomInput{{ID: "room-1", Width: 10, Height: 10}},
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{behaviorTestRegion("room-1", 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Room: "room-1", Position: spatial.Position{X: 0, Y: 0}},
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
 			{
-				ID: "goblin", Kind: encounter.KindMonster, Room: "room-1", Position: spatial.Position{X: 3, Y: 0},
+				ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 0},
 				SpeedFeet: 30, Targeting: "closest",
-				Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", ReachFeet: 5, Kind: "melee"}},
+				Actions: []encounter.ActionView{{Ref: meleeRef, Name: "Claw", RangeFeet: 5, Kind: "melee"}},
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
@@ -213,6 +313,19 @@ func (s *BasicTestSuite) TestBasicEndToEndAgainstARealEncounter() {
 
 // --- shared fixtures (mirroring the encounter package's own test style) ---
 
+func behaviorTestRegion(id string, width, height int) encounter.RegionInput {
+	cells := make([]spatial.Position, 0, width*height)
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			cells = append(cells, spatial.Position{X: float64(x), Y: float64(y)})
+		}
+	}
+	return encounter.RegionInput{
+		ID: id, Cells: cells, Archetype: "dungeon",
+		Lighting: &encounter.Lighting{Intensity: 1},
+	}
+}
+
 type everyoneSeesTheWholeMap struct{}
 
 func (everyoneSeesTheWholeMap) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
@@ -231,6 +344,12 @@ type orderAsGiven struct{}
 
 func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
 	return members, nil
+}
+
+type quietAnnouncer struct{}
+
+func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
 }
 
 type recordingStriker struct {
