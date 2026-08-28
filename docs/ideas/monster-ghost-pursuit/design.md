@@ -1,6 +1,8 @@
 # Monster ghost pursuit — design
 
-**Status:** Proposed
+**Status:** Approved
+
+**Execution:** [plan.md](plan.md)
 
 **Product direction:** [rpg-project#201](https://github.com/KirkDiggler/rpg-project/issues/201)
 
