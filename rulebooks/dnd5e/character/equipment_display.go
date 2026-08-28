@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -83,7 +84,12 @@ type EquipmentView struct {
 // item (equipped or carried), the slot taxonomy, AC total + note, and the
 // resolved main-hand damage display. Consumable by rpg-api with zero
 // rules knowledge.
-func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
+//
+// Fallible because the AC it carries is folded, not echoed: an unattached sheet
+// cannot produce an effective AC and this refuses rather than displaying base
+// armour as though it were the whole answer. [Character.StatusView] is fallible
+// for the same reason and this now matches it.
+func (c *Character) EquipmentView(ctx context.Context) (*EquipmentView, error) {
 	items := make([]EquippedItemView, 0, len(c.inventory))
 	for _, invItem := range c.inventory {
 		id := invItem.Equipment.EquipmentID()
@@ -97,7 +103,10 @@ func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 		})
 	}
 
-	breakdown := c.EffectiveAC(ctx)
+	breakdown, err := c.EffectiveAC(ctx)
+	if err != nil {
+		return nil, rpgerr.Wrap(err, "equipment view needs this character's effective AC")
+	}
 	mainHand := c.GetEquippedSlot(SlotMainHand)
 	return &EquipmentView{
 		Items:          items,
@@ -105,7 +114,7 @@ func (c *Character) EquipmentView(ctx context.Context) *EquipmentView {
 		ACTotal:        breakdown.Total,
 		ACNote:         ACNote(breakdown),
 		MainHandDamage: MainHandDamage(mainHand.AsWeapon(), c.GetEquippedSlot(SlotOffHand)),
-	}
+	}, nil
 }
 
 // slotKeys converts CompatibleSlots' typed InventorySlots into the plain

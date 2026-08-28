@@ -1370,8 +1370,33 @@ func calculateShieldAC(shieldItem *armor.Armor) combat.ACComponent {
 	}
 }
 
-// EffectiveAC calculates the character's armor class with detailed breakdown
-func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
+// EffectiveAC calculates the character's armor class with detailed breakdown.
+//
+// # It refuses rather than guesses
+//
+// The fold rides the bus parked on the sheet, so a sheet that was never
+// attached has no subscribers and every AC contributor is silently absent —
+// Unarmored Defense, the fighting styles, Shield. The number that comes back
+// from that is not a smaller answer, it is a WRONG one, and it is wrong in the
+// most plausible direction there is: exactly base armour, which reads like a
+// character who simply has no features.
+//
+// That is how a monk fought at 10+DEX with Unarmored Defense attached and
+// nobody noticed, and it is the same shape as rpg-api#842. So an unattached
+// sheet is an error here, not a fallback. Chain failures are returned for the
+// same reason: this used to swallow both the publish and the execute error and
+// return whatever the breakdown happened to hold, which meant a broken
+// contributor degraded the total instead of failing the read.
+//
+// Callers holding a sheet from the bus-free [Load] must [Attach] it before
+// asking. A stat block that has no chain to fold wants [Character.AC].
+func (c *Character) EffectiveAC(ctx context.Context) (*combat.ACBreakdown, error) {
+	if c.bus == nil {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet,
+			"effective AC needs an attached sheet: this character is on no bus, "+
+				"so every condition and feature that contributes AC is absent")
+	}
+
 	breakdown := &combat.ACBreakdown{
 		Total:      0,
 		Components: []combat.ACComponent{},
@@ -1435,13 +1460,14 @@ func (c *Character) EffectiveAC(ctx context.Context) *combat.ACBreakdown {
 	acTopic := combat.ACChain.On(c.bus)
 
 	modifiedChain, err := acTopic.PublishWithChain(ctx, acEvent, acChain)
-	if err == nil {
-		// Execute chain to get final AC with all modifiers
-		finalEvent, err := modifiedChain.Execute(ctx, acEvent)
-		if err == nil {
-			breakdown = finalEvent.Breakdown
-		}
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "publish AC chain for character %s", c.id)
 	}
 
-	return breakdown
+	finalEvent, err := modifiedChain.Execute(ctx, acEvent)
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "fold AC chain for character %s", c.id)
+	}
+
+	return finalEvent.Breakdown, nil
 }

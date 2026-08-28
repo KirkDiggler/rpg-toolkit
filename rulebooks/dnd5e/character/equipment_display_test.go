@@ -186,7 +186,9 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 		},
 	}
 
-	view := char.EquipmentView(s.ctx)
+	view, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	s.Require().NotNil(view)
 	s.Assert().Equal(18, view.ACTotal)
 	s.Assert().Equal("16 chain mail + 2 shield", view.ACNote)
@@ -240,11 +242,15 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_SlotsIsDefensiveCopy() {
 		equipmentSlots: make(EquipmentSlots),
 	}
 
-	first := char.EquipmentView(s.ctx)
+	first, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	first.Slots[0].Accepts[0] = "MUTATED"
 	first.Slots = append(first.Slots, SlotDefView{Key: "mutated_slot"})
 
-	second := char.EquipmentView(s.ctx)
+	second, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	s.Require().Len(second.Slots, 3)
 	s.Assert().Equal("weapon", second.Slots[0].Accepts[0])
 	s.Assert().Equal([]SlotDefView{
@@ -267,7 +273,9 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
 		equipmentSlots: make(EquipmentSlots),
 	}
 
-	view := char.EquipmentView(s.ctx)
+	view, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	s.Require().Len(view.Items, 1)
 	s.Assert().Equal(InventorySlot(""), view.Items[0].Slot)
 	s.Assert().Equal("1d6 slashing damage · light, thrown 20/60", view.Items[0].StatLine)
@@ -289,7 +297,9 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_SlotlessGear() {
 		equipmentSlots: make(EquipmentSlots),
 	}
 
-	view := char.EquipmentView(s.ctx)
+	view, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	s.Require().Len(view.Items, 1)
 	s.Assert().Equal("gear", view.Items[0].Kind)
 	s.Assert().Nil(view.Items[0].SlotKeys)
@@ -312,7 +322,9 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_VersatileFreeOffHand() {
 		},
 	}
 
-	view := char.EquipmentView(s.ctx)
+	view, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	s.Assert().Equal("1d10 slashing damage", view.MainHandDamage)
 }
 
@@ -342,7 +354,9 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_DualWield() {
 		},
 	}
 
-	view := char.EquipmentView(s.ctx)
+	view, viewErr := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(viewErr)
 	s.Assert().Equal("1d4 piercing damage · off-hand 1d4 piercing damage", view.MainHandDamage)
 }
 
