@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -31,9 +32,17 @@ const doorFile = "truth.go"
 // TestNoCodePathProducesACastlessInteraction and
 // TestNoCodePathProducesAReadinesslessInteraction — each say that ONE fact is
 // installed once and unconditionally. None of them can say what this one says:
-// that no SECOND installer exists, and that the resolve path reaches the door
+// that no SECOND installer exists, and that the paths which fold reach the door
 // at all. Drop the call to installTruth and all three still pass, because each
 // of them is reading the door's own body.
+//
+// "The paths which fold" is a list now, not a single function — see
+// [foldEntries]. Resolution grew a second entry when the projection landed, and
+// the law it serves is that FOLDS LIVE IN RESOLUTION: a caller that needs a
+// derived number brings the computation here rather than carrying truth out to
+// itself. This pin holds the near half of that law, the half resolution can
+// see — every fold that starts here starts by opening the door, and nothing
+// else opens it.
 //
 // That gap is the defect they were written for, seen from the other side.
 // gamectx reached five registries and a sixth in combat by exactly this route —
@@ -112,13 +121,62 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 			"repository it is a record, not a tenant, and admission is a ruling either way",
 		doorFile)
 
-	// And the door is ON the path. Everything above is about who may install;
-	// this is the half that says the installing happens.
-	file, err := parser.ParseFile(fset, "resolve.go", nil, 0)
-	require.NoError(t, err)
+	// And the door is ON every path that reaches a fold. Everything above is
+	// about who may install; this is the half that says the installing happens.
+	for _, entry := range foldEntries {
+		file, err := parser.ParseFile(fset, entry.file, nil, 0)
+		require.NoError(t, err)
 
-	fn := funcDecl(t, "resolve.go", file, "resolveOn")
+		fn := funcDecl(t, entry.file, file, entry.fn)
 
+		calls := doorCalls(fn)
+		require.Len(t, calls, 1, "%s goes through the door exactly once", entry.fn)
+
+		requireUnconditional(t, fset, fn, calls[0],
+			"calls the door inside a condition — a fold that skips it reads a world, "+
+				"a cast and a readiness map that nobody installed, which is every "+
+				"failure the three pins beside this one were written for at once")
+	}
+
+	// And nothing ELSE reaches the door, which is what makes the list above a
+	// list rather than a sample. A new entry that folds is a design moment: it
+	// either goes through installTruth and gets named here, or it folds without
+	// truth, which is the bug R6 is about.
+	require.Equal(t, entryNames(foldEntries), doorCallers(t, fset, entries),
+		"every non-test caller of installTruth is a declared fold entry, and every "+
+			"declared fold entry calls it — a fold reached any other way is a fold "+
+			"outside the door")
+}
+
+// foldEntries are the functions in this package that stand a fold up from
+// nothing, and therefore the functions that must go through the door first.
+//
+// TWO of them, and the second is why this is a table. Resolve runs an
+// interaction; ProjectCharacter folds one derived number for a caller that has
+// no interaction to run — a character joining a session, who is not standing
+// anywhere yet. Both need the truth installed for the same reason and install
+// it the same way; neither is a mode of the other.
+//
+// The functions named are the *On forms rather than their exported wrappers,
+// because those are where the bus is held and the door is called. A wrapper
+// that stopped delegating would fail funcDecl or the count, loudly.
+var foldEntries = []struct{ file, fn string }{
+	{"resolve.go", "resolveOn"},
+	{"projection.go", "projectCharacterOn"},
+}
+
+func entryNames(entries []struct{ file, fn string }) []string {
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.fn)
+	}
+	sort.Strings(names)
+
+	return names
+}
+
+// doorCalls returns every position in fn where installTruth is called.
+func doorCalls(fn *ast.FuncDecl) []token.Pos {
 	var calls []token.Pos
 	ast.Inspect(fn, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -131,12 +189,43 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 
 		return true
 	})
-	require.Len(t, calls, 1, "resolveOn goes through the door exactly once")
 
-	requireUnconditional(t, fset, fn, calls[0],
-		"calls the door inside a condition — an interaction that skips it reads a "+
-			"world, a cast and a readiness map that nobody installed, which is every "+
-			"failure the three pins beside this one were written for at once")
+	return calls
+}
+
+// doorCallers returns the sorted names of every non-test top-level function in
+// the package that calls installTruth.
+//
+// TEST FILES ARE EXCLUDED here, and the asymmetry with the scan above is
+// deliberate rather than an oversight. That scan asks who may INSTALL, where a
+// test installing by hand is the original defect wearing a disguise. This one
+// asks which production paths fold, and a test calling the door is a test using
+// the sanctioned entrance — the one this file tells authors to use. Counting
+// those would turn a correct test into a failure and teach the wrong lesson.
+func doorCallers(t *testing.T, fset *token.FileSet, entries []os.DirEntry) []string {
+	t.Helper()
+
+	var callers []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		require.NoError(t, err)
+
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || len(doorCalls(fn)) == 0 {
+				continue
+			}
+			callers = append(callers, fn.Name.Name)
+		}
+	}
+	sort.Strings(callers)
+
+	return callers
 }
 
 // installsOf returns every position in fn where the installer called name is
