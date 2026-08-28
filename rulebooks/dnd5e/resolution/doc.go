@@ -231,7 +231,13 @@
 // TestNoCodePathProducesAReadinesslessInteraction hold all three structurally
 // rather than by example, by reading the door's source; a fourth,
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
-// and that resolveOn reaches it. A behavioural suite cannot make any of those
+// and that every path which folds reaches it.
+//
+// There are two such paths. [Resolve] runs an interaction; [ProjectCharacter]
+// folds one derived number for a caller with no interaction to run — a
+// character joining a session, who is not standing anywhere yet and so gets a
+// context whose room is honestly ABSENT rather than invented. Both go through
+// the same door, and neither is a mode of the other. A behavioural suite cannot make any of those
 // claims: the defect is that tests supply what production does not, so the
 // tests are the last place it shows up.
 //
