@@ -1657,3 +1657,52 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		s.Equal(int(0), tick2, "initial tick reading should be 0")
 	})
 }
+
+// TestRememberedArrivalCorrectionPersistsUnknown verifies that a lawful
+// driven-arrival correction survives ToData/LoadEncounter without being
+// silently re-surveiled, and that the next driven view treats the corrected
+// subject as neither Seen nor Remembered.
+func (s *DataTestSuite) TestRememberedArrivalCorrectionPersistsUnknown() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	enc := newDrivenArrivalEncounter(s.T(), driver, &sightList{fallback: 0}, arrival, cellAt(7, 7), false)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Contains(out.IntelDeltas[goblin].Corrected, intel.Subject(billy))
+
+	data := enc.ToData()
+	nextDriver := &scriptedDriver{}
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: &sightList{fallback: 0}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		TurnDriver: nextDriver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+
+	holding := requireHolding(s.T(), loaded, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, holding.Status)
+	requireUnknownLocation(s.T(), holding.Payload)
+
+	// Walk the persisted bubble back to Alice's turn. The next driven view is
+	// then built from the Held+Unknown holding, so Billy must not appear in
+	// either current or remembered sight.
+	next := out.Next
+	for _, want := range []encounter.MemberID{billy, carol, alice} {
+		s.Require().Equal(want, next)
+		advanced, advanceErr := loaded.EndTurn(&encounter.EndTurnInput{Member: next})
+		s.Require().NoError(advanceErr)
+		next = advanced.Next
+	}
+
+	s.Require().Len(nextDriver.calls, 1)
+	view := nextDriver.calls[0]
+	for _, seen := range view.Seen {
+		s.Require().NotEqual(encounter.MemberID(billy), seen.ID)
+	}
+	for _, remembered := range view.Remembered {
+		s.Require().NotEqual(encounter.MemberID(billy), remembered.ID)
+	}
+}

@@ -427,13 +427,15 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 
 	if len(verdict.joined) > 0 {
 		for _, id := range verdict.joined {
-			if _, err := e.Transfer(&TransferInput{
+			transferred, err := e.Transfer(&TransferInput{
 				Member: id,
 				To:     ClockTurn,
 				Pos:    e.bubbleSize(),
-			}); err != nil {
+			})
+			if err != nil {
 				return nil, fmt.Errorf("trigger transfer %q: %w", id, err)
 			}
+			deltas = mergeIntelDeltas(deltas, transferred.IntelDeltas)
 		}
 
 		return nil, nil
@@ -452,6 +454,7 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble
 	if err != nil {
 		return nil, fmt.Errorf("trigger form: %w", err)
 	}
+	deltas = mergeIntelDeltas(deltas, formed.IntelDeltas)
 
 	return &FormedBubble{
 		Order:     order,

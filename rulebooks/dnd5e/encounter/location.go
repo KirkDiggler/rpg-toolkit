@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -157,4 +159,80 @@ func DecodeSightPayload(payload []byte) (spatial.Position, bool) {
 		return spatial.Position{}, false
 	}
 	return location.Position, true
+}
+
+// correctArrivedLocations replaces stale known sight testimony at the
+// observer's arrival cell with canonical unknown testimony.
+//
+// This is deliberately narrower than a general sight correction. It is called
+// only after a driven fight-time move has successfully reached its destination
+// and receives the complete percept from that move's refresh. The subject's
+// live placement is never consulted: the only location evidence here is the
+// mover's own held sight testimony, compared with the mover's own arrival cell.
+func (e *Encounter) correctArrivedLocations(
+	observer MemberID,
+	at uint64,
+	perceived *IntelDelta,
+) ([]intel.Subject, error) {
+	member, ok := e.members[observer]
+	if !ok {
+		return nil, fmt.Errorf("correct arrived locations: observer %q: %w", observer, ErrNotMember)
+	}
+	arrival, err := e.cellOf(member)
+	if err != nil {
+		return nil, fmt.Errorf("correct arrived locations: %w", err)
+	}
+
+	perceivedSubjects := make(map[intel.Subject]struct{})
+	if perceived != nil {
+		for _, report := range perceived.FirstContact {
+			perceivedSubjects[report.Subject] = struct{}{}
+		}
+		for _, subject := range perceived.Refreshed {
+			perceivedSubjects[subject] = struct{}{}
+		}
+	}
+
+	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: observer})
+	if err != nil {
+		return nil, fmt.Errorf("correct arrived locations held by: %w", err)
+	}
+
+	var subjects []intel.Subject
+	for _, holding := range holdings {
+		if holding.Channel != intel.Sight || holding.Status != intel.Held {
+			continue
+		}
+		location, ok := DecodeLocationPayload(holding.Payload)
+		if !ok || location.State != LocationKnown || location.Position != arrival {
+			continue
+		}
+		if _, seen := perceivedSubjects[holding.Subject]; seen {
+			continue
+		}
+		subjects = append(subjects, holding.Subject)
+	}
+
+	if len(subjects) == 0 {
+		return nil, nil
+	}
+	sort.Slice(subjects, func(i, j int) bool { return subjects[i] < subjects[j] })
+	unknown, err := EncodeLocationPayload(LocationKnowledge{State: LocationUnknown})
+	if err != nil {
+		return nil, fmt.Errorf("correct arrived locations encode unknown: %w", err)
+	}
+	reports := make([]intel.Report, 0, len(subjects))
+	for _, subject := range subjects {
+		reports = append(reports, intel.Report{Subject: subject, Payload: unknown})
+	}
+	if _, err := e.intelLog.Report(&intel.ReportInput{
+		Observer: observer,
+		Channel:  intel.Sight,
+		Reports:  reports,
+		At:       at,
+	}); err != nil {
+		return nil, fmt.Errorf("correct arrived locations report: %w", err)
+	}
+
+	return subjects, nil
 }

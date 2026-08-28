@@ -931,6 +931,10 @@ type ExitOutput struct {
 	// Carry contains the exiting member's holdings at the time of exit (copy-out).
 	Carry []intel.Holding
 
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns and remaining-member refresh caused by the exit.
+	IntelDeltas map[MemberID]*IntelDelta
+
 	// Seq is the sequence number of the recorded exit beat.
 	Seq uint64
 

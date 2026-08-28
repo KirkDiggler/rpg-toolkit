@@ -1793,9 +1793,11 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	// Remove from whichever clock holds them — the world clock normally, a
 	// bubble if they were in a fight when they left.
-	if cerr := e.leaveAnyClock(in.Member); cerr != nil {
+	clockDeltas, cerr := e.leaveAnyClock(in.Member)
+	if cerr != nil {
 		return nil, fmt.Errorf("exit member %q clock: %w", in.Member, cerr)
 	}
+	intelDeltas := mergeIntelDeltas(nil, clockDeltas)
 
 	// The exit beat's audience, captured HERE, before the exiter is removed
 	// from e.members below: it is every member INCLUDING the exiter — they
@@ -1837,10 +1839,11 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	// refreshSight for REMAINING members only (the exiter's holdings remain in intel archive)
 	if len(memberIDs) > 0 {
-		_, _, err := e.refreshSight(memberIDs)
+		refreshDeltas, _, err := e.refreshSight(memberIDs)
 		if err != nil {
 			return nil, fmt.Errorf("exit refresh sight: %w", err)
 		}
+		intelDeltas = mergeIntelDeltas(intelDeltas, refreshDeltas)
 	}
 
 	// Check if we need to auto-close (last member exited and no ending has fired)
@@ -1864,9 +1867,10 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 			Region:   finalRegion,
 			Position: finalCell,
 		},
-		Carry:  carry,
-		Seq:    seqNum,
-		Closed: closedOutcome,
+		Carry:       carry,
+		Seq:         seqNum,
+		Closed:      closedOutcome,
+		IntelDeltas: intelDeltas,
 	}, nil
 }
 
