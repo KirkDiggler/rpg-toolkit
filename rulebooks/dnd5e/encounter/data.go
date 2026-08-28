@@ -1186,14 +1186,15 @@ func endingTriggerFromData(ed EndingData) Trigger {
 	return nil
 }
 
-// refuseRoomLocalSightings rejects a persisted sight payload written in the
-// dialect rpg-toolkit#1044 replaced.
+// refuseRoomLocalSightings validates persisted sight testimony owned by this
+// composition, including rejecting the room-local dialect rpg-toolkit#1044
+// replaced.
 //
 // Intel round-trips payloads as opaque bytes and carries no version — that is
 // the leaf's whole contract, and it means nothing beneath this composition can
 // notice that stored bytes now mean something different. A sighting written
 // before sight payloads went dungeon-absolute carries a "room" key beside a
-// room-LOCAL cell; decoded through today's SightPayload it becomes an absolute
+// room-LOCAL cell; decoded through today's location codec it becomes an absolute
 // cell in some other room entirely, or in no room at all, and the load reports
 // success. Load never re-derives sight (see the reconstruction below — the
 // outcomes are already in intel), so nothing downstream corrects it either.
@@ -1220,28 +1221,37 @@ func refuseRoomLocalSightings(data intel.Data) error {
 
 		for _, subject := range subjects {
 			holding := data.Holdings[observer][subject]
-			if holding.Channel != intel.Sight || len(holding.Payload) == 0 {
+			if holding.Channel != intel.Sight {
 				continue
 			}
-			// A payload this module cannot read as an object at all is
-			// somebody else's: intel carries testimony for any channel a
-			// composition invents, and only the room key THIS one used to
-			// write is ours to recognize. Unreadable bytes are left to
-			// whoever wrote them.
+			// Check the old room-bearing dialect first so stale saves receive the
+			// established migration guidance; all other malformed sight bytes are
+			// rejected by the strict location codec below.
 			var peek map[string]json.RawMessage
-			if err := json.Unmarshal(holding.Payload, &peek); err != nil {
-				continue
+			if err := json.Unmarshal(holding.Payload, &peek); err == nil {
+				// PRESENCE of the key, not its value. Decoding "room" into a
+				// typed field would let a null through as absent and a non-string
+				// through as unparseable (raised by Copilot on #1072, and both
+				// loaded clean before this) — and since this composition is the
+				// only writer of sight payloads, a payload naming a room AT ALL
+				// is not one it wrote today, whatever the name decodes to.
+				if room, named := peek["room"]; named {
+					return fmt.Errorf(
+						"load encounter intel: %q's sighting of %q names a room (%s) — a room-local sight payload from before rpg-toolkit#1044, recreate the save: %w",
+						observer, subject, room, ErrInvalidData)
+				}
 			}
-			// PRESENCE of the key, not its value. Decoding "room" into a
-			// typed field let a null through as absent and a non-string
-			// through as unparseable (raised by Copilot on #1072, and both
-			// loaded clean before this) — and since this composition is the
-			// only writer of sight payloads, a payload naming a room AT ALL
-			// is not one it wrote today, whatever the name decodes to.
-			if room, named := peek["room"]; named {
+
+			location, ok := DecodeLocationPayload(holding.Payload)
+			if !ok {
 				return fmt.Errorf(
-					"load encounter intel: %q's sighting of %q names a room (%s) — a room-local sight payload from before rpg-toolkit#1044, recreate the save: %w",
-					observer, subject, room, ErrInvalidData)
+					"load encounter sight location: %q's sighting of %q is malformed: %w",
+					observer, subject, ErrInvalidData)
+			}
+			if location.State == LocationUnknown && len(holding.CurrentVia) > 0 {
+				return fmt.Errorf(
+					"load encounter sight location: %q's sighting of %q is unknown but current: %w",
+					observer, subject, ErrInvalidData)
 			}
 		}
 	}
