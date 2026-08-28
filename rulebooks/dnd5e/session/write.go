@@ -227,12 +227,17 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	report, delivery, err := m.commit(ctx, scope)
+	// Projected BEFORE commit, for the reason discoveryStanding spells out
+	// below: projectCharacter folds the AC chain and can refuse, and a refusal
+	// after the write would return an error on a join that had really happened
+	// — the member seated, the caller told it failed. R5 atomicity, and the
+	// same discipline every other pre-commit check in this file keeps.
+	state, err := projectCharacter(ctx, ch)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	state, err := projectCharacter(ctx, ch)
+	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
