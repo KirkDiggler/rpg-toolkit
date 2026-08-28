@@ -103,6 +103,14 @@ type MonsterView struct {
 	// the sighting lapses.
 	Seen []SeenMember
 
+	// Remembered are the OTHER members this monster knows only through its own
+	// held sight testimony (Status == [intel.Held]). These are plain knowledge
+	// data: they are never attackable, contain no standing or reach fact, and
+	// never expose the subject's concealed current position. Position and Path
+	// are the remembered cell and an exact-cell route to that cell, if one is
+	// reachable through this composition's geometry.
+	Remembered []RememberedMember
+
 	// Budget is what remains of this member's turn.
 	Budget TurnBudget
 
@@ -111,6 +119,32 @@ type MonsterView struct {
 	// monster that flees only after round 2, say — has the fact without
 	// this composition growing a second capability to answer it.
 	Round int
+}
+
+// RememberedMember is one other member's last-known position, projected from
+// this monster's own held sight testimony. It is stale knowledge only: the
+// entry cannot be used as an attack target and carries no hidden standing or
+// reach fact. Path is an exact-cell route from the monster's position to the
+// remembered cell, excluding the starting cell and including the destination;
+// it is empty when that cell is unreachable (or already occupied by the
+// monster).
+type RememberedMember struct {
+	// ID is the remembered member's identifier.
+	ID MemberID
+
+	// Kind is whether the remembered member is a player or monster.
+	Kind MemberKind
+
+	// Position is the remembered, possibly stale, DUNGEON-ABSOLUTE cell.
+	Position spatial.Position
+
+	// DistanceCells is the grid distance from the monster's own current cell to
+	// the remembered cell.
+	DistanceCells float64
+
+	// Path is the exact-cell shortest route to Position. It contains no live
+	// standing or reach information and is nil when Position is unreachable.
+	Path []spatial.Position
 }
 
 // SeenMember is one other member this monster currently holds active sight

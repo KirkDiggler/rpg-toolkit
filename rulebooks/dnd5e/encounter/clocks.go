@@ -645,11 +645,6 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("position: %w", err)
 	}
 
-	down, err := e.standingNow()
-	if err != nil {
-		return MonsterView{}, fmt.Errorf("standing: %w", err)
-	}
-
 	// The member's own holdings and nothing else (C2) — the same call
 	// Pump's own Decider consult makes for a Snapshot, one seam over.
 	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
@@ -674,12 +669,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	}
 
 	var seen []SeenMember
+	var remembered []RememberedMember
+	var down map[MemberID]bool
+	standingLoaded := false
 	for _, h := range holdings {
-		// Sight channel, ACTIVELY sustained only (intel.Current) — a stale
-		// "held" memory (intel.Held, a ghost: known but not currently
-		// sustained) is not something this member can act on this turn, so
-		// it is excluded here rather than left for a driver to filter.
-		if h.Channel != intel.Sight || h.Status != intel.Current {
+		// Only location testimony from the sight channel is meaningful here.
+		// Unknown testimony deliberately populates neither collection.
+		if h.Channel != intel.Sight {
 			continue
 		}
 		subjectID := MemberID(h.Subject)
@@ -687,9 +683,40 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		if !ok {
 			continue
 		}
-		pos, ok := DecodeSightPayload(h.Payload)
-		if !ok {
+		location, ok := DecodeLocationPayload(h.Payload)
+		if !ok || location.State == LocationUnknown {
 			continue
+		}
+		pos := location.Position
+
+		if h.Status == intel.Held {
+			path, reachable := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
+				return cell == pos
+			})
+			if !reachable {
+				path = nil
+			}
+			remembered = append(remembered, RememberedMember{
+				ID:            subjectID,
+				Kind:          other.Kind,
+				Position:      pos,
+				DistanceCells: e.Distance(ownCell, pos),
+				Path:          path,
+			})
+			continue
+		}
+		if h.Status != intel.Current {
+			continue
+		}
+
+		// Standing is needed only for current sightings. Held memories are
+		// intentionally not enriched with a hidden standing fact.
+		if !standingLoaded {
+			down, err = e.standingNow()
+			if err != nil {
+				return MonsterView{}, fmt.Errorf("standing: %w", err)
+			}
+			standingLoaded = true
 		}
 
 		dist := e.Distance(ownCell, pos)
@@ -737,15 +764,17 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// C8: a driver asked twice against unchanged data must see the same
 	// order, not whatever order the intel map happened to range in.
 	sort.Slice(seen, func(i, j int) bool { return seen[i].ID < seen[j].ID })
+	sort.Slice(remembered, func(i, j int) bool { return remembered[i].ID < remembered[j].ID })
 
 	return MonsterView{
-		Self:      m.ID,
-		Position:  ownCell,
-		Actions:   m.Actions,
-		Targeting: m.Targeting,
-		Seen:      seen,
-		Budget:    budget,
-		Round:     round,
+		Self:       m.ID,
+		Position:   ownCell,
+		Actions:    m.Actions,
+		Targeting:  m.Targeting,
+		Seen:       seen,
+		Remembered: remembered,
+		Budget:     budget,
+		Round:      round,
 	}, nil
 }
 

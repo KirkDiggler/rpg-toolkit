@@ -53,6 +53,22 @@ func (d *scriptedDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, 
 	return encounter.Pass{}, nil
 }
 
+// stagedSight keeps the first sight refresh broad enough to form the fight,
+// then removes sight so the next view must rely on the held testimony from
+// that first refresh.
+type stagedSight struct {
+	refreshes int
+}
+
+func (s *stagedSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	s.refreshes++
+	reach := unlimitedSight
+	if s.refreshes > 1 {
+		reach = 0
+	}
+	return sameForEveryone(members, reach), nil
+}
+
 // scriptedStriker records every Strike call and, unless told to fail,
 // records a fixed outcome via [encounter.Encounter.Record] itself — the same
 // obligation a real Striker implementation carries.
@@ -195,6 +211,50 @@ func (s *MonsterTurnTestSuite) TestMonsterViewCarriesStaticFactsAndSeen() {
 	s.Equal(cellAt(2, 2), seen.Position)
 	s.InDelta(1.0, seen.DistanceCells, 0.001, "adjacent cells are 1 cell apart")
 	s.True(seen.InReach[testMeleeAction], "1 cell is within a 5-foot (1-cell) reach")
+	s.Empty(view.Remembered, "current known sight belongs only in Seen")
+}
+
+// TestMonsterViewProjectsHeldKnownSightIntoRemembered pins the lawful ghost:
+// once the sight channel fades, the driver's view retains only the last-known
+// location, with an exact-cell path that ends on that remembered cell.
+func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemembered() {
+	driver := &scriptedDriver{}
+	sight := &stagedSight{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, SpeedFeet: 30,
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// Joining after first light forces a refresh that fades the goblin's
+	// sighting of alice while the existing bubble remains active.
+	_, err = enc.Join(&encounter.JoinInput{Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(8, 8)})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	view := driver.calls[0]
+
+	s.Empty(view.Seen, "held known sight is not currently seen")
+	s.Require().Len(view.Remembered, 1)
+	s.Equal(encounter.RememberedMember{
+		ID:            alice,
+		Kind:          encounter.KindPlayer,
+		Position:      cellAt(2, 2),
+		DistanceCells: enc.Distance(cellAt(3, 2), cellAt(2, 2)),
+		Path:          []spatial.Position{cellAt(2, 2)},
+	}, view.Remembered[0])
 }
 
 // TestAttackExecutesAndConsumesTheBudget: an in-reach Attack calls the
