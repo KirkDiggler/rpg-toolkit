@@ -238,9 +238,20 @@ func TestAutomaticConditionPersistsOnAMonsterTarget(t *testing.T) {
 	require.True(t, outcome.Conditions[0].Applied)
 	require.Len(t, out.DirtyMonsters, 1)
 	require.Equal(t, secondWolfID, out.DirtyMonsters[0].ID)
+	// startingConditions is what the CATALOG holds. Attach then grants every
+	// combatant its free reactions on the way past — the opportunity attack,
+	// which carries per-turn state and therefore persists with the sheet
+	// (rpg-toolkit#1284) — so a write-back is the catalog's conditions, plus
+	// that grant, plus the one this strike applied.
+	//
+	// Read from the END rather than by index. What this test is about is that
+	// an automatically applied condition reached the stored sheet; how many
+	// other things attach grants on the way is somebody else's invariant, and
+	// indexing past them made this fail for a reason it does not care about.
 	startingConditions := len(monsters.NewSkeleton(secondWolfID).ToData().Conditions)
-	require.Len(t, out.DirtyMonsters[0].Conditions, startingConditions+1)
-	require.Contains(t, string(out.DirtyMonsters[0].Conditions[startingConditions]), refs.Conditions.Prone().ID)
+	persisted := out.DirtyMonsters[0].Conditions
+	require.Len(t, persisted, startingConditions+2)
+	require.Contains(t, string(persisted[len(persisted)-1]), refs.Conditions.Prone().ID)
 }
 
 func TestSpellAttackDamageKeepsItsSpellSource(t *testing.T) {

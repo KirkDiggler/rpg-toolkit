@@ -10,16 +10,19 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // ProjectionTestSuite proves the entry that lets a caller obey "folds live in
@@ -240,4 +243,67 @@ func (s *ProjectionTestSuite) TestTheProjectionRefusesARecordItCannotName() {
 		_, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: nameless})
 		s.Require().ErrorIs(err, ErrBadParticipant)
 	})
+}
+
+// world is a one-cell-apart hex field with this suite's hero on it, built only
+// so the contrast below can run a real interaction through Resolve.
+func (s *ProjectionTestSuite) world() encounter.EncounterData {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{},
+		Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Field: encounter.FieldInput{
+			Canvas:  hexCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: projectedHeroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
+		},
+		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	return enc.ToData()
+}
+
+// TestTheProjectionReadsWhatResolveRefuses is the D10 contrast, and the reason
+// the policy is an argument rather than a mode.
+//
+// ONE RECORD, carrying one condition that parses and one blob that does not.
+// The two entries answer differently and both answers are right, because
+// strictness is a property of what the entry DOES:
+//
+//   - Resolve hands back sheets to be persisted. A sheet loaded past a silently
+//     dropped condition is a sheet that, written back, has had that condition
+//     deleted by a verb that merely moved somebody (rpg-toolkit#948). So it
+//     refuses, and names the blob.
+//   - The projection only reads. Refusing there would put one unreadable blob
+//     between a player and the game, and the character is no less playable for
+//     it — so it folds what parsed. The drop is not silent: the loader warns,
+//     which is D10's "fail loudly means observable, not refused".
+//
+// The same 15 as every other case in this suite, so the lenient path is doing
+// the whole fold rather than limping to a plausible number.
+func (s *ProjectionTestSuite) TestTheProjectionReadsWhatResolveRefuses() {
+	unreadable := json.RawMessage(`{"ref":"nonsense","x":`)
+
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
+		Character: s.barbarian(s.unarmoredDefense(), unreadable),
+	})
+	s.Require().NoError(err,
+		"a read entry does not put an unreadable blob between a player and the game")
+	s.Require().Equal(15, out.ArmorClass.Total,
+		"and folds every condition that did parse: 10 + 2 DEX + 3 CON")
+
+	_, err = Resolve(s.ctx, &Input{
+		World:        s.world(),
+		Participants: []Participant{{Character: s.barbarian(s.unarmoredDefense(), unreadable)}},
+		Machine:      &captureMachine{},
+		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Roller: dice.NewRoller(),
+	})
+	s.Require().Error(err,
+		"a write entry refuses rather than handing back a sheet with a condition deleted")
+	s.Require().Contains(err.Error(), "nonsense",
+		"and names the blob it could not read")
 }

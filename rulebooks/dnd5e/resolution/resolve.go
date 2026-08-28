@@ -331,7 +331,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("%w: %w", ErrBadWorld, err)
 	}
 
-	cast, err := attachAll(ctx, surf, in.Participants, roller)
+	cast, err := attachAll(ctx, surf, in.Participants, roller, refuseUnreadable)
 	if err != nil {
 		// Tear down whatever did attach before giving up: a half-attached bus
 		// is about to be garbage either way, but leaving revocation to the
@@ -392,6 +392,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 // the world it left.
 func attachAll(
 	ctx context.Context, surf *surface, participants []Participant, roller dice.Roller,
+	policy loadPolicy,
 ) (*Participants, error) {
 	ordered := make([]Participant, len(participants))
 	copy(ordered, participants)
@@ -412,13 +413,18 @@ func attachAll(
 
 		switch {
 		case p.Character != nil:
-			ch, err := attachCharacter(ctx, view, p.Character)
+			ch, err := attachCharacter(ctx, view, p.Character, policy)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
 			}
 			cast.characters[id] = ch
 
 		case p.Monster != nil:
+			// No policy here, and none is missing: monstertraits has one loader
+			// and it refuses what it cannot read. The only entry that loads
+			// leniently builds a character participant and never a monster one,
+			// so a lenient monster is unreachable rather than unhandled — the
+			// same argument refusingRoller makes about the roller above.
 			m, err := attachMonster(ctx, view, p.Monster, roller)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)
@@ -449,8 +455,17 @@ func attachAll(
 // it hands back sheets to be persisted, so an effect quietly dropped on the way
 // in is an effect deleted on the way out (rpg-toolkit#948).
 func attachCharacter(
-	ctx context.Context, view *surface, data *character.Data,
+	ctx context.Context, view *surface, data *character.Data, policy loadPolicy,
 ) (*character.Character, error) {
+	// The lenient half is character.LoadFromData, which is the same two calls
+	// with the other policy — loadSheet then Attach, onto this same view, so
+	// attribution is made here either way. It is called rather than
+	// reimplemented: the two halves of one loader must not disagree about what
+	// a failure means, and there is exactly one place that decides.
+	if policy == dropUnreadable {
+		return character.LoadFromData(ctx, data, view)
+	}
+
 	ch, err := character.Load(ctx, data)
 	if err != nil {
 		return nil, err
@@ -519,3 +534,34 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 
 	return out
 }
+
+// loadPolicy is what an entry does with a persisted blob this build cannot
+// read. It is a property of WHAT THE ENTRY DOES, not of loading.
+//
+// An entry that can write must refuse. A sheet loaded past a condition it
+// silently dropped is a sheet that, written back, has had that condition
+// deleted by a verb that merely moved somebody (rpg-toolkit#948) — so Resolve,
+// which hands back sheets to be persisted, refuses and names the blob.
+//
+// An entry that only READS must not. Refusing there puts one unreadable
+// condition between a player and the game, and the character is no less
+// playable for it — so the projection loads leniently, folds what parsed, and
+// the loader warns about what it dropped. That is D10: fail loudly means
+// OBSERVABLE, not refused.
+//
+// ONE ATTACH MECHANISM, policy per entry. Both entries reach the same
+// attachAll, and the difference between them is this argument rather than a
+// second path — a second path is how the two halves of one loader come to
+// disagree about what a failure means.
+type loadPolicy int
+
+const (
+	// refuseUnreadable fails the whole load, naming the blob. The policy of any
+	// entry whose output can be persisted.
+	refuseUnreadable loadPolicy = iota
+
+	// dropUnreadable keeps what parsed and lets the loader warn about the rest.
+	// The policy of a read-only entry, and safe there ONLY because nothing on
+	// that path writes a sheet back.
+	dropUnreadable
+)
