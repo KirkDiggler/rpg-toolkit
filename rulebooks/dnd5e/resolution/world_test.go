@@ -241,18 +241,7 @@ func TestNoCodePathProducesARoomlessInteraction(t *testing.T) {
 
 	fn := funcDecl(t, doorFile, file, "installTruth")
 
-	var installs []token.Pos
-	ast.Inspect(fn, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "WithRoom" {
-			installs = append(installs, call.Pos())
-		}
-
-		return true
-	})
+	installs := installsOf(fn, "WithRoom")
 	require.Len(t, installs, 1, "the world is installed in exactly one place")
 
 	requireUnconditional(t, fset, fn, installs[0],

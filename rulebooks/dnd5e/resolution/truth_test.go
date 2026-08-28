@@ -42,6 +42,14 @@ const doorFile = "truth.go"
 // (rpg-toolkit#1251). The count is the assertion, so the source is the
 // assertion.
 //
+// REFERENCES, NOT CALLS. It matches any mention of a gamectx.With* name, not
+// just a call of one — Copilot's finding on this PR, and correct: a pin that
+// only walks *ast.CallExpr lets `with := gamectx.WithRoom` past, along with
+// gamectx.WithRoom handed to something else as a value, either of which installs
+// a fact from outside the door while reading as clean. Nothing in resolution may
+// so much as NAME those functions except truth.go, which is both easier to check
+// and easier to obey than a rule about how they are invoked.
+//
 // TEST FILES ARE INCLUDED, and that is the half worth defending. "Every test
 // installed a registry by hand that production never installed" is not a
 // footnote to rpg-toolkit#1251, it is the whole reason the bug survived two
@@ -68,7 +76,7 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 	var offenders []string
 	for _, entry := range entries {
 		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") {
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || name == doorFile {
 			continue
 		}
 
@@ -81,11 +89,7 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 		}
 
 		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
+			sel, ok := n.(*ast.SelectorExpr)
 			if !ok {
 				return true
 			}
@@ -93,19 +97,17 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 			if !ok || pkg.Name != local || !strings.HasPrefix(sel.Sel.Name, "With") {
 				return true
 			}
-			if name == doorFile {
-				return true
-			}
 
 			offenders = append(offenders, fmt.Sprintf("%s: %s.%s",
-				fset.Position(call.Pos()), local, sel.Sel.Name))
+				fset.Position(sel.Pos()), local, sel.Sel.Name))
 
 			return true
 		})
 	}
 	require.Empty(t, offenders,
-		"%s is the only file allowed to install game context — a second installer is "+
-			"how gamectx got five registries and one install (rpg-toolkit#1251). If the "+
+		"%s is the only file allowed to name a game-context installer — a second "+
+			"installer is how gamectx got five registries and one install "+
+			"(rpg-toolkit#1251), and taking one as a value is still being one. If the "+
 			"new fact belongs in context, it goes through installTruth; if it needs a "+
 			"repository it is a record, not a tenant, and admission is a ruling either way",
 		doorFile)
@@ -135,6 +137,32 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 		"calls the door inside a condition — an interaction that skips it reads a "+
 			"world, a cast and a readiness map that nobody installed, which is every "+
 			"failure the three pins beside this one were written for at once")
+}
+
+// installsOf returns every position in fn where the installer called name is
+// NAMED — called, assigned to a variable, or handed over as a value.
+//
+// References rather than calls, for the reason
+// TestOnlyTheDoorInstallsGameContext gives at length and one this side has to
+// state for itself. For a pin asserting an install is PRESENT, aliasing the only
+// install is loud: the count falls to zero and the test fails. The case that
+// would pass in silence is a SECOND install added by alias beside the direct one
+// — the call count stays at one, the fact is installed twice, and "installed in
+// exactly one place" is false with nothing to say so. Inside the door, which
+// TestOnlyTheDoorInstallsGameContext exempts by design, that is the only pin
+// left to catch it. Counting names costs nothing: an ordinary call names its
+// function exactly once.
+func installsOf(fn *ast.FuncDecl, name string) []token.Pos {
+	var installs []token.Pos
+	ast.Inspect(fn, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == name {
+			installs = append(installs, sel.Pos())
+		}
+
+		return true
+	})
+
+	return installs
 }
 
 // importedAs reports the local name a file imports path under, and whether it

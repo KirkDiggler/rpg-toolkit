@@ -4,7 +4,6 @@
 package resolution
 
 import (
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"testing"
@@ -40,18 +39,7 @@ func TestNoCodePathProducesAReadinesslessInteraction(t *testing.T) {
 
 	fn := funcDecl(t, doorFile, file, "installTruth")
 
-	var installs []token.Pos
-	ast.Inspect(fn, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "WithReactionReadiness" {
-			installs = append(installs, call.Pos())
-		}
-
-		return true
-	})
+	installs := installsOf(fn, "WithReactionReadiness")
 	require.Len(t, installs, 1, "reaction readiness is installed in exactly one place")
 
 	requireUnconditional(t, fset, fn, installs[0],
