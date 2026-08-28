@@ -215,7 +215,16 @@ func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool)
 			// was built with. Setting only the outcome would report the effective AC
 			// and roll against the flat one — a strike that tells the truth and does
 			// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
-			effectiveAC := combat.GetEffectiveAC(ctx, target)
+			// A target that cannot report its AC stops the strike rather than
+			// being swung at with a guess. combat.GetEffectiveAC used to fall
+			// back to the flat sheet number whenever the fold could not run,
+			// which meant an unattached or broken defender was attacked at base
+			// armour and the log said nothing — the strike would report a
+			// TargetAC it had not actually derived (rpg-toolkit#1276).
+			effectiveAC, err := combat.GetEffectiveAC(ctx, target)
+			if err != nil {
+				return nil, fmt.Errorf("effective AC for target %s: %w", m.in.TargetID, err)
+			}
 
 			m.outcome = StrikeOutcome{
 				AttackerID: m.in.AttackerID,
