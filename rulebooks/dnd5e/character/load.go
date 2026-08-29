@@ -157,15 +157,6 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 	for _, effect := range applying {
 		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
 
-		// THIS HANDOFF NOW MATCHES NOTHING. No condition implements
-		// OwnerAware any more: reads come from the cast, writes are published
-		// requests this sheet's own keeper applies. Kept so that it, its twin
-		// in monstertraits.AttachMonster, and the interface itself go in one
-		// sweep rather than four (rpg-project#319, Phase 6).
-		if aware, ok := effect.behavior.(dnd5eEvents.OwnerAware); ok {
-			aware.SetOwner(c)
-		}
-
 		if err := effect.behavior.Apply(ctx, effectBus); err != nil {
 			// Undo whatever the failed Apply managed to subscribe.
 			_ = effect.behavior.Remove(ctx, effectBus)

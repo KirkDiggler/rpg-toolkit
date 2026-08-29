@@ -85,11 +85,18 @@
 // opposite — is delivery of the sheet itself, mutable, to code that does not
 // own it. A read surface is not that.
 //
-// The handle it replaced is
-// [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware], wired
-// bespoke in two loaders and silently absent whenever either forgot. The four
-// conditions that held one held it to WRITE — a dirty mark, a reaction spend —
-// and every one of those is a published request now, applied by the keeper that
-// owns the sheet. NOBODY IMPLEMENTS OwnerAware any more: the two loader
-// handoffs still stand, matching nothing, and go when the interface does.
+// The handle it replaced was events.OwnerAware, and it is gone
+// (rpg-project#319, Phase 6). A condition reaches a bus three ways, and the
+// handle was wired on ONE of them: the load-and-attach path, by
+// character.Attach and monstertraits.AttachMonster. Draft.Finalize reaches
+// the bus through SheetKeeper.subscribeSelf and never enters that loop, and
+// each keeper's own runtime handler — the ordinary "a condition was applied
+// mid-fight" path — calls Apply with no handoff at all. So the handle was
+// structurally absent for every condition applied during play. That is the
+// argument against it and not merely against its wiring: a mechanism
+// installed on one path of three is a coincidence, not a guarantee.
+//
+// The four conditions that held one held it to WRITE — a dirty mark, a
+// reaction spend — and every one of those is a published request now, applied
+// by the keeper that owns the sheet.
 package gamectx

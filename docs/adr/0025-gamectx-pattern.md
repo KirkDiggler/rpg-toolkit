@@ -12,7 +12,7 @@ The superseding decision is not an ADR: it is the ruled design at
 `rpg-project/ideas/session-combat/effect-context/design.md`.
 
 Everything this ADR decided has since been split in two: reads of an effect's
-OWN sheet moved to owner injection at attach time (`rulebooks/dnd5e/events.OwnerAware`), and
+OWN sheet moved to the cast (it looks itself up there by its own ID), and
 only facts owned by nobody stay ambient — carried by `gamectx.WithRoom`,
 `WithCast`, and `WithReactionReadiness`, installed unconditionally by
 `resolution` on every resolve path. `GameContext`, `CharacterRegistry`,
