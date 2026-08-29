@@ -327,6 +327,18 @@ var (
 	// world — not a legal outcome any caller is meant to recover from.
 	ErrRefusingAnnouncer = errors.New("encounter: RefusingAnnouncer: a clock advanced on a construction-only world")
 
+	// ErrNoDissolveMilestone is a leaf that reported dissolving a bubble and
+	// then did not say so in its milestones. An INVARIANT of play/clock, not a
+	// caller mistake and not recoverable: combatEndBoundaries reads the round a
+	// fight ended on out of that milestone, and there is no honest value to
+	// substitute for it.
+	//
+	// Loud rather than empty on purpose. Returning no boundaries would end
+	// fights that expire nothing, which is indistinguishable from the state
+	// combat end was already in before rpg-project#295 and is exactly how it
+	// stayed there.
+	ErrNoDissolveMilestone = errors.New("encounter: bubble dissolved without a dissolved milestone")
+
 	// ErrBadIntent indicates a TurnDriver returned a syntactically valid
 	// TurnIntent this composition cannot execute: an Attack naming a target
 	// that is not currently Seen, not Standing, or out of the named

@@ -131,7 +131,8 @@ func (s *EffectScopingTestSuite) TestLoadScopesEachEffectToItsRef() {
 	_, err := LoadFromData(s.ctx, s.ragingBarbarian(), s.bus)
 	s.Require().NoError(err)
 
-	s.Require().Equal([]core.Ref{s.ragingRef}, s.bus.record.asked)
+	s.Require().Equal([]core.Ref{s.ragingRef, *refs.Conditions.OpportunityAttack()}, s.bus.record.asked,
+		"the authored effect, then the reaction every combatant carries")
 }
 
 // The subscriptions Raging makes are attributed to Raging — including the
@@ -164,7 +165,12 @@ func (s *EffectScopingTestSuite) TestNoEffectsMeansNoScopesRequested() {
 	_, err := LoadFromData(s.ctx, data, s.bus)
 	s.Require().NoError(err)
 
-	s.Require().Empty(s.bus.record.asked)
+	// NOT empty any more, and the difference is the whole point of the assertion
+	// rather than a number that drifted: a sheet with no AUTHORED conditions
+	// still carries the reactions every combatant has, and that one scope is
+	// exactly what should be asked for. Anything else appearing here is the
+	// spurious scoping this test was written to catch.
+	s.Require().Equal([]core.Ref{*refs.Conditions.OpportunityAttack()}, s.bus.record.asked)
 	s.Require().NotContains(s.bus.record.byRef, s.ragingRef)
 }
 

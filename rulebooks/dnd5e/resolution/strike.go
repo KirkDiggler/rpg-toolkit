@@ -192,7 +192,12 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 
 // effectiveACStep performs the first event-backed work only after the door has
 // accepted payment, then builds the attack event from that folded AC.
-func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool) Gather {
+//
+// It takes a [combat.Member] because asking a target for its AC is a read, and
+// the parameter should say so. The target still arrives as a combatant from
+// combatantFor and still IS the live sheet; narrowing here is the signature
+// declining a power the body never uses, and the compiler agreeing.
+func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Gather {
 	return Gather{
 		name: "effective AC",
 		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
@@ -215,7 +220,16 @@ func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool)
 			// was built with. Setting only the outcome would report the effective AC
 			// and roll against the flat one — a strike that tells the truth and does
 			// something else. Pinned by TestTheFoldedACDecidesTheHitNotJustTheReport.
-			effectiveAC := combat.GetEffectiveAC(ctx, target)
+			// A target that cannot report its AC stops the strike rather than
+			// being swung at with a guess. combat.GetEffectiveAC used to fall
+			// back to the flat sheet number whenever the fold could not run,
+			// which meant an unattached or broken defender was attacked at base
+			// armour and the log said nothing — the strike would report a
+			// TargetAC it had not actually derived (rpg-toolkit#1276).
+			effectiveAC, err := combat.GetEffectiveAC(ctx, target)
+			if err != nil {
+				return nil, fmt.Errorf("effective AC for target %s: %w", m.in.TargetID, err)
+			}
 
 			m.outcome = StrikeOutcome{
 				AttackerID: m.in.AttackerID,

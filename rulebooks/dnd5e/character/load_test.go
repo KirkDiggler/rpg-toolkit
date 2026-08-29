@@ -463,7 +463,9 @@ func (s *PureLoadTestSuite) TestAttachScopesEachConditionToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal([]core.Ref{*refs.Conditions.Raging()}, bus.record.asked)
+	s.Require().Equal(
+		[]core.Ref{*refs.Conditions.Raging(), *refs.Conditions.OpportunityAttack()},
+		bus.record.asked, "the sheet's own condition, then the carried reaction")
 	s.Require().Contains(bus.record.byRef[*refs.Conditions.Raging()], events.Topic("dnd5e.saves.chain"))
 }
 

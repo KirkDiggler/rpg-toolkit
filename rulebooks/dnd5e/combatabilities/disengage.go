@@ -100,12 +100,27 @@ func (d *Disengage) Activate(ctx context.Context, owner core.Entity, input Comba
 		return err
 	}
 
-	// Apply the DisengagingCondition. The condition subscribes to
-	// MovementChain (adds OAPreventionSources when the owner moves) and
-	// TurnEndTopic (self-removes when the owner's turn ends).
+	// PUBLISHED, NEVER APPLIED DIRECTLY (rpg-toolkit#1272). The condition
+	// subscribes to MovementChain (adds OAPreventionSources when the owner
+	// moves) and TurnEndTopic (self-removes when the owner's turn ends) — but
+	// only the OWNER'S SheetKeeper, listening on ConditionAppliedTopic, records
+	// it ON THE CHARACTER so it reaches ToData and the repository.
+	//
+	// This used to call condition.Apply(ctx, input.Bus) itself. That put the
+	// condition on the interaction's bus and nowhere else, and per ADR-0038
+	// nothing survives a resolution — so Disengage spent the action, reported
+	// success, and protected nobody from anything, because the next move is a
+	// different interaction with a different bus. Dodge, three files away, has
+	// always published; the two now agree.
 	condition := conditions.NewDisengagingCondition(owner.GetID())
-	if err := condition.Apply(ctx, input.Bus); err != nil {
-		return fmt.Errorf("failed to apply disengaging condition: %w", err)
+	topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
+	if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    owner,
+		Type:      dnd5eEvents.ConditionDisengaging,
+		Source:    dnd5eEvents.ConditionSourceCombatAbility,
+		Condition: condition,
+	}); err != nil {
+		return fmt.Errorf("failed to publish disengaging condition: %w", err)
 	}
 
 	// Telemetry event for the game server. The condition is already

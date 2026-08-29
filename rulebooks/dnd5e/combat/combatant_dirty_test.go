@@ -40,6 +40,8 @@ func (m *mockDirtyCombatant) MarkClean()                          { m.dirty = fa
 func (m *mockDirtyCombatant) AbilityScores() shared.AbilityScores { return m.abilityScores }
 func (m *mockDirtyCombatant) ProficiencyBonus() int               { return m.proficiencyBonus }
 func (m *mockDirtyCombatant) PassivePerception() int              { return 10 }
+func (m *mockDirtyCombatant) HasShieldEquipped() bool             { return false }
+func (m *mockDirtyCombatant) CanReact() bool                      { return true }
 
 func (m *mockDirtyCombatant) ApplyDamage(ctx context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	prev := m.hp

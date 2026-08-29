@@ -6,6 +6,8 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"maps"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -141,14 +143,25 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 	pending := c.pendingEffects
 	c.pendingEffects = nil
 
-	attached := make([]attachedEffect, 0, len(pending))
+	// Applied ALONGSIDE the pending effects and never mixed into them. A
+	// rollback must return the sheet to what Attach found, and what it found
+	// did not include these — so unattach below is handed `pending`, not
+	// `applying`.
+	carried := c.freeReactionsToCarry()
+	applying := make([]loadedEffect, 0, len(pending)+len(carried))
+	applying = append(applying, pending...)
+	applying = append(applying, carried...)
 
-	for _, effect := range pending {
+	attached := make([]attachedEffect, 0, len(applying))
+
+	for _, effect := range applying {
 		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
 
-		// A condition that wants its own live sheet — rather than a
-		// context-installed registry — gets it here, before Apply subscribes
-		// it to anything (rpg-toolkit#1178).
+		// THIS HANDOFF NOW MATCHES NOTHING. No condition implements
+		// OwnerAware any more: reads come from the cast, writes are published
+		// requests this sheet's own keeper applies. Kept so that it, its twin
+		// in monstertraits.AttachMonster, and the interface itself go in one
+		// sweep rather than four (rpg-project#319, Phase 6).
 		if aware, ok := effect.behavior.(dnd5eEvents.OwnerAware); ok {
 			aware.SetOwner(c)
 		}
@@ -164,6 +177,7 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 			}
 
 			// Lenient: the legacy path drops a condition it could not apply.
+			warnDropped(c.id, "condition", effect.ref, err, slog.String("phase", "apply"))
 			c.dropCondition(effect.behavior)
 
 			continue
@@ -271,19 +285,19 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		char.hitDice = classData.HitDice
 	}
 
-	inventory, err := loadInventory(d.Inventory, policy)
+	inventory, err := loadInventory(d.Inventory, char.id, policy)
 	if err != nil {
 		return nil, err
 	}
 	char.inventory = inventory
 
-	loadedFeatures, err := loadFeatures(d.Features, policy)
+	loadedFeatures, err := loadFeatures(d.Features, char.id, policy)
 	if err != nil {
 		return nil, err
 	}
 	char.features = loadedFeatures
 
-	effects, err := loadEffects(d.Conditions, policy)
+	effects, err := loadEffects(d.Conditions, char.id, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +323,7 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 // An ID the catalog does not know is a lost item: ToData writes back only what
 // resolved, so the lenient path's skip is how an item disappears from a
 // character between two saves.
-func loadInventory(items []InventoryItemData, policy effectPolicy) ([]InventoryItem, error) {
+func loadInventory(items []InventoryItemData, characterID string, policy effectPolicy) ([]InventoryItem, error) {
 	inventory := make([]InventoryItem, 0, len(items))
 
 	for i, itemData := range items {
@@ -319,8 +333,9 @@ func loadInventory(items []InventoryItemData, policy effectPolicy) ([]InventoryI
 				return nil, rpgerr.Wrapf(err, "inventory item %d (%q) is not in the equipment catalog", i, itemData.ID)
 			}
 
-			// Log error but continue loading other items
-			// TODO: Consider how to handle missing equipment
+			warnDropped(characterID, "inventory item", core.Ref{}, err,
+				slog.Int("index", i), slog.String("item", itemData.ID))
+
 			continue
 		}
 
@@ -336,7 +351,7 @@ func loadInventory(items []InventoryItemData, policy effectPolicy) ([]InventoryI
 // loadFeatures reconstitutes persisted features by routing each blob's ref to
 // its loader. A blob from another module has no loader here; the lenient path
 // skips it silently, and skipping it is what drops it from the next ToData.
-func loadFeatures(raw []json.RawMessage, policy effectPolicy) ([]features.Feature, error) {
+func loadFeatures(raw []json.RawMessage, characterID string, policy effectPolicy) ([]features.Feature, error) {
 	loaded := make([]features.Feature, 0, len(raw))
 
 	for i, rawFeature := range raw {
@@ -349,7 +364,9 @@ func loadFeatures(raw []json.RawMessage, policy effectPolicy) ([]features.Featur
 				return nil, rpgerr.Wrapf(err, "failed to read the ref of feature %d: %s", i, rawFeature)
 			}
 
-			// Skip malformed features
+			// No ref to report: the blob would not parse far enough to have one.
+			warnDropped(characterID, "feature", core.Ref{}, err, slog.Int("index", i))
+
 			continue
 		}
 
@@ -361,8 +378,11 @@ func loadFeatures(raw []json.RawMessage, policy effectPolicy) ([]features.Featur
 					"feature %d has no loader here: module %q, blob %s", i, peek.Ref.Module, rawFeature)
 			}
 
-			// Silently skip non-dnd5e features for now
-			// In the future, this would route to a module registry
+			// Not silently, any more. This build owns no loader for another
+			// module's content; the day a module registry exists it routes here.
+			warnDropped(characterID, "feature", peek.Ref, errNoModuleLoader,
+				slog.Int("index", i), slog.String("module", string(peek.Ref.Module)))
+
 			continue
 		}
 
@@ -372,8 +392,8 @@ func loadFeatures(raw []json.RawMessage, policy effectPolicy) ([]features.Featur
 				return nil, rpgerr.Wrapf(err, "failed to load feature %d: %s", i, rawFeature)
 			}
 
-			// Log error but continue loading other features
-			// TODO: Consider how to handle feature loading errors
+			warnDropped(characterID, "feature", peek.Ref, err, slog.Int("index", i))
+
 			continue
 		}
 
@@ -387,7 +407,7 @@ func loadFeatures(raw []json.RawMessage, policy effectPolicy) ([]features.Featur
 // the ref its loader routed on. Nothing is applied here — that is [Attach]'s
 // job, and the ref is what lets it attribute the subscriptions each condition
 // then makes.
-func loadEffects(raw []json.RawMessage, policy effectPolicy) ([]loadedEffect, error) {
+func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy) ([]loadedEffect, error) {
 	effects := make([]loadedEffect, 0, len(raw))
 
 	for i, rawCondition := range raw {
@@ -397,8 +417,11 @@ func loadEffects(raw []json.RawMessage, policy effectPolicy) ([]loadedEffect, er
 				return nil, rpgerr.Wrapf(err, "failed to load condition %d: %s", i, rawCondition)
 			}
 
-			// Log error but continue loading other conditions
-			// TODO: Consider how to handle condition loading errors
+			// The ref is peeked rather than assumed, and comes back zero when
+			// the blob is too broken to carry one — which warnDropped then
+			// omits rather than fabricating.
+			warnDropped(characterID, "condition", peekEffectRef(rawCondition), err, slog.Int("index", i))
+
 			continue
 		}
 
@@ -433,6 +456,8 @@ func loadResources(
 			// The lenient loader keeps its forgiving policy by dropping the
 			// malformed entry. It must not feed bad bounds to constructors whose
 			// clamping/failed Use path would turn them into valid-looking counts.
+			warnDropped(characterID, "resource", core.Ref{}, err, slog.String("resource", string(key)))
+
 			continue
 		}
 
@@ -487,4 +512,115 @@ func peekEffectRef(raw json.RawMessage) core.Ref {
 	}
 
 	return peek.Ref
+}
+
+// freeReactionsToCarry names the reactions every combatant has, the
+// way a class grant gives it a class feature — as part of what this creature
+// IS, rather than seated by whatever happens to be running.
+//
+// Kirk ruled the shape 2026-08-28 (rpg-project#316): "when we initialize
+// monsters they should have the condition on them like a character grant... and
+// only dirty if they fire the OA."
+//
+// # Why not a real Grant.Conditions entry
+//
+// Because an opportunity attack is not a class feature. Every melee combatant
+// has one, monsters included, which is why it is correctly absent from all
+// twelve grant lists — and a grant is applied by Draft.Finalize at CREATION, so
+// every character made before today would have been permanently unable to take
+// one. Added here instead, it reaches every sheet on its next load with no
+// backfill and no migration.
+//
+// # Why it must not mark the sheet dirty
+//
+// Because gaining it changed nothing a player did. resolution states the
+// invariant in its own test — "a participant nothing happened to must not be
+// written back (R3 says pass everyone in; it does not say charge for
+// everyone)" — and an earlier draft of this slice seated the condition through
+// ConditionAppliedEvent, which marks dirty unconditionally, and failed 21 tests
+// across six suites for exactly that reason. Appending to the pending effects
+// is the load path, and the load path is silent by construction.
+//
+// The condition still marks the sheet dirty when it SPENDS its meter, which is
+// the only moment anything worth persisting has happened.
+func (c *Character) freeReactionsToCarry() []loadedEffect {
+	var carried []loadedEffect
+	for _, ref := range freeReactionRefs {
+		if carriesRef(c.conditions, ref) {
+			continue
+		}
+		carried = append(carried, loadedEffect{
+			ref:      *ref,
+			behavior: conditions.NewOpportunityAttackCondition(c.id),
+		})
+	}
+
+	return carried
+}
+
+// freeReactionRefs are the reactions a combatant carries by existing. ONE
+// ENTRY, and the list is the rule rather than an optimisation of it: a COSTED
+// reaction (Shield burns a spell slot, Uncanny Dodge burns a class feature) is
+// not had by existing and does not belong here.
+var freeReactionRefs = []*core.Ref{
+	refs.Conditions.OpportunityAttack(),
+}
+
+// carriesRef reports whether the sheet already holds this ref — asked of
+// c.conditions rather than of the pending list, because pendingEffects is
+// DRAINED by Attach and a second Attach would otherwise stack a second copy on
+// top of the one the first put there.
+func carriesRef(carried []dnd5eEvents.ConditionBehavior, ref *core.Ref) bool {
+	for _, condition := range carried {
+		if got := condition.Ref(); got != nil && got.String() == ref.String() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// errNoModuleLoader names the one lenient drop that is not a failure to read
+// anything — the blob parsed, and this build simply owns no loader for the
+// module it names.
+var errNoModuleLoader = errors.New("no loader here for another module's content")
+
+// warnDropped is the one place a lenient load says out loud what it threw away.
+//
+// A lenient load exists so a character carrying a blob this build cannot read
+// still enters play: refusing would put one unreadable condition between a
+// player and the game. But dropping in SILENCE is how a monk fought at base AC
+// for the life of a character with nobody able to see why, so the drop is loud.
+// Lenient must not mean invisible.
+//
+// A warning log is the whole of it, deliberately. Getting this data out
+// cleanly — a report on the loader, riding an entry's output, reaching the
+// combat log, carrying an error code when this is a real game — is a NAMED
+// SHELF in the game-context design, carved when the structure exists rather
+// than guessed at now. Until then these lines mark every site that shelf will
+// serve, which is worth more than a shape invented early.
+//
+// THE REF IS OMITTED when the blob would not parse far enough to have one, and
+// its absence is the fact: a blob too broken to name itself is a different and
+// worse thing than one naming something unknown. A placeholder would read like
+// a ref that exists.
+//
+// This is the toolkit's first deliberate log line. slog to the default logger
+// is the standard library's own convention and adds no API, no config field and
+// no seam to unpick later; a host that wants these somewhere else calls
+// slog.SetDefault. If a different norm is wanted, this is the place it changes.
+func warnDropped(characterID, kind string, ref core.Ref, reason error, extra ...slog.Attr) {
+	attrs := []any{
+		slog.String("character", characterID),
+		slog.String("dropped", kind),
+		slog.Any("reason", reason),
+	}
+	if ref != (core.Ref{}) {
+		attrs = append(attrs, slog.String("ref", ref.String()))
+	}
+	for _, attr := range extra {
+		attrs = append(attrs, attr)
+	}
+
+	slog.Warn("dnd5e/character: lenient load dropped a persisted entry", attrs...)
 }

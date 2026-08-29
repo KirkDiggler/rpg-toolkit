@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
@@ -221,8 +222,6 @@ func (s *PureLoadTestSuite) TestKnownRoundTripGaps() {
 	s.Require().Empty(out.Inventory, "Inventory has no home on a monster")
 }
 
-// MonsterKeeperTestSuite drives the two things a monster sheet does about the
-// world. Both fail for a keeper whose Apply subscribes nothing.
 type liveMonsterCondition struct {
 	applied bool
 }
@@ -241,6 +240,10 @@ func (c *liveMonsterCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(map[string]any{"ref": refs.Conditions.Prone()})
 }
 
+// MonsterKeeperTestSuite drives every row of the monster keeper's
+// subscription table. Each one fails outright for a keeper whose Apply
+// subscribes nothing, which is what this suite is for: the wiring is invisible,
+// so a missing row shows up only as behaviour that quietly stopped happening.
 type MonsterKeeperTestSuite struct {
 	suite.Suite
 
@@ -329,6 +332,121 @@ func (s *MonsterKeeperTestSuite) TestRemoveStopsTheMonsterListening() {
 
 func (s *MonsterKeeperTestSuite) TestApplyingTwiceIsRefused() {
 	s.Require().Error(s.mon.SheetKeeper().Apply(s.ctx, s.bus))
+}
+
+// A monster's condition removal reaches its sheet, which it did not before:
+// the keeper had rows for damage, healing and condition-applied, and none for
+// removal. Nothing in production removes a monster's condition yet, so this row
+// is the gap closed before its first caller rather than after.
+func (s *MonsterKeeperTestSuite) TestConditionRemovedLeavesTheMonster() {
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.mon,
+		Condition: &liveMonsterCondition{},
+	}))
+	s.mon.MarkClean()
+
+	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  s.mon.GetID(),
+		ConditionRef: refs.Conditions.Prone().String(),
+		Reason:       "test",
+	})
+
+	s.Require().NoError(err)
+	s.Require().Empty(s.mon.GetConditions(), "the condition that ended is off the sheet")
+	s.Require().True(s.mon.IsDirty(), "a sheet that lost a condition needs saving")
+}
+
+// A removal naming a condition this monster is not carrying changes nothing,
+// dirtiness included. Every sheet on the bus hears every removal, so marking on
+// a miss would persist every monster in the fight each time one of them lost
+// something.
+func (s *MonsterKeeperTestSuite) TestConditionRemovedThatMatchesNothingLeavesTheSheetClean() {
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.mon,
+		Condition: &liveMonsterCondition{},
+	}))
+	s.mon.MarkClean()
+
+	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  s.mon.GetID(),
+		ConditionRef: refs.Conditions.Raging().String(),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.mon.GetConditions(), 1, "the condition it does carry is untouched")
+	s.Require().False(s.mon.IsDirty(), "nothing changed, so nothing needs saving")
+}
+
+func (s *MonsterKeeperTestSuite) TestConditionRemovedFromSomeoneElseIsIgnored() {
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.mon,
+		Condition: &liveMonsterCondition{},
+	}))
+	s.mon.MarkClean()
+
+	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		CharacterID:  "someone-else",
+		ConditionRef: refs.Conditions.Prone().String(),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.mon.GetConditions(), 1)
+	s.Require().False(s.mon.IsDirty())
+}
+
+// A condition reporting a change to its OWN persisted state marks the monster.
+// The condition's fields serialize as part of this sheet and nothing else can
+// see them move, so without this row a wolf that spent its reaction reloads
+// having spent nothing.
+func (s *MonsterKeeperTestSuite) TestConditionStateChangedMarksTheMonster() {
+	s.mon.MarkClean()
+
+	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
+		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
+			MemberID:     s.mon.GetID(),
+			ConditionRef: refs.Conditions.OpportunityAttack(),
+		})
+
+	s.Require().NoError(err)
+	s.Require().True(s.mon.IsDirty(), "a condition's own state is this sheet's state")
+}
+
+func (s *MonsterKeeperTestSuite) TestConditionStateChangedForSomeoneElseIsIgnored() {
+	s.mon.MarkClean()
+
+	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
+		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
+			MemberID:     "someone-else",
+			ConditionRef: refs.Conditions.OpportunityAttack(),
+		})
+
+	s.Require().NoError(err)
+	s.Require().False(s.mon.IsDirty(), "every sheet hears it; only one of them is it")
+}
+
+// A spend request passes the monster keeper by, and that absence is the D&D
+// asymmetry rather than an oversight: monsters carry no action economy here, so
+// there is no ledger to debit and nothing to refuse. The keeper says so by
+// having no row for the topic — the sheet does not even go dirty.
+func (s *MonsterKeeperTestSuite) TestSpendRequestedPassesTheMonsterBy() {
+	s.mon.MarkClean()
+
+	err := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
+		MemberID:   s.mon.GetID(),
+		ActionType: coreCombat.ActionReaction,
+		Amount:     1,
+		SourceRef:  refs.Conditions.OpportunityAttack(),
+	})
+
+	s.Require().NoError(err)
+	s.Require().False(s.mon.IsDirty(), "nothing on this sheet could have paid")
+}
+
+// CanReact is true, and true is the answer rather than a stub. False would mean
+// "my economy refuses"; a monster has no economy to do the refusing, which is
+// the same thing the reacting rules say today in a nil check.
+func (s *MonsterKeeperTestSuite) TestAMonsterNeverRefusesAReaction() {
+	s.Require().True(s.mon.CanReact())
 }
 
 func TestPureLoadSuite(t *testing.T) {

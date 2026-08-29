@@ -10,11 +10,13 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // copyOf returns an independent copy, the way a real repository does.
@@ -178,7 +180,20 @@ func dwarfCharacter(id string) *character.Data {
 		ClassID:          classes.Fighter,
 		HitPoints:        24,
 		MaxHitPoints:     28,
-		ArmorClass:       16,
+		// ArmorClass is the STORED scalar and is deliberately left at 16 while
+		// the ability scores below derive to 12 (10 + DEX 14's +2, unarmoured).
+		// projectCharacter folds AC rather than echoing this field, so the two
+		// disagreeing is what makes the assertion discriminating — the same
+		// trick the Speed assertion uses with a dwarf's 25.
+		ArmorClass: 16,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14, // +2
+			abilities.CON: 15,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
 	}
 }
 

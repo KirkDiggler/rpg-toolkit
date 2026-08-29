@@ -494,6 +494,15 @@ func boundariesFrom(ms []clock.Milestone) []Boundary {
 			kind = TurnStarted
 		case clock.TurnEnded:
 			kind = TurnEnded
+		case clock.Dissolved:
+			// NOT dropped for the reasons the default arm drops things, and
+			// called out by name so it does not read that way. A fight ending
+			// DOES become boundaries — one per member — but it cannot be built
+			// here: clock.Turn.Dissolve stamps no Subject, because a clock
+			// knows it emptied and not who it emptied of, and the roster
+			// arrives BESIDE the milestones rather than inside them. See
+			// combatEndBoundaries, which is where this one is translated.
+			continue
 		default:
 			continue
 		}
@@ -508,6 +517,14 @@ func boundariesFrom(ms []clock.Milestone) []Boundary {
 
 // announce hands one clock advance's boundaries to the Announcer capability,
 // at the moment they were crossed.
+func (e *Encounter) announce(ms []clock.Milestone) error {
+	return e.announceBoundaries(boundariesFrom(ms))
+}
+
+// announceBoundaries is the half of announce that reaches the capability,
+// shared by the milestone-translating path above and by the fight-ending
+// fan-out ([Encounter.dissolveBubble]), which builds its boundaries from a
+// roster rather than translating them one for one.
 //
 // context.Background() for the reason Strike below already uses it: this
 // module's verbs take no context.Context, and threading one through every clock
@@ -516,12 +533,52 @@ func boundariesFrom(ms []clock.Milestone) []Boundary {
 // An empty set is not announced. That is not an optimization — an advance that
 // crossed nothing is not an event, and calling a capability to tell it nothing
 // happened is how a capability learns to ignore its argument.
-func (e *Encounter) announce(ms []clock.Milestone) error {
-	crossed := boundariesFrom(ms)
+func (e *Encounter) announceBoundaries(crossed []Boundary) error {
 	if len(crossed) == 0 {
 		return nil
 	}
 	return e.announcer.Announce(context.Background(), e, crossed)
+}
+
+// combatEndBoundaries fans one fight's ending out to the members it ended for.
+//
+// NOT part of boundariesFrom, and it cannot be. The leaf's clock.Dissolved
+// milestone carries the round but no Subject — a clock knows it emptied, not
+// who it emptied of — and the roster arrives beside the milestones rather than
+// inside them. Turning "a clock emptied" into "the fight ended for each of
+// these members" is this composition's own knowledge, the same kind as MemberID
+// rather than core.EntityID, and pushing it down into play/clock would put a
+// rulebook's opinion in a package that is not allowed to have one.
+//
+// PER MEMBER because the only subscriber that exists compares an ending's
+// subject against its own owner (dnd5e/conditions.RagingCondition.onCombatEnd).
+// A single subject-less ending would match nobody and expire nothing — which is
+// the state combat end has actually been in since it was written.
+//
+// The round comes from the milestone rather than from the caller, so the one
+// number in the answer still has exactly one source.
+//
+// ERRORS rather than returning nothing when the milestones hold no
+// clock.Dissolved. bubble.Dissolve has just reported success, so its absence is
+// a broken contract and not an empty result — and a silent empty here is
+// precisely how CombatEndTopic came to have a subscriber and no publisher.
+func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, error) {
+	round, found := 0, false
+	for _, m := range ms {
+		if m.Kind == clock.Dissolved {
+			round, found = m.Round, true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("combat end boundaries: %w", ErrNoDissolveMilestone)
+	}
+
+	crossed := make([]Boundary, 0, len(members))
+	for _, id := range members {
+		crossed = append(crossed, Boundary{Kind: CombatEnded, Subject: id, Round: round})
+	}
+	return crossed, nil
 }
 
 // executeTurnIntent runs one Act call's answer and reports whether this

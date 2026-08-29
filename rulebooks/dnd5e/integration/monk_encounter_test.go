@@ -303,13 +303,17 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 			AbilityUsed: abilities.STR,
 		}
 
-		// Execute through damage chain
+		// Execute through damage chain, with the monk in the cast: Martial Arts
+		// reads its own ability scores out of it. See castOf for why installing
+		// one here stands in for resolution's door rather than inventing a
+		// registry nothing in production builds.
+		ctx := castOf(s.ctx, s.monk)
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 		s.Require().NoError(err)
 
 		// Verify DEX was used (ability component should have +3)
@@ -343,9 +347,13 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 
 		s.T().Log("→ Shadow throws a punch!")
 
-		// Note: The MartialArtsCondition loaded via JSON uses its own dice.NewRoller()
-		// so the actual roll value is non-deterministic. We verify the damage string
-		// is upgraded to "1d4" and the roll count is correct.
+		// The condition rolls with its own dice.NewRoller(), so the VALUE is
+		// non-deterministic and the DICE STRING is not. The seeded roll below is
+		// deliberately outside 1d4's range: this test used to seed a 1, which
+		// is a legal 1d4 result, so every assertion here passed unchanged when
+		// the condition did not fire at all. It said so in this very comment —
+		// "we verify the damage string is upgraded" — while asserting no such
+		// thing.
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.monk.GetID(),
@@ -354,9 +362,10 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Dice:              "1d1",
 					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					OriginalDiceRolls: []int{1},
-					FinalDiceRolls:    []int{1},
+					OriginalDiceRolls: []int{7},
+					FinalDiceRolls:    []int{7},
 				},
 				{
 					Source:    dnd5eEvents.DamageSourceAbility,
@@ -366,25 +375,36 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 			AbilityUsed: abilities.STR,
 		}
 
-		// Execute through damage chain
+		// Execute through damage chain, with the monk in the cast: Martial Arts
+		// reads its own ability scores out of it. See castOf for why installing
+		// one here stands in for resolution's door rather than inventing a
+		// registry nothing in production builds.
+		ctx := castOf(s.ctx, s.monk)
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 		s.Require().NoError(err)
 
-		// Verify weapon component has exactly 1 die roll (1d4 = one die)
+		// The dice STRING is the deterministic half, and the one the comment
+		// above always claimed was checked.
 		var weaponRolls []int
+		var weaponDice string
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceWeapon {
 				weaponRolls = comp.FinalDiceRolls
+				weaponDice = comp.Dice
 				break
 			}
 		}
+		s.Equal("1d4", weaponDice, "a level 1 monk's unarmed strike is upgraded from the weapon's own die to 1d4")
+		s.Equal("1d4", finalEvent.WeaponDamageDice, "and the event carries the same upgrade for the combat log")
+
 		s.Require().Len(weaponRolls, 1, "Should have exactly 1 die roll (1d4)")
-		s.True(weaponRolls[0] >= 1 && weaponRolls[0] <= 4, "Roll should be in [1,4] range, got %d", weaponRolls[0])
+		s.True(weaponRolls[0] >= 1 && weaponRolls[0] <= 4,
+			"the seeded 7 must have been re-rolled on 1d4, got %d", weaponRolls[0])
 
 		s.T().Log("  Damage die progression:")
 		s.T().Log("    Levels 1-4:   1d4")
@@ -430,13 +450,17 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 			AbilityUsed: abilities.STR,
 		}
 
-		// Execute through damage chain
+		// Execute through damage chain, with the monk in the cast: Martial Arts
+		// reads its own ability scores out of it. See castOf for why installing
+		// one here stands in for resolution's door rather than inventing a
+		// registry nothing in production builds.
+		ctx := castOf(s.ctx, s.monk)
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 		s.Require().NoError(err)
 
 		// Verify DEX was used
@@ -561,15 +585,17 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 		s.Require().NoError(err)
 		defer func() { _ = monk.Cleanup(s.ctx) }()
 
-		// No registry, deliberately. This test used to build one by hand and
-		// pass while the game returned 13 — LoadFromData attaches the
-		// condition and Attach hands it the monk's own sheet, which is the
-		// only wiring production has. If that wiring breaks, this fails.
-		ctx := s.ctx
+		// The cast, installed the way resolution's door installs it — see
+		// castOf for why standing in for a real installer is not the
+		// hand-built registry this test used to carry. Unarmored Defense reads
+		// the monk out of the cast by its own ID, exactly as it would read the
+		// creature next to it.
+		ctx := castOf(s.ctx, monk)
 
 		// Verify EffectiveAC includes WIS modifier via the AC chain.
 		// Expected: 10 (base) + 3 (DEX) + 2 (WIS from UnarmoredDefense) = 15
-		breakdown := monk.EffectiveAC(ctx)
+		breakdown, acErr := monk.EffectiveAC(ctx)
+		s.Require().NoError(acErr)
 
 		s.T().Logf("  Monk EffectiveAC breakdown:")
 		s.T().Logf("    Total: %d", breakdown.Total)
@@ -596,33 +622,47 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 	})
 }
 
-// TestUnarmoredDefense_ACChainNeedsNoGameContext verifies that a Monk with
-// Unarmored Defense gets the WIS modifier with NOTHING installed in the
-// context — because the condition reads its own sheet, handed over by Attach.
+// TestUnarmoredDefense_ACChainReadsTheCast asserts BOTH halves of the read
+// law: with the cast installed the monk folds 15, and with a bare context the
+// same sheet folds 13.
 //
-// This test used to assert the opposite, and that is the whole point of it.
-// It was called TestUnarmoredDefense_ACChainWithoutGameContext, it expected
-// 13, and it explained the missing +2 as an "API WIRING REQUIREMENT: the
-// context MUST include a GameContext with the defender's ability scores".
+// # This test has been wrong twice, in opposite directions
 //
-// Nothing ever met that requirement. gamectx.WithGameContext had zero non-test
-// call sites in the entire toolkit, so every monk and every barbarian fought
-// at base AC in every real fight, and this test certified it as correct. Worse
-// than the missing bonus: the condition returned an ERROR into the AC fold and
-// Character.EffectiveAC swallows fold errors, so every other AC contributor
-// went with it.
+// It began as TestUnarmoredDefense_ACChainWithoutGameContext, expecting 13 and
+// explaining the missing +2 as an "API WIRING REQUIREMENT: the context MUST
+// include a GameContext with the defender's ability scores". Nothing ever met
+// that requirement — gamectx.WithGameContext had zero non-test call sites — so
+// every monk fought at base AC in every real fight and this test certified it
+// as correct.
 //
-// A bare context is now the honest case rather than the degraded one. If this
-// ever returns 13 again, the owner handle stopped being wired at attach.
-func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainNeedsNoGameContext() {
-	s.Run("Monk AC chain includes WIS with nothing installed in context", func() {
+// It then became TestUnarmoredDefense_ACChainNeedsNoGameContext, expecting 15
+// from a bare context, because the condition had been handed its own sheet at
+// attach time. True while that handle existed. The handle is gone: an effect
+// reads itself out of the cast, like any other participant.
+//
+// # So why is asserting 13 not the original sin repeating
+//
+// Because of WHERE the 13 happens. The first version blessed the number
+// production actually got. This one pins the number a fold gets when it runs
+// OUTSIDE resolution — which R6 calls the bug rather than a mode. Production
+// folds inside, where one door installs the cast unconditionally, and that is
+// pinned a level up by session's TestAMonksUnarmoredDefenseReachesTheJoinedAC
+// (Join → resolution.ProjectCharacter → 15 on the wire).
+//
+// Keeping the 13 visible here is the point. It is the observable edge of the
+// migration: any caller still folding an AC chain on a bare context is one
+// that has to come to resolution, and it now says so in a test instead of
+// being discovered as a wrong number in somebody's character sheet.
+func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
+	s.Run("Monk AC chain reads WIS off the installed cast", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMORED DEFENSE: AC With A Bare Context                  ║")
+		s.T().Log("║  MONK UNARMORED DEFENSE: The Cast Is The Read Channel            ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
-		s.T().Log("  Nothing is installed in the context here. The condition reads")
-		s.T().Log("  the monk's own sheet, handed to it by Attach — the only wiring")
-		s.T().Log("  production has ever had.")
+		s.T().Log("  With the cast installed the monk reads its own sheet and folds")
+		s.T().Log("  15. With a bare context nobody can name this character, the")
+		s.T().Log("  chain is left untouched, and 13 is what a fold outside")
+		s.T().Log("  resolution is worth.")
 		s.T().Log("")
 
 		monkWithUD := &character.Data{
@@ -672,24 +712,40 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainNeedsNoGameContext() {
 		s.Require().NoError(err)
 		defer func() { _ = monk.Cleanup(s.ctx) }()
 
-		// A completely bare context. No room, no cast, no registry.
-		bareCtx := context.Background()
-		breakdown := monk.EffectiveAC(bareCtx)
+		// WITH the cast: the monk can find itself, and folds the full number.
+		withCast, acErr := monk.EffectiveAC(castOf(context.Background(), monk))
+		s.Require().NoError(acErr)
 
-		s.T().Logf("  Monk EffectiveAC (bare context):")
-		s.T().Logf("    Total: %d", breakdown.Total)
+		s.T().Logf("  Monk EffectiveAC (cast installed): %d", withCast.Total)
 
 		// 10 (base) + 3 (DEX) + 2 (WIS via Unarmored Defense) = 15
-		s.Equal(15, breakdown.Total,
-			"Unarmored Defense reads the monk's own sheet: 10 + DEX(+3) + WIS(+2) = 15")
+		s.Equal(15, withCast.Total,
+			"read off the cast: 10 + DEX(+3) + WIS(+2) = 15")
 
 		hasWIS := false
-		for _, comp := range breakdown.Components {
+		for _, comp := range withCast.Components {
 			if comp.Type == combat.ACSourceFeature && comp.Value == 2 {
 				hasWIS = true
 			}
 		}
 		s.True(hasWIS, "the WIS component must be attributed in the breakdown, not just folded into the total")
+
+		// WITHOUT it: nobody can name this character, so the condition leaves
+		// the chain alone. NOT an error — an erroring contributor would take
+		// every other AC contributor down with it, which is the failure this
+		// whole channel exists to stop.
+		bare, bareErr := monk.EffectiveAC(context.Background())
+		s.Require().NoError(bareErr,
+			"a condition that cannot answer leaves the chain untouched; it must not poison the fold")
+
+		s.T().Logf("  Monk EffectiveAC (bare context):  %d", bare.Total)
+
+		s.Equal(13, bare.Total,
+			"10 + DEX(+3) and nothing else: a fold outside resolution has no cast to read")
+		for _, comp := range bare.Components {
+			s.NotEqual(combat.ACSourceFeature, comp.Type,
+				"with no cast there is no feature contribution to attribute")
+		}
 	})
 }
 
@@ -923,21 +979,21 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		s.monk = s.createLevel2Monk()
 		s.lookup.Add(s.monk)
 
-		// No weapons registry, deliberately. The monk's own sheet answers the
-		// shield question now, and Attach hands the condition that sheet —
-		// the same wiring production has. The registry this used to build was
-		// never installed outside a test.
+		// No weapons registry, deliberately. The shield question is answered by
+		// the member surface every combatant carries, read out of the installed
+		// cast — see castOf. The registry this used to build was never
+		// installed outside a test.
 
 		s.T().Logf("  Monk: %s (Level 2, unarmored)", s.monk.GetName())
 		s.T().Log("")
 
 		// Find the UnarmoredMovementCondition from loaded conditions
 		var umCondition interface {
-			GetSpeedBonus() (int, bool)
+			SpeedBonus(context.Context) (int, bool)
 		}
 		for _, cond := range s.monk.GetConditions() {
 			if getter, ok := cond.(interface {
-				GetSpeedBonus() (int, bool)
+				SpeedBonus(context.Context) (int, bool)
 			}); ok {
 				umCondition = getter
 				break
@@ -945,10 +1001,19 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		}
 		s.Require().NotNil(umCondition, "Monk should have UnarmoredMovementCondition loaded from Data")
 
-		// Verify speed bonus
-		bonus, known := umCondition.GetSpeedBonus()
-		s.Require().True(known, "the monk's own sheet answers this; unknown means Attach did not wire the owner")
+		// Verify speed bonus, with the monk in the cast — the condition reads
+		// its own shield state off the member surface.
+		bonus, known := umCondition.SpeedBonus(castOf(s.ctx, s.monk))
+		s.Require().True(known, "the monk is in the cast, so the shield question has an answer")
 		s.Equal(10, bonus, "Level 2 monk should get +10 ft speed bonus")
+
+		// And with nobody in the cast the answer is UNKNOWN rather than zero.
+		// Zero would read as "this monk is carrying a shield", which is a rule
+		// invented out of missing data — the distinction the second return
+		// exists to keep expressible.
+		bare, bareKnown := umCondition.SpeedBonus(context.Background())
+		s.False(bareKnown, "no cast, no answer — not a silent zero")
+		s.Zero(bare)
 
 		s.T().Log("  Speed bonus by level:")
 		s.T().Log("    Level 2-5:   +10 ft")

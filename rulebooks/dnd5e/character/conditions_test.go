@@ -280,11 +280,22 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	// Verify character has both Unarmored Defense (from grants) and Raging (from activation)
 	s.Len(char.GetConditions(), 2, "Character should have Unarmored Defense + Raging conditions")
 
-	// Simulate rage expiring by publishing turn end event without combat activity
+	// Simulate rage expiring by publishing turn end events without combat
+	// activity. TWO of them, because the turn a rage started is not checked
+	// (Kirk's ruling, rpg-project#295) -- and asserting the state in between is
+	// what makes this a test of the grace rather than of the count.
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
 	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 		SubjectID: "char-1",
 		Round:     1,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(char.GetConditions(), 2,
+		"the turn the rage started is graced -- it survives its own activation turn ending")
+
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "char-1",
+		Round:     2,
 	})
 	s.Require().NoError(err)
 

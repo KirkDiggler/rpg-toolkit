@@ -1071,6 +1071,29 @@ const (
 	DamageThunder     DamageType = "thunder"
 )
 
+// AbilityRef identifies WHAT is being activated — the combat ability or
+// feature behind a [VerbActivate] declaration.
+//
+// It exists for the reason [AttackRef] does: a declaration a client renders
+// verbatim needs an identity, and "Rage" is not derivable from the verb the
+// way "Move" is from [VerbMove]. Attack has one identity per weapon; Activate
+// has one per thing the character carries.
+type AbilityRef struct {
+	// Ref is the ability's full core.Ref.String() —
+	// "dnd5e:combat_abilities:dodge", "dnd5e:features:rage". An OPEN set, so a
+	// string, for [AttackRef.Ref]'s reason: the catalog grows without this
+	// type changing.
+	//
+	// It is also the SELECTOR MATERIAL for an Activate declaration. One verb
+	// compiles many offers and this is what makes their IDs differ, the way a
+	// serialized definition makes two Attack offers differ.
+	Ref string `json:"ref"`
+
+	// Name is the ability's own display name — "Dodge", "Rage", "Second
+	// Wind". Authored by the ability, never derived from the ref by a reader.
+	Name string `json:"name"`
+}
+
 // AttackRef identifies WHAT was swung — weapon identity, which this seam
 // dropped on the floor since the first swing (rpg-toolkit#866). Carried on a
 // compiled Declaration, AttackOutput, and the Struck/Missed event bodies, so
@@ -1109,7 +1132,7 @@ const (
 	ShortfallNoBudget ShortfallReason = "no_budget"
 
 	// ShortfallNotYourTurn is it not being this member's turn — what
-	// Attack, Move and EndTurn refuse as ErrNotYourTurn.
+	// Attack, Move, Activate and EndTurn all refuse as ErrNotYourTurn.
 	ShortfallNotYourTurn ShortfallReason = "not_your_turn"
 
 	// ShortfallNoTargetInReach is nothing to swing at within reach. Echoing
@@ -1136,6 +1159,17 @@ const (
 	// answer remains ShortfallNoTargetInReach when no candidate is in reach
 	// at all (rpg-toolkit#1010, rpg-project#249 §6).
 	ShortfallTargetOutOfReach ShortfallReason = "target_out_of_reach"
+
+	// ShortfallUnavailable is the ability's own precondition refusing: already
+	// raging, already at full hit points. NOT a budget — nothing ran out,
+	// Currency is empty, and waiting will not help the way it does for
+	// [ShortfallNoBudget].
+	//
+	// This is the seam's word for what features.Feature.CanActivate refuses,
+	// which is a different question from what the economy refuses. A projection
+	// that collapsed the two would tell a raging barbarian to come back next
+	// turn.
+	ShortfallUnavailable ShortfallReason = "unavailable"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out
@@ -1158,6 +1192,15 @@ const (
 	// CurrencyMovement is feet, not a count — Needed and Left on a MOVEMENT
 	// shortfall are in feet, at the server's five per cell.
 	CurrencyMovement Currency = "movement"
+
+	// CurrencyCharges is charges of a named feature resource — rage uses,
+	// Second Wind uses, ki points. A count, like the three slots.
+	//
+	// WHICH resource is named only in Text. This seam does not enumerate the
+	// rulebook's resource keys, for the reason [Verb] does not enumerate the
+	// rulebook's actions: the catalog grows without this contract changing,
+	// and a client that branched on a specific pool would be deriving rules.
+	CurrencyCharges Currency = "charges"
 )
 
 // Shortfall is the structured reason a declaration cannot be paid for.
@@ -1195,7 +1238,9 @@ type Shortfall struct {
 
 // TargetKind tells a client which selector shape a Declaration accepts. A
 // closed set owned at the seam, mirroring the merged proto's TargetKind: the
-// three currently executable verbs fix their kind, and a new kind arrives the
+// currently executable verbs fix their kind — Activate by which ABILITY it is
+// rather than by the verb, since Help prompts for an ally and the rest prompt
+// for nobody — and a new kind arrives the
 // day a proven executor for it lands — never in advance.
 //
 // FIXED FOR EVERY COMPILED OR BLOCKED DECLARATION: Attack -> TargetMember,

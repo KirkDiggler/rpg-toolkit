@@ -41,6 +41,23 @@ func (s *DisengageAbilityTestSuite) SetupTest() {
 	s.disengage = combatabilities.NewDisengage("test-disengage")
 }
 
+// listenAsTheOwnerWould stands in for the owner's SheetKeeper: the thing that
+// subscribes to ConditionAppliedTopic and applies whatever arrives.
+//
+// It is here because rpg-toolkit#1272 moved Disengage from applying its own
+// condition to PUBLISHING one, and that is the whole point of the fix — only a
+// listener records a condition on the character, so only a published condition
+// survives the interaction. A suite with no listener could not tell the two
+// apart, which is precisely why the bug shipped: this test passed while
+// Disengage protected nobody in production.
+func (s *DisengageAbilityTestSuite) listenAsTheOwnerWould() {
+	_, err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(s.ctx,
+		func(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			return event.Condition.Apply(ctx, s.bus)
+		})
+	s.Require().NoError(err)
+}
+
 func (s *DisengageAbilityTestSuite) TestNewDisengage_Properties() {
 	// Assert
 	s.Assert().Equal("test-disengage", s.disengage.GetID())
@@ -144,6 +161,7 @@ func (s *DisengageAbilityTestSuite) TestActivate_PublishesDisengageActivatedEven
 // the condition to the bus so the suppression mechanism activates.
 func (s *DisengageAbilityTestSuite) TestActivate_AppliesDisengagingCondition_OASuppressed() {
 	// Arrange
+	s.listenAsTheOwnerWould()
 	err := s.disengage.Activate(s.ctx, s.owner, combatabilities.CombatAbilityInput{
 		ActionEconomy: s.actionEconomy,
 		Bus:           s.bus,

@@ -181,7 +181,8 @@
 // outcome), so the case where the answer comes from outside the process is a
 // new step rather than a redesign of this one.
 //
-// Two game-context installers are populated, both unconditionally.
+// Three game-context installers are populated, all unconditionally, and all
+// through one function: [installTruth], the door.
 //
 // This paragraph used to say "No game context is installed", and describe five
 // gamectx registries waiting for a predicate to force them: the first predicate
@@ -205,7 +206,7 @@
 // registries nothing populates is the same mistake as populating registries
 // nothing reads, and it fails silently instead of loudly.
 //
-// What is installed now, on every path and inside no condition:
+// What the door installs, on every path and inside no condition:
 //
 //   - [gamectx.WithRoom] — the world the interaction happens on. ONE world,
 //     installed EVERY time, and it is THE world rather than a copy of it. The
@@ -220,11 +221,24 @@
 //   - [gamectx.WithCast] — who the participants are to each other. This
 //     package is the only one that can answer it: R3 passes everyone in, so
 //     this is the only place that holds them all. See [castView].
+//   - [gamectx.WithReactionReadiness] — which reactions each member is holding
+//     ready. Derived from the cast, which is why it is installed after it.
+//     Free reactions are readied for everybody and costed ones for nobody;
+//     [defaultReadiness] carries the ruling that says so.
 //
-// TestNoCodePathProducesARoomlessInteraction and
-// TestNoCodePathProducesACastlessInteraction hold both structurally rather than
-// by example, by reading this file's source. A behavioural suite cannot make
-// the claim: the defect is that tests supply what production does not, so the
+// TestNoCodePathProducesARoomlessInteraction,
+// TestNoCodePathProducesACastlessInteraction and
+// TestNoCodePathProducesAReadinesslessInteraction hold all three structurally
+// rather than by example, by reading the door's source; a fourth,
+// TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
+// and that every path which folds reaches it.
+//
+// There are two such paths. [Resolve] runs an interaction; [ProjectCharacter]
+// folds one derived number for a caller with no interaction to run — a
+// character joining a session, who is not standing anywhere yet and so gets a
+// context whose room is honestly ABSENT rather than invented. Both go through
+// the same door, and neither is a mode of the other. A behavioural suite cannot make any of those
+// claims: the defect is that tests supply what production does not, so the
 // tests are the last place it shows up.
 //
 // This package builds no geometry of its own. It held a room it assembled out

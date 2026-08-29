@@ -14,15 +14,18 @@
 //
 //   - [WithRoom] / [Room] — the world the interaction happens on.
 //   - [WithCast] / [CastOf] — the participants in it.
-//   - [WithReactionReadiness] / [IsReactionReady] — who has opted in to spend
-//     a reaction.
+//   - [WithReactionReadiness] / [IsReactionReady] — who is ready to spend a
+//     reaction (free reactions are default-ready for everyone; costed ones
+//     require opting in — see below).
 //
-// Resolution installs [WithRoom] on every path today. [WithCast] is defined
-// here but NOT yet installed anywhere — that wiring is rpg-toolkit#1252 — so
-// [CastOf] currently returns ok=false and every consumer takes its "cannot
-// answer" branch. When it lands it goes in unconditionally beside the room,
-// because an ambient dependency that is sometimes present is exactly what went
-// wrong here before.
+// Resolution installs all three unconditionally on every resolve path — the
+// room first, the cast beside it once the sheets are loaded, and a default
+// readiness map derived from the cast (resolution/resolve.go; the #1252
+// wiring landed in #1256, readiness in #1282). There is no "sometimes
+// present" mode, because an ambient dependency that is sometimes present is
+// exactly what went wrong here before —
+// TestNoCodePathProducesACastlessInteraction and its room and readiness
+// siblings hold that structurally rather than by example.
 //
 // # What used to live here
 //
@@ -44,14 +47,17 @@
 // healthiest thing in this package. It is that an ambient dependency must be
 // MANDATORY and SINGULAR, and its absent value must say what the author meant.
 //
-// # Reaction readiness is the counter-example, and it stays
+// # Reaction readiness fails closed, and that is the point
 //
-// [IsReactionReady] returns false when no map is installed, and no map is ever
-// installed today. It survived the deletion above because that is not the same
-// bug: not-ready is the CORRECT answer while nothing in the stack lets a
-// player ready a reaction, and the code says so at the point of failure rather
-// than leaving it to be discovered. Opportunity Attack and Shield decline to
-// fire, on purpose, and will keep declining until reactions are built.
+// [IsReactionReady] returns false when no map is installed, or when the map is
+// silent about a member or a reaction. It survived the deletion above because
+// that is not the same bug: not-ready is the CORRECT answer for a reaction
+// nobody has opted into, and the code says so at the point of failure rather
+// than leaving it to be discovered. Since rpg-toolkit#1282, resolution
+// installs a default map on every path — free reactions readied for everyone,
+// costed ones absent from the set (the Wave 2.11d ruling reused) — so the
+// opportunity attack fires, while Shield keeps declining on purpose until
+// opting into a costed reaction is something a player can be asked.
 //
 // Fail-closed by design is not fail-silent by accident. The test for an
 // ambient dependency is not "is it installed" — it is "does its absent value
@@ -66,8 +72,24 @@
 // answers, and a rule that conflates them is a rule invented out of missing
 // data.
 //
-// An effect's OWN sheet does not come from here. That arrives by injection at
-// attach time — see [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware]
-// — because it has an owner, and ambient delivery of an owned thing is what
-// rpg-toolkit#1178 already walked back once.
+// An effect's OWN sheet comes from here too, and it comes as a question rather
+// than as a thing. It looks itself up in the cast by its own ID and gets back
+// a [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat.Member] — the
+// same surface it would get for the creature standing next to it, with no
+// method on it that writes.
+//
+// That is the read law and the write law in one type. Reads come from the
+// cast; a write is a request published on the bus, applied by whoever keeps
+// the sheet. What ambient delivery of an OWNED thing would mean —
+// rpg-toolkit#1178's walk-back, and the reason this paragraph used to say the
+// opposite — is delivery of the sheet itself, mutable, to code that does not
+// own it. A read surface is not that.
+//
+// The handle it replaced is
+// [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware], wired
+// bespoke in two loaders and silently absent whenever either forgot. The four
+// conditions that held one held it to WRITE — a dirty mark, a reaction spend —
+// and every one of those is a published request now, applied by the keeper that
+// owns the sheet. NOBODY IMPLEMENTS OwnerAware any more: the two loader
+// handoffs still stand, matching nothing, and go when the interface does.
 package gamectx

@@ -23,7 +23,8 @@ import (
 // mutating verb regenerates before execution. It never crosses the host
 // boundary: only its [Declaration] projection does.
 //
-// ONE COMPILED OFFER PER VERB/ACTION/SPEND VARIANT. v1 has exactly one spend
+// ONE COMPILED OFFER PER ACTION/SPEND VARIANT — per VERB only for the verbs
+// that have exactly one variant, which is every verb except Activate. v1 has exactly one spend
 // variant per verb — the next swing's profile for Attack, SlotNone for Move
 // and EndTurn — so full Afford compilation produces one offer per verb. The day
 // a bonus-action strike lands, it arrives as a second Attack offer with a
@@ -96,7 +97,7 @@ type targetPreflight struct {
 
 // compileOffersFor builds only the requested compiled offers for one member on
 // the turn clock, applying the same per-verb blocker matrix. [Manager.Afford]
-// requests all three verbs from one actor snapshot; Move and Attack each request
+// requests all four verbs from one actor snapshot; Move and Attack each request
 // only their own offer before selecting an echoed ID. EndTurn execution keeps
 // its direct clock-only builder.
 //
@@ -152,6 +153,7 @@ func (m *Manager) compileOffersFor(
 		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
+			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			endTurn,
 		)
 	}
@@ -165,6 +167,7 @@ func (m *Manager) compileOffersFor(
 		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
+			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			endTurn,
 		)
 	}
@@ -174,6 +177,7 @@ func (m *Manager) compileOffersFor(
 		return finishRequestedOffers(requested,
 			blockedCompiledOffer(VerbAttack, TargetMember, why),
 			blockedCompiledOffer(VerbMove, TargetPath, why),
+			blockedCompiledOffer(VerbActivate, TargetNone, why),
 			endTurn,
 		)
 	}
@@ -186,6 +190,45 @@ func (m *Manager) compileOffersFor(
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 
+	// ONE blocker row for Activate on the early paths above, and N compiled
+	// rows here. That asymmetry is the same one Attack already has between a
+	// blocker and a compiled offer, scaled by a verb that compiles more than
+	// one: a member whose sheet will not load has no abilities to enumerate,
+	// so there is nothing to emit N of.
+	// The roster, its positions, and this member's own sighted holdings —
+	// hoisted here because BOTH Attack and Activate need them now: Attack for
+	// its candidate universe, Help for its own (rpg-project#300).
+	//
+	// GUARDED, so EndTurn stays clock-only. That property is documented and
+	// tested ("EndTurn remains clock-only when that actor is downed or
+	// unreadable"), and reading a roster it does not need would quietly end it.
+	var (
+		roster    []encounter.Member
+		positions map[string]spatial.Position
+		holdings  []intel.Holding
+	)
+	if requested[VerbAttack] || requested[VerbActivate] {
+		var err error
+		if roster, err = enc.Members(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		}
+		positions = rosterPositions(roster)
+		if holdings, err = enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)}); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
+		}
+	}
+
+	var activations []compiledOffer
+	if requested[VerbActivate] {
+		var err error
+		activations, err = m.buildActivationOffers(
+			enc, m.standingFor(ctx, data), sessionID, member, sheet, roster, positions, holdings,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var move compiledOffer
 	if requested[VerbMove] {
 		var err error
@@ -195,7 +238,7 @@ func (m *Manager) compileOffersFor(
 		}
 	}
 	if !requested[VerbAttack] {
-		return finishRequestedOffers(requested, move, endTurn)
+		return finishRequestedOffers(requested, append([]compiledOffer{move, endTurn}, activations...)...)
 	}
 
 	// Price BEFORE assembly. The complete Definition is selector material, so
@@ -224,11 +267,12 @@ func (m *Manager) compileOffersFor(
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Errorf("member %q: %w: %v", member, ErrBadAttack, err).Error(),
 		}
-		return finishRequestedOffers(requested,
-			blockedCompiledOffer(VerbAttack, TargetMember, why),
-			move,
-			endTurn,
-		)
+		return finishRequestedOffers(requested, append(
+			[]compiledOffer{
+				blockedCompiledOffer(VerbAttack, TargetMember, why),
+				move,
+				endTurn,
+			}, activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
 	slot := slotOf(definition.Cost)
@@ -243,17 +287,6 @@ func (m *Manager) compileOffersFor(
 	if !budgetOK {
 		sf := shortfallForPay(sheet, definition.Cost, slot)
 		budgetWhy = &sf
-	}
-
-	roster, err := enc.Members()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
-	}
-	positions := rosterPositions(roster)
-
-	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCost, translate(err))
 	}
 
 	candidates, err := m.targetPreflight(enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet())
@@ -314,7 +347,7 @@ func (m *Manager) compileOffersFor(
 	}
 
 	attackRef := attackRefFor(definition)
-	attackID, attackVariant, err := selectorIDFor(sessionID, member, VerbAttack, slot, &definition)
+	attackID, attackVariant, err := selectorIDFor(sessionID, member, VerbAttack, slot, &definition, "")
 	if err != nil {
 		return nil, err
 	}
@@ -345,13 +378,15 @@ func (m *Manager) compileOffersFor(
 		variant: attackVariant,
 	}
 
-	return finishRequestedOffers(requested, attack, move, endTurn)
+	return finishRequestedOffers(requested, append([]compiledOffer{attack, move, endTurn}, activations...)...)
 }
 
 // finishRequestedOffers filters candidate offers to the requested verbs and
 // runs every compiled selector through the collision guard. Zero-value
 // candidates are ignored; blockers are retained by their declaration verb.
 func finishRequestedOffers(requested map[Verb]bool, candidates ...compiledOffer) ([]compiledOffer, error) {
+	// len(requested) is a floor rather than a count now that VerbActivate
+	// contributes N rows for one requested verb.
 	offers := make([]compiledOffer, 0, len(requested))
 	for _, offer := range candidates {
 		if requested[offer.declaration.Verb] {
@@ -392,7 +427,7 @@ func (m *Manager) loadActorSheet(ctx context.Context, member string) actorSheet 
 // unreadable character do not reach it — it carries no sheet, no candidates,
 // and no currency.
 func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbEndTurn, SlotNone, nil)
+	id, variant, err := selectorIDFor(session, member, VerbEndTurn, SlotNone, nil, "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -416,7 +451,7 @@ func (m *Manager) buildEndTurnOffer(session, member string) (compiledOffer, erro
 // whether ANY step at all is still possible — one cell, five feet, the
 // smallest unit this grid has — and Remaining is the actual feet left.
 func buildMoveOffer(session, member string, sheet *character.Character) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbMove, SlotNone, nil)
+	id, variant, err := selectorIDFor(session, member, VerbMove, SlotNone, nil, "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
@@ -570,9 +605,10 @@ func selectCompiledOffer(offers []compiledOffer, verb Verb, id string) (compiled
 // material rather than candidate state. For Move and EndTurn the variant is
 // a sealed string; for Attack it is the marshaled, validated definition.
 func selectorIDFor(
-	session, member string, verb Verb, slot Slot, attack *combatActions.Definition,
+	session, member string, verb Verb, slot Slot,
+	attack *combatActions.Definition, ability string,
 ) (id string, variant json.RawMessage, err error) {
-	variant, err = selectorVariant(verb, attack)
+	variant, err = selectorVariant(verb, attack, ability)
 	if err != nil {
 		return "", nil, err
 	}
@@ -586,6 +622,7 @@ func selectorIDFor(
 		Verb:    verb,
 		Slot:    slot,
 		Attack:  attack,
+		Ability: ability,
 	})
 	if err != nil {
 		return "", nil, err
@@ -645,10 +682,12 @@ func verbRank(v Verb) int {
 		return 0
 	case VerbMove:
 		return 1
-	case VerbEndTurn:
+	case VerbActivate:
 		return 2
-	default:
+	case VerbEndTurn:
 		return 3
+	default:
+		return 4
 	}
 }
 
@@ -657,6 +696,20 @@ func verbRank(v Verb) int {
 // regardless of the build order compileOffersFor happens to use.
 func sortDeclarations(decls []Declaration) {
 	sort.SliceStable(decls, func(i, j int) bool {
-		return verbRank(decls[i].Verb) < verbRank(decls[j].Verb)
+		if verbRank(decls[i].Verb) != verbRank(decls[j].Verb) {
+			return verbRank(decls[i].Verb) < verbRank(decls[j].Verb)
+		}
+		// WITHIN a verb, and only Activate ever has more than one — six at
+		// level 1, and however many the character carries after that, which is
+		// the point: the count is a fact about the sheet, not a constant.
+		//
+		// Verb rank alone was a total order while every verb compiled exactly
+		// one offer. With many Activate rows it leaves their order to whatever
+		// the caller appended — stable today, and stable by accident. Ability
+		// ref is a fact about the character, so the panel's order is too.
+		if decls[i].Ability != nil && decls[j].Ability != nil {
+			return decls[i].Ability.Ref < decls[j].Ability.Ref
+		}
+		return false
 	})
 }

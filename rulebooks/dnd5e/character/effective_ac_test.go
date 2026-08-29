@@ -46,7 +46,8 @@ func (s *EffectiveACTestSuite) TestUnarmoredCharacter() {
 	}
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 10 + 2 = 12
 	s.Assert().Equal(12, breakdown.Total, "Unarmored AC should be 10 + DEX modifier")
@@ -89,7 +90,8 @@ func (s *EffectiveACTestSuite) TestHeavyArmor() {
 	char.equipmentSlots.Set(SlotArmor, armor.ChainMail)
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 16 (no DEX bonus for heavy armor)
 	s.Assert().Equal(16, breakdown.Total, "Heavy armor AC should not include DEX")
@@ -161,7 +163,8 @@ func (s *EffectiveACTestSuite) TestMediumArmorDexCap() {
 			char.equipmentSlots.Set(SlotArmor, armor.ScaleMail)
 
 			// Calculate AC
-			breakdown := char.EffectiveAC(s.ctx)
+			breakdown, acErr := char.EffectiveAC(s.ctx)
+			s.Require().NoError(acErr)
 
 			// Verify total AC
 			s.Assert().Equal(tc.expectedTotal, breakdown.Total,
@@ -207,7 +210,8 @@ func (s *EffectiveACTestSuite) TestLightArmor() {
 	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 11 + 4 = 15
 	s.Assert().Equal(15, breakdown.Total, "Light armor AC should include full DEX bonus")
@@ -256,7 +260,8 @@ func (s *EffectiveACTestSuite) TestShieldBonus() {
 	char.equipmentSlots.Set(SlotOffHand, armor.Shield)
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 11 (armor) + 2 (DEX) + 2 (shield) = 15
 	s.Assert().Equal(15, breakdown.Total, "Shield should add +2 to AC")
@@ -310,7 +315,8 @@ func (s *EffectiveACTestSuite) TestBreakdownTransparency() {
 	char.equipmentSlots.Set(SlotOffHand, armor.Shield)
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total
 	s.Assert().Equal(18, breakdown.Total, "AC should be 16 (armor) + 2 (shield)")
@@ -356,7 +362,8 @@ func (s *EffectiveACTestSuite) TestNoEquipment() {
 	}
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 10 (base only, no DEX bonus since modifier is 0)
 	s.Assert().Equal(10, breakdown.Total, "Unarmored with no DEX bonus should be 10")
@@ -396,7 +403,8 @@ func (s *EffectiveACTestSuite) TestNegativeDexModifier() {
 	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
 	// Calculate AC
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 11 + (-1) = 10
 	s.Assert().Equal(10, breakdown.Total, "Negative DEX should reduce AC")
@@ -438,7 +446,8 @@ func (s *EffectiveACTestSuite) TestNoModifiers() {
 	char.equipmentSlots.Set(SlotArmor, armor.Leather)
 
 	// Calculate AC - should work with event bus but no modifiers
-	breakdown := char.EffectiveAC(s.ctx)
+	breakdown, acErr := char.EffectiveAC(s.ctx)
+	s.Require().NoError(acErr)
 
 	// Verify total AC = 11 + 2 = 13
 	s.Assert().Equal(13, breakdown.Total, "AC calculation should work with no modifiers")

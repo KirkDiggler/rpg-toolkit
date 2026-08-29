@@ -4,7 +4,23 @@ Date: 2024-12-03
 
 ## Status
 
-Accepted
+Superseded by the effect-context design in rpg-project (2026-08-26)
+
+## Superseded — what replaced this
+
+The superseding decision is not an ADR: it is the ruled design at
+`rpg-project/ideas/session-combat/effect-context/design.md`.
+
+Everything this ADR decided has since been split in two: reads of an effect's
+OWN sheet moved to owner injection at attach time (`rulebooks/dnd5e/events.OwnerAware`), and
+only facts owned by nobody stay ambient — carried by `gamectx.WithRoom`,
+`WithCast`, and `WithReactionReadiness`, installed unconditionally by
+`resolution` on every resolve path. `GameContext`, `CharacterRegistry`,
+`RequireCharacters`, and `AddCharacter` shown below no longer exist
+(rpg-toolkit#1251 deleted the never-installed registries). The current
+contract is stated in `rulebooks/dnd5e/gamectx/doc.go`; the reasoning is in
+the effect-context brainstorm/design. The text below is preserved as the
+record of what was decided in 2024 and why.
 
 ## Context
 

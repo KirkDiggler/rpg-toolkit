@@ -217,7 +217,20 @@ func (s *StepOfTheWindTestSuite) TestActivate_FailsWhenNoKi() {
 // owner on input.Bus so the next MovementChain for the owner emits an
 // OAPreventionSources entry. Without this, monks using Step of the Wind
 // would take OAs when moving past enemies — breaking the playable goal.
+// listenAsTheOwnerWould stands in for the owner's SheetKeeper — see the twin
+// helper in combatabilities/disengage_test.go and rpg-toolkit#1272. Step of the
+// Wind's disengage branch publishes now rather than applying directly, so the
+// condition reaches the owner's sheet instead of dying with the bus.
+func (s *StepOfTheWindTestSuite) listenAsTheOwnerWould() {
+	_, err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(s.ctx,
+		func(ctx context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
+			return event.Condition.Apply(ctx, s.bus)
+		})
+	s.Require().NoError(err)
+}
+
 func (s *StepOfTheWindTestSuite) TestActivate_DisengageBranch_AppliesDisengagingCondition() {
+	s.listenAsTheOwnerWould()
 	err := s.feature.Activate(s.ctx, s.accessor, features.FeatureInput{
 		Bus:    s.bus,
 		Action: "disengage",

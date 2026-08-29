@@ -12,10 +12,11 @@ import (
 // Cast is what an effect may ask about the OTHER participants in the
 // interaction it is resolving.
 //
-// Resolution will install it on every path, exactly like the room, and it will
-// die with that call. That wiring is rpg-toolkit#1252 and is NOT in the tree
-// yet: there is no WithCast call site today, so CastOf currently returns
-// ok=false everywhere and every consumer takes its "cannot answer" branch.
+// Resolution installs it on every path, exactly like the room, and it dies
+// with that call — the rpg-toolkit#1252 wiring, landed in #1256 at
+// resolution/resolve.go. On paths no resolution raised (session's standing
+// and preflight attaches), CastOf still answers ok=false and every consumer
+// keeps its "cannot answer" branch, which is why that branch stays.
 //
 // Two registries answered pieces of this question before and neither was ever
 // installed either — gamectx.CharacterRegistry (character-shaped, so it could
@@ -51,12 +52,20 @@ import (
 // with its own. That is how a barbarian ended up fighting at 10+DEX with
 // Unarmored Defense attached and nothing logged.
 type Cast interface {
-	// Member returns a participant's combat-facing sheet.
+	// Member returns a participant's combat-facing READ surface.
 	//
-	// combat.Combatant rather than a concrete type: a monster and a character
-	// are the same thing at this seam, and a registry shaped around one of
-	// them is what the deleted CharacterRegistry was.
-	Member(id string) (combat.Combatant, bool)
+	// combat.Member rather than a concrete type: a monster and a character are
+	// the same thing at this seam, and a registry shaped around one of them is
+	// what the deleted CharacterRegistry was.
+	//
+	// And combat.Member rather than combat.Combatant, which is what this
+	// handed out until the write law grew teeth. The sheet behind it is the
+	// LIVE one — a view, not a copy, as this file says at the top — so a cast
+	// that handed out the keeper's surface would let any rule call ApplyDamage
+	// on a sheet it does not own. The read law and the write law now differ by
+	// a type rather than by discipline: an effect asks the cast, and publishes
+	// everything else.
+	Member(id string) (combat.Member, bool)
 
 	// Members returns every participant in the interaction.
 	//
@@ -102,18 +111,19 @@ type castContextKey struct{}
 // that there is no "no cast" mode — an ambient dependency that is sometimes
 // absent fails silently, which is the defect this seam exists to replace.
 //
-// That call site does not exist yet (rpg-toolkit#1252). Until it lands, read
-// CastOf's second return exactly as documented rather than assuming a cast is
-// present.
+// Resolution does exactly that (resolve.go, since rpg-toolkit#1256), and
+// TestNoCodePathProducesACastlessInteraction holds it structurally. Still
+// read CastOf's second return exactly as documented rather than assuming a
+// cast is present — not every attach happens under a resolution.
 func WithCast(ctx context.Context, c Cast) context.Context {
 	return context.WithValue(ctx, castContextKey{}, c)
 }
 
 // CastOf retrieves the Cast from the context, and whether one was there.
 //
-// Read it defensively. Nothing installs a cast yet (rpg-toolkit#1252), and
-// even once resolution does, an effect can be attached by something other than
-// a resolution — session's standing and preflight paths both do. "I could not
+// Read it defensively. Resolution installs a cast on every resolve path
+// (rpg-toolkit#1256), but an effect can be attached by something other than a
+// resolution — session's standing and preflight paths both do. "I could not
 // ask" has to stay expressible rather than becoming a panic or a rule invented
 // out of missing data.
 func CastOf(ctx context.Context) (Cast, bool) {

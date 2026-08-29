@@ -13,7 +13,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
@@ -317,23 +316,12 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, fmt.Errorf("resolution: load world: %w", err)
 	}
 
-	// INSTALL THE WORLD. One world, and it is installed every time.
-	//
-	// This is the map the encounter itself runs on — its own room, handed over
-	// to be read (rpg-toolkit#1114). Not a reconstruction of it: this package
-	// used to build a room out of the encounter's persisted description, with
-	// its own copy of grid construction and a comment promising the two would
-	// be kept in step, and no walls in it at all. What the rules read now is
-	// what the composition enforces, because they are the same object.
-	//
-	// EVERY TIME, which is the other half. "Which room describes this
-	// interaction" used to be a question, and the answer this package gave
-	// when it could not decide — install nothing — silently switched off every
-	// predicate that reads positions the moment one party member wandered off,
-	// which in a dungeon is most of the time (rpg-toolkit#1090). There is one
-	// map, so there is nothing to choose between, and no input can produce an
-	// interaction without a world. TestNoCodePathProducesARoomlessInteraction
-	// holds that structurally rather than by example.
+	// The map the encounter itself runs on — its own room, handed over to be
+	// read (rpg-toolkit#1114). Not a reconstruction of it: this package used to
+	// build a room out of the encounter's persisted description, with its own
+	// copy of grid construction and a comment promising the two would be kept in
+	// step, and no walls in it at all. What the rules read now is what the
+	// composition enforces, because they are the same object.
 	//
 	// It is READ-ONLY: the composition refuses a write through it by name, and
 	// this package has no business making one. Moving somebody is a verb of the
@@ -342,9 +330,14 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadWorld, err)
 	}
-	ctx = gamectx.WithRoom(ctx, room)
 
-	cast, err := attachAll(ctx, surf, in.Participants, roller)
+	cast, err := attachAll(ctx, surf, &attachAllInput{
+		Participants: in.Participants,
+		Roller:       roller,
+		// DropUnreadable is not set, and its absence is the statement: this
+		// entry hands back sheets to be persisted, so it refuses a blob it
+		// cannot read rather than writing one back without it.
+	})
 	if err != nil {
 		// Tear down whatever did attach before giving up: a half-attached bus
 		// is about to be garbage either way, but leaving revocation to the
@@ -353,23 +346,13 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
-	// The other half of the read channel: the room says where everyone is
-	// standing, and this says who they are to each other.
-	//
-	// EVERY TIME, for the same reason and with the same pin. Five registries
-	// in gamectx and a sixth in combat tried to answer pieces of this and
-	// between them were installed zero times, so three conditions read a
-	// registry nobody supplied and returned its error into a chain fold that
-	// swallows errors — a barbarian fought at base AC in every real fight and
-	// nothing was logged (rpg-toolkit#1251). An ambient dependency that is
-	// SOMETIMES present is the defect; being always present is the fix, and
-	// TestNoCodePathProducesACastlessInteraction holds that structurally
-	// rather than by example.
-	//
-	// It goes in after attachAll because that is the call that loads the
-	// sheets. Nothing reads it before then: effects subscribe during Apply and
-	// ask their questions at fold time, which is after this line.
-	ctx = gamectx.WithCast(ctx, &castView{cast: cast})
+	// INSTALL THE TRUTH, through the one door. Every ambient fact this
+	// interaction can be asked about goes in here, in one call, on the only path
+	// there is: the room the encounter compiled, the cast attachAll just loaded,
+	// and the readiness derived from that cast. What goes in, why each of them is
+	// unconditional, and why the order reads the way it does are all in
+	// installTruth — this line's job is to be the only place it is called from.
+	ctx = installTruth(ctx, room, cast)
 
 	// Start is pure preflight and runs before payment. Invalid participant,
 	// delivery, or condition declarations therefore consume nothing.
@@ -413,11 +396,9 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 // order (R4). Two resolutions over identical data must grant identical
 // registrations in an identical order, or a suspension cannot be resumed into
 // the world it left.
-func attachAll(
-	ctx context.Context, surf *surface, participants []Participant, roller dice.Roller,
-) (*Participants, error) {
-	ordered := make([]Participant, len(participants))
-	copy(ordered, participants)
+func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
+	ordered := make([]Participant, len(in.Participants))
+	copy(ordered, in.Participants)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
 
 	cast := &Participants{
@@ -435,16 +416,41 @@ func attachAll(
 
 		switch {
 		case p.Character != nil:
-			ch, err := attachCharacter(ctx, view, p.Character)
+			ch, err := attachCharacter(ctx, view, p.Character, in.DropUnreadable)
 			if err != nil {
-				return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
+				if in.Refusals == nil {
+					return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
+				}
+				*in.Refusals = append(*in.Refusals, ParticipantRefusal{Member: id, Reason: err})
+
+				continue
 			}
 			cast.characters[id] = ch
 
 		case p.Monster != nil:
-			m, err := attachMonster(ctx, view, p.Monster, roller)
+			// No policy here, and none is available: monstertraits has one
+			// loader and it refuses what it cannot read.
+			//
+			// This used to add that a lenient monster was unreachable BECAUSE
+			// the only lenient entry built character participants and never
+			// monster ones. That premise is gone — Standing sets
+			// DropUnreadable and takes monsters — while the conclusion holds
+			// for a different and more durable reason: the flag is read on the
+			// character branch above and never reaches this one. A caller that
+			// asks to read leniently still gets a refusal from a monster whose
+			// trait blob will not parse.
+			//
+			// So DropUnreadable is honestly a CHARACTER policy, and the day a
+			// lenient monster loader exists this branch is where it is wired,
+			// not another entry.
+			m, err := attachMonster(ctx, view, p.Monster, in.Roller)
 			if err != nil {
-				return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)
+				if in.Refusals == nil {
+					return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)
+				}
+				*in.Refusals = append(*in.Refusals, ParticipantRefusal{Member: id, Reason: err})
+
+				continue
 			}
 			cast.monsters[id] = m
 		}
@@ -472,8 +478,17 @@ func attachAll(
 // it hands back sheets to be persisted, so an effect quietly dropped on the way
 // in is an effect deleted on the way out (rpg-toolkit#948).
 func attachCharacter(
-	ctx context.Context, view *surface, data *character.Data,
+	ctx context.Context, view *surface, data *character.Data, dropUnreadable bool,
 ) (*character.Character, error) {
+	// The lenient half is character.LoadFromData, which is the same two calls
+	// with the other policy — loadSheet then Attach, onto this same view, so
+	// attribution is made here either way. It is called rather than
+	// reimplemented: the two halves of one loader must not disagree about what
+	// a failure means, and there is exactly one place that decides.
+	if dropUnreadable {
+		return character.LoadFromData(ctx, data, view)
+	}
+
 	ch, err := character.Load(ctx, data)
 	if err != nil {
 		return nil, err
@@ -541,4 +556,78 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 	}
 
 	return out
+}
+
+// attachAllInput is everything one attach needs. All of it is data.
+//
+// An input struct rather than a fourth and fifth positional argument, which is
+// the house rule for a reason this function reached the moment it grew a
+// policy: `attachAll(ctx, surf, participants, roller, dropUnreadable)` reads as
+// three anonymous values at the call site, and the one that decides whether a
+// character's conditions can be silently discarded is a bare true at the end of
+// a line.
+type attachAllInput struct {
+	// Participants are the sheets to reconstitute, in any order — the attach
+	// sorts them, because two attaches over identical data must grant identical
+	// registrations in an identical order.
+	Participants []Participant
+
+	// Refusals, when non-nil, turns the attach from ABORTING into COLLECTING:
+	// a participant that will not attach is appended here and the loop carries
+	// on to the next, so the cast comes back holding everyone who did attach.
+	//
+	// NIL IS THE ZERO VALUE AND IT ABORTS, which is right for every entry that
+	// goes on to DO something: an interaction with an unreadable participant
+	// does not happen, and computing the rest of it is work nobody asked for.
+	// The one entry that asks to collect is [Preflight], whose whole question
+	// is "which of these would be refused" — an offer menu carries a verdict
+	// per row, so a caller told only that somebody is unreadable would have to
+	// grey out the whole menu or guess which row to blame.
+	//
+	// Collecting here rather than in the caller is what keeps the ORDERING RULE
+	// in one place. Preflight used to sort its participants and call this once
+	// each, which worked and was two copies of R4 that had to agree. A sink is
+	// what lets it hand over the whole cast instead.
+	//
+	// It buys no behaviour. Everyone landed on the same surface either way, and
+	// nothing observes a cast during attach — no entry installs game context
+	// before attaching, so there is no cast to observe. An earlier version of
+	// Preflight's doc claimed otherwise and was wrong; see it for the record.
+	Refusals *[]ParticipantRefusal
+
+	// Roller reconstitutes effects that roll when they are triggered rather
+	// than when they are loaded. Reached only through the monster branch.
+	//
+	// REQUIRED WHENEVER A PARTICIPANT IS A MONSTER, and unlike DropUnreadable
+	// below it has no safe zero value to fall back on: a nil travels down into
+	// monstertraits and surfaces at whatever later moment a trait first rolls,
+	// which is a long way from the call that omitted it. An entry that never
+	// builds a monster participant says so by passing refusingRoller, which
+	// turns a path believed unreachable into a named refusal rather than a
+	// panic if the belief is ever wrong.
+	Roller dice.Roller
+
+	// DropUnreadable keeps whatever parsed when a persisted blob will not load,
+	// instead of failing the attach and naming the blob.
+	//
+	// FALSE IS THE SAFE ANSWER AND IT IS THE ZERO VALUE, deliberately. An entry
+	// that can write must refuse: a sheet loaded past a condition it silently
+	// dropped is a sheet that, written back, has had that condition deleted by
+	// a verb that merely moved somebody (rpg-toolkit#948). So refusing is what
+	// a call site GETS, and dropping is what a call site must ask for in
+	// writing — a new entry added by somebody who never read this comment
+	// inherits the answer that cannot destroy anything.
+	//
+	// The one entry that asks is the projection, and it is safe there for a
+	// reason that is about the ENTRY rather than about loading: it only reads,
+	// nothing on its path writes a sheet back, and refusing would put one
+	// unreadable blob between a player and the game. The drop is not silent —
+	// the loader warns by name — which is D10: fail loudly means OBSERVABLE,
+	// not refused.
+	//
+	// ONE ATTACH MECHANISM, policy per entry. Both entries reach this same
+	// function, and the difference between them is this field rather than a
+	// second path — a second path is how the two halves of one loader come to
+	// disagree about what a failure means.
+	DropUnreadable bool
 }

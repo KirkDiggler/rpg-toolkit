@@ -187,6 +187,47 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	s.True(raging.WasHitThisTurn)
 }
 
+// TestTheTurnARageStartedIsNotChecked is the house rule, and it is deliberately
+// the test that FAILS against RAW 2014.
+//
+// By the letter, a barbarian who rages and then ends their turn without
+// swinging drops it immediately -- they have not attacked since their last turn
+// and have not been hit. Kirk ruled against that 2026-08-27: "I cannot imagine
+// activating rage would end at the end of the turn activated so i think it
+// lasts 1 full turn."
+//
+// Kept as its own named test rather than folded into the one below, so that the
+// divergence from the printed rule is something a reader trips over on purpose.
+func (s *RagingConditionTestSuite) TestTheTurnARageStartedIsNotChecked() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1",
+		DamageBonus: 2,
+		Level:       5,
+		Source:      "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removedEvent = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	// The barbarian rages and does nothing else. Their turn ends.
+	s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1",
+		Round:     4,
+	}))
+
+	s.Nil(removedEvent, "the turn a rage started is not checked -- RAW would have ended it here")
+	s.Equal(4, raging.RoundActivated,
+		"and that same turn end is what anchors the duration, from the clock's own round")
+}
+
+// TestRagingConditionEndsWithoutCombatActivity is the 2014 activity check
+// itself, which the grace above delays by exactly one turn rather than removes.
 func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity() {
 	// Create a raging condition
 	raging := newRagingCondition(ragingConditionInput{
@@ -209,12 +250,16 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 	})
 	s.Require().NoError(err)
 
-	// Publish turn end event without any combat activity
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
-		SubjectID: "barbarian-1",
-		Round:     1,
-	})
+
+	// The activation turn: graced, and the anchor.
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1", Round: 1})
+	s.Require().NoError(err)
+	s.Require().Nil(removedEvent, "precondition: the first turn end is the graced one")
+
+	// The next turn, equally quiet -- no attack, no damage taken. This one is
+	// checked, and the grace does not extend to it.
+	err = turnEndTopic.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1", Round: 2})
 	s.Require().NoError(err)
 
 	// Verify condition published removal event
@@ -727,9 +772,17 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsOnCombatEnd() {
 	// Publish a combat-end event for this character (no attack, no hit,
 	// no rest — just the encounter ending, e.g. the killing blow that ended
 	// the fight).
+	//
+	// PUBLISHED BY HAND, and worth being honest about: until rpg-project#295
+	// nothing in production published this topic at all, so this test was green
+	// against a publisher that did not exist. It proves the handler, which is
+	// all a unit test here can prove. What proves the CHAIN is in the session
+	// package, driven through a real Dissolve and read out of the persisted
+	// sheet — see rpg-project's ideas/session-combat/combat-end/design.md §6.
+	// (That doc lives in the rpg-project repo, not this one.)
 	combatEndTopic := dnd5eEvents.CombatEndTopic.On(s.bus)
 	err = combatEndTopic.Publish(s.ctx, dnd5eEvents.CombatEndEvent{
-		CharacterID: "barbarian-1",
+		SubjectID: "barbarian-1",
 	})
 	s.Require().NoError(err)
 
@@ -770,10 +823,16 @@ func (s *RagingConditionTestSuite) TestRagingConditionIgnoresOtherCharacterComba
 	})
 	s.Require().NoError(err)
 
-	// Publish a combat-end event for a DIFFERENT character
+	// Publish a combat-end event for a DIFFERENT character.
+	//
+	// This is the test the whole shape of combat end rests on: because the
+	// handler answers "is this about me?" by comparing subjects, a fight's
+	// ending has to be announced ONCE PER MEMBER. A single subject-less event
+	// would match nobody and expire nothing — rpg-project's
+	// ideas/session-combat/combat-end/design.md §1.1.
 	combatEndTopic := dnd5eEvents.CombatEndTopic.On(s.bus)
 	err = combatEndTopic.Publish(s.ctx, dnd5eEvents.CombatEndEvent{
-		CharacterID: "barbarian-2", // Different character
+		SubjectID: "barbarian-2", // Different character
 	})
 	s.Require().NoError(err)
 
@@ -1119,4 +1178,286 @@ func (s *RagingConditionTestSuite) TestRagingConditionGrantsAdvantageOnSTRChecks
 		s.Require().NoError(err)
 		s.Empty(finalEvent.AdvantageSources)
 	})
+}
+
+// TestARageThatMISSESATurnEndStillExpiresOnTime is the whole reason the counter
+// became an anchor, and it is the test the old implementation could not pass.
+//
+// TurnsActive was INCREMENTED once per turn end, so it was only ever correct if
+// no turn end was missed. Turn ends went missing for months (rpg-project#294),
+// and they can still go missing for one member in ordinary play -- a body
+// spliced out of the order and back, a fight that re-forms around somebody.
+// A counter that has lost a tick under-counts forever after, and the rage runs
+// long by exactly the number it dropped.
+//
+// event.Round - RoundActivated is recomputed from two facts every time, so a
+// gap costs nothing: the rage still ends on the round it was always going to.
+//
+// Here the barbarian's turn ends are heard in rounds 1..4, then rounds 8..10 --
+// three turn ends never arrive. The old arithmetic would have reached
+// TurnsActive == 7 and kept going; this ends on round 10, as it should.
+func (s *RagingConditionTestSuite) TestARageThatMISSESATurnEndStillExpiresOnTime() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removedEvent = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+	heard := []int{1, 2, 3, 4, 8, 9, 10} // rounds 5, 6 and 7 never reach this rage
+	for _, round := range heard {
+		s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+		s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+			SubjectID: "barbarian-1", Round: round,
+		}))
+		if round < 10 {
+			s.Require().Nil(removedEvent, "rage must still be running at round %d", round)
+		}
+	}
+
+	s.Require().NotNil(removedEvent,
+		"only SEVEN turn ends were heard, but ten rounds elapsed -- the anchor knows that and a counter could not")
+	s.Equal("duration_expired", removedEvent.Reason)
+}
+
+// TestTheDurationIsRelativeToWhenTheRageStarted catches the implementation that
+// quietly assumes a fight begins when the rage does.
+//
+// A barbarian who rages in round 4 gets rounds 4 through 13, not 4 through 10.
+// Anchoring at 1 -- or comparing event.Round directly against the duration --
+// passes every test that happens to start raging in round 1, which is most of
+// them.
+func (s *RagingConditionTestSuite) TestTheDurationIsRelativeToWhenTheRageStarted() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	var removedEvent *dnd5eEvents.ConditionRemovedEvent
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removedEvent = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+	for round := 4; round <= 12; round++ {
+		s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+		s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+			SubjectID: "barbarian-1", Round: round,
+		}))
+		s.Require().Nil(removedEvent,
+			"a rage begun in round 4 is still running in round %d", round)
+	}
+
+	// Round 13 is the tenth round of THIS rage: 13 - 4 == 9.
+	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 13,
+	}))
+	s.Require().NotNil(removedEvent, "and ends at the end of its tenth round, round 13")
+	s.Equal("duration_expired", removedEvent.Reason)
+}
+
+// TestTurnsActiveIsDerivedAndStillWhatTheClientRenders pins a cross-repo
+// contract from the side that can break it.
+//
+// rpg-dnd5e-web's isRagingData duck-types on 'turns_active' being present
+// (src/types/conditionData.ts), and ConditionBadge renders "Active for N turns"
+// from it. Deleting the field -- the obvious move, since no rule reads it any
+// more -- would make every rage silently stop being recognised as a rage: the
+// guard returns false, no error is raised, and the tooltip quietly loses its
+// damage bonus, duration and resistance line.
+//
+// So it stays, DERIVED from the anchor rather than incremented, and these are
+// the numbers the client already shows.
+func (s *RagingConditionTestSuite) TestTurnsActiveIsDerivedAndStillWhatTheClientRenders() {
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+	for _, tc := range []struct{ round, want int }{{4, 1}, {5, 2}, {6, 3}, {9, 6}} {
+		s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+		s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+			SubjectID: "barbarian-1", Round: tc.round,
+		}))
+		s.Equal(tc.want, raging.TurnsActive,
+			"round %d of a rage anchored at 4 is its turn %d", tc.round, tc.want)
+	}
+
+	// The last row is the one an incrementing counter gets wrong: rounds 7 and
+	// 8 were never heard, so a counter would say 4 where the anchor says 6.
+	b, err := raging.ToJSON()
+	s.Require().NoError(err)
+	s.Contains(string(b), `"turns_active":6`, "and it survives the round trip the client reads")
+	s.Contains(string(b), `"round_activated":4`)
+}
+
+// ragingWithRemovalWatch builds an applied rage and a handle on whatever
+// removes it, which is the shape every duration test below needs.
+func (s *RagingConditionTestSuite) ragingWithRemovalWatch() (
+	*RagingCondition, func() *dnd5eEvents.ConditionRemovedEvent,
+) {
+	s.T().Helper()
+	raging := newRagingCondition(ragingConditionInput{
+		CharacterID: "barbarian-1", DamageBonus: 2, Level: 5, Source: "dnd5e:features:rage",
+	})
+	s.Require().NoError(raging.Apply(s.ctx, s.bus))
+
+	var removed *dnd5eEvents.ConditionRemovedEvent
+	_, err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+			removed = &event
+			return nil
+		})
+	s.Require().NoError(err)
+	return raging, func() *dnd5eEvents.ConditionRemovedEvent { return removed }
+}
+
+// TestARoundlessTurnEndDoesNotGrantPerpetualGrace is Copilot's finding on
+// rpg-toolkit#1266, and it was a real one.
+//
+// The grace was originally keyed on RoundActivated == 0 -- "not yet anchored"
+// and "not yet checked" collapsed into one field. They only coincide while
+// rounds are valid. combat.TurnManager publishes TurnEndEvent{SubjectID} with
+// NO Round at all (turn_manager.go:177), so Round defaults to 0: under the old
+// shape the rage never anchored, therefore never left the graced branch, and
+// therefore never checked activity OR duration again. Immortal rage, silently.
+//
+// It has no callers today, which is exactly why it was worth fixing rather
+// than dismissing -- it is a public type this slice deliberately left in place
+// as documented debt, so the hazard belongs to whoever picks it up next.
+//
+// The fix un-collapses the two facts: SawTurnEnd is the grace, RoundActivated
+// is the anchor. The activity check needs no round, so it keeps working even
+// when the duration cannot be evaluated.
+func (s *RagingConditionTestSuite) TestARoundlessTurnEndDoesNotGrantPerpetualGrace() {
+	raging, removed := s.ragingWithRemovalWatch()
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+
+	// A publisher that never stamps its rounds. The first is the graced turn.
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
+	s.Require().Nil(removed(), "the first turn end is graced whether or not it carries a round")
+	s.Require().True(raging.SawTurnEnd, "and the grace is spent, which is the thing the round cannot tell us")
+	s.Require().Zero(raging.RoundActivated, "with nothing to anchor to, it stays unanchored")
+
+	// The second is checked. No attack, no damage -- so it ends, exactly as it
+	// would with a well-formed round.
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
+	s.Require().NotNil(removed(),
+		"a rage must not become immortal because its publisher forgot to say which round it is")
+	s.Equal("no_combat_activity", removed().Reason)
+}
+
+// TestAnUnanchoredRageAnchorsAsSoonAsARoundArrives — recovery rather than a
+// permanent handicap. A rage that never anchored has no cap, so if the clock
+// starts telling the truth it takes the first round it is given.
+func (s *RagingConditionTestSuite) TestAnUnanchoredRageAnchorsAsSoonAsARoundArrives() {
+	raging, _ := s.ragingWithRemovalWatch()
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
+	s.Require().Zero(raging.RoundActivated)
+
+	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 6,
+	}))
+	s.Equal(6, raging.RoundActivated, "the first round it is actually told becomes the anchor")
+}
+
+// TestARoundGoingBACKWARDSEndsTheRage is the net under combat end.
+//
+// Round numbers are PER-FIGHT -- clock.Turn.SetOrder starts every bubble at 1
+// and Dissolve sets it back to 0 -- so a round lower than the anchor can only
+// mean this rage outlived the clock its anchor came from. Part 1 of this slice
+// exists to make that unreachable by removing rage when the fight ends; if it
+// is ever reached, that removal did not happen.
+//
+// Ending is the right rules answer (the fight it belonged to is over) AND the
+// safe one: re-anchoring would silently hand out a fresh ten rounds, and doing
+// nothing leaves event.Round - RoundActivated negative, so the cap never fires
+// and the rage runs until someone rests.
+func (s *RagingConditionTestSuite) TestARoundGoingBACKWARDSEndsTheRage() {
+	_, removed := s.ragingWithRemovalWatch()
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+
+	// Anchored deep into a long fight.
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 7,
+	}))
+	s.Require().Nil(removed())
+
+	// A new fight's round 1, with the rage still attached: combat end did not
+	// fire. Activity is present, so only the backwards check can end it.
+	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 1,
+	}))
+
+	s.Require().NotNil(removed(), "a rage cannot outlive the clock its duration is measured against")
+	s.Equal("clock_reset", removed().Reason)
+}
+
+// TestARoundlessTurnEndDoesNotREADAsAClockReset — the two degraded cases are
+// different and must not be collapsed either.
+//
+// Zero is "this event does not say", not "the round went backwards". Comparing
+// it as a round would satisfy `event.Round < RoundActivated` and end an
+// otherwise healthy rage on a malformed event.
+func (s *RagingConditionTestSuite) TestARoundlessTurnEndDoesNotREADAsAClockReset() {
+	raging, removed := s.ragingWithRemovalWatch()
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 3,
+	}))
+	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
+
+	s.Nil(removed(), "a turn end with no round is unevaluable, not a reset")
+	s.Equal(3, raging.RoundActivated, "and it does not disturb the anchor")
+}
+
+// TestANegativeRoundNeverBecomesTheAnchor pins the `event.Round > 0` guard on
+// the initial anchor, which mutation testing showed was otherwise asserting
+// nothing.
+//
+// Zero cannot distinguish it: assigning 0 to a field that is already 0 is a
+// no-op, so removing the guard passes every test above. Only a NEGATIVE round
+// tells the two apart -- and it matters, because a negative anchor poisons the
+// arithmetic rather than merely disabling it. Anchored at -5, a later round 1
+// computes 1 - (-5) == 6 and the rage silently runs six rounds' worth of
+// duration it never earned, while the backwards-check (1 < -5) never fires.
+//
+// play/clock cannot produce one. TurnEndEvent.Round is a plain int with no
+// validation, so nothing between a publisher and here says it may not.
+func (s *RagingConditionTestSuite) TestANegativeRoundNeverBecomesTheAnchor() {
+	raging, removed := s.ragingWithRemovalWatch()
+	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
+
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: -5,
+	}))
+	s.Require().Zero(raging.RoundActivated, "a negative round is not a round to measure from")
+	s.Require().True(raging.SawTurnEnd, "though it does spend the grace, like any other turn end")
+
+	// And the rage recovers: the next real round anchors it honestly.
+	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
+	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
+		SubjectID: "barbarian-1", Round: 2,
+	}))
+	s.Require().Nil(removed())
+	s.Equal(2, raging.RoundActivated)
+	s.Equal(1, raging.TurnsActive, "and its first counted turn is that one, not a number derived from -5")
 }

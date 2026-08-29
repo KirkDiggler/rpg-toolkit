@@ -111,9 +111,21 @@ func (s *StepOfTheWind) Activate(ctx context.Context, owner core.Entity, input F
 		// branch stays event-only; Dash itself doesn't suppress OAs in
 		// 5e, and the Dash action is not part of Wave 2.11e's scope.
 		if action == "disengage" {
+			// Published rather than applied, for Disengage's reason
+			// (rpg-toolkit#1272): a direct Apply reaches the interaction's bus
+			// and never the owner's sheet, so the condition dies with the call.
+			// Not reachable by a player yet — Step of the Wind is monk level 2
+			// — and fixed here anyway, because leaving one copy of a defect
+			// behind is how it comes back.
 			condition := conditions.NewDisengagingCondition(owner.GetID())
-			if err := condition.Apply(ctx, input.Bus); err != nil {
-				return rpgerr.Wrapf(err, "failed to apply disengaging condition")
+			topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
+			if err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
+				Target:    owner,
+				Type:      dnd5eEvents.ConditionDisengaging,
+				Source:    dnd5eEvents.ConditionSourceFeature,
+				Condition: condition,
+			}); err != nil {
+				return rpgerr.Wrapf(err, "failed to publish disengaging condition")
 			}
 		}
 

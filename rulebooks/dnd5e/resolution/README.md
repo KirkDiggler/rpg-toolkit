@@ -49,13 +49,15 @@ out, err := resolution.Resolve(ctx, &resolution.Input{
 Order:
 
 1. validate input;
-2. load the active encounter world and install its room;
+2. load the active encounter world and take its room;
 3. attach all sheets/effects on one instrumented bus;
-4. call `Machine.Start` as pure preflight;
-5. pay the declared cost only after preflight succeeds;
-6. drive `Gather | Request | Done` steps;
-7. tear down newest-first;
-8. return world, dirty sheets, outcome, and hook ledger.
+4. install the game context through the one door, `installTruth` — the room,
+   the cast, and the reaction readiness derived from that cast;
+5. call `Machine.Start` as pure preflight;
+6. pay the declared cost only after preflight succeeds;
+7. drive `Gather | Request | Done` steps;
+8. tear down newest-first;
+9. return world, dirty sheets, outcome, and hook ledger.
 
 `Start` may validate and read attached sheets. It may not roll, spend, publish,
 or mutate. Invalid definitions, participants, delivery range, or condition

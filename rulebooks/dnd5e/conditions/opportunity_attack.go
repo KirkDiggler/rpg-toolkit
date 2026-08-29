@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -36,6 +38,12 @@ const defaultMeleeReach = 1.0
 type OpportunityAttackConditionData struct {
 	Ref         *core.Ref `json:"ref"`
 	CharacterID string    `json:"character_id"`
+
+	// UsedThisTurn is persisted rather than kept in memory for the reason
+	// SneakAttackData gives for its own copy of this field: every call
+	// reconstructs the condition from JSON, so a runtime-only flag is a flag
+	// that resets on each RPC and meters nothing at all.
+	UsedThisTurn bool `json:"used_this_turn"`
 }
 
 // OpportunityAttackCondition publishes a ReactionTriggerEvent when an enemy
@@ -58,7 +66,13 @@ type OpportunityAttackConditionData struct {
 // Reach defaults to 5ft (1 grid unit). Reach weapons + action-economy reaction
 // availability are future extensions; the predicate is conservative today.
 type OpportunityAttackCondition struct {
-	CharacterID     string
+	CharacterID string
+
+	// UsedThisTurn is the meter EVERY reactor has, character and monster
+	// alike. It is cleared at the start of this reactor's OWN turn, which is
+	// when 5e refreshes a spent reaction — see onTurnStart.
+	UsedThisTurn bool
+
 	bus             events.EventBus
 	subscriptionIDs []string
 }
@@ -69,6 +83,48 @@ var _ dnd5eEvents.ConditionBehavior = (*OpportunityAttackCondition)(nil)
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
 func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.OpportunityAttack() }
+
+// stateChanged reports that the once-per-turn meter moved. See
+// [publishStateChanged].
+func (o *OpportunityAttackCondition) stateChanged(ctx context.Context) error {
+	return publishStateChanged(ctx, o.bus, o.CharacterID, o.Ref())
+}
+
+// canReact asks this reactor's own sheet whether it has a reaction to spend,
+// in place of the ledger handle a loader used to pass in.
+//
+// # Where the asymmetry went
+//
+// The handle carried a fact the cast does not: a monster's SetOwner never
+// matched combat.Ledger, so "I hold a purse" meant "I am a character" and the
+// gate could be written as "refuse only if an economy says no". The cast hands
+// out both kinds through one surface, so that fact moved INTO the answer — a
+// character reports its slots, a monster reports true because it has no economy
+// to refuse with. Kirk ruled the asymmetry 2026-08-28: "characters have to pay
+// for it. the condition can still track it was used but players have a cost."
+// Paying is also what keeps this and Protection fighting style mutually
+// exclusive, which they are in the rules: both spend the one reaction, and the
+// second to ask finds it gone.
+//
+// # A reactor nobody can look up does NOT react
+//
+// The lookup has a third answer the handle never had, and this is it. A cast is
+// installed by one door on every path that folds anything
+// (resolution.installTruth, held structurally by
+// TestNoCodePathProducesACastlessInteraction), so a fold with no cast is not a
+// monster — it is a fold that was assembled wrong, and there is no sheet to
+// ask. Answering "react" there would hand a free reaction to any character
+// whose cast went missing, which is precisely the silently-absent-handle
+// failure this whole migration removes. RequireRoom below makes the same
+// choice for the same reason, and so does Protection.
+func (o *OpportunityAttackCondition) canReact(ctx context.Context) bool {
+	self, ok := member(ctx, o.CharacterID)
+	if !ok {
+		return false
+	}
+
+	return self.CanReact()
+}
 
 // NewOpportunityAttackCondition creates a new OA condition for the given character.
 // The condition is universal for melee combatants and applied programmatically
@@ -99,6 +155,42 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 		return rpgerr.Wrap(err, "failed to subscribe to movement chain")
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, subID)
+
+	// Roll the movement subscription back rather than dropping the bus on the
+	// floor, which is what DisengagingCondition does at the same seam and for
+	// the same reason. Nil-ing o.bus with a live subscription still recorded
+	// leaves the WORST of both: IsApplied reports false, Remove early-returns
+	// on the nil bus and unsubscribes nothing, and the orphaned handler keeps
+	// receiving movement on a bus this condition no longer admits to holding.
+	turnStarts := dnd5eEvents.TurnStartTopic.On(bus)
+	resetID, err := turnStarts.Subscribe(ctx, o.onTurnStart)
+	if err != nil {
+		_ = o.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to turn start")
+	}
+	o.subscriptionIDs = append(o.subscriptionIDs, resetID)
+	return nil
+}
+
+// onTurnStart refreshes the spent reaction at the start of the reactor's own
+// turn.
+//
+// TURN START, NOT TURN END, and the difference is the whole point of the
+// field. A reaction is spent on somebody ELSE's turn — that is what makes it a
+// reaction — so a meter cleared at the end of its holder's turn would be full
+// again for the entire window it is supposed to govern. 2014 PHB: "you regain
+// a spent reaction at the start of each of your turns."
+//
+// Only when the flag actually changes, for SneakAttackCondition's stated
+// reason: marking unconditionally would flag every combatant dirty at the
+// start of every turn they did not react on, and a boundary already runs for
+// every participant.
+func (o *OpportunityAttackCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
+	if event.SubjectID == o.CharacterID && o.UsedThisTurn {
+		o.UsedThisTurn = false
+
+		return o.stateChanged(ctx)
+	}
 	return nil
 }
 
@@ -125,8 +217,9 @@ func (o *OpportunityAttackCondition) Remove(ctx context.Context, bus events.Even
 // ToJSON converts the condition to its JSON representation.
 func (o *OpportunityAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := OpportunityAttackConditionData{
-		Ref:         refs.Conditions.OpportunityAttack(),
-		CharacterID: o.CharacterID,
+		Ref:          refs.Conditions.OpportunityAttack(),
+		CharacterID:  o.CharacterID,
+		UsedThisTurn: o.UsedThisTurn,
 	}
 	return json.Marshal(data)
 }
@@ -138,6 +231,7 @@ func (o *OpportunityAttackCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal opportunity attack data")
 	}
 	o.CharacterID = oaData.CharacterID
+	o.UsedThisTurn = oaData.UsedThisTurn
 	return nil
 }
 
@@ -159,6 +253,18 @@ func (o *OpportunityAttackCondition) onMovementChain(
 
 	// Disengaging (or any other source) prevented OAs for this step.
 	if event.IsOAPrevented() {
+		return c, nil
+	}
+
+	// Already reacted. Cleared at the start of this reactor's own turn.
+	if o.UsedThisTurn {
+		return c, nil
+	}
+
+	// A reactor with an economy PAYS; a monster has none to pay from and is
+	// metered by UsedThisTurn alone. See canReact for why that asymmetry is
+	// the rule rather than a gap.
+	if !o.canReact(ctx) {
 		return c, nil
 	}
 
@@ -195,6 +301,27 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		},
 	}); pubErr != nil {
 		return c, rpgerr.Wrap(pubErr, "failed to publish OA reaction trigger event")
+	}
+
+	// Spend AFTER the publish, never before: a trigger that failed to reach
+	// the orchestrator is a reaction that did not happen, and charging for it
+	// would leave the reactor unable to react to the next mover for a swing
+	// nobody made.
+	//
+	// The bill goes out unconditionally now, where it used to be guarded by
+	// whether a purse had been handed over. Nothing here decides who pays:
+	// a keeper holding an economy debits it, and a monster's keeper has no row
+	// for the topic at all, so the request truthfully passes it by. That is the
+	// same asymmetry, moved from a nil check in this condition to which
+	// subscriptions each sheet keeper's table holds.
+	o.UsedThisTurn = true
+	if err := publishSpendRequested(
+		ctx, o.bus, o.CharacterID, coreCombat.ActionReaction, 1, o.Ref(),
+	); err != nil {
+		return c, rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
+	}
+	if err := o.stateChanged(ctx); err != nil {
+		return c, rpgerr.Wrap(err, "failed to publish opportunity attack meter change")
 	}
 
 	return c, nil

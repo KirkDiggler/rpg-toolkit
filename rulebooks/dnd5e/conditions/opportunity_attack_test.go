@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package conditions_test
+package conditions
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -83,7 +82,7 @@ func (s *OpportunityAttackConditionSuite) subscribeTriggers() *[]dnd5eEvents.Rea
 }
 
 func (s *OpportunityAttackConditionSuite) TestApplyAndRemove() {
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.False(oa.IsApplied())
 
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
@@ -101,11 +100,16 @@ func (s *OpportunityAttackConditionSuite) TestPublishesTriggerWhenReadyAndLeavin
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
-	ctx := gamectx.WithRoom(s.ctx, s.room)
+
+	// The fighter's own sheet, installed the way resolution's one door
+	// installs it. A reactor reads its reaction slot off the cast now, so a
+	// fold without one has no sheet to ask and declines — see canReact.
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
 	})
@@ -136,7 +140,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenReadinessOff() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
@@ -167,7 +171,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenOAPrevented() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
@@ -197,7 +201,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenOAPrevented() {
 func (s *OpportunityAttackConditionSuite) TestNoTriggerOnSelfMovement() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
@@ -226,7 +230,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenStillInReach() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
@@ -255,7 +259,7 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenMoverNeverInReach() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 10, 10)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
@@ -280,24 +284,24 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenMoverNeverInReach() {
 }
 
 func (s *OpportunityAttackConditionSuite) TestJSONRoundTrip() {
-	oa := conditions.NewOpportunityAttackCondition("fighter-7")
+	oa := NewOpportunityAttackCondition("fighter-7")
 	raw, err := oa.ToJSON()
 	s.Require().NoError(err)
 
-	loaded, err := conditions.LoadJSON(raw)
+	loaded, err := LoadJSON(raw)
 	s.Require().NoError(err)
 
-	roundTripped, ok := loaded.(*conditions.OpportunityAttackCondition)
+	roundTripped, ok := loaded.(*OpportunityAttackCondition)
 	s.Require().True(ok, "loader should return *OpportunityAttackCondition")
 	s.Equal("fighter-7", roundTripped.CharacterID)
 }
 
 func (s *OpportunityAttackConditionSuite) TestJSONShapeContainsRef() {
-	oa := conditions.NewOpportunityAttackCondition("c-1")
+	oa := NewOpportunityAttackCondition("c-1")
 	raw, err := oa.ToJSON()
 	s.Require().NoError(err)
 
-	var data conditions.OpportunityAttackConditionData
+	var data OpportunityAttackConditionData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	s.NotNil(data.Ref)
 	s.Equal(refs.Conditions.OpportunityAttack().String(), data.Ref.String())

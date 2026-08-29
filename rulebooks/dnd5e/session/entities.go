@@ -9,11 +9,11 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // Loading an entity, and the cleanup that must not happen.
@@ -29,12 +29,13 @@ import (
 // kind of state. So every entity is dropped at the end of a call, and anything
 // a condition holds that does not survive ToData() is lost with it.
 //
-// ONE BUS PER CALL, SHARED BY EVERY ENTITY IN THAT CALL. Shared rather than
-// per-entity because a condition on one member must be able to observe what
-// happens to another — that is the whole reason the bus exists here, and it is
-// the prerequisite for reactions. A bus per character would compile, pass any
-// test that loaded one character, and quietly make cross-entity observation
-// impossible.
+// THERE IS NO BUS HERE ANY MORE, and its absence is the point of the slice
+// that removed it. This package used to create one per verb and share it across
+// every entity in the call, because a condition on one member must be able to
+// observe what happens to another. That is still true — it is just not true
+// HERE. Reconstituting sheets and putting them on a bus is resolution's, along
+// with the folds that need them; this seam hands over records and takes back
+// answers. TestNoBusLivesInThisModule holds it.
 //
 // CHARACTER.CLEANUP MUST NOT BE CALLED. Its first statement is
 // `c.conditions = nil`, and ToData() serializes c.conditions — so cleaning up
@@ -47,15 +48,6 @@ import (
 // Skipping it is safe rather than merely tolerable: conditions intercept on the
 // bus rather than mutating character fields, so there is no modification left
 // un-reversed when the character is dropped.
-
-// newCallBus returns the event bus for one verb.
-//
-// A function rather than an inline call so there is exactly one place to look
-// when asking what the lifetime is, and so the answer stays "one call" when a
-// later wave is tempted to cache one.
-func newCallBus() events.EventBus {
-	return events.NewEventBus()
-}
 
 // fetchCharacterData reads one stored sheet and checks that the repository kept
 // its side of the contract.
@@ -104,40 +96,6 @@ func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*cha
 			"%s %q: GetCharacter returned %q instead: %w", role, id, data.ID, ErrBadRepository)
 	}
 	return data, nil
-}
-
-// loadCharacter reconstitutes a player character and attaches its features and
-// conditions to the call's bus.
-//
-// Returns ErrNoCharacter when the repository does not hold the ID, and
-// ErrBadCharacter when it holds bytes that cannot be reconstituted. The two are
-// kept apart because they send whoever debugs it to different places: a bad
-// request versus corrupt storage.
-//
-// The returned character is for this call only. It is never stored on the
-// manager (S1), never held across a suspension, and never returned to the host
-// (S2) — the host named an ID and gets data back, not an object.
-//
-// The loader's own reason is kept as TEXT. The rulebook answers a sheet it
-// cannot reconstitute through rpgerr rather than through sentinel values, so
-// there is nothing for a host to match on TODAY — which is exactly why this
-// reads %v rather than %w. A chain that leaks nothing only because the module
-// underneath happens not to export a sentinel is a leak waiting on somebody
-// else's commit, and S2 is not a promise this package gets to delegate
-// (rpg-toolkit#1066).
-func (m *Manager) loadCharacter(
-	ctx context.Context, bus events.EventBus, id string,
-) (*character.Character, error) {
-	data, err := m.fetchCharacterData(ctx, "character", id)
-	if err != nil {
-		return nil, err
-	}
-
-	ch, err := character.LoadFromData(ctx, data, bus)
-	if err != nil {
-		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
-	}
-	return ch, nil
 }
 
 // instantiate builds catalog content into a new member's sheet.
@@ -240,30 +198,105 @@ func projectMonster(data *monster.Data) *MonsterState {
 	return state
 }
 
-// projectCharacter reports the state of a loaded character.
+// projectCharacter asks resolution what this character is, and takes back an
+// answer.
 //
-// Read through the character's own accessors, never through ToData(). ToData is
-// a SERIALISATION, not a getter: it clones several maps, marshals every feature
-// and condition to JSON, and stamps UpdatedAt with the current time. Calling it
-// to read three integers would put that cost on every join, and would make a
-// read path non-deterministic for no reason.
+// A RECORD GOES DOWN AND NUMBERS COME BACK. Nothing live crosses either way:
+// resolution builds its own truth from the record, folds what needs folding,
+// and returns data. That is the whole of the read law at this seam — this
+// package holds records of the world, never the world.
 //
-// Speed is the field that carries the weight here. It is not stored on the
-// character at all — it is derived from race when asked — so it is the one value
-// that cannot be produced by echoing bytes, and the one the tests lean on to
-// prove reconstitution actually happened. The rest are reported as loaded.
-func projectCharacter(ch *character.Character) *CharacterState {
-	if ch == nil {
+// # Why one call rather than a sheet and a fold
+//
+// Join used to load a character of its own, read three static facts off it, and
+// send the record down separately for the armour class. Two reads of the same
+// character, and two things that could disagree.
+//
+// They disagreed in a way that mattered. The armour class HAD to be folded in
+// resolution — a fold needs game context, one door installs it, and the door is
+// down there — while Speed had to come off a loaded sheet, because it is
+// derived from race and stored on no record. So the seam held a sheet for the
+// facts it could reach and delegated the one it could not. The entry answers
+// both now, off the same sheet, in one call.
+//
+// # The errors
+//
+// Absent and unreadable stay apart, because they send whoever debugs it to
+// different places: a bad request versus corrupt storage. The fetch above
+// answers ErrNoCharacter; this answers ErrBadCharacter for a record resolution
+// could not make a character out of.
+//
+// The inner reason rides as TEXT rather than as a chain. Resolution reports
+// through its own sentinels, and a host matching on one of those would be
+// matching on a package this seam exists to keep it away from (S2,
+// rpg-toolkit#1066).
+func projectCharacter(
+	ctx context.Context, id string, record *character.Data,
+) (*resolution.ProjectCharacterOutput, error) {
+	if record == nil {
+		return nil, fmt.Errorf("character %q: %w: no record to project", id, ErrBadCharacter)
+	}
+
+	projected, err := resolution.ProjectCharacter(ctx, &resolution.ProjectCharacterInput{
+		Character: record,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("character %q: %w: %v", id, projectionSentinel(err), err)
+	}
+
+	return projected, nil
+}
+
+// projectionSentinel picks THIS package's word for a projection that refused.
+//
+// Two failures, two repairs, and a host branches on which: a main-hand weapon
+// that will not compile is a broken loadout, while anything else the projection
+// refuses is a sheet that will not reconstitute. Resolution reports the first
+// under its own ErrBadAttack, and this is where that becomes ours.
+//
+// # It reads resolution's sentinel and does not pass it on
+//
+// The match happens here and the inner error rides out as TEXT (%v at the call
+// site, never %w). A host matching resolution.ErrBadAttack would be matching on
+// a package this seam exists to keep it away from, and S2 is not a promise this
+// package delegates (rpg-toolkit#1066). Reading a sentinel to CHOOSE ours is a
+// different act from forwarding one.
+//
+// # Why this is not translateResolution
+//
+// That function serves the verbs that run an interaction, and its vocabulary is
+// about interactions — costs, ranges, activations. A projection can fail in two
+// ways and neither is any of those. Routing this through it would mean widening
+// a switch that reads as "what went wrong in a fight" with a case that has
+// nothing to do with fighting.
+func projectionSentinel(err error) error {
+	if errors.Is(err, resolution.ErrBadAttack) {
+		return ErrBadAttack
+	}
+
+	return ErrBadCharacter
+}
+
+// characterStateFrom maps the answer onto the shape this seam publishes.
+//
+// A mapping and nothing else — every field is already a number or a string by
+// the time it arrives, which is what makes this function boring. It was not
+// always: the version this replaces read six accessors off a live sheet and
+// carried a comment explaining why it must not call ToData to do it. That
+// argument now lives where the reading happens, one module down.
+func characterStateFrom(projected *resolution.ProjectCharacterOutput) *CharacterState {
+	if projected == nil {
 		return nil
 	}
+
 	return &CharacterState{
-		ID:               ch.GetID(),
-		Name:             ch.GetName(),
-		Level:            ch.GetLevel(),
-		Speed:            ch.GetSpeed(),
-		HitPoints:        ch.GetHitPoints(),
-		MaxHitPoints:     ch.GetMaxHitPoints(),
-		ArmorClass:       ch.AC(),
-		ProficiencyBonus: ch.ProficiencyBonus(),
+		ID:               projected.Sheet.ID,
+		Name:             projected.Sheet.Name,
+		Level:            projected.Sheet.Level,
+		Speed:            projected.Sheet.SpeedFeet,
+		HitPoints:        projected.Sheet.HitPoints,
+		MaxHitPoints:     projected.Sheet.MaxHitPoints,
+		ArmorClass:       projected.ArmorClass.Total,
+		ProficiencyBonus: projected.Sheet.ProficiencyBonus,
 	}
 }

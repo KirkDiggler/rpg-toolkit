@@ -131,6 +131,40 @@ var (
 	// replaced, so which currency ran out survives the crossing.
 	ErrCannotPay = errors.New("resolution: cost cannot be paid")
 
+	// ErrBadMovement indicates a step nobody could announce: no mover, a step
+	// that goes nowhere, or a missing capability. Wiring being wrong, never a
+	// rule saying no — a member who may not walk is refused by the composition
+	// long before a step reaches this package.
+	//
+	// A MOVEMENT WITH NO WAY TO RESOLVE A REACTION IS MALFORMED, not free.
+	// Accepting one would publish triggers and drop them on the floor, which is
+	// the exact defect this machine exists to undo: an opportunity attack that
+	// fires into nothing looks identical to one that never fired.
+	ErrBadMovement = errors.New("resolution: invalid movement")
+
+	// ErrBadActivation indicates an activation nobody could run: no member, no
+	// ability ref or an unusable one, a member who is not in the cast, a
+	// monster (whose abilities are driven rather than declared), or a target
+	// that was never passed in. Content or wiring being wrong.
+	//
+	// Kept distinct from [ErrActivationRefused] for [ErrBadCost]'s reason, and
+	// it is the same failure wearing a different hat: A MALFORMED ACTIVATION
+	// MUST NOT REACH A PLAYER AS "YOU ARE ALREADY RAGING". One wants a
+	// developer; the other wants the player to pick a different verb.
+	ErrBadActivation = errors.New("resolution: invalid activation")
+
+	// ErrActivationRefused indicates an ability that could have run and said
+	// no: the slot is spent, the charges are gone, the barbarian is already
+	// raging, the fighter is at full hit points.
+	//
+	// It exists because the sheet does not raise one. Character.ActivateAbility
+	// answers every refusal as (output{Success:false}, nil) — a SUCCESSFUL call
+	// carrying a false — so without this the interaction would finish, report
+	// Done, and save dirty sheets for something that never happened. The
+	// ability's own words are wrapped rather than replaced, so "no rage charges
+	// remaining" survives the crossing the way a shortfall's currency does.
+	ErrActivationRefused = errors.New("resolution: ability refused to activate")
+
 	// ErrRecurrenceUnsupported indicates a gate asking for a repeat save this
 	// package cannot yet run. Refusing is the point: treating "save again at
 	// the end of each of your turns" as a single save would produce a

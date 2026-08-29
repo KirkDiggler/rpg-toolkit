@@ -5,19 +5,19 @@ go 1.24.1
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.103.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.116.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.38.1
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.15.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.24.1
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
+	github.com/KirkDiggler/rpg-toolkit/events v0.6.3 // indirect
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 // indirect
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 // indirect

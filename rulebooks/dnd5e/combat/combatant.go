@@ -48,9 +48,36 @@ type ApplyDamageResult struct {
 	PreviousHP int
 }
 
-// Combatant represents an entity that can take damage in combat.
-// Both Character and Monster implement this interface.
-type Combatant interface {
+// Member is what an effect may ASK a participant, and it is named for where
+// one comes from: [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx.Cast]
+// hands out this surface and nothing wider.
+//
+// # Every method is a question
+//
+// There is no way to write through this interface, and that is the whole point
+// of its existing. The read law says an effect reads the world, the other
+// participants, and itself through the cast; the write law says an effect never
+// mutates a sheet it does not own — it publishes, and the owning keeper applies.
+// The second law was true by convention and unenforced: a cast member is the
+// SAME object the keeper mutates, so any rule holding one could have called
+// ApplyDamage on it. Now the compiler holds that line, and a rule author does
+// not have to remember it.
+//
+// # It is not the keeper's view
+//
+// [Combatant] is. ApplyDamage, IsDirty and MarkClean are one responsibility —
+// the write, and the bookkeeping that decides whether the sheet gets persisted
+// — and it belongs to whoever owns the sheet. A rule reading a participant has
+// no business with any of them, which is why none of them is here.
+//
+// # Widening it is the escape, and it is pinned
+//
+// A cast member aliases the live sheet, so a type assertion back to a writer
+// surface would restore everything this interface withholds. Exactly one
+// widening is sanctioned — [GetEffectiveAC]'s, to the reader-only
+// [EffectiveACCalculator] — and TestOnlyTheDoorWidensACastMember refuses every
+// other one.
+type Member interface {
 	// GetID returns the combatant's unique identifier
 	GetID() string
 
@@ -63,15 +90,37 @@ type Combatant interface {
 	// AC returns the combatant's armor class
 	AC() int
 
-	// ApplyDamage reduces HP by the damage amount(s).
-	// HP cannot go below 0.
-	ApplyDamage(ctx context.Context, input *ApplyDamageInput) *ApplyDamageResult
+	// HasShieldEquipped reports whether this combatant is carrying a shield.
+	//
+	// A MONSTER ANSWERS FALSE, and that is an answer rather than a gap. A
+	// monster has no equipment slots to read: whatever defence its shield
+	// gives is already inside the stat block AC it reports through AC() above,
+	// and nothing else about the sheet changes because it is holding one. The
+	// rules that ask this question — Unarmored Movement's speed bonus,
+	// Fighting Style (Protection)'s reaction — are character features, so
+	// false is the correct answer for a monster rather than a placeholder for
+	// one nobody has written.
+	HasShieldEquipped() bool
 
-	// IsDirty returns true if the combatant has been modified since last save
-	IsDirty() bool
-
-	// MarkClean marks the combatant as saved (not dirty)
-	MarkClean()
+	// CanReact reports whether this combatant's action economy has a reaction
+	// left to spend.
+	//
+	// A MONSTER ANSWERS TRUE, and that is the truthful zero rather than a stub.
+	// False means "my economy refuses," and a monster has no action economy in
+	// this rulebook to do the refusing: the reaction slot is a cost only a
+	// sheet can be charged (Kirk's ruling, 2026-08-28 — characters pay for a
+	// reaction; a monster is metered by its reacting condition's own
+	// once-per-turn flag instead). The rules asking this question already
+	// behave that way, in a nil check that denies a reaction only when a
+	// ledger exists and reports none left. This states the branch on the
+	// surface instead of hiding it behind a handle each condition had to be
+	// given.
+	//
+	// A CHARACTER WITH NO FIGHT AROUND IT ALSO ANSWERS FALSE, which is the same
+	// answer it gives today: a sheet outside combat carries no action economy
+	// and reports zero of every slot, and a reaction cannot be spent out of the
+	// turn order that grants it.
+	CanReact() bool
 
 	// AbilityScores returns all ability scores for attack/damage calculations
 	AbilityScores() shared.AbilityScores
@@ -87,22 +136,72 @@ type Combatant interface {
 	PassivePerception() int
 }
 
+// Combatant represents an entity that can take damage in combat.
+// Both Character and Monster implement this interface.
+//
+// It is [Member] plus the three methods only a sheet's KEEPER may reach: the
+// damage write, and the dirty bookkeeping that decides whether the sheet is
+// persisted. Resolution holds combatants because it applies damage and builds
+// the dirty set; the cast hands out Members because a rule does neither.
+type Combatant interface {
+	Member
+
+	// ApplyDamage reduces HP by the damage amount(s).
+	// HP cannot go below 0.
+	ApplyDamage(ctx context.Context, input *ApplyDamageInput) *ApplyDamageResult
+
+	// IsDirty returns true if the combatant has been modified since last save
+	IsDirty() bool
+
+	// MarkClean marks the combatant as saved (not dirty)
+	MarkClean()
+}
+
 // EffectiveACCalculator is implemented by combatants that support dynamic AC calculation.
 // Characters implement this to support spells like Shield that modify AC through the event chain.
 // Combatants that don't implement this will use their base AC() value.
 type EffectiveACCalculator interface {
 	// EffectiveAC calculates AC through the modifier chain, allowing conditions/spells to adjust it.
-	// Returns an ACBreakdown with the final AC and all contributing components.
-	EffectiveAC(ctx context.Context) *ACBreakdown
+	// Returns an ACBreakdown with the final AC and all contributing components, or an
+	// error when the sheet cannot answer — see
+	// [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character.Character.EffectiveAC].
+	EffectiveAC(ctx context.Context) (*ACBreakdown, error)
 }
 
 // GetEffectiveAC returns the effective AC for a combatant.
-// If the combatant implements EffectiveACCalculator (like Character), uses the chain-based calculation.
-// Otherwise, returns the base AC() value.
-func GetEffectiveAC(ctx context.Context, c Combatant) int {
-	if calc, ok := c.(EffectiveACCalculator); ok {
-		breakdown := calc.EffectiveAC(ctx)
-		return breakdown.Total
+//
+// It takes a [Member] because AC is a question, and a Member is the whole set
+// of questions: nothing here writes, so asking for a writer surface would be
+// the signature claiming a power the body does not use. Passing a [Combatant]
+// still compiles — one embeds the other — so every existing caller is
+// unchanged, and a rule holding a cast member can now ask too.
+//
+// # This is the one sanctioned widening of a Member
+//
+// A cast member aliases the live sheet, so widening one back to a writer
+// surface hands a rule the writes [Member] exists to withhold.
+// TestOnlyTheDoorWidensACastMember refuses every such assertion but this line,
+// and separately pins that [EffectiveACCalculator] stays reader-only — a door
+// is only safe while what is on the other side of it is.
+//
+// A combatant that folds a chain is asked to fold it, and a failure to fold is
+// returned rather than papered over. The old shape fell back to c.AC() on any
+// trouble, which turned "this sheet could not answer" into "this sheet has no
+// features" — a wrong number that looks exactly like a right one. See
+// [EffectiveACCalculator].
+//
+// A combatant that does NOT implement the interface is a different case
+// entirely and keeps its AC(): a monster's stat block AC is a real authored
+// value, not a cached derivation, so reading it is correct rather than a
+// fallback.
+func GetEffectiveAC(ctx context.Context, c Member) (int, error) {
+	calc, ok := c.(EffectiveACCalculator)
+	if !ok {
+		return c.AC(), nil
 	}
-	return c.AC()
+	breakdown, err := calc.EffectiveAC(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return breakdown.Total, nil
 }

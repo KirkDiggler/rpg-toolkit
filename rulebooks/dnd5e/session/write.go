@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -205,6 +206,15 @@ type EndOutput struct {
 // record's static Actions fact, ErrBadPosition if no room owns the cell they
 // were placed on, ErrClosed if the encounter has already ended, or
 // ErrSaveFailed with a populated report.
+//
+// ErrBadAttack WENT AWAY AND CAME BACK, which is worth a line because the
+// record should not read as though it never left. When the compiling moved into
+// resolution's projection, that entry reported the failure as a bad participant
+// and this seam could translate it only one way, so a broken loadout arrived as
+// a corrupt character. The projection reports the finer failure under its own
+// sentinel now and [projectionSentinel] reads it to choose this package's word.
+// A host can tell "this player's weapon is broken" from "this player's sheet is
+// corrupt" again.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
@@ -218,18 +228,35 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	ch, err := m.loadCharacter(ctx, newCallBus(), in.Member)
+	record, err := m.fetchCharacterData(ctx, "character", in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	actions, err := memberActionsFromCharacter(ch)
+	// ONE QUESTION, ONE ANSWER. The record goes down and everything this verb
+	// needs about the character comes back: the folded armour class, the static
+	// facts, and the main-hand attack. Join used to load a sheet of its own and
+	// read three of those off it; what it holds now is a record on the way in
+	// and numbers on the way out.
+	//
+	// Asked BEFORE the placement, because the placement needs the name and the
+	// speed — and still before the commit, which is the ordering that matters:
+	// this can come back with an error, and an error after the write would be
+	// returned on a join that had really happened, the member seated and the
+	// caller told it failed. R5 atomicity, the same discipline every other
+	// pre-commit check in this file keeps.
+	projected, err := projectCharacter(ctx, in.Member, record)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	placed, err := place(scope, in.Member, KindPlayer, ch.GetName(), in.Position,
-		ch.GetSpeed(), defaultSightFeet, actions, "")
+	actions, err := memberActionsFrom(projected.MainHand)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
+	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "")
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -239,6 +266,8 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	state := characterStateFrom(projected)
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
@@ -246,7 +275,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 
 	return &JoinOutput{
 		Member:     projectMember(placed.Member),
-		Character:  projectCharacter(ch),
+		Character:  state,
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Corrected:  projectIntelCorrections(placed.IntelDeltas),
 		Seq:        placed.Seq,
@@ -451,10 +480,12 @@ func place(
 	return placed, nil
 }
 
-// memberActionsFromCharacter compiles a joining player's own static Actions
-// fact for the shared member record (rpg-project#254) from
-// [character.AssembleAttack]: the main-hand definition, projected once at join
-// time whether it is melee or ranged.
+// memberActionsFrom maps a joining player's main-hand attack onto the shared
+// member record's static Actions fact (rpg-project#254).
+//
+// The compiling happens in resolution now, off the same sheet the armour class
+// was folded on. What is left here is the mapping, which is the shape this seam
+// is supposed to have: facts in, a member record out.
 //
 // FILLED FOR A PLAYER TOO, even though nothing reads it back today — a
 // TurnDriver is only ever asked about an UNPLAYED member's turn. The same
@@ -462,15 +493,21 @@ func place(
 // Actions and Targeting are member facts for every kind, not a monster-only
 // extra, and the day a disconnected player's turn needs driving, the record
 // already has what it needs.
-func memberActionsFromCharacter(ch *character.Character) ([]encounter.ActionView, error) {
-	definition, err := character.AssembleAttack(ch, &character.AssembleAttackInput{Slot: character.SlotMainHand})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadAttack, err)
+//
+// NO ATTACK IS AN ERROR HERE, and it stays one. A character the rules can build
+// at all has a main hand — an empty one is an unarmed strike, which is why the
+// entry never answers nil for a sheet it could load. So nil means something
+// upstream stopped answering, and reporting it as "this member has no actions"
+// would seat a player who cannot swing and say nothing.
+func memberActionsFrom(attack *resolution.AttackFacts) ([]encounter.ActionView, error) {
+	if attack == nil {
+		return nil, fmt.Errorf("%w: no main-hand attack was compiled", ErrBadAttack)
 	}
+
 	return []encounter.ActionView{{
-		Ref: definition.Ref, Name: definition.Name,
-		RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
-		Kind:      deliveryKind(definition.Attack.Delivery),
+		Ref: attack.Ref, Name: attack.Name,
+		RangeFeet: attack.RangeFeet,
+		Kind:      attack.Kind,
 	}}, nil
 }
 

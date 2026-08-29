@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -74,6 +75,13 @@ const (
 	// Attackers have disadvantage against the character and the character has
 	// advantage on DEX saves, until the start of the character's next turn.
 	ConditionDodging ConditionType = "dodging"
+
+	// ConditionDisengaging is applied when a character takes the Disengage
+	// action, or a monk spends Step of the Wind on it. It arrives late
+	// (rpg-toolkit#1272) because Disengage applied its condition directly to
+	// the bus instead of publishing one, so there was never an event to
+	// name — which is exactly why the condition never reached a sheet.
+	ConditionDisengaging ConditionType = "disengaging"
 	// ConditionHidden is applied when a character successfully hides
 	// (a Stealth check beating observers' passive Perception). Grants
 	// advantage on the hidden character's attacks and disadvantage on
@@ -641,6 +649,36 @@ type ConditionRemovedEvent struct {
 	Reason       string
 }
 
+// ConditionStateChangedEvent is published by a condition whose OWN persisted
+// fields changed — "my slice of your sheet changed where you cannot see it."
+//
+// A condition that keeps turn-scoped memory — was I hit this turn, did I
+// already spend my sneak attack, have I used my reaction — stores that memory
+// in its own fields, and those fields are serialized as part of the sheet it
+// hangs on. Nothing about the sheet itself moves when one changes: the hit
+// points are untouched, the economy is untouched, and resolution hands back
+// only participants that report IsDirty. So a condition that updates itself in
+// silence has its update discarded, and the only party who can see the change
+// is the one making it.
+//
+// A FACT, NOT A COMMAND, which is what the name is for. What the condition
+// knows is that its state changed. That this should mark a sheet dirty is the
+// KEEPER's rule about its own sheet, not an instruction the condition gets to
+// give — the same shape as [ConditionAppliedEvent] and [HealingReceivedEvent],
+// which report what happened and leave the response to whoever owns the thing
+// responding. A command-shaped name here would have put the keeper's policy in
+// the caller, and bound every future keeper to it.
+//
+// MemberID rather than CharacterID, because both keepers subscribe: a monster
+// carrying an opportunity attack publishes this exactly as a character does.
+// Naming the field for one of the two kinds is the mistake [CombatEndEvent]
+// documents at length, which is why ConditionRemovedEvent above is not the
+// convention to copy here.
+type ConditionStateChangedEvent struct {
+	MemberID     string    // whose sheet carries the condition that changed
+	ConditionRef *core.Ref // which condition changed, so a log can say so
+}
+
 // AttackEvent is published when a character makes an attack (before rolls)
 type AttackEvent struct {
 	AttackerID string // ID of the attacking character
@@ -649,12 +687,39 @@ type AttackEvent struct {
 	IsMelee    bool   // True for melee attacks, false for ranged
 }
 
-// ReactionUsedEvent is published when a character uses their reaction.
-// Game server listens to update ActionEconomy.
-type ReactionUsedEvent struct {
-	CharacterID string    // ID of the character who used their reaction
-	FeatureRef  *core.Ref // What feature consumed the reaction
-	Reason      string    // Human-readable explanation
+// SpendRequestedEvent asks a member's keeper to debit that member's action
+// economy.
+//
+// A REQUEST, unlike its neighbours in this file, and named for it. Everything
+// else here reports something that happened; this one asks for something to
+// happen, because the asker genuinely cannot do it itself. An effect reads the
+// world through the cast, and what the cast hands out
+// ([github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat.Member]) has no
+// method that writes to a sheet. The member's own keeper holds the ledger.
+//
+// It is APPLIED, not adjudicated. Affordability is checked before the request
+// is published — combat.Pay's contract is that a debit past a passed check
+// cannot fail - so a keeper receiving this does not re-run the gate. Being
+// request-shaped is only about who performs the write.
+//
+// A KEEPER MAY HAVE NO ROW FOR IT AT ALL, and the monster keeper does not.
+// Monsters carry no action economy in this rulebook, so a monster has no
+// ledger to debit and nothing to refuse; the request passes its keeper by,
+// truthfully. That is the D&D asymmetry stated as which subscriptions each
+// keeper's table has, rather than as a nil check inside the condition. A
+// reaction-metering condition on a monster still meters itself through its own
+// state — see conditions.OpportunityAttackCondition's UsedThisTurn.
+//
+// It supersedes a ReactionUsedEvent that had no publisher and no subscriber:
+// that one named a single action type in its own topic, carried no amount, and
+// identified its subject as a CharacterID, so it could serve neither a second
+// currency nor the monster half. Zero users made reshaping it pointless and
+// deleting it free.
+type SpendRequestedEvent struct {
+	MemberID   string                // whose economy is asked to pay
+	ActionType coreCombat.ActionType // which slot: reaction, bonus, standard
+	Amount     int                   // how many slots to debit
+	SourceRef  *core.Ref             // what is asking, so a log can say so
 }
 
 // RestEvent is published when a character takes a rest
@@ -663,14 +728,31 @@ type RestEvent struct {
 	CharacterID string              // ID of the character resting
 }
 
-// CombatEndEvent is published when the combat/encounter a character was
-// participating in has ended. Combat-scoped conditions (e.g. RagingCondition)
-// subscribe to CombatEndTopic in their Apply to remove themselves — RAW: rage
-// ends when combat ends. This is an opt-in, per-condition lifetime: a
-// condition that should outlive combat (e.g. a curse) simply does not
-// subscribe. Mirrors the RestEvent self-termination pattern.
+// CombatEndEvent is published when a fight a member was in has ended.
+//
+// ONE PER MEMBER, never one for the fight. Every attached effect hears every
+// publish on the interaction's single bus (R1), so a subscriber answers "is
+// this about me?" by comparing the subject against its own owner — which is
+// exactly what conditions.RagingCondition.onCombatEnd does. A subject-less
+// "the fight ended" would match nobody and expire nothing.
+//
+// SubjectID is whoever that fight ended for: a player's character, or a monster
+// that was in it. Named for what it denotes rather than for what happens to be
+// plugged into it today, for the same reason [TurnStartEvent] is — the
+// composition ends a fight for everyone it held, and it holds monsters.
+//
+// NO ROUND, unlike the turn events. A fight ending is not a coordinate in a
+// clock that no longer exists: play/clock's Turn.Dissolve sets the round back
+// to zero, because round numbers are per-fight and always were. That fact is
+// also why this event has to exist at all — see rpg-project's
+// ideas/session-combat/combat-end/design.md §0.
+//
+// Combat-scoped conditions subscribe to CombatEndTopic in their Apply to remove
+// themselves — RAW: rage ends when combat ends. This is an opt-in,
+// per-condition lifetime: a condition that should outlive combat (e.g. a curse)
+// simply does not subscribe. Mirrors the RestEvent self-termination pattern.
 type CombatEndEvent struct {
-	CharacterID string // ID of the character whose combat just ended
+	SubjectID string // whoever the fight just ended for
 }
 
 // ResourceConsumedEvent is published when a character uses a resource
@@ -916,11 +998,16 @@ var (
 	// ConditionRemovedTopic provides typed pub/sub for condition removed events
 	ConditionRemovedTopic = events.DefineTypedTopic[ConditionRemovedEvent]("dnd5e.condition.removed")
 
+	// ConditionStateChangedTopic provides typed pub/sub for a condition
+	// reporting a change to its own persisted state
+	ConditionStateChangedTopic = events.DefineTypedTopic[ConditionStateChangedEvent](
+		"dnd5e.condition.state.changed")
+
 	// AttackTopic provides typed pub/sub for attack events
 	AttackTopic = events.DefineTypedTopic[AttackEvent]("dnd5e.combat.attack")
 
-	// ReactionUsedTopic provides typed pub/sub for reaction used events
-	ReactionUsedTopic = events.DefineTypedTopic[ReactionUsedEvent]("dnd5e.combat.reaction.used")
+	// SpendRequestedTopic provides typed pub/sub for action-economy debit requests
+	SpendRequestedTopic = events.DefineTypedTopic[SpendRequestedEvent]("dnd5e.economy.spend.requested")
 
 	// RestTopic provides typed pub/sub for rest events
 	RestTopic = events.DefineTypedTopic[RestEvent]("dnd5e.rest")

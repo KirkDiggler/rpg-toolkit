@@ -336,6 +336,23 @@ var (
 	// sentinel changing meaning.
 	ErrDowned = errors.New("member is downed")
 
+	// ErrCannotActivate is returned when an ability could have run and said
+	// no: the charges are gone, the barbarian is already raging, the fighter is
+	// at full hit points.
+	//
+	// THE PLAYER-FACING ONE, and it is separate from ErrBadActivation for the
+	// reason ErrCannotAfford is separate from ErrBadCost: an actor who cannot
+	// do this right now wants a different verb, and wiring that is wrong wants
+	// a developer. A single sentinel would send the first one looking at the
+	// wrong sheet. The ability's own words ride along as text, so the message
+	// still names what ran out.
+	ErrCannotActivate = errors.New("ability cannot be activated")
+
+	// ErrBadActivation is returned when an activation nobody could run reaches
+	// this seam — no ability named, a target on an ability that takes none, a
+	// member the interaction never received. Content or wiring being wrong.
+	ErrBadActivation = errors.New("activation is invalid")
+
 	// ErrBadAttack is returned when an attack cannot be compiled from the
 	// attacker's own sheet or shared persisted definition — an empty hand,
 	// malformed declared action, or a weapon the strike has no semantics for.

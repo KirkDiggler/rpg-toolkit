@@ -190,5 +190,22 @@ func (e *Encounter) dissolveBubble(bubble *clock.Turn, cause DissolveCause) (*Di
 		return nil, fmt.Errorf("dissolve append beat: %w", err)
 	}
 
+	// AFTER the beat, and after the re-homing above: the story says the fight
+	// ended before anything is told the fight ended, and the world an announcer
+	// looks at is a settled one — everyone back on the world clock, the bubble
+	// pruned. The same order driveOneMonsterTurn uses for a turn boundary.
+	//
+	// HERE rather than at the two callers, because this is the one place a
+	// fight ends. An explicit [Encounter.Dissolve] and the composition noticing
+	// defeat both arrive at this function, and announcing out there would be
+	// two chances to forget — one of them on a path no host controls.
+	crossed, cerr := combatEndBoundaries(out.Milestones, out.Members)
+	if cerr != nil {
+		return nil, fmt.Errorf("dissolve: %w", cerr)
+	}
+	if aerr := e.announceBoundaries(crossed); aerr != nil {
+		return nil, fmt.Errorf("dissolve announce: %w", aerr)
+	}
+
 	return &DissolveOutput{Members: out.Members, Cause: cause, Seq: seq}, nil
 }

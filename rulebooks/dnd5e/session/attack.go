@@ -7,14 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
@@ -422,6 +420,14 @@ func translateResolution(err error) error {
 		// Reporting it as "out of actions" would send whoever debugs it to a
 		// player's sheet to look for a bug that is in the code.
 		return fmt.Errorf("%w: %v", ErrBadCost, err)
+	case errors.Is(err, resolution.ErrActivationRefused):
+		// The activation half of the same split, and the same argument: an
+		// ability that said no is a fact about the game, and its own words
+		// ("no rage uses remaining") ride along so the refusal is something a
+		// client can say out loud.
+		return fmt.Errorf("%w: %v", ErrCannotActivate, err)
+	case errors.Is(err, resolution.ErrBadActivation):
+		return fmt.Errorf("%w: %v", ErrBadActivation, err)
 	case errors.Is(err, resolution.ErrOutOfRange):
 		return fmt.Errorf("%w: %v", ErrOutOfReach, err)
 	case errors.Is(err, resolution.ErrBadParticipant):
@@ -599,34 +605,33 @@ func (m *Manager) compileResolutionCast(
 		cast = append(cast, resolution.Participant{Character: sheet})
 	}
 
-	// Resolution attaches in sorted participant order (R4). Use that order and
-	// one ephemeral bus here too, so preflight is the same one-cast semantics,
-	// not isolated per-sheet checks that could miss an attach interaction.
-	ordered := append([]resolution.Participant(nil), cast...)
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
-	bus := newCallBus()
-	for _, participant := range ordered {
-		id := participant.ID()
-		var err error
-		switch {
-		case participant.Character != nil:
-			var loaded *character.Character
-			loaded, err = character.Load(ctx, participant.Character)
-			if err == nil {
-				err = character.Attach(ctx, loaded, bus)
-			}
-		case participant.Monster != nil:
-			var loaded *monster.Monster
-			loaded, err = monstertraits.LoadMonster(ctx, participant.Monster)
-			if err == nil {
-				err = monstertraits.AttachMonster(ctx, loaded, bus, &diceSeam{roller: m.dice})
-			}
-		default:
-			err = fmt.Errorf("empty participant")
-		}
-		if err != nil {
-			failures = append(failures, resolutionDependencyFailure{member: id, err: err})
-		}
+	// THE ATTACH HALF IS RESOLUTION'S. This function used to reconstitute every
+	// participant here, on an ephemeral bus, to find out which of them an
+	// interaction would refuse — which meant this package held a bus and did
+	// the one thing a bus is for.
+	//
+	// What stays is the FETCH: gathering the stored record behind each member,
+	// which is what this seam is for and where its own vocabulary lives
+	// (ErrNoSheet, ErrBadRepository). What goes is the reconstituting. The
+	// answer comes back as a row per refused member, which is what the offer
+	// menu above needs — see [resolution.Preflight] for why it collects rather
+	// than stopping at the first.
+	preflight, err := resolution.Preflight(ctx, &resolution.PreflightInput{
+		Participants: cast,
+		Roller:       &diceSeam{roller: m.dice},
+	})
+	if err != nil {
+		// The entry refused the question itself rather than answering it about
+		// a participant — a malformed cast, which is this package's own bug
+		// and not a member's. Reported against no member, because naming one
+		// would be a guess.
+		failures = append(failures, resolutionDependencyFailure{member: "", err: err})
+
+		return cast, failures
+	}
+
+	for _, refusal := range preflight.Unreadable {
+		failures = append(failures, resolutionDependencyFailure{member: refusal.Member, err: refusal.Reason})
 	}
 
 	return cast, failures

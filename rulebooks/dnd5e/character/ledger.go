@@ -77,6 +77,15 @@ func (c *Character) SlotsLeft(slot coreCombat.ActionType) int {
 	}
 }
 
+// CanReact reports whether this character has a reaction left to spend.
+//
+// The gate every reacting rule asks before it publishes its trigger, phrased
+// as the question rather than as the arithmetic, so a rule does not need a
+// ledger handle to ask it. Implements [combat.Member].
+func (c *Character) CanReact() bool {
+	return c.SlotsLeft(coreCombat.ActionReaction) > 0
+}
+
 // SpendSlots debits per-turn slots and marks the sheet.
 //
 // The gate checks affordability in full before calling this, which is what

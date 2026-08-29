@@ -27,9 +27,10 @@ func (s *BoundaryTestSuite) SetupTest() { s.ctx = context.Background() }
 // heard records every turn boundary that reached the bus, in the order it
 // arrived — which is the only thing these tests are about.
 type heard struct {
-	starts []dnd5eEvents.TurnStartEvent
-	ends   []dnd5eEvents.TurnEndEvent
-	order  []string
+	starts    []dnd5eEvents.TurnStartEvent
+	ends      []dnd5eEvents.TurnEndEvent
+	fightEnds []dnd5eEvents.CombatEndEvent
+	order     []string
 }
 
 func (h *heard) listen(ctx context.Context, bus events.EventBus) {
@@ -43,6 +44,12 @@ func (h *heard) listen(ctx context.Context, bus events.EventBus) {
 		func(_ context.Context, e dnd5eEvents.TurnEndEvent) error {
 			h.ends = append(h.ends, e)
 			h.order = append(h.order, "end:"+e.SubjectID)
+			return nil
+		})
+	_, _ = dnd5eEvents.CombatEndTopic.On(bus).Subscribe(ctx,
+		func(_ context.Context, e dnd5eEvents.CombatEndEvent) error {
+			h.fightEnds = append(h.fightEnds, e)
+			h.order = append(h.order, "fight:"+e.SubjectID)
 			return nil
 		})
 }
@@ -195,4 +202,84 @@ func (s *BoundaryTestSuite) TestTheInputIsCopied() {
 
 	s.Require().Len(h.ends, 1)
 	s.Equal("alice", h.ends[0].SubjectID)
+}
+
+// TestAFightEndingReachesEveryoneItEndedFor — the composition announces a
+// fight's ending once per member, and every one of those reaches the bus.
+//
+// The run is what a real dissolve produces: the last turn boundary the clock
+// crossed, then the ending, for everybody. A subscriber deciding whether an
+// ending is its own (dnd5e/conditions.RagingCondition.onCombatEnd) needs its
+// own name to arrive, which is what this asserts.
+func (s *BoundaryTestSuite) TestAFightEndingReachesEveryoneItEndedFor() {
+	out, h, err := s.runBoundary([]encounter.Boundary{
+		{Kind: encounter.CombatEnded, Subject: "alice", Round: 4},
+		{Kind: encounter.CombatEnded, Subject: "bob", Round: 4},
+		{Kind: encounter.CombatEnded, Subject: "goblin-7", Round: 4},
+	})
+	s.Require().NoError(err)
+
+	s.Equal([]string{"fight:alice", "fight:bob", "fight:goblin-7"}, h.order,
+		"one ending per member, in the order the composition crossed them")
+	s.Require().IsType(BoundaryOutcome{}, out.Outcome)
+	s.Equal(3, out.Outcome.(BoundaryOutcome).Announced)
+}
+
+// TestAFightEndingRidesTheSameRunAsTheTurnBoundaries — the kinds are not
+// separate mechanisms and must not become two.
+//
+// Mixed is the real case: nothing stops a composition from crossing a turn
+// boundary and a fight ending in one advance, and causal order across the
+// whole run is the promise BoundaryInput makes.
+func (s *BoundaryTestSuite) TestAFightEndingRidesTheSameRunAsTheTurnBoundaries() {
+	_, h, err := s.runBoundary([]encounter.Boundary{
+		{Kind: encounter.TurnEnded, Subject: "alice", Round: 2},
+		{Kind: encounter.CombatEnded, Subject: "alice", Round: 2},
+		{Kind: encounter.CombatEnded, Subject: "goblin-7", Round: 2},
+	})
+	s.Require().NoError(err)
+	s.Equal([]string{"end:alice", "fight:alice", "fight:goblin-7"}, h.order)
+}
+
+// TestAFightsEndingCarriesItsSubjectAndNothingElse pins the deliberate
+// asymmetry with the turn events.
+//
+// CombatEndEvent has no Round, and that is a decision rather than an oversight:
+// the round a fight ended on is not a coordinate anyone can use afterwards,
+// because play/clock's Turn.Dissolve sets the round back to zero and the next
+// fight starts again at 1. A subscriber storing it would be storing a number
+// from a clock that no longer exists — which is the exact bug the slice this
+// belongs to exists to make impossible.
+func (s *BoundaryTestSuite) TestAFightsEndingCarriesItsSubjectAndNothingElse() {
+	_, h, err := s.runBoundary([]encounter.Boundary{
+		{Kind: encounter.CombatEnded, Subject: "goblin-7", Round: 9},
+	})
+	s.Require().NoError(err)
+	s.Require().Len(h.fightEnds, 1)
+	s.Equal(dnd5eEvents.CombatEndEvent{SubjectID: "goblin-7"}, h.fightEnds[0],
+		"the whole event is the subject; a round here would outlive the clock it came from")
+}
+
+// TestTheTableCoversEveryKindThisBuildKnows guards the seal from the inside.
+//
+// boundaryTopics is a sealed lookup precisely so a kind it does not know is
+// refused at the door rather than silently publishing nothing
+// (TestAnUnknownKindIsRefusedRatherThanPublishedAsNothing is the other half).
+// This is the half that fails when the table falls BEHIND: a kind added to the
+// composition and not added here.
+//
+// Honest about its own limit: this cannot enumerate the composition's consts
+// from another module, so it will not fail the moment encounter grows a fourth
+// kind. What fails then is the refusal above, at the first announcement that
+// carries it — loudly, in the session suite, rather than silently forever.
+// This test's job is narrower and still worth doing: it stops the table being
+// trimmed.
+func (s *BoundaryTestSuite) TestTheTableCoversEveryKindThisBuildKnows() {
+	for _, kind := range []encounter.BoundaryKind{
+		encounter.TurnStarted, encounter.TurnEnded, encounter.CombatEnded,
+	} {
+		_, ok := boundaryTopics[kind]
+		s.True(ok, "boundaryTopics has no entry for %q, so announcing one would be refused", kind)
+	}
+	s.Len(boundaryTopics, 3, "a fourth entry here needs a fourth kind above and a test with it")
 }
