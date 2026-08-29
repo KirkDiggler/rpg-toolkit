@@ -33,30 +33,10 @@ type UnarmoredMovementCondition struct {
 	CharacterID string
 	MonkLevel   int
 	bus         events.EventBus
-	owner       unarmoredMovementOwner
-}
-
-// unarmoredMovementOwner is the minimal view of this condition's OWN sheet it
-// needs. The sheet answers the shield question directly; the registry this
-// replaced could only see "equipped weapons" and carried a standing TODO
-// admitting it could not see armor at all.
-type unarmoredMovementOwner interface {
-	HasShieldEquipped() bool
 }
 
 // Ensure UnarmoredMovementCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*UnarmoredMovementCondition)(nil)
-
-// Ensure UnarmoredMovementCondition implements dnd5eEvents.OwnerAware
-var _ dnd5eEvents.OwnerAware = (*UnarmoredMovementCondition)(nil)
-
-// SetOwner hands this condition its own character's live sheet, in place of a
-// context-installed registry nothing ever installed.
-func (u *UnarmoredMovementCondition) SetOwner(owner any) {
-	if o, ok := owner.(unarmoredMovementOwner); ok {
-		u.owner = o
-	}
-}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -120,17 +100,22 @@ func (u *UnarmoredMovementCondition) loadJSON(data json.RawMessage) error {
 	return nil
 }
 
-// GetSpeedBonus returns the speed bonus granted by this condition.
-// Returns 0 if the character is wearing armor or using a shield.
-// Returns an error if game context is not available.
+// SpeedBonus returns the speed bonus granted by this condition, and whether
+// the question could be answered at all.
+//
+// Zero and NOT known is "nobody could tell me whose sheet this is"; zero and
+// known is "this monk is carrying a shield, so the bonus does not apply". A
+// caller that reads only the number cannot tell a rule from missing data, which
+// is why the bool is here rather than an error the caller would have to swallow.
+//
 // The bonus is based on monk level:
 // - Level 2-5: +10 ft
 // - Level 6-9: +15 ft
 // - Level 10-13: +20 ft
 // - Level 14-17: +25 ft
 // - Level 18+: +30 ft
-func (u *UnarmoredMovementCondition) GetSpeedBonus() (bonus int, known bool) {
-	unarmored, known := u.isUnarmored()
+func (u *UnarmoredMovementCondition) SpeedBonus(ctx context.Context) (bonus int, known bool) {
+	unarmored, known := u.isUnarmored(ctx)
 	if !known {
 		return 0, false
 	}
@@ -145,18 +130,24 @@ func (u *UnarmoredMovementCondition) GetSpeedBonus() (bonus int, known bool) {
 // that could be answered at all.
 //
 // The second return is the whole reason this is not a plain bool: "wearing a
-// shield" and "nobody handed this condition its sheet" call for different
+// shield" and "nobody could name this monk in the cast" call for different
 // answers, and collapsing them would silently deny a monk their speed on
 // missing data rather than on a rule.
 //
+// The shield question is asked of the member surface, which every combatant
+// answers — a monster answers false, because its shield is baked into the stat
+// block AC it already reports and there is nothing further for a rule to add.
+//
 // TODO(rpg-toolkit): armor is not checked, only shields. That predates this
 // change — the registry this replaced could not see armor either, and said so.
-// The sheet can answer it; the accessor has to exist first.
-func (u *UnarmoredMovementCondition) isUnarmored() (unarmored, known bool) {
-	if u.owner == nil {
+// The member surface can grow the question the day a rule needs it.
+func (u *UnarmoredMovementCondition) isUnarmored(ctx context.Context) (unarmored, known bool) {
+	me, ok := member(ctx, u.CharacterID)
+	if !ok {
 		return false, false
 	}
-	return !u.owner.HasShieldEquipped(), true
+
+	return !me.HasShieldEquipped(), true
 }
 
 // calculateSpeedBonus returns the speed bonus based on monk level

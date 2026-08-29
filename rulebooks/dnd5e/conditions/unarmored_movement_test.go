@@ -135,32 +135,51 @@ func (s *UnarmoredMovementTestSuite) TestCalculateSpeedBonus() {
 	}
 }
 
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithoutOwner() {
-	// No owner: the question cannot be answered, which is NOT the same as
-	// "wearing a shield". Reporting known=false keeps a monk from silently
-	// losing their speed on missing data rather than on a rule.
-	bonus, known := s.condition.GetSpeedBonus()
-	s.Assert().False(known, "no owner means the question cannot be answered")
+// NO CAST AT ALL: the question cannot be answered, which is NOT the same as
+// "wearing a shield". Reporting known=false keeps a monk from silently losing
+// their speed on missing data rather than on a rule.
+func (s *UnarmoredMovementTestSuite) TestSpeedBonusWithNoCast() {
+	bonus, known := s.condition.SpeedBonus(context.Background())
+
+	s.Assert().False(known, "no cast means the question cannot be answered")
 	s.Assert().Equal(0, bonus)
 }
 
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusUnarmored() {
-	s.condition.SetOwner(&fakeConditionOwner{shield: false})
+// A CAST THAT DOES NOT HOLD THIS MONK is the same answer, and is pinned apart
+// from the case above rather than folded into it: here a cast IS installed and
+// answering questions, it simply cannot name this member. Collapsing the two
+// would let a lookup that ignored its own ID pass.
+func (s *UnarmoredMovementTestSuite) TestSpeedBonusWithACastThatLacksThisMonk() {
+	ctx := castOf(context.Background(), &fakeConditionOwner{id: "somebody-else", shield: false})
 
-	bonus, known := s.condition.GetSpeedBonus()
+	bonus, known := s.condition.SpeedBonus(ctx)
+
+	s.Assert().False(known, "another monk's shieldless hands say nothing about this one")
+	s.Assert().Equal(0, bonus)
+}
+
+func (s *UnarmoredMovementTestSuite) TestSpeedBonusUnarmored() {
+	ctx := castOf(context.Background(), &fakeConditionOwner{id: "monk-1", shield: false})
+
+	bonus, known := s.condition.SpeedBonus(ctx)
+
 	s.Require().True(known)
 	s.Assert().Equal(10, bonus, "Unarmored monk should get speed bonus")
 }
 
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithShield() {
-	s.condition.SetOwner(&fakeConditionOwner{shield: true})
+// THE SHIELD CASE, which is what D7 put HasShieldEquipped on the member surface
+// for. Known and zero: a rule answered, not a gap. It is the only assertion
+// here that fails if the shield question stops being asked at all.
+func (s *UnarmoredMovementTestSuite) TestSpeedBonusWithShield() {
+	ctx := castOf(context.Background(), &fakeConditionOwner{id: "monk-1", shield: true})
 
-	bonus, known := s.condition.GetSpeedBonus()
+	bonus, known := s.condition.SpeedBonus(ctx)
+
 	s.Require().True(known, "a shielded monk is a known answer, not an unknown one")
 	s.Assert().Equal(0, bonus, "Monk with shield should not get speed bonus")
 }
 
-func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithDifferentLevels() {
+func (s *UnarmoredMovementTestSuite) TestSpeedBonusWithDifferentLevels() {
 	testCases := []struct {
 		name          string
 		monkLevel     int
@@ -177,9 +196,9 @@ func (s *UnarmoredMovementTestSuite) TestGetSpeedBonusWithDifferentLevels() {
 				CharacterID: "monk-1",
 				MonkLevel:   tc.monkLevel,
 			})
-			condition.SetOwner(&fakeConditionOwner{shield: false})
+			ctx := castOf(context.Background(), &fakeConditionOwner{id: "monk-1", shield: false})
 
-			bonus, known := condition.GetSpeedBonus()
+			bonus, known := condition.SpeedBonus(ctx)
 			s.Require().True(known)
 			s.Assert().Equal(tc.expectedBonus, bonus)
 		})
