@@ -19,7 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -38,31 +37,10 @@ type MartialArtsCondition struct {
 	subscriptionIDs []string
 	bus             events.EventBus
 	roller          dice.Roller
-	owner           martialArtsOwner
-}
-
-// martialArtsOwner is the minimal view of this condition's OWN sheet it needs:
-// the scores behind the STR-vs-DEX comparison monks get on unarmed strikes and
-// monk weapons. See [dnd5eEvents.OwnerAware] for why this is an interface the
-// condition declares rather than a concrete type.
-type martialArtsOwner interface {
-	AbilityScores() shared.AbilityScores
 }
 
 // Ensure MartialArtsCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*MartialArtsCondition)(nil)
-
-// Ensure MartialArtsCondition implements dnd5eEvents.OwnerAware
-var _ dnd5eEvents.OwnerAware = (*MartialArtsCondition)(nil)
-
-// SetOwner hands this condition its own character's live sheet, in place of a
-// context-installed registry nothing ever installed — which meant the monk's
-// damage die and DEX substitution silently did not apply, on either chain.
-func (ma *MartialArtsCondition) SetOwner(owner any) {
-	if o, ok := owner.(martialArtsOwner); ok {
-		ma.owner = o
-	}
-}
 
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
@@ -165,12 +143,15 @@ func (ma *MartialArtsCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Own sheet, handed over at attach time. No owner means no comparison to
-	// make — leave the chain untouched rather than erroring.
-	if ma.owner == nil {
+	// Own sheet, looked up in the cast by this character's own ID. A cast that
+	// cannot name this monk means no comparison to make — leave the chain
+	// untouched rather than erroring, which would discard every other damage
+	// component with it. See [member].
+	me, ok := member(ctx, ma.CharacterID)
+	if !ok {
 		return c, nil
 	}
-	abilityScores := ma.owner.AbilityScores()
+	abilityScores := me.AbilityScores()
 
 	// Check if this is an unarmed strike or monk weapon
 	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)
@@ -273,11 +254,14 @@ func (ma *MartialArtsCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Own sheet, handed over at attach time.
-	if ma.owner == nil {
+	// Own sheet, read off the cast — the damage chain's twin, and it has to
+	// read the SAME scores through the SAME channel or attack and damage can
+	// disagree about the governing ability (#709).
+	me, ok := member(ctx, ma.CharacterID)
+	if !ok {
 		return c, nil
 	}
-	abilityScores := ma.owner.AbilityScores()
+	abilityScores := me.AbilityScores()
 
 	// Only modify if it's an unarmed strike or monk weapon
 	isUnarmed, monkWeapon := martialArtsWeaponKind(event.WeaponRef)

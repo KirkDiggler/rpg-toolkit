@@ -303,13 +303,17 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 			AbilityUsed: abilities.STR,
 		}
 
-		// Execute through damage chain
+		// Execute through damage chain, with the monk in the cast: Martial Arts
+		// reads its own ability scores out of it. See castOf for why installing
+		// one here stands in for resolution's door rather than inventing a
+		// registry nothing in production builds.
+		ctx := castOf(s.ctx, s.monk)
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 		s.Require().NoError(err)
 
 		// Verify DEX was used (ability component should have +3)
@@ -343,9 +347,13 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 
 		s.T().Log("→ Shadow throws a punch!")
 
-		// Note: The MartialArtsCondition loaded via JSON uses its own dice.NewRoller()
-		// so the actual roll value is non-deterministic. We verify the damage string
-		// is upgraded to "1d4" and the roll count is correct.
+		// The condition rolls with its own dice.NewRoller(), so the VALUE is
+		// non-deterministic and the DICE STRING is not. The seeded roll below is
+		// deliberately outside 1d4's range: this test used to seed a 1, which
+		// is a legal 1d4 result, so every assertion here passed unchanged when
+		// the condition did not fire at all. It said so in this very comment —
+		// "we verify the damage string is upgraded" — while asserting no such
+		// thing.
 
 		damageEvent := &dnd5eEvents.DamageChainEvent{
 			AttackerID: s.monk.GetID(),
@@ -354,9 +362,10 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 			Components: []dnd5eEvents.DamageComponent{
 				{
 					Source:            dnd5eEvents.DamageSourceWeapon,
+					Dice:              "1d1",
 					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					OriginalDiceRolls: []int{1},
-					FinalDiceRolls:    []int{1},
+					OriginalDiceRolls: []int{7},
+					FinalDiceRolls:    []int{7},
 				},
 				{
 					Source:    dnd5eEvents.DamageSourceAbility,
@@ -366,25 +375,36 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 			AbilityUsed: abilities.STR,
 		}
 
-		// Execute through damage chain
+		// Execute through damage chain, with the monk in the cast: Martial Arts
+		// reads its own ability scores out of it. See castOf for why installing
+		// one here stands in for resolution's door rather than inventing a
+		// registry nothing in production builds.
+		ctx := castOf(s.ctx, s.monk)
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 		s.Require().NoError(err)
 
-		// Verify weapon component has exactly 1 die roll (1d4 = one die)
+		// The dice STRING is the deterministic half, and the one the comment
+		// above always claimed was checked.
 		var weaponRolls []int
+		var weaponDice string
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceWeapon {
 				weaponRolls = comp.FinalDiceRolls
+				weaponDice = comp.Dice
 				break
 			}
 		}
+		s.Equal("1d4", weaponDice, "a level 1 monk's unarmed strike is upgraded from the weapon's own die to 1d4")
+		s.Equal("1d4", finalEvent.WeaponDamageDice, "and the event carries the same upgrade for the combat log")
+
 		s.Require().Len(weaponRolls, 1, "Should have exactly 1 die roll (1d4)")
-		s.True(weaponRolls[0] >= 1 && weaponRolls[0] <= 4, "Roll should be in [1,4] range, got %d", weaponRolls[0])
+		s.True(weaponRolls[0] >= 1 && weaponRolls[0] <= 4,
+			"the seeded 7 must have been re-rolled on 1d4, got %d", weaponRolls[0])
 
 		s.T().Log("  Damage die progression:")
 		s.T().Log("    Levels 1-4:   1d4")
@@ -430,13 +450,17 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 			AbilityUsed: abilities.STR,
 		}
 
-		// Execute through damage chain
+		// Execute through damage chain, with the monk in the cast: Martial Arts
+		// reads its own ability scores out of it. See castOf for why installing
+		// one here stands in for resolution's door rather than inventing a
+		// registry nothing in production builds.
+		ctx := castOf(s.ctx, s.monk)
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
 		damageTopic := dnd5eEvents.DamageChain.On(s.bus)
-		modifiedChain, err := damageTopic.PublishWithChain(s.ctx, damageEvent, damageChain)
+		modifiedChain, err := damageTopic.PublishWithChain(ctx, damageEvent, damageChain)
 		s.Require().NoError(err)
 
-		finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+		finalEvent, err := modifiedChain.Execute(ctx, damageEvent)
 		s.Require().NoError(err)
 
 		// Verify DEX was used
