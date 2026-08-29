@@ -412,6 +412,16 @@ func (m *Monster) onConditionApplied(
 	if event.Target == nil || event.Target.GetID() != m.id {
 		return nil
 	}
+
+	// THE ADMISSION DOOR, the twin of the character keeper's — see
+	// character.Character.onConditionApplied for why this is the only place
+	// either keeper checks. A condition that cannot name itself never joins the
+	// list, so onConditionRemoved below can match on Ref() without asking again.
+	if event.Condition.Ref() == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument,
+			"condition returns a nil Ref, so it could never be matched by a removal")
+	}
+
 	if err := event.Condition.Apply(ctx, bus); err != nil {
 		_ = event.Condition.Remove(ctx, bus)
 		return rpgerr.Wrapf(err, "failed to apply monster condition")
@@ -434,12 +444,12 @@ func (m *Monster) onConditionApplied(
 // it predated conditions being able to name themselves (rpg-toolkit#971) —
 // and now asks the same question this one does, including the refusal below.
 //
-// A NIL REF IS LOUD, and here that is a fix rather than a nicety.
+// It asks WITHOUT CHECKING for nil, because onConditionApplied above refused
+// anything nameless at the door. That matters more here than it looks:
 // [core.Ref.String] has a pointer receiver that dereferences its fields
-// unguarded, so asking a contract-breaking condition for its name used to
-// PANIC out of a bus publish rather than return. Both keepers now refuse it
-// the same way, with the same message, because a condition that cannot name
-// itself cannot be matched against a removal on anybody's sheet.
+// unguarded, so a nameless condition reaching this line would PANIC out of a
+// bus publish rather than return an error. Admission is what makes the bare
+// call safe — protect the construction, and the nil never arrives.
 //
 // The unapplied trait blobs are deliberately untouched. They are conditions
 // that have not been attached yet — monstertraits.AttachMonster drains them
@@ -456,13 +466,7 @@ func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.Condit
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
 	for _, condition := range m.conditions {
-		ref := condition.Ref()
-		if ref == nil {
-			return rpgerr.New(rpgerr.CodeInternal,
-				"condition on this sheet returns a nil Ref, so a removal cannot be matched against it")
-		}
-
-		if ref.String() != event.ConditionRef {
+		if condition.Ref().String() != event.ConditionRef {
 			filtered = append(filtered, condition)
 		}
 	}
