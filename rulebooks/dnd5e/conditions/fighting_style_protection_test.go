@@ -82,13 +82,13 @@ func (s *FightingStyleProtectionTestSuite) TestApplyAndRemove() {
 }
 
 // TestImposesDisadvantageOnNearbyAlly pins rpg-toolkit#1178's Protection
-// fix: shield and reaction eligibility now come from the owner handed over
-// through the CAST, the way it reads any other participant %s not a
-// gamectx.CharacterRegistry, and no longer a handle a loader had to remember
-// to pass in. Positions still come from gamectx (WithRoom), which
-// resolution.Resolve genuinely does install. Team-lead's exact reproduction
-// shape: three participants (protector + ally + monster), the ally is
-// attacked, not the protector.
+// fix: shield and reaction eligibility come from the CAST, where the
+// protector looks itself up by its own ID and gets the same read surface it
+// would get for anybody else — not from a handle a loader had to remember to
+// pass in. Positions come from gamectx (WithRoom), which resolution installs
+// on every path that folds anything. Team-lead's exact reproduction shape:
+// three participants (protector + ally + monster), the ally is attacked, not
+// the protector.
 func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
 
@@ -234,20 +234,50 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
 	s.Empty(finalEvent.DisadvantageSources)
 }
 
-// TestDoesNotTriggerOnOwnAttack pins rpg-toolkit#1178's Protection half:
-// the condition used to exclude only "target is me" and never "attacker is
-// me", so it fired on the protector's OWN melee attacks — which reached
-// gamectx.RequireCharacters below, a dependency the session stack never
-// satisfies. No gamectx.WithGameContext is installed in this test at all;
-// if the exclusion regresses, this test fails with ErrNoGameContext rather
-// than a wrong disadvantage count, which is the honest failure for what
-// broke live.
+// TestDoesNotTriggerOnOwnAttack pins rpg-toolkit#1178's Protection half: the
+// condition used to exclude only "target is me" and never "attacker is me",
+// so it fired on the protector's OWN melee attacks.
+//
+// THE PROTECTOR IS FULLY ELIGIBLE HERE, and that is the whole point. Shield,
+// reaction, cast and room are all installed, and fighter-1 stands adjacent to
+// the creature it is attacking — this is TestImposesDisadvantageOnNearbyAlly
+// with exactly one thing changed, the identity of the attacker. So the
+// attacker-is-me guard is the only thing between this attack and a
+// disadvantage source, and removing that guard fails the assertion below.
+//
+// It did not used to be. This test installed no cast and no room, which meant
+// a regression fell through to the fail-closed "a protector nobody can look
+// up is NOT ELIGIBLE" branch and returned the same empty chain the exclusion
+// returns. Verified by mutation, not by reading: with the guard deleted the
+// old test still passed, and so did every other test in the module. The
+// comment claimed a failure with ErrNoGameContext, from a gamectx symbol that
+// no longer exists.
 func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
 	protection := NewFightingStyleProtectionCondition("fighter-1")
+
+	castCtx, keeper := s.protector(true, 1)
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 	defer func() { _ = protection.Remove(s.ctx, s.bus) }()
+
+	// Adjacent, so range is not what refuses this — the exclusion is.
+	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
+	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
+		ID:   "test-room",
+		Type: "room",
+		Grid: grid,
+	})
+
+	fighter := &protectionTestEntity{id: "fighter-1", kind: "character"}
+	goblin := &protectionTestEntity{id: "goblin-1", kind: "monster"}
+
+	err = room.PlaceEntity(fighter, spatial.Position{X: 5, Y: 5})
+	s.Require().NoError(err)
+	err = room.PlaceEntity(goblin, spatial.Position{X: 6, Y: 5})
+	s.Require().NoError(err)
+
+	ctx := gamectx.WithRoom(castCtx, room)
 
 	// The protector attacking someone else — never a reaction to their own swing.
 	attackEvent := dnd5eEvents.AttackChainEvent{
@@ -261,14 +291,18 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
-	s.Require().NoError(err, "the protector's own attack must never reach the gamectx-dependent branch")
+	modifiedChain, err := attacks.PublishWithChain(ctx, attackEvent, attackChain)
+	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	finalEvent, err := modifiedChain.Execute(ctx, attackEvent)
 	s.Require().NoError(err)
 
 	s.Empty(finalEvent.DisadvantageSources, "Protection is a reaction to someone ELSE's attack, never my own")
 	s.Empty(finalEvent.ReactionsConsumed)
+
+	// And nothing was spent for the reaction it never took.
+	s.Equal(1, keeper.sheet.reactions, "an untaken reaction must not be debited")
+	s.Empty(keeper.spent)
 }
 
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectAgainstRangedAttacks() {

@@ -200,6 +200,12 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 		what      string
 		subscribe func() (string, error)
 	}{
+		// This row treats a notification as an instruction — it calls TakeDamage
+		// on an event that reports damage already landed — which is why
+		// resolution refuses to publish DamageReceivedEvent at all. That refusal
+		// is argued in full at resolution/strike.go's afterDamage, in a different
+		// module from the row that causes it, and rpg-toolkit#977 owns the fix.
+		// Read it before changing anything here.
 		{"damage received", func() (string, error) {
 			return dnd5eEvents.DamageReceivedTopic.On(bus).Subscribe(ctx, m.onDamageReceived)
 		}},
