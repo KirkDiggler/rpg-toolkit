@@ -21,10 +21,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// combatPath is the package that defines Member. Matched by import PATH, and
-// then not matched by name at all: what follows resolves types rather than
-// spellings, so an alias, a dot-import or a local type also called Member are
-// simply different objects and never confusable with this one.
+// modulePath is this module, and combatPath the package inside it that defines
+// Member.
+//
+// Import PATHS, and then not matched by name at all: what follows resolves
+// types rather than spellings, so an alias, a dot-import, or a local type also
+// called Member are simply different objects and never confusable with this
+// one. modulePath earns its place by giving every scanned directory the import
+// path it will really have, which is the only way checked.Path() can be trusted
+// to identify combat itself.
 const (
 	modulePath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	combatPath = modulePath + "/combat"
@@ -89,6 +94,12 @@ func (d doorSite) covers(pos token.Position, enclosing string) bool {
 // TEST FILES ARE INCLUDED. rpg-toolkit#1251 is the case where every test built
 // what production never built, so a structural pin that exempts tests is blind
 // to the shape it exists for.
+//
+// SO IS THE COMBAT PACKAGE ITSELF, which took a planted mutant to notice: the
+// first version selected packages by "imports combat", and combat does not
+// import itself, so the door sat in the one package nothing scanned and the
+// exemption below was dead code. A pin that cannot see its own door cannot say
+// the door is the only one.
 //
 // FAILING TO TYPE-CHECK IS A FAILURE, not a pass. A pin that quietly answers
 // "no offenses" when the type-checker tripped is the fail-silent defect this
