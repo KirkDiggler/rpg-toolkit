@@ -241,10 +241,40 @@ func projectCharacter(
 		Character: record,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+		return nil, fmt.Errorf("character %q: %w: %v", id, projectionSentinel(err), err)
 	}
 
 	return projected, nil
+}
+
+// projectionSentinel picks THIS package's word for a projection that refused.
+//
+// Two failures, two repairs, and a host branches on which: a main-hand weapon
+// that will not compile is a broken loadout, while anything else the projection
+// refuses is a sheet that will not reconstitute. Resolution reports the first
+// under its own ErrBadAttack, and this is where that becomes ours.
+//
+// # It reads resolution's sentinel and does not pass it on
+//
+// The match happens here and the inner error rides out as TEXT (%v at the call
+// site, never %w). A host matching resolution.ErrBadAttack would be matching on
+// a package this seam exists to keep it away from, and S2 is not a promise this
+// package delegates (rpg-toolkit#1066). Reading a sentinel to CHOOSE ours is a
+// different act from forwarding one.
+//
+// # Why this is not translateResolution
+//
+// That function serves the verbs that run an interaction, and its vocabulary is
+// about interactions — costs, ranges, activations. A projection can fail in two
+// ways and neither is any of those. Routing this through it would mean widening
+// a switch that reads as "what went wrong in a fight" with a case that has
+// nothing to do with fighting.
+func projectionSentinel(err error) error {
+	if errors.Is(err, resolution.ErrBadAttack) {
+		return ErrBadAttack
+	}
+
+	return ErrBadCharacter
 }
 
 // characterStateFrom maps the answer onto the shape this seam publishes.

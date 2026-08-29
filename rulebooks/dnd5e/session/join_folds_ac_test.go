@@ -198,20 +198,28 @@ func (s *JoinFoldsACTestSuite) TestTheSeatedMemberCarriesWhatResolutionDerived()
 	s.Require().True(seated, "the barbarian is on the stored roster")
 }
 
-// TestABadMainHandIsReportedAsACorruptCharacter pins a narrowing this slice
-// caused, so it is on the record rather than discovered by a host.
+// TestABadMainHandIsReportedAsABadAttack pins a vocabulary that was lost and
+// given back, and the round trip is why this test still exists.
 //
-// Join's doc used to promise ErrBadAttack for a main-hand weapon that would not
-// compile. The compiling moved into resolution's projection along with the
-// fold, and that entry reports the failure as a bad participant — which this
-// seam can only translate to ErrBadCharacter. Both send you to the same place
-// (that character's stored sheet is wrong), but a host that could tell a broken
-// weapon from a corrupt sheet can no longer.
+// Join has always documented ErrBadAttack for a main-hand weapon that will not
+// compile. When the compiling moved into resolution's projection, that entry
+// reported the failure as a bad participant and this seam could only translate
+// it one way — so the answer became ErrBadCharacter, and this test was written
+// to pin the NARROWING rather than let a host discover it.
+//
+// Resolution reports the finer failure under its own ErrBadAttack now, and this
+// seam reads that to choose its own word. So the assertion flips: the thing it
+// was written to record is over, and what it holds instead is the restoration.
+//
+// Both halves are asserted, because "is ErrBadAttack" alone would pass if
+// everything became ErrBadAttack. A broken loadout and a sheet that will not
+// reconstitute are different repairs, and the test says which this is by saying
+// which it is NOT.
 //
 // The fixture is the reachable case rather than an invented one: a stored sheet
 // whose main-hand slot names an item that is not in its inventory. The equip
 // path cannot produce that; a persisted record can.
-func (s *JoinFoldsACTestSuite) TestABadMainHandIsReportedAsACorruptCharacter() {
+func (s *JoinFoldsACTestSuite) TestABadMainHandIsReportedAsABadAttack() {
 	broken := barbarianCharacter("broken-hand")
 	broken.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: armor.ChainMail}
 	s.characters.byID[broken.ID] = broken
@@ -221,10 +229,9 @@ func (s *JoinFoldsACTestSuite) TestABadMainHandIsReportedAsACorruptCharacter() {
 	})
 
 	s.Require().Error(err)
-	s.Require().ErrorIs(err, session.ErrBadCharacter,
-		"today's answer — see Join's doc for the sentinel this replaced and why")
-	s.Assert().NotErrorIs(err, session.ErrBadAttack,
-		"and NOT the finer one Join used to promise. If this starts failing, "+
-			"the projection learned to report an unreadable attack by name and "+
-			"Join's doc owes an update")
+	s.Require().ErrorIs(err, session.ErrBadAttack,
+		"a weapon that will not compile is a broken loadout, and Join's doc has always said so")
+	s.Assert().NotErrorIs(err, session.ErrBadCharacter,
+		"and NOT the coarser word this briefly answered — a host that could tell a broken "+
+			"weapon from a corrupt sheet can tell them apart again")
 }

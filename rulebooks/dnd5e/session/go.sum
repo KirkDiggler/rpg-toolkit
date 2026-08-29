@@ -22,8 +22,8 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.1.0 h1:LxEJMtm4M3
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.1.0/go.mod h1:Y5eXfAAyQ0N4Sp07T5C7MxD2CwAwdAUi2zo5SyN60Ds=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.37.0 h1:t44TeeJm7Fkc8Ra72E2YH+OcvM2LC0PF6hHcrxNdq1g=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.37.0/go.mod h1:X2jxN8n3qhWAeicXEKXx6KUH3IjiwJTSYDkAY+aF7qw=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.22.0 h1:rYU9GOkkvNZK3sFMsiQQdFY4IlfvXIKhuYHfEm2iDpU=
-github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.22.0/go.mod h1:6LbwaX/oIkX3g76UMwND25dfCAEcptRoNfg5ajjGvVU=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.23.0 h1:uV6LoOXwWtPYQXeR9SAIh09iTtwoS3mGGc2Lga40VYw=
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.23.0/go.mod h1:6LbwaX/oIkX3g76UMwND25dfCAEcptRoNfg5ajjGvVU=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0 h1:FzCB2NbNS/BMRuKwEr8GRnadWJvdYermOs3smTd8Ss0=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0/go.mod h1:3SZFDKtQWXwplGyRfUDSsdrGH25Etkm62BdZig0Q3rY=
 github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 h1:uX1JmpONuD549D73r6cgnxyUu18Zb7yHAy5AYU0Pm4Q=
