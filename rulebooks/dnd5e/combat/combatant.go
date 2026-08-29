@@ -63,6 +63,18 @@ type Combatant interface {
 	// AC returns the combatant's armor class
 	AC() int
 
+	// HasShieldEquipped reports whether this combatant is carrying a shield.
+	//
+	// A MONSTER ANSWERS FALSE, and that is an answer rather than a gap. A
+	// monster has no equipment slots to read: whatever defence its shield
+	// gives is already inside the stat block AC it reports through AC() above,
+	// and nothing else about the sheet changes because it is holding one. The
+	// rules that ask this question — Unarmored Movement's speed bonus,
+	// Fighting Style (Protection)'s reaction — are character features, so
+	// false is the correct answer for a monster rather than a placeholder for
+	// one nobody has written.
+	HasShieldEquipped() bool
+
 	// ApplyDamage reduces HP by the damage amount(s).
 	// HP cannot go below 0.
 	ApplyDamage(ctx context.Context, input *ApplyDamageInput) *ApplyDamageResult
