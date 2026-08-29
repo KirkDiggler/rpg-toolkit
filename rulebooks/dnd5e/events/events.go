@@ -252,14 +252,6 @@ type AttackModifierSource struct {
 	Reason    string    // Human-readable explanation
 }
 
-// ReactionConsumption tracks a reaction consumed during an attack chain.
-// Processed after chain execution to update game state.
-type ReactionConsumption struct {
-	CharacterID string    // Who used their reaction
-	FeatureRef  *core.Ref // What feature consumed it
-	Reason      string    // Human-readable explanation
-}
-
 // =============================================================================
 // Chain Events (modifier chains)
 // =============================================================================
@@ -285,9 +277,6 @@ type AttackChainEvent struct {
 	AttackBonus       int // Base bonus before modifiers (can be modified by chain)
 	TargetAC          int // Target's armor class (for reference)
 	CriticalThreshold int // Roll >= this value is a critical hit (default 20, can be lowered)
-
-	// Side effects (processed after chain execution)
-	ReactionsConsumed []ReactionConsumption // Reactions used during this attack
 }
 
 // IsCancelled returns true if this attack has been cancelled.
@@ -743,14 +732,6 @@ type CombatEndEvent struct {
 	SubjectID string // whoever the fight just ended for
 }
 
-// ResourceConsumedEvent is published when a character uses a resource
-type ResourceConsumedEvent struct {
-	CharacterID string                // ID of the character consuming the resource
-	ResourceKey resources.ResourceKey // Which resource was consumed
-	Amount      int                   // How much was consumed
-	Remaining   int                   // How much is left after consumption
-}
-
 // =============================================================================
 // Death Save Events
 // =============================================================================
@@ -1002,9 +983,6 @@ var (
 
 	// CombatEndTopic provides typed pub/sub for combat-end events
 	CombatEndTopic = events.DefineTypedTopic[CombatEndEvent]("dnd5e.combat.end")
-
-	// ResourceConsumedTopic provides typed pub/sub for resource consumption events
-	ResourceConsumedTopic = events.DefineTypedTopic[ResourceConsumedEvent]("dnd5e.resource.consumed")
 
 	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
 	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](

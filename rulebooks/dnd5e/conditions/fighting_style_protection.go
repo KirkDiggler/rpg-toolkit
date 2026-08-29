@@ -211,13 +211,6 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 			Reason:    "protection_fighting_style",
 		})
 
-		// Record that reaction was consumed
-		e.ReactionsConsumed = append(e.ReactionsConsumed, dnd5eEvents.ReactionConsumption{
-			CharacterID: f.CharacterID,
-			FeatureRef:  refs.Conditions.FightingStyleProtection(),
-			Reason:      "protection_fighting_style",
-		})
-
 		// Actually consume the reaction, and do it HERE rather than above:
 		// the bill falls due when the stage runs, which is where it fell due
 		// before. The keeper applies it at the instant of the publish — the

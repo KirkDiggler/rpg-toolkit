@@ -10,6 +10,21 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
+// DamageInstanceInput represents a single damage amount with its type.
+// Multiple instances allow mixed-type damage (e.g., flametongue: slashing + fire).
+//
+// It lived in damage.go until rpg-project#319 Phase 6 deleted the second
+// damage flow around it, and moves here rather than dying with it: this is
+// what [FinalDamage] returns and what resolution folds into an
+// [ApplyDamageInput].
+type DamageInstanceInput struct {
+	// Amount is the base damage before modifiers
+	Amount int
+
+	// Type is the damage type (slashing, fire, etc.)
+	Type damage.Type
+}
+
 // FinalDamage turns folded damage components into the instances that land,
 // applying 5e's resistance, vulnerability, and immunity stacking, and reports
 // the total alongside them.

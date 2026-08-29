@@ -143,12 +143,16 @@ func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly()
 
 	// Should have disadvantage imposed
 	s.Len(finalEvent.DisadvantageSources, 1)
-	s.Len(finalEvent.ReactionsConsumed, 1)
 
 	// And the reaction is actually spent: the condition asked, and the keeper
 	// that owns the sheet applied it. Debited by the time Execute returns,
 	// because the bus is synchronous and the request goes out inside the
 	// stage — the same instant the direct SpendSlots call used to land.
+	//
+	// This IS the reaction evidence now. The chain event used to carry a
+	// ReactionsConsumed shelf alongside, written here and read by nobody;
+	// rpg-project#319 Phase 6 deleted it, leaving the keeper's ledger as the
+	// single answer to "was the reaction spent".
 	s.Equal(0, keeper.sheet.reactions, "the reaction was actually debited")
 	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
 }
@@ -298,7 +302,6 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
 	s.Require().NoError(err)
 
 	s.Empty(finalEvent.DisadvantageSources, "Protection is a reaction to someone ELSE's attack, never my own")
-	s.Empty(finalEvent.ReactionsConsumed)
 
 	// And nothing was spent for the reaction it never took.
 	s.Equal(1, keeper.sheet.reactions, "an untaken reaction must not be debited")
