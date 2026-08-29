@@ -107,49 +107,6 @@ func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*cha
 	return data, nil
 }
 
-// loadCharacter reconstitutes a player character and attaches its features and
-// conditions to the call's bus.
-//
-// Returns ErrNoCharacter when the repository does not hold the ID, and
-// ErrBadCharacter when it holds bytes that cannot be reconstituted. The two are
-// kept apart because they send whoever debugs it to different places: a bad
-// request versus corrupt storage.
-//
-// The returned character is for this call only. It is never stored on the
-// manager (S1), never held across a suspension, and never returned to the host
-// (S2) — the host named an ID and gets data back, not an object.
-//
-// The loader's own reason is kept as TEXT. The rulebook answers a sheet it
-// cannot reconstitute through rpgerr rather than through sentinel values, so
-// there is nothing for a host to match on TODAY — which is exactly why this
-// reads %v rather than %w. A chain that leaks nothing only because the module
-// underneath happens not to export a sentinel is a leak waiting on somebody
-// else's commit, and S2 is not a promise this package gets to delegate
-// (rpg-toolkit#1066).
-//
-// THE RECORD COMES BACK OUT ALONGSIDE THE SHEET, because a derived number is
-// folded from the record rather than read off the sheet — see
-// [projectCharacter]. It is the same bytes this already fetched, handed over
-// rather than fetched twice: a second read would be a second trip to the
-// repository for a record this call is holding, and two reads can disagree.
-// Serialising the sheet back with ToData would be worse still — that clones
-// every map, marshals every condition, and stamps UpdatedAt, which is a write's
-// cost paid on a read.
-func (m *Manager) loadCharacter(
-	ctx context.Context, bus events.EventBus, id string,
-) (*character.Character, *character.Data, error) {
-	data, err := m.fetchCharacterData(ctx, "character", id)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ch, err := character.LoadFromData(ctx, data, bus)
-	if err != nil {
-		return nil, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
-	}
-	return ch, data, nil
-}
-
 // instantiate builds catalog content into a new member's sheet.
 //
 // This is the other half of how an entity enters a session, and the split is
@@ -250,92 +207,75 @@ func projectMonster(data *monster.Data) *MonsterState {
 	return state
 }
 
-// projectCharacter reports the state of a loaded character.
+// projectCharacter asks resolution what this character is, and takes back an
+// answer.
 //
-// Read through the character's own accessors, never through ToData(). ToData is
-// a SERIALISATION, not a getter: it clones several maps, marshals every feature
-// and condition to JSON, and stamps UpdatedAt with the current time. Calling it
-// to read three integers would put that cost on every join, and would make a
-// read path non-deterministic for no reason.
+// A RECORD GOES DOWN AND NUMBERS COME BACK. Nothing live crosses either way:
+// resolution builds its own truth from the record, folds what needs folding,
+// and returns data. That is the whole of the read law at this seam — this
+// package holds records of the world, never the world.
 //
-// Speed is the field that carries the weight here. It is not stored on the
-// character at all — it is derived from race when asked — so it is the one value
-// that cannot be produced by echoing bytes, and the one the tests lean on to
-// prove reconstitution actually happened.
+// # Why one call rather than a sheet and a fold
 //
-// # ArmorClass is DERIVED, and the derivation happens in resolution
+// Join used to load a character of its own, read three static facts off it, and
+// send the record down separately for the armour class. Two reads of the same
+// character, and two things that could disagree.
 //
-// It used to read ch.AC() — the flat scalar off the sheet. That scalar is
-// written once at character creation and refreshed only by rpg-api's
-// equip/unequip patch, so nothing recomputes it and a monk who never changed
-// gear reported 10+DEX for the rest of the character's life, missing Unarmored
-// Defense entirely. Kirk's ruling (2026-08-28) is to derive on every read and
-// optimise later if the fold ever costs anything measurable.
+// They disagreed in a way that mattered. The armour class HAD to be folded in
+// resolution — a fold needs game context, one door installs it, and the door is
+// down there — while Speed had to come off a loaded sheet, because it is
+// derived from race and stored on no record. So the seam held a sheet for the
+// facts it could reach and delegated the one it could not. The entry answers
+// both now, off the same sheet, in one call.
 //
-// Then it read ch.EffectiveAC — deriving correctly, but folding a chain HERE,
-// on whatever bus this seam happened to have attached the sheet to and with no
-// game context installed at all. FOLDS LIVE IN RESOLUTION: a fold needs the
-// truth installed, exactly one function installs it, and that function is in
-// resolution. So the record goes down and a breakdown comes back —
-// [resolution.ProjectCharacter] attaches the one character, installs the truth,
-// folds, and tears down, and nothing live crosses back.
+// # The errors
 //
-// That is why this takes the RECORD as well as the sheet. The sheet answers
-// what it can answer on its own: Speed is the field carrying the weight, since
-// it is not stored anywhere and is derived from race when asked, which is why
-// these cannot be read off the record instead. The fold takes the record,
-// because resolution builds its own truth and will not be handed somebody
-// else's live objects.
+// Absent and unreadable stay apart, because they send whoever debugs it to
+// different places: a bad request versus corrupt storage. The fetch above
+// answers ErrNoCharacter; this answers ErrBadCharacter for a record resolution
+// could not make a character out of.
 //
-// It no longer matters whether the sheet handed here is attached. It used to
-// matter enormously — an unattached sheet made EffectiveAC refuse
-// (rpg-toolkit#1276), and the refusal had to be carried out rather than
-// flattened into a plausible number. The fold does not run on this sheet any
-// more, so that whole failure mode is gone rather than guarded.
-//
-// A MONSTER keeps its stat block AC in [projectMonster]: that value is authored,
-// not derived, so reading it is correct rather than a cache.
+// The inner reason rides as TEXT rather than as a chain. Resolution reports
+// through its own sentinels, and a host matching on one of those would be
+// matching on a package this seam exists to keep it away from (S2,
+// rpg-toolkit#1066).
 func projectCharacter(
-	ctx context.Context, ch *character.Character, record *character.Data,
-) (*CharacterState, error) {
-	if ch == nil {
-		return nil, nil
-	}
-
-	// The two have to describe the same character, and one caller passing them
-	// from one load is not a guarantee — it is a habit. A mismatch would fold
-	// one character's conditions into another's state and look entirely
-	// plausible on the way out.
-	if record == nil || record.ID != ch.GetID() {
-		return nil, fmt.Errorf("character %q: %w: projected against record %q",
-			ch.GetID(), ErrBadCharacter, recordID(record))
+	ctx context.Context, id string, record *character.Data,
+) (*resolution.ProjectCharacterOutput, error) {
+	if record == nil {
+		return nil, fmt.Errorf("character %q: %w: no record to project", id, ErrBadCharacter)
 	}
 
 	projected, err := resolution.ProjectCharacter(ctx, &resolution.ProjectCharacterInput{
 		Character: record,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("character %q armour class: %w", ch.GetID(), err)
+		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+	}
+
+	return projected, nil
+}
+
+// characterStateFrom maps the answer onto the shape this seam publishes.
+//
+// A mapping and nothing else — every field is already a number or a string by
+// the time it arrives, which is what makes this function boring. It was not
+// always: the version this replaces read six accessors off a live sheet and
+// carried a comment explaining why it must not call ToData to do it. That
+// argument now lives where the reading happens, one module down.
+func characterStateFrom(projected *resolution.ProjectCharacterOutput) *CharacterState {
+	if projected == nil {
+		return nil
 	}
 
 	return &CharacterState{
-		ID:               ch.GetID(),
-		Name:             ch.GetName(),
-		Level:            ch.GetLevel(),
-		Speed:            ch.GetSpeed(),
-		HitPoints:        ch.GetHitPoints(),
-		MaxHitPoints:     ch.GetMaxHitPoints(),
+		ID:               projected.Sheet.ID,
+		Name:             projected.Sheet.Name,
+		Level:            projected.Sheet.Level,
+		Speed:            projected.Sheet.SpeedFeet,
+		HitPoints:        projected.Sheet.HitPoints,
+		MaxHitPoints:     projected.Sheet.MaxHitPoints,
 		ArmorClass:       projected.ArmorClass.Total,
-		ProficiencyBonus: ch.ProficiencyBonus(),
-	}, nil
-}
-
-// recordID names a record that may not be there, so the mismatch error above
-// can say which record it was handed without a nil dereference of its own.
-func recordID(record *character.Data) string {
-	if record == nil {
-		return ""
+		ProficiencyBonus: projected.Sheet.ProficiencyBonus,
 	}
-
-	return record.ID
 }

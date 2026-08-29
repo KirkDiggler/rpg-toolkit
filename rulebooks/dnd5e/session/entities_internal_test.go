@@ -18,25 +18,28 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
-// projectCharacter folds through resolution now, so the sheet it is handed no
-// longer has to be attached — and the number is right either way.
+// TestProjectCharacterFoldsFromTheRecord is the last of three generations of
+// this test, and the shrinking is the story.
 //
-// This test used to pin the OPPOSITE, and the change is the point of the slice
-// rather than a relaxation. It pinned that an unattached sheet made the
-// projection refuse, because EffectiveAC refuses (rpg-toolkit#1276) and a
-// refusal flattened into base armour is how a monk fought at 10+DEX for the
-// life of the character. That guard mattered while the fold ran HERE, on
-// whatever bus this seam had happened to attach the sheet to.
+// It began as TestProjectCharacterRefusesAnUnattachedSheet: an unattached sheet
+// made the projection refuse, because EffectiveAC refuses (rpg-toolkit#1276)
+// and a refusal flattened into base armour is how a monk fought at 10+DEX for
+// the life of the character. That mattered while the fold ran HERE, on whatever
+// bus this seam had attached the sheet to.
 //
-// The fold now runs in resolution, off the RECORD, on a bus resolution builds
-// and tears down with the truth installed. So the failure the old test guarded
-// cannot occur rather than being caught when it does — and an unattached sheet,
-// which used to be the broken case, is simply not the fold's problem.
+// It then became TestProjectCharacterFoldsWithoutAnAttachedSheet, when the fold
+// moved to resolution and an unattached sheet stopped being the fold's problem.
+// The sheet was still passed, so the test still had one to leave unattached.
 //
-// The fixture keeps its trap. 13 is the stale scalar on the sheet; 15 is what
-// the chain folds to — 10 base + 3 DEX + 2 WIS, Unarmored Defense for a monk.
-// A projection that flattened back to the sheet answers 13 and says so.
-func TestProjectCharacterFoldsWithoutAnAttachedSheet(t *testing.T) {
+// Now there is no sheet to pass. A record goes down and numbers come back, so
+// the failure mode is not guarded, not tolerated, but UNREPRESENTABLE — which
+// is the shape a fix takes when it stops being a check.
+//
+// The fixture keeps its trap through all three. 13 is the stale scalar on the
+// record; 15 is what the chain folds to — 10 base + 3 DEX + 2 WIS, Unarmored
+// Defense for a monk. A projection that flattened back to the record answers 13
+// and says so.
+func TestProjectCharacterFoldsFromTheRecord(t *testing.T) {
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
 		CharacterID: "unattached", Type: conditions.UnarmoredDefenseMonk,
 		Source: "dnd5e:classes:monk",
@@ -59,56 +62,50 @@ func TestProjectCharacterFoldsWithoutAnAttachedSheet(t *testing.T) {
 		Conditions:     []json.RawMessage{raw},
 	}
 
-	// Load, deliberately WITHOUT Attach: no bus, nothing subscribed here.
-	sheet, err := character.Load(context.Background(), record)
+	projected, err := projectCharacter(context.Background(), "unattached", record)
 	require.NoError(t, err)
 
-	state, err := projectCharacter(context.Background(), sheet, record)
-
-	require.NoError(t, err, "the fold does not need this seam's bus any more")
+	state := characterStateFrom(projected)
 	require.Equal(t, 15, state.ArmorClass,
 		"10 base + 3 DEX + 2 WIS: resolution folded the condition in")
-	require.NotEqual(t, 13, state.ArmorClass, "and did not fall back to the sheet's scalar")
+	require.NotEqual(t, 13, state.ArmorClass, "and did not fall back to the record's scalar")
+
+	require.Equal(t, 30, state.Speed,
+		"and Speed came off the loaded sheet — it is on no record, so echoing bytes cannot produce it")
 }
 
-// The sheet and the record have to describe the same character. One caller
-// passing both from one load is a habit, not a guarantee, and a mismatch would
-// fold one character's conditions into another's state and look plausible on
-// the way out.
-func TestProjectCharacterRefusesASheetAndRecordThatDisagree(t *testing.T) {
-	sheet, err := character.Load(context.Background(), &character.Data{
-		ID: "hero", PlayerID: "p1", Name: "Hero",
-		Level: 1, ProficiencyBonus: 2,
-		RaceID: races.Human, ClassID: classes.Monk,
-		AbilityScores: shared.AbilityScores{
-			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 14,
-			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
-		},
-		HitPoints: 9, MaxHitPoints: 9, EquipmentSlots: character.EquipmentSlots{},
-	})
-	require.NoError(t, err)
-
-	t.Run("a different character's record", func(t *testing.T) {
-		state, err := projectCharacter(context.Background(), sheet, &character.Data{ID: "somebody-else"})
-
-		require.ErrorIs(t, err, ErrBadCharacter)
-		require.Nil(t, state)
-		require.Contains(t, err.Error(), "somebody-else", "the error names the record it was handed")
-	})
-
+// A record this seam cannot get a character out of is ErrBadCharacter, which is
+// the vocabulary a host branches on.
+//
+// The guard this replaces was richer and is now unrepresentable: projectCharacter
+// used to take a sheet AND a record, and checked they described the same
+// character, because one caller passing both from one load is a habit rather
+// than a guarantee. There is one argument now, so there is nothing to disagree
+// with itself.
+func TestProjectCharacterRefusesARecordItCannotUse(t *testing.T) {
 	t.Run("no record at all", func(t *testing.T) {
-		state, err := projectCharacter(context.Background(), sheet, nil)
+		projected, err := projectCharacter(context.Background(), "hero", nil)
 
 		require.ErrorIs(t, err, ErrBadCharacter)
-		require.Nil(t, state)
+		require.Nil(t, projected)
+	})
+
+	t.Run("a record resolution refuses", func(t *testing.T) {
+		// No ID: the entry validates its participant, and a sheet with no ID
+		// cannot be read back out of the cast it was just put into.
+		projected, err := projectCharacter(context.Background(), "hero", &character.Data{})
+
+		require.ErrorIs(t, err, ErrBadCharacter)
+		require.Nil(t, projected)
+		require.Contains(t, err.Error(), "hero", "the error names who was being projected")
 	})
 }
 
-// A nil character is absence, not failure, and stays a nil projection — Join
-// relies on this for members that carry no sheet.
-func TestProjectCharacterTreatsNilAsAbsenceNotFailure(t *testing.T) {
-	state, err := projectCharacter(context.Background(), nil, nil)
-
-	require.NoError(t, err)
-	require.Nil(t, state)
+// characterStateFrom answers nil for nil, so a caller that has no projection
+// publishes no state rather than a zero-valued one.
+//
+// A zero CharacterState would be a character with no name, no hit points and an
+// armour class of 0 — which reads like a real answer about a very dead person.
+func TestCharacterStateFromTreatsNilAsAbsence(t *testing.T) {
+	require.Nil(t, characterStateFrom(nil))
 }

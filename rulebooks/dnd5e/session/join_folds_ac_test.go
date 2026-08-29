@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -37,6 +38,7 @@ type JoinFoldsACTestSuite struct {
 
 	mgr        *session.Manager
 	characters *fakeCharacters
+	encounters *fakeEncounters
 }
 
 func TestJoinFoldsACSuite(t *testing.T) {
@@ -46,10 +48,11 @@ func TestJoinFoldsACSuite(t *testing.T) {
 func (s *JoinFoldsACTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	s.characters.byID[ragingID] = barbarianCharacter(ragingID)
+	s.encounters = newFakeEncounters()
 
 	mgr, err := session.NewManager(&session.Config{
 		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
+		Sessions: newFakeSessions(), Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -151,4 +154,77 @@ func (s *JoinFoldsACTestSuite) TestTheRestOfTheProjectionSurvivesTheReroute() {
 	s.Equal(30, out.Character.MaxHitPoints)
 	s.Equal(2, out.Character.ProficiencyBonus)
 	s.Equal(30, out.Character.Speed, "a human's speed, derived rather than stored")
+}
+
+// TestTheSeatedMemberCarriesWhatResolutionDerived pins everything Join takes
+// from the answer that does NOT come back out on JoinOutput.
+//
+// The armour class is read off JoinOutput and pinned three ways over. The speed
+// and the main-hand attack are not on JoinOutput at all — they go into the
+// member record the encounter stores, where a turn's movement budget and a
+// TurnDriver eventually read them — so nothing here noticed where they came
+// from. BOTH mutants survived the whole suite: seating every player with speed
+// zero, and seating them with an attack of no range and no kind. That is how
+// this test came to exist.
+//
+// The values are chosen so a dropped one is a different number rather than a
+// plausible one. 30 is what a HUMAN walks, derived from race by the loaded
+// sheet and on no record. 5 feet and "melee" are what an unarmed strike is —
+// this fixture equips nothing, and the rules say empty hands still punch.
+func (s *JoinFoldsACTestSuite) TestTheSeatedMemberCarriesWhatResolutionDerived() {
+	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: ragingID, Position: hexCell(3, 2),
+	})
+	s.Require().NoError(err)
+
+	world, ok := s.encounters.byID["world"]
+	s.Require().True(ok, "the join committed a world")
+
+	var seated bool
+	for _, member := range world.Members {
+		if string(member.ID) != ragingID {
+			continue
+		}
+		seated = true
+		s.Equal(30, member.SpeedFeet,
+			"a Human walks 30: the seated member carries the speed resolution derived, not zero")
+
+		s.Require().Len(member.Actions, 1, "the main-hand attack was compiled into the member record")
+		s.Equal(5, member.Actions[0].RangeFeet,
+			"an unarmed strike reaches 5 feet — 0 would seat a member who cannot reach anything")
+		s.Equal("melee", member.Actions[0].Kind,
+			"and it is made in reach; an empty kind is not a kind")
+	}
+	s.Require().True(seated, "the barbarian is on the stored roster")
+}
+
+// TestABadMainHandIsReportedAsACorruptCharacter pins a narrowing this slice
+// caused, so it is on the record rather than discovered by a host.
+//
+// Join's doc used to promise ErrBadAttack for a main-hand weapon that would not
+// compile. The compiling moved into resolution's projection along with the
+// fold, and that entry reports the failure as a bad participant — which this
+// seam can only translate to ErrBadCharacter. Both send you to the same place
+// (that character's stored sheet is wrong), but a host that could tell a broken
+// weapon from a corrupt sheet can no longer.
+//
+// The fixture is the reachable case rather than an invented one: a stored sheet
+// whose main-hand slot names an item that is not in its inventory. The equip
+// path cannot produce that; a persisted record can.
+func (s *JoinFoldsACTestSuite) TestABadMainHandIsReportedAsACorruptCharacter() {
+	broken := barbarianCharacter("broken-hand")
+	broken.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: armor.ChainMail}
+	s.characters.byID[broken.ID] = broken
+
+	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "broken-hand", Position: hexCell(3, 2),
+	})
+
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, session.ErrBadCharacter,
+		"today's answer — see Join's doc for the sentinel this replaced and why")
+	s.Assert().NotErrorIs(err, session.ErrBadAttack,
+		"and NOT the finer one Join used to promise. If this starts failing, "+
+			"the projection learned to report an unreadable attack by name and "+
+			"Join's doc owes an update")
 }
