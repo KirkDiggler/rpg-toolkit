@@ -82,6 +82,10 @@ func (g *testGoblin) AbilityScores() shared.AbilityScores {
 	}
 }
 func (g *testGoblin) PassivePerception() int { return 10 }
+
+// HasShieldEquipped is false for the same reason the real monster sheet's is:
+// a goblin has no equipment slots, and its stat block AC is the whole answer.
+func (g *testGoblin) HasShieldEquipped() bool { return false }
 func (g *testGoblin) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	total := 0
 	for _, inst := range input.Instances {

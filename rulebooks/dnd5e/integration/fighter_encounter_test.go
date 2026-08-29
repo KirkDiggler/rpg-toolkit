@@ -109,6 +109,7 @@ func (m *mockFighterCharacter) IsDirty() bool                                  {
 func (m *mockFighterCharacter) MarkClean()                                     {}
 func (m *mockFighterCharacter) PassivePerception() int                         { return 10 }
 func (m *mockFighterCharacter) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
+func (m *mockFighterCharacter) HasShieldEquipped() bool                        { return false }
 
 func (m *mockFighterCharacter) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

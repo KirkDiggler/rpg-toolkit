@@ -177,6 +177,22 @@ func (m *Monster) AC() int {
 	return m.ac
 }
 
+// HasShieldEquipped answers FALSE, always, and the constant is the rule rather
+// than a stub. Implements combat.Combatant interface.
+//
+// A monster has no equipment slots. Whatever defence a shield gives one is
+// already inside the stat block AC returned above — the author wrote a number,
+// not a loadout — so there is nothing here to read and nothing further for a
+// rule to add. The features that ask (Unarmored Movement's speed bonus,
+// Fighting Style (Protection)'s reaction) are character features, so a monster
+// answering false is that question correctly answered, not one deferred.
+//
+// The day monsters carry real equipment this stops being a constant, and the
+// question is already in the right place for that to be the only edit.
+func (m *Monster) HasShieldEquipped() bool {
+	return false
+}
+
 // IsDirty returns true if the monster has been modified since last save.
 // Implements combat.Combatant interface.
 func (m *Monster) IsDirty() bool {
