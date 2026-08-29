@@ -101,15 +101,17 @@ func (s *ProjectionTestSuite) unarmoredDefense() json.RawMessage {
 // projection that lost the condition would answer 12 and still look like a
 // working fold, which is exactly how the original bug read.
 //
-// WHAT THIS DOES NOT PROVE, said out loud because silence here would read as a
-// claim: the number does not depend on the door. Unarmored Defense still reads
-// its own sheet through the owner handle character.Attach wires, not through
-// game context — so deleting the installTruth call from the projection leaves
-// this whole suite green. That was measured rather than assumed. What the fold
-// depends on today is the ATTACH, which is what this pins. The door is held on
-// this path structurally instead, by TestOnlyTheDoorInstallsGameContext, until
-// the reader migration moves Unarmored Defense onto the cast and the value
-// starts depending on it too.
+// THE NUMBER NOW DEPENDS ON THE DOOR, and this comment used to say the
+// opposite. It recorded an honest limit — Unarmored Defense read its own sheet
+// through the owner handle character.Attach wired, so deleting the installTruth
+// call left this whole suite green, and the door was held on this path only
+// structurally by TestOnlyTheDoorInstallsGameContext.
+//
+// The reader migration that limit was waiting for has landed. Unarmored Defense
+// reads itself out of the CAST, the cast is installed by the door, and so the
+// 15 below is now downstream of installTruth: delete that call and this fails
+// with 12. Measured, not assumed — TestTheDoorIsWhatMakesTheNumberRight pins
+// exactly that, and it is the pin this comment promised would become possible.
 func (s *ProjectionTestSuite) TestTheProjectionFoldsTheConditionIn() {
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
 		Character: s.barbarian(s.unarmoredDefense()),
@@ -130,31 +132,73 @@ func (s *ProjectionTestSuite) TestTheProjectionFoldsTheConditionIn() {
 		"and the +3 arrived as a feature component, not as a bigger base")
 }
 
-// TestTheProjectionMatchesAnAttachedFold is the parity half: the number the
-// projection derives is the number the old path derived, for the same record.
+// TestTheProjectionBeatsAnAttachedFold was the parity half, and its baseline
+// moved on purpose.
 //
-// The old path is written out in full rather than called through a helper —
-// load, attach, fold — because it is the thing being replaced, and a reader
-// comparing the two should be able to see both. Both are pinned to 15
-// independently, so this cannot pass by two wrongs agreeing.
-func (s *ProjectionTestSuite) TestTheProjectionMatchesAnAttachedFold() {
+// It used to assert that both paths answered 15 for the same record — the
+// projection, and the old load-attach-fold written out in full because it was
+// the thing being replaced. Both were pinned independently so it could not pass
+// by two wrongs agreeing.
+//
+// The old path now answers 12. Not a regression: an attached sheet folding on a
+// bare context has no CAST, so Unarmored Defense cannot find itself and leaves
+// the chain alone, and 10 + 2 DEX is what is left. That is R6 — a chain folded
+// outside resolution is the bug rather than a mode — and it is the entire point
+// of the phase, so the test that used to say "these agree" now says WHY THEY NO
+// LONGER DO. A parity assertion kept here would have to be satisfied by
+// breaking the thing that was just fixed.
+//
+// Both numbers stay pinned independently, for the original reason: 15 names the
+// fold that had the truth, 12 names the fold that did not, and three points
+// apart is far enough that the assertion says which one moved.
+func (s *ProjectionTestSuite) TestTheProjectionBeatsAnAttachedFold() {
 	direct, err := character.Load(s.ctx, s.barbarian(s.unarmoredDefense()))
 	s.Require().NoError(err)
 	s.Require().NoError(character.Attach(s.ctx, direct, events.NewEventBus()))
 
-	before, err := direct.EffectiveAC(s.ctx)
-	s.Require().NoError(err)
-	s.Require().Equal(15, before.Total, "the path being replaced answers 15")
+	outside, err := direct.EffectiveAC(s.ctx)
+	s.Require().NoError(err,
+		"a fold with no cast is degraded, not refused: the condition leaves the chain alone")
+	s.Require().Equal(12, outside.Total,
+		"10 base + 2 DEX. No cast, so Unarmored Defense contributes nothing")
 
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{
 		Character: s.barbarian(s.unarmoredDefense()),
 	})
 	s.Require().NoError(err)
 
-	s.Require().Equal(15, out.ArmorClass.Total, "and so does the path replacing it")
-	s.Require().Equal(before.Total, out.ArmorClass.Total)
-	s.Require().Len(out.ArmorClass.Components, len(before.Components),
-		"component for component, not just total for total")
+	s.Require().Equal(15, out.ArmorClass.Total,
+		"the entry installs the truth, so the condition can read itself: +3 CON")
+	s.Require().Greater(out.ArmorClass.Total, outside.Total,
+		"the door is worth exactly the contributors a cast-less fold silently drops")
+}
+
+// TestTheDoorIsWhatMakesTheNumberRight is the pin the honest-limit note on
+// TestTheProjectionFoldsTheConditionIn promised would become possible.
+//
+// Before the reader migration, deleting installTruth from this entry changed no
+// number anywhere — the fold depended on the ATTACH, and the door was held
+// structurally or not at all. Now the cast IS the read channel, so the door is
+// load-bearing for the value, and that is asserted here rather than described.
+//
+// It works by contrast rather than by reaching inside: the same record folded
+// through the entry (door called) and through an attached sheet on a bare
+// context (no door) differ by exactly the condition's contribution.
+func (s *ProjectionTestSuite) TestTheDoorIsWhatMakesTheNumberRight() {
+	record := s.barbarian(s.unarmoredDefense())
+
+	withDoor, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
+	s.Require().NoError(err)
+
+	direct, err := character.Load(s.ctx, s.barbarian(s.unarmoredDefense()))
+	s.Require().NoError(err)
+	s.Require().NoError(character.Attach(s.ctx, direct, events.NewEventBus()))
+	withoutDoor, err := direct.EffectiveAC(s.ctx)
+	s.Require().NoError(err)
+
+	s.Require().Equal(3, withDoor.ArmorClass.Total-withoutDoor.Total,
+		"the difference between folding with the truth installed and without it "+
+			"is precisely Unarmored Defense's +3 CON")
 }
 
 // TestTheProjectionInstallsNoWorld is the M4 pin, and the answer to "how did
