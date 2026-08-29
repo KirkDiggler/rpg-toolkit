@@ -520,44 +520,21 @@ func (c *Character) ShortRest(ctx context.Context) error {
 	return nil
 }
 
-// EndCombat publishes CombatEndEvent so combat-scoped conditions can remove
-// themselves (RAW: rage ends when combat ends) — mirrors LongRest/ShortRest's
-// RestEvent publish.
+// EndCombat used to sit here, and it is gone (rpg-project#319 Phase 6). It
+// published CombatEndEvent for one character so combat-scoped conditions could
+// remove themselves — RAW, rage ends when combat ends — mirroring
+// LongRest/ShortRest's RestEvent publish. That made it a second publisher of
+// a topic that has a real one — the composition notices the fight end and
+// announces a CombatEnded boundary through its Announcer, once per member
+// (rpg-project#295) — and a footgun besides: calling it ended ONE character's
+// rage without any fight having ended. Its own doc asked to be deleted in the
+// same pass as combat.TurnManager, which held the identical position for the
+// turn topics after rpg-project#294, and that is the pass that took both.
 //
-// DEAD, AND KNOWN TO BE: this method has no callers anywhere — not in the
-// toolkit, not in rpg-api, not in a test. What actually ends a fight for its
-// members is the composition noticing the fight end and announcing a
-// CombatEnded boundary through its Announcer, once per member
-// (rpg-project#295). This is the second publisher of a topic that finally has
-// a real one, and it is a footgun besides: calling it ends ONE character's
-// rage without any fight having ended.
-//
-// Left in place deliberately rather than deleted here. combat.TurnManager is
-// in exactly the same position for the turn topics after rpg-project#294, and
-// the two should go together in one pass rather than one at a time as each
-// slice happens to walk past. Tracked so it is a decision rather than a
-// leftover. A condition opts into combat-scoped lifetime by
-// subscribing to CombatEndTopic in its own Apply (see
-// RagingCondition.onCombatEnd); a condition that should outlive combat (e.g.
-// a curse) simply does not subscribe, so this is not a lifetime taxonomy on
-// Character — each condition decides its own scope. Unlike LongRest/ShortRest,
-// EndCombat does not touch HP or resources: the encounter-end lifecycle is
-// orthogonal to resting.
-func (c *Character) EndCombat(ctx context.Context) error {
-	if c.bus == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
-	}
-
-	combatEndTopic := dnd5eEvents.CombatEndTopic.On(c.bus)
-	err := combatEndTopic.Publish(ctx, dnd5eEvents.CombatEndEvent{
-		SubjectID: c.id,
-	})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to publish combat end event")
-	}
-
-	return nil
-}
+// A condition still opts into combat-scoped lifetime by subscribing to
+// CombatEndTopic in its own Apply (see RagingCondition.onCombatEnd); one that
+// should outlive combat simply does not subscribe. That was never a lifetime
+// taxonomy on Character, and deleting the publisher does not make it one.
 
 // GetFeatures returns all character features
 func (c *Character) GetFeatures() []features.Feature {
@@ -633,7 +610,12 @@ func (c *Character) GetCombatAbility(id string) combatabilities.CombatAbility {
 }
 
 // ActivateCombatAbility finds and activates a combat ability by its ref.
-// Implements combat.CombatCharacter interface.
+//
+// No caller since rpg-project#319 Phase 6 deleted combat.TurnManager, which
+// was the only one, along with the combat.CombatCharacter interface that
+// existed to describe what TurnManager needed. Kept as an open decision rather
+// than a leftover — see combat.ActivateAbilityInput for the argument and for
+// what rpg-project#300 may want to reshape.
 func (c *Character) ActivateCombatAbility(ctx context.Context, input *combat.ActivateAbilityInput) error {
 	if input == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "ActivateAbilityInput is nil")
@@ -675,7 +657,9 @@ func (c *Character) ActivateCombatAbility(ctx context.Context, input *combat.Act
 }
 
 // GetAbilityInfos returns metadata about all combat abilities on this character.
-// Implements combat.CombatCharacter interface.
+//
+// Uncalled for the same reason as ActivateCombatAbility above, and kept on the
+// same terms.
 func (c *Character) GetAbilityInfos() []combat.AbilityInfo {
 	infos := make([]combat.AbilityInfo, 0, len(c.combatAbilities))
 	for _, a := range c.combatAbilities {
