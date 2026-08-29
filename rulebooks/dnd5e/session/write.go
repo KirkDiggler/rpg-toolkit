@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -188,11 +189,24 @@ type EndOutput struct {
 // somewhere with no visible connection to the join that caused it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadAttack if the
-// character's own main-hand weapon cannot be compiled into their member
-// record's static Actions fact, ErrBadPosition if no room owns the cell they
-// were placed on, ErrClosed if the encounter has already ended, or
-// ErrSaveFailed with a populated report.
+// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadPosition if no room
+// owns the cell they were placed on, ErrClosed if the encounter has already
+// ended, or ErrSaveFailed with a populated report.
+//
+// ErrBadAttack IS NO LONGER IN THAT LIST, and the narrowing is recorded rather
+// than quietly absorbed. A main-hand weapon that will not compile — a stored
+// sheet naming an item that is not in the inventory, say — used to be reported
+// under its own sentinel. It now arrives as ErrBadCharacter, because the
+// compiling happens inside resolution's projection and that entry reports the
+// failure as a bad participant, which this seam translates the only way it can.
+//
+// A host that could tell "this player's weapon is broken" from "this player's
+// sheet is corrupt" now cannot, which is a real loss of vocabulary even though
+// both are the same repair. Restoring it means the projection reporting the
+// attack failure under resolution's own ErrBadAttack — which exists, and is
+// documented for exactly this — and this seam mapping it back.
+// TestABadMainHandIsReportedAsACorruptCharacter pins what happens today so the
+// day that changes, it changes visibly.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
@@ -206,18 +220,35 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	ch, record, err := m.loadCharacter(ctx, newCallBus(), in.Member)
+	record, err := m.fetchCharacterData(ctx, "character", in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	actions, err := memberActionsFromCharacter(ch)
+	// ONE QUESTION, ONE ANSWER. The record goes down and everything this verb
+	// needs about the character comes back: the folded armour class, the static
+	// facts, and the main-hand attack. Join used to load a sheet of its own and
+	// read three of those off it; what it holds now is a record on the way in
+	// and numbers on the way out.
+	//
+	// Asked BEFORE the placement, because the placement needs the name and the
+	// speed — and still before the commit, which is the ordering that matters:
+	// this can come back with an error, and an error after the write would be
+	// returned on a join that had really happened, the member seated and the
+	// caller told it failed. R5 atomicity, the same discipline every other
+	// pre-commit check in this file keeps.
+	projected, err := projectCharacter(ctx, in.Member, record)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	placed, err := place(scope, in.Member, KindPlayer, ch.GetName(), in.Position,
-		ch.GetSpeed(), defaultSightFeet, actions, "")
+	actions, err := memberActionsFrom(projected.MainHand)
+	if err != nil {
+		return nil, fmt.Errorf("join: %w", err)
+	}
+
+	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
+		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "")
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
 	}
@@ -227,16 +258,7 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	// Projected BEFORE commit, for the reason discoveryStanding spells out
-	// below: projectCharacter reaches resolution to fold the AC chain and can
-	// come back with an error, and an error after the write would be returned on
-	// a join that had really happened — the member seated, the caller told it
-	// failed. R5 atomicity, and the same discipline every other pre-commit check
-	// in this file keeps.
-	state, err := projectCharacter(ctx, ch, record)
-	if err != nil {
-		return nil, fmt.Errorf("join: %w", err)
-	}
+	state := characterStateFrom(projected)
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
@@ -448,10 +470,12 @@ func place(
 	return placed, nil
 }
 
-// memberActionsFromCharacter compiles a joining player's own static Actions
-// fact for the shared member record (rpg-project#254) from
-// [character.AssembleAttack]: the main-hand definition, projected once at join
-// time whether it is melee or ranged.
+// memberActionsFrom maps a joining player's main-hand attack onto the shared
+// member record's static Actions fact (rpg-project#254).
+//
+// The compiling happens in resolution now, off the same sheet the armour class
+// was folded on. What is left here is the mapping, which is the shape this seam
+// is supposed to have: facts in, a member record out.
 //
 // FILLED FOR A PLAYER TOO, even though nothing reads it back today — a
 // TurnDriver is only ever asked about an UNPLAYED member's turn. The same
@@ -459,15 +483,21 @@ func place(
 // Actions and Targeting are member facts for every kind, not a monster-only
 // extra, and the day a disconnected player's turn needs driving, the record
 // already has what it needs.
-func memberActionsFromCharacter(ch *character.Character) ([]encounter.ActionView, error) {
-	definition, err := character.AssembleAttack(ch, &character.AssembleAttackInput{Slot: character.SlotMainHand})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadAttack, err)
+//
+// NO ATTACK IS AN ERROR HERE, and it stays one. A character the rules can build
+// at all has a main hand — an empty one is an unarmed strike, which is why the
+// entry never answers nil for a sheet it could load. So nil means something
+// upstream stopped answering, and reporting it as "this member has no actions"
+// would seat a player who cannot swing and say nothing.
+func memberActionsFrom(attack *resolution.AttackFacts) ([]encounter.ActionView, error) {
+	if attack == nil {
+		return nil, fmt.Errorf("%w: no main-hand attack was compiled", ErrBadAttack)
 	}
+
 	return []encounter.ActionView{{
-		Ref: definition.Ref, Name: definition.Name,
-		RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
-		Kind:      deliveryKind(definition.Attack.Delivery),
+		Ref: attack.Ref, Name: attack.Name,
+		RangeFeet: attack.RangeFeet,
+		Kind:      attack.Kind,
 	}}, nil
 }
 
