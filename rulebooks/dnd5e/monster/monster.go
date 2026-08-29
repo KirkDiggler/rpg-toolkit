@@ -326,15 +326,61 @@ func (m *Monster) AddAction(definition combatActions.Definition) error {
 }
 
 // AddCondition records a live condition application and marks the sheet dirty.
-func (m *Monster) AddCondition(condition dnd5eEvents.ConditionBehavior) {
+//
+// Refuses a condition that cannot name itself; see [requireNameable].
+func (m *Monster) AddCondition(condition dnd5eEvents.ConditionBehavior) error {
+	if err := requireNameable(condition, m.id); err != nil {
+		return err
+	}
+
 	m.conditions = append(m.conditions, condition)
 	m.dirty = true
+
+	return nil
 }
 
 // AddLoadedCondition records a condition reconstructed from persisted data
 // without marking the unchanged sheet dirty.
-func (m *Monster) AddLoadedCondition(condition dnd5eEvents.ConditionBehavior) {
+//
+// Refuses a condition that cannot name itself; see [requireNameable].
+func (m *Monster) AddLoadedCondition(condition dnd5eEvents.ConditionBehavior) error {
+	if err := requireNameable(condition, m.id); err != nil {
+		return err
+	}
+
 	m.conditions = append(m.conditions, condition)
+
+	return nil
+}
+
+// requireNameable is THE DOOR: every path that puts a condition on this sheet
+// comes through [Monster.AddCondition] or [Monster.AddLoadedCondition], and
+// both ask this first.
+//
+// [dnd5eEvents.ConditionBehavior.Ref]'s contract is that it returns the same
+// ref its ToJSON embeds, and "must never return nil". A nil one breaks that in
+// a way that is invisible exactly where it matters: removals are matched by
+// ref, so a nameless condition would sit here unremovable while every removal
+// aimed at it reported success — and [core.Ref.String] has a pointer receiver
+// that dereferences its fields unguarded, so onConditionRemoved would panic
+// out of a bus publish rather than return. Checking once, on the way in, is
+// what lets that call site stay bare. Kirk's ruling: "if we protect the
+// construction, we don't need to worry about the nil."
+//
+// The type is named in the error because the condition cannot name itself —
+// that is the whole defect — so %T is the only identification available.
+func requireNameable(condition dnd5eEvents.ConditionBehavior, sheetID string) error {
+	if condition == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "nil condition")
+	}
+
+	if condition.Ref() == nil {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"condition %T returns a nil Ref, so it could never be matched by a removal on sheet %s",
+			condition, sheetID)
+	}
+
+	return nil
 }
 
 // AddTraitData adds raw trait JSON data to the monster.
@@ -412,11 +458,20 @@ func (m *Monster) onConditionApplied(
 	if event.Target == nil || event.Target.GetID() != m.id {
 		return nil
 	}
+
 	if err := event.Condition.Apply(ctx, bus); err != nil {
 		_ = event.Condition.Remove(ctx, bus)
 		return rpgerr.Wrapf(err, "failed to apply monster condition")
 	}
-	m.AddCondition(event.Condition)
+
+	// The sheet's own door decides, so this handler holds no copy of the rule.
+	// A refusal here means the condition subscribed and must be unsubscribed:
+	// the same rollback the Apply failure above performs.
+	if err := m.AddCondition(event.Condition); err != nil {
+		_ = event.Condition.Remove(ctx, bus)
+		return err
+	}
+
 	return nil
 }
 
@@ -434,12 +489,14 @@ func (m *Monster) onConditionApplied(
 // it predated conditions being able to name themselves (rpg-toolkit#971) —
 // and now asks the same question this one does, including the refusal below.
 //
-// A NIL REF IS LOUD, and here that is a fix rather than a nicety.
-// [core.Ref.String] has a pointer receiver that dereferences its fields
-// unguarded, so asking a contract-breaking condition for its name used to
-// PANIC out of a bus publish rather than return. Both keepers now refuse it
-// the same way, with the same message, because a condition that cannot name
-// itself cannot be matched against a removal on anybody's sheet.
+// It asks WITHOUT CHECKING for nil, because nothing nameless is on the sheet:
+// [requireNameable] refuses one at [Monster.AddCondition] and
+// [Monster.AddLoadedCondition], which are the only two ways a condition gets
+// here — the bus handler and both monstertraits load paths all go through
+// them. That matters more than it looks: [core.Ref.String] has a pointer
+// receiver that dereferences its fields unguarded, so a nameless condition
+// reaching this line would PANIC out of a bus publish rather than return an
+// error. The door is what makes the bare call safe.
 //
 // The unapplied trait blobs are deliberately untouched. They are conditions
 // that have not been attached yet — monstertraits.AttachMonster drains them
@@ -456,13 +513,7 @@ func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.Condit
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
 	for _, condition := range m.conditions {
-		ref := condition.Ref()
-		if ref == nil {
-			return rpgerr.New(rpgerr.CodeInternal,
-				"condition on this sheet returns a nil Ref, so a removal cannot be matched against it")
-		}
-
-		if ref.String() != event.ConditionRef {
+		if condition.Ref().String() != event.ConditionRef {
 			filtered = append(filtered, condition)
 		}
 	}

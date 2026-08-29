@@ -175,7 +175,12 @@ func LoadMonsterConditions(
 			return rpgerr.Wrap(err, "failed to apply monster condition")
 		}
 
-		m.AddLoadedCondition(condition)
+		if err := m.AddLoadedCondition(condition); err != nil {
+			_ = condition.Remove(ctx, traitBus)
+
+			return rpgerr.Wrap(err, "failed to record monster condition")
+		}
+
 	}
 	return nil
 }
@@ -265,6 +270,24 @@ func AttachMonster(
 			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
 		}
 
+		// REFUSED BEFORE ANYTHING HAPPENS TO IT, so that the recording loop
+		// below cannot fail. Monster.AddLoadedCondition rejects a condition that
+		// cannot name itself, and that rejection arriving DURING the recording
+		// loop would be a partial write this package cannot undo: a monster has
+		// no verb for taking a condition back off, so unattachMonster restores
+		// blobs on the assumption that nothing was recorded. Checking here keeps
+		// that assumption true — the attach fails before Apply, before the sheet
+		// keeper, and before any record, which is the no-op its doc promises.
+		//
+		// Prevention rather than compensation, deliberately: the alternative is
+		// an undo path that only ever runs in a case this check makes
+		// unreachable, which is a rollback nothing exercises.
+		if err := requireNameableTrait(condition); err != nil {
+			unattachMonster(ctx, m, bus, attached, carried)
+
+			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
+		}
+
 		// Asked of the condition rather than peeked back out of the blob — see
 		// LoadMonsterConditions for why, and refOf for what happens when a
 		// condition breaks its own contract.
@@ -285,8 +308,18 @@ func AttachMonster(
 	// mid-loop would have to be taken back out again on the next failure, and
 	// the monster has no verb for that — which is exactly the kind of missing
 	// undo that makes partial writes permanent.
+	//
+	// This loop CANNOT fail: AddLoadedCondition's one refusal is a nameless
+	// condition, and every one of these was checked above before it was applied.
+	// The error is still returned rather than dropped, because a future refusal
+	// added to that door would land here — and whoever adds one has to solve the
+	// undo this comment describes before this loop can honestly continue.
 	for _, trait := range attached {
-		m.AddLoadedCondition(trait.condition)
+		if err := m.AddLoadedCondition(trait.condition); err != nil {
+			unattachMonster(ctx, m, bus, attached, carried)
+
+			return rpgerr.Wrap(err, "failed to record monster trait")
+		}
 	}
 
 	return nil
@@ -326,6 +359,25 @@ func unattachMonster(
 	}
 }
 
+// requireNameableTrait refuses a condition that cannot name itself, at the
+// point in an attach where refusing is still free.
+//
+// It asks the same question Monster.AddLoadedCondition asks. Asking twice is
+// not redundancy: the sheet's door is the invariant, and this is the earlier
+// checkpoint that keeps a refusal from ever arriving mid-write.
+func requireNameableTrait(condition dnd5eEvents.ConditionBehavior) error {
+	if condition == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "nil condition")
+	}
+
+	if condition.Ref() == nil {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"trait %T returns a nil Ref, so a sheet would refuse it", condition)
+	}
+
+	return nil
+}
+
 // refOf is ConditionBehavior.Ref with the nil case answered.
 //
 // The interface says Ref "must never return nil", and this is what happens when
@@ -333,6 +385,14 @@ func unattachMonster(
 // replaced returned for a blob with no ref, and costs the same thing —
 // attribution, not correctness. A panic here would take down an attach over a
 // label.
+//
+// It is only ever a LABEL, and the distinction is load-bearing: the same
+// condition is offered to Monster.AddLoadedCondition below, which refuses a
+// nil ref outright. So a nameless condition gets an anonymous bus here and
+// then fails to reach the sheet at all — this function tolerating nil is not
+// the sheet tolerating it. rpg-project#319 Phase 6 review caught that gap:
+// naming the bus and admitting to the sheet are different questions, and only
+// the second one is an invariant.
 func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 	if ref := condition.Ref(); ref != nil {
 		return *ref

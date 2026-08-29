@@ -1117,12 +1117,56 @@ func (c *Character) onConditionApplied(
 		return rpgerr.Wrapf(err, "failed to apply condition")
 	}
 
-	// Store the condition
-	c.conditions = append(c.conditions, event.Condition)
+	// The sheet's own door decides, so this handler holds no copy of the rule.
+	// A refusal here means the condition subscribed and must be unsubscribed:
+	// the same rollback the Apply failure above performs.
+	if err := c.addCondition(event.Condition); err != nil {
+		_ = event.Condition.Remove(ctx, bus)
+		return err
+	}
 
 	// ToData serializes conditions, so a sheet that gained one and did not go
 	// dirty is a sheet whose new condition never gets written down.
 	c.dirty = true
+
+	return nil
+}
+
+// addCondition is THE DOOR: every path that puts a condition on this sheet
+// comes through here or through [requireNameable] in loadEffects, and both ask
+// the same question.
+//
+// [dnd5eEvents.ConditionBehavior.Ref]'s contract is that it returns the same
+// ref its ToJSON embeds, and "must never return nil". A nil one breaks that in
+// a way that is invisible exactly where it matters: removals are matched by
+// ref, so a nameless condition would sit here unremovable while every removal
+// aimed at it reported success. Checking once, on the way in, is what lets
+// onConditionRemoved match on Ref() without asking again. Kirk's ruling: "if
+// we protect the construction, we don't need to worry about the nil."
+func (c *Character) addCondition(condition dnd5eEvents.ConditionBehavior) error {
+	if err := requireNameable(condition, c.id); err != nil {
+		return err
+	}
+
+	c.conditions = append(c.conditions, condition)
+
+	return nil
+}
+
+// requireNameable refuses a condition that cannot name itself.
+//
+// The type is named in the error because the condition cannot name itself —
+// that is the whole defect — so %T is the only identification available.
+func requireNameable(condition dnd5eEvents.ConditionBehavior, sheetID string) error {
+	if condition == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "nil condition")
+	}
+
+	if condition.Ref() == nil {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"condition %T returns a nil Ref, so it could never be matched by a removal on sheet %s",
+			condition, sheetID)
+	}
 
 	return nil
 }
@@ -1137,12 +1181,11 @@ func (c *Character) onConditionApplied(
 // kept, every one after it was skipped, and the removal itself was dropped
 // silently. The monster keeper has asked the direct question all along.
 //
-// A NIL REF IS LOUD, which is the one thing the direct question could
-// otherwise make quieter. Ref()'s contract is that it returns the same ref
-// its ToJSON embeds; a condition returning nil breaks that contract, and
-// matching it against the event would simply never match — the removal would
-// vanish with no error at all. That is the failure this rulebook fails closed
-// on rather than absorbs.
+// It asks WITHOUT CHECKING for nil, because nothing nameless is on the sheet:
+// [Character.addCondition] refuses one on the bus path and loadEffects refuses
+// one on the load path, which between them are every way a condition gets
+// here. A guard here would run once per condition per removal to re-establish
+// what admission established once.
 func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 	// Only process events for this member
 	if event.MemberID != c.id {
@@ -1151,14 +1194,8 @@ func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.Cond
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
 	for _, cond := range c.conditions {
-		ref := cond.Ref()
-		if ref == nil {
-			return rpgerr.New(rpgerr.CodeInternal,
-				"condition on this sheet returns a nil Ref, so a removal cannot be matched against it")
-		}
-
 		// Keep condition if it doesn't match the removed ref
-		if ref.String() != event.ConditionRef {
+		if cond.Ref().String() != event.ConditionRef {
 			filtered = append(filtered, cond)
 		}
 	}

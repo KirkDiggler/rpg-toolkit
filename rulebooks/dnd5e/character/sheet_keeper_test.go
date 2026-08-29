@@ -312,32 +312,28 @@ func (c *namelessCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(map[string]any{"ref": refs.Conditions.Dodging()})
 }
 
-// TestARefLessConditionFailsTheRemovalLoudly pins the one thing the keeper
-// gave up when it stopped recovering refs from ToJSON.
+// TestARefLessConditionIsRefusedAtTheDoor pins the admission check that lets
+// every later reader stop asking.
 //
-// Matching on Ref() is cheaper and cannot abandon a removal halfway through
-// the list, but it has a quiet failure the round trip did not: a condition
-// whose Ref() is nil would never equal any removal's ref, so the removal would
-// be dropped with no error and no trace. The keeper refuses instead — the
-// contract is broken, and a broken contract is not a reason to keep going.
+// Removals are matched by ref, so a condition whose Ref() is nil could sit on
+// the sheet unremovable while every removal aimed at it reported success. The
+// keeper refuses it on the way IN instead — Kirk's ruling, "if we protect the
+// construction, we don't need to worry about the nil" — which is why
+// onConditionRemoved can call Ref().String() bare.
 //
-// namelessCondition is deliberately a LIAR rather than merely incomplete: its
-// ToJSON embeds a perfectly good ref, so the old round-tripping keeper would
-// have matched and removed it happily. That is what makes this a pin on the
-// conversion and not just on nil-handling.
-func (s *SheetKeeperTestSuite) TestARefLessConditionFailsTheRemovalLoudly() {
-	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+// What is pinned is the BUS path specifically: ConditionAppliedEvent.Condition
+// is whatever a publisher put in it, so this is where an arbitrary
+// implementation reaches a sheet. namelessCondition's ToJSON returns a valid
+// ref, which no longer matters to either keeper — both stopped reading it in
+// rpg-project#319 Phase 6 — and is kept only so the fake is well-formed in
+// every respect except the one under test.
+func (s *SheetKeeperTestSuite) TestARefLessConditionIsRefusedAtTheDoor() {
+	err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    s.char,
 		Condition: &namelessCondition{},
-	}))
-	s.Require().Len(s.char.GetConditions(), 1)
-
-	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     s.char.GetID(),
-		ConditionRef: refs.Conditions.Dodging().String(),
-		Reason:       "test",
 	})
 
-	s.Require().Error(err, "a condition that cannot name itself must not fail silently")
-	s.Require().Len(s.char.GetConditions(), 1, "and the sheet is left as it was found")
+	s.Require().Error(err, "a condition that cannot name itself must not reach the sheet")
+	s.Require().Empty(s.char.GetConditions(), "and nothing was admitted")
+	s.Require().False(s.char.IsDirty(), "a refused application changes nothing to save")
 }
