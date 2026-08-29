@@ -86,6 +86,11 @@ func (g *testGoblin) PassivePerception() int { return 10 }
 // HasShieldEquipped is false for the same reason the real monster sheet's is:
 // a goblin has no equipment slots, and its stat block AC is the whole answer.
 func (g *testGoblin) HasShieldEquipped() bool { return false }
+
+// CanReact is true for the same reason the real monster sheet's is: a goblin
+// carries no action economy, so there is no slot to run out and nothing that
+// could refuse.
+func (g *testGoblin) CanReact() bool { return true }
 func (g *testGoblin) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	total := 0
 	for _, inst := range input.Instances {

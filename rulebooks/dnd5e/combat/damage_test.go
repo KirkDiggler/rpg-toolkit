@@ -37,6 +37,7 @@ func (m *mockCombatant) AbilityScores() shared.AbilityScores { return m.abilityS
 func (m *mockCombatant) ProficiencyBonus() int               { return m.proficiencyBonus }
 func (m *mockCombatant) PassivePerception() int              { return 10 }
 func (m *mockCombatant) HasShieldEquipped() bool             { return false }
+func (m *mockCombatant) CanReact() bool                      { return true }
 
 func (m *mockCombatant) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

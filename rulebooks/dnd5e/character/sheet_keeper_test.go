@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -203,6 +204,92 @@ func (s *SheetKeeperTestSuite) TestRemoveStopsTheSheetListening() {
 // cannot subscribe the same sheet twice between them.
 func (s *SheetKeeperTestSuite) TestKeeperIsTheCharactersOwn() {
 	s.Require().Same(s.char.SheetKeeper(), s.char.SheetKeeper())
+}
+
+// A condition reporting a change to its OWN persisted state marks the sheet.
+// The condition stores its turn-scoped memory in its own fields, those fields
+// serialize as part of this character, and nothing else can see them move — so
+// without this row the update is written perfectly and then discarded, because
+// resolution keeps only the sheets reporting IsDirty.
+func (s *SheetKeeperTestSuite) TestConditionStateChangedMarksTheSheet() {
+	s.char.MarkClean()
+
+	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
+		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
+			MemberID:     s.char.GetID(),
+			ConditionRef: refs.Conditions.Raging(),
+		})
+
+	s.Require().NoError(err)
+	s.Require().True(s.char.IsDirty(), "a condition's own state is this sheet's state")
+}
+
+func (s *SheetKeeperTestSuite) TestConditionStateChangedForSomeoneElseIsIgnored() {
+	s.char.MarkClean()
+
+	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
+		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
+			MemberID:     "someone-else",
+			ConditionRef: refs.Conditions.Raging(),
+		})
+
+	s.Require().NoError(err)
+	s.Require().False(s.char.IsDirty(), "every sheet hears it; only one of them is it")
+}
+
+// A spend request debits this character's economy, and does it AT THE PUBLISH:
+// the bus is synchronous, so an effect that asks and then reads back sees the
+// slot already gone, exactly as a direct SpendSlots call left it. That is what
+// lets a rule publish where it used to write without any ordering analysis.
+func (s *SheetKeeperTestSuite) TestSpendRequestedDebitsTheEconomy() {
+	_, err := s.char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+	s.Require().Equal(1, s.char.SlotsLeft(coreCombat.ActionReaction))
+	s.char.MarkClean()
+
+	pubErr := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
+		MemberID:   s.char.GetID(),
+		ActionType: coreCombat.ActionReaction,
+		Amount:     1,
+		SourceRef:  refs.Conditions.OpportunityAttack(),
+	})
+
+	s.Require().NoError(pubErr)
+	s.Require().Equal(0, s.char.SlotsLeft(coreCombat.ActionReaction), "the slot is spent by the time Publish returns")
+	s.Require().False(s.char.CanReact(), "and the reader the reacting rules gate on agrees")
+	s.Require().True(s.char.IsDirty(), "SpendSlots marks the sheet itself; the debit IS the change")
+}
+
+func (s *SheetKeeperTestSuite) TestSpendRequestedForSomeoneElseIsIgnored() {
+	_, err := s.char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+	s.char.MarkClean()
+
+	pubErr := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
+		MemberID:   "someone-else",
+		ActionType: coreCombat.ActionReaction,
+		Amount:     1,
+	})
+
+	s.Require().NoError(pubErr)
+	s.Require().Equal(1, s.char.SlotsLeft(coreCombat.ActionReaction), "somebody else's bill")
+	s.Require().False(s.char.IsDirty())
+}
+
+// CanReact answers from this sheet's own economy, which is what makes it the
+// question a rule can ask without holding a ledger. A sheet with no fight
+// around it says no, and says it because there is no economy at all rather
+// than because one refused.
+func (s *SheetKeeperTestSuite) TestCanReactFollowsTheReactionSlot() {
+	s.Require().False(s.char.InCombat(), "the fixture is a sheet outside a fight")
+	s.Require().False(s.char.CanReact(), "no economy, no reaction")
+
+	_, err := s.char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+	s.Require().True(s.char.CanReact(), "a fresh turn grants one")
+
+	s.char.SpendSlots(coreCombat.ActionReaction, 1)
+	s.Require().False(s.char.CanReact(), "and spending it is what takes it away")
 }
 
 func TestSheetKeeperSuite(t *testing.T) {
