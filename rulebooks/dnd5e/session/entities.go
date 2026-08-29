@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // Loading an entity, and the cleanup that must not happen.
@@ -125,19 +126,28 @@ func (m *Manager) fetchCharacterData(ctx context.Context, role, id string) (*cha
 // underneath happens not to export a sentinel is a leak waiting on somebody
 // else's commit, and S2 is not a promise this package gets to delegate
 // (rpg-toolkit#1066).
+//
+// THE RECORD COMES BACK OUT ALONGSIDE THE SHEET, because a derived number is
+// folded from the record rather than read off the sheet — see
+// [projectCharacter]. It is the same bytes this already fetched, handed over
+// rather than fetched twice: a second read would be a second trip to the
+// repository for a record this call is holding, and two reads can disagree.
+// Serialising the sheet back with ToData would be worse still — that clones
+// every map, marshals every condition, and stamps UpdatedAt, which is a write's
+// cost paid on a read.
 func (m *Manager) loadCharacter(
 	ctx context.Context, bus events.EventBus, id string,
-) (*character.Character, error) {
+) (*character.Character, *character.Data, error) {
 	data, err := m.fetchCharacterData(ctx, "character", id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	ch, err := character.LoadFromData(ctx, data, bus)
 	if err != nil {
-		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+		return nil, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
 	}
-	return ch, nil
+	return ch, data, nil
 }
 
 // instantiate builds catalog content into a new member's sheet.
@@ -253,7 +263,7 @@ func projectMonster(data *monster.Data) *MonsterState {
 // that cannot be produced by echoing bytes, and the one the tests lean on to
 // prove reconstitution actually happened.
 //
-// # ArmorClass is DERIVED, which is why this is fallible
+// # ArmorClass is DERIVED, and the derivation happens in resolution
 //
 // It used to read ch.AC() — the flat scalar off the sheet. That scalar is
 // written once at character creation and refreshed only by rpg-api's
@@ -262,19 +272,48 @@ func projectMonster(data *monster.Data) *MonsterState {
 // Defense entirely. Kirk's ruling (2026-08-28) is to derive on every read and
 // optimise later if the fold ever costs anything measurable.
 //
-// The sheet handed here is attached — [Manager.loadCharacter] puts it on a bus —
-// so the fold has its subscribers. If it ever is not, EffectiveAC refuses rather
-// than quietly reporting base armour (rpg-toolkit#1276), and that refusal comes
-// back out of here instead of being flattened into a plausible number.
+// Then it read ch.EffectiveAC — deriving correctly, but folding a chain HERE,
+// on whatever bus this seam happened to have attached the sheet to and with no
+// game context installed at all. FOLDS LIVE IN RESOLUTION: a fold needs the
+// truth installed, exactly one function installs it, and that function is in
+// resolution. So the record goes down and a breakdown comes back —
+// [resolution.ProjectCharacter] attaches the one character, installs the truth,
+// folds, and tears down, and nothing live crosses back.
+//
+// That is why this takes the RECORD as well as the sheet. The sheet answers
+// what it can answer on its own: Speed is the field carrying the weight, since
+// it is not stored anywhere and is derived from race when asked, which is why
+// these cannot be read off the record instead. The fold takes the record,
+// because resolution builds its own truth and will not be handed somebody
+// else's live objects.
+//
+// It no longer matters whether the sheet handed here is attached. It used to
+// matter enormously — an unattached sheet made EffectiveAC refuse
+// (rpg-toolkit#1276), and the refusal had to be carried out rather than
+// flattened into a plausible number. The fold does not run on this sheet any
+// more, so that whole failure mode is gone rather than guarded.
 //
 // A MONSTER keeps its stat block AC in [projectMonster]: that value is authored,
 // not derived, so reading it is correct rather than a cache.
-func projectCharacter(ctx context.Context, ch *character.Character) (*CharacterState, error) {
+func projectCharacter(
+	ctx context.Context, ch *character.Character, record *character.Data,
+) (*CharacterState, error) {
 	if ch == nil {
 		return nil, nil
 	}
 
-	breakdown, err := ch.EffectiveAC(ctx)
+	// The two have to describe the same character, and one caller passing them
+	// from one load is not a guarantee — it is a habit. A mismatch would fold
+	// one character's conditions into another's state and look entirely
+	// plausible on the way out.
+	if record == nil || record.ID != ch.GetID() {
+		return nil, fmt.Errorf("character %q: %w: projected against record %q",
+			ch.GetID(), ErrBadCharacter, recordID(record))
+	}
+
+	projected, err := resolution.ProjectCharacter(ctx, &resolution.ProjectCharacterInput{
+		Character: record,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("character %q armour class: %w", ch.GetID(), err)
 	}
@@ -286,7 +325,17 @@ func projectCharacter(ctx context.Context, ch *character.Character) (*CharacterS
 		Speed:            ch.GetSpeed(),
 		HitPoints:        ch.GetHitPoints(),
 		MaxHitPoints:     ch.GetMaxHitPoints(),
-		ArmorClass:       breakdown.Total,
+		ArmorClass:       projected.ArmorClass.Total,
 		ProficiencyBonus: ch.ProficiencyBonus(),
 	}, nil
+}
+
+// recordID names a record that may not be there, so the mismatch error above
+// can say which record it was handed without a nil dereference of its own.
+func recordID(record *character.Data) string {
+	if record == nil {
+		return ""
+	}
+
+	return record.ID
 }
