@@ -4,6 +4,8 @@
 package session_test
 
 import (
+	"fmt"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -113,6 +115,14 @@ func TestNoBusLivesInThisModule(t *testing.T) {
 			"has already broken its own law that no runtime object crosses the boundary")
 }
 
+// resolutionPath is the module whose entries this seam may reach for. Matched
+// by import PATH, so what it is called locally does not matter.
+const resolutionPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
+
+// interactionEntries stand an interaction up. Reaching any of these from the
+// standing seam is the reentrancy R7 forbids.
+var interactionEntries = map[string]bool{"Resolve": true, "ProjectCharacter": true}
+
 // TestTheStandingSeamDoesNotRunAnInteraction is the half of the reentrancy
 // question this module can honestly answer.
 //
@@ -126,8 +136,20 @@ func TestNoBusLivesInThisModule(t *testing.T) {
 // mid-flight. R7 is about exactly that, and it is the law this checks against.
 //
 // It does not happen, and this is why: the seam reaches Standing, which folds
-// nothing and drives no machine. Asserted rather than described, by naming the
-// entries that DO run one and requiring the seam to name none of them.
+// nothing and drives no machine.
+//
+// # It resolves the import, because a string match does not
+//
+// The first version of this test matched the text "resolution.Resolve" in the
+// source. Review defeated it in one line: alias the import as res, write
+// res.Resolve, and the pin passes while the escape compiles. Reproduced before
+// it was fixed, and kept below as a probe.
+//
+// So the import path is resolved to whatever it is called HERE — alias,
+// default, or dot — and selector expressions are walked against that name. A
+// dot-import is refused outright rather than analysed: it puts Resolve in scope
+// as a bare identifier, and a pin that tried to tell that from any other bare
+// identifier would be guessing.
 //
 // # What this cannot say, stated so the pin does not oversell itself
 //
@@ -141,22 +163,76 @@ func TestNoBusLivesInThisModule(t *testing.T) {
 // are the same thing. Until it lands there, that half is held by a comment
 // (resolution's ErrNoStanding doc) and by measurement, not by a test.
 func TestTheStandingSeamDoesNotRunAnInteraction(t *testing.T) {
-	// The entries that stand an interaction up. Reaching any of these from the
-	// standing seam is the reentrancy R7 forbids.
-	interactionEntries := []string{"resolution.Resolve", "resolution.ProjectCharacter"}
+	require.Empty(t, interactionEntriesReachedBy(t, "standing.go"),
+		"standing.go reaches an entry that runs an interaction. This seam answers a "+
+			"question the composition asks WHILE a resolution may be running, so such an "+
+			"entry opens a second interaction inside the first — two casts, two buses, one "+
+			"of them mid-flight (R7). Standing folds nothing and drives no machine, which "+
+			"is why it is the entry this seam may reach")
+}
 
-	source, err := os.ReadFile("standing.go")
+// TestTheAliasEscapeIsClosed runs the pin over the shape that defeated its
+// first version, so the fix is a passing test rather than a claim.
+func TestTheAliasEscapeIsClosed(t *testing.T) {
+	dir := t.TempDir()
+	aliased := filepath.Join(dir, "aliased.go")
+	require.NoError(t, os.WriteFile(aliased, []byte(`package session
+
+import res "`+resolutionPath+`"
+
+var _ = res.Resolve
+`), 0o600))
+
+	require.NotEmpty(t, interactionEntriesReachedBy(t, aliased),
+		"an aliased import must not walk an interaction entry past this pin — "+
+			"res.Resolve is resolution.Resolve wearing a different name")
+}
+
+// interactionEntriesReachedBy reports every interaction entry the file reaches
+// through the resolution package, however that package is named locally.
+func interactionEntriesReachedBy(t *testing.T, path string) []string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
 	require.NoError(t, err)
 
-	// Asserted as a BOOL rather than with NotContains, so a failure names the
-	// entry instead of dumping the file it was found in. A pin whose output has
-	// to be scrolled past is a pin somebody learns to ignore.
-	for _, entry := range interactionEntries {
-		require.False(t, strings.Contains(string(source), entry),
-			"standing.go names %s. This seam answers a question the composition asks WHILE "+
-				"a resolution may be running, so an entry that runs an interaction opens a "+
-				"second one inside the first — two casts, two buses, one of them mid-flight "+
-				"(R7). Standing folds nothing and drives no machine, which is why it is the "+
-				"entry this seam may reach", entry)
+	local := ""
+	for _, spec := range file.Imports {
+		if spec.Path.Value != `"`+resolutionPath+`"` {
+			continue
+		}
+		switch {
+		case spec.Name == nil:
+			local = "resolution"
+		case spec.Name.Name == ".":
+			// Refused rather than analysed: a dot-import puts Resolve in scope
+			// as a bare identifier, indistinguishable from anything else named
+			// Resolve, so the honest answer is that this pin cannot clear the
+			// file at all.
+			return []string{fset.Position(spec.Pos()).String() + ": dot-import of resolution"}
+		default:
+			local = spec.Name.Name
+		}
 	}
+	if local == "" {
+		return nil // the file does not reach resolution at all
+	}
+
+	var found []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || pkg.Name != local || !interactionEntries[sel.Sel.Name] {
+			return true
+		}
+		found = append(found, fmt.Sprintf("%s: %s.%s", fset.Position(sel.Pos()), local, sel.Sel.Name))
+
+		return true
+	})
+
+	return found
 }
