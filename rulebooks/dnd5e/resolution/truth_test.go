@@ -151,11 +151,23 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 // foldEntries are the functions in this package that stand a fold up from
 // nothing, and therefore the functions that must go through the door first.
 //
-// TWO of them, and the second is why this is a table. Resolve runs an
-// interaction; ProjectCharacter folds one derived number for a caller that has
-// no interaction to run — a character joining a session, who is not standing
-// anywhere yet. Both need the truth installed for the same reason and install
-// it the same way; neither is a mode of the other.
+// THREE of them now, and the growth is why this is a table. Resolve runs an
+// interaction. ProjectCharacter folds one derived number for a caller with no
+// interaction to run — a character joining a session, who is not standing
+// anywhere yet. Standing answers a question about live sheets for a caller that
+// must not hold any. All three need the truth installed for the same reason and
+// install it the same way; none is a mode of another.
+//
+// PREFLIGHT IS DELIBERATELY ABSENT, and its absence is the interesting entry in
+// this list. It attaches every participant and folds nothing — it is asking
+// whether a cast COULD be stood up, not standing one up — and nothing in the
+// attach path reads game context. So it opens no door, and adding it here would
+// fail this pin rather than satisfy it.
+//
+// That is a real edge and it is guarded by construction rather than by care: if
+// Preflight ever grows a fold, it must call installTruth to get the truth, and
+// calling installTruth without being named here fails this test. The list
+// cannot silently fall behind the code in either direction.
 //
 // The functions named are the *On forms rather than their exported wrappers,
 // because those are where the bus is held and the door is called. A wrapper
@@ -163,6 +175,7 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 var foldEntries = []struct{ file, fn string }{
 	{"resolve.go", "resolveOn"},
 	{"projection.go", "projectCharacterOn"},
+	{"standing.go", "standingOn"},
 }
 
 func entryNames(entries []struct{ file, fn string }) []string {

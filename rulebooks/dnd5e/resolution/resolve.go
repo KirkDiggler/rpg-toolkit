@@ -423,11 +423,21 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 			cast.characters[id] = ch
 
 		case p.Monster != nil:
-			// No policy here, and none is missing: monstertraits has one loader
-			// and it refuses what it cannot read. The only entry that loads
-			// leniently builds a character participant and never a monster one,
-			// so a lenient monster is unreachable rather than unhandled — the
-			// same argument refusingRoller makes about the roller above.
+			// No policy here, and none is available: monstertraits has one
+			// loader and it refuses what it cannot read.
+			//
+			// This used to add that a lenient monster was unreachable BECAUSE
+			// the only lenient entry built character participants and never
+			// monster ones. That premise is gone — Standing sets
+			// DropUnreadable and takes monsters — while the conclusion holds
+			// for a different and more durable reason: the flag is read on the
+			// character branch above and never reaches this one. A caller that
+			// asks to read leniently still gets a refusal from a monster whose
+			// trait blob will not parse.
+			//
+			// So DropUnreadable is honestly a CHARACTER policy, and the day a
+			// lenient monster loader exists this branch is where it is wired,
+			// not another entry.
 			m, err := attachMonster(ctx, view, p.Monster, in.Roller)
 			if err != nil {
 				return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)

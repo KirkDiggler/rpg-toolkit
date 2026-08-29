@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -24,12 +25,83 @@ type ProjectCharacterInput struct {
 }
 
 // ProjectCharacterOutput is what the projection derived. All of it is data.
+//
+// NOTHING HERE HAS A ToData(). That is the rule this entry is shaped by rather
+// than a happy accident: handing back a *character.Character would hand the
+// caller a serialization affordance outside the keeper discipline, and a seam
+// holding one has stopped holding records and started holding sheets.
 type ProjectCharacterOutput struct {
 	// ArmorClass is the folded AC, carrying every contributor's component —
 	// the same breakdown an interaction folds, because it is folded the same
 	// way, on a bus with the same subscribers.
 	ArmorClass *combat.ACBreakdown
+
+	// Sheet is what the record reconstituted into, as numbers and strings.
+	Sheet CharacterFacts
+
+	// MainHand is the one attack a joining member's static Actions fact
+	// carries, or nil when this character has no main-hand attack to compile.
+	//
+	// Nil rather than a zero-valued struct, because "no attack" and "an attack
+	// with no name and no range" are different facts and only one of them is
+	// true of an empty hand.
+	MainHand *AttackFacts
 }
+
+// CharacterFacts is the static half of a character, read off the reconstituted
+// sheet rather than echoed out of the record.
+//
+// Every field here could be echoed except one, and that one is why this is
+// derived at all: Speed is NOT stored on the record — it comes from race when
+// asked — so a caller reading the bytes it already holds cannot produce it.
+// The rest come from the same sheet so that one load answers the whole
+// question and two reads cannot disagree.
+type CharacterFacts struct {
+	// ID is the character this describes. Returned so a caller holding several
+	// projections can tell them apart without tracking call order.
+	ID string
+
+	// Name, Level, HitPoints, MaxHitPoints and ProficiencyBonus are the sheet's
+	// own answers.
+	Name             string
+	Level            int
+	HitPoints        int
+	MaxHitPoints     int
+	ProficiencyBonus int
+
+	// SpeedFeet is the walking speed the sheet derives from race.
+	SpeedFeet int
+}
+
+// AttackFacts is a compiled attack as numbers: what it is called, how far it
+// reaches, and whether it is swung or thrown.
+type AttackFacts struct {
+	// Ref names the weapon this attack was compiled from.
+	Ref core.Ref
+
+	// Name is the weapon's display name.
+	Name string
+
+	// RangeFeet is the attack's maximum reach.
+	RangeFeet int
+
+	// Kind is "melee" or "ranged".
+	//
+	// A STRING WITH AN EMPTY ZERO VALUE, deliberately, and not a bool. False
+	// would have to mean one of the two, so a value nobody filled in would read
+	// as a real answer — a ranged attack invented out of an unset field. Empty
+	// reads as what it is: nothing was compiled.
+	Kind string
+}
+
+// Attack kinds, as [AttackFacts.Kind] reports them.
+const (
+	// AttackKindMelee is an attack made in reach.
+	AttackKindMelee = "melee"
+
+	// AttackKindRanged is an attack made at distance.
+	AttackKindRanged = "ranged"
+)
 
 // ProjectCharacter folds one character's armour class outside any interaction:
 // attach the one character, install the truth, fold, tear down.
@@ -166,7 +238,64 @@ func projectCharacterOn(
 		return nil, fmt.Errorf("resolution: teardown: %w", tearErr)
 	}
 
-	return &ProjectCharacterOutput{ArmorClass: breakdown}, nil
+	// Read off the SAME sheet the fold ran against, before it goes out of
+	// scope. A second load would be a second answer to the same question, and
+	// the two can disagree the moment anything about loading stops being pure.
+	facts, mainHand, err := factsOf(ch)
+	if err != nil {
+		return nil, fmt.Errorf("resolution: project character %q: %w", one.ID(), err)
+	}
+
+	return &ProjectCharacterOutput{ArmorClass: breakdown, Sheet: facts, MainHand: mainHand}, nil
+}
+
+// factsOf reads a loaded sheet's static answers and compiles its main-hand
+// attack.
+//
+// Read through the character's own accessors, never through ToData(). ToData is
+// a SERIALIZATION rather than a getter: it clones several maps, marshals every
+// feature and condition to JSON, and stamps UpdatedAt with the current time.
+// Calling it to read six integers would put a write's cost on a read and make
+// the read non-deterministic for no reason.
+//
+// A character with no compilable main hand is not an error. An empty hand is an
+// ordinary state — a caller that refused it could not project anybody who had
+// not picked up a weapon yet — so the attack comes back nil and the rest of the
+// facts stand. What IS an error is a main hand that exists and will not
+// compile, because that is a sheet nobody can act with, and it is returned
+// rather than flattened into "no attack".
+func factsOf(ch *character.Character) (CharacterFacts, *AttackFacts, error) {
+	facts := CharacterFacts{
+		ID:               ch.GetID(),
+		Name:             ch.GetName(),
+		Level:            ch.GetLevel(),
+		HitPoints:        ch.GetHitPoints(),
+		MaxHitPoints:     ch.GetMaxHitPoints(),
+		ProficiencyBonus: ch.ProficiencyBonus(),
+		SpeedFeet:        ch.GetSpeed(),
+	}
+
+	definition, err := character.AssembleAttack(ch, &character.AssembleAttackInput{
+		Slot: character.SlotMainHand,
+	})
+	if err != nil {
+		return facts, nil, fmt.Errorf("%w: main hand: %v", ErrBadParticipant, err)
+	}
+	if definition.Attack == nil {
+		return facts, nil, nil
+	}
+
+	kind := AttackKindRanged
+	if definition.Attack.Delivery.IsMelee() {
+		kind = AttackKindMelee
+	}
+
+	return facts, &AttackFacts{
+		Ref:       definition.Ref,
+		Name:      definition.Name,
+		RangeFeet: definition.Attack.Delivery.MaxRangeFeet(),
+		Kind:      kind,
+	}, nil
 }
 
 // refusingRoller is the roller handed to attachAll on a path where nothing may

@@ -39,6 +39,7 @@ func (t *acRefusingTarget) MarkClean()                          {}
 func (t *acRefusingTarget) AbilityScores() shared.AbilityScores { return shared.AbilityScores{} }
 func (t *acRefusingTarget) ProficiencyBonus() int               { return 2 }
 func (t *acRefusingTarget) PassivePerception() int              { return 10 }
+func (t *acRefusingTarget) HasShieldEquipped() bool             { return false }
 
 var errNoBus = errors.New("sheet is on no bus")
 
