@@ -156,6 +156,52 @@ func (s *PreflightTestSuite) TestNothingIsLeftOnTheBus() {
 		"the participant that DID attach was revoked too — a preflight leaves no subscribers behind")
 }
 
+// THE WHOLE CAST GOES THROUGH ONE ATTACH, in sorted order, which is what
+// makes this a preflight of one cast rather than a survey of several.
+//
+// The property that actually differs is the ORDER, and saying so precisely
+// matters because the first version of this test did not. It asserted that
+// every participant landed on the same surface — true, and true of the
+// casts-of-one version too, since those attached onto the same surface as
+// well. It would have passed against the very thing it was written to catch.
+// Found by mutating, not by reading it.
+//
+// What one attach gives that N attaches do not is a single sorted pass: the
+// cast is ordered once, as a whole, so registrations come out in participant
+// order however the caller stacked the input. N attaches of one sort nothing,
+// because a list of one is already sorted, and the registrations then follow
+// whatever order the caller happened to pass.
+//
+// That is R4, and it is why the entry can claim to predict an interaction:
+// resolution attaches in sorted order, so a preflight that attached in some
+// other order would be exercising a sequence the interaction never runs.
+func (s *PreflightTestSuite) TestTheWholeCastAttachesInSortedOrder() {
+	registeredFor := func(participants []Participant) []string {
+		surf := newSurface(events.NewEventBus())
+		_, err := preflightOn(s.ctx, &PreflightInput{
+			Participants: participants, Roller: refusingRoller{},
+		}, surf)
+		s.Require().NoError(err)
+
+		var order []string
+		for _, registration := range surf.registrations() {
+			if len(order) == 0 || order[len(order)-1] != registration.Participant {
+				order = append(order, registration.Participant)
+			}
+		}
+
+		return order
+	}
+
+	backwards := registeredFor([]Participant{
+		{Character: s.hero("zzz")}, {Character: s.hero("mmm")}, {Character: s.hero("aaa")},
+	})
+
+	s.Equal([]string{"aaa", "mmm", "zzz"}, backwards,
+		"one attach sorts the whole cast; attaching a cast of one at a time sorts nothing "+
+			"and would register in the caller's order")
+}
+
 // A missing roller is refused rather than defaulted: rolling on a real roller
 // here would spend randomness the interaction being predicted has not spent.
 func (s *PreflightTestSuite) TestAMissingRollerIsRefused() {

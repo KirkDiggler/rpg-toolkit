@@ -6,6 +6,8 @@ package resolution
 import (
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -72,6 +74,33 @@ func (s *ProjectionTestSuite) TestACompiledAttackAlwaysNamesItsKind() {
 
 	s.Contains([]string{AttackKindMelee, AttackKindRanged}, out.MainHand.Kind,
 		"an attack that compiled has a kind; empty is reserved for no attack at all")
+}
+
+// A MAIN HAND THAT WILL NOT COMPILE is ErrBadAttack, not the general
+// "this participant is unusable".
+//
+// The two are different repairs, and the sentinel is what tells them apart: a
+// weapon that will not compile is a broken loadout, while a participant that
+// will not attach is a broken sheet. This used to answer ErrBadParticipant,
+// which a seam could only translate as "the whole character is corrupt" — the
+// narrowing #1296 recorded on the other side of the boundary.
+//
+// The fixture is the reachable case rather than an invented one: a stored sheet
+// whose main-hand slot names an item that is not in its inventory. The equip
+// path cannot produce that; a persisted record can.
+func (s *ProjectionTestSuite) TestAnUncompilableMainHandIsABadAttack() {
+	record := s.barbarian()
+	record.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: armor.ChainMail}
+
+	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
+
+	s.Require().Error(err)
+	s.Require().Nil(out)
+	s.Assert().ErrorIs(err, ErrBadAttack,
+		"a weapon that will not compile is a broken loadout")
+	s.Assert().NotErrorIs(err, ErrBadParticipant,
+		"and NOT the general participant refusal — a seam translating that can only "+
+			"report the whole character as corrupt")
 }
 
 // The facts survive the same lenient load the armour class does: a record

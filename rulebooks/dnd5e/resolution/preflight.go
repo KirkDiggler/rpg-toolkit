@@ -5,8 +5,8 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -102,21 +102,28 @@ func preflightOn(ctx context.Context, in *PreflightInput, surf *surface) (*Prefl
 		}
 	}
 
-	// Cast order, so two preflights over identical data produce identical
-	// reports — the same R4 argument attachAll makes, and the reason a caller
-	// can compare one report against the next.
-	ordered := append([]Participant(nil), in.Participants...)
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
-
+	// ONE CAST, ONE PASS. Every participant is attached onto the same surface,
+	// in the same sorted order an interaction uses, and the refusals are
+	// collected rather than aborting on the first — see attachAllInput.Refusals.
+	//
+	// This is the whole cast on purpose. An earlier version attached a cast of
+	// ONE at a time, which answered the same for every case anybody had, and
+	// carried a doc admitting what it could not see: a participant that would
+	// only fail in company. Nothing exercises that today — attaching is
+	// per-sheet and the bus is fresh — but "we checked them one at a time" is
+	// the kind of shortcut that is invisible until it is not, and the entry
+	// exists to predict an interaction rather than to approximate one.
 	refusals := make([]ParticipantRefusal, 0)
-	for _, p := range ordered {
-		_, err := attachAll(ctx, surf, &attachAllInput{
-			Participants: []Participant{p},
-			Roller:       in.Roller,
-		})
-		if err != nil {
-			refusals = append(refusals, ParticipantRefusal{Member: p.ID(), Reason: err})
-		}
+	if _, err := attachAll(ctx, surf, &attachAllInput{
+		Participants: in.Participants,
+		Roller:       in.Roller,
+		Refusals:     &refusals,
+	}); err != nil {
+		// Unreachable while Refusals is set — the attach reports per
+		// participant and returns no error of its own — so this refuses rather
+		// than dropping an error nobody expected, the way the projection's
+		// unreachable cast lookup does.
+		return nil, errors.Join(err, surf.teardown(ctx))
 	}
 
 	if err := surf.teardown(ctx); err != nil {

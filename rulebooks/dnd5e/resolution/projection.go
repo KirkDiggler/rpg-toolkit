@@ -264,6 +264,14 @@ func projectCharacterOn(
 // facts stand. What IS an error is a main hand that exists and will not
 // compile, because that is a sheet nobody can act with, and it is returned
 // rather than flattened into "no attack".
+//
+// IT IS ErrBadAttack, and the sentinel is the point rather than a detail. This
+// used to answer ErrBadParticipant — the general "this participant is unusable"
+// — and a seam translating that could only report the whole character as
+// corrupt. The two are different repairs: a weapon that will not compile is a
+// broken loadout, and a participant that will not attach is a broken sheet. The
+// finer word already existed and is documented for exactly this case; using the
+// coarser one narrowed a caller's vocabulary for no gain.
 func factsOf(ch *character.Character) (CharacterFacts, *AttackFacts, error) {
 	facts := CharacterFacts{
 		ID:               ch.GetID(),
@@ -279,7 +287,7 @@ func factsOf(ch *character.Character) (CharacterFacts, *AttackFacts, error) {
 		Slot: character.SlotMainHand,
 	})
 	if err != nil {
-		return facts, nil, fmt.Errorf("%w: main hand: %v", ErrBadParticipant, err)
+		return facts, nil, fmt.Errorf("%w: main hand: %v", ErrBadAttack, err)
 	}
 	if definition.Attack == nil {
 		return facts, nil, nil

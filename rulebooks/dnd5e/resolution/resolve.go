@@ -418,7 +418,12 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 		case p.Character != nil:
 			ch, err := attachCharacter(ctx, view, p.Character, in.DropUnreadable)
 			if err != nil {
-				return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
+				if in.Refusals == nil {
+					return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
+				}
+				*in.Refusals = append(*in.Refusals, ParticipantRefusal{Member: id, Reason: err})
+
+				continue
 			}
 			cast.characters[id] = ch
 
@@ -440,7 +445,12 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 			// not another entry.
 			m, err := attachMonster(ctx, view, p.Monster, in.Roller)
 			if err != nil {
-				return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)
+				if in.Refusals == nil {
+					return nil, fmt.Errorf("resolution: attach monster %q: %w", id, err)
+				}
+				*in.Refusals = append(*in.Refusals, ParticipantRefusal{Member: id, Reason: err})
+
+				continue
 			}
 			cast.monsters[id] = m
 		}
@@ -561,6 +571,25 @@ type attachAllInput struct {
 	// sorts them, because two attaches over identical data must grant identical
 	// registrations in an identical order.
 	Participants []Participant
+
+	// Refusals, when non-nil, turns the attach from ABORTING into COLLECTING:
+	// a participant that will not attach is appended here and the loop carries
+	// on to the next, so the cast comes back holding everyone who did attach.
+	//
+	// NIL IS THE ZERO VALUE AND IT ABORTS, which is right for every entry that
+	// goes on to DO something: an interaction with an unreadable participant
+	// does not happen, and computing the rest of it is work nobody asked for.
+	// The one entry that asks to collect is [Preflight], whose whole question
+	// is "which of these would be refused" — an offer menu carries a verdict
+	// per row, so a caller told only that somebody is unreadable would have to
+	// grey out the whole menu or guess which row to blame.
+	//
+	// Collecting rather than calling the attach once per participant is what
+	// keeps ONE CAST semantics: everyone lands on the same surface, in sorted
+	// order, so a participant that would only fail in company fails here too.
+	// Preflight attached casts of one for a while and its doc admitted the
+	// gap; this is that gap closed rather than described.
+	Refusals *[]ParticipantRefusal
 
 	// Roller reconstitutes effects that roll when they are triggered rather
 	// than when they are loaded. Reached only through the monster branch.
