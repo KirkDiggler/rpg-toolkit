@@ -111,7 +111,7 @@ func (s *HelpedConditionTestSuite) TestAttackChain_AllyAttackGetsAdvantageAndCon
 
 	s.False(condition.IsApplied(), "Helped is consumed on the ally's attack")
 	s.Require().NotNil(removedEvent)
-	s.Equal(s.characterID, removedEvent.CharacterID)
+	s.Equal(s.characterID, removedEvent.MemberID)
 	s.Equal("consumed", removedEvent.Reason)
 }
 
@@ -166,7 +166,7 @@ func (s *HelpedConditionTestSuite) TestTurnStartRemoval_SafetyNetAtHelpersTurn()
 		s.Require().NoError(err)
 		s.False(condition.IsApplied())
 		s.Require().NotNil(removedEvent)
-		s.Equal(s.characterID, removedEvent.CharacterID)
+		s.Equal(s.characterID, removedEvent.MemberID)
 		s.Equal("turn_start", removedEvent.Reason)
 	})
 }

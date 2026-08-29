@@ -111,7 +111,7 @@ func (s *HiddenConditionTestSuite) TestAttackChain_HiddenCharacterAttacks() {
 
 	s.False(condition.IsApplied(), "Hidden ends when the hider attacks")
 	s.Require().NotNil(removedEvent)
-	s.Equal(s.characterID, removedEvent.CharacterID)
+	s.Equal(s.characterID, removedEvent.MemberID)
 	s.Equal(refs.Conditions.Hidden().String(), removedEvent.ConditionRef)
 	s.Equal("attacked", removedEvent.Reason)
 }

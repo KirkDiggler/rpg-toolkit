@@ -169,7 +169,7 @@ func (h *HelpedCondition) onAttackChain(
 	if h.bus != nil {
 		removals := dnd5eEvents.ConditionRemovedTopic.On(h.bus)
 		if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-			CharacterID:  h.CharacterID,
+			MemberID:     h.CharacterID,
 			ConditionRef: refs.Conditions.Helped().String(),
 			Reason:       "consumed",
 		}); err != nil {
@@ -197,7 +197,7 @@ func (h *HelpedCondition) onTurnStart(ctx context.Context, event dnd5eEvents.Tur
 
 	removals := dnd5eEvents.ConditionRemovedTopic.On(h.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  h.CharacterID,
+		MemberID:     h.CharacterID,
 		ConditionRef: refs.Conditions.Helped().String(),
 		Reason:       "turn_start",
 	})

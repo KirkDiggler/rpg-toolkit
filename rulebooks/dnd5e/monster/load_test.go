@@ -346,7 +346,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedLeavesTheMonster() {
 	s.mon.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  s.mon.GetID(),
+		MemberID:     s.mon.GetID(),
 		ConditionRef: refs.Conditions.Prone().String(),
 		Reason:       "test",
 	})
@@ -368,7 +368,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedThatMatchesNothingLeavesThe
 	s.mon.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  s.mon.GetID(),
+		MemberID:     s.mon.GetID(),
 		ConditionRef: refs.Conditions.Raging().String(),
 	})
 
@@ -385,7 +385,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedFromSomeoneElseIsIgnored() 
 	s.mon.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  "someone-else",
+		MemberID:     "someone-else",
 		ConditionRef: refs.Conditions.Prone().String(),
 	})
 
@@ -455,4 +455,55 @@ func TestPureLoadSuite(t *testing.T) {
 
 func TestMonsterKeeperSuite(t *testing.T) {
 	suite.Run(t, new(MonsterKeeperTestSuite))
+}
+
+// namelessMonsterCondition breaks [dnd5eEvents.ConditionBehavior]'s contract
+// the same way character's namelessCondition does: its ToJSON embeds a
+// perfectly good ref, but Ref() returns nil.
+type namelessMonsterCondition struct{}
+
+func (c *namelessMonsterCondition) Ref() *core.Ref { return nil }
+
+func (c *namelessMonsterCondition) IsApplied() bool { return true }
+
+func (c *namelessMonsterCondition) Apply(_ context.Context, _ events.EventBus) error { return nil }
+
+func (c *namelessMonsterCondition) Remove(_ context.Context, _ events.EventBus) error { return nil }
+
+func (c *namelessMonsterCondition) ToJSON() (json.RawMessage, error) {
+	return json.Marshal(map[string]any{"ref": refs.Conditions.Prone()})
+}
+
+// TestARefLessConditionFailsTheRemovalLoudly is the monster twin of the
+// character keeper's test of the same name, and the two exist as a pair on
+// purpose.
+//
+// Both keepers match removals on Ref() now, so both inherit the same quiet
+// failure — a condition whose Ref() drifted from its ToJSON stops matching its
+// own removals. The character keeper refuses. This one used to be WORSE than
+// quiet: core.Ref.String has a pointer receiver that dereferences id.Module
+// unguarded, so condition.Ref().String() on a nil ref panicked, taking the
+// whole bus publish down instead of returning an error. Found in review of
+// rpg-project#319 Phase 6, in the function that PR re-documented as asking the
+// same question as the character's — true only on the happy path, until this.
+//
+// The fake is deliberately a LIAR rather than merely incomplete: its ToJSON
+// embeds a valid ref, so a keeper that recovered refs from JSON would have
+// matched and removed it happily. That is what makes this a pin on failing
+// closed rather than on nil-handling generally.
+func (s *MonsterKeeperTestSuite) TestARefLessConditionFailsTheRemovalLoudly() {
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.mon,
+		Condition: &namelessMonsterCondition{},
+	}))
+	s.Require().Len(s.mon.GetConditions(), 1)
+
+	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		MemberID:     s.mon.GetID(),
+		ConditionRef: refs.Conditions.Prone().String(),
+		Reason:       "test",
+	})
+
+	s.Require().Error(err, "a condition that cannot name itself must not fail silently — or panic")
+	s.Require().Len(s.mon.GetConditions(), 1, "and the sheet is left as it was found")
 }

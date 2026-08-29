@@ -240,7 +240,7 @@ func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 		// Condition should be removed
 		s.Assert().False(condition.IsApplied())
 		s.Require().NotNil(removedEvent)
-		s.Assert().Equal(s.characterID, removedEvent.CharacterID)
+		s.Assert().Equal(s.characterID, removedEvent.MemberID)
 		s.Assert().Equal(refs.Conditions.Dodging().String(), removedEvent.ConditionRef)
 		s.Assert().Equal("turn_start", removedEvent.Reason)
 	})

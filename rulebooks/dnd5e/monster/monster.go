@@ -430,10 +430,16 @@ func (m *Monster) onConditionApplied(
 //
 // It matches on [dnd5eEvents.ConditionBehavior.Ref] rather than round-tripping
 // each condition through ToJSON to recover the same string. The character's
-// copy of this handler predates conditions being able to name themselves
-// (rpg-toolkit#971) and still parses the ref back out of JSON; both read the
-// ref a condition's ToJSON embeds, and only one of them can fail on a
-// serialization error and abandon the removal.
+// copy of this handler did the round trip until rpg-project#319 Phase 6 —
+// it predated conditions being able to name themselves (rpg-toolkit#971) —
+// and now asks the same question this one does, including the refusal below.
+//
+// A NIL REF IS LOUD, and here that is a fix rather than a nicety.
+// [core.Ref.String] has a pointer receiver that dereferences its fields
+// unguarded, so asking a contract-breaking condition for its name used to
+// PANIC out of a bus publish rather than return. Both keepers now refuse it
+// the same way, with the same message, because a condition that cannot name
+// itself cannot be matched against a removal on anybody's sheet.
 //
 // The unapplied trait blobs are deliberately untouched. They are conditions
 // that have not been attached yet — monstertraits.AttachMonster drains them
@@ -444,13 +450,19 @@ func (m *Monster) onConditionApplied(
 // does: a removal event reaches every sheet on the bus, and flagging the ones
 // it was not about would persist every monster in the fight.
 func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-	if event.CharacterID != m.id {
+	if event.MemberID != m.id {
 		return nil
 	}
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
 	for _, condition := range m.conditions {
-		if condition.Ref().String() != event.ConditionRef {
+		ref := condition.Ref()
+		if ref == nil {
+			return rpgerr.New(rpgerr.CodeInternal,
+				"condition on this sheet returns a nil Ref, so a removal cannot be matched against it")
+		}
+
+		if ref.String() != event.ConditionRef {
 			filtered = append(filtered, condition)
 		}
 	}

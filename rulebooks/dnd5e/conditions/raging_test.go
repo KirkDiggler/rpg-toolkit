@@ -264,7 +264,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsWithoutCombatActivity(
 
 	// Verify condition published removal event
 	s.Require().NotNil(removedEvent)
-	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("barbarian-1", removedEvent.MemberID)
 	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
 	s.Equal("no_combat_activity", removedEvent.Reason)
 }
@@ -359,7 +359,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
 
 	// After 10 rounds, rage should end
 	s.Require().NotNil(removedEvent)
-	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("barbarian-1", removedEvent.MemberID)
 	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
 	s.Equal("duration_expired", removedEvent.Reason)
 }
@@ -696,7 +696,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsOnRest() {
 
 	// Verify condition published removal event
 	s.Require().NotNil(removedEvent, "rage should be removed on rest")
-	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("barbarian-1", removedEvent.MemberID)
 	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
 	s.Equal("rest", removedEvent.Reason)
 
@@ -788,7 +788,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionEndsOnCombatEnd() {
 
 	// Verify condition published removal event
 	s.Require().NotNil(removedEvent, "rage should be removed when combat ends")
-	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("barbarian-1", removedEvent.MemberID)
 	s.Equal("dnd5e:conditions:raging", removedEvent.ConditionRef)
 	s.Equal("combat_ended", removedEvent.Reason)
 

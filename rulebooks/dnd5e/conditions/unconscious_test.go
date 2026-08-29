@@ -219,7 +219,7 @@ func (s *UnconsciousConditionTestSuite) TestOnTurnStart_CriticalSuccess_RegainsC
 
 	// Condition should have published removal
 	s.Require().NotNil(removedEvent)
-	s.Equal("char-1", removedEvent.CharacterID)
+	s.Equal("char-1", removedEvent.MemberID)
 	s.Equal("dnd5e:conditions:unconscious", removedEvent.ConditionRef)
 
 	// Healing event should have been published
@@ -400,7 +400,7 @@ func (s *UnconsciousConditionTestSuite) TestOnHealingReceived_RemovesCondition()
 	// Condition should be removed
 	s.False(uc.IsApplied())
 	s.Require().NotNil(removedEvent)
-	s.Equal("char-1", removedEvent.CharacterID)
+	s.Equal("char-1", removedEvent.MemberID)
 	s.Equal("dnd5e:conditions:unconscious", removedEvent.ConditionRef)
 	s.Equal("healed", removedEvent.Reason)
 }
