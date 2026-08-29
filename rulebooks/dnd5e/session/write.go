@@ -189,24 +189,20 @@ type EndOutput struct {
 // somewhere with no visible connection to the join that caused it.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadPosition if no room
-// owns the cell they were placed on, ErrClosed if the encounter has already
-// ended, or ErrSaveFailed with a populated report.
+// ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadAttack if the
+// character's own main-hand weapon cannot be compiled into their member
+// record's static Actions fact, ErrBadPosition if no room owns the cell they
+// were placed on, ErrClosed if the encounter has already ended, or
+// ErrSaveFailed with a populated report.
 //
-// ErrBadAttack IS NO LONGER IN THAT LIST, and the narrowing is recorded rather
-// than quietly absorbed. A main-hand weapon that will not compile — a stored
-// sheet naming an item that is not in the inventory, say — used to be reported
-// under its own sentinel. It now arrives as ErrBadCharacter, because the
-// compiling happens inside resolution's projection and that entry reports the
-// failure as a bad participant, which this seam translates the only way it can.
-//
-// A host that could tell "this player's weapon is broken" from "this player's
-// sheet is corrupt" now cannot, which is a real loss of vocabulary even though
-// both are the same repair. Restoring it means the projection reporting the
-// attack failure under resolution's own ErrBadAttack — which exists, and is
-// documented for exactly this — and this seam mapping it back.
-// TestABadMainHandIsReportedAsACorruptCharacter pins what happens today so the
-// day that changes, it changes visibly.
+// ErrBadAttack WENT AWAY AND CAME BACK, which is worth a line because the
+// record should not read as though it never left. When the compiling moved into
+// resolution's projection, that entry reported the failure as a bad participant
+// and this seam could translate it only one way, so a broken loadout arrived as
+// a corrupt character. The projection reports the finer failure under its own
+// sentinel now and [projectionSentinel] reads it to choose this package's word.
+// A host can tell "this player's weapon is broken" from "this player's sheet is
+// corrupt" again.
 func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join: %w", ErrNilInput)
