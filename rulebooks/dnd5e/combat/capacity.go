@@ -14,9 +14,9 @@ package combat
 // three of the five keys that existed.
 //
 // It lived in turn_manager.go until #1091 — beside a TurnManager that nothing
-// outside its own tests has referenced in a long time — which made a live
-// vocabulary look like part of a dead type. The move changed no identifier and
-// no value.
+// outside its own tests referenced — which made a live vocabulary look like
+// part of a dead type. The move changed no identifier and no value, and it is
+// why this survived rpg-project#319 Phase 6 deleting that type outright.
 //
 // The set is closed on purpose: [SpendProfile.Validate] refuses a key that is
 // not in it, because a capacity no ledger has agreed to store is a grant that

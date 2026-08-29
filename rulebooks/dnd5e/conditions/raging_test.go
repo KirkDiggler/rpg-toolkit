@@ -1329,14 +1329,17 @@ func (s *RagingConditionTestSuite) ragingWithRemovalWatch() (
 //
 // The grace was originally keyed on RoundActivated == 0 -- "not yet anchored"
 // and "not yet checked" collapsed into one field. They only coincide while
-// rounds are valid. combat.TurnManager publishes TurnEndEvent{SubjectID} with
-// NO Round at all (turn_manager.go:177), so Round defaults to 0: under the old
-// shape the rage never anchored, therefore never left the graced branch, and
-// therefore never checked activity OR duration again. Immortal rage, silently.
+// rounds are valid, and the publisher that proved it did not was
+// combat.TurnManager, which published TurnEndEvent{SubjectID} with NO Round at
+// all: Round defaulted to 0, so under the old shape the rage never anchored,
+// never left the graced branch, and never checked activity OR duration again.
+// Immortal rage, silently.
 //
-// It has no callers today, which is exactly why it was worth fixing rather
-// than dismissing -- it is a public type this slice deliberately left in place
-// as documented debt, so the hazard belongs to whoever picks it up next.
+// That publisher is gone (rpg-project#319 Phase 6 deleted TurnManager), which
+// changes nothing about why this test stays. A round-less TurnEndEvent is
+// still constructible by anyone who publishes the topic, and the shape that
+// survived the hazard is the one worth pinning -- the fix outlives the caller
+// that revealed it.
 //
 // The fix un-collapses the two facts: SawTurnEnd is the grace, RoundActivated
 // is the anchor. The activity check needs no round, so it keeps working even
