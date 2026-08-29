@@ -72,8 +72,23 @@
 // answers, and a rule that conflates them is a rule invented out of missing
 // data.
 //
-// An effect's OWN sheet does not come from here. That arrives by injection at
-// attach time — see [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware]
-// — because it has an owner, and ambient delivery of an owned thing is what
-// rpg-toolkit#1178 already walked back once.
+// An effect's OWN sheet comes from here too, and it comes as a question rather
+// than as a thing. It looks itself up in the cast by its own ID and gets back
+// a [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat.Member] — the
+// same surface it would get for the creature standing next to it, with no
+// method on it that writes.
+//
+// That is the read law and the write law in one type. Reads come from the
+// cast; a write is a request published on the bus, applied by whoever keeps
+// the sheet. What ambient delivery of an OWNED thing would mean —
+// rpg-toolkit#1178's walk-back, and the reason this paragraph used to say the
+// opposite — is delivery of the sheet itself, mutable, to code that does not
+// own it. A read surface is not that.
+//
+// The handle it replaced is
+// [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware], wired
+// bespoke in two loaders and silently absent whenever either forgot. Four
+// conditions still hold one, and every one of them holds it to WRITE — a
+// dirty mark, a reaction spend. Those become request events, and the handle
+// goes with them.
 package gamectx

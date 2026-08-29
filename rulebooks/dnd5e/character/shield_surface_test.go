@@ -21,7 +21,7 @@ var _ combat.Combatant = (*Character)(nil)
 //
 // HasShieldEquipped itself is unchanged here. What changed is WHO may ask it:
 // it used to be reachable only by a condition holding this exact sheet through
-// the owner handle, and it is now a question on combat.Combatant, which is the
+// the owner handle, and it is now a question on combat.Member, which is the
 // surface a rule reads a participant through. It had no direct test of its own
 // under the old arrangement, and it is about to carry Unarmored Movement.
 type ShieldSurfaceTestSuite struct {

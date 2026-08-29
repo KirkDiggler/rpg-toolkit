@@ -22,10 +22,10 @@ import (
 // lookup, so refusing every lookup would deny every rule its own sheet.
 type fakeCast struct {
 	side    map[string]string
-	members map[string]combat.Combatant
+	members map[string]combat.Member
 }
 
-func (f *fakeCast) Member(id string) (combat.Combatant, bool) {
+func (f *fakeCast) Member(id string) (combat.Member, bool) {
 	m, ok := f.members[id]
 	if !ok || m == nil {
 		return nil, false
@@ -49,10 +49,10 @@ func (f *fakeCast) Member(id string) (combat.Combatant, bool) {
 // so certified a monk's AC as correct while every real fight ran at base
 // armour (rpg-toolkit#1251). A stand-in is legitimate exactly when the thing
 // it stands in for exists and is pinned somewhere; that is the difference.
-func castOf(ctx context.Context, members ...combat.Combatant) context.Context {
+func castOf(ctx context.Context, members ...combat.Member) context.Context {
 	cast := &fakeCast{
 		side:    make(map[string]string, len(members)),
-		members: make(map[string]combat.Combatant, len(members)),
+		members: make(map[string]combat.Member, len(members)),
 	}
 	for _, m := range members {
 		cast.side[m.GetID()] = m.GetID()

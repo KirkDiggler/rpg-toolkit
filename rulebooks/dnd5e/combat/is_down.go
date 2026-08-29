@@ -21,7 +21,13 @@ package combat
 // changes this function, not its callers. That is the reason a composition
 // holding no hit points asks this question instead of comparing numbers itself.
 //
+// It takes a [Member] rather than a [Combatant] because the whole of it is one
+// read. Every caller passes a combatant today and keeps compiling — Combatant
+// embeds Member — but a rule holding a cast member can ask this question too,
+// which is the point: "is this creature down" is a rule's question, not a
+// keeper's.
+//
 // c must not be nil.
-func IsDown(c Combatant) bool {
+func IsDown(c Member) bool {
 	return c.GetHitPoints() <= 0
 }

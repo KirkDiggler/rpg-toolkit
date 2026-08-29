@@ -20,7 +20,7 @@ type fakeCast struct {
 	side map[string]string
 }
 
-func (f *fakeCast) Member(string) (combat.Combatant, bool) { return nil, false }
+func (f *fakeCast) Member(string) (combat.Member, bool) { return nil, false }
 
 func (f *fakeCast) Members() []string {
 	ids := make([]string, 0, len(f.side))

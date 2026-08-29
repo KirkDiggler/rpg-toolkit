@@ -10,8 +10,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 )
 
-// member returns a participant's combat-facing sheet out of the installed
-// cast, and whether the question could be answered at all.
+// member returns a participant's combat-facing READ surface out of the
+// installed cast, and whether the question could be answered at all.
+//
+// [combat.Member], not [combat.Combatant]: a condition asks questions and
+// publishes requests. There is no method on what comes back that writes to the
+// sheet, which is the write law stated in the type system rather than in a
+// comment nobody has to obey.
 //
 // It wraps [gamectx.Cast.Member] and is named for what it does, not for what
 // its callers mean by it. The caller supplies the ID, so nothing in this
@@ -44,7 +49,7 @@ import (
 // fighting at 10+DEX with Unarmored Defense attached and nothing logged. Leave
 // the chain untouched instead: absent from the answer is recoverable, a
 // poisoned fold is not.
-func member(ctx context.Context, memberID string) (combat.Combatant, bool) {
+func member(ctx context.Context, memberID string) (combat.Member, bool) {
 	cast, ok := gamectx.CastOf(ctx)
 	if !ok {
 		return nil, false
