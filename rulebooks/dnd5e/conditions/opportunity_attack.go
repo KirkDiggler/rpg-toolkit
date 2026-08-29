@@ -75,27 +75,6 @@ type OpportunityAttackCondition struct {
 
 	bus             events.EventBus
 	subscriptionIDs []string
-
-	// dirty persists a change to UsedThisTurn. Without it the flag updates in
-	// silence and resolution.Resolve discards the update, because it hands
-	// back only participants that report IsDirty (see selfPersisting).
-	dirty selfPersisting
-
-	// purse is the reactor's own action economy, and IS ALLOWED TO BE NIL.
-	//
-	// A *character.Character has one; a monster does not — monsters carry no
-	// action economy in this rulebook at all, so there is no reaction slot for
-	// a gate to read. Kirk ruled 2026-08-28: "characters have to pay for it.
-	// the condition can still track it was used but players have a cost." So
-	// the asymmetry is the rule rather than a hole in it: UsedThisTurn meters
-	// everyone, and the reaction slot is an additional cost only a sheet can
-	// be charged. A purse-less reactor is metered by the flag alone, never
-	// unmetered and never refused for lacking an economy it was never given.
-	//
-	// Paying also keeps OA and Protection fighting style mutually exclusive,
-	// which they are in the rules: both spend the one reaction, and the second
-	// one to ask finds it gone.
-	purse combat.Ledger
 }
 
 // Ensure OpportunityAttackCondition implements dnd5eEvents.ConditionBehavior
@@ -105,31 +84,46 @@ var _ dnd5eEvents.ConditionBehavior = (*OpportunityAttackCondition)(nil)
 // its ToJSON embeds and its loader routes on.
 func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.OpportunityAttack() }
 
-// Ensure OpportunityAttackCondition implements dnd5eEvents.OwnerAware
-var _ dnd5eEvents.OwnerAware = (*OpportunityAttackCondition)(nil)
-
-// SetOwner hands this condition its own reactor's live sheet.
-//
-// The two halves are asserted INDEPENDENTLY because they are independently
-// available: every reactor that persists condition state satisfies
-// selfPersisting, while only one with an action economy satisfies
-// combat.Ledger. An owner satisfying neither is not an error — the condition
-// simply meters itself in memory and charges nothing, the same "nothing to do"
-// default every other unmet check here already takes.
-func (o *OpportunityAttackCondition) SetOwner(owner any) {
-	if d, ok := owner.(selfPersisting); ok {
-		o.dirty = d
-	}
-	if p, ok := owner.(combat.Ledger); ok {
-		o.purse = p
-	}
+// stateChanged reports that the once-per-turn meter moved. See
+// [publishStateChanged].
+func (o *OpportunityAttackCondition) stateChanged(ctx context.Context) error {
+	return publishStateChanged(ctx, o.bus, o.CharacterID, o.Ref())
 }
 
-// markDirty records that this condition's persisted meter changed.
-func (o *OpportunityAttackCondition) markDirty() {
-	if o.dirty != nil {
-		o.dirty.MarkDirty()
+// canReact asks this reactor's own sheet whether it has a reaction to spend,
+// in place of the ledger handle a loader used to pass in.
+//
+// # Where the asymmetry went
+//
+// The handle carried a fact the cast does not: a monster's SetOwner never
+// matched combat.Ledger, so "I hold a purse" meant "I am a character" and the
+// gate could be written as "refuse only if an economy says no". The cast hands
+// out both kinds through one surface, so that fact moved INTO the answer — a
+// character reports its slots, a monster reports true because it has no economy
+// to refuse with. Kirk ruled the asymmetry 2026-08-28: "characters have to pay
+// for it. the condition can still track it was used but players have a cost."
+// Paying is also what keeps this and Protection fighting style mutually
+// exclusive, which they are in the rules: both spend the one reaction, and the
+// second to ask finds it gone.
+//
+// # A reactor nobody can look up does NOT react
+//
+// The lookup has a third answer the handle never had, and this is it. A cast is
+// installed by one door on every path that folds anything
+// (resolution.installTruth, held structurally by
+// TestNoCodePathProducesACastlessInteraction), so a fold with no cast is not a
+// monster — it is a fold that was assembled wrong, and there is no sheet to
+// ask. Answering "react" there would hand a free reaction to any character
+// whose cast went missing, which is precisely the silently-absent-handle
+// failure this whole migration removes. RequireRoom below makes the same
+// choice for the same reason, and so does Protection.
+func (o *OpportunityAttackCondition) canReact(ctx context.Context) bool {
+	self, ok := member(ctx, o.CharacterID)
+	if !ok {
+		return false
 	}
+
+	return self.CanReact()
 }
 
 // NewOpportunityAttackCondition creates a new OA condition for the given character.
@@ -191,10 +185,11 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 // reason: marking unconditionally would flag every combatant dirty at the
 // start of every turn they did not react on, and a boundary already runs for
 // every participant.
-func (o *OpportunityAttackCondition) onTurnStart(_ context.Context, event dnd5eEvents.TurnStartEvent) error {
+func (o *OpportunityAttackCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
 	if event.SubjectID == o.CharacterID && o.UsedThisTurn {
 		o.UsedThisTurn = false
-		o.markDirty()
+
+		return o.stateChanged(ctx)
 	}
 	return nil
 }
@@ -266,10 +261,10 @@ func (o *OpportunityAttackCondition) onMovementChain(
 		return c, nil
 	}
 
-	// A reactor with a sheet PAYS; one without a purse is metered by
-	// UsedThisTurn alone. See the purse field for why that asymmetry is the
-	// rule rather than a gap.
-	if o.purse != nil && o.purse.SlotsLeft(coreCombat.ActionReaction) <= 0 {
+	// A reactor with an economy PAYS; a monster has none to pay from and is
+	// metered by UsedThisTurn alone. See canReact for why that asymmetry is
+	// the rule rather than a gap.
+	if !o.canReact(ctx) {
 		return c, nil
 	}
 
@@ -312,11 +307,22 @@ func (o *OpportunityAttackCondition) onMovementChain(
 	// the orchestrator is a reaction that did not happen, and charging for it
 	// would leave the reactor unable to react to the next mover for a swing
 	// nobody made.
+	//
+	// The bill goes out unconditionally now, where it used to be guarded by
+	// whether a purse had been handed over. Nothing here decides who pays:
+	// a keeper holding an economy debits it, and a monster's keeper has no row
+	// for the topic at all, so the request truthfully passes it by. That is the
+	// same asymmetry, moved from a nil check in this condition to which
+	// subscriptions each sheet keeper's table holds.
 	o.UsedThisTurn = true
-	if o.purse != nil {
-		o.purse.SpendSlots(coreCombat.ActionReaction, 1)
+	if err := publishSpendRequested(
+		ctx, o.bus, o.CharacterID, coreCombat.ActionReaction, 1, o.Ref(),
+	); err != nil {
+		return c, rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
 	}
-	o.markDirty()
+	if err := o.stateChanged(ctx); err != nil {
+		return c, rpgerr.Wrap(err, "failed to publish opportunity attack meter change")
+	}
 
 	return c, nil
 }

@@ -36,24 +36,38 @@ type fakeConditionOwner struct {
 	scores shared.AbilityScores
 	shield bool
 
-	// canReact is a field rather than a constant for the reason shield is: it
-	// is a question the sheet answers differently depending on its state, and
-	// a fake that can only give one answer cannot stand in for both. False is
-	// the zero on purpose — a character with no fight around it carries no
-	// action economy and reports no slots of any kind.
-	canReact bool
+	// hasEconomy says whether this sheet keeps an action economy at all, and
+	// reactions is the slot count it keeps if it does.
+	//
+	// Two fields rather than one because the two kinds answer CanReact for
+	// different reasons, and a fake that flattened them could not tell the
+	// reasons apart. A character with no slots left refuses; a monster has
+	// nothing that could refuse, so it never does. The zero value is the
+	// monster — which is also the sheet a test that does not care about
+	// reactions should get, since it is the one that never gets in the way.
+	hasEconomy bool
+	reactions  int
 
 	hp, maxHP        int
 	ac               int
 	proficiencyBonus int
 }
 
-func (f *fakeConditionOwner) GetID() string                       { return f.id }
-func (f *fakeConditionOwner) GetHitPoints() int                   { return f.hp }
-func (f *fakeConditionOwner) GetMaxHitPoints() int                { return f.maxHP }
-func (f *fakeConditionOwner) AC() int                             { return f.ac }
-func (f *fakeConditionOwner) HasShieldEquipped() bool             { return f.shield }
-func (f *fakeConditionOwner) CanReact() bool                      { return f.canReact }
+func (f *fakeConditionOwner) GetID() string           { return f.id }
+func (f *fakeConditionOwner) GetHitPoints() int       { return f.hp }
+func (f *fakeConditionOwner) GetMaxHitPoints() int    { return f.maxHP }
+func (f *fakeConditionOwner) AC() int                 { return f.ac }
+func (f *fakeConditionOwner) HasShieldEquipped() bool { return f.shield }
+
+// CanReact answers the way the two real sheets do: a character out of its
+// slots refuses, and a monster has no economy to refuse with.
+func (f *fakeConditionOwner) CanReact() bool {
+	if !f.hasEconomy {
+		return true
+	}
+
+	return f.reactions > 0
+}
 func (f *fakeConditionOwner) AbilityScores() shared.AbilityScores { return f.scores }
 func (f *fakeConditionOwner) ProficiencyBonus() int               { return f.proficiencyBonus }
 func (f *fakeConditionOwner) PassivePerception() int              { return 10 }

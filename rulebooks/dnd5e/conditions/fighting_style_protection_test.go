@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package conditions_test
+package conditions
 
 import (
 	"context"
@@ -11,10 +11,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -30,37 +28,20 @@ type protectionTestEntity struct {
 func (e *protectionTestEntity) GetID() string            { return e.id }
 func (e *protectionTestEntity) GetType() core.EntityType { return core.EntityType(e.kind) }
 
-// fakeProtectionOwner is the minimal combat.Ledger + HasShieldEquipped
-// implementation Protection's owner interface needs (rpg-toolkit#1178) —
-// enough to prove eligibility and consumption without gamectx or a full
-// *character.Character.
-type fakeProtectionOwner struct {
-	hasShield bool
-	reactions int
-	spent     []coreCombat.ActionType
-}
+// protector builds this fighter's own sheet and the keeper that owns it, and
+// installs the sheet in the cast the way resolution's one door does.
+//
+// Both halves, every time, because the condition now needs both to do
+// anything: it reads its shield and its reaction off the cast, and it pays by
+// asking the keeper. A test that installed only the cast would watch the rule
+// decide correctly and then publish a bill to nobody.
+func (s *FightingStyleProtectionTestSuite) protector(shield bool, reactions int) (context.Context, *fakeSheetKeeper) {
+	sheet := &fakeConditionOwner{id: "fighter-1", shield: shield, hasEconomy: true, reactions: reactions}
 
-func (f *fakeProtectionOwner) HasShieldEquipped() bool { return f.hasShield }
-func (f *fakeProtectionOwner) InCombat() bool          { return true }
+	keeper, err := keeperFor(s.ctx, s.bus, sheet)
+	s.Require().NoError(err)
 
-func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
-	if slot == coreCombat.ActionReaction {
-		return f.reactions
-	}
-	return 0
-}
-
-func (f *fakeProtectionOwner) CapacityLeft(_ combat.CapacityType) int       { return 0 }
-func (f *fakeProtectionOwner) PoolLeft(_ coreResources.ResourceKey) int     { return 0 }
-func (f *fakeProtectionOwner) SpendCapacity(_ combat.CapacityType, _ int)   {}
-func (f *fakeProtectionOwner) SpendPool(_ coreResources.ResourceKey, _ int) {}
-func (f *fakeProtectionOwner) BankCapacity(_ combat.CapacityType, _ int)    {}
-
-func (f *fakeProtectionOwner) SpendSlots(slot coreCombat.ActionType, n int) {
-	if slot == coreCombat.ActionReaction {
-		f.reactions -= n
-	}
-	f.spent = append(f.spent, slot)
+	return castOf(s.ctx, sheet), keeper
 }
 
 type FightingStyleProtectionTestSuite struct {
@@ -79,14 +60,14 @@ func TestFightingStyleProtectionSuite(t *testing.T) {
 }
 
 func (s *FightingStyleProtectionTestSuite) TestNewFightingStyleProtectionCondition() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
 	s.NotNil(protection)
 	s.False(protection.IsApplied())
 }
 
 func (s *FightingStyleProtectionTestSuite) TestApplyAndRemove() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -102,16 +83,16 @@ func (s *FightingStyleProtectionTestSuite) TestApplyAndRemove() {
 
 // TestImposesDisadvantageOnNearbyAlly pins rpg-toolkit#1178's Protection
 // fix: shield and reaction eligibility now come from the owner handed over
-// at attach time (SetOwner), read the same way combat.Pay/CanPay already
-// read a ledger — not a gamectx.CharacterRegistry. Only positions still
-// come from gamectx (WithRoom), which resolution.Resolve genuinely does
-// install. Team-lead's exact reproduction shape: three participants
-// (protector + ally + monster), the ally is attacked, not the protector.
+// through the CAST, the way it reads any other participant %s not a
+// gamectx.CharacterRegistry, and no longer a handle a loader had to remember
+// to pass in. Positions still come from gamectx (WithRoom), which
+// resolution.Resolve genuinely does install. Team-lead's exact reproduction
+// shape: three participants (protector + ally + monster), the ally is
+// attacked, not the protector.
 func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
-	owner := &fakeProtectionOwner{hasShield: true, reactions: 1}
-	protection.SetOwner(owner)
+	castCtx, keeper := s.protector(true, 1)
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -135,7 +116,7 @@ func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly()
 
 	// Positions are the one thing this condition still reads from gamectx —
 	// no CharacterRegistry, no GameContext installed at all.
-	ctx := gamectx.WithRoom(s.ctx, room)
+	ctx := gamectx.WithRoom(castCtx, room)
 
 	// Create attack chain event - melee attack on ally, by a THIRD
 	// combatant (neither the protector nor the target) — this is exactly
@@ -164,9 +145,12 @@ func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly()
 	s.Len(finalEvent.DisadvantageSources, 1)
 	s.Len(finalEvent.ReactionsConsumed, 1)
 
-	// And the reaction is actually spent on the owner's own ledger.
-	s.Equal(0, owner.reactions, "the reaction was actually debited")
-	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, owner.spent)
+	// And the reaction is actually spent: the condition asked, and the keeper
+	// that owns the sheet applied it. Debited by the time Execute returns,
+	// because the bus is synchronous and the request goes out inside the
+	// stage — the same instant the direct SpendSlots call used to land.
+	s.Equal(0, keeper.sheet.reactions, "the reaction was actually debited")
+	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
 }
 
 // TestNoShieldMeansNoProtection pins that a missing shield refuses
@@ -174,8 +158,8 @@ func (s *FightingStyleProtectionTestSuite) TestImposesDisadvantageOnNearbyAlly()
 // installed in this test at all, and the condition must never reach for
 // one when the shield check alone already disqualifies it.
 func (s *FightingStyleProtectionTestSuite) TestNoShieldMeansNoProtection() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
-	protection.SetOwner(&fakeProtectionOwner{hasShield: false, reactions: 1})
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, _ := s.protector(false, 1)
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -187,10 +171,10 @@ func (s *FightingStyleProtectionTestSuite) TestNoShieldMeansNoProtection() {
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(castCtx, attackEvent, attackChain)
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	finalEvent, err := modifiedChain.Execute(castCtx, attackEvent)
 	s.Require().NoError(err)
 
 	s.Empty(finalEvent.DisadvantageSources)
@@ -199,8 +183,8 @@ func (s *FightingStyleProtectionTestSuite) TestNoShieldMeansNoProtection() {
 // TestNoReactionMeansNoProtection mirrors the shield case for the other
 // half of eligibility.
 func (s *FightingStyleProtectionTestSuite) TestNoReactionMeansNoProtection() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
-	protection.SetOwner(&fakeProtectionOwner{hasShield: true, reactions: 0})
+	protection := NewFightingStyleProtectionCondition("fighter-1")
+	castCtx, _ := s.protector(true, 0)
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -212,17 +196,17 @@ func (s *FightingStyleProtectionTestSuite) TestNoReactionMeansNoProtection() {
 
 	attackChain := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
 	attacks := dnd5eEvents.AttackChain.On(s.bus)
-	modifiedChain, err := attacks.PublishWithChain(s.ctx, attackEvent, attackChain)
+	modifiedChain, err := attacks.PublishWithChain(castCtx, attackEvent, attackChain)
 	s.Require().NoError(err)
 
-	finalEvent, err := modifiedChain.Execute(s.ctx, attackEvent)
+	finalEvent, err := modifiedChain.Execute(castCtx, attackEvent)
 	s.Require().NoError(err)
 
 	s.Empty(finalEvent.DisadvantageSources)
 }
 
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -259,7 +243,7 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectSelf() {
 // than a wrong disadvantage count, which is the honest failure for what
 // broke live.
 func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -288,7 +272,7 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotTriggerOnOwnAttack() {
 }
 
 func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectAgainstRangedAttacks() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
 	err := protection.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -317,7 +301,7 @@ func (s *FightingStyleProtectionTestSuite) TestDoesNotProtectAgainstRangedAttack
 }
 
 func (s *FightingStyleProtectionTestSuite) TestToJSON() {
-	protection := conditions.NewFightingStyleProtectionCondition("fighter-1")
+	protection := NewFightingStyleProtectionCondition("fighter-1")
 
 	jsonData, err := protection.ToJSON()
 	s.Require().NoError(err)

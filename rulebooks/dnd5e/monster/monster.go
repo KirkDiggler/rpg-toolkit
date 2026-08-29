@@ -219,23 +219,23 @@ func (m *Monster) MarkClean() {
 
 // MarkDirty records that something this sheet persists has changed.
 //
-// The counterpart to MarkClean, and the write half of the owner handle a
-// condition keeping its own turn-scoped memory needs — see the conditions
-// package's selfPersisting. Every other writer here sets m.dirty inline
-// because it is also the one changing the field; a condition stores its memory
-// in its OWN fields, which are serialized as part of this sheet, so nothing
-// else notices the change and the save is dropped unless it says so.
+// The counterpart to MarkClean, for the change no other writer here reports.
+// Every other one sets m.dirty inline because it is also the one changing the
+// field; a condition stores its turn-scoped memory in its OWN fields, which
+// are serialized as part of this sheet, so nothing else notices the change and
+// the save is dropped unless something says so.
 //
-// It exists AHEAD of its caller, deliberately and narrowly. The opportunity
-// attack is the first monster-side case — without this, a wolf that used its
-// reaction is reloaded having used nothing and the once-per-turn rule silently
-// does not exist for monsters — and the caller is the session-side seating that
-// applies that condition programmatically, in a module that pins this one by
-// version and so cannot be written until this ships. What is NOT here is the
-// owner handoff itself: monstertraits.AttachMonster routes four traits, none of
-// them OwnerAware and none of them the opportunity attack, so a SetOwner branch
-// there would be unreachable. The handoff belongs where the condition is
-// actually constructed (rpg-project#316).
+// ITS CALLER IS THIS SHEET'S OWN KEEPER now — onConditionStateChanged, one row
+// in the subscription table. It was minted ahead of a caller, for a handle a
+// loader was going to pass to a condition so the condition could mark the sheet
+// itself; that handle is gone, and what arrived instead is a published fact the
+// keeper answers. The problem it was minted for is unchanged: without this, a
+// wolf that used its reaction is reloaded having used nothing and the
+// once-per-turn rule silently does not exist for monsters.
+//
+// It stays exported. A sheet must be tellable that it changed by something
+// that is not the code changing it, which is what
+// TestAMonsterCanBeToldItsPersistedStateChanged pins.
 func (m *Monster) MarkDirty() {
 	m.dirty = true
 }

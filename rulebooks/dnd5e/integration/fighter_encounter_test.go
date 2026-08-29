@@ -15,7 +15,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -64,36 +63,11 @@ type mockFighterCharacter struct {
 	maxHitPoints     int
 	armorClass       int
 	conditions       []dnd5eEvents.ConditionBehavior
-}
 
-// fakeProtectionOwner is the minimal combat.Ledger + HasShieldEquipped
-// implementation Protection's owner interface needs (rpg-toolkit#1178) —
-// enough to prove eligibility and consumption without gamectx.
-type fakeProtectionOwner struct {
+	// hasShield and reactions are what Protection reads off this sheet,
+	// through the cast, in place of the owner handle it used to be given.
 	hasShield bool
 	reactions int
-}
-
-func (f *fakeProtectionOwner) HasShieldEquipped() bool { return f.hasShield }
-func (f *fakeProtectionOwner) InCombat() bool          { return true }
-
-func (f *fakeProtectionOwner) SlotsLeft(slot coreCombat.ActionType) int {
-	if slot == coreCombat.ActionReaction {
-		return f.reactions
-	}
-	return 0
-}
-
-func (f *fakeProtectionOwner) CapacityLeft(_ combat.CapacityType) int       { return 0 }
-func (f *fakeProtectionOwner) PoolLeft(_ coreResources.ResourceKey) int     { return 0 }
-func (f *fakeProtectionOwner) SpendCapacity(_ combat.CapacityType, _ int)   {}
-func (f *fakeProtectionOwner) SpendPool(_ coreResources.ResourceKey, _ int) {}
-func (f *fakeProtectionOwner) BankCapacity(_ combat.CapacityType, _ int)    {}
-
-func (f *fakeProtectionOwner) SpendSlots(slot coreCombat.ActionType, n int) {
-	if slot == coreCombat.ActionReaction {
-		f.reactions -= n
-	}
 }
 
 func (m *mockFighterCharacter) GetID() string                                  { return m.id }
@@ -109,8 +83,8 @@ func (m *mockFighterCharacter) IsDirty() bool                                  {
 func (m *mockFighterCharacter) MarkClean()                                     {}
 func (m *mockFighterCharacter) PassivePerception() int                         { return 10 }
 func (m *mockFighterCharacter) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
-func (m *mockFighterCharacter) HasShieldEquipped() bool                        { return false }
-func (m *mockFighterCharacter) CanReact() bool                                 { return true }
+func (m *mockFighterCharacter) HasShieldEquipped() bool                        { return m.hasShield }
+func (m *mockFighterCharacter) CanReact() bool                                 { return m.reactions > 0 }
 
 func (m *mockFighterCharacter) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {
@@ -819,11 +793,15 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 		s.T().Log("║  FIGHTER PROTECTION: Disadvantage on Attacks vs Adjacent Ally   ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// rpg-toolkit#1178: shield and reaction eligibility now come from the
-		// owner handed over at attach time (SetOwner), not gamectx.
+		// Shield and reaction eligibility come off the fighter's OWN sheet,
+		// read out of the cast the way any other participant is read. It was a
+		// handle passed in at attach time (rpg-toolkit#1178); before that it
+		// was a gamectx registry production never installed. Neither is here
+		// now, and the cast is the one channel.
+		s.fighter.hasShield = true
+		s.fighter.reactions = 1
 
 		protection := conditions.NewFightingStyleProtectionCondition(s.fighter.GetID())
-		protection.SetOwner(&fakeProtectionOwner{hasShield: true, reactions: 1})
 		err := protection.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		defer func() { _ = protection.Remove(s.ctx, s.bus) }()
@@ -832,9 +810,9 @@ func (s *FighterEncounterSuite) TestFightingStyleProtection_ImposesDisadvantage(
 		ally := &mockFighterCharacter{id: "ally-1", name: "Ally"}
 		_ = s.room.PlaceEntity(ally, spatial.Position{X: 3, Y: 2}) // Adjacent to fighter
 
-		// Positions are the one thing this condition still reads from
-		// gamectx — no CharacterRegistry, no GameContext installed at all.
-		ctx := gamectx.WithRoom(s.ctx, s.room)
+		// Room for the positions, cast for the sheets. See castOf for why
+		// standing in for resolution's installer is legitimate here.
+		ctx := gamectx.WithRoom(castOf(s.ctx, s.fighter), s.room)
 
 		// Create melee attack against the ally (not the fighter)
 		attackEvent := dnd5eEvents.AttackChainEvent{
