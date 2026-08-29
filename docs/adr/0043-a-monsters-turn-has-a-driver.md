@@ -1,7 +1,7 @@
 # ADR-0043: A Monster's Turn Has a Driver — a Required, Composition-Level Capability
 
 **Date:** 2026-08-22
-**Status:** Accepted (implemented; reconciled against shipped code and DECISIONS.md, 2026-08-28)
+**Status:** Accepted
 
 ## Context
 

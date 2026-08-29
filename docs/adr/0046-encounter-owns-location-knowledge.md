@@ -1,7 +1,7 @@
 # ADR-0046: Encounter Owns Location Knowledge
 
 **Date:** 2026-08-28
-**Status:** Accepted (implemented)
+**Status:** Accepted
 
 ## Context
 
@@ -20,6 +20,36 @@ of the subject with no actionable coordinate.
 Treating a nil payload, zero coordinate, faded channel, or deleted holding as
 "unknown" would collapse different facts. It would also either teach Intel
 geometry or force behavior and session to reinterpret opaque payloads.
+
+## Considered alternatives
+
+### Put location semantics in `play/intel`
+
+Rejected. Intel is a channel-oriented storage leaf whose payload is deliberately
+opaque. Giving it known/unknown location types, geometry, or truth comparison
+would make the generic testimony store depend on encounter rules and would
+blur which layer may observe concealed world state.
+
+### Treat nil, fade, or deletion as unknown location
+
+Rejected. A nil payload is malformed testimony, fading changes testimony from
+current to held, and deleting a holding forgets the subject entirely. None of
+those states expresses durable knowledge of a subject without an actionable
+position. Overloading them would also make a valid zero coordinate ambiguous.
+
+### Decode and correct location testimony in behavior or session
+
+Rejected. Behavior receives a projected monster view and has neither encounter
+geometry nor a complete lawful percept. Session is a load-act-save host seam;
+having it decode or correct payloads would duplicate rule semantics and risk
+consulting concealed state outside the encounter boundary.
+
+### Let encounter own location testimony and correction
+
+Selected. Encounter authors sight testimony, owns field geometry, produces the
+complete lawful percept after movement, and propagates the resulting Intel
+deltas. Behavior can remain a view consumer, session can remain a mirror, and
+Intel can remain an opaque store.
 
 ## Decision
 

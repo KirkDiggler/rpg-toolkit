@@ -76,8 +76,8 @@ behavior `v0.2.0`. No committed local replacement or Go workspace is involved.
 | Acceptance area | Passing coverage |
 |---|---|
 | tagged known/unknown, legacy coordinates, origin, malformed and contradictory input | `TestLocationPayloadRoundTrip`, `TestDecodeLocationPayloadReadsLegacyKnownPosition`, `TestDecodeLocationPayloadRejectsMalformedOrContradictoryShapes`, `TestLoadRejectsMalformedOrUnknownSightLocation`, `TestLoadAcceptsHeldUnknownSightLocation` |
-| current/remembered split, stale confidentiality, exact-cell routes, deterministic order, unreachable and unknown handling | `TestMonsterViewProjectsHeldKnownSightIntoRemembered`, `TestMonsterViewHeldUnknownProjectsIntoNeitherCollection`, `TestMonsterViewHeldKnownUsesStalePosition`, `TestMonsterViewRememberedSortsIDsIndependently`, `TestMonsterViewRememberedSupportsOriginCell`, `TestMonsterViewRememberedUnreachableHasEmptyPath` |
-| visible-first selection, reachable remembered choice, ID tie-break, never attack memory, no knowledge pass | remembered cases under `TestBasicSuite`, including `TestPrefersSeenOverRemembered`, `TestChoosesClosestReachableRemembered`, `TestRememberedTieBreaksByIDRegardlessOfSliceOrder`, `TestNeverAttacksRememberedTarget`, and `TestNoKnowledgePasses` |
+| current-known projects into `Seen`, never `Remembered`; held-known projects into `Remembered`; stale confidentiality, exact-cell routes, deterministic order, unreachable and unknown handling | `TestMonsterViewCarriesStaticFactsAndSeen` (including the explicit empty-`Remembered` assertion), `TestMonsterViewProjectsHeldKnownSightIntoRemembered`, `TestMonsterViewHeldUnknownProjectsIntoNeitherCollection`, `TestMonsterViewHeldKnownUsesStalePosition`, `TestMonsterViewRememberedSortsIDsIndependently`, `TestMonsterViewRememberedSupportsOriginCell`, `TestMonsterViewRememberedUnreachableHasEmptyPath` |
+| visible-first selection, closest selection across multiple visible players, reachable remembered choice, ID tie-break, never attack memory, no knowledge pass | `TestAttacksTheClosestStandingPlayerWhenInReach`, `TestPicksTheClosestOfTwoEquallyReachableTargetsDeterministically`, and remembered cases under `TestBasicSuite`, including `TestPrefersSeenOverRemembered`, `TestChoosesClosestReachableRemembered`, `TestRememberedTieBreaksByIDRegardlessOfSliceOrder`, `TestNeverAttacksRememberedTarget`, and `TestNoKnowledgePasses` |
 | exact-arrival correction, lawful percept exception, mover ownership, deterministic multi-subject correction, persistence | remembered-arrival cases under `TestMonsterTurnSuite`, `TestRememberedArrivalCorrectionPersistsUnknown`, and `TestDrivenArrivalCorrectionPropagationMatrix` |
 | session twins, deep copies, explicit unknown, sorted correction IDs, load-act-save rollback/success | `TestMonsterViewAdaptersCarryRememberedPathsByValue`, `TestBehaviorRoundTripsRememberedRoute`, `TestHeldUnknownSightProjectsExplicitUnknownLocation`, `TestProjectIntelCorrectionsSortsObserverThenSubject`, `TestSessionMonsterArrivalSaveFailureRollsBackCorrection`, `TestSessionMonsterArrivalPersistsCorrection`, `TestMalformedSightTestimonyFailsSessionLoadBeforeProjection` |
 | discriminating double-door pursuit, no concealed live cell, resolved ghost pass, visible interruption | `TestSessionDoubleDoorGhostPursuit`, `TestSessionDoubleDoorVisibleInterruptsGhostPursuit` |
@@ -119,6 +119,22 @@ validation:
   `Discovered`. This did not affect correction delivery and was intentionally
   deferred rather than expanding this slice.
 
+## Source-of-truth review corrections
+
+Independent documentation review kept ADR status metadata canonical as
+`Accepted`; shipped implementation evidence remains in this record rather than
+in the status field. ADR-0046 now records why Intel-owned location semantics,
+nil/fade/delete as an unknown-location representation, and behavior- or
+session-owned decoding/correction were rejected in favor of encounter
+ownership.
+
+The exported encounter location godoc now distinguishes
+`Known(position) | Unknown` content from Intel `Current | Held` currency while
+retaining the existing rejection of `Current + Unknown`. The acceptance table
+also names the proofs that current-known testimony projects only into `Seen`
+and that behavior selects the closest target when multiple visible players are
+available. These review corrections change documentation and godoc only.
+
 ## Final verification
 
 Fresh Task 8 verification produced the following evidence:
@@ -142,6 +158,11 @@ Fresh Task 8 verification produced the following evidence:
 | root | `make lint-all` | BASELINE FAILURE before changed modules: nine pre-existing `goconst` findings in `dice` tests |
 | root | `make pre-commit` | BASELINE FAILURE: documented core coverage-parser defect after format, tidy, Core/Events lint, and race tests pass |
 | root | `./scripts/check-decisions.sh` | PASS: all 48 ADRs summarized |
+
+The documentation review round freshly reran the encounter race suite, lint,
+tidy/module diff, and `verify.sh` rows above; all passed. It also reran the ADR
+index, link-resolution, formatting, diff, and exact-scope audits rather than
+reusing their earlier results.
 
 The first session lint run found:
 

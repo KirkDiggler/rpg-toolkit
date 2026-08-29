@@ -14,11 +14,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// LocationState identifies whether sight testimony names a current position.
+// LocationState identifies whether sight testimony is Known(position) or
+// Unknown. Location content is independent of Intel's Current or Held currency;
+// encounter separately rejects the unsupported Current + Unknown combination.
 type LocationState string
 
 const (
-	LocationKnown   LocationState = "known"
+	// LocationKnown says the testimony carries a position.
+	LocationKnown LocationState = "known"
+	// LocationUnknown says the subject remains known without a position.
 	LocationUnknown LocationState = "unknown"
 )
 
