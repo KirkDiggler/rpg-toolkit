@@ -930,7 +930,7 @@ func doubleDoorWorld(t *testing.T, withDavid bool) *encounter.EncounterData {
 	filtered := walls[:0]
 	from, to := spatial.Position{X: 21, Y: 1}, spatial.Position{X: 22, Y: 0}
 	for _, wall := range walls {
-		if wall.Boundary.From == from && wall.Boundary.To == to {
+		if wall.From == from && wall.To == to {
 			continue
 		}
 		filtered = append(filtered, wall)
