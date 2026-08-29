@@ -174,7 +174,7 @@ func (d *DisengagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.
 	// Publish condition removed event
 	removals := dnd5eEvents.ConditionRemovedTopic.On(d.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  d.CharacterID,
+		MemberID:     d.CharacterID,
 		ConditionRef: refs.Conditions.Disengaging().String(),
 		Reason:       "turn_end",
 	})

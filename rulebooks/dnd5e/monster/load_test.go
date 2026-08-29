@@ -346,7 +346,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedLeavesTheMonster() {
 	s.mon.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  s.mon.GetID(),
+		MemberID:     s.mon.GetID(),
 		ConditionRef: refs.Conditions.Prone().String(),
 		Reason:       "test",
 	})
@@ -368,7 +368,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedThatMatchesNothingLeavesThe
 	s.mon.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  s.mon.GetID(),
+		MemberID:     s.mon.GetID(),
 		ConditionRef: refs.Conditions.Raging().String(),
 	})
 
@@ -385,7 +385,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedFromSomeoneElseIsIgnored() 
 	s.mon.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  "someone-else",
+		MemberID:     "someone-else",
 		ConditionRef: refs.Conditions.Prone().String(),
 	})
 

@@ -398,7 +398,7 @@ func (r *RagingCondition) endRage(ctx context.Context, reason string) error {
 	// Publish condition removed event
 	removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  r.CharacterID,
+		MemberID:     r.CharacterID,
 		ConditionRef: refs.Conditions.Raging().String(),
 		Reason:       reason,
 	})

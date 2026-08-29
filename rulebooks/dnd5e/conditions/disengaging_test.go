@@ -150,7 +150,7 @@ func (s *DisengagingConditionTestSuite) TestRemovedOnTurnEnd() {
 	// Condition should be removed
 	s.False(disengaging.IsApplied())
 	s.NotNil(removedEvent)
-	s.Equal("rogue-1", removedEvent.CharacterID)
+	s.Equal("rogue-1", removedEvent.MemberID)
 	s.Equal(refs.Conditions.Disengaging().String(), removedEvent.ConditionRef)
 	s.Equal("turn_end", removedEvent.Reason)
 }

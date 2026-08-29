@@ -243,7 +243,7 @@ func (c *UnconsciousCondition) onTurnStart(ctx context.Context, event dnd5eEvent
 		// Publish condition removal
 		removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
 		if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-			CharacterID:  c.CharacterID,
+			MemberID:     c.CharacterID,
 			ConditionRef: refs.Conditions.Unconscious().String(),
 			Reason:       "nat_20",
 		}); err != nil {
@@ -343,7 +343,7 @@ func (c *UnconsciousCondition) onHealingReceived(ctx context.Context, event dnd5
 	// Publish condition removal
 	removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
 	if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  c.CharacterID,
+		MemberID:     c.CharacterID,
 		ConditionRef: refs.Conditions.Unconscious().String(),
 		Reason:       "healed",
 	}); err != nil {

@@ -264,7 +264,7 @@ func (s *RecklessAttackTestSuite) TestRemovedOnTurnStart() {
 
 	// ConditionRemovedEvent should have been published
 	s.Require().NotNil(removedEvent, "ConditionRemovedEvent should be published on turn start")
-	s.Equal("barbarian-1", removedEvent.CharacterID)
+	s.Equal("barbarian-1", removedEvent.MemberID)
 	s.Equal(refs.Conditions.RecklessAttack().String(), removedEvent.ConditionRef)
 	s.Equal("turn_start", removedEvent.Reason)
 }

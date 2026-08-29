@@ -360,7 +360,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	// Publish removal event for a DIFFERENT character
 	removalTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
 	err = removalTopic.Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  "char-2",
+		MemberID:     "char-2",
 		ConditionRef: "dnd5e:conditions:raging",
 		Reason:       "test",
 	})

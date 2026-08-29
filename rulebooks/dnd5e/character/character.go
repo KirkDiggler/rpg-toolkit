@@ -1206,32 +1206,38 @@ func (c *Character) onConditionApplied(
 	return nil
 }
 
-// onConditionRemoved handles ConditionRemovedEvent
+// onConditionRemoved handles ConditionRemovedEvent.
+//
+// It asks each condition for its own [dnd5eEvents.ConditionBehavior.Ref]
+// rather than round-tripping it through ToJSON to recover the same string.
+// The round trip predated conditions being able to name themselves
+// (rpg-toolkit#971), and it could fail: a condition whose ToJSON errored
+// returned from the middle of the list, so every removal already applied was
+// kept, every one after it was skipped, and the removal itself was dropped
+// silently. The monster keeper has asked the direct question all along.
+//
+// A NIL REF IS LOUD, which is the one thing the direct question could
+// otherwise make quieter. Ref()'s contract is that it returns the same ref
+// its ToJSON embeds; a condition returning nil breaks that contract, and
+// matching it against the event would simply never match — the removal would
+// vanish with no error at all. That is the failure this rulebook fails closed
+// on rather than absorbs.
 func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-	// Only process events for this character
-	if event.CharacterID != c.id {
+	// Only process events for this member
+	if event.MemberID != c.id {
 		return nil
 	}
 
-	// Remove the condition from our list by matching the ConditionRef
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(c.conditions))
 	for _, cond := range c.conditions {
-		// Get the condition's ref by converting to JSON and parsing
-		jsonData, err := cond.ToJSON()
-		if err != nil {
-			return rpgerr.Wrapf(err, "failed to serialize condition for removal check")
-		}
-
-		// Parse the ref from JSON
-		var refData struct {
-			Ref core.Ref `json:"ref"`
-		}
-		if err := json.Unmarshal(jsonData, &refData); err != nil {
-			return rpgerr.Wrapf(err, "failed to parse condition ref from JSON")
+		ref := cond.Ref()
+		if ref == nil {
+			return rpgerr.New(rpgerr.CodeInternal,
+				"condition on this sheet returns a nil Ref, so a removal cannot be matched against it")
 		}
 
 		// Keep condition if it doesn't match the removed ref
-		if refData.Ref.String() != event.ConditionRef {
+		if ref.String() != event.ConditionRef {
 			filtered = append(filtered, cond)
 		}
 	}

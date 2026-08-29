@@ -591,9 +591,9 @@ type TurnEndEvent struct {
 	Round     int    // which round of the fight it belongs to
 }
 
-// DamageReceivedEvent is published when a character takes damage
+// DamageReceivedEvent is published when a member takes damage
 type DamageReceivedEvent struct {
-	TargetID   string      // ID of the character taking damage
+	TargetID   string      // ID of the member taking damage — character or monster
 	SourceID   string      // ID of the attacker/source entity
 	SourceRef  *core.Ref   // What caused the damage (weapon, spell, condition ref)
 	Amount     int         // Amount of damage
@@ -601,9 +601,9 @@ type DamageReceivedEvent struct {
 	IsCritical bool        // True if this was a critical hit (unconscious characters take 2 death save failures)
 }
 
-// HealingReceivedEvent is published when a character receives healing
+// HealingReceivedEvent is published when a member receives healing
 type HealingReceivedEvent struct {
-	TargetID string // ID of the character receiving healing
+	TargetID string // ID of the member receiving healing — character or monster
 	Amount   int    // Amount of healing
 	Roll     int    // The dice roll result (before modifiers)
 	Modifier int    // Any modifier added to the roll (e.g., fighter level)
@@ -618,11 +618,23 @@ type ConditionAppliedEvent struct {
 	Condition ConditionBehavior // The condition behavior to apply
 }
 
-// ConditionRemovedEvent is published when a condition ends
+// ConditionRemovedEvent is published when a condition ends.
+//
+// MemberID rather than CharacterID, because both keepers subscribe: every
+// condition in this package can hang on a monster as readily as on a
+// character, and monstertraits.LoadJSON routes any conditions-typed ref
+// straight into conditions.LoadJSON to prove it. Naming the field for one of
+// the two kinds is the mistake [CombatEndEvent] documents at length, and the
+// reason [ConditionStateChangedEvent] below spells its own choice out. This
+// event was the last holdout in this file.
+//
+// A FACT, NOT A COMMAND, like its neighbours. What the publisher knows is
+// that its condition ended; what a keeper does about that — drop it from the
+// list, mark the sheet dirty — is the keeper's rule about its own sheet.
 type ConditionRemovedEvent struct {
-	CharacterID  string
-	ConditionRef string
-	Reason       string
+	MemberID     string // whose sheet carried the condition that ended
+	ConditionRef string // which condition ended, as the ref its Ref() returns
+	Reason       string // why, for a log that wants to say so
 }
 
 // ConditionStateChangedEvent is published by a condition whose OWN persisted
@@ -648,8 +660,8 @@ type ConditionRemovedEvent struct {
 // MemberID rather than CharacterID, because both keepers subscribe: a monster
 // carrying an opportunity attack publishes this exactly as a character does.
 // Naming the field for one of the two kinds is the mistake [CombatEndEvent]
-// documents at length, which is why ConditionRemovedEvent above is not the
-// convention to copy here.
+// documents at length. [ConditionRemovedEvent] above used to be the standing
+// counter-example in this file and now makes the same choice.
 type ConditionStateChangedEvent struct {
 	MemberID     string    // whose sheet carries the condition that changed
 	ConditionRef *core.Ref // which condition changed, so a log can say so

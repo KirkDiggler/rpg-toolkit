@@ -139,7 +139,7 @@ func (s *SheetKeeperTestSuite) TestConditionRemovedLeavesTheSheet() {
 	s.char.MarkClean()
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  s.char.GetID(),
+		MemberID:     s.char.GetID(),
 		ConditionRef: refs.Conditions.Dodging().String(),
 		Reason:       "test",
 	})
@@ -294,4 +294,50 @@ func (s *SheetKeeperTestSuite) TestCanReactFollowsTheReactionSlot() {
 
 func TestSheetKeeperSuite(t *testing.T) {
 	suite.Run(t, new(SheetKeeperTestSuite))
+}
+
+// namelessCondition breaks [dnd5eEvents.ConditionBehavior]'s contract: its
+// Ref() is nil, so it can name itself in JSON but not when asked.
+type namelessCondition struct{}
+
+func (c *namelessCondition) Ref() *core.Ref { return nil }
+
+func (c *namelessCondition) IsApplied() bool { return true }
+
+func (c *namelessCondition) Apply(_ context.Context, _ events.EventBus) error { return nil }
+
+func (c *namelessCondition) Remove(_ context.Context, _ events.EventBus) error { return nil }
+
+func (c *namelessCondition) ToJSON() (json.RawMessage, error) {
+	return json.Marshal(map[string]any{"ref": refs.Conditions.Dodging()})
+}
+
+// TestARefLessConditionFailsTheRemovalLoudly pins the one thing the keeper
+// gave up when it stopped recovering refs from ToJSON.
+//
+// Matching on Ref() is cheaper and cannot abandon a removal halfway through
+// the list, but it has a quiet failure the round trip did not: a condition
+// whose Ref() is nil would never equal any removal's ref, so the removal would
+// be dropped with no error and no trace. The keeper refuses instead — the
+// contract is broken, and a broken contract is not a reason to keep going.
+//
+// namelessCondition is deliberately a LIAR rather than merely incomplete: its
+// ToJSON embeds a perfectly good ref, so the old round-tripping keeper would
+// have matched and removed it happily. That is what makes this a pin on the
+// conversion and not just on nil-handling.
+func (s *SheetKeeperTestSuite) TestARefLessConditionFailsTheRemovalLoudly() {
+	s.Require().NoError(dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
+		Target:    s.char,
+		Condition: &namelessCondition{},
+	}))
+	s.Require().Len(s.char.GetConditions(), 1)
+
+	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
+		MemberID:     s.char.GetID(),
+		ConditionRef: refs.Conditions.Dodging().String(),
+		Reason:       "test",
+	})
+
+	s.Require().Error(err, "a condition that cannot name itself must not fail silently")
+	s.Require().Len(s.char.GetConditions(), 1, "and the sheet is left as it was found")
 }

@@ -195,7 +195,7 @@ func (r *RecklessAttackCondition) onTurnStart(ctx context.Context, event dnd5eEv
 	// condition tracker knows to drop this condition from persistence.
 	removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
 	if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		CharacterID:  r.CharacterID,
+		MemberID:     r.CharacterID,
 		ConditionRef: refs.Conditions.RecklessAttack().String(),
 		Reason:       "turn_start",
 	}); err != nil {

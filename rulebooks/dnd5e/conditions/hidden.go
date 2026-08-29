@@ -155,7 +155,7 @@ func (h *HiddenCondition) onAttackChain(
 		if h.bus != nil {
 			removals := dnd5eEvents.ConditionRemovedTopic.On(h.bus)
 			if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				CharacterID:  h.CharacterID,
+				MemberID:     h.CharacterID,
 				ConditionRef: refs.Conditions.Hidden().String(),
 				Reason:       "attacked",
 			}); err != nil {
