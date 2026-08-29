@@ -348,14 +348,19 @@ func (s *AttackTestSuite) protectorFighter(id string) *character.Data {
 // protector, carrying a shield and the Protection style) stands adjacent
 // to bob. alice is neither carol nor bob, so both exclusions clear and
 // Protection's full eligibility path — shield equipped, reaction
-// available, both read off alice's own live sheet via SetOwner rather
-// than a gamectx registry — actually runs.
+// available, both read off alice's own live sheet — actually runs.
 //
-// No gamectx.WithGameContext is installed anywhere in this test, matching
-// the real session stack. Before the owner-based fix this failed exactly
-// like the two-member Dueling case; after it, the swing resolves AND
-// Protection's disadvantage still applies — "behaves as before", the
-// mechanic is not merely uncrashed but still working.
+// THAT SHEET COMES OUT OF THE CAST as of rpg-project#319: alice looks
+// herself up by her own ID and gets back the same read surface she would
+// get for anybody else, in place of the owner handle a loader used to hand
+// her at attach time. This test installs no gamectx tenant of its own, and
+// that is still the point — the cast Protection reads is the one
+// resolution installs on every path that folds anything, so this test
+// passing is evidence that the real installer ran, not that a stand-in
+// did. Before the fix this failed exactly like the two-member Dueling
+// case; after it, the swing resolves AND Protection's disadvantage still
+// applies — "behaves as before", the mechanic is not merely uncrashed but
+// still working.
 func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionStack() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 
