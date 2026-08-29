@@ -142,7 +142,12 @@ func standingOn(ctx context.Context, in *StandingInput, surf *surface) (*Standin
 // castOfParticipants reads one member's combat-facing sheet out of the cast,
 // whichever kind it is. The cast's own view answers this for effects; this is
 // the same question asked from inside the package, where the view is not built.
-func castOfParticipants(cast *Participants, id string) (combat.Combatant, bool) {
+//
+// The same question, so the same answer type: [combat.Member], exactly what
+// [castView.Member] hands an effect. Its one caller asks [combat.IsDown] and
+// nothing else, which is a read, and a helper that handed back the keeper's
+// surface would be offering a write nobody here wants.
+func castOfParticipants(cast *Participants, id string) (combat.Member, bool) {
 	if ch, ok := cast.Character(id); ok {
 		return ch, true
 	}

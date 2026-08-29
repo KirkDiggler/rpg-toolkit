@@ -30,13 +30,27 @@ type castView struct {
 
 var _ gamectx.Cast = (*castView)(nil)
 
-// Member returns a participant's combat-facing sheet.
+// Member returns a participant's combat-facing READ surface.
 //
 // Characters and monsters are the same thing here, which is the point:
 // [gamectx.CharacterRegistry] could name weapons and ability scores and action
 // economy and could not describe a wolf at all, so every predicate that wanted
 // to ask about "whoever is standing there" had nothing to ask.
-func (v *castView) Member(id string) (combat.Combatant, bool) {
+//
+// # combat.Member, and the sheets behind it are still live
+//
+// The narrowing is the whole point of the type and changes nothing about what
+// is behind it. These ARE the objects the machine is about to run against — the
+// paragraph above says a view, not a copy, and it still means it. What changes
+// is that an effect holding one can no longer call ApplyDamage or MarkClean on
+// a sheet it does not own: the read law and the write law now differ by a type
+// rather than by discipline (rpg-toolkit#1300).
+//
+// This package keeps the writer surface, and keeps it deliberately. Resolution
+// IS the keeper — it applies the damage and builds the dirty set — so
+// [Participants] hands out combatants internally and hands out members here,
+// at the seam where rules read.
+func (v *castView) Member(id string) (combat.Member, bool) {
 	if ch, ok := v.cast.Character(id); ok {
 		return ch, true
 	}
