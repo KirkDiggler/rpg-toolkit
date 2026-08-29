@@ -172,17 +172,19 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseACChainIntegration() {
 	err := ud.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// Own sheet, handed over the way attach hands it over.
+	// Own sheet, read off the cast the way the one door installs it.
 	// DEX 16 (+3), WIS 14 (+2) -> Unarmored Defense adds +2 (WIS mod)
-	ud.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{
-		abilities.STR: 10, // +0
-		abilities.DEX: 16, // +3
-		abilities.CON: 12, // +1
-		abilities.INT: 10, // +0
-		abilities.WIS: 14, // +2
-		abilities.CHA: 10, // +0
-	}})
-	ctx := s.ctx
+	ctx := castOf(s.ctx, &fakeConditionOwner{
+		id: characterID,
+		scores: shared.AbilityScores{
+			abilities.STR: 10, // +0
+			abilities.DEX: 16, // +3
+			abilities.CON: 12, // +1
+			abilities.INT: 10, // +0
+			abilities.WIS: 14, // +2
+			abilities.CHA: 10, // +0
+		},
+	})
 
 	// Create AC event for unarmored character
 	// Base would be 10 + 3 (DEX) = 13, Unarmored Defense should add +2 (WIS) = 15
@@ -233,11 +235,13 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseIgnoredWhenWearingArmor(
 	err := ud.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	ud.SetOwner(&fakeConditionOwner{scores: shared.AbilityScores{
-		abilities.DEX: 16,
-		abilities.WIS: 14,
-	}})
-	ctx := s.ctx
+	ctx := castOf(s.ctx, &fakeConditionOwner{
+		id: characterID,
+		scores: shared.AbilityScores{
+			abilities.DEX: 16,
+			abilities.WIS: 14,
+		},
+	})
 
 	// Create AC event for character WEARING ARMOR
 	breakdown := &combat.ACBreakdown{

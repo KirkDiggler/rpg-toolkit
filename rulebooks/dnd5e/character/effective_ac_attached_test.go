@@ -99,18 +99,53 @@ func (s *EffectiveACAttachmentSuite) TestUnattachedSheetRefusesEffectiveAC() {
 	s.Assert().Nil(breakdown, "a refused read returns no breakdown to be mistaken for an answer")
 }
 
-// The other half: attached, the very same bytes fold Unarmored Defense and
-// report 15. Without this, a permanently-erroring EffectiveAC would pass above.
+// The other half: attached AND in a cast, the very same bytes fold Unarmored
+// Defense and report 15. Without this, a permanently-erroring EffectiveAC would
+// pass above.
+//
+// Attachment alone is no longer enough, and the split below says why: the sheet
+// has to be on a bus to fold at all, and the condition has to be able to find
+// itself in the cast to contribute. See castOf for why installing one here
+// stands in for a real installer rather than inventing one.
 func (s *EffectiveACAttachmentSuite) TestAttachedSheetFoldsUnarmoredDefense() {
+	loaded, err := Load(s.ctx, s.monkData())
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, loaded, events.NewEventBus()))
+
+	breakdown, acErr := loaded.EffectiveAC(castOf(s.ctx, loaded))
+
+	s.Require().NoError(acErr)
+	s.Require().NotNil(breakdown)
+	s.Assert().Equal(15, breakdown.Total, "10 base + 3 DEX + 2 WIS (Unarmored Defense)")
+}
+
+// Attached but with NO cast: the fold runs, and Unarmored Defense contributes
+// nothing. 13 rather than 15.
+//
+// This is the observable edge of the read law, kept in a test on purpose. A
+// condition that cannot find itself leaves the chain untouched rather than
+// erroring — an erroring contributor would take every OTHER contributor down
+// with it, which is the failure the whole channel exists to prevent — so the
+// only visible symptom is a number that looks like a character with no
+// features. That is exactly how this class of bug hides, and pinning it here
+// means the next caller folding on a bare context finds out from a test rather
+// than from a wrong armour class on somebody's sheet.
+//
+// The answer for such a caller is not to install a cast of its own. It is R6:
+// bring the fold to resolution, where one door installs the truth on every
+// path. resolution.ProjectCharacter is that entry for a caller holding a record.
+func (s *EffectiveACAttachmentSuite) TestAttachedSheetWithoutACastLosesUnarmoredDefense() {
 	loaded, err := Load(s.ctx, s.monkData())
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, loaded, events.NewEventBus()))
 
 	breakdown, acErr := loaded.EffectiveAC(s.ctx)
 
-	s.Require().NoError(acErr)
+	s.Require().NoError(acErr,
+		"a condition that cannot answer must not poison the fold for everyone else")
 	s.Require().NotNil(breakdown)
-	s.Assert().Equal(15, breakdown.Total, "10 base + 3 DEX + 2 WIS (Unarmored Defense)")
+	s.Assert().Equal(13, breakdown.Total,
+		"10 base + 3 DEX, and no Unarmored Defense: nobody here could name this character")
 }
 
 // EquipmentView carries a folded AC, so it inherits the refusal rather than
