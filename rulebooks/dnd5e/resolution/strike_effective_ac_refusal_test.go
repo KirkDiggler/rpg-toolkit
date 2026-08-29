@@ -41,6 +41,11 @@ func (t *acRefusingTarget) ProficiencyBonus() int               { return 2 }
 func (t *acRefusingTarget) PassivePerception() int              { return 10 }
 func (t *acRefusingTarget) HasShieldEquipped() bool             { return false }
 
+// CanReact is true because this fake carries no action economy at all, and
+// false would claim one refused. Nothing in this test asks; the method is here
+// because combat.Member asks it of every participant.
+func (t *acRefusingTarget) CanReact() bool { return true }
+
 var errNoBus = errors.New("sheet is on no bus")
 
 func (t *acRefusingTarget) EffectiveAC(_ context.Context) (*combat.ACBreakdown, error) {
