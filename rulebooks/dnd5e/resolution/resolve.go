@@ -584,11 +584,15 @@ type attachAllInput struct {
 	// per row, so a caller told only that somebody is unreadable would have to
 	// grey out the whole menu or guess which row to blame.
 	//
-	// Collecting rather than calling the attach once per participant is what
-	// keeps ONE CAST semantics: everyone lands on the same surface, in sorted
-	// order, so a participant that would only fail in company fails here too.
-	// Preflight attached casts of one for a while and its doc admitted the
-	// gap; this is that gap closed rather than described.
+	// Collecting here rather than in the caller is what keeps the ORDERING RULE
+	// in one place. Preflight used to sort its participants and call this once
+	// each, which worked and was two copies of R4 that had to agree. A sink is
+	// what lets it hand over the whole cast instead.
+	//
+	// It buys no behaviour. Everyone landed on the same surface either way, and
+	// nothing observes a cast during attach — no entry installs game context
+	// before attaching, so there is no cast to observe. An earlier version of
+	// Preflight's doc claimed otherwise and was wrong; see it for the record.
 	Refusals *[]ParticipantRefusal
 
 	// Roller reconstitutes effects that roll when they are triggered rather

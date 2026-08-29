@@ -60,20 +60,27 @@ type ParticipantRefusal struct {
 // its own verdict — so a caller told only "somebody is unreadable" would have
 // to grey out the whole menu or guess which row to blame.
 //
-// So this attaches one participant at a time and keeps going, collecting every
-// refusal. That is not a second attach mechanism: each participant goes through
-// the same [attachAll] with a cast of one, so what refuses here refuses there,
-// for the same reason and with the same message.
+// So the whole cast goes through ONE [attachAll], which collects refusals
+// instead of stopping at the first — the Refusals sink on [attachAllInput].
+// That is not a second attach mechanism: it is the same one, an argument apart,
+// the way DropUnreadable already works.
 //
-// # What it costs, said plainly
+// # What the one-call shape is actually worth
 //
-// A cast of one cannot observe a cast of many. If some future attach were to
-// fail only in company — a condition that refuses when another is already on
-// the bus — this would miss it, and the interaction would refuse where the
-// preflight said it would not. No such attach exists today: attaching is
-// per-sheet and the bus is a fresh one. It is recorded because "we checked
-// them one at a time" is exactly the kind of shortcut that is invisible until
-// the day it is not.
+// Not what an earlier version of this doc claimed. It said a cast of one could
+// not observe a cast of many, and recorded that as a cost being knowingly paid.
+// That cost was not real: this entry never installs game context — it is
+// deliberately not a fold entry — so no cast is installed during its attach at
+// ALL, and nothing a participant could read during Apply differs between one
+// participant and twenty. Review caught the claim by restoring the previous
+// implementation under the new tests and watching every one of them pass.
+//
+// What the single call is worth is smaller and true: ordering is decided in one
+// place. The previous version sorted the participants itself and then called
+// the attach once each — and the attach sorts too, so the R4 ordering rule
+// lived in two copies that had to agree. They did agree, which is why nothing
+// observable changed; they were still two. TestOrderingIsDecidedInOnePlace
+// holds the absence.
 //
 // # Nothing is left alive
 //

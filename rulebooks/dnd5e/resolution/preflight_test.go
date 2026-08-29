@@ -6,8 +6,11 @@ package resolution
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -156,53 +159,66 @@ func (s *PreflightTestSuite) TestNothingIsLeftOnTheBus() {
 		"the participant that DID attach was revoked too — a preflight leaves no subscribers behind")
 }
 
-// THE WHOLE CAST GOES THROUGH ONE ATTACH, in sorted order, which is what
-// makes this a preflight of one cast rather than a survey of several.
+// Registrations come out in participant order, which is R4: two preflights over
+// identical data must grant identical registration lists, or the report cannot
+// be compared against the next one.
 //
-// The property that actually differs is the ORDER, and saying so precisely
-// matters because the first version of this test did not. It asserted that
-// every participant landed on the same surface — true, and true of the
-// casts-of-one version too, since those attached onto the same surface as
-// well. It would have passed against the very thing it was written to catch.
-// Found by mutating, not by reading it.
+// # This does NOT discriminate the implementation it replaced, and saying so is
+// the point
 //
-// What one attach gives that N attaches do not is a single sorted pass: the
-// cast is ordered once, as a whole, so registrations come out in participant
-// order however the caller stacked the input. N attaches of one sort nothing,
-// because a list of one is already sorted, and the registrations then follow
-// whatever order the caller happened to pass.
+// Two earlier versions of this test claimed it did. The first asserted every
+// participant landed on the same surface; the second asserted sorted
+// registration order. Review restored the exact previous implementation
+// underneath both and everything passed — because that implementation ALSO
+// shared one surface and ALSO sorted, just in its own loop.
 //
-// That is R4, and it is why the entry can claim to predict an interaction:
-// resolution attaches in sorted order, so a preflight that attached in some
-// other order would be exercising a sequence the interaction never runs.
-func (s *PreflightTestSuite) TestTheWholeCastAttachesInSortedOrder() {
-	registeredFor := func(participants []Participant) []string {
-		surf := newSurface(events.NewEventBus())
-		_, err := preflightOn(s.ctx, &PreflightInput{
-			Participants: participants, Roller: refusingRoller{},
-		}, surf)
-		s.Require().NoError(err)
+// So this is a property of the ENTRY, held equally by the code before and after,
+// and it is worth pinning for that reason rather than as evidence of a change.
+// What actually changed is pinned below.
+func (s *PreflightTestSuite) TestRegistrationsComeOutInParticipantOrder() {
+	surf := newSurface(events.NewEventBus())
 
-		var order []string
-		for _, registration := range surf.registrations() {
-			if len(order) == 0 || order[len(order)-1] != registration.Participant {
-				order = append(order, registration.Participant)
-			}
+	_, err := preflightOn(s.ctx, &PreflightInput{
+		Participants: []Participant{
+			{Character: s.hero("zzz")}, {Character: s.hero("mmm")}, {Character: s.hero("aaa")},
+		},
+		Roller: refusingRoller{},
+	}, surf)
+	s.Require().NoError(err)
+
+	var order []string
+	for _, registration := range surf.registrations() {
+		if len(order) == 0 || order[len(order)-1] != registration.Participant {
+			order = append(order, registration.Participant)
 		}
-
-		return order
 	}
 
-	backwards := registeredFor([]Participant{
-		{Character: s.hero("zzz")}, {Character: s.hero("mmm")}, {Character: s.hero("aaa")},
-	})
-
-	s.Equal([]string{"aaa", "mmm", "zzz"}, backwards,
-		"one attach sorts the whole cast; attaching a cast of one at a time sorts nothing "+
-			"and would register in the caller's order")
+	s.Equal([]string{"aaa", "mmm", "zzz"}, order,
+		"however the caller stacked them, the attach grants registrations in participant order")
 }
 
-// A missing roller is refused rather than defaulted: rolling on a real roller
+// TestOrderingIsDecidedInOnePlace pins what this entry actually changed.
+//
+// The previous implementation ran its own sort.Slice and then called the attach
+// once per participant. The attach sorts too — so the ordering rule lived in TWO
+// places that had to agree, and if attachAll's rule ever changed, this entry
+// would have kept its own quietly. Nothing observable differed between the two
+// while they agreed, which is exactly why no behavioural test could tell them
+// apart and why this one is structural.
+//
+// The entry hands the whole cast to the attach and lets it order them. So this
+// file names no sorter, and that absence is the change.
+func TestOrderingIsDecidedInOnePlace(t *testing.T) {
+	source, err := os.ReadFile("preflight.go")
+	require.NoError(t, err)
+
+	require.False(t, strings.Contains(string(source), "sort."),
+		"preflight.go sorts participants itself. Ordering is attachAll's rule (R4), and a "+
+			"second copy of it here is a copy that can drift: two sorts that agree today are "+
+			"two sorts somebody must remember to change together. Hand it the whole cast")
+}
+
+// A missing roller is refused rather than defaulted// A missing roller is refused rather than defaulted: rolling on a real roller
 // here would spend randomness the interaction being predicted has not spent.
 func (s *PreflightTestSuite) TestAMissingRollerIsRefused() {
 	_, err := Preflight(s.ctx, &PreflightInput{
