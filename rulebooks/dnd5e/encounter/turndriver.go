@@ -64,10 +64,9 @@ type TurnDriver interface {
 // MonsterView is what a TurnDriver is told about its own situation on its
 // turn — the anti-wall-hack contract [Decider]'s Snapshot already keeps
 // (C2), extended to a turn's own questions that Snapshot cannot express. A
-// driver receives ONLY this: its own static facts, what it currently holds
-// sight intel on, and the turn's remaining budget — never the full
-// encounter, and never another member's live truth beyond what has actually
-// been seen.
+// driver receives ONLY this: its own static facts, its current sight and held
+// location knowledge, and the turn's remaining budget — never the full
+// encounter, and never another member's concealed live truth.
 //
 // A PROJECTION OF THE MEMBER RECORD PLUS THE TURN'S DYNAMIC PARTS (Kirk,
 // rpg-project#254 review): Self, Position, Actions and Targeting are read
@@ -95,12 +94,10 @@ type MonsterView struct {
 	Targeting string
 
 	// Seen are the OTHER members this monster currently, actively holds
-	// sight intel on — Status == [intel.Current] only. A stale "held"
-	// memory (intel.Held, a ghost: known but not currently sustained) is
-	// not a target this member can act on THIS turn, so it never appears
-	// here; a driver that wants to chase a last-known position needs no
-	// special case for that, because Seen simply will not contain it once
-	// the sighting lapses.
+	// sight intel on — Status == [intel.Current] only. Current sight keeps
+	// its existing standing, reach, and reach-aware path meaning. Held
+	// testimony never appears here: held known positions project separately
+	// into Remembered, while held unknown locations are not actionable.
 	Seen []SeenMember
 
 	// Remembered are the OTHER members this monster knows only through its own
@@ -108,7 +105,10 @@ type MonsterView struct {
 	// data: they are never attackable, contain no standing or reach fact, and
 	// never expose the subject's concealed current position. Position and Path
 	// are the remembered cell and an exact-cell route to that cell, if one is
-	// reachable through this composition's geometry.
+	// reachable through this composition's geometry. Held unknown testimony
+	// persists in Intel but produces no entry. The view is rebuilt after each
+	// driven move, so new current sight is available on the next Act call and a
+	// visible-first driver can interrupt remembered pursuit immediately.
 	Remembered []RememberedMember
 
 	// Budget is what remains of this member's turn.

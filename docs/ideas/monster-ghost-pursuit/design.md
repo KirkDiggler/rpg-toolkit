@@ -1,6 +1,6 @@
 # Monster ghost pursuit — design
 
-**Status:** Approved
+**Status:** Implemented
 
 **Execution:** [plan.md](plan.md)
 

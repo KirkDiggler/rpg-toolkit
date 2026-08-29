@@ -183,6 +183,13 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   (version 1 deleted, refused by name). `archetype` is a presentation ref
   that never decides a mechanic. *Rule: a region is what it lists; nothing
   about the floor is derived from a shape, an anchor, or a word.*
+- **0046** — **Encounter owns location knowledge**: strict
+  `Known(position) | Unknown` testimony stays opaque to `play/intel`; current
+  sight and held exact-cell memory project separately, driven arrival authors
+  observable correction, and session mirrors state and identifiers without
+  deciding behavior. Legacy coordinates remain readable; new payloads are
+  tagged and malformed/current-unknown sight is refused. *Rule: the composition
+  interprets testimony that depends on its geometry and lawful percept.*
 
 ---
 
