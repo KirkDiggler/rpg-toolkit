@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package monstertraits_test
+package monstertraits
 
 import (
 	"context"
@@ -19,7 +19,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -62,7 +61,7 @@ func TestAMonsterCanCarryAnOrdinaryCondition(t *testing.T) {
 	require.NoError(t, err, "a sheet carrying a condition must load")
 
 	bus := events.NewEventBus()
-	require.NoError(t, monstertraits.AttachMonster(context.Background(), m, bus, dice.NewRoller()),
+	require.NoError(t, AttachMonster(context.Background(), m, bus, dice.NewRoller()),
 		"and must attach without the trait loader refusing its ref")
 
 	require.Len(t, m.GetConditions(), 1, "the condition is on the sheet, not merely loadable")
@@ -89,7 +88,7 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 	require.False(t, m.IsDirty(), "a freshly loaded sheet has nothing to save")
 
 	bus := events.NewEventBus()
-	require.NoError(t, monstertraits.AttachMonster(ctx, m, bus, dice.NewRoller()))
+	require.NoError(t, AttachMonster(ctx, m, bus, dice.NewRoller()))
 
 	// A room with the wolf next to a rogue who then runs, which is the
 	// condition's whole predicate.
@@ -105,7 +104,10 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 		func(_ context.Context, _ dnd5eEvents.ReactionTriggerEvent) error { fired++; return nil })
 	require.NoError(t, err)
 
-	runCtx := gamectx.WithReactionReadiness(gamectx.WithRoom(ctx, room),
+	// The wolf's own sheet in the cast, the way resolution's one door installs
+	// it. The reaction gate reads the reactor's sheet now, and a monster's
+	// answer — nothing here refuses a reaction — is the sheet's to give.
+	runCtx := gamectx.WithReactionReadiness(gamectx.WithRoom(castOf(ctx, m), room),
 		gamectx.ReactionReadinessMap{"wolf-1": {refs.Conditions.OpportunityAttack().String(): true}})
 
 	event := &dnd5eEvents.MovementChainEvent{
@@ -141,13 +143,13 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 // still work.
 func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 	built := []dnd5eEvents.ConditionBehavior{
-		monstertraits.Immunity("wolf-1", damage.Fire),
-		monstertraits.Vulnerability("wolf-1", damage.Cold),
-		monstertraits.PackTactics("wolf-1"),
-		monstertraits.UndeadFortitude("wolf-1", 3, dice.NewRoller()),
+		Immunity("wolf-1", damage.Fire),
+		Vulnerability("wolf-1", damage.Cold),
+		PackTactics("wolf-1"),
+		UndeadFortitude("wolf-1", 3, dice.NewRoller()),
 		conditions.NewOpportunityAttackCondition("wolf-1"),
 	}
-	require.Len(t, built, len(monstertraits.AllTraitRefs())+1,
+	require.Len(t, built, len(AllTraitRefs())+1,
 		"every routed trait is covered here, plus the condition route this PR adds")
 
 	for _, entry := range built {
@@ -159,7 +161,7 @@ func TestEveryLoadedEntryNamesItselfWithItsPersistedRef(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(blob, &peek))
 
-		loaded, err := monstertraits.LoadJSON(blob, dice.NewRoller())
+		loaded, err := LoadJSON(blob, dice.NewRoller())
 		require.NoError(t, err, "%s must round-trip through the loader", peek.Ref)
 
 		require.NotNil(t, loaded.Ref(), "%s: Ref must never return nil", peek.Ref)
@@ -184,7 +186,7 @@ func TestAnAttachedMonsterCarriesItsFreeReactionOnTheSheet(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, m.ToData().Conditions, "load is a pure read and grants nothing")
 
-	require.NoError(t, monstertraits.AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
+	require.NoError(t, AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
 
 	require.Len(t, m.GetConditions(), 1)
 	require.Equal(t, refs.Conditions.OpportunityAttack().String(), m.GetConditions()[0].Ref().String())
@@ -205,7 +207,7 @@ func TestAMonsterIsNotGivenASecondCopyOfWhatItAlreadyCarries(t *testing.T) {
 
 	m, err := monster.Load(ctx, data)
 	require.NoError(t, err)
-	require.NoError(t, monstertraits.AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
+	require.NoError(t, AttachMonster(ctx, m, events.NewEventBus(), dice.NewRoller()))
 
 	require.Len(t, m.GetConditions(), 1, "the persisted one is kept and no second is carried on top")
 	require.Len(t, m.ToData().Conditions, 1)

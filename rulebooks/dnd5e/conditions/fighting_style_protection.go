@@ -27,17 +27,6 @@ type FightingStyleProtectionData struct {
 	CharacterID string    `json:"character_id"`
 }
 
-// protectionOwner is the minimal, structurally-satisfied view of the
-// protector's OWN live sheet this condition needs — shield equipped, and
-// the same action-economy ledger [combat.Pay]/[combat.CanPay] already read
-// (rpg-toolkit#1178). A *character.Character satisfies this without
-// `conditions` importing `character` (which would cycle — character already
-// imports conditions to load them); see [dnd5eEvents.OwnerAware].
-type protectionOwner interface {
-	combat.Ledger
-	HasShieldEquipped() bool
-}
-
 // FightingStyleProtectionCondition imposes disadvantage on attacks against adjacent allies.
 // When a creature you can see attacks a target other than you that is within 5 feet of you,
 // you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield.
@@ -45,7 +34,6 @@ type FightingStyleProtectionCondition struct {
 	CharacterID     string
 	subscriptionIDs []string
 	bus             events.EventBus
-	owner           protectionOwner
 }
 
 // Ensure FightingStyleProtectionCondition implements dnd5eEvents.ConditionBehavior
@@ -55,21 +43,6 @@ var _ dnd5eEvents.ConditionBehavior = (*FightingStyleProtectionCondition)(nil)
 // its ToJSON embeds and its loader routes on.
 func (f *FightingStyleProtectionCondition) Ref() *core.Ref {
 	return refs.Conditions.FightingStyleProtection()
-}
-
-// Ensure FightingStyleProtectionCondition implements dnd5eEvents.OwnerAware
-var _ dnd5eEvents.OwnerAware = (*FightingStyleProtectionCondition)(nil)
-
-// SetOwner hands this condition its own character's live sheet, read the
-// same way [combat.Pay] already does, in place of a context-installed
-// gamectx registry (rpg-toolkit#1178). An owner that does not satisfy
-// [protectionOwner] is ignored: the condition simply never finds itself
-// eligible, the same "nothing to do" default every other unmet check here
-// already takes.
-func (f *FightingStyleProtectionCondition) SetOwner(owner any) {
-	if o, ok := owner.(protectionOwner); ok {
-		f.owner = o
-	}
 }
 
 // NewFightingStyleProtectionCondition creates a new Protection fighting style condition.
@@ -176,17 +149,30 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 		return c, nil
 	}
 
-	// Must be wielding a shield — read off this character's own live sheet,
-	// handed over at attach time (rpg-toolkit#1178), never a
-	// context-installed registry.
-	if f.owner == nil || !f.owner.HasShieldEquipped() {
+	// This protector's own sheet, read out of the cast the way it reads
+	// anybody else's — in place of the handle a loader used to pass in at
+	// attach time (rpg-toolkit#1178), which was silently absent whenever a
+	// loader forgot.
+	//
+	// A protector nobody can look up is NOT ELIGIBLE — the old nil-owner
+	// branch preserved exactly, and the same answer the opportunity attack
+	// gives to the same question. A cast is installed on every path that folds
+	// anything, so a fold without one is assembled wrong rather than describing
+	// a participant with nothing to say.
+	self, ok := member(ctx, f.CharacterID)
+	if !ok {
 		return c, nil
 	}
 
-	// Must have a reaction available — the same ledger combat.Pay/CanPay
-	// already read, so "can I react" is answered the identical way
-	// everywhere in this rulebook it is asked.
-	if f.owner.SlotsLeft(coreCombat.ActionReaction) <= 0 {
+	// Must be wielding a shield.
+	if !self.HasShieldEquipped() {
+		return c, nil
+	}
+
+	// Must have a reaction available. Same question the opportunity attack
+	// asks, asked of the same surface, so the two cannot drift into answering
+	// "can I react" differently.
+	if !self.CanReact() {
 		return c, nil
 	}
 
@@ -215,7 +201,7 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	// All conditions met - add modifier to impose disadvantage at StageFeatures
-	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
+	modifyAttack := func(ctx context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
 			SourceID:  f.CharacterID,
 			SourceRef: refs.Conditions.FightingStyleProtection(),
@@ -229,10 +215,21 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 			Reason:      "protection_fighting_style",
 		})
 
-		// Actually consume the reaction. SpendSlots never refuses — the
-		// eligibility check above already ran, and Ledger's own contract
-		// (combat/gate.go) is that a debit past a passed check cannot fail.
-		f.owner.SpendSlots(coreCombat.ActionReaction, 1)
+		// Actually consume the reaction, and do it HERE rather than above:
+		// the bill falls due when the stage runs, which is where it fell due
+		// before. The keeper applies it at the instant of the publish — the
+		// bus is synchronous — so the debit lands where the direct call landed.
+		//
+		// The request cannot be refused. The eligibility check above already
+		// ran, and Ledger's own contract (combat/gate.go) is that a debit past
+		// a passed check cannot fail; what can fail is the publish reaching
+		// nobody, and a reaction consumed that nothing recorded is the failure
+		// this whole shape exists to end.
+		if err := publishSpendRequested(
+			ctx, f.bus, f.CharacterID, coreCombat.ActionReaction, 1, f.Ref(),
+		); err != nil {
+			return e, rpgerr.Wrap(err, "failed to publish protection reaction spend")
+		}
 
 		return e, nil
 	}

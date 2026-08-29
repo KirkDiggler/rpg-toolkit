@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package conditions_test
+package conditions
 
 import (
 	"context"
@@ -13,61 +13,15 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
-
-// fakeReactor stands in for the reactor's own live sheet.
-//
-// It can be built WITHOUT a purse (withPurse false), which is the monster
-// case and not a degenerate one: monsters carry no action economy in this
-// rulebook at all, so "there is no reaction slot to read" is the production
-// shape rather than a gap in the fake. SetOwner asserts the two halves
-// independently, so an owner that only marks dirty is a real configuration.
-type fakeReactor struct {
-	withPurse bool
-	reactions int
-	dirtied   int
-	spent     []coreCombat.ActionType
-}
-
-func (f *fakeReactor) MarkDirty() { f.dirtied++ }
-
-func (f *fakeReactor) InCombat() bool { return true }
-
-func (f *fakeReactor) SlotsLeft(slot coreCombat.ActionType) int {
-	if slot == coreCombat.ActionReaction {
-		return f.reactions
-	}
-	return 0
-}
-
-func (f *fakeReactor) SpendSlots(slot coreCombat.ActionType, n int) {
-	if slot == coreCombat.ActionReaction {
-		f.reactions -= n
-	}
-	f.spent = append(f.spent, slot)
-}
-
-func (f *fakeReactor) CapacityLeft(_ combat.CapacityType) int       { return 0 }
-func (f *fakeReactor) PoolLeft(_ coreResources.ResourceKey) int     { return 0 }
-func (f *fakeReactor) SpendCapacity(_ combat.CapacityType, _ int)   {}
-func (f *fakeReactor) SpendPool(_ coreResources.ResourceKey, _ int) {}
-func (f *fakeReactor) BankCapacity(_ combat.CapacityType, _ int)    {}
-
-// purseless is the monster shape: it marks dirty and nothing else, so a type
-// assertion to combat.Ledger fails and the condition finds no purse.
-type purseless struct{ dirtied int }
-
-func (p *purseless) MarkDirty() { p.dirtied++ }
 
 // failAfterBus is a real bus that refuses the Nth subscribe, and remembers
 // every Unsubscribe it was asked for.
@@ -154,6 +108,27 @@ func (s *OpportunityAttackMeterSuite) triggers() *[]dnd5eEvents.ReactionTriggerE
 	return collected
 }
 
+// character builds a reactor that keeps an action economy, plus the keeper
+// that owns its sheet. This is a player: it pays for its reaction.
+func (s *OpportunityAttackMeterSuite) character(id string, reactions int) *fakeSheetKeeper {
+	return s.sheetFor(&fakeConditionOwner{id: id, hasEconomy: true, reactions: reactions})
+}
+
+// monster builds a reactor that keeps NO action economy, plus the keeper that
+// owns its sheet — and that keeper has no spend row, exactly as the real
+// monster keeper has none. This is the purseless case, and the absence is
+// where it now lives.
+func (s *OpportunityAttackMeterSuite) monster(id string) *fakeSheetKeeper {
+	return s.sheetFor(&fakeConditionOwner{id: id})
+}
+
+func (s *OpportunityAttackMeterSuite) sheetFor(sheet *fakeConditionOwner) *fakeSheetKeeper {
+	keeper, err := keeperFor(s.ctx, s.bus, sheet)
+	s.Require().NoError(err)
+
+	return keeper
+}
+
 // readyCtx is the context a live movement fold runs under: a room to read
 // geometry from, and the reactor readied for OA.
 func (s *OpportunityAttackMeterSuite) readyCtx(reactor string) context.Context {
@@ -187,12 +162,12 @@ func (s *OpportunityAttackMeterSuite) TestASecondEnemyFleeingTheSameTurnGetsAway
 	s.place("wolf-1", "monster", 5, 6)
 	s.place("wolf-2", "monster", 4, 5)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
-	oa.SetOwner(&purseless{})
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	ctx := s.readyCtx("fighter-1")
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
 
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.walkAway(ctx, "wolf-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
@@ -210,24 +185,31 @@ func (s *OpportunityAttackMeterSuite) TestTheReactionRefreshesAtTheReactorsOwnTu
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
 
-	owner := &purseless{}
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
-	oa.SetOwner(owner)
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	ctx := s.readyCtx("fighter-1")
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
 
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1)
 	s.Require().True(oa.UsedThisTurn)
 
-	dirtiedBefore := owner.dirtied
+	dirtiedBefore := keeper.dirtied
 	s.Require().NoError(dnd5eEvents.TurnStartTopic.On(s.bus).Publish(
 		ctx, dnd5eEvents.TurnStartEvent{SubjectID: "fighter-1", Round: 2}))
 
 	s.False(oa.UsedThisTurn, "the reactor's own turn start refreshes the reaction")
-	s.Greater(owner.dirtied, dirtiedBefore, "a refreshed meter must be persisted")
+	s.Greater(keeper.dirtied, dirtiedBefore, "a refreshed meter must be persisted")
+
+	// The SLOT refreshes too, and not from here: a character's action economy
+	// is reseeded by Character.StartTurn, which grants one reaction per turn.
+	// Two meters, two owners — the condition refreshes the flag it keeps, and
+	// the sheet refreshes the slot it keeps. Done by hand because this package
+	// cannot import character, and stated rather than sidestepped with a
+	// reactor that has no economy: a fighter has one.
+	keeper.sheet.reactions = 1
 
 	s.place("wolf-2", "monster", 4, 5)
 	s.walkAway(ctx, "wolf-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
@@ -240,12 +222,12 @@ func (s *OpportunityAttackMeterSuite) TestAnotherMembersTurnStartDoesNotRefreshI
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
-	oa.SetOwner(&purseless{})
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	ctx := s.readyCtx("fighter-1")
+	ctx := castOf(s.readyCtx("fighter-1"), keeper.sheet)
 
 	s.walkAway(ctx, "wolf-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1)
@@ -262,18 +244,17 @@ func (s *OpportunityAttackMeterSuite) TestACharacterPaysTheReactionSlot() {
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
 
-	owner := &fakeReactor{withPurse: true, reactions: 1}
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
-	oa.SetOwner(owner)
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	s.walkAway(s.readyCtx("fighter-1"), "wolf-1",
+	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
 		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 
 	s.Require().Len(*collected, 1)
-	s.Equal(0, owner.reactions, "the reaction slot is spent, not merely flagged")
-	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, owner.spent)
+	s.Equal(0, keeper.sheet.reactions, "the reaction slot is spent, not merely flagged")
+	s.Equal([]coreCombat.ActionType{coreCombat.ActionReaction}, keeper.spent)
 }
 
 // A fighter who already spent their reaction on Protection has none left for
@@ -283,16 +264,16 @@ func (s *OpportunityAttackMeterSuite) TestACharacterWithNoReactionLeftDoesNotSwi
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
 
-	owner := &fakeReactor{withPurse: true, reactions: 0}
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
-	oa.SetOwner(owner)
+	keeper := s.character("fighter-1", 0)
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	s.walkAway(s.readyCtx("fighter-1"), "wolf-1",
+	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
 		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 
 	s.Empty(*collected, "a spent reaction cannot be spent again")
+	s.Empty(keeper.spent, "and nothing was billed for a swing that did not happen")
 	s.False(oa.UsedThisTurn, "a refused reaction must not consume the flag either")
 }
 
@@ -304,38 +285,44 @@ func (s *OpportunityAttackMeterSuite) TestAMonsterReactsWithNoPurseAndIsStillMet
 	s.place("rogue-1", "character", 5, 6)
 	s.place("rogue-2", "character", 4, 5)
 
-	oa := conditions.NewOpportunityAttackCondition("wolf-1")
-	oa.SetOwner(&purseless{})
+	keeper := s.monster("wolf-1")
+	oa := NewOpportunityAttackCondition("wolf-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	ctx := s.readyCtx("wolf-1")
+	ctx := castOf(s.readyCtx("wolf-1"), keeper.sheet)
 
 	s.walkAway(ctx, "rogue-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().Len(*collected, 1, "a monster with no economy still gets its reaction")
 
 	s.walkAway(ctx, "rogue-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
 	s.Len(*collected, 1, "and is still held to one per turn by the flag alone")
+	s.Empty(keeper.spent, "the bill went out and its keeper has no row to pay it")
+	s.Positive(keeper.dirtied, "but the meter it DOES keep is still written down")
 }
 
-// An owner satisfying neither half is not an error. The condition meters
-// itself in memory and charges nothing — the same "nothing to do" default
-// every other unmet check in this package takes.
-func (s *OpportunityAttackMeterSuite) TestAnOwnerlessReactorStillMetersItself() {
+// A reactor nobody can look up does not react at all, and this is a fold with
+// no cast installed — the one state the old owner handle could not produce.
+//
+// It is not the monster case. A monster IS in the cast and answers for itself
+// (see the test above); this is a fold assembled without the cast that
+// resolution's one door installs on every path, so there is no sheet to ask.
+// Reacting here would hand a free reaction to any character whose cast went
+// missing, which is the silently-absent-handle failure this migration removes.
+func (s *OpportunityAttackMeterSuite) TestAReactorNobodyCanLookUpDoesNotReact() {
 	s.place("wolf-1", "monster", 5, 5)
 	s.place("rogue-1", "character", 5, 6)
-	s.place("rogue-2", "character", 4, 5)
 
-	oa := conditions.NewOpportunityAttackCondition("wolf-1")
+	oa := NewOpportunityAttackCondition("wolf-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.triggers()
-	ctx := s.readyCtx("wolf-1")
 
-	s.walkAway(ctx, "rogue-1", spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
-	s.walkAway(ctx, "rogue-2", spatial.Position{X: 4, Y: 5}, spatial.Position{X: 1, Y: 5})
+	s.walkAway(s.readyCtx("wolf-1"), "rogue-1",
+		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 
-	s.Len(*collected, 1, "no owner is not an excuse to react twice")
+	s.Empty(*collected, "no sheet to ask is not a yes")
+	s.False(oa.UsedThisTurn, "and a reaction that never happened must not burn the flag")
 }
 
 // The meter is persisted for SneakAttackData's stated reason: every call
@@ -345,23 +332,23 @@ func (s *OpportunityAttackMeterSuite) TestTheMeterSurvivesTheJSONRoundTrip() {
 	s.place("fighter-1", "character", 5, 5)
 	s.place("wolf-1", "monster", 5, 6)
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
-	oa.SetOwner(&purseless{})
+	keeper := s.character("fighter-1", 1)
+	oa := NewOpportunityAttackCondition("fighter-1")
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
-	s.walkAway(s.readyCtx("fighter-1"), "wolf-1",
+	s.walkAway(castOf(s.readyCtx("fighter-1"), keeper.sheet), "wolf-1",
 		spatial.Position{X: 5, Y: 6}, spatial.Position{X: 5, Y: 8})
 	s.Require().True(oa.UsedThisTurn)
 
 	raw, err := oa.ToJSON()
 	s.Require().NoError(err)
 
-	var data conditions.OpportunityAttackConditionData
+	var data OpportunityAttackConditionData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	s.True(data.UsedThisTurn, "a spent reaction that is not written down is not spent")
 
-	reloaded, err := conditions.LoadJSON(raw)
+	reloaded, err := LoadJSON(raw)
 	s.Require().NoError(err)
-	restored, ok := reloaded.(*conditions.OpportunityAttackCondition)
+	restored, ok := reloaded.(*OpportunityAttackCondition)
 	s.Require().True(ok, "the loader must route this ref back to an OA condition")
 	s.True(restored.UsedThisTurn, "the meter must survive the load, not just the save")
 }
@@ -377,7 +364,7 @@ func (s *OpportunityAttackMeterSuite) TestAFailedSecondSubscribeRollsTheFirstOne
 	// Allow the MovementChain subscribe, refuse the TurnStart one after it.
 	bus := &failAfterBus{EventBus: s.bus, allow: 1}
 
-	oa := conditions.NewOpportunityAttackCondition("fighter-1")
+	oa := NewOpportunityAttackCondition("fighter-1")
 	err := oa.Apply(s.ctx, bus)
 	s.Require().Error(err, "a condition that could not finish applying must say so")
 

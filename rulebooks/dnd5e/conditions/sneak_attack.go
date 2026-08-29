@@ -46,25 +46,12 @@ type SneakAttackCondition struct {
 	subscriptionIDs []string
 	bus             events.EventBus
 	roller          dice.Roller
-	owner           selfPersisting
 }
 
-// Ensure SneakAttackCondition implements dnd5eEvents.OwnerAware
-var _ dnd5eEvents.OwnerAware = (*SneakAttackCondition)(nil)
-
-// SetOwner hands this condition the sheet its once-per-turn flag is persisted
-// on. See [selfPersisting] in raging.go.
-func (s *SneakAttackCondition) SetOwner(owner any) {
-	if o, ok := owner.(selfPersisting); ok {
-		s.owner = o
-	}
-}
-
-// markDirty records that the once-per-turn flag changed.
-func (s *SneakAttackCondition) markDirty() {
-	if s.owner != nil {
-		s.owner.MarkDirty()
-	}
+// stateChanged reports that the once-per-turn flag moved. See
+// [publishStateChanged].
+func (s *SneakAttackCondition) stateChanged(ctx context.Context) error {
+	return publishStateChanged(ctx, s.bus, s.CharacterID, s.Ref())
 }
 
 // Ensure SneakAttackCondition implements dnd5eEvents.ConditionBehavior
@@ -158,14 +145,15 @@ func (s *SneakAttackCondition) Remove(ctx context.Context, bus events.EventBus) 
 }
 
 // onTurnEnd resets the once-per-turn flag
-func (s *SneakAttackCondition) onTurnEnd(_ context.Context, event dnd5eEvents.TurnEndEvent) error {
+func (s *SneakAttackCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
 	// Only when the flag actually changes. Marking unconditionally would
 	// flag every rogue dirty at the end of every turn they did not sneak
 	// attack, and a turn boundary is about to become an interaction that
 	// runs for every participant.
 	if event.SubjectID == s.CharacterID && s.UsedThisTurn {
 		s.UsedThisTurn = false
-		s.markDirty()
+
+		return s.stateChanged(ctx)
 	}
 	return nil
 }
@@ -238,7 +226,9 @@ func (s *SneakAttackCondition) onDamageChain(
 
 	// Mark as used this turn
 	s.UsedThisTurn = true
-	s.markDirty()
+	if err := s.stateChanged(ctx); err != nil {
+		return c, err
+	}
 
 	err := c.Add(combat.StageFeatures, "sneak_attack", modifyDamage)
 	if err != nil {

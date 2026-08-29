@@ -270,18 +270,22 @@ func AttachMonster(
 		// condition breaks its own contract.
 		traitBus := dnd5eEvents.BusForEffect(bus, refOf(condition))
 
-		// A condition that wants its own live sheet gets it here, before Apply
-		// subscribes it to anything — the same handoff character.Attach has made
-		// since rpg-toolkit#1178, which until now happened for characters only.
+		// THIS HANDOFF NOW MATCHES NOTHING, and is kept only so it and the
+		// interface die together.
 		//
-		// The asymmetry was invisible while no monster trait implemented
-		// OwnerAware, and stops being invisible the moment a monster carries a
-		// condition that keeps turn-scoped memory: the opportunity attack's
-		// once-per-turn flag is stored on the condition, serialized as part of
-		// this sheet, and dropped unless the condition can say the sheet
-		// changed. What a monster does NOT satisfy is combat.Ledger, and that
-		// asymmetry is deliberate — Kirk ruled that characters pay a reaction
-		// slot and monsters are metered by the flag alone (rpg-project#316).
+		// It handed a condition its own live sheet so the condition could read
+		// and write it directly. Both halves have moved: reads come from the
+		// cast, and writes are published requests the sheet's own keeper
+		// applies. No condition implements OwnerAware any more, so this branch
+		// is unreachable rather than merely unused, and deleting it means
+		// deleting the interface, its twin in character.Load, and the doc that
+		// describes them — one sweep, not four (rpg-project#319, Phase 6).
+		//
+		// The asymmetry it used to carry is intact and lives somewhere better:
+		// characters pay a reaction slot and monsters are metered by the
+		// condition's own flag (Kirk, rpg-project#316), which is now the fact
+		// that the monster keeper has no spend row while the character keeper
+		// does.
 		if aware, ok := condition.(dnd5eEvents.OwnerAware); ok {
 			aware.SetOwner(m)
 		}

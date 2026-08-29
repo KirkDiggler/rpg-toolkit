@@ -157,9 +157,11 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 	for _, effect := range applying {
 		effectBus := dnd5eEvents.BusForEffect(bus, effect.ref)
 
-		// A condition that wants its own live sheet — rather than a
-		// context-installed registry — gets it here, before Apply subscribes
-		// it to anything (rpg-toolkit#1178).
+		// THIS HANDOFF NOW MATCHES NOTHING. No condition implements
+		// OwnerAware any more: reads come from the cast, writes are published
+		// requests this sheet's own keeper applies. Kept so that it, its twin
+		// in monstertraits.AttachMonster, and the interface itself go in one
+		// sweep rather than four (rpg-project#319, Phase 6).
 		if aware, ok := effect.behavior.(dnd5eEvents.OwnerAware); ok {
 			aware.SetOwner(c)
 		}

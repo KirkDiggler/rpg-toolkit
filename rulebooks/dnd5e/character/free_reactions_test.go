@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package character_test
+package character
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -22,8 +21,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-func plainFighter(id string) *character.Data {
-	return &character.Data{
+func plainFighter(id string) *Data {
+	return &Data{
 		ID: id, PlayerID: "p", Name: "Plain", Level: 1, ClassID: "fighter", RaceID: "human",
 		AbilityScores: shared.AbilityScores{
 			abilities.STR: 16, abilities.DEX: 14, abilities.CON: 14,
@@ -35,8 +34,8 @@ func plainFighter(id string) *character.Data {
 
 // inFight is the same sheet with a turn's worth of economy on it, which is what
 // a character has once they have acted in a fight.
-func inFight(data *character.Data) *character.Data {
-	data.ActionEconomy = &character.ActionEconomyData{
+func inFight(data *Data) *Data {
+	data.ActionEconomy = &ActionEconomyData{
 		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
 		ReactionsRemaining: 1, MovementRemaining: 30,
 	}
@@ -59,14 +58,14 @@ func carries(conds []dnd5eEvents.ConditionBehavior, ref string) bool {
 // lists. A character who was authored with no conditions at all still has one.
 func TestACharacterWithNoConditionsStillCarriesItsFreeReactions(t *testing.T) {
 	ctx := context.Background()
-	sheet, err := character.Load(ctx, inFight(plainFighter("fighter-1")))
+	sheet, err := Load(ctx, inFight(plainFighter("fighter-1")))
 	require.NoError(t, err)
 	require.Empty(t, sheet.GetConditions(), "load is a pure read and grants nothing")
 
 	bus := events.NewEventBus()
-	require.NoError(t, character.Attach(ctx, sheet, bus))
+	require.NoError(t, Attach(ctx, sheet, bus))
 
-	require.Equal(t, 1, triggersOnAStepAway(t, bus, "fighter-1"),
+	require.Equal(t, 1, triggersOnAStepAway(t, bus, sheet),
 		"the carried reaction is LIVE — one that was merely constructed could never fire")
 }
 
@@ -77,15 +76,20 @@ func TestACharacterWithNoConditionsStillCarriesItsFreeReactions(t *testing.T) {
 // matters about a carried condition is whether it FIRES, and a test that
 // inspected the bus would pass just as happily for a condition subscribed to
 // the wrong topic.
-func triggersOnAStepAway(t *testing.T, bus events.EventBus, reactor string) int {
+func triggersOnAStepAway(t *testing.T, bus events.EventBus, reactor combat.Member) int {
 	t.Helper()
-	ctx := context.Background()
+
+	// The reactor's own sheet, installed the way resolution's one door
+	// installs it on every path that folds anything. A carried reaction reads
+	// its slot off the cast now, so this is no longer scenery: it is where the
+	// answer below comes from, and a fold without it has no sheet to ask.
+	ctx := castOf(context.Background(), reactor)
 
 	room := spatial.NewBasicRoom(spatial.BasicRoomConfig{
 		ID: "r", Type: "dungeon",
 		Grid: spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 20, Height: 20}),
 	})
-	require.NoError(t, room.PlaceEntity(&placedEntity{id: reactor, kind: "character"}, spatial.Position{X: 5, Y: 5}))
+	require.NoError(t, room.PlaceEntity(&placedEntity{id: reactor.GetID(), kind: "character"}, spatial.Position{X: 5, Y: 5}))
 	require.NoError(t, room.PlaceEntity(&placedEntity{id: "wolf-1", kind: "monster"}, spatial.Position{X: 5, Y: 6}))
 
 	fired := 0
@@ -94,7 +98,7 @@ func triggersOnAStepAway(t *testing.T, bus events.EventBus, reactor string) int 
 	require.NoError(t, err)
 
 	runCtx := gamectx.WithReactionReadiness(gamectx.WithRoom(ctx, room),
-		gamectx.ReactionReadinessMap{reactor: {refs.Conditions.OpportunityAttack().String(): true}})
+		gamectx.ReactionReadinessMap{reactor.GetID(): {refs.Conditions.OpportunityAttack().String(): true}})
 
 	event := &dnd5eEvents.MovementChainEvent{
 		EntityID:     "wolf-1",
@@ -130,9 +134,9 @@ func TestACarriedReactionIsNeverWrittenToTheCharacterSheet(t *testing.T) {
 	ctx := context.Background()
 	data := plainFighter("fighter-1")
 
-	sheet, err := character.Load(ctx, data)
+	sheet, err := Load(ctx, data)
 	require.NoError(t, err)
-	require.NoError(t, character.Attach(ctx, sheet, events.NewEventBus()))
+	require.NoError(t, Attach(ctx, sheet, events.NewEventBus()))
 
 	after := sheet.ToData()
 	require.Empty(t, after.Conditions,
@@ -163,13 +167,13 @@ func TestACarriedReactionIsNeverWrittenToTheCharacterSheet(t *testing.T) {
 // spent on somebody else's turn by definition, so the two must not be confused.
 func TestASheetWithNoEconomyCarriesTheReactionButCannotSpendIt(t *testing.T) {
 	ctx := context.Background()
-	sheet, err := character.Load(ctx, plainFighter("fighter-1"))
+	sheet, err := Load(ctx, plainFighter("fighter-1"))
 	require.NoError(t, err)
 
 	bus := events.NewEventBus()
-	require.NoError(t, character.Attach(ctx, sheet, bus))
+	require.NoError(t, Attach(ctx, sheet, bus))
 
-	require.Equal(t, 0, triggersOnAStepAway(t, bus, "fighter-1"),
+	require.Equal(t, 0, triggersOnAStepAway(t, bus, sheet),
 		"no economy means no reaction slot to pay from, so the swing is declined")
 }
 
@@ -182,9 +186,9 @@ func TestAnAlreadyCarriedReactionIsNotDuplicated(t *testing.T) {
 	require.NoError(t, err)
 	data.Conditions = append(data.Conditions, blob)
 
-	sheet, err := character.Load(ctx, data)
+	sheet, err := Load(ctx, data)
 	require.NoError(t, err)
-	require.NoError(t, character.Attach(ctx, sheet, events.NewEventBus()))
+	require.NoError(t, Attach(ctx, sheet, events.NewEventBus()))
 
 	count := 0
 	for _, c := range sheet.GetConditions() {

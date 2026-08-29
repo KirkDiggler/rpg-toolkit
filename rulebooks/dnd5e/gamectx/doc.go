@@ -87,8 +87,9 @@
 //
 // The handle it replaced is
 // [github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events.OwnerAware], wired
-// bespoke in two loaders and silently absent whenever either forgot. Four
-// conditions still hold one, and every one of them holds it to WRITE — a
-// dirty mark, a reaction spend. Those become request events, and the handle
-// goes with them.
+// bespoke in two loaders and silently absent whenever either forgot. The four
+// conditions that held one held it to WRITE — a dirty mark, a reaction spend —
+// and every one of those is a published request now, applied by the keeper that
+// owns the sheet. NOBODY IMPLEMENTS OwnerAware any more: the two loader
+// handoffs still stand, matching nothing, and go when the interface does.
 package gamectx

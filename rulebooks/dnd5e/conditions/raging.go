@@ -49,44 +49,15 @@ type RagingCondition struct {
 	DidAttackThisTurn bool
 	subscriptionIDs   []string
 	bus               events.EventBus
-	owner             selfPersisting
-}
-
-// selfPersisting is the write half of an effect's owner handle.
-//
-// A condition that keeps its own turn-scoped memory — was I hit this turn, did
-// I already spend my sneak attack — stores that memory in its own fields, and
-// those fields are serialized as part of its owner's sheet. Nothing else
-// notices when one changes, and resolution.Resolve hands back only
-// participants that report IsDirty, so a condition that updates itself in
-// silence has its update discarded.
-//
-// Until this existed that survived on coincidence: the rogue who spent a sneak
-// attack also paid an action, and paying an action marked the sheet. An
-// interaction whose entire purpose is condition state — ending a turn, ending
-// a fight, taking a rest — has no such coincidence to lean on.
-type selfPersisting interface {
-	MarkDirty()
 }
 
 // Ensure RagingCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*RagingCondition)(nil)
 
-// Ensure RagingCondition implements dnd5eEvents.OwnerAware
-var _ dnd5eEvents.OwnerAware = (*RagingCondition)(nil)
-
-// SetOwner hands this condition the sheet its upkeep state is persisted on.
-func (r *RagingCondition) SetOwner(owner any) {
-	if o, ok := owner.(selfPersisting); ok {
-		r.owner = o
-	}
-}
-
-// markDirty records that this condition's persisted upkeep state changed.
-func (r *RagingCondition) markDirty() {
-	if r.owner != nil {
-		r.owner.MarkDirty()
-	}
+// stateChanged reports that this rage's own upkeep state moved — was I hit,
+// did I attack, how many turns have I been up. See [publishStateChanged].
+func (r *RagingCondition) stateChanged(ctx context.Context) error {
+	return publishStateChanged(ctx, r.bus, r.CharacterID, r.Ref())
 }
 
 // Ref returns the canonical ref this condition names itself by — the same ref
@@ -259,7 +230,7 @@ func (r *RagingCondition) loadJSON(data json.RawMessage) error {
 }
 
 // onDamageReceived handles damage events to track if we were hit this turn
-func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5eEvents.DamageReceivedEvent) error {
+func (r *RagingCondition) onDamageReceived(ctx context.Context, event dnd5eEvents.DamageReceivedEvent) error {
 	if event.TargetID != r.CharacterID {
 		return nil
 	}
@@ -267,8 +238,8 @@ func (r *RagingCondition) onDamageReceived(_ context.Context, event dnd5eEvents.
 		return nil // already recorded this turn; nothing changed
 	}
 	r.WasHitThisTurn = true
-	r.markDirty()
-	return nil
+
+	return r.stateChanged(ctx)
 }
 
 // rageDurationRounds is 2014's "1 minute": ten rounds, ending at the end of the
@@ -383,9 +354,8 @@ func (r *RagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnE
 	// turn's check.
 	r.DidAttackThisTurn = false
 	r.WasHitThisTurn = false
-	r.markDirty()
 
-	return nil
+	return r.stateChanged(ctx)
 }
 
 // onConditionApplied handles condition applied events to check for unconscious
@@ -592,13 +562,14 @@ func (r *RagingCondition) onAbilityCheckChain(
 // above, which only fires on a hit and was silently dropping rage on a miss
 // (rpg-toolkit#755). The chain itself is not modified.
 func (r *RagingCondition) onPostAttackRoll(
-	_ context.Context,
+	ctx context.Context,
 	event *dnd5eEvents.PostAttackRollEvent,
 	c chain.Chain[*dnd5eEvents.PostAttackRollEvent],
 ) (chain.Chain[*dnd5eEvents.PostAttackRollEvent], error) {
 	if event.AttackerID == r.CharacterID && !r.DidAttackThisTurn {
 		r.DidAttackThisTurn = true
-		r.markDirty()
+
+		return c, r.stateChanged(ctx)
 	}
 	return c, nil
 }
