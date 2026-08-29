@@ -192,7 +192,12 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 
 // effectiveACStep performs the first event-backed work only after the door has
 // accepted payment, then builds the attack event from that folded AC.
-func (m *strikeMachine) effectiveACStep(target combat.Combatant, longRange bool) Gather {
+//
+// It takes a [combat.Member] because asking a target for its AC is a read, and
+// the parameter should say so. The target still arrives as a combatant from
+// combatantFor and still IS the live sheet; narrowing here is the signature
+// declining a power the body never uses, and the compiler agreeing.
+func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Gather {
 	return Gather{
 		name: "effective AC",
 		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
