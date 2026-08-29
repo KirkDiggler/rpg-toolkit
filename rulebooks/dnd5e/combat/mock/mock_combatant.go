@@ -84,6 +84,20 @@ func (mr *MockCombatantMockRecorder) ApplyDamage(ctx, input any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyDamage", reflect.TypeOf((*MockCombatant)(nil).ApplyDamage), ctx, input)
 }
 
+// CanReact mocks base method.
+func (m *MockCombatant) CanReact() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CanReact")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// CanReact indicates an expected call of CanReact.
+func (mr *MockCombatantMockRecorder) CanReact() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CanReact", reflect.TypeOf((*MockCombatant)(nil).CanReact))
+}
+
 // GetHitPoints mocks base method.
 func (m *MockCombatant) GetHitPoints() int {
 	m.ctrl.T.Helper()

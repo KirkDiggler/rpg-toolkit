@@ -97,7 +97,7 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 	return nil
 }
 
-// subscribeSelf makes the three self-subscriptions, and nothing else.
+// subscribeSelf makes the five self-subscriptions, and nothing else.
 //
 // Separate from the resources because a freshly finalized character has always
 // had the handlers without its resources on the bus: Character.LongRest
@@ -149,6 +149,12 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 		}},
 		{"healing received", func() (string, error) {
 			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, c.onHealingReceived)
+		}},
+		{"condition state changed", func() (string, error) {
+			return dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, c.onConditionStateChanged)
+		}},
+		{"spend requested", func() (string, error) {
+			return dnd5eEvents.SpendRequestedTopic.On(bus).Subscribe(ctx, c.onSpendRequested)
 		}},
 	}
 

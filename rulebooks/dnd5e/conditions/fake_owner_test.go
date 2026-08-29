@@ -36,6 +36,13 @@ type fakeConditionOwner struct {
 	scores shared.AbilityScores
 	shield bool
 
+	// canReact is a field rather than a constant for the reason shield is: it
+	// is a question the sheet answers differently depending on its state, and
+	// a fake that can only give one answer cannot stand in for both. False is
+	// the zero on purpose — a character with no fight around it carries no
+	// action economy and reports no slots of any kind.
+	canReact bool
+
 	hp, maxHP        int
 	ac               int
 	proficiencyBonus int
@@ -46,6 +53,7 @@ func (f *fakeConditionOwner) GetHitPoints() int                   { return f.hp 
 func (f *fakeConditionOwner) GetMaxHitPoints() int                { return f.maxHP }
 func (f *fakeConditionOwner) AC() int                             { return f.ac }
 func (f *fakeConditionOwner) HasShieldEquipped() bool             { return f.shield }
+func (f *fakeConditionOwner) CanReact() bool                      { return f.canReact }
 func (f *fakeConditionOwner) AbilityScores() shared.AbilityScores { return f.scores }
 func (f *fakeConditionOwner) ProficiencyBonus() int               { return f.proficiencyBonus }
 func (f *fakeConditionOwner) PassivePerception() int              { return 10 }

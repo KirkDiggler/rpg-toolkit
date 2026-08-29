@@ -79,6 +79,7 @@ func (m *mockRogueCharacter) MarkClean()                                     {}
 func (m *mockRogueCharacter) PassivePerception() int                         { return 10 }
 func (m *mockRogueCharacter) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
 func (m *mockRogueCharacter) HasShieldEquipped() bool                        { return false }
+func (m *mockRogueCharacter) CanReact() bool                                 { return true }
 
 func (m *mockRogueCharacter) ApplyDamage(_ context.Context, input *combat.ApplyDamageInput) *combat.ApplyDamageResult {
 	if input == nil {

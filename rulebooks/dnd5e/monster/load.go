@@ -212,6 +212,12 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 					return m.onConditionApplied(ctx, bus, event)
 				})
 		}},
+		{"condition removed", func() (string, error) {
+			return dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx, m.onConditionRemoved)
+		}},
+		{"condition state changed", func() (string, error) {
+			return dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, m.onConditionStateChanged)
+		}},
 	}
 
 	for _, handler := range handlers {

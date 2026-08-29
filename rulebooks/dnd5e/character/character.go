@@ -1245,6 +1245,53 @@ func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.Cond
 	return nil
 }
 
+// onConditionStateChanged records that a condition hanging on this sheet
+// changed its own persisted state.
+//
+// Marking dirty is the whole response, and it is the one thing the condition
+// could not do for itself: it already wrote the field, on itself, and ToData
+// serializes that field as part of this character. What only the sheet knows
+// is that it is about to be handed back to resolution, which keeps just the
+// participants reporting IsDirty.
+//
+// Unconditional, unlike onConditionRemoved's guarded set below: a condition
+// publishes this only when something actually changed, because the old value
+// is still in hand at the publish site and gone by the time it gets here.
+func (c *Character) onConditionStateChanged(
+	_ context.Context, event dnd5eEvents.ConditionStateChangedEvent,
+) error {
+	// Only process events for this character
+	if event.MemberID != c.id {
+		return nil
+	}
+
+	c.dirty = true
+
+	return nil
+}
+
+// onSpendRequested debits this character's action economy on behalf of an
+// effect that cannot reach it.
+//
+// It APPLIES rather than adjudicates. The publisher checked affordability
+// before asking — combat.Pay's contract is that a debit past a passed check
+// cannot fail — and SpendSlots itself refuses nothing. Re-running the gate
+// here would put one rule in two places and let them disagree.
+//
+// No dirty set: [Character.SpendSlots] marks the sheet itself, because the
+// debit IS the persisted change. Saying so twice would only make it look like
+// two facts.
+func (c *Character) onSpendRequested(_ context.Context, event dnd5eEvents.SpendRequestedEvent) error {
+	// Only process events for this character
+	if event.MemberID != c.id {
+		return nil
+	}
+
+	c.SpendSlots(event.ActionType, event.Amount)
+
+	return nil
+}
+
 // onHealingReceived handles HealingReceivedEvent
 func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
 	// Only process events for this character

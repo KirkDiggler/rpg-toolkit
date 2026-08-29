@@ -193,6 +193,18 @@ func (m *Monster) HasShieldEquipped() bool {
 	return false
 }
 
+// CanReact reports that nothing on this monster refuses a reaction.
+//
+// TRUE IS THE ANSWER, not a placeholder for one nobody has written. A monster
+// carries no action economy in this rulebook, so there is no reaction slot to
+// run out and nothing here that could say no — and false would mean exactly
+// that, "my economy refuses." What meters a monster's reaction is the reacting
+// condition's own once-per-turn flag, which every reactor has; the slot is the
+// additional cost only a sheet can be charged. Implements [combat.Member].
+func (m *Monster) CanReact() bool {
+	return true
+}
+
 // IsDirty returns true if the monster has been modified since last save.
 // Implements combat.Combatant interface.
 func (m *Monster) IsDirty() bool {
@@ -405,6 +417,73 @@ func (m *Monster) onConditionApplied(
 		return rpgerr.Wrapf(err, "failed to apply monster condition")
 	}
 	m.AddCondition(event.Condition)
+	return nil
+}
+
+// onConditionRemoved drops a condition that ended off this monster's sheet.
+//
+// The character keeper has had this row since conditions existed; the monster
+// keeper did not, so a removal reached a monster's conditions never — latent
+// only because no production path removes one yet. It lands here because
+// nothing about removal is character-shaped, and a keeper missing a row its
+// counterpart has is a gap waiting for its first caller rather than a decision.
+//
+// It matches on [dnd5eEvents.ConditionBehavior.Ref] rather than round-tripping
+// each condition through ToJSON to recover the same string. The character's
+// copy of this handler predates conditions being able to name themselves
+// (rpg-toolkit#971) and still parses the ref back out of JSON; both read the
+// ref a condition's ToJSON embeds, and only one of them can fail on a
+// serialization error and abandon the removal.
+//
+// The unapplied trait blobs are deliberately untouched. They are conditions
+// that have not been attached yet — monstertraits.AttachMonster drains them
+// into m.conditions — so a live removal has nothing to say about them, and a
+// removal that arrived before attachment is a shelf that predates this row.
+//
+// Dirty only when the list actually shrank, for the reason the character's
+// does: a removal event reaches every sheet on the bus, and flagging the ones
+// it was not about would persist every monster in the fight.
+func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
+	if event.CharacterID != m.id {
+		return nil
+	}
+
+	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
+	for _, condition := range m.conditions {
+		if condition.Ref().String() != event.ConditionRef {
+			filtered = append(filtered, condition)
+		}
+	}
+
+	if len(filtered) != len(m.conditions) {
+		// ToData serializes conditions, so a sheet that lost one and did not
+		// go dirty is a sheet whose removal never gets written down.
+		m.dirty = true
+	}
+	m.conditions = filtered
+
+	return nil
+}
+
+// onConditionStateChanged records that a condition hanging on this sheet
+// changed its own persisted state.
+//
+// The same row the character keeper has, doing the same thing, because there
+// is nothing character-shaped about it: a monster's conditions serialize into
+// its Data exactly as a character's do, and a wolf that spent its reaction is
+// reloaded having spent nothing unless the sheet is marked.
+//
+// This is what [Monster.MarkDirty] was minted ahead of, and it is now the
+// monster half of the keeper table rather than a handle a condition holds.
+func (m *Monster) onConditionStateChanged(
+	_ context.Context, event dnd5eEvents.ConditionStateChangedEvent,
+) error {
+	if event.MemberID != m.id {
+		return nil
+	}
+
+	m.dirty = true
+
 	return nil
 }
 
