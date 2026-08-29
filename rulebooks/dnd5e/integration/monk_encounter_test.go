@@ -979,21 +979,21 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		s.monk = s.createLevel2Monk()
 		s.lookup.Add(s.monk)
 
-		// No weapons registry, deliberately. The monk's own sheet answers the
-		// shield question now, and Attach hands the condition that sheet —
-		// the same wiring production has. The registry this used to build was
-		// never installed outside a test.
+		// No weapons registry, deliberately. The shield question is answered by
+		// the member surface every combatant carries, read out of the installed
+		// cast — see castOf. The registry this used to build was never
+		// installed outside a test.
 
 		s.T().Logf("  Monk: %s (Level 2, unarmored)", s.monk.GetName())
 		s.T().Log("")
 
 		// Find the UnarmoredMovementCondition from loaded conditions
 		var umCondition interface {
-			GetSpeedBonus() (int, bool)
+			SpeedBonus(context.Context) (int, bool)
 		}
 		for _, cond := range s.monk.GetConditions() {
 			if getter, ok := cond.(interface {
-				GetSpeedBonus() (int, bool)
+				SpeedBonus(context.Context) (int, bool)
 			}); ok {
 				umCondition = getter
 				break
@@ -1001,10 +1001,19 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 		}
 		s.Require().NotNil(umCondition, "Monk should have UnarmoredMovementCondition loaded from Data")
 
-		// Verify speed bonus
-		bonus, known := umCondition.GetSpeedBonus()
-		s.Require().True(known, "the monk's own sheet answers this; unknown means Attach did not wire the owner")
+		// Verify speed bonus, with the monk in the cast — the condition reads
+		// its own shield state off the member surface.
+		bonus, known := umCondition.SpeedBonus(castOf(s.ctx, s.monk))
+		s.Require().True(known, "the monk is in the cast, so the shield question has an answer")
 		s.Equal(10, bonus, "Level 2 monk should get +10 ft speed bonus")
+
+		// And with nobody in the cast the answer is UNKNOWN rather than zero.
+		// Zero would read as "this monk is carrying a shield", which is a rule
+		// invented out of missing data — the distinction the second return
+		// exists to keep expressible.
+		bare, bareKnown := umCondition.SpeedBonus(context.Background())
+		s.False(bareKnown, "no cast, no answer — not a silent zero")
+		s.Zero(bare)
 
 		s.T().Log("  Speed bonus by level:")
 		s.T().Log("    Level 2-5:   +10 ft")
