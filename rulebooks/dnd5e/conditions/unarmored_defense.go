@@ -190,10 +190,11 @@ func (u *UnarmoredDefenseCondition) onACChain(
 		return c, nil
 	}
 
-	// Own sheet, read off the cast like any other participant's — see [self]
-	// for why a cast that cannot name this character leaves the chain untouched
+	// Own sheet, looked up in the cast by this character's own ID — the same
+	// call any other participant's sheet would come through. See [member] for
+	// why a cast that cannot name this character leaves the chain untouched
 	// instead of erroring.
-	me, ok := self(ctx, u.CharacterID)
+	me, ok := member(ctx, u.CharacterID)
 	if !ok {
 		return c, nil
 	}
