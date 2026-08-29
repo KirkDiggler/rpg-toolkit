@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
@@ -30,12 +29,13 @@ import (
 // kind of state. So every entity is dropped at the end of a call, and anything
 // a condition holds that does not survive ToData() is lost with it.
 //
-// ONE BUS PER CALL, SHARED BY EVERY ENTITY IN THAT CALL. Shared rather than
-// per-entity because a condition on one member must be able to observe what
-// happens to another — that is the whole reason the bus exists here, and it is
-// the prerequisite for reactions. A bus per character would compile, pass any
-// test that loaded one character, and quietly make cross-entity observation
-// impossible.
+// THERE IS NO BUS HERE ANY MORE, and its absence is the point of the slice
+// that removed it. This package used to create one per verb and share it across
+// every entity in the call, because a condition on one member must be able to
+// observe what happens to another. That is still true — it is just not true
+// HERE. Reconstituting sheets and putting them on a bus is resolution's, along
+// with the folds that need them; this seam hands over records and takes back
+// answers. TestNoBusLivesInThisModule holds it.
 //
 // CHARACTER.CLEANUP MUST NOT BE CALLED. Its first statement is
 // `c.conditions = nil`, and ToData() serializes c.conditions — so cleaning up
@@ -48,15 +48,6 @@ import (
 // Skipping it is safe rather than merely tolerable: conditions intercept on the
 // bus rather than mutating character fields, so there is no modification left
 // un-reversed when the character is dropped.
-
-// newCallBus returns the event bus for one verb.
-//
-// A function rather than an inline call so there is exactly one place to look
-// when asking what the lifetime is, and so the answer stays "one call" when a
-// later wave is tempted to cache one.
-func newCallBus() events.EventBus {
-	return events.NewEventBus()
-}
 
 // fetchCharacterData reads one stored sheet and checks that the repository kept
 // its side of the contract.

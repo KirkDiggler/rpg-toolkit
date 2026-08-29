@@ -8,10 +8,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // Who is standing, answered where the sheets are.
@@ -96,106 +95,103 @@ func (m *Manager) standingFor(ctx context.Context, data *SessionData) encounter.
 // against sheets nobody can read, and reading it as DOWNED kills a character
 // because a database blinked.
 func (s standingSeam) Standing(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	var down []encounter.MemberID
+	characters, monsters, err := s.recordsFor(members)
+	if err != nil {
+		return nil, err
+	}
 
+	// ASKED IN TWO CALLS, SPLIT BY STORE, and the split is this seam's own
+	// existing shape rather than a new one: a character is LOADED from the
+	// host's repository and a monster is INSTANTIATED into the session record,
+	// which is the distinction every other function in this file draws.
+	//
+	// It is here because the two failures are different and a host branches on
+	// which. A stored NPC that will not reconstitute is corrupt SESSION state —
+	// this record is the only thing that could have written it — while a
+	// character that will not load is the host's own store. One call for both
+	// would come back with one error and no way to say which, so the vocabulary
+	// would have to collapse into whichever sentinel was picked.
+	//
+	// Nothing is lost by splitting. Attaching does not observe across the cast
+	// — each sheet is loaded and put on the bus on its own — and this question
+	// folds no chain, so there is no interaction between the two halves to
+	// preserve.
+	down := make(map[string]bool, len(members))
+
+	charactersDown, err := resolution.Standing(s.ctx, &resolution.StandingInput{Participants: characters})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadCharacter, err)
+	}
+	for _, id := range charactersDown.Down {
+		down[id] = true
+	}
+
+	monstersDown, err := resolution.Standing(s.ctx, &resolution.StandingInput{Participants: monsters})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	for _, id := range monstersDown.Down {
+		down[id] = true
+	}
+
+	// Reported in the order asked, because the composition refuses an answer
+	// naming somebody who is not a member and this is the loop that guarantees
+	// only members are named.
+	var reported []encounter.MemberID
 	for _, id := range members {
-		sheet, err := s.sheetOf(string(id))
-		if err != nil {
-			return nil, err
-		}
-		if sheet == nil {
-			continue
-		}
-		if combat.IsDown(sheet) {
-			down = append(down, id)
+		if down[string(id)] {
+			reported = append(reported, id)
 		}
 	}
 
-	return down, nil
+	return reported, nil
 }
 
-// sheetOf finds one member's sheet, wherever the session keeps it, and reports
-// (nil, nil) when there is none.
+// recordsFor gathers the stored record behind each member, split by the store
+// it came from.
 //
-// The two stores are the two ways a member enters a session, and the split is
-// by where the data comes from rather than by what the thing is — the same
-// distinction [instantiate] draws. A monster is INSTANTIATED and its sheet is
-// session-scoped, so it is in the session record. A character is LOADED and the
-// host owns it, so it is behind the repository.
-//
-// The NPC list is asked first, and the order is not arbitrary: it is the only
-// one that needs no knowledge of a member's KIND. This seam is handed bare IDs,
-// by a composition that has not finished loading when the seam is built, so it
-// cannot consult a roster — and a lookup that tried to would be asking the
-// encounter a question while the encounter is asking it one.
+// THE FETCH HALF STAYS HERE, and only the fetch half. Finding sheets is what
+// this seam is for — it is the one layer that both knows what a sheet is and
+// holds every one of them for the call in progress. Reconstituting them is not:
+// that needs a bus, and a bus in this package is a fold waiting to happen.
 //
 // # No sheet, no death
 //
-// A member neither store answers for is reported STANDING. There is nothing to
-// read hit points off, and that is an ordinary state rather than a defect:
-// authored content placed straight into a world has no sheet until something
-// spawns it, which is exactly what every tomb fixture's monsters are, and what
-// [Manager.Attack] already refuses BY NAME when somebody swings at one
-// (ErrNoSheet). Answering DOWNED instead would kill every authored monster in
-// the toolkit the moment anybody looked at one; answering with an error would
-// make those worlds unplayable. Neither is a rule this package gets to write.
-//
-// The two failure arms are the ones where the store answered and the answer was
-// unusable, which is a different thing from having nothing to say.
-func (s standingSeam) sheetOf(id string) (combat.Combatant, error) {
-	if sheet, ok := npcSheet(s.data, id); ok {
-		built, err := monster.Load(s.ctx, sheet)
-		if err != nil {
-			// A stored NPC sheet that will not reconstitute is corrupt SESSION
-			// state — this record is the only thing that could have written it —
-			// so it is reported as that rather than as a character problem or as
-			// a broken world. The reason rides as TEXT, never as a chain: the
-			// rulebook reports through rpgerr and S2 is not a promise this
-			// package delegates (rpg-toolkit#1066).
-			return nil, fmt.Errorf("npc %q: %w: %v", id, ErrInvalidSession, err)
+// A member neither store answers for is in neither list, so nothing is asked
+// about it and nothing is reported. That is an ordinary state rather than a
+// defect: authored content placed straight into a world has no sheet until
+// something spawns it, which is exactly what every tomb fixture's monsters are.
+// Answering DOWNED instead would kill every authored monster in the toolkit the
+// moment anybody looked at one; answering with an error would make those worlds
+// unplayable. Neither is a rule this package gets to write.
+func (s standingSeam) recordsFor(
+	members []encounter.MemberID,
+) (characters, monsters []resolution.Participant, err error) {
+	for _, id := range members {
+		name := string(id)
+
+		if sheet, ok := npcSheet(s.data, name); ok {
+			monsters = append(monsters, resolution.Participant{Monster: sheet})
+			continue
 		}
 
-		return built, nil
-	}
+		data, fetchErr := s.chars.GetCharacter(s.ctx, name)
+		if fetchErr != nil {
+			if errors.Is(fetchErr, ErrNotFound) {
+				continue
+			}
 
-	data, err := s.chars.GetCharacter(s.ctx, id)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, nil
+			return nil, nil, fetchErr
+		}
+		if data == nil {
+			return nil, nil, fmt.Errorf(
+				"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
 		}
 
-		return nil, err
-	}
-	if data == nil {
-		return nil, fmt.Errorf(
-			"character %q: GetCharacter reported success with no data: %w", id, ErrBadRepository)
+		characters = append(characters, resolution.Participant{Character: data})
 	}
 
-	// THE LENIENT LOADER, and the choice is load-bearing.
-	//
-	// character.Load is the strict one: it refuses a sheet carrying a condition
-	// this build cannot route, which is right where compileAttack uses it,
-	// because a swing hands sheets BACK to be persisted and an effect dropped
-	// on the way in is an effect deleted on the way out (rpg-toolkit#985).
-	//
-	// Nothing is written back from here. This sheet is reconstituted to be
-	// asked one question and dropped, so strictness buys nothing and costs
-	// everything: a player carrying a homebrew condition this build does not
-	// know can join today (TestACorruptConditionIsDroppedRatherThanRejected
-	// pins that), and refusing to read their hit points would abort every verb
-	// in their session over a condition nobody is asking about.
-	//
-	// So the standing question reads a sheet exactly as leniently as the join
-	// that admitted it. A bus is required by this loader and is thrown away
-	// with the sheet; Cleanup is not called, for the reason at the top of
-	// entities.go — its first act is to drop the conditions this seam is
-	// deliberately tolerating.
-	loaded, err := character.LoadFromData(s.ctx, data, newCallBus())
-	if err != nil {
-		return nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
-	}
-
-	return loaded, nil
+	return characters, monsters, nil
 }
 
 // npcSheet finds a session-scoped sheet by member ID.
