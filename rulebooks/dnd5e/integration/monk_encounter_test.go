@@ -561,11 +561,12 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 		s.Require().NoError(err)
 		defer func() { _ = monk.Cleanup(s.ctx) }()
 
-		// No registry, deliberately. This test used to build one by hand and
-		// pass while the game returned 13 — LoadFromData attaches the
-		// condition and Attach hands it the monk's own sheet, which is the
-		// only wiring production has. If that wiring breaks, this fails.
-		ctx := s.ctx
+		// The cast, installed the way resolution's door installs it — see
+		// castOf for why standing in for a real installer is not the
+		// hand-built registry this test used to carry. Unarmored Defense reads
+		// the monk out of the cast by its own ID, exactly as it would read the
+		// creature next to it.
+		ctx := castOf(s.ctx, monk)
 
 		// Verify EffectiveAC includes WIS modifier via the AC chain.
 		// Expected: 10 (base) + 3 (DEX) + 2 (WIS from UnarmoredDefense) = 15
@@ -597,33 +598,47 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 	})
 }
 
-// TestUnarmoredDefense_ACChainNeedsNoGameContext verifies that a Monk with
-// Unarmored Defense gets the WIS modifier with NOTHING installed in the
-// context — because the condition reads its own sheet, handed over by Attach.
+// TestUnarmoredDefense_ACChainReadsTheCast asserts BOTH halves of the read
+// law: with the cast installed the monk folds 15, and with a bare context the
+// same sheet folds 13.
 //
-// This test used to assert the opposite, and that is the whole point of it.
-// It was called TestUnarmoredDefense_ACChainWithoutGameContext, it expected
-// 13, and it explained the missing +2 as an "API WIRING REQUIREMENT: the
-// context MUST include a GameContext with the defender's ability scores".
+// # This test has been wrong twice, in opposite directions
 //
-// Nothing ever met that requirement. gamectx.WithGameContext had zero non-test
-// call sites in the entire toolkit, so every monk and every barbarian fought
-// at base AC in every real fight, and this test certified it as correct. Worse
-// than the missing bonus: the condition returned an ERROR into the AC fold and
-// Character.EffectiveAC swallows fold errors, so every other AC contributor
-// went with it.
+// It began as TestUnarmoredDefense_ACChainWithoutGameContext, expecting 13 and
+// explaining the missing +2 as an "API WIRING REQUIREMENT: the context MUST
+// include a GameContext with the defender's ability scores". Nothing ever met
+// that requirement — gamectx.WithGameContext had zero non-test call sites — so
+// every monk fought at base AC in every real fight and this test certified it
+// as correct.
 //
-// A bare context is now the honest case rather than the degraded one. If this
-// ever returns 13 again, the owner handle stopped being wired at attach.
-func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainNeedsNoGameContext() {
-	s.Run("Monk AC chain includes WIS with nothing installed in context", func() {
+// It then became TestUnarmoredDefense_ACChainNeedsNoGameContext, expecting 15
+// from a bare context, because the condition had been handed its own sheet at
+// attach time. True while that handle existed. The handle is gone: an effect
+// reads itself out of the cast, like any other participant.
+//
+// # So why is asserting 13 not the original sin repeating
+//
+// Because of WHERE the 13 happens. The first version blessed the number
+// production actually got. This one pins the number a fold gets when it runs
+// OUTSIDE resolution — which R6 calls the bug rather than a mode. Production
+// folds inside, where one door installs the cast unconditionally, and that is
+// pinned a level up by session's TestAMonksUnarmoredDefenseReachesTheJoinedAC
+// (Join → resolution.ProjectCharacter → 15 on the wire).
+//
+// Keeping the 13 visible here is the point. It is the observable edge of the
+// migration: any caller still folding an AC chain on a bare context is one
+// that has to come to resolution, and it now says so in a test instead of
+// being discovered as a wrong number in somebody's character sheet.
+func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
+	s.Run("Monk AC chain reads WIS off the installed cast", func() {
 		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  MONK UNARMORED DEFENSE: AC With A Bare Context                  ║")
+		s.T().Log("║  MONK UNARMORED DEFENSE: The Cast Is The Read Channel            ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
-		s.T().Log("  Nothing is installed in the context here. The condition reads")
-		s.T().Log("  the monk's own sheet, handed to it by Attach — the only wiring")
-		s.T().Log("  production has ever had.")
+		s.T().Log("  With the cast installed the monk reads its own sheet and folds")
+		s.T().Log("  15. With a bare context nobody can name this character, the")
+		s.T().Log("  chain is left untouched, and 13 is what a fold outside")
+		s.T().Log("  resolution is worth.")
 		s.T().Log("")
 
 		monkWithUD := &character.Data{
@@ -673,25 +688,40 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainNeedsNoGameContext() {
 		s.Require().NoError(err)
 		defer func() { _ = monk.Cleanup(s.ctx) }()
 
-		// A completely bare context. No room, no cast, no registry.
-		bareCtx := context.Background()
-		breakdown, acErr := monk.EffectiveAC(bareCtx)
+		// WITH the cast: the monk can find itself, and folds the full number.
+		withCast, acErr := monk.EffectiveAC(castOf(context.Background(), monk))
 		s.Require().NoError(acErr)
 
-		s.T().Logf("  Monk EffectiveAC (bare context):")
-		s.T().Logf("    Total: %d", breakdown.Total)
+		s.T().Logf("  Monk EffectiveAC (cast installed): %d", withCast.Total)
 
 		// 10 (base) + 3 (DEX) + 2 (WIS via Unarmored Defense) = 15
-		s.Equal(15, breakdown.Total,
-			"Unarmored Defense reads the monk's own sheet: 10 + DEX(+3) + WIS(+2) = 15")
+		s.Equal(15, withCast.Total,
+			"read off the cast: 10 + DEX(+3) + WIS(+2) = 15")
 
 		hasWIS := false
-		for _, comp := range breakdown.Components {
+		for _, comp := range withCast.Components {
 			if comp.Type == combat.ACSourceFeature && comp.Value == 2 {
 				hasWIS = true
 			}
 		}
 		s.True(hasWIS, "the WIS component must be attributed in the breakdown, not just folded into the total")
+
+		// WITHOUT it: nobody can name this character, so the condition leaves
+		// the chain alone. NOT an error — an erroring contributor would take
+		// every other AC contributor down with it, which is the failure this
+		// whole channel exists to stop.
+		bare, bareErr := monk.EffectiveAC(context.Background())
+		s.Require().NoError(bareErr,
+			"a condition that cannot answer leaves the chain untouched; it must not poison the fold")
+
+		s.T().Logf("  Monk EffectiveAC (bare context):  %d", bare.Total)
+
+		s.Equal(13, bare.Total,
+			"10 + DEX(+3) and nothing else: a fold outside resolution has no cast to read")
+		for _, comp := range bare.Components {
+			s.NotEqual(combat.ACSourceFeature, comp.Type,
+				"with no cast there is no feature contribution to attribute")
+		}
 	})
 }
 
