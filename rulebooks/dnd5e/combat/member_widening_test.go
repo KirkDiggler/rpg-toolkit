@@ -35,15 +35,12 @@ const (
 	combatPath = modulePath + "/combat"
 )
 
-// theDoor is the one function allowed to widen a Member: GetEffectiveAC, which
-// asks whether the sheet folds an AC chain. See [combat.GetEffectiveAC].
-var theDoor = doorSite{path: "combat/combatant.go", fn: "GetEffectiveAC"}
-
-type doorSite struct{ path, fn string }
-
-func (d doorSite) covers(pos token.Position, enclosing string) bool {
-	return strings.HasSuffix(filepath.ToSlash(pos.Filename), d.path) && enclosing == d.fn
-}
+// doorName is the one function allowed to widen a Member: [combat.GetEffectiveAC],
+// which asks whether the sheet folds an AC chain.
+//
+// The name is only how the DECLARATION is found. What the exemption compares is
+// the *types.Func object itself, for the reason [doorOf] gives.
+const doorName = "GetEffectiveAC"
 
 // TestOnlyTheDoorWidensACastMember is the narrowing pin: the read surface the
 // cast hands out cannot be turned back into a writer.
@@ -83,6 +80,10 @@ func (d doorSite) covers(pos token.Position, enclosing string) bool {
 // spelling of it. TestTheAliasEscapeIsClosed runs both shapes past the pin and
 // requires them caught, rather than leaving that as a claim.
 //
+// NOR CAN THE EXEMPTION BE. The one sanctioned widening is resolved as a
+// declaration too — see [doorOf], and TestTheDoorCannotBeImpersonated for the
+// method that took the old name-shaped exemption and walked through it.
+//
 // # What it still cannot say
 //
 // A member handed to a function in ANOTHER module and widened there is out of
@@ -111,7 +112,7 @@ func TestOnlyTheDoorWidensACastMember(t *testing.T) {
 			"writes combat.Member exists to withhold, and the write law goes back to "+
 			"being a convention with nothing behind it. A rule that needs a sheet "+
 			"changed publishes a request; the keeper applies it",
-		theDoor.fn)
+		doorName)
 }
 
 // TestTheDoorOpensOntoAReader pins the far side of the one sanctioned widening.
@@ -171,6 +172,22 @@ var sources = sync.OnceValues(func() (*token.FileSet, types.Importer) {
 	return fset, importer.ForCompiler(fset, "source", nil)
 })
 
+// TestTheDoorCannotBeImpersonated runs the pin over a declaration that matches
+// the old, name-based exemption on every axis it checked.
+//
+// testdata/impersonator holds a file at combat/combatant.go, in a package whose
+// import path resolves to the combat package's own, declaring GetEffectiveAC —
+// and widening a member through it. It is a METHOD, and the door is a
+// package-level function; under the old rule that was not a difference, which is
+// how a six-line type declared beside the real door could hand out the keeper's
+// surface and pass.
+func TestTheDoorCannotBeImpersonated(t *testing.T) {
+	require.Len(t, widenings(t, filepath.Join("testdata", "impersonator")), 1,
+		"a method may share a package-level function's name, so an exemption that "+
+			"matches on the name exempts whatever is willing to take it. The door is one "+
+			"DECLARATION, compared as an object")
+}
+
 // widenings reports every place a combat.Member is widened outside the door,
 // across the packages of this module rooted at root.
 func widenings(t *testing.T, root string) []string {
@@ -186,7 +203,11 @@ func widenings(t *testing.T, root string) []string {
 				continue
 			}
 
-			info := &types.Info{Types: map[ast.Expr]types.TypeAndValue{}}
+			info := &types.Info{
+				Types: map[ast.Expr]types.TypeAndValue{},
+				// Defs is what turns the door from a name into a declaration.
+				Defs: map[*ast.Ident]types.Object{},
+			}
 			var failures []string
 			conf := types.Config{
 				Importer: imp,
@@ -197,13 +218,14 @@ func widenings(t *testing.T, root string) []string {
 				"%s must type-check for this pin to mean anything — an unchecked package "+
 					"reports no widenings because it reports no types", dir)
 
-			member, ok := memberSeenBy(checked)
+			combatPkg, ok := combatSeenBy(checked)
 			require.True(t, ok,
-				"%s reaches the combat package but combat.Member could not be resolved in "+
-					"it. Renaming Member would silence this pin package by package with "+
-					"nothing failing, which is the shape of defect it exists to catch", dir)
+				"%s reaches the combat package but it could not be resolved in this "+
+					"type-check. Renaming Member would silence this pin package by package "+
+					"with nothing failing, which is the shape of defect it exists to catch",
+				dir)
 
-			offenders = append(offenders, scan(fset, files, info, member)...)
+			offenders = append(offenders, scan(fset, files, info, memberOf(t, combatPkg), doorOf(t, combatPkg))...)
 		}
 	}
 	sort.Strings(offenders)
@@ -211,48 +233,87 @@ func widenings(t *testing.T, root string) []string {
 	return offenders
 }
 
-// memberSeenBy returns combat.Member AS THIS TYPE-CHECK SEES IT.
+// combatSeenBy returns the combat package AS THIS TYPE-CHECK SEES IT.
 //
 // Per check, and never once up front, because two type-checks of the same
-// source produce two unrelated *types.Named for the same declaration.
-// Resolving Member once and comparing it against every package would make
-// types.Identical false everywhere — the pin would still catch what the second
-// question catches and would answer "no" to the first one forever. It did, for
-// exactly one run, until a planted escape came back reported by the wrong half.
+// source produce two unrelated objects for the same declaration. Resolving
+// Member once and comparing it against every package would make types.Identical
+// false everywhere — the pin would still catch what the second question catches
+// and would answer "no" to the first one forever. It did, for exactly one run,
+// until a planted escape came back reported by the wrong half.
 //
 // A package that imports combat sees the importer's copy. The combat package
 // itself sees the one it just declared; both are correct for the files being
 // scanned, which is the whole requirement.
 //
-// Not finding one is a FAILURE at the call site, never a skipped package. Every
-// package that gets here reaches combat, so "no Member in scope" means the type
-// was renamed or removed — and a pin that answered that by scanning nothing
-// would go green across the whole rulebook in one commit.
-func memberSeenBy(checked *types.Package) (*types.Named, bool) {
+// Not finding it is a FAILURE at the call site, never a skipped package. Every
+// package that gets here reaches combat, so "no combat here" means the import
+// was dropped or the package renamed — and a pin that answered that by scanning
+// nothing would go green across the whole rulebook in one commit.
+func combatSeenBy(checked *types.Package) (*types.Package, bool) {
 	if checked == nil {
 		return nil, false
 	}
-
-	scope := (*types.Scope)(nil)
 	for _, imported := range checked.Imports() {
 		if imported.Path() == combatPath {
-			scope = imported.Scope()
+			return imported, true
 		}
 	}
-	if scope == nil && checked.Path() == combatPath {
-		scope = checked.Scope()
-	}
-	if scope == nil {
-		return nil, false
+	if checked.Path() == combatPath {
+		return checked, true
 	}
 
-	obj := scope.Lookup("Member")
-	if obj == nil {
-		return nil, false
-	}
-	named, ok := obj.Type().(*types.Named)
+	return nil, false
+}
 
-	return named, ok
+// memberOf returns combat.Member out of the combat package this check sees.
+func memberOf(t *testing.T, combatPkg *types.Package) *types.Named {
+	t.Helper()
+
+	obj := combatPkg.Scope().Lookup("Member")
+	require.NotNil(t, obj, "combat.Member must exist for this pin to mean anything")
+	member, ok := obj.Type().(*types.Named)
+	require.True(t, ok, "combat.Member is a named type")
+
+	return member
+}
+
+// doorOf returns the ONE declaration allowed to widen a Member.
+//
+// # An object, not a name and a filename
+//
+// The exemption used to be (file path ends in combat/combatant.go, enclosing
+// function is called GetEffectiveAC), and review defeated it in six lines: a
+// METHOD may share a package-level function's name, so a type declared beside
+// the real door with a GetEffectiveAC method of its own widened members and
+// passed the pin. Reproduced before it was fixed, and kept as a probe —
+// testdata/impersonator, which matches the old rule on every axis it checked.
+//
+// Comparing objects closes it with nothing left to guess at. A package-level
+// function and a method are different *types.Func values however they are
+// spelled, and package scope holds only the former — the Recv check below says
+// so out loud rather than relying on that being remembered.
+//
+// This is the same lesson as the alias escape one level up: a pin that
+// identifies code by what it is CALLED is refusable by anything willing to
+// share a name.
+func doorOf(t *testing.T, combatPkg *types.Package) *types.Func {
+	t.Helper()
+
+	obj := combatPkg.Scope().Lookup(doorName)
+	require.NotNil(t, obj,
+		"combat.%s must exist: it is the one sanctioned widening, and a pin whose "+
+			"exemption resolves to nothing is a pin that has stopped describing the code",
+		doorName)
+
+	door, ok := obj.(*types.Func)
+	require.True(t, ok, "combat.%s is a function", doorName)
+	require.Nil(t, door.Signature().Recv(),
+		"the door is a package-level function, not a method — the whole point of "+
+			"resolving it as an object is that a method sharing its name is a different "+
+			"declaration")
+
+	return door
 }
 
 // importPathOf gives a directory the import path it will really have, so that
@@ -270,7 +331,10 @@ func importPathOf(t *testing.T, root, dir string) string {
 }
 
 // scan walks the type-checked files and reports both offense shapes.
-func scan(fset *token.FileSet, files []*ast.File, info *types.Info, member *types.Named) []string {
+func scan(
+	fset *token.FileSet, files []*ast.File, info *types.Info,
+	member *types.Named, door *types.Func,
+) []string {
 	memberIface, ok := member.Underlying().(*types.Interface)
 	if !ok {
 		return nil
@@ -283,10 +347,8 @@ func scan(fset *token.FileSet, files []*ast.File, info *types.Info, member *type
 	var offenders []string
 	for _, file := range files {
 		for _, decl := range file.Decls {
-			fn, isFunc := decl.(*ast.FuncDecl)
-			enclosing := ""
-			if isFunc {
-				enclosing = fn.Name.Name
+			if fn, isFunc := decl.(*ast.FuncDecl); isFunc && info.Defs[fn.Name] == door {
+				continue // the door itself, identified as a declaration
 			}
 
 			ast.Inspect(decl, func(n ast.Node) bool {
@@ -295,9 +357,6 @@ func scan(fset *token.FileSet, files []*ast.File, info *types.Info, member *type
 					return true
 				}
 				pos := fset.Position(assert.Pos())
-				if theDoor.covers(pos, enclosing) {
-					return true
-				}
 
 				if operand := info.TypeOf(assert.X); operand != nil && types.Identical(operand, member) {
 					offenders = append(offenders,
