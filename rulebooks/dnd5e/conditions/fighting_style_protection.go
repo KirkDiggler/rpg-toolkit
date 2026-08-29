@@ -178,9 +178,12 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 
 	// Check if we're within 5 feet of the target. Positions are genuinely
 	// world state no single character's sheet carries, so this stays on
-	// [gamectx.RequireRoom] — the one registry resolution.Resolve DOES
-	// install (for prone's range predicate), and the only one this
-	// condition still needs.
+	// [gamectx.RequireRoom] rather than moving to the cast the way the shield
+	// and reaction reads above did.
+	//
+	// It is not the only registry in play. resolution.installTruth installs
+	// three — the room, the cast, and reaction readiness — and this condition
+	// reads two of them: the cast at the self lookup above, the room here.
 	room, err := gamectx.RequireRoom(ctx)
 	if err != nil {
 		return c, err
