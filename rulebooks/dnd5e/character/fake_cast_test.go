@@ -25,10 +25,10 @@ import (
 // TestAMonksUnarmoredDefenseReachesTheJoinedAC drives Join through
 // resolution.ProjectCharacter and reads 15 off the wire.
 type fakeCast struct {
-	members map[string]combat.Combatant
+	members map[string]combat.Member
 }
 
-func (f *fakeCast) Member(id string) (combat.Combatant, bool) {
+func (f *fakeCast) Member(id string) (combat.Member, bool) {
 	m, ok := f.members[id]
 	if !ok || m == nil {
 		return nil, false
@@ -55,8 +55,8 @@ func (f *fakeCast) IsAllied(_, _ string) (allied, known bool)   { return false, 
 
 // castOf installs a cast holding these sheets, the way resolution's one door
 // installs the real one.
-func castOf(ctx context.Context, members ...combat.Combatant) context.Context {
-	cast := &fakeCast{members: make(map[string]combat.Combatant, len(members))}
+func castOf(ctx context.Context, members ...combat.Member) context.Context {
+	cast := &fakeCast{members: make(map[string]combat.Member, len(members))}
 	for _, m := range members {
 		cast.members[m.GetID()] = m
 	}

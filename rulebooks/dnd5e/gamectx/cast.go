@@ -52,12 +52,20 @@ import (
 // with its own. That is how a barbarian ended up fighting at 10+DEX with
 // Unarmored Defense attached and nothing logged.
 type Cast interface {
-	// Member returns a participant's combat-facing sheet.
+	// Member returns a participant's combat-facing READ surface.
 	//
-	// combat.Combatant rather than a concrete type: a monster and a character
-	// are the same thing at this seam, and a registry shaped around one of
-	// them is what the deleted CharacterRegistry was.
-	Member(id string) (combat.Combatant, bool)
+	// combat.Member rather than a concrete type: a monster and a character are
+	// the same thing at this seam, and a registry shaped around one of them is
+	// what the deleted CharacterRegistry was.
+	//
+	// And combat.Member rather than combat.Combatant, which is what this
+	// handed out until the write law grew teeth. The sheet behind it is the
+	// LIVE one — a view, not a copy, as this file says at the top — so a cast
+	// that handed out the keeper's surface would let any rule call ApplyDamage
+	// on a sheet it does not own. The read law and the write law now differ by
+	// a type rather than by discipline: an effect asks the cast, and publishes
+	// everything else.
+	Member(id string) (combat.Member, bool)
 
 	// Members returns every participant in the interaction.
 	//
