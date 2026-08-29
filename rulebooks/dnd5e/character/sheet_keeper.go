@@ -128,7 +128,7 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 	previousBus := c.bus
 
 	// Park the bus on the sheet for the verb methods that still read it —
-	// MakeSavingThrow, ActivateCombatAbility, EffectiveAC, the rests, Cleanup.
+	// MakeSavingThrow, EffectiveAC, the rests, Cleanup.
 	// They go away with rpg-toolkit#965 and #966, and this line goes with them.
 	// Nothing here reads that field: every handler below closes over the bus it
 	// was handed.

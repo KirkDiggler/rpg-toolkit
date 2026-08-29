@@ -106,7 +106,7 @@ func Load(_ context.Context, d *Data) (*Character, error) {
 // character's own machinery is never laundered into an effect's name.
 //
 // Attaching also parks the bus on the sheet, for the verb methods that still
-// read it (MakeSavingThrow, ActivateCombatAbility, EffectiveAC, the rests).
+// read it (MakeSavingThrow, EffectiveAC, the rests).
 // That is the keeper's doing, not this function's, because a character built
 // by Draft.Finalize gets there without ever passing through here; see
 // SheetKeeper.subscribeSelf.

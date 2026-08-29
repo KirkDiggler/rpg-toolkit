@@ -609,69 +609,6 @@ func (c *Character) GetCombatAbility(id string) combatabilities.CombatAbility {
 	return nil
 }
 
-// ActivateCombatAbility finds and activates a combat ability by its ref.
-//
-// No caller since rpg-project#319 Phase 6 deleted combat.TurnManager, which
-// was the only one, along with the combat.CombatCharacter interface that
-// existed to describe what TurnManager needed. Kept as an open decision rather
-// than a leftover — see combat.ActivateAbilityInput for the argument and for
-// what rpg-project#300 may want to reshape.
-func (c *Character) ActivateCombatAbility(ctx context.Context, input *combat.ActivateAbilityInput) error {
-	if input == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "ActivateAbilityInput is nil")
-	}
-	if input.AbilityRef == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "AbilityRef is required")
-	}
-
-	// Find the ability by matching its ref (module/type/id), not the instance ID
-	var ability combatabilities.CombatAbility
-	for _, a := range c.combatAbilities {
-		aRef := a.Ref()
-		if aRef != nil &&
-			aRef.Module == input.AbilityRef.Module &&
-			aRef.Type == input.AbilityRef.Type &&
-			aRef.ID == input.AbilityRef.ID {
-			ability = a
-			break
-		}
-	}
-	if ability == nil {
-		return rpgerr.Newf(rpgerr.CodeNotFound, "combat ability ref %s/%s/%s not found",
-			input.AbilityRef.Module, input.AbilityRef.Type, input.AbilityRef.ID)
-	}
-
-	// Build CombatAbilityInput from ActivateAbilityInput
-	abilityInput := combatabilities.CombatAbilityInput{
-		Bus:           input.Bus,
-		ActionEconomy: input.Economy,
-		Speed:         input.Speed,
-		ExtraAttacks:  input.ExtraAttacks,
-	}
-
-	if err := ability.CanActivate(ctx, c, abilityInput); err != nil {
-		return err
-	}
-
-	return ability.Activate(ctx, c, abilityInput)
-}
-
-// GetAbilityInfos returns metadata about all combat abilities on this character.
-//
-// Uncalled for the same reason as ActivateCombatAbility above, and kept on the
-// same terms.
-func (c *Character) GetAbilityInfos() []combat.AbilityInfo {
-	infos := make([]combat.AbilityInfo, 0, len(c.combatAbilities))
-	for _, a := range c.combatAbilities {
-		infos = append(infos, combat.AbilityInfo{
-			Ref:        a.Ref(),
-			Name:       a.Name(),
-			ActionType: a.ActionType(),
-		})
-	}
-	return infos
-}
-
 // GetConditions returns all active conditions
 func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return c.conditions
