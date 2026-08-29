@@ -95,8 +95,8 @@ func (o *OpportunityAttackCondition) stateChanged(ctx context.Context) error {
 //
 // # Where the asymmetry went
 //
-// The handle carried a fact the cast does not: a monster's SetOwner never
-// matched combat.Ledger, so "I hold a purse" meant "I am a character" and the
+// The handle carried a fact the cast does not: a monster never satisfied
+// combat.Ledger, so "I hold a purse" meant "I am a character" and the
 // gate could be written as "refuse only if an economy says no". The cast hands
 // out both kinds through one surface, so that fact moved INTO the answer — a
 // character reports its slots, a monster reports true because it has no economy

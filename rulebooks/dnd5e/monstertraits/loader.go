@@ -270,26 +270,6 @@ func AttachMonster(
 		// condition breaks its own contract.
 		traitBus := dnd5eEvents.BusForEffect(bus, refOf(condition))
 
-		// THIS HANDOFF NOW MATCHES NOTHING, and is kept only so it and the
-		// interface die together.
-		//
-		// It handed a condition its own live sheet so the condition could read
-		// and write it directly. Both halves have moved: reads come from the
-		// cast, and writes are published requests the sheet's own keeper
-		// applies. No condition implements OwnerAware any more, so this branch
-		// is unreachable rather than merely unused, and deleting it means
-		// deleting the interface, its twin in character.Load, and the doc that
-		// describes them — one sweep, not four (rpg-project#319, Phase 6).
-		//
-		// The asymmetry it used to carry is intact and lives somewhere better:
-		// characters pay a reaction slot and monsters are metered by the
-		// condition's own flag (Kirk, rpg-project#316), which is now the fact
-		// that the monster keeper has no spend row while the character keeper
-		// does.
-		if aware, ok := condition.(dnd5eEvents.OwnerAware); ok {
-			aware.SetOwner(m)
-		}
-
 		if err := condition.Apply(ctx, traitBus); err != nil {
 			// Clean up any partial subscriptions from the failed Apply.
 			_ = condition.Remove(ctx, traitBus)
