@@ -432,7 +432,14 @@ func (m *Monster) onConditionApplied(
 // each condition through ToJSON to recover the same string. The character's
 // copy of this handler did the round trip until rpg-project#319 Phase 6 —
 // it predated conditions being able to name themselves (rpg-toolkit#971) —
-// and now asks the same question this one does.
+// and now asks the same question this one does, including the refusal below.
+//
+// A NIL REF IS LOUD, and here that is a fix rather than a nicety.
+// [core.Ref.String] has a pointer receiver that dereferences its fields
+// unguarded, so asking a contract-breaking condition for its name used to
+// PANIC out of a bus publish rather than return. Both keepers now refuse it
+// the same way, with the same message, because a condition that cannot name
+// itself cannot be matched against a removal on anybody's sheet.
 //
 // The unapplied trait blobs are deliberately untouched. They are conditions
 // that have not been attached yet — monstertraits.AttachMonster drains them
@@ -449,7 +456,13 @@ func (m *Monster) onConditionRemoved(_ context.Context, event dnd5eEvents.Condit
 
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
 	for _, condition := range m.conditions {
-		if condition.Ref().String() != event.ConditionRef {
+		ref := condition.Ref()
+		if ref == nil {
+			return rpgerr.New(rpgerr.CodeInternal,
+				"condition on this sheet returns a nil Ref, so a removal cannot be matched against it")
+		}
+
+		if ref.String() != event.ConditionRef {
 			filtered = append(filtered, condition)
 		}
 	}
