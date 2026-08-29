@@ -1110,28 +1110,6 @@ func (c *Character) onConditionApplied(
 		return nil
 	}
 
-	// THE ADMISSION DOOR. A condition that cannot name itself never joins the
-	// list, so nothing downstream has to ask again.
-	//
-	// [dnd5eEvents.ConditionBehavior.Ref]'s contract is that it returns the same
-	// ref its ToJSON embeds. A nil one breaks that, and it breaks it in a way
-	// that is invisible where it matters: a removal is matched by ref, so a
-	// nameless condition would sit on the sheet unremovable, and every removal
-	// aimed at it would report success. Refusing at the door is the cheaper
-	// half of that trade — one check where a condition ENTERS, instead of a
-	// check on every condition at every removal.
-	//
-	// This is the only door an arbitrary implementation comes through:
-	// ConditionAppliedEvent.Condition is whatever a publisher put in it. The
-	// loader paths cannot produce one, because conditions.LoadJSON is their only
-	// constructor and TestEveryConditionRefMatchesItsToJSON pins a non-nil,
-	// ToJSON-agreeing ref for all 22 conditions it routes. Guarding them too
-	// would add a branch no input can reach.
-	if event.Condition.Ref() == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument,
-			"condition returns a nil Ref, so it could never be matched by a removal")
-	}
-
 	// Apply the condition (subscribes to events)
 	if err := event.Condition.Apply(ctx, bus); err != nil {
 		// Clean up any partial subscriptions to avoid resource leaks
@@ -1139,12 +1117,56 @@ func (c *Character) onConditionApplied(
 		return rpgerr.Wrapf(err, "failed to apply condition")
 	}
 
-	// Store the condition
-	c.conditions = append(c.conditions, event.Condition)
+	// The sheet's own door decides, so this handler holds no copy of the rule.
+	// A refusal here means the condition subscribed and must be unsubscribed:
+	// the same rollback the Apply failure above performs.
+	if err := c.addCondition(event.Condition); err != nil {
+		_ = event.Condition.Remove(ctx, bus)
+		return err
+	}
 
 	// ToData serializes conditions, so a sheet that gained one and did not go
 	// dirty is a sheet whose new condition never gets written down.
 	c.dirty = true
+
+	return nil
+}
+
+// addCondition is THE DOOR: every path that puts a condition on this sheet
+// comes through here or through [requireNameable] in loadEffects, and both ask
+// the same question.
+//
+// [dnd5eEvents.ConditionBehavior.Ref]'s contract is that it returns the same
+// ref its ToJSON embeds, and "must never return nil". A nil one breaks that in
+// a way that is invisible exactly where it matters: removals are matched by
+// ref, so a nameless condition would sit here unremovable while every removal
+// aimed at it reported success. Checking once, on the way in, is what lets
+// onConditionRemoved match on Ref() without asking again. Kirk's ruling: "if
+// we protect the construction, we don't need to worry about the nil."
+func (c *Character) addCondition(condition dnd5eEvents.ConditionBehavior) error {
+	if err := requireNameable(condition, c.id); err != nil {
+		return err
+	}
+
+	c.conditions = append(c.conditions, condition)
+
+	return nil
+}
+
+// requireNameable refuses a condition that cannot name itself.
+//
+// The type is named in the error because the condition cannot name itself —
+// that is the whole defect — so %T is the only identification available.
+func requireNameable(condition dnd5eEvents.ConditionBehavior, sheetID string) error {
+	if condition == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "nil condition")
+	}
+
+	if condition.Ref() == nil {
+		return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+			"condition %T returns a nil Ref, so it could never be matched by a removal on sheet %s",
+			condition, sheetID)
+	}
 
 	return nil
 }
@@ -1159,11 +1181,11 @@ func (c *Character) onConditionApplied(
 // kept, every one after it was skipped, and the removal itself was dropped
 // silently. The monster keeper has asked the direct question all along.
 //
-// It asks WITHOUT CHECKING, because onConditionApplied above refused anything
-// that cannot name itself at the door. Kirk's ruling: "if we protect the
-// construction, we don't need to worry about the nil." A guard here would run
-// once per condition per removal to re-establish something admission already
-// established once.
+// It asks WITHOUT CHECKING for nil, because nothing nameless is on the sheet:
+// [Character.addCondition] refuses one on the bus path and loadEffects refuses
+// one on the load path, which between them are every way a condition gets
+// here. A guard here would run once per condition per removal to re-establish
+// what admission established once.
 func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 	// Only process events for this member
 	if event.MemberID != c.id {

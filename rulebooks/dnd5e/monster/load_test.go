@@ -474,19 +474,23 @@ func (c *namelessMonsterCondition) ToJSON() (json.RawMessage, error) {
 	return json.Marshal(map[string]any{"ref": refs.Conditions.Prone()})
 }
 
-// TestARefLessConditionIsRefusedAtTheDoor is the monster twin of the character
-// keeper's test of the same name, and the pair is the point: one door each,
-// checked once, so neither removal path has to.
+// TestARefLessConditionIsRefusedAtTheDoor covers the BUS path onto a monster's
+// sheet — the twin of the character keeper's test of the same name.
 //
 // It also retires a panic. core.Ref.String has a pointer receiver that
 // dereferences id.Module unguarded, so before rpg-project#319 Phase 6 a
 // nameless condition reaching the removal path took the whole bus publish down
-// rather than returning an error. Refusing at admission means it never gets
-// that far, which is why onConditionRemoved can call Ref().String() bare.
+// rather than returning an error.
 //
-// The fake is deliberately a LIAR rather than merely incomplete: its ToJSON
-// embeds a valid ref, so it is well-formed by every measure except the one the
-// keeper depends on.
+// The bus is NOT the only way onto this sheet, which review of that phase
+// caught after a first attempt guarded only here: see
+// TestALoadedRefLessConditionIsRefusedAtTheDoor for the load path, which
+// monstertraits drives directly through Monster.AddLoadedCondition and which
+// never touches a bus handler at all.
+//
+// namelessMonsterCondition's ToJSON returns a valid ref, which no longer
+// matters to either keeper — both stopped reading it in Phase 6 — and is kept
+// only so the fake is well-formed in every respect except the one under test.
 func (s *MonsterKeeperTestSuite) TestARefLessConditionIsRefusedAtTheDoor() {
 	err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    s.mon,
@@ -495,5 +499,39 @@ func (s *MonsterKeeperTestSuite) TestARefLessConditionIsRefusedAtTheDoor() {
 
 	s.Require().Error(err, "a condition that cannot name itself must not reach the sheet")
 	s.Require().Empty(s.mon.GetConditions(), "and nothing was admitted")
+	s.Require().False(s.mon.IsDirty(), "a refused application changes nothing to save")
+}
+
+// TestALoadedRefLessConditionIsRefusedAtTheDoor covers the LOAD path, which is
+// the one a first attempt at this door missed.
+//
+// monstertraits calls Monster.AddLoadedCondition directly — from
+// LoadMonsterConditions and from AttachMonster — so a persisted trait reaches
+// the sheet without ever passing a bus handler. Guarding only the handler left
+// this path open while the removal side had already given up its own nil
+// check, which is a worse state than either half alone: a nameless trait would
+// have loaded onto the sheet and then PANICKED the first removal that swept
+// past it.
+//
+// So the door is the sheet's own Add methods, where every path converges,
+// rather than the handler in front of one of them.
+func (s *MonsterKeeperTestSuite) TestALoadedRefLessConditionIsRefusedAtTheDoor() {
+	err := s.mon.AddLoadedCondition(&namelessMonsterCondition{})
+
+	s.Require().Error(err, "a trait that cannot name itself must not reach the sheet")
+	s.Require().Empty(s.mon.GetConditions(), "and nothing was admitted")
+	s.Require().Contains(err.Error(), "namelessMonsterCondition",
+		"the type is the only identification available for something that cannot name itself")
+	s.Require().Contains(err.Error(), s.mon.GetID(), "and the error says whose sheet refused it")
+}
+
+// TestALiveRefLessConditionIsRefusedAtTheDoor is the same door, entered by the
+// method the bus handler uses. Both Add methods ask, because both are exported
+// and either can be called with anything.
+func (s *MonsterKeeperTestSuite) TestALiveRefLessConditionIsRefusedAtTheDoor() {
+	err := s.mon.AddCondition(&namelessMonsterCondition{})
+
+	s.Require().Error(err)
+	s.Require().Empty(s.mon.GetConditions())
 	s.Require().False(s.mon.IsDirty(), "a refused application changes nothing to save")
 }

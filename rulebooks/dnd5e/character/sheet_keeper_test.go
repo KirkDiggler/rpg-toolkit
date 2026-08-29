@@ -321,9 +321,12 @@ func (c *namelessCondition) ToJSON() (json.RawMessage, error) {
 // construction, we don't need to worry about the nil" — which is why
 // onConditionRemoved can call Ref().String() bare.
 //
-// namelessCondition is deliberately a LIAR rather than merely incomplete: its
-// ToJSON embeds a perfectly good ref, so it is well-formed by every measure
-// except the one the keeper depends on. Nothing about the blob gives it away.
+// What is pinned is the BUS path specifically: ConditionAppliedEvent.Condition
+// is whatever a publisher put in it, so this is where an arbitrary
+// implementation reaches a sheet. namelessCondition's ToJSON returns a valid
+// ref, which no longer matters to either keeper — both stopped reading it in
+// rpg-project#319 Phase 6 — and is kept only so the fake is well-formed in
+// every respect except the one under test.
 func (s *SheetKeeperTestSuite) TestARefLessConditionIsRefusedAtTheDoor() {
 	err := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
 		Target:    s.char,

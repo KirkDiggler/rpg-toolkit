@@ -175,7 +175,11 @@ func LoadMonsterConditions(
 			return rpgerr.Wrap(err, "failed to apply monster condition")
 		}
 
-		m.AddLoadedCondition(condition)
+		if err := m.AddLoadedCondition(condition); err != nil {
+			_ = condition.Remove(ctx, traitBus)
+
+			return rpgerr.Wrap(err, "failed to record monster condition")
+		}
 	}
 	return nil
 }
@@ -286,7 +290,11 @@ func AttachMonster(
 	// the monster has no verb for that — which is exactly the kind of missing
 	// undo that makes partial writes permanent.
 	for _, trait := range attached {
-		m.AddLoadedCondition(trait.condition)
+		if err := m.AddLoadedCondition(trait.condition); err != nil {
+			unattachMonster(ctx, m, bus, attached, carried)
+
+			return rpgerr.Wrap(err, "failed to record monster trait")
+		}
 	}
 
 	return nil
@@ -333,6 +341,14 @@ func unattachMonster(
 // replaced returned for a blob with no ref, and costs the same thing —
 // attribution, not correctness. A panic here would take down an attach over a
 // label.
+//
+// It is only ever a LABEL, and the distinction is load-bearing: the same
+// condition is offered to Monster.AddLoadedCondition below, which refuses a
+// nil ref outright. So a nameless condition gets an anonymous bus here and
+// then fails to reach the sheet at all — this function tolerating nil is not
+// the sheet tolerating it. rpg-project#319 Phase 6 review caught that gap:
+// naming the bus and admitting to the sheet are different questions, and only
+// the second one is an invariant.
 func refOf(condition dnd5eEvents.ConditionBehavior) core.Ref {
 	if ref := condition.Ref(); ref != nil {
 		return *ref

@@ -416,6 +416,21 @@ func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy)
 			continue
 		}
 
+		// The load-path door. conditions.LoadJSON constructs everything that
+		// reaches here and TestEveryConditionRefMatchesItsToJSON pins a non-nil
+		// ref for all of it — but "no input can reach this" was exactly the
+		// reasoning that let the monster's trait loader slip past an identical
+		// check, so the invariant is enforced rather than argued.
+		if err := requireNameable(condition, characterID); err != nil {
+			if policy == strictEffects {
+				return nil, rpgerr.Wrapf(err, "failed to load condition %d", i)
+			}
+
+			warnDropped(characterID, "condition", peekEffectRef(rawCondition), err, slog.Int("index", i))
+
+			continue
+		}
+
 		effects = append(effects, loadedEffect{
 			// Peeked rather than asked for: the ref conditions.LoadJSON just
 			// routed on is the only name this behaviour will ever have.
