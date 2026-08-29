@@ -5,8 +5,8 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -60,20 +60,27 @@ type ParticipantRefusal struct {
 // its own verdict — so a caller told only "somebody is unreadable" would have
 // to grey out the whole menu or guess which row to blame.
 //
-// So this attaches one participant at a time and keeps going, collecting every
-// refusal. That is not a second attach mechanism: each participant goes through
-// the same [attachAll] with a cast of one, so what refuses here refuses there,
-// for the same reason and with the same message.
+// So the whole cast goes through ONE [attachAll], which collects refusals
+// instead of stopping at the first — the Refusals sink on [attachAllInput].
+// That is not a second attach mechanism: it is the same one, an argument apart,
+// the way DropUnreadable already works.
 //
-// # What it costs, said plainly
+// # What the one-call shape is actually worth
 //
-// A cast of one cannot observe a cast of many. If some future attach were to
-// fail only in company — a condition that refuses when another is already on
-// the bus — this would miss it, and the interaction would refuse where the
-// preflight said it would not. No such attach exists today: attaching is
-// per-sheet and the bus is a fresh one. It is recorded because "we checked
-// them one at a time" is exactly the kind of shortcut that is invisible until
-// the day it is not.
+// Not what an earlier version of this doc claimed. It said a cast of one could
+// not observe a cast of many, and recorded that as a cost being knowingly paid.
+// That cost was not real: this entry never installs game context — it is
+// deliberately not a fold entry — so no cast is installed during its attach at
+// ALL, and nothing a participant could read during Apply differs between one
+// participant and twenty. Review caught the claim by restoring the previous
+// implementation under the new tests and watching every one of them pass.
+//
+// What the single call is worth is smaller and true: ordering is decided in one
+// place. The previous version sorted the participants itself and then called
+// the attach once each — and the attach sorts too, so the R4 ordering rule
+// lived in two copies that had to agree. They did agree, which is why nothing
+// observable changed; they were still two. TestOrderingIsDecidedInOnePlace
+// holds the absence.
 //
 // # Nothing is left alive
 //
@@ -102,21 +109,28 @@ func preflightOn(ctx context.Context, in *PreflightInput, surf *surface) (*Prefl
 		}
 	}
 
-	// Cast order, so two preflights over identical data produce identical
-	// reports — the same R4 argument attachAll makes, and the reason a caller
-	// can compare one report against the next.
-	ordered := append([]Participant(nil), in.Participants...)
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
-
+	// ONE CAST, ONE PASS. Every participant is attached onto the same surface,
+	// in the same sorted order an interaction uses, and the refusals are
+	// collected rather than aborting on the first — see attachAllInput.Refusals.
+	//
+	// This is the whole cast on purpose. An earlier version attached a cast of
+	// ONE at a time, which answered the same for every case anybody had, and
+	// carried a doc admitting what it could not see: a participant that would
+	// only fail in company. Nothing exercises that today — attaching is
+	// per-sheet and the bus is fresh — but "we checked them one at a time" is
+	// the kind of shortcut that is invisible until it is not, and the entry
+	// exists to predict an interaction rather than to approximate one.
 	refusals := make([]ParticipantRefusal, 0)
-	for _, p := range ordered {
-		_, err := attachAll(ctx, surf, &attachAllInput{
-			Participants: []Participant{p},
-			Roller:       in.Roller,
-		})
-		if err != nil {
-			refusals = append(refusals, ParticipantRefusal{Member: p.ID(), Reason: err})
-		}
+	if _, err := attachAll(ctx, surf, &attachAllInput{
+		Participants: in.Participants,
+		Roller:       in.Roller,
+		Refusals:     &refusals,
+	}); err != nil {
+		// Unreachable while Refusals is set — the attach reports per
+		// participant and returns no error of its own — so this refuses rather
+		// than dropping an error nobody expected, the way the projection's
+		// unreachable cast lookup does.
+		return nil, errors.Join(err, surf.teardown(ctx))
 	}
 
 	if err := surf.teardown(ctx); err != nil {
