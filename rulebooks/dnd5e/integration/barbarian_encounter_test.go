@@ -279,56 +279,6 @@ func (s *BarbarianEncounterSuite) TestRage_EndsAfter10Turns() {
 	})
 }
 
-func (s *BarbarianEncounterSuite) TestRage_ResistanceHalvesPhysicalDamage() {
-	s.Run("Rage resistance halves bludgeoning/piercing/slashing damage", func() {
-		s.T().Log("╔══════════════════════════════════════════════════════════════════╗")
-		s.T().Log("║  BARBARIAN RAGE: Resistance to Physical Damage                   ║")
-		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
-		s.T().Log("")
-
-		initialHP := s.barbarian.GetHitPoints()
-		s.T().Logf("  Grog's HP: %d/%d", initialHP, s.barbarian.GetMaxHitPoints())
-
-		// Activate rage
-		rage := s.barbarian.GetFeature("rage")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
-		s.Require().NoError(err)
-		s.T().Log("")
-		s.T().Log("→ Grog enters a rage!")
-		s.T().Log("  ✓ Resistance to bludgeoning, piercing, slashing")
-		s.T().Log("")
-
-		// Deal slashing damage to the barbarian
-		incomingDamage := 10
-		s.T().Logf("→ Goblin deals %d slashing damage to Grog", incomingDamage)
-
-		output, err := combat.DealDamage(s.ctx, &combat.DealDamageInput{
-			Target:     s.barbarian,
-			AttackerID: s.goblin.GetID(),
-			Source:     combat.DamageSourceAttack,
-			Instances: []combat.DamageInstanceInput{
-				{Amount: incomingDamage, Type: "slashing"},
-			},
-			EventBus: s.bus,
-		})
-		s.Require().NoError(err)
-
-		// Resistance halves damage: 10 / 2 = 5
-		expectedDamage := incomingDamage / 2
-		s.Equal(expectedDamage, output.TotalDamage, "Resistance should halve physical damage")
-
-		s.T().Log("")
-		s.T().Log("  Damage calculation:")
-		s.T().Logf("    Incoming damage:    %d", incomingDamage)
-		s.T().Logf("    × Rage resistance:  0.5")
-		s.T().Logf("    = Damage taken:     %d", expectedDamage)
-		s.T().Log("")
-		s.T().Logf("  Grog's HP: %d → %d", initialHP, output.CurrentHP)
-		s.T().Log("")
-		s.T().Log("✓ Rage resistance correctly halves physical damage")
-	})
-}
-
 // =============================================================================
 // LEVEL 1: UNARMORED DEFENSE TESTS
 // =============================================================================

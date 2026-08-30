@@ -1132,9 +1132,8 @@ func (c *Character) onConditionApplied(
 	return nil
 }
 
-// addCondition is THE DOOR: every path that puts a condition on this sheet
-// comes through here or through [requireNameable] in loadEffects, and both ask
-// the same question.
+// addCondition is THE DOOR: it is where a condition arrives from outside this
+// package, and where the sheet decides whether to keep it.
 //
 // [dnd5eEvents.ConditionBehavior.Ref]'s contract is that it returns the same
 // ref its ToJSON embeds, and "must never return nil". A nil one breaks that in
@@ -1181,11 +1180,12 @@ func requireNameable(condition dnd5eEvents.ConditionBehavior, sheetID string) er
 // kept, every one after it was skipped, and the removal itself was dropped
 // silently. The monster keeper has asked the direct question all along.
 //
-// It asks WITHOUT CHECKING for nil, because nothing nameless is on the sheet:
-// [Character.addCondition] refuses one on the bus path and loadEffects refuses
-// one on the load path, which between them are every way a condition gets
-// here. A guard here would run once per condition per removal to re-establish
-// what admission established once.
+// It asks WITHOUT CHECKING for nil, because nothing nameless is on the sheet.
+// [Character.addCondition] refuses one on the bus path — the only path an
+// arbitrary implementation arrives by — and the load path constructs solely
+// through conditions.LoadJSON, every type of which is pinned to a non-nil ref
+// by TestEveryConditionRefMatchesItsToJSON. A guard here would run once per
+// condition per removal to re-establish what those two already settle.
 func (c *Character) onConditionRemoved(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
 	// Only process events for this member
 	if event.MemberID != c.id {
