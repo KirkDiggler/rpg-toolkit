@@ -1,0 +1,327 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package banditcamp_test
+
+import (
+	"context"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
+)
+
+// toolkitPrefix is how a toolkit module import is recognised.
+const toolkitPrefix = "github.com/KirkDiggler/rpg-toolkit/"
+
+// The three kernel packages, by the path an import statement spells them.
+const (
+	journalPkg = "examples/world/journal"
+	graphPkg   = "examples/world/graph"
+	questPkg   = "examples/world/quest"
+)
+
+// InvariantSuite asserts the three standing claims that hold across every path:
+// nobody is gated, nothing present is stored, and the kernel does not know what
+// game it is in.
+type InvariantSuite struct {
+	suite.Suite
+
+	ctx    context.Context
+	sheets map[journal.EntityID]*character.Character
+}
+
+func TestInvariantSuite(t *testing.T) {
+	suite.Run(t, new(InvariantSuite))
+}
+
+func (s *InvariantSuite) SetupSuite() {
+	s.ctx = context.Background()
+
+	crew, err := banditcamp.Crew(s.ctx)
+	s.Require().NoError(err)
+	s.sheets = crew
+}
+
+// rig is one playable camp: a world, a log, and an executor over a script.
+type rig struct {
+	world *graph.World
+	log   *journal.Journal
+	exec  *banditcamp.Executor
+}
+
+func (s *InvariantSuite) rig(rolls ...int) rig {
+	s.T().Helper()
+
+	w, err := graph.New(banditcamp.Declaration())
+	s.Require().NoError(err)
+
+	log := journal.New()
+
+	resolver, err := banditcamp.NewCheckResolver(banditcamp.CheckResolverConfig{
+		Sheets: s.sheets,
+		Roller: banditcamp.NewScriptedRoller(rolls...),
+		Bus:    events.NewEventBus(),
+	})
+	s.Require().NoError(err)
+
+	exec, err := banditcamp.NewExecutor(banditcamp.ExecutorConfig{
+		Journal:  log,
+		Resolver: resolver,
+		Verbs:    banditcamp.Verbs(),
+	})
+	s.Require().NoError(err)
+
+	return rig{world: w, log: log, exec: exec}
+}
+
+// ---------------------------------------------------------------------------
+// Nobody is gated.
+// ---------------------------------------------------------------------------
+
+func (s *InvariantSuite) TestAnyActorMayAttemptAnyPath() {
+	actors := []journal.EntityID{banditcamp.Rook, banditcamp.Brann, banditcamp.Sela}
+	attempts := []struct {
+		verb   banditcamp.VerbName
+		target journal.EntityID
+	}{
+		{banditcamp.Sneak, banditcamp.Camp},
+		{banditcamp.Assassinate, banditcamp.Leader},
+		{banditcamp.Impersonate, banditcamp.Camp},
+		{banditcamp.Persuade, banditcamp.Camp},
+	}
+
+	// The barbarian sneaks, the rogue preaches, the paladin knifes a man in the
+	// dark. Every one of these is judged, and not one of them is refused.
+	for _, actor := range actors {
+		for _, attempt := range attempts {
+			r := s.rig(11)
+
+			fact, err := r.exec.Do(s.ctx, banditcamp.Act{
+				Verb: attempt.verb, Actor: actor, Target: attempt.target,
+				Bystanders: []journal.EntityID{banditcamp.Lieutenant},
+			})
+			s.Require().NoErrorf(err, "%s attempting %s", actor, attempt.verb)
+			s.Truef(fact.Outcome.Contested, "%s attempting %s was never judged", actor, attempt.verb)
+			s.Equalf(actor, fact.Actor, "%s attempting %s lost its attribution", actor, attempt.verb)
+		}
+	}
+}
+
+func (s *InvariantSuite) TestProficiencyOnlyTiltsTheDice() {
+	sneak := func(actor journal.EntityID, roll int) journal.Fact {
+		r := s.rig(roll)
+		fact, err := r.exec.Do(s.ctx, banditcamp.Act{
+			Verb: banditcamp.Sneak, Actor: actor, Target: banditcamp.Camp,
+		})
+		s.Require().NoError(err)
+
+		return fact
+	}
+
+	expert := sneak(banditcamp.Rook, 10)
+	oaf := sneak(banditcamp.Brann, 10)
+
+	s.Run("the same die reads differently, and only by the sheet", func() {
+		// Rook has expertise in Stealth on DEX 16 (+7); Brann has DEX 12 and no
+		// proficiency (+1). Six points of sheet, and nothing else.
+		s.True(expert.Outcome.Succeeded)
+		s.False(oaf.Outcome.Succeeded)
+		s.Equal(6, expert.Outcome.Margin-oaf.Outcome.Margin)
+	})
+
+	s.Run("the tilt is a tilt, not a gate", func() {
+		lucky := sneak(banditcamp.Brann, 20)
+		s.True(lucky.Outcome.Succeeded)
+		s.Equal(banditcamp.FactInfiltration, lucky.Kind)
+		s.False(lucky.Audience.Includes(banditcamp.Camp))
+	})
+
+	s.Run("the transcript says what the rulebook did", func() {
+		s.Contains(expert.Outcome.Detail, "stealth")
+		s.Contains(expert.Outcome.Detail, "d20(10)+7 = 17 vs DC 13")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Nothing present is stored.
+// ---------------------------------------------------------------------------
+
+// snapshot is the observable surface of a derived state, in a form two
+// different worlds can be compared on.
+type snapshot struct {
+	Edges    []string
+	Leads    journal.EntityID
+	Alerted  bool
+	Defeated bool
+	Regard   int
+	Posture  string
+}
+
+func snap(state *graph.State) snapshot {
+	current := state.Edges()
+	edges := make([]string, 0, len(current))
+	for _, e := range current {
+		edges = append(edges, string(e.From)+" "+string(e.Rel)+" "+string(e.To))
+	}
+	slices.Sort(edges)
+
+	return snapshot{
+		Edges:    edges,
+		Leads:    state.Occupant(banditcamp.Leads, banditcamp.Camp),
+		Alerted:  state.Flagged(banditcamp.Alerted, banditcamp.Camp),
+		Defeated: state.Flagged(banditcamp.Defeated, banditcamp.Camp),
+		Regard:   state.Count(banditcamp.Regard, banditcamp.Camp, banditcamp.Party),
+		Posture:  state.Label(banditcamp.Posture, banditcamp.Camp),
+	}
+}
+
+func (s *InvariantSuite) TestPresentStateIsDerivedByFoldAndNeverStored() {
+	r := s.rig(19, 15) // The changeling: the kill lands, the claim lands.
+
+	fresh, err := graph.New(banditcamp.Declaration())
+	s.Require().NoError(err)
+
+	start := snap(r.world.StateFor(banditcamp.Camp, r.log))
+
+	_, err = r.exec.Do(s.ctx, banditcamp.Act{
+		Verb: banditcamp.Assassinate, Actor: banditcamp.Rook, Target: banditcamp.Leader,
+	})
+	s.Require().NoError(err)
+	afterKill := snap(r.world.StateFor(banditcamp.Camp, r.log))
+
+	_, err = r.exec.Do(s.ctx, banditcamp.Act{
+		Verb: banditcamp.Impersonate, Actor: banditcamp.Rook, Target: banditcamp.Camp,
+	})
+	s.Require().NoError(err)
+	afterClaim := snap(r.world.StateFor(banditcamp.Camp, r.log))
+
+	s.Run("the run actually moved the world", func() {
+		s.Equal(start, afterKill) // The camp saw neither, so its present is unchanged.
+		s.NotEqual(start, afterClaim)
+		s.Equal(banditcamp.Rook, afterClaim.Leads)
+	})
+
+	s.Run("a world that watched it all holds nothing a fresh one does not", func() {
+		s.Equal(afterClaim, snap(fresh.StateFor(banditcamp.Camp, r.log)))
+	})
+
+	s.Run("rewinding the journal rewinds the present", func() {
+		empty := journal.New()
+		s.Equal(start, snap(r.world.StateFor(banditcamp.Camp, empty)))
+		s.Equal(start, snap(fresh.StateFor(banditcamp.Camp, empty)))
+	})
+
+	s.Run("replaying a prefix reproduces that moment exactly", func() {
+		prefix := journal.New()
+		for _, f := range r.log.All()[:1] {
+			_, err := prefix.Append(f)
+			s.Require().NoError(err)
+		}
+		s.Equal(afterKill, snap(r.world.StateFor(banditcamp.Camp, prefix)))
+	})
+
+	s.Run("deriving twice from the same facts agrees", func() {
+		s.Equal(afterClaim, snap(r.world.StateFor(banditcamp.Camp, r.log)))
+	})
+
+	s.Run("and nothing declined to fold along the way", func() {
+		s.Empty(r.world.StateFor(banditcamp.Camp, r.log).Refusals())
+		s.Empty(r.world.Truth(r.log).Refusals())
+	})
+}
+
+// ---------------------------------------------------------------------------
+// The kernel does not know what game it is in.
+// ---------------------------------------------------------------------------
+
+func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
+	// Each kernel package's entire permitted toolkit surface. Anything else —
+	// and especially anything under rulebooks/ — is the layering breaking.
+	law := []struct {
+		dir     string
+		allowed []string
+	}{
+		{dir: "../journal", allowed: []string{journalPkg}},
+		{dir: "../graph", allowed: []string{journalPkg, graphPkg}},
+		{dir: "../quest", allowed: []string{journalPkg, graphPkg, questPkg}},
+	}
+
+	for _, pkg := range law {
+		imports := s.toolkitImportsOf(pkg.dir)
+		for _, imported := range imports {
+			s.NotContainsf(imported, "rulebooks/", "%s imports a rulebook: %s", pkg.dir, imported)
+			s.Containsf(pkg.allowed, strings.TrimPrefix(imported, toolkitPrefix),
+				"%s imports %s, which is outside its permitted surface", pkg.dir, imported)
+		}
+	}
+}
+
+func (s *InvariantSuite) TestTheExecutorIsRulebookFreeToo() {
+	// verbs.go is the piece with no obvious kernel home. It imports journal and
+	// nothing else, which is both why an attempt cannot be gated on a character
+	// sheet and the argument for moving it inside.
+	imports := s.toolkitImportsOfFile("verbs.go")
+	s.Equal([]string{toolkitPrefix + journalPkg}, imports)
+}
+
+// toolkitImportsOf returns every toolkit import in a package directory,
+// deduplicated and sorted. Test files count: a kernel test reaching for a
+// rulebook is the same breach as the code doing it.
+func (s *InvariantSuite) toolkitImportsOf(dir string) []string {
+	s.T().Helper()
+
+	entries, err := os.ReadDir(dir)
+	s.Require().NoError(err)
+
+	var out []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+		out = append(out, s.parseToolkitImports(filepath.Join(dir, entry.Name()))...)
+	}
+	slices.Sort(out)
+
+	return slices.Compact(out)
+}
+
+func (s *InvariantSuite) toolkitImportsOfFile(name string) []string {
+	s.T().Helper()
+
+	out := s.parseToolkitImports(name)
+	slices.Sort(out)
+
+	return slices.Compact(out)
+}
+
+func (s *InvariantSuite) parseToolkitImports(path string) []string {
+	s.T().Helper()
+
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+	s.Require().NoError(err)
+
+	var out []string
+	for _, spec := range file.Imports {
+		unquoted, err := strconv.Unquote(spec.Path.Value)
+		s.Require().NoError(err)
+		if strings.HasPrefix(unquoted, toolkitPrefix) {
+			out = append(out, unquoted)
+		}
+	}
+
+	return out
+}
