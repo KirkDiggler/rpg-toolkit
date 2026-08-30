@@ -22,8 +22,14 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// DirtyTestSuite proves the write half of an effect's owner handle: a condition
-// that changes its OWN persisted state comes back from Resolve to be stored.
+// DirtyTestSuite proves that a condition changing its OWN persisted state comes
+// back from Resolve to be stored.
+//
+// It used to call that "the write half of an effect's owner handle". The
+// handle is gone (rpg-project#319 Phase 6, rpg-toolkit#1307) and the property
+// outlived it: a condition publishes ConditionStateChangedEvent and the keeper
+// that owns the sheet sets the flag. What is proven here never depended on how
+// the flag got set, only that it does.
 //
 // Resolve returns only participants reporting IsDirty, and until
 // rpg-toolkit#1251 nothing a condition did set that flag. It survived on

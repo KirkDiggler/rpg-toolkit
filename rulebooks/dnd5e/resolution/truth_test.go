@@ -68,11 +68,17 @@ const doorFile = "truth.go"
 // second way in, for tests either, and that is the point.
 //
 // ITS SCOPE IS THIS PACKAGE. It reads the .go files in resolution and no
-// others. conditions/ and monstertraits/ hand-install a context 43 times
-// between their suites, and none of that is in violation or even visible here:
-// they are separate modules whose sources are not on disk at test time, and
-// standing one fold up without running Resolve is what those tests are for.
-// Phase 3 takes those readers off the hand-installed path. Until then they are
+// others. conditions/ and monstertraits/ hand-install a context dozens of
+// times between their suites — 44 at the time of writing, and that number is a
+// snapshot rather than a fact this test can hold, which is exactly why it is
+// not asserted anywhere. None of it is in violation or even visible here: they
+// are in a different module whose sources are not on disk at test time.
+//
+// Nor is it debt. Standing one fold up without running Resolve is what those
+// tests are FOR, and a unit test that installs the context it needs is doing
+// the right thing — an earlier version of this comment said Phase 3 would take
+// those readers off the hand-installed path, which read as a promise to
+// eliminate them. Phase 3 landed; they are still there and should be. They are
 // out of this pin's reach rather than exempt from it — a distinction worth
 // keeping, because the day resolution grows a test that installs by hand is the
 // day this pin has something real to say.
