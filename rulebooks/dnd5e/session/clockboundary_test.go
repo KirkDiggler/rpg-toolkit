@@ -25,10 +25,12 @@ import (
 //
 // Not one of them publishes a turn event by hand. That is the whole point. The
 // suites that did — conditions/dodging_test.go, helped_test.go,
-// unconscious_test.go — have passed for the entire time these rules were inert,
+// unconscious_test.go — passed for the entire time these rules were inert,
 // because they were the only thing in the codebase publishing a turn boundary
-// at all. combat.TurnManager, the sole publisher in the product, has zero call
-// sites anywhere including its own tests.
+// at all. The product's only publisher then was combat.TurnManager, which had
+// zero call sites anywhere including its own tests, and which rpg-project#319
+// Phase 6 deleted outright. The real verb these tests drive is what publishes
+// a boundary now.
 //
 // So the assertion that matters is not "the condition reacted". It is "the game
 // told it to".
@@ -378,8 +380,10 @@ func (s *ClockBoundaryTestSuite) enrage(id string) {
 // ending a turn leaves exactly one path open.
 //
 // RAW: rage ends when combat ends. Before this slice CombatEndTopic had one
-// publisher (character.EndCombat) with zero callers anywhere, so this had never
-// once happened in the product.
+// publisher — character.EndCombat, with zero callers anywhere — so this had
+// never once happened in the product. That publisher is gone too
+// (rpg-project#319 Phase 6); the composition announcing the fight's end is the
+// only thing that raises the boundary now, which is what this test drives.
 func (s *ClockBoundaryTestSuite) TestRageEndsWhenTheFightDoes() {
 	mgr := s.fight(s.raw(&conditions.RagingCondition{
 		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",

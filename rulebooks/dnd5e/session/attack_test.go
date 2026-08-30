@@ -207,18 +207,24 @@ func (s *AttackTestSuite) duelingBlob(id string) json.RawMessage {
 //
 // Dueling's damage-chain fold used to decide eligibility by live-querying a
 // gamectx.CharacterRegistry — a global lookup the OLD encounter module
-// installed and the session stack never does; resolution installs exactly
-// one gamectx registry (WithRoom, for prone's range predicate) and
-// deliberately nothing else (resolution/doc.go). So a fighter who chose
-// Dueling and swings a one-handed melee weapon with an empty or shielded off
-// hand — precisely the sheet shape this test builds — crashed every armed
-// swing with gamectx.ErrNoGameContext, while an unarmed swing by the same
-// character resolved fine (nothing in the unarmed path reaches Dueling's
-// predicate the same way). This is the live blocker reported against
-// rpg-api's session stack.
+// installed and the session stack never did. So a fighter who chose Dueling
+// and swings a one-handed melee weapon with an empty or shielded off hand —
+// precisely the sheet shape this test builds — crashed every armed swing with
+// gamectx.ErrNoGameContext, while an unarmed swing by the same character
+// resolved fine. This was the live blocker reported against rpg-api's session
+// stack. Neither symbol exists any more (rpg-toolkit#1251).
 //
-// No gamectx.WithGameContext is installed anywhere in this test, exactly
-// like the real session stack — that absence is the point being pinned.
+// WHAT THIS PINS NOW IS THE OPPOSITE OF AN ABSENCE. This comment used to say
+// resolution installs "exactly one gamectx registry (WithRoom, for prone's
+// range predicate) and deliberately nothing else", and that no context is
+// installed here at all. The first was never true — resolution.installTruth
+// installs THREE: the room, the cast, and reaction readiness. The second is
+// unfalsifiable now that the symbol it named is gone.
+//
+// The test still installs no tenant of its own. But the room and cast the
+// rules read are the ones resolution installs on every path that folds
+// anything, so this passing is positive evidence that the real installer ran
+// — not, as the old wording had it, evidence that nothing was installed.
 func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 
@@ -248,7 +254,7 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 		DeclarationID: currentAttackID(s.T(), mgr, "sess", "alice"),
 	})
 	s.Require().NoError(err,
-		"an armed Dueling-eligible fighter's swing must not depend on a GameContext the session stack never installs")
+		"an armed Dueling-eligible fighter's swing must resolve on the context resolution installs for it")
 }
 
 // unarmoredBarbarian defends with nothing but a sheet.
@@ -288,9 +294,11 @@ func (s *AttackTestSuite) unarmoredBarbarian(id string) *character.Data {
 // went with it. Kirk found it by playing the tomb: his barbarian fought at 11
 // instead of 14 (rpg-api#842, rpg-toolkit#1251).
 //
-// No gamectx.WithGameContext is installed anywhere in this test, matching the
-// real session stack — that absence is the point being pinned, the same way it
-// is for Dueling and Protection above.
+// Like Dueling and Protection above, this installs no gamectx tenant of its
+// own and does not need to: the cast the AC fold reads is the one resolution
+// installs on every path that folds anything. The test passing is evidence
+// that installer ran, which is the reverse of what this comment claimed while
+// gamectx.WithGameContext still existed to be absent.
 func (s *AttackTestSuite) TestUnarmoredDefenseDefendsOnTheSessionStack() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), s.unarmoredBarbarian("bob"))
@@ -402,7 +410,7 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 		DeclarationID: currentAttackID(s.T(), mgr, "sess", "carol"),
 	})
 	s.Require().NoError(err,
-		"a third member's Protection condition must not depend on a GameContext the session stack never installs")
+		"a third member's Protection condition must resolve on the context resolution installs for it")
 }
 
 // TestASwingLandsAndTheStoryRecordsIt is the headline: a rules machine runs
