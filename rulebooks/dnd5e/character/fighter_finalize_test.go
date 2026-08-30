@@ -208,7 +208,7 @@ func (s *FighterFinalizeSuite) TestFighterWithGWFFightingStyle() {
 	// Verify it's FightingStyleGreatWeaponFightingCondition
 	gwfCondition, ok := charConditions[0].(*conditions.FightingStyleGreatWeaponFightingCondition)
 	s.Require().True(ok, "Condition should be FightingStyleGreatWeaponFightingCondition")
-	s.Equal("gwf-fighter", gwfCondition.CharacterID)
+	s.Equal("gwf-fighter", gwfCondition.MemberID)
 }
 
 // TestFighterWithoutFightingStyle tests that a Fighter cannot be created without

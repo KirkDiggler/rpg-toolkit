@@ -25,8 +25,8 @@ type ImprovedCriticalTestSuite struct {
 func (s *ImprovedCriticalTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 	s.condition = NewImprovedCriticalCondition(ImprovedCriticalInput{
-		CharacterID: "champion-fighter",
-		Threshold:   19, // Champion level 3
+		MemberID:  "champion-fighter",
+		Threshold: 19, // Champion level 3
 	})
 }
 
@@ -40,19 +40,19 @@ func (s *ImprovedCriticalTestSuite) TearDownTest() {
 func (s *ImprovedCriticalTestSuite) TestNewImprovedCriticalCondition() {
 	s.Run("creates with explicit threshold", func() {
 		cond := NewImprovedCriticalCondition(ImprovedCriticalInput{
-			CharacterID: "test-char",
-			Threshold:   18, // Superior Critical
+			MemberID:  "test-char",
+			Threshold: 18, // Superior Critical
 		})
 
-		s.Assert().Equal("test-char", cond.CharacterID)
+		s.Assert().Equal("test-char", cond.MemberID)
 		s.Assert().Equal(18, cond.Threshold)
 		s.Assert().False(cond.IsApplied())
 	})
 
 	s.Run("defaults to 19 when threshold is 0", func() {
 		cond := NewImprovedCriticalCondition(ImprovedCriticalInput{
-			CharacterID: "test-char",
-			Threshold:   0,
+			MemberID:  "test-char",
+			Threshold: 0,
 		})
 
 		s.Assert().Equal(19, cond.Threshold)
@@ -145,8 +145,8 @@ func (s *ImprovedCriticalTestSuite) TestCriticalThresholdModification() {
 
 		// Create condition with threshold 18 (Superior Critical)
 		superiorCrit := NewImprovedCriticalCondition(ImprovedCriticalInput{
-			CharacterID: "champion-fighter",
-			Threshold:   18,
+			MemberID:  "champion-fighter",
+			Threshold: 18,
 		})
 		err = superiorCrit.Apply(ctx, s.bus)
 		s.Require().NoError(err)
@@ -188,7 +188,7 @@ func (s *ImprovedCriticalTestSuite) TestSerialization() {
 		err = json.Unmarshal(data, &decoded)
 		s.Require().NoError(err)
 
-		s.Assert().Equal("champion-fighter", decoded.CharacterID)
+		s.Assert().Equal("champion-fighter", decoded.MemberID)
 		s.Assert().Equal(19, decoded.Threshold)
 		s.Assert().Equal(refs.Conditions.ImprovedCritical().ID, decoded.Ref.ID)
 		s.Assert().Equal(refs.Module, decoded.Ref.Module)
@@ -205,14 +205,14 @@ func (s *ImprovedCriticalTestSuite) TestSerialization() {
 		err = newCondition.loadJSON(data)
 		s.Require().NoError(err)
 
-		s.Assert().Equal(s.condition.CharacterID, newCondition.CharacterID)
+		s.Assert().Equal(s.condition.MemberID, newCondition.MemberID)
 		s.Assert().Equal(s.condition.Threshold, newCondition.Threshold)
 	})
 
 	s.Run("defaults threshold to 19 when deserializing 0", func() {
 		data := json.RawMessage(
 			`{"ref":{"module":"dnd5e","type":"conditions","id":"improved_critical"},` +
-				`"character_id":"test","threshold":0}`)
+				`"member_id":"test","threshold":0}`)
 
 		newCondition := &ImprovedCriticalCondition{}
 		err := newCondition.loadJSON(data)
@@ -235,7 +235,7 @@ func (s *ImprovedCriticalTestSuite) TestLoader() {
 		ic, ok := loaded.(*ImprovedCriticalCondition)
 		s.Require().True(ok, "loaded condition should be ImprovedCriticalCondition")
 
-		s.Assert().Equal(s.condition.CharacterID, ic.CharacterID)
+		s.Assert().Equal(s.condition.MemberID, ic.MemberID)
 		s.Assert().Equal(s.condition.Threshold, ic.Threshold)
 	})
 }
@@ -245,9 +245,9 @@ func (s *ImprovedCriticalTestSuite) TestFactory() {
 	s.Run("creates from ref with config", func() {
 		config := json.RawMessage(`{"threshold": 18}`)
 		output, err := CreateFromRef(&CreateFromRefInput{
-			Ref:         refs.Conditions.ImprovedCritical().String(),
-			Config:      config,
-			CharacterID: "test-char",
+			Ref:      refs.Conditions.ImprovedCritical().String(),
+			Config:   config,
+			MemberID: "test-char",
 		})
 		s.Require().NoError(err)
 		s.Require().NotNil(output)
@@ -255,15 +255,15 @@ func (s *ImprovedCriticalTestSuite) TestFactory() {
 		ic, ok := output.Condition.(*ImprovedCriticalCondition)
 		s.Require().True(ok)
 
-		s.Assert().Equal("test-char", ic.CharacterID)
+		s.Assert().Equal("test-char", ic.MemberID)
 		s.Assert().Equal(18, ic.Threshold)
 	})
 
 	s.Run("creates with default threshold when config is empty", func() {
 		output, err := CreateFromRef(&CreateFromRefInput{
-			Ref:         refs.Conditions.ImprovedCritical().String(),
-			Config:      nil,
-			CharacterID: "test-char",
+			Ref:      refs.Conditions.ImprovedCritical().String(),
+			Config:   nil,
+			MemberID: "test-char",
 		})
 		s.Require().NoError(err)
 		s.Require().NotNil(output)

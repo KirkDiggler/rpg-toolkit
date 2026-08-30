@@ -20,15 +20,15 @@ import (
 
 // FightingStyleTwoWeaponFightingData is the JSON structure for persisting TWF condition state
 type FightingStyleTwoWeaponFightingData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // FightingStyleTwoWeaponFightingCondition allows adding ability modifier to off-hand weapon damage.
 // Normally when you use two-weapon fighting, you don't add your ability modifier to the damage
 // of the bonus action attack. With this fighting style, you can.
 type FightingStyleTwoWeaponFightingCondition struct {
-	CharacterID     string
+	MemberID        string
 	subscriptionIDs []string
 	bus             events.EventBus
 }
@@ -45,7 +45,7 @@ func (f *FightingStyleTwoWeaponFightingCondition) Ref() *core.Ref {
 // NewFightingStyleTwoWeaponFightingCondition creates a new Two-Weapon Fighting condition.
 func NewFightingStyleTwoWeaponFightingCondition(characterID string) *FightingStyleTwoWeaponFightingCondition {
 	return &FightingStyleTwoWeaponFightingCondition{
-		CharacterID: characterID,
+		MemberID: characterID,
 	}
 }
 
@@ -98,8 +98,8 @@ func (f *FightingStyleTwoWeaponFightingCondition) Remove(ctx context.Context, bu
 // ToJSON converts the condition to JSON for persistence.
 func (f *FightingStyleTwoWeaponFightingCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleTwoWeaponFightingData{
-		Ref:         refs.Conditions.FightingStyleTwoWeaponFighting(),
-		CharacterID: f.CharacterID,
+		Ref:      refs.Conditions.FightingStyleTwoWeaponFighting(),
+		MemberID: f.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -111,7 +111,7 @@ func (f *FightingStyleTwoWeaponFightingCondition) loadJSON(data json.RawMessage)
 		return rpgerr.Wrap(err, "failed to unmarshal two-weapon fighting data")
 	}
 
-	f.CharacterID = twfData.CharacterID
+	f.MemberID = twfData.MemberID
 	return nil
 }
 
@@ -122,7 +122,7 @@ func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
-	if event.AttackerID != f.CharacterID {
+	if event.AttackerID != f.MemberID {
 		return c, nil
 	}
 
@@ -156,7 +156,7 @@ func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "two_weapon_fighting", modifyDamage); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply two-weapon fighting for character %s", f.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply two-weapon fighting for character %s", f.MemberID)
 	}
 
 	return c, nil

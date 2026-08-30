@@ -27,13 +27,13 @@ var gwfDiceRegex = regexp.MustCompile(`(\d+)[dD](\d+)`)
 
 // FightingStyleGreatWeaponFightingData is the JSON structure for persisting GWF condition state
 type FightingStyleGreatWeaponFightingData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // FightingStyleGreatWeaponFightingCondition allows rerolling 1s and 2s on weapon damage dice.
 type FightingStyleGreatWeaponFightingCondition struct {
-	CharacterID     string
+	MemberID        string
 	roller          dice.Roller
 	subscriptionIDs []string
 	bus             events.EventBus
@@ -53,8 +53,8 @@ func NewFightingStyleGreatWeaponFightingCondition(
 	characterID string, roller dice.Roller,
 ) *FightingStyleGreatWeaponFightingCondition {
 	return &FightingStyleGreatWeaponFightingCondition{
-		CharacterID: characterID,
-		roller:      roller,
+		MemberID: characterID,
+		roller:   roller,
 	}
 }
 
@@ -107,8 +107,8 @@ func (f *FightingStyleGreatWeaponFightingCondition) Remove(ctx context.Context, 
 // ToJSON converts the condition to JSON for persistence.
 func (f *FightingStyleGreatWeaponFightingCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleGreatWeaponFightingData{
-		Ref:         refs.Conditions.FightingStyleGreatWeaponFighting(),
-		CharacterID: f.CharacterID,
+		Ref:      refs.Conditions.FightingStyleGreatWeaponFighting(),
+		MemberID: f.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -120,7 +120,7 @@ func (f *FightingStyleGreatWeaponFightingCondition) loadJSON(data json.RawMessag
 		return rpgerr.Wrap(err, "failed to unmarshal great weapon fighting data")
 	}
 
-	f.CharacterID = gwfData.CharacterID
+	f.MemberID = gwfData.MemberID
 	return nil
 }
 
@@ -131,7 +131,7 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
-	if event.AttackerID != f.CharacterID {
+	if event.AttackerID != f.MemberID {
 		return c, nil
 	}
 
@@ -184,7 +184,7 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "great_weapon_fighting", modifyDamage); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply great weapon fighting for character %s", f.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply great weapon fighting for character %s", f.MemberID)
 	}
 
 	return c, nil

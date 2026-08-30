@@ -17,10 +17,10 @@ import (
 
 type DodgingConditionTestSuite struct {
 	suite.Suite
-	ctx         context.Context
-	bus         events.EventBus
-	condition   *DodgingCondition
-	characterID string
+	ctx       context.Context
+	bus       events.EventBus
+	condition *DodgingCondition
+	memberID  string
 }
 
 func TestDodgingConditionSuite(t *testing.T) {
@@ -30,8 +30,8 @@ func TestDodgingConditionSuite(t *testing.T) {
 func (s *DodgingConditionTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
-	s.characterID = "char-dodging"
-	s.condition = NewDodgingCondition(s.characterID)
+	s.memberID = "char-dodging"
+	s.condition = NewDodgingCondition(s.memberID)
 }
 
 func (s *DodgingConditionTestSuite) SetupSubTest() {
@@ -39,7 +39,7 @@ func (s *DodgingConditionTestSuite) SetupSubTest() {
 }
 
 func (s *DodgingConditionTestSuite) TestNewDodgingCondition() {
-	s.Assert().Equal(s.characterID, s.condition.CharacterID)
+	s.Assert().Equal(s.memberID, s.condition.MemberID)
 	s.Assert().False(s.condition.IsApplied())
 }
 
@@ -52,7 +52,7 @@ func (s *DodgingConditionTestSuite) TestApply() {
 	})
 
 	s.Run("returns error if already applied", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
@@ -64,7 +64,7 @@ func (s *DodgingConditionTestSuite) TestApply() {
 
 func (s *DodgingConditionTestSuite) TestRemove() {
 	s.Run("removes successfully after apply", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
@@ -75,7 +75,7 @@ func (s *DodgingConditionTestSuite) TestRemove() {
 	})
 
 	s.Run("no-op if not applied", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Remove(s.ctx, s.bus)
 		s.Require().NoError(err)
 	})
@@ -83,13 +83,13 @@ func (s *DodgingConditionTestSuite) TestRemove() {
 
 func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 	s.Run("adds disadvantage when character is targeted", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
 		attackEvent := dnd5eEvents.AttackChainEvent{
 			AttackerID: "attacker-1",
-			TargetID:   s.characterID,
+			TargetID:   s.memberID,
 			IsMelee:    true,
 		}
 
@@ -106,13 +106,13 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 	})
 
 	s.Run("adds disadvantage for ranged attacks too", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
 		attackEvent := dnd5eEvents.AttackChainEvent{
 			AttackerID: "attacker-1",
-			TargetID:   s.characterID,
+			TargetID:   s.memberID,
 			IsMelee:    false,
 		}
 
@@ -127,7 +127,7 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 	})
 
 	s.Run("does not add disadvantage when another character is targeted", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
@@ -150,12 +150,12 @@ func (s *DodgingConditionTestSuite) TestAttackChainDisadvantage() {
 
 func (s *DodgingConditionTestSuite) TestSavingThrowChainAdvantage() {
 	s.Run("adds advantage on DEX saves for this character", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
 		saveEvent := &dnd5eEvents.SavingThrowChainEvent{
-			SaverID: s.characterID,
+			SaverID: s.memberID,
 			Ability: abilities.DEX,
 			DC:      15,
 		}
@@ -173,12 +173,12 @@ func (s *DodgingConditionTestSuite) TestSavingThrowChainAdvantage() {
 	})
 
 	s.Run("does not add advantage on non-DEX saves", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
 		saveEvent := &dnd5eEvents.SavingThrowChainEvent{
-			SaverID: s.characterID,
+			SaverID: s.memberID,
 			Ability: abilities.CON,
 			DC:      15,
 		}
@@ -194,7 +194,7 @@ func (s *DodgingConditionTestSuite) TestSavingThrowChainAdvantage() {
 	})
 
 	s.Run("does not add advantage for other characters", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
@@ -217,7 +217,7 @@ func (s *DodgingConditionTestSuite) TestSavingThrowChainAdvantage() {
 
 func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 	s.Run("removes condition on character turn start", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		s.Assert().True(condition.IsApplied())
@@ -232,7 +232,7 @@ func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 
 		// Publish turn start for this character
 		err = dnd5eEvents.TurnStartTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			SubjectID: s.characterID,
+			SubjectID: s.memberID,
 			Round:     1,
 		})
 		s.Require().NoError(err)
@@ -240,13 +240,13 @@ func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 		// Condition should be removed
 		s.Assert().False(condition.IsApplied())
 		s.Require().NotNil(removedEvent)
-		s.Assert().Equal(s.characterID, removedEvent.MemberID)
+		s.Assert().Equal(s.memberID, removedEvent.MemberID)
 		s.Assert().Equal(refs.Conditions.Dodging().String(), removedEvent.ConditionRef)
 		s.Assert().Equal("turn_start", removedEvent.Reason)
 	})
 
 	s.Run("does not remove on other character turn start", func() {
-		condition := NewDodgingCondition(s.characterID)
+		condition := NewDodgingCondition(s.memberID)
 		err := condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 
@@ -263,7 +263,7 @@ func (s *DodgingConditionTestSuite) TestTurnStartRemoval() {
 }
 
 func (s *DodgingConditionTestSuite) TestToJSON() {
-	condition := NewDodgingCondition(s.characterID)
+	condition := NewDodgingCondition(s.memberID)
 	data, err := condition.ToJSON()
 	s.Require().NoError(err)
 
@@ -271,5 +271,5 @@ func (s *DodgingConditionTestSuite) TestToJSON() {
 	loaded := &DodgingCondition{}
 	err = loaded.loadJSON(data)
 	s.Require().NoError(err)
-	s.Assert().Equal(s.characterID, loaded.CharacterID)
+	s.Assert().Equal(s.memberID, loaded.MemberID)
 }

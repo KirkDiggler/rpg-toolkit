@@ -126,9 +126,9 @@ func (s *SneakAttackTestSuite) executeDamageChain(input damageChainInput) (*dnd5
 
 func (s *SneakAttackTestSuite) TestSneakAttackUsesMarkedWeaponType() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{4}, nil)
@@ -162,9 +162,9 @@ func (s *SneakAttackTestSuite) executeDamageChainSimple(
 func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 	// Level 1 rogue gets 1d6 sneak attack
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -191,9 +191,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel1() {
 
 func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 	s.Require().NoError(sneak.Apply(s.ctx, s.bus))
 
@@ -220,9 +220,9 @@ func (s *SneakAttackTestSuite) TestCriticalRollsSneakDiceTwice() {
 func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
 	// Level 5 rogue gets 3d6 sneak attack
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       5,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    5,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -246,9 +246,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackAddsDiceLevel5() {
 
 func (s *SneakAttackTestSuite) TestSneakAttackOnlyOncePerTurn() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -273,9 +273,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackOnlyOncePerTurn() {
 
 func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -314,8 +314,8 @@ func (s *SneakAttackTestSuite) TestSneakAttackResetsOnTurnEnd() {
 // every TakeAction within a turn instead of once per turn.
 func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnPersistsAcrossJSONRoundTrip() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       3,
+		MemberID: "rogue-1",
+		Level:    3,
 	})
 	sneak.UsedThisTurn = true
 
@@ -338,8 +338,8 @@ func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnPersistsAcrossJSONRoun
 // UsedThisTurn=false regardless of the persisted value.
 func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnFalseRoundTrips() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
+		MemberID: "rogue-1",
+		Level:    1,
 	})
 	// UsedThisTurn defaults to false; explicit for the test.
 	sneak.UsedThisTurn = false
@@ -356,9 +356,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnFalseRoundTrips() {
 
 func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -380,9 +380,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {
 
 func (s *SneakAttackTestSuite) TestSneakAttackOnlyAffectsOwnAttacks() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -421,9 +421,9 @@ func (s *SneakAttackTestSuite) TestCalculateSneakAttackDice() {
 
 	for _, tc := range testCases {
 		sneak := NewSneakAttackCondition(SneakAttackInput{
-			CharacterID: "rogue-1",
-			Level:       tc.level,
-			Roller:      s.roller,
+			MemberID: "rogue-1",
+			Level:    tc.level,
+			Roller:   s.roller,
 		})
 		s.Equal(tc.damageDice, sneak.DamageDice, "Level %d should have %dd6", tc.level, tc.damageDice)
 	}
@@ -436,9 +436,9 @@ func (s *SneakAttackTestSuite) TestCalculateSneakAttackDice() {
 func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAdvantage() {
 	// Sneak attack should trigger when attacker has advantage
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err := sneak.Apply(s.ctx, s.bus)
@@ -487,9 +487,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWithAllyAdjacent() {
 	}})
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err = sneak.Apply(ctx, s.bus)
@@ -561,7 +561,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAdjacentCreature
 		"goblin-2": "goblins",
 	}})
 
-	sneak := NewSneakAttackCondition(SneakAttackInput{CharacterID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
 	s.Require().NoError(sneak.Apply(ctx, s.bus))
 
 	finalEvent := s.runDamageChain(ctx, "rogue-1", "goblin-1")
@@ -598,7 +598,7 @@ func (s *SneakAttackTestSuite) TestSneakAttackTriggersWhenAThirdFactionIsAdjacen
 		"hobgoblin-1": "hobgoblins",
 	}})
 
-	sneak := NewSneakAttackCondition(SneakAttackInput{CharacterID: "rogue-1", Level: 1, Roller: s.roller})
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 1, Roller: s.roller})
 	s.Require().NoError(sneak.Apply(ctx, s.bus))
 
 	s.roller.EXPECT().RollN(gomock.Any(), 1, 6).Return([]int{5}, nil)
@@ -652,9 +652,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWithoutConditions() 
 	// NO allies adjacent to the goblin
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err = sneak.Apply(s.ctx, s.bus)
@@ -719,9 +719,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenAllyTooFar() {
 	ctx := gamectx.WithRoom(s.ctx, s.room)
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err = sneak.Apply(ctx, s.bus)
@@ -783,9 +783,9 @@ func (s *SneakAttackTestSuite) TestSneakAttackDoesNotTriggerWhenOnlyEnemyAdjacen
 	ctx := gamectx.WithRoom(s.ctx, s.room)
 
 	sneak := NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: "rogue-1",
-		Level:       1,
-		Roller:      s.roller,
+		MemberID: "rogue-1",
+		Level:    1,
+		Roller:   s.roller,
 	})
 
 	err = sneak.Apply(ctx, s.bus)

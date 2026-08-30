@@ -20,8 +20,8 @@ import (
 
 // FightingStyleArcheryData is the JSON structure for persisting archery condition state
 type FightingStyleArcheryData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // FightingStyleArcheryCondition grants +2 to attack rolls with ranged weapons.
@@ -41,9 +41,9 @@ func (f *FightingStyleArcheryCondition) Ref() *core.Ref {
 }
 
 // NewFightingStyleArcheryCondition creates a new Archery fighting style condition.
-func NewFightingStyleArcheryCondition(characterID string) *FightingStyleArcheryCondition {
+func NewFightingStyleArcheryCondition(memberID string) *FightingStyleArcheryCondition {
 	return &FightingStyleArcheryCondition{
-		CharacterID: characterID,
+		CharacterID: memberID,
 	}
 }
 
@@ -96,8 +96,8 @@ func (f *FightingStyleArcheryCondition) Remove(ctx context.Context, bus events.E
 // ToJSON converts the condition to JSON for persistence.
 func (f *FightingStyleArcheryCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleArcheryData{
-		Ref:         refs.Conditions.FightingStyleArchery(),
-		CharacterID: f.CharacterID,
+		Ref:      refs.Conditions.FightingStyleArchery(),
+		MemberID: f.CharacterID,
 	}
 	return json.Marshal(data)
 }
@@ -109,7 +109,7 @@ func (f *FightingStyleArcheryCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal archery data")
 	}
 
-	f.CharacterID = archeryData.CharacterID
+	f.CharacterID = archeryData.MemberID
 	return nil
 }
 

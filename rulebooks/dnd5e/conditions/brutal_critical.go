@@ -26,17 +26,17 @@ var diceNotationRegex = regexp.MustCompile(`^(\d*)[dD](\d+)`)
 
 // BrutalCriticalData is the JSON structure for persisting brutal critical condition state
 type BrutalCriticalData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	Level       int       `json:"level"`
-	ExtraDice   int       `json:"extra_dice"`
+	Ref       *core.Ref `json:"ref"`
+	MemberID  string    `json:"member_id"`
+	Level     int       `json:"level"`
+	ExtraDice int       `json:"extra_dice"`
 }
 
 // BrutalCriticalCondition represents the barbarian's brutal critical feature.
 // It adds extra weapon damage dice on critical hits based on barbarian level.
 // It implements the ConditionBehavior interface.
 type BrutalCriticalCondition struct {
-	CharacterID     string
+	MemberID        string
 	Level           int
 	ExtraDice       int
 	subscriptionIDs []string
@@ -53,18 +53,18 @@ func (b *BrutalCriticalCondition) Ref() *core.Ref { return refs.Conditions.Bruta
 
 // BrutalCriticalInput provides configuration for creating a brutal critical condition
 type BrutalCriticalInput struct {
-	CharacterID string      // ID of the barbarian
-	Level       int         // Barbarian level (determines extra dice)
-	Roller      dice.Roller // Dice roller for rolling extra damage
+	MemberID string      // ID of the barbarian
+	Level    int         // Barbarian level (determines extra dice)
+	Roller   dice.Roller // Dice roller for rolling extra damage
 }
 
 // NewBrutalCriticalCondition creates a brutal critical condition from input
 func NewBrutalCriticalCondition(input BrutalCriticalInput) *BrutalCriticalCondition {
 	return &BrutalCriticalCondition{
-		CharacterID: input.CharacterID,
-		Level:       input.Level,
-		ExtraDice:   calculateExtraDice(input.Level),
-		roller:      input.Roller,
+		MemberID:  input.MemberID,
+		Level:     input.Level,
+		ExtraDice: calculateExtraDice(input.Level),
+		roller:    input.Roller,
 	}
 }
 
@@ -128,10 +128,10 @@ func (b *BrutalCriticalCondition) Remove(ctx context.Context, bus events.EventBu
 // ToJSON converts the condition to JSON for persistence
 func (b *BrutalCriticalCondition) ToJSON() (json.RawMessage, error) {
 	data := BrutalCriticalData{
-		Ref:         refs.Conditions.BrutalCritical(),
-		CharacterID: b.CharacterID,
-		Level:       b.Level,
-		ExtraDice:   b.ExtraDice,
+		Ref:       refs.Conditions.BrutalCritical(),
+		MemberID:  b.MemberID,
+		Level:     b.Level,
+		ExtraDice: b.ExtraDice,
 	}
 	return json.Marshal(data)
 }
@@ -143,7 +143,7 @@ func (b *BrutalCriticalCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal brutal critical data")
 	}
 
-	b.CharacterID = bcData.CharacterID
+	b.MemberID = bcData.MemberID
 	b.Level = bcData.Level
 	b.ExtraDice = bcData.ExtraDice
 
@@ -160,7 +160,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 	// 1. We're the attacker
 	// 2. This is a critical hit
 	// 3. We have extra dice to add (level 9+)
-	if event.AttackerID != b.CharacterID || !event.IsCritical || b.ExtraDice == 0 {
+	if event.AttackerID != b.MemberID || !event.IsCritical || b.ExtraDice == 0 {
 		return c, nil
 	}
 
@@ -203,7 +203,7 @@ func (b *BrutalCriticalCondition) onDamageChain(
 
 	err = c.Add(combat.StageFeatures, "brutal_critical", modifyDamage)
 	if err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add brutal critical modifier for character %s", b.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to add brutal critical modifier for character %s", b.MemberID)
 	}
 
 	return c, nil

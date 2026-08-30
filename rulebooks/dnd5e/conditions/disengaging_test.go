@@ -210,14 +210,14 @@ func (s *DisengagingConditionTestSuite) TestJSONRoundTrip() {
 	err = json.Unmarshal(reserializedData, &reserializedMap)
 	s.Require().NoError(err)
 
-	s.Equal(originalMap["character_id"], reserializedMap["character_id"])
+	s.Equal(originalMap["member_id"], reserializedMap["member_id"])
 }
 
 func (s *DisengagingConditionTestSuite) TestCreateFromRef() {
 	// Test factory creation
 	output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
-		Ref:         refs.Conditions.Disengaging().String(),
-		CharacterID: "rogue-1",
+		Ref:      refs.Conditions.Disengaging().String(),
+		MemberID: "rogue-1",
 	})
 	s.Require().NoError(err)
 	s.NotNil(output.Condition)

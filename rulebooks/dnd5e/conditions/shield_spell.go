@@ -32,8 +32,8 @@ const ShieldACBonus = 5
 // the encounter snapshot's reaction-readiness map (see Encounter.SetReactionReady)
 // because it is encounter-scoped state, not character-scoped.
 type ShieldSpellConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // ShieldSpellCondition publishes a ReactionTriggerEvent when an attack against
@@ -139,8 +139,8 @@ func (s *ShieldSpellCondition) Remove(ctx context.Context, bus events.EventBus) 
 // ToJSON converts the condition to its JSON representation.
 func (s *ShieldSpellCondition) ToJSON() (json.RawMessage, error) {
 	data := ShieldSpellConditionData{
-		Ref:         refs.Spells.Shield(),
-		CharacterID: s.CharacterID,
+		Ref:      refs.Spells.Shield(),
+		MemberID: s.CharacterID,
 	}
 	return json.Marshal(data)
 }
@@ -151,7 +151,7 @@ func (s *ShieldSpellCondition) loadJSON(data json.RawMessage) error {
 	if err := json.Unmarshal(data, &shieldData); err != nil {
 		return rpgerr.Wrap(err, "failed to unmarshal shield spell data")
 	}
-	s.CharacterID = shieldData.CharacterID
+	s.CharacterID = shieldData.MemberID
 	return nil
 }
 

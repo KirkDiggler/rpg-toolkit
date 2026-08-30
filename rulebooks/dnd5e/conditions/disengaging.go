@@ -21,8 +21,8 @@ import (
 // DisengagingConditionData is the serializable form of the disengaging condition.
 // This is stored by the game server as an opaque JSON blob.
 type DisengagingConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // DisengagingCondition prevents opportunity attacks against the character
@@ -30,7 +30,7 @@ type DisengagingConditionData struct {
 // a character uses the Disengage combat ability and automatically
 // removes itself when the character's turn ends.
 type DisengagingCondition struct {
-	CharacterID     string
+	MemberID        string
 	bus             events.EventBus
 	subscriptionIDs []string
 }
@@ -45,9 +45,9 @@ func (d *DisengagingCondition) Ref() *core.Ref { return refs.Conditions.Disengag
 // NewDisengagingCondition creates a new Disengaging condition for the specified character.
 // The condition will prevent opportunity attacks when the character moves and will
 // automatically remove itself at the end of the character's turn.
-func NewDisengagingCondition(characterID string) *DisengagingCondition {
+func NewDisengagingCondition(memberID string) *DisengagingCondition {
 	return &DisengagingCondition{
-		CharacterID: characterID,
+		MemberID: memberID,
 	}
 }
 
@@ -113,8 +113,8 @@ func (d *DisengagingCondition) Remove(ctx context.Context, bus events.EventBus) 
 // ToJSON converts the condition to JSON for persistence.
 func (d *DisengagingCondition) ToJSON() (json.RawMessage, error) {
 	data := DisengagingConditionData{
-		Ref:         refs.Conditions.Disengaging(),
-		CharacterID: d.CharacterID,
+		Ref:      refs.Conditions.Disengaging(),
+		MemberID: d.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -126,7 +126,7 @@ func (d *DisengagingCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal disengaging data")
 	}
 
-	d.CharacterID = disengagingData.CharacterID
+	d.MemberID = disengagingData.MemberID
 	return nil
 }
 
@@ -138,7 +138,7 @@ func (d *DisengagingCondition) onMovementChain(
 	c chain.Chain[*dnd5eEvents.MovementChainEvent],
 ) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
 	// Only apply to this character's movement
-	if event.EntityID != d.CharacterID {
+	if event.EntityID != d.MemberID {
 		return c, nil
 	}
 
@@ -148,13 +148,13 @@ func (d *DisengagingCondition) onMovementChain(
 			Name:       "Disengaging",
 			SourceType: "condition",
 			SourceRef:  refs.Conditions.Disengaging(),
-			EntityID:   d.CharacterID,
+			EntityID:   d.MemberID,
 		})
 		return e, nil
 	}
 
 	if err := c.Add(combat.StageConditions, "disengaging", modifyMovement); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add disengaging modifier for character %s", d.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to add disengaging modifier for character %s", d.MemberID)
 	}
 
 	return c, nil
@@ -163,7 +163,7 @@ func (d *DisengagingCondition) onMovementChain(
 // onTurnEnd handles turn end events to remove this condition when the character's turn ends.
 func (d *DisengagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.TurnEndEvent) error {
 	// Only remove on this character's turn end
-	if event.SubjectID != d.CharacterID {
+	if event.SubjectID != d.MemberID {
 		return nil
 	}
 
@@ -174,12 +174,12 @@ func (d *DisengagingCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.
 	// Publish condition removed event
 	removals := dnd5eEvents.ConditionRemovedTopic.On(d.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     d.CharacterID,
+		MemberID:     d.MemberID,
 		ConditionRef: refs.Conditions.Disengaging().String(),
 		Reason:       "turn_end",
 	})
 	if err != nil {
-		return rpgerr.Wrapf(err, "failed to publish disengaging removal for character %s", d.CharacterID)
+		return rpgerr.Wrapf(err, "failed to publish disengaging removal for character %s", d.MemberID)
 	}
 
 	// Actually remove the condition (unsubscribe from events)

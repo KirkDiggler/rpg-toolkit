@@ -19,8 +19,8 @@ type CreateFromRefInput struct {
 	Ref string
 	// Config is condition-specific configuration as JSON
 	Config json.RawMessage
-	// CharacterID is the ID of the character this condition applies to
-	CharacterID string
+	// MemberID is the ID of the character this condition applies to
+	MemberID string
 	// SourceRef is the ref of what granted this condition in "module:type:value" format
 	// e.g., "dnd5e:classes:barbarian" for class-granted conditions
 	// e.g., "dnd5e:features:rage" for feature-activated conditions
@@ -45,8 +45,8 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "ref is required")
 	}
 
-	if input.CharacterID == "" {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "character_id is required")
+	if input.MemberID == "" {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "member_id is required")
 	}
 
 	// Parse the ref to get the condition type
@@ -69,41 +69,41 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 
 	switch ref.ID {
 	case refs.Conditions.UnarmoredDefense().ID:
-		condition, err = createUnarmoredDefense(input.Config, input.CharacterID, input.SourceRef)
+		condition, err = createUnarmoredDefense(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.Raging().ID:
-		condition, err = createRaging(input.Config, input.CharacterID, input.SourceRef)
+		condition, err = createRaging(input.Config, input.MemberID, input.SourceRef)
 	case refs.Conditions.BrutalCritical().ID:
-		condition, err = createBrutalCritical(input.Config, input.CharacterID)
+		condition, err = createBrutalCritical(input.Config, input.MemberID)
 	case refs.Conditions.FightingStyleArchery().ID:
-		condition = NewFightingStyleArcheryCondition(input.CharacterID)
+		condition = NewFightingStyleArcheryCondition(input.MemberID)
 	case refs.Conditions.FightingStyleDefense().ID:
-		condition = NewFightingStyleDefenseCondition(input.CharacterID)
+		condition = NewFightingStyleDefenseCondition(input.MemberID)
 	case refs.Conditions.FightingStyleDueling().ID:
-		condition = NewFightingStyleDuelingCondition(input.CharacterID)
+		condition = NewFightingStyleDuelingCondition(input.MemberID)
 	case refs.Conditions.FightingStyleGreatWeaponFighting().ID:
-		condition = NewFightingStyleGreatWeaponFightingCondition(input.CharacterID, nil)
+		condition = NewFightingStyleGreatWeaponFightingCondition(input.MemberID, nil)
 	case refs.Conditions.FightingStyleProtection().ID:
-		condition = NewFightingStyleProtectionCondition(input.CharacterID)
+		condition = NewFightingStyleProtectionCondition(input.MemberID)
 	case refs.Conditions.FightingStyleTwoWeaponFighting().ID:
-		condition = NewFightingStyleTwoWeaponFightingCondition(input.CharacterID)
+		condition = NewFightingStyleTwoWeaponFightingCondition(input.MemberID)
 	case refs.Conditions.ImprovedCritical().ID:
-		condition, err = createImprovedCritical(input.Config, input.CharacterID)
+		condition, err = createImprovedCritical(input.Config, input.MemberID)
 	case refs.Conditions.MartialArts().ID:
-		condition, err = createMartialArts(input.Config, input.CharacterID)
+		condition, err = createMartialArts(input.Config, input.MemberID)
 	case refs.Conditions.UnarmoredMovement().ID:
-		condition, err = createUnarmoredMovement(input.Config, input.CharacterID)
+		condition, err = createUnarmoredMovement(input.Config, input.MemberID)
 	case refs.Conditions.SneakAttack().ID:
-		condition, err = createSneakAttack(input.Config, input.CharacterID)
+		condition, err = createSneakAttack(input.Config, input.MemberID)
 	case refs.Conditions.Disengaging().ID:
-		condition = NewDisengagingCondition(input.CharacterID)
+		condition = NewDisengagingCondition(input.MemberID)
 	case refs.Conditions.Dodging().ID:
-		condition = NewDodgingCondition(input.CharacterID)
+		condition = NewDodgingCondition(input.MemberID)
 	case refs.Conditions.Prone().ID:
-		condition = NewProneCondition(input.CharacterID)
+		condition = NewProneCondition(input.MemberID)
 	case refs.Conditions.Hidden().ID:
-		condition = NewHiddenCondition(input.CharacterID)
+		condition = NewHiddenCondition(input.MemberID)
 	case refs.Conditions.Helped().ID:
-		condition, err = createHelped(input.Config, input.CharacterID)
+		condition, err = createHelped(input.Config, input.MemberID)
 	default:
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "unknown condition: %s", ref.ID)
 	}
@@ -136,9 +136,9 @@ func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef strin
 	}
 
 	return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: characterID,
-		Type:        variant,
-		Source:      sourceRef,
+		MemberID: characterID,
+		Type:     variant,
+		Source:   sourceRef,
 	}), nil
 }
 
@@ -183,7 +183,7 @@ type brutalCriticalConfig struct {
 }
 
 // createBrutalCritical creates a brutal critical condition from config
-func createBrutalCritical(config json.RawMessage, characterID string) (*BrutalCriticalCondition, error) {
+func createBrutalCritical(config json.RawMessage, memberID string) (*BrutalCriticalCondition, error) {
 	var cfg brutalCriticalConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -199,8 +199,8 @@ func createBrutalCritical(config json.RawMessage, characterID string) (*BrutalCr
 	}
 
 	return NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: characterID,
-		Level:       level,
+		MemberID: memberID,
+		Level:    level,
 	}), nil
 }
 
@@ -210,7 +210,7 @@ type improvedCriticalConfig struct {
 }
 
 // createImprovedCritical creates an improved critical condition from config
-func createImprovedCritical(config json.RawMessage, characterID string) (*ImprovedCriticalCondition, error) {
+func createImprovedCritical(config json.RawMessage, memberID string) (*ImprovedCriticalCondition, error) {
 	var cfg improvedCriticalConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -225,8 +225,8 @@ func createImprovedCritical(config json.RawMessage, characterID string) (*Improv
 	}
 
 	return NewImprovedCriticalCondition(ImprovedCriticalInput{
-		CharacterID: characterID,
-		Threshold:   threshold,
+		MemberID:  memberID,
+		Threshold: threshold,
 	}), nil
 }
 
@@ -236,7 +236,7 @@ type martialArtsConfig struct {
 }
 
 // createMartialArts creates a martial arts condition from config
-func createMartialArts(config json.RawMessage, characterID string) (*MartialArtsCondition, error) {
+func createMartialArts(config json.RawMessage, memberID string) (*MartialArtsCondition, error) {
 	var cfg martialArtsConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -250,8 +250,8 @@ func createMartialArts(config json.RawMessage, characterID string) (*MartialArts
 	}
 
 	return NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: characterID,
-		MonkLevel:   cfg.MonkLevel,
+		MemberID:  memberID,
+		MonkLevel: cfg.MonkLevel,
 	}), nil
 }
 
@@ -261,7 +261,7 @@ type unarmoredMovementConfig struct {
 }
 
 // createUnarmoredMovement creates an unarmored movement condition from config
-func createUnarmoredMovement(config json.RawMessage, characterID string) (*UnarmoredMovementCondition, error) {
+func createUnarmoredMovement(config json.RawMessage, memberID string) (*UnarmoredMovementCondition, error) {
 	var cfg unarmoredMovementConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -275,8 +275,8 @@ func createUnarmoredMovement(config json.RawMessage, characterID string) (*Unarm
 	}
 
 	return NewUnarmoredMovementCondition(UnarmoredMovementInput{
-		CharacterID: characterID,
-		MonkLevel:   cfg.MonkLevel,
+		MemberID:  memberID,
+		MonkLevel: cfg.MonkLevel,
 	}), nil
 }
 
@@ -286,7 +286,7 @@ type sneakAttackConfig struct {
 }
 
 // createSneakAttack creates a sneak attack condition from config
-func createSneakAttack(config json.RawMessage, characterID string) (*SneakAttackCondition, error) {
+func createSneakAttack(config json.RawMessage, memberID string) (*SneakAttackCondition, error) {
 	var cfg sneakAttackConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -301,8 +301,8 @@ func createSneakAttack(config json.RawMessage, characterID string) (*SneakAttack
 	}
 
 	return NewSneakAttackCondition(SneakAttackInput{
-		CharacterID: characterID,
-		Level:       level,
+		MemberID: memberID,
+		Level:    level,
 		// Roller is nil - will use default roller when needed
 	}), nil
 }
@@ -315,7 +315,7 @@ type helpedConfig struct {
 // createHelped creates a helped condition from config. HelperID identifies
 // whose next turn is the safety-net removal trigger (PHB p.192: "before the
 // start of your [the helper's] next turn").
-func createHelped(config json.RawMessage, characterID string) (*HelpedCondition, error) {
+func createHelped(config json.RawMessage, memberID string) (*HelpedCondition, error) {
 	var cfg helpedConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -327,5 +327,5 @@ func createHelped(config json.RawMessage, characterID string) (*HelpedCondition,
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "helped config requires 'helper_id' field")
 	}
 
-	return NewHelpedCondition(characterID, cfg.HelperID), nil
+	return NewHelpedCondition(memberID, cfg.HelperID), nil
 }

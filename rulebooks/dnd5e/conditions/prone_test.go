@@ -311,7 +311,7 @@ func (s *ProneConditionSuite) TestRoundTripsThroughTheLoader() {
 	var data conditions.ProneConditionData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	s.Require().Equal(refs.Conditions.Prone(), data.Ref, "the blob names the ref its loader routes on")
-	s.Require().Equal(proneID, data.CharacterID)
+	s.Require().Equal(proneID, data.MemberID)
 
 	loaded, err := conditions.LoadJSON(raw)
 	s.Require().NoError(err)
@@ -334,8 +334,8 @@ func (s *ProneConditionSuite) TestRoundTripsThroughTheLoader() {
 // The other routing site: a host holding only the ref string can build one.
 func (s *ProneConditionSuite) TestCreatesFromItsRef() {
 	out, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
-		Ref:         refs.Conditions.Prone().String(),
-		CharacterID: proneID,
+		Ref:      refs.Conditions.Prone().String(),
+		MemberID: proneID,
 	})
 	s.Require().NoError(err)
 

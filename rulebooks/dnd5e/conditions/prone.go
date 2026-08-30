@@ -31,8 +31,8 @@ const proneReachCells = combat.AdjacentCells
 // ProneConditionData is the serializable form of the prone condition.
 // This is stored by the game server as an opaque JSON blob.
 type ProneConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // ProneCondition is D&D 5e's prone condition, as it affects attack rolls.
@@ -168,8 +168,8 @@ func (p *ProneCondition) Remove(ctx context.Context, bus events.EventBus) error 
 // ToJSON converts the condition to JSON for persistence.
 func (p *ProneCondition) ToJSON() (json.RawMessage, error) {
 	data := ProneConditionData{
-		Ref:         refs.Conditions.Prone(),
-		CharacterID: p.CharacterID,
+		Ref:      refs.Conditions.Prone(),
+		MemberID: p.CharacterID,
 	}
 	return json.Marshal(data)
 }
@@ -181,7 +181,7 @@ func (p *ProneCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal prone data")
 	}
 
-	p.CharacterID = proneData.CharacterID
+	p.CharacterID = proneData.MemberID
 	return nil
 }
 

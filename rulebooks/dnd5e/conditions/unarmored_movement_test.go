@@ -29,13 +29,13 @@ func (s *UnarmoredMovementTestSuite) SetupTest() {
 	s.bus = events.NewEventBus()
 	s.ctx = context.Background()
 	s.condition = NewUnarmoredMovementCondition(UnarmoredMovementInput{
-		CharacterID: "monk-1",
-		MonkLevel:   3,
+		MemberID:  "monk-1",
+		MonkLevel: 3,
 	})
 }
 
 func (s *UnarmoredMovementTestSuite) TestNewUnarmoredMovementCondition() {
-	s.Assert().Equal("monk-1", s.condition.CharacterID)
+	s.Assert().Equal("monk-1", s.condition.MemberID)
 	s.Assert().Equal(3, s.condition.MonkLevel)
 	s.Assert().False(s.condition.IsApplied())
 }
@@ -81,16 +81,16 @@ func (s *UnarmoredMovementTestSuite) TestToJSON() {
 	s.Require().NoError(err)
 
 	s.Assert().Equal(refs.Conditions.UnarmoredMovement(), umData.Ref)
-	s.Assert().Equal("monk-1", umData.CharacterID)
+	s.Assert().Equal("monk-1", umData.MemberID)
 	s.Assert().Equal(3, umData.MonkLevel)
 }
 
 func (s *UnarmoredMovementTestSuite) TestLoadJSON() {
 	// Create JSON data
 	data := UnarmoredMovementData{
-		Ref:         refs.Conditions.UnarmoredMovement(),
-		CharacterID: "monk-2",
-		MonkLevel:   10,
+		Ref:       refs.Conditions.UnarmoredMovement(),
+		MemberID:  "monk-2",
+		MonkLevel: 10,
 	}
 	jsonData, err := json.Marshal(data)
 	s.Require().NoError(err)
@@ -100,7 +100,7 @@ func (s *UnarmoredMovementTestSuite) TestLoadJSON() {
 	err = condition.loadJSON(jsonData)
 	s.Require().NoError(err)
 
-	s.Assert().Equal("monk-2", condition.CharacterID)
+	s.Assert().Equal("monk-2", condition.MemberID)
 	s.Assert().Equal(10, condition.MonkLevel)
 }
 
@@ -126,8 +126,8 @@ func (s *UnarmoredMovementTestSuite) TestCalculateSpeedBonus() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			condition := NewUnarmoredMovementCondition(UnarmoredMovementInput{
-				CharacterID: "monk-test",
-				MonkLevel:   tc.monkLevel,
+				MemberID:  "monk-test",
+				MonkLevel: tc.monkLevel,
 			})
 			bonus := condition.calculateSpeedBonus()
 			s.Assert().Equal(tc.expectedBonus, bonus, "Monk level %d should grant +%d ft", tc.monkLevel, tc.expectedBonus)
@@ -193,8 +193,8 @@ func (s *UnarmoredMovementTestSuite) TestSpeedBonusWithDifferentLevels() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			condition := NewUnarmoredMovementCondition(UnarmoredMovementInput{
-				CharacterID: "monk-1",
-				MonkLevel:   tc.monkLevel,
+				MemberID:  "monk-1",
+				MonkLevel: tc.monkLevel,
 			})
 			ctx := castOf(context.Background(), &fakeConditionOwner{id: "monk-1", shield: false})
 
@@ -220,7 +220,7 @@ func (s *UnarmoredMovementTestSuite) TestRoundTripSerialization() {
 	s.Require().NoError(err)
 
 	// Verify fields match
-	s.Assert().Equal(s.condition.CharacterID, newCondition.CharacterID)
+	s.Assert().Equal(s.condition.MemberID, newCondition.MemberID)
 	s.Assert().Equal(s.condition.MonkLevel, newCondition.MonkLevel)
 
 	// Note: bus state is not serialized, so IsApplied will be false

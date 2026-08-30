@@ -20,15 +20,15 @@ import (
 
 // ImprovedCriticalData is the JSON structure for persisting improved critical condition state
 type ImprovedCriticalData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	Threshold   int       `json:"threshold"` // Critical threshold (19 for Champion level 3)
+	Ref       *core.Ref `json:"ref"`
+	MemberID  string    `json:"member_id"`
+	Threshold int       `json:"threshold"` // Critical threshold (19 for Champion level 3)
 }
 
 // ImprovedCriticalCondition represents the Champion's Improved Critical feature.
 // Your weapon attacks score a critical hit on a roll of 19 or 20.
 type ImprovedCriticalCondition struct {
-	CharacterID     string
+	MemberID        string
 	Threshold       int // Critical threshold (19 for Champion level 3, 18 for Superior Critical)
 	subscriptionIDs []string
 	bus             events.EventBus
@@ -90,9 +90,9 @@ func (ic *ImprovedCriticalCondition) Remove(ctx context.Context, bus events.Even
 // ToJSON converts the condition to JSON for persistence
 func (ic *ImprovedCriticalCondition) ToJSON() (json.RawMessage, error) {
 	data := ImprovedCriticalData{
-		Ref:         refs.Conditions.ImprovedCritical(),
-		CharacterID: ic.CharacterID,
-		Threshold:   ic.Threshold,
+		Ref:       refs.Conditions.ImprovedCritical(),
+		MemberID:  ic.MemberID,
+		Threshold: ic.Threshold,
 	}
 	return json.Marshal(data)
 }
@@ -106,7 +106,7 @@ func (ic *ImprovedCriticalCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal improved critical data")
 	}
 
-	ic.CharacterID = icData.CharacterID
+	ic.MemberID = icData.MemberID
 	ic.Threshold = icData.Threshold
 
 	// Default to 19 if not specified
@@ -124,7 +124,7 @@ func (ic *ImprovedCriticalCondition) onAttackChain(
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Only modify attacks by this character
-	if event.AttackerID != ic.CharacterID {
+	if event.AttackerID != ic.MemberID {
 		return c, nil
 	}
 
@@ -139,7 +139,7 @@ func (ic *ImprovedCriticalCondition) onAttackChain(
 
 	err := c.Add(combat.StageFeatures, "improved_critical", modifyThreshold)
 	if err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply improved critical for character %s", ic.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply improved critical for character %s", ic.MemberID)
 	}
 
 	return c, nil
@@ -147,8 +147,8 @@ func (ic *ImprovedCriticalCondition) onAttackChain(
 
 // ImprovedCriticalInput provides configuration for creating an improved critical condition
 type ImprovedCriticalInput struct {
-	CharacterID string
-	Threshold   int // Critical threshold (default 19)
+	MemberID  string
+	Threshold int // Critical threshold (default 19)
 }
 
 // NewImprovedCriticalCondition creates a new improved critical condition
@@ -159,7 +159,7 @@ func NewImprovedCriticalCondition(input ImprovedCriticalInput) *ImprovedCritical
 	}
 
 	return &ImprovedCriticalCondition{
-		CharacterID: input.CharacterID,
-		Threshold:   threshold,
+		MemberID:  input.MemberID,
+		Threshold: threshold,
 	}
 }

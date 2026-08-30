@@ -25,9 +25,9 @@ func (s *FactoryTestSuite) TestCreateFromRef_SneakAttack() {
 	// in the factory switch statement
 
 	input := &CreateFromRefInput{
-		Ref:         refs.Conditions.SneakAttack().String(),
-		Config:      json.RawMessage(`{"rogue_level": 1}`),
-		CharacterID: "rogue-1",
+		Ref:      refs.Conditions.SneakAttack().String(),
+		Config:   json.RawMessage(`{"rogue_level": 1}`),
+		MemberID: "rogue-1",
 	}
 
 	output, err := CreateFromRef(input)
@@ -47,9 +47,9 @@ func (s *FactoryTestSuite) TestCreateFromRef_SneakAttack() {
 
 func (s *FactoryTestSuite) TestCreateFromRef_SneakAttackLevel5() {
 	input := &CreateFromRefInput{
-		Ref:         refs.Conditions.SneakAttack().String(),
-		Config:      json.RawMessage(`{"rogue_level": 5}`),
-		CharacterID: "rogue-1",
+		Ref:      refs.Conditions.SneakAttack().String(),
+		Config:   json.RawMessage(`{"rogue_level": 5}`),
+		MemberID: "rogue-1",
 	}
 
 	output, err := CreateFromRef(input)

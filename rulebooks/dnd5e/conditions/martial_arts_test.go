@@ -86,8 +86,8 @@ func (s *MartialArtsTestSuite) TearDownTest() {
 // TestApplyAndRemove verifies basic apply/remove functionality
 func (s *MartialArtsTestSuite) TestApplyAndRemove() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   1,
+		MemberID:  s.characterID,
+		MonkLevel: 1,
 	})
 
 	// Verify not applied initially
@@ -149,9 +149,9 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			condition := NewMartialArtsCondition(MartialArtsInput{
-				CharacterID: s.characterID,
-				MonkLevel:   tc.monkLevel,
-				Roller:      s.mockRoller,
+				MemberID:  s.characterID,
+				MonkLevel: tc.monkLevel,
+				Roller:    s.mockRoller,
 			})
 
 			err := condition.Apply(s.ctx, s.bus)
@@ -234,9 +234,9 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeDamageScaling() {
 // TestUnarmedStrikeCriticalDamage tests that crits double the martial arts dice
 func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   5, // 1d6 martial arts die
-		Roller:      s.mockRoller,
+		MemberID:  s.characterID,
+		MonkLevel: 5, // 1d6 martial arts die
+		Roller:    s.mockRoller,
 	})
 
 	err := condition.Apply(s.ctx, s.bus)
@@ -299,9 +299,9 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeCriticalDamage() {
 
 func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsShareType() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   1,
-		Roller:      s.mockRoller,
+		MemberID:  s.characterID,
+		MonkLevel: 1,
+		Roller:    s.mockRoller,
 	})
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -351,9 +351,9 @@ func (s *MartialArtsTestSuite) TestUnarmedStrikeReplacesMarkedPrimaryWhenPoolsSh
 
 func (s *MartialArtsTestSuite) TestUnarmedStrikeDoesNotDoubleMarkedDoesNotCritPool() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   1,
-		Roller:      s.mockRoller,
+		MemberID:  s.characterID,
+		MonkLevel: 1,
+		Roller:    s.mockRoller,
 	})
 	s.Require().NoError(condition.Apply(s.ctx, s.bus))
 	defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -399,8 +399,8 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 	s.Run("DEX higher than STR - use DEX", func() {
 		// Registry already has DEX=16 (+3), STR=10 (+0)
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 
 		err := condition.Apply(s.ctx, s.bus)
@@ -447,8 +447,8 @@ func (s *MartialArtsTestSuite) TestDEXModifierReplacement() {
 		// Create a monk with higher STR than DEX
 		strongMonk := s.strongID
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: strongMonk,
-			MonkLevel:   1,
+			MemberID:  strongMonk,
+			MonkLevel: 1,
 		})
 
 		err := condition.Apply(s.ctx, s.bus)
@@ -499,8 +499,8 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 	s.Run("SourceRef label is DEX when DEX replaces STR for unarmed strike", func() {
 		// Registry already has DEX=16 (+3), STR=10 (+0)
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 
 		err := condition.Apply(s.ctx, s.bus)
@@ -553,8 +553,8 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 		// Create a monk with higher STR than DEX
 		strongMonk := s.strongID
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: strongMonk,
-			MonkLevel:   1,
+			MemberID:  strongMonk,
+			MonkLevel: 1,
 		})
 
 		err := condition.Apply(s.ctx, s.bus)
@@ -604,8 +604,8 @@ func (s *MartialArtsTestSuite) TestDEXModifierLabel() {
 	s.Run("SourceRef label is DEX when DEX replaces STR for monk weapon", func() {
 		// Registry already has DEX=16 (+3), STR=10 (+0)
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 
 		err := condition.Apply(s.ctx, s.bus)
@@ -703,8 +703,8 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDetection() {
 //nolint:dupl // Test cases require similar setup code
 func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   1,
+		MemberID:  s.characterID,
+		MonkLevel: 1,
 	})
 
 	err := condition.Apply(s.ctx, s.bus)
@@ -751,8 +751,8 @@ func (s *MartialArtsTestSuite) TestMonkWeaponDEXUsage() {
 //nolint:dupl // Test cases require similar setup code
 func (s *MartialArtsTestSuite) TestNonMonkWeaponNotModified() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   1,
+		MemberID:  s.characterID,
+		MonkLevel: 1,
 	})
 
 	err := condition.Apply(s.ctx, s.bus)
@@ -818,8 +818,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 	s.Run("unarmed strike with DEX > STR - attack bonus swaps to DEX", func() {
 		// Registry has DEX=16 (+3), STR=10 (+0); base bonus = STR 0 + prof 2.
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -841,8 +841,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 	s.Run("unarmed strike with STR >= DEX - attack bonus unchanged", func() {
 		strongMonk := s.strongID
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: strongMonk,
-			MonkLevel:   1,
+			MemberID:  strongMonk,
+			MonkLevel: 1,
 		})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -861,8 +861,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 
 	s.Run("non-finesse monk weapon (quarterstaff) - attack bonus swaps to DEX", func() {
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -883,8 +883,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 		// The base attack path already picks the higher mod for finesse
 		// weapons; Martial Arts must not add the delta a second time.
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -903,8 +903,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 
 	s.Run("non-monk weapon (greatsword) - attack bonus unchanged", func() {
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -923,8 +923,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 
 	s.Run("other character's attack - unchanged", func() {
 		condition := NewMartialArtsCondition(MartialArtsInput{
-			CharacterID: s.characterID,
-			MonkLevel:   1,
+			MemberID:  s.characterID,
+			MonkLevel: 1,
 		})
 		s.Require().NoError(condition.Apply(s.ctx, s.bus))
 		defer func() { _ = condition.Remove(s.ctx, s.bus) }()
@@ -945,8 +945,8 @@ func (s *MartialArtsTestSuite) TestAttackBonusUsesDEX() {
 // TestSerialization tests JSON serialization round-trip
 func (s *MartialArtsTestSuite) TestSerialization() {
 	original := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   5,
+		MemberID:  s.characterID,
+		MonkLevel: 5,
 	})
 
 	// Serialize
@@ -958,7 +958,7 @@ func (s *MartialArtsTestSuite) TestSerialization() {
 	err = json.Unmarshal(jsonData, &data)
 	s.Require().NoError(err)
 	s.Equal(refs.Conditions.MartialArts(), data.Ref)
-	s.Equal(s.characterID, data.CharacterID)
+	s.Equal(s.characterID, data.MemberID)
 	s.Equal(5, data.MonkLevel)
 
 	// Deserialize
@@ -967,15 +967,15 @@ func (s *MartialArtsTestSuite) TestSerialization() {
 	s.Require().NoError(err)
 
 	// Verify fields
-	s.Equal(original.CharacterID, loaded.CharacterID)
+	s.Equal(original.MemberID, loaded.MemberID)
 	s.Equal(original.MonkLevel, loaded.MonkLevel)
 }
 
 // TestOtherCharacterNotModified verifies that other characters' attacks are not modified
 func (s *MartialArtsTestSuite) TestOtherCharacterNotModified() {
 	condition := NewMartialArtsCondition(MartialArtsInput{
-		CharacterID: s.characterID,
-		MonkLevel:   5,
+		MemberID:  s.characterID,
+		MonkLevel: 5,
 	})
 
 	err := condition.Apply(s.ctx, s.bus)

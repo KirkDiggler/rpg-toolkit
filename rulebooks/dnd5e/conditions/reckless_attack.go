@@ -20,8 +20,8 @@ import (
 
 // RecklessAttackData is the JSON structure for persisting reckless attack condition state
 type RecklessAttackData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // RecklessAttackCondition represents the Barbarian's Reckless Attack.
@@ -31,7 +31,7 @@ type RecklessAttackData struct {
 //
 // The condition lasts until the start of the barbarian's next turn.
 type RecklessAttackCondition struct {
-	CharacterID     string
+	MemberID        string
 	subscriptionIDs []string
 	bus             events.EventBus
 }
@@ -46,7 +46,7 @@ func (r *RecklessAttackCondition) Ref() *core.Ref { return refs.Conditions.Reckl
 // NewRecklessAttackCondition creates a new reckless attack condition
 func NewRecklessAttackCondition(characterID string) *RecklessAttackCondition {
 	return &RecklessAttackCondition{
-		CharacterID: characterID,
+		MemberID: characterID,
 	}
 }
 
@@ -111,8 +111,8 @@ func (r *RecklessAttackCondition) Remove(ctx context.Context, bus events.EventBu
 // ToJSON converts the condition to JSON for persistence
 func (r *RecklessAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := RecklessAttackData{
-		Ref:         refs.Conditions.RecklessAttack(),
-		CharacterID: r.CharacterID,
+		Ref:      refs.Conditions.RecklessAttack(),
+		MemberID: r.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -126,7 +126,7 @@ func (r *RecklessAttackCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal reckless attack data")
 	}
 
-	r.CharacterID = raData.CharacterID
+	r.MemberID = raData.MemberID
 	return nil
 }
 
@@ -138,8 +138,8 @@ func (r *RecklessAttackCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	isAttacker := event.AttackerID == r.CharacterID
-	isTarget := event.TargetID == r.CharacterID
+	isAttacker := event.AttackerID == r.MemberID
+	isTarget := event.TargetID == r.MemberID
 
 	if !isAttacker && !isTarget {
 		return c, nil
@@ -151,14 +151,14 @@ func (r *RecklessAttackCondition) onAttackChain(
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.RecklessAttack(),
-				SourceID:  r.CharacterID,
+				SourceID:  r.MemberID,
 				Reason:    "Reckless Attack",
 			})
 			return e, nil
 		}
 
 		if err := c.Add(combat.StageFeatures, "reckless_attack_advantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add reckless attack advantage for character %s", r.CharacterID)
+			return c, rpgerr.Wrapf(err, "failed to add reckless attack advantage for character %s", r.MemberID)
 		}
 	}
 
@@ -167,14 +167,14 @@ func (r *RecklessAttackCondition) onAttackChain(
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.RecklessAttack(),
-				SourceID:  r.CharacterID,
+				SourceID:  r.MemberID,
 				Reason:    "Target is reckless",
 			})
 			return e, nil
 		}
 
 		if err := c.Add(combat.StageConditions, "reckless_attack_vulnerability", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add reckless vulnerability for character %s", r.CharacterID)
+			return c, rpgerr.Wrapf(err, "failed to add reckless vulnerability for character %s", r.MemberID)
 		}
 	}
 
@@ -183,7 +183,7 @@ func (r *RecklessAttackCondition) onAttackChain(
 
 // onTurnStart removes the condition when the barbarian's turn starts.
 func (r *RecklessAttackCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.SubjectID != r.CharacterID {
+	if event.SubjectID != r.MemberID {
 		return nil
 	}
 
@@ -195,11 +195,11 @@ func (r *RecklessAttackCondition) onTurnStart(ctx context.Context, event dnd5eEv
 	// condition tracker knows to drop this condition from persistence.
 	removals := dnd5eEvents.ConditionRemovedTopic.On(r.bus)
 	if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     r.CharacterID,
+		MemberID:     r.MemberID,
 		ConditionRef: refs.Conditions.RecklessAttack().String(),
 		Reason:       "turn_start",
 	}); err != nil {
-		return rpgerr.Wrapf(err, "failed to publish reckless attack removal for character %s", r.CharacterID)
+		return rpgerr.Wrapf(err, "failed to publish reckless attack removal for character %s", r.MemberID)
 	}
 
 	return r.Remove(ctx, r.bus)

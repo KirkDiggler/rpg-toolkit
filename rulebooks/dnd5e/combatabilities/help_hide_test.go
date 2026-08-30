@@ -161,7 +161,7 @@ func (s *HelpAbilityTestSuite) TestActivate_AppliesHelpedConditionToAlly() {
 
 	helped, ok := got.Condition.(*conditions.HelpedCondition)
 	s.Require().True(ok, "condition should be a *HelpedCondition")
-	s.Equal(s.ally.GetID(), helped.CharacterID)
+	s.Equal(s.ally.GetID(), helped.MemberID)
 	s.Equal(s.owner.GetID(), helped.HelperID, "HelperID tracks the safety-net turn trigger")
 }
 
@@ -290,7 +290,7 @@ func (s *HideAbilityTestSuite) TestActivate_Success() {
 
 	hidden, ok := gotCond.Condition.(*conditions.HiddenCondition)
 	s.Require().True(ok, "condition should be a *HiddenCondition")
-	s.Equal(s.owner.GetID(), hidden.CharacterID)
+	s.Equal(s.owner.GetID(), hidden.MemberID)
 }
 
 // TestActivate_Failure covers the R6-deferred failure branch as a unit test

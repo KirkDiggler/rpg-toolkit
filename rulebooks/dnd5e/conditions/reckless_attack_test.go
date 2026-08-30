@@ -35,7 +35,7 @@ func (s *RecklessAttackTestSuite) SetupTest() {
 }
 
 func (s *RecklessAttackTestSuite) TestNewRecklessAttackCondition() {
-	s.Equal("barbarian-1", s.condition.CharacterID)
+	s.Equal("barbarian-1", s.condition.MemberID)
 	s.False(s.condition.IsApplied())
 }
 
@@ -295,13 +295,13 @@ func (s *RecklessAttackTestSuite) TestToJSON() {
 	s.Require().NoError(err)
 
 	s.Equal(refs.Conditions.RecklessAttack(), raData.Ref)
-	s.Equal("barbarian-1", raData.CharacterID)
+	s.Equal("barbarian-1", raData.MemberID)
 }
 
 func (s *RecklessAttackTestSuite) TestLoadJSON() {
 	data := RecklessAttackData{
-		Ref:         refs.Conditions.RecklessAttack(),
-		CharacterID: "barbarian-2",
+		Ref:      refs.Conditions.RecklessAttack(),
+		MemberID: "barbarian-2",
 	}
 	jsonData, err := json.Marshal(data)
 	s.Require().NoError(err)
@@ -310,7 +310,7 @@ func (s *RecklessAttackTestSuite) TestLoadJSON() {
 	err = condition.loadJSON(jsonData)
 	s.Require().NoError(err)
 
-	s.Equal("barbarian-2", condition.CharacterID)
+	s.Equal("barbarian-2", condition.MemberID)
 }
 
 func (s *RecklessAttackTestSuite) TestRoundTripSerialization() {
@@ -323,7 +323,7 @@ func (s *RecklessAttackTestSuite) TestRoundTripSerialization() {
 	err = newCondition.loadJSON(jsonData)
 	s.Require().NoError(err)
 
-	s.Equal(s.condition.CharacterID, newCondition.CharacterID)
+	s.Equal(s.condition.MemberID, newCondition.MemberID)
 }
 
 func (s *RecklessAttackTestSuite) TestLoaderIntegration() {

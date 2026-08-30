@@ -23,15 +23,15 @@ import (
 
 // FightingStyleProtectionData is the JSON structure for persisting protection condition state
 type FightingStyleProtectionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // FightingStyleProtectionCondition imposes disadvantage on attacks against adjacent allies.
 // When a creature you can see attacks a target other than you that is within 5 feet of you,
 // you can use your reaction to impose disadvantage on the attack roll. You must be wielding a shield.
 type FightingStyleProtectionCondition struct {
-	CharacterID     string
+	MemberID        string
 	subscriptionIDs []string
 	bus             events.EventBus
 }
@@ -48,7 +48,7 @@ func (f *FightingStyleProtectionCondition) Ref() *core.Ref {
 // NewFightingStyleProtectionCondition creates a new Protection fighting style condition.
 func NewFightingStyleProtectionCondition(characterID string) *FightingStyleProtectionCondition {
 	return &FightingStyleProtectionCondition{
-		CharacterID: characterID,
+		MemberID: characterID,
 	}
 }
 
@@ -101,8 +101,8 @@ func (f *FightingStyleProtectionCondition) Remove(ctx context.Context, bus event
 // ToJSON converts the condition to JSON for persistence.
 func (f *FightingStyleProtectionCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleProtectionData{
-		Ref:         refs.Conditions.FightingStyleProtection(),
-		CharacterID: f.CharacterID,
+		Ref:      refs.Conditions.FightingStyleProtection(),
+		MemberID: f.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -114,7 +114,7 @@ func (f *FightingStyleProtectionCondition) loadJSON(data json.RawMessage) error 
 		return rpgerr.Wrap(err, "failed to unmarshal protection data")
 	}
 
-	f.CharacterID = protectionData.CharacterID
+	f.MemberID = protectionData.MemberID
 	return nil
 }
 
@@ -135,12 +135,12 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Never a reaction to my own attack.
-	if event.AttackerID == f.CharacterID {
+	if event.AttackerID == f.MemberID {
 		return c, nil
 	}
 
 	// Only triggers for attacks on OTHER creatures (not self)
-	if event.TargetID == f.CharacterID {
+	if event.TargetID == f.MemberID {
 		return c, nil
 	}
 
@@ -159,7 +159,7 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	// gives to the same question. A cast is installed on every path that folds
 	// anything, so a fold without one is assembled wrong rather than describing
 	// a participant with nothing to say.
-	self, ok := member(ctx, f.CharacterID)
+	self, ok := member(ctx, f.MemberID)
 	if !ok {
 		return c, nil
 	}
@@ -190,7 +190,7 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	// Get positions of fighter and target
-	fighterPos, fighterExists := room.GetEntityPosition(f.CharacterID)
+	fighterPos, fighterExists := room.GetEntityPosition(f.MemberID)
 	targetPos, targetExists := room.GetEntityPosition(event.TargetID)
 	if !fighterExists || !targetExists {
 		return c, nil
@@ -206,7 +206,7 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	// All conditions met - add modifier to impose disadvantage at StageFeatures
 	modifyAttack := func(ctx context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-			SourceID:  f.CharacterID,
+			SourceID:  f.MemberID,
 			SourceRef: refs.Conditions.FightingStyleProtection(),
 			Reason:    "protection_fighting_style",
 		})
@@ -222,7 +222,7 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 		// nobody, and a reaction consumed that nothing recorded is the failure
 		// this whole shape exists to end.
 		if err := publishSpendRequested(
-			ctx, f.bus, f.CharacterID, coreCombat.ActionReaction, 1, f.Ref(),
+			ctx, f.bus, f.MemberID, coreCombat.ActionReaction, 1, f.Ref(),
 		); err != nil {
 			return e, rpgerr.Wrap(err, "failed to publish protection reaction spend")
 		}
@@ -231,7 +231,7 @@ func (f *FightingStyleProtectionCondition) onAttackChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "protection", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply protection for character %s", f.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply protection for character %s", f.MemberID)
 	}
 
 	return c, nil

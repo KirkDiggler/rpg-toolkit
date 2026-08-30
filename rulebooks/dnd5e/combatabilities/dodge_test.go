@@ -159,7 +159,7 @@ func (s *DodgeAbilityTestSuite) TestActivate_PublishesDodgingCondition() {
 
 	dodgingCond, ok := receivedEvent.Condition.(*conditions.DodgingCondition)
 	s.Require().True(ok, "Event condition should be *DodgingCondition")
-	s.Assert().Equal(s.owner.GetID(), dodgingCond.CharacterID)
+	s.Assert().Equal(s.owner.GetID(), dodgingCond.MemberID)
 }
 
 func (s *DodgeAbilityTestSuite) TestActivate_NoActionEconomy() {

@@ -16,9 +16,9 @@ import (
 
 // UnarmoredMovementData is the JSON structure for persisting unarmored movement condition state
 type UnarmoredMovementData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	MonkLevel   int       `json:"monk_level"`
+	Ref       *core.Ref `json:"ref"`
+	MemberID  string    `json:"member_id"`
+	MonkLevel int       `json:"monk_level"`
 }
 
 // UnarmoredMovementCondition represents the Monk's Unarmored Movement feature.
@@ -30,9 +30,9 @@ type UnarmoredMovementData struct {
 // - Level 14-17: +25 ft
 // - Level 18+: +30 ft
 type UnarmoredMovementCondition struct {
-	CharacterID string
-	MonkLevel   int
-	bus         events.EventBus
+	MemberID  string
+	MonkLevel int
+	bus       events.EventBus
 }
 
 // Ensure UnarmoredMovementCondition implements dnd5eEvents.ConditionBehavior
@@ -44,15 +44,15 @@ func (u *UnarmoredMovementCondition) Ref() *core.Ref { return refs.Conditions.Un
 
 // UnarmoredMovementInput provides configuration for creating an unarmored movement condition
 type UnarmoredMovementInput struct {
-	CharacterID string // ID of the character
-	MonkLevel   int    // Monk level determines speed bonus
+	MemberID  string // ID of the character
+	MonkLevel int    // Monk level determines speed bonus
 }
 
 // NewUnarmoredMovementCondition creates an unarmored movement condition from input
 func NewUnarmoredMovementCondition(input UnarmoredMovementInput) *UnarmoredMovementCondition {
 	return &UnarmoredMovementCondition{
-		CharacterID: input.CharacterID,
-		MonkLevel:   input.MonkLevel,
+		MemberID:  input.MemberID,
+		MonkLevel: input.MonkLevel,
 	}
 }
 
@@ -78,9 +78,9 @@ func (u *UnarmoredMovementCondition) Remove(_ context.Context, _ events.EventBus
 // ToJSON converts the condition to JSON for persistence
 func (u *UnarmoredMovementCondition) ToJSON() (json.RawMessage, error) {
 	data := UnarmoredMovementData{
-		Ref:         refs.Conditions.UnarmoredMovement(),
-		CharacterID: u.CharacterID,
-		MonkLevel:   u.MonkLevel,
+		Ref:       refs.Conditions.UnarmoredMovement(),
+		MemberID:  u.MemberID,
+		MonkLevel: u.MonkLevel,
 	}
 	return json.Marshal(data)
 }
@@ -94,7 +94,7 @@ func (u *UnarmoredMovementCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal unarmored movement data")
 	}
 
-	u.CharacterID = umData.CharacterID
+	u.MemberID = umData.MemberID
 	u.MonkLevel = umData.MonkLevel
 
 	return nil
@@ -142,7 +142,7 @@ func (u *UnarmoredMovementCondition) SpeedBonus(ctx context.Context) (bonus int,
 // change — the registry this replaced could not see armor either, and said so.
 // The member surface can grow the question the day a rule needs it.
 func (u *UnarmoredMovementCondition) isUnarmored(ctx context.Context) (unarmored, known bool) {
-	me, ok := member(ctx, u.CharacterID)
+	me, ok := member(ctx, u.MemberID)
 	if !ok {
 		return false, false
 	}

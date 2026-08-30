@@ -135,7 +135,7 @@ func (s *MonkEncounterSuite) createLevel1Monk() *character.Character {
 		Conditions: []json.RawMessage{
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
-				"character_id": "shadow-monk",
+				"member_id": "shadow-monk",
 				"monk_level": 1
 			}`),
 		},
@@ -192,30 +192,30 @@ func (s *MonkEncounterSuite) createLevel2Monk() *character.Character {
 				"ref": {"module": "dnd5e", "type": "features", "id": "flurry_of_blows"},
 				"id": "flurry_of_blows",
 				"name": "Flurry of Blows",
-				"character_id": "shadow-monk"
+				"member_id": "shadow-monk"
 			}`),
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "features", "id": "patient_defense"},
 				"id": "patient_defense",
 				"name": "Patient Defense",
-				"character_id": "shadow-monk"
+				"member_id": "shadow-monk"
 			}`),
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "features", "id": "step_of_the_wind"},
 				"id": "step_of_the_wind",
 				"name": "Step of the Wind",
-				"character_id": "shadow-monk"
+				"member_id": "shadow-monk"
 			}`),
 		},
 		Conditions: []json.RawMessage{
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
-				"character_id": "shadow-monk",
+				"member_id": "shadow-monk",
 				"monk_level": 2
 			}`),
 			json.RawMessage(`{
 				"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_movement"},
-				"character_id": "shadow-monk",
+				"member_id": "shadow-monk",
 				"monk_level": 2
 			}`),
 		},
@@ -562,13 +562,13 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainIncludesWIS() {
 			Conditions: []json.RawMessage{
 				json.RawMessage(`{
 					"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
-					"character_id": "monk-ud-test",
+					"member_id": "monk-ud-test",
 					"monk_level": 1
 				}`),
 				json.RawMessage(`{
 					"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_defense"},
 					"type": "monk",
-					"character_id": "monk-ud-test",
+					"member_id": "monk-ud-test",
 					"source": "dnd5e:classes:monk"
 				}`),
 			},
@@ -689,13 +689,13 @@ func (s *MonkEncounterSuite) TestUnarmoredDefense_ACChainReadsTheCast() {
 			Conditions: []json.RawMessage{
 				json.RawMessage(`{
 					"ref": {"module": "dnd5e", "type": "conditions", "id": "martial_arts"},
-					"character_id": "monk-ud-no-ctx",
+					"member_id": "monk-ud-no-ctx",
 					"monk_level": 1
 				}`),
 				json.RawMessage(`{
 					"ref": {"module": "dnd5e", "type": "conditions", "id": "unarmored_defense"},
 					"type": "monk",
-					"character_id": "monk-ud-no-ctx",
+					"member_id": "monk-ud-no-ctx",
 					"source": "dnd5e:classes:monk"
 				}`),
 			},

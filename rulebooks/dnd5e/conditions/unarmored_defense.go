@@ -32,9 +32,9 @@ const (
 
 // UnarmoredDefenseData is the JSON structure for persisting unarmored defense condition state
 type UnarmoredDefenseData struct {
-	Ref         *core.Ref `json:"ref"`
-	Type        string    `json:"type"`         // "barbarian" or "monk"
-	CharacterID string    `json:"character_id"` // ID of the character
+	Ref      *core.Ref `json:"ref"`
+	Type     string    `json:"type"`      // "barbarian" or "monk"
+	MemberID string    `json:"member_id"` // ID of the character
 	// Source is a ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 	Source string `json:"source"`
 }
@@ -44,7 +44,7 @@ type UnarmoredDefenseData struct {
 // Monk: AC = 10 + DEX modifier + WIS modifier
 // Only applies when not wearing armor. Shields can still be used.
 type UnarmoredDefenseCondition struct {
-	CharacterID     string
+	MemberID        string
 	Type            UnarmoredDefenseType
 	Source          string // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 	subscriptionIDs []string
@@ -60,17 +60,17 @@ func (u *UnarmoredDefenseCondition) Ref() *core.Ref { return refs.Conditions.Una
 
 // UnarmoredDefenseInput provides configuration for creating an unarmored defense condition
 type UnarmoredDefenseInput struct {
-	CharacterID string               // ID of the character
-	Type        UnarmoredDefenseType // Barbarian (CON) or Monk (WIS)
-	Source      string               // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
+	MemberID string               // ID of the character
+	Type     UnarmoredDefenseType // Barbarian (CON) or Monk (WIS)
+	Source   string               // Ref string in "module:type:value" format (e.g., "dnd5e:classes:barbarian")
 }
 
 // NewUnarmoredDefenseCondition creates an unarmored defense condition from input
 func NewUnarmoredDefenseCondition(input UnarmoredDefenseInput) *UnarmoredDefenseCondition {
 	return &UnarmoredDefenseCondition{
-		CharacterID: input.CharacterID,
-		Type:        input.Type,
-		Source:      input.Source,
+		MemberID: input.MemberID,
+		Type:     input.Type,
+		Source:   input.Source,
 	}
 }
 
@@ -123,10 +123,10 @@ func (u *UnarmoredDefenseCondition) Remove(ctx context.Context, bus events.Event
 // ToJSON converts the condition to JSON for persistence
 func (u *UnarmoredDefenseCondition) ToJSON() (json.RawMessage, error) {
 	data := UnarmoredDefenseData{
-		Ref:         refs.Conditions.UnarmoredDefense(),
-		Type:        string(u.Type),
-		CharacterID: u.CharacterID,
-		Source:      u.Source,
+		Ref:      refs.Conditions.UnarmoredDefense(),
+		Type:     string(u.Type),
+		MemberID: u.MemberID,
+		Source:   u.Source,
 	}
 	return json.Marshal(data)
 }
@@ -138,7 +138,7 @@ func (u *UnarmoredDefenseCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal unarmored defense data")
 	}
 
-	u.CharacterID = udData.CharacterID
+	u.MemberID = udData.MemberID
 	u.Type = UnarmoredDefenseType(udData.Type)
 	u.Source = udData.Source
 
@@ -181,7 +181,7 @@ func (u *UnarmoredDefenseCondition) onACChain(
 	c chain.Chain[*combat.ACChainEvent],
 ) (chain.Chain[*combat.ACChainEvent], error) {
 	// Only modify AC for this character
-	if event.CharacterID != u.CharacterID {
+	if event.CharacterID != u.MemberID {
 		return c, nil
 	}
 
@@ -194,7 +194,7 @@ func (u *UnarmoredDefenseCondition) onACChain(
 	// call any other participant's sheet would come through. See [member] for
 	// why a cast that cannot name this character leaves the chain untouched
 	// instead of erroring.
-	me, ok := member(ctx, u.CharacterID)
+	me, ok := member(ctx, u.MemberID)
 	if !ok {
 		return c, nil
 	}
@@ -213,7 +213,7 @@ func (u *UnarmoredDefenseCondition) onACChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "unarmored_defense", modifyAC); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply unarmored defense for character %s", u.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply unarmored defense for character %s", u.MemberID)
 	}
 
 	return c, nil

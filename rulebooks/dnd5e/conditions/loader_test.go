@@ -111,8 +111,8 @@ func (s *LoaderTestSuite) TestLoadRagingCondition() {
 func (s *LoaderTestSuite) TestLoadBrutalCriticalCondition() {
 	// Create a brutal critical condition
 	original := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       13,
+		MemberID: "barbarian-1",
+		Level:    13,
 	})
 
 	// Serialize to JSON
@@ -128,7 +128,7 @@ func (s *LoaderTestSuite) TestLoadBrutalCriticalCondition() {
 	s.Require().True(ok, "Expected *BrutalCriticalCondition")
 
 	// Verify all fields match
-	s.Equal(original.CharacterID, brutal.CharacterID)
+	s.Equal(original.MemberID, brutal.MemberID)
 	s.Equal(original.Level, brutal.Level)
 	s.Equal(original.ExtraDice, brutal.ExtraDice)
 }
@@ -136,9 +136,9 @@ func (s *LoaderTestSuite) TestLoadBrutalCriticalCondition() {
 func (s *LoaderTestSuite) TestLoadUnarmoredDefenseCondition() {
 	// Create an unarmored defense condition
 	original := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	// Serialize to JSON
@@ -154,7 +154,7 @@ func (s *LoaderTestSuite) TestLoadUnarmoredDefenseCondition() {
 	s.Require().True(ok, "Expected *UnarmoredDefenseCondition")
 
 	// Verify all fields match
-	s.Equal(original.CharacterID, unarmored.CharacterID)
+	s.Equal(original.MemberID, unarmored.MemberID)
 	s.Equal(original.Type, unarmored.Type)
 	s.Equal(original.Source, unarmored.Source)
 }
@@ -162,9 +162,9 @@ func (s *LoaderTestSuite) TestLoadUnarmoredDefenseCondition() {
 func (s *LoaderTestSuite) TestLoadMonkUnarmoredDefense() {
 	// Verify monk variant loads correctly
 	original := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "monk-1",
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	jsonData, err := original.ToJSON()
@@ -307,11 +307,11 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 			return &RagingCondition{CharacterID: "barbarian-1", DamageBonus: 2, Level: 5}
 		}},
 		{"brutal_critical", refs.Conditions.BrutalCritical(), func() dnd5eEvents.ConditionBehavior {
-			return NewBrutalCriticalCondition(BrutalCriticalInput{CharacterID: "barbarian-1", Level: 13})
+			return NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "barbarian-1", Level: 13})
 		}},
 		{"unarmored_defense", refs.Conditions.UnarmoredDefense(), func() dnd5eEvents.ConditionBehavior {
 			return NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-				CharacterID: "barbarian-1", Type: UnarmoredDefenseBarbarian, Source: "dnd5e:classes:barbarian",
+				MemberID: "barbarian-1", Type: UnarmoredDefenseBarbarian, Source: "dnd5e:classes:barbarian",
 			})
 		}},
 		{"fighting_style_archery", refs.Conditions.FightingStyleArchery(), func() dnd5eEvents.ConditionBehavior {
@@ -333,19 +333,19 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 			return NewFightingStyleTwoWeaponFightingCondition("fighter-1")
 		}},
 		{"improved_critical", refs.Conditions.ImprovedCritical(), func() dnd5eEvents.ConditionBehavior {
-			return NewImprovedCriticalCondition(ImprovedCriticalInput{CharacterID: "fighter-1", Threshold: 19})
+			return NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "fighter-1", Threshold: 19})
 		}},
 		{"reckless_attack", refs.Conditions.RecklessAttack(), func() dnd5eEvents.ConditionBehavior {
 			return NewRecklessAttackCondition("barbarian-1")
 		}},
 		{"martial_arts", refs.Conditions.MartialArts(), func() dnd5eEvents.ConditionBehavior {
-			return NewMartialArtsCondition(MartialArtsInput{CharacterID: "monk-1", MonkLevel: 3})
+			return NewMartialArtsCondition(MartialArtsInput{MemberID: "monk-1", MonkLevel: 3})
 		}},
 		{"unarmored_movement", refs.Conditions.UnarmoredMovement(), func() dnd5eEvents.ConditionBehavior {
-			return NewUnarmoredMovementCondition(UnarmoredMovementInput{CharacterID: "monk-1", MonkLevel: 3})
+			return NewUnarmoredMovementCondition(UnarmoredMovementInput{MemberID: "monk-1", MonkLevel: 3})
 		}},
 		{"sneak_attack", refs.Features.SneakAttack(), func() dnd5eEvents.ConditionBehavior {
-			return NewSneakAttackCondition(SneakAttackInput{CharacterID: "rogue-1", Level: 3})
+			return NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 3})
 		}},
 		{"disengaging", refs.Conditions.Disengaging(), func() dnd5eEvents.ConditionBehavior {
 			return NewDisengagingCondition("rogue-1")

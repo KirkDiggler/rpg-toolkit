@@ -38,7 +38,7 @@ func (s *HelpedConditionTestSuite) SetupTest() {
 }
 
 func (s *HelpedConditionTestSuite) TestNewHelpedCondition() {
-	s.Equal(s.characterID, s.condition.CharacterID)
+	s.Equal(s.characterID, s.condition.MemberID)
 	s.Equal(s.helperID, s.condition.HelperID)
 	s.False(s.condition.IsApplied())
 }
@@ -179,7 +179,7 @@ func (s *HelpedConditionTestSuite) TestToJSON() {
 	loaded := &HelpedCondition{}
 	err = loaded.loadJSON(data)
 	s.Require().NoError(err)
-	s.Equal(s.characterID, loaded.CharacterID)
+	s.Equal(s.characterID, loaded.MemberID)
 	s.Equal(s.helperID, loaded.HelperID)
 }
 
@@ -194,7 +194,7 @@ func (s *HelpedConditionTestSuite) TestLoaderRoundTrip() {
 
 	helped, ok := loaded.(*HelpedCondition)
 	s.Require().True(ok, "loaded condition should be a *HelpedCondition")
-	s.Equal(s.characterID, helped.CharacterID)
+	s.Equal(s.characterID, helped.MemberID)
 	s.Equal(s.helperID, helped.HelperID)
 
 	err = helped.Apply(s.ctx, s.bus)
@@ -214,15 +214,15 @@ func (s *HelpedConditionTestSuite) TestLoaderRoundTrip() {
 // TestFactoryRoundTrip proves HelpedCondition is registered in factory.go (R3).
 func (s *HelpedConditionTestSuite) TestFactoryRoundTrip() {
 	output, err := CreateFromRef(&CreateFromRefInput{
-		Ref:         refs.Conditions.Helped().String(),
-		Config:      json.RawMessage(`{"helper_id":"` + s.helperID + `"}`),
-		CharacterID: s.characterID,
+		Ref:      refs.Conditions.Helped().String(),
+		Config:   json.RawMessage(`{"helper_id":"` + s.helperID + `"}`),
+		MemberID: s.characterID,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(output)
 
 	helped, ok := output.Condition.(*HelpedCondition)
 	s.Require().True(ok)
-	s.Equal(s.characterID, helped.CharacterID)
+	s.Equal(s.characterID, helped.MemberID)
 	s.Equal(s.helperID, helped.HelperID)
 }
