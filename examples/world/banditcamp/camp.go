@@ -4,6 +4,7 @@
 package banditcamp
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
@@ -124,35 +125,38 @@ const (
 // The verbs. Any actor may attempt any of them.
 const (
 	// Approach walks up to the camp in the open.
-	Approach VerbName = "approach"
+	Approach world.VerbName = "approach"
 
 	// Assault attacks where the camp can see it.
-	Assault VerbName = "assault"
+	Assault world.VerbName = "assault"
 
 	// Defeat records the camp losing the fight.
-	Defeat VerbName = "defeat"
+	Defeat world.VerbName = "defeat"
 
 	// Sneak tries to move unseen. Success and failure differ only in audience.
-	Sneak VerbName = "sneak"
+	Sneak world.VerbName = "sneak"
 
 	// Enter crosses into the camp, quietly.
-	Enter VerbName = "enter"
+	Enter world.VerbName = "enter"
 
 	// Assassinate tries to kill somebody without being heard.
-	Assassinate VerbName = "assassinate"
+	Assassinate world.VerbName = "assassinate"
 
 	// Impersonate claims somebody else's authority.
-	Impersonate VerbName = "impersonate"
+	Impersonate world.VerbName = "impersonate"
 
 	// Parley asks for a hearing.
-	Parley VerbName = "parley"
+	Parley world.VerbName = "parley"
 
 	// Persuade argues a case.
-	Persuade VerbName = "persuade"
+	Persuade world.VerbName = "persuade"
 )
 
 // ConversionThreshold is how much regard turns hostility into alliance.
 const ConversionThreshold = 3
+
+// ContractID names the guild's job, for claiming it off the board.
+const ContractID = "quiet-the-bandit-camp"
 
 // Approaches this camp asks its resolver about. They are the names a D&D 5e
 // resolver happens to know as skills; the kernel sees three opaque strings.
@@ -231,31 +235,36 @@ func Declaration() graph.Config {
 // the back way, the changeling, the parley, and the disguise coming apart are
 // all compositions of these — the paths are what a player does with the verbs,
 // not entries in a list somebody authored.
-func Verbs() []Verb {
-	return []Verb{
+//
+// Read an Outcomes band as "if it went at least this well"; Otherwise is what
+// happens when it did not.
+func Verbs() []world.Verb {
+	return []world.Verb{
 		{
 			Name:      Approach,
-			OnSuccess: Emission{Kind: FactApproach, Subject: SubjectTarget, Witness: WitnessTarget},
+			Otherwise: world.Emission{Kind: FactApproach, Witness: world.WitnessTarget},
 		},
 		{
 			Name:      Assault,
-			OnSuccess: Emission{Kind: FactAssault, Subject: SubjectTarget, Witness: WitnessTarget},
+			Otherwise: world.Emission{Kind: FactAssault, Witness: world.WitnessTarget},
 		},
 		{
 			Name:      Defeat,
-			OnSuccess: Emission{Kind: FactRout, Subject: SubjectTarget, Witness: WitnessTarget},
+			Otherwise: world.Emission{Kind: FactRout, Witness: world.WitnessTarget},
 		},
 		{
 			// The whole of stealth: the same fact, told to different people.
 			Name:       Sneak,
 			Approach:   viaStealth,
 			Difficulty: 13,
-			OnSuccess:  Emission{Kind: FactInfiltration, Subject: SubjectTarget, Witness: WitnessNobody},
-			OnFailure:  Emission{Kind: FactInfiltration, Subject: SubjectTarget, Witness: WitnessTarget},
+			Outcomes: []world.Band{
+				{Emission: world.Emission{Kind: FactInfiltration, Witness: world.WitnessNobody}},
+			},
+			Otherwise: world.Emission{Kind: FactInfiltration, Witness: world.WitnessTarget},
 		},
 		{
 			Name:      Enter,
-			OnSuccess: Emission{Kind: FactEntry, Subject: SubjectTarget, Witness: WitnessNobody},
+			Otherwise: world.Emission{Kind: FactEntry, Witness: world.WitnessNobody},
 		},
 		{
 			// Landing it leaves a corpse nobody heard about. Botching it leaves
@@ -263,8 +272,10 @@ func Verbs() []Verb {
 			Name:       Assassinate,
 			Approach:   viaStealth,
 			Difficulty: 15,
-			OnSuccess:  Emission{Kind: FactKilling, Subject: SubjectTarget, Witness: WitnessNobody},
-			OnFailure:  Emission{Kind: FactScuffle, Subject: SubjectTarget, Witness: WitnessTarget},
+			Outcomes: []world.Band{
+				{Emission: world.Emission{Kind: FactKilling, Witness: world.WitnessNobody}},
+			},
+			Otherwise: world.Emission{Kind: FactScuffle, Witness: world.WitnessTarget},
 		},
 		{
 			// On failure the fact is about the impostor, not the camp: somebody
@@ -273,21 +284,27 @@ func Verbs() []Verb {
 			Name:       Impersonate,
 			Approach:   viaDeception,
 			Difficulty: 12,
-			OnSuccess:  Emission{Kind: FactImpersonation, Subject: SubjectTarget, Witness: WitnessTarget},
-			OnFailure:  Emission{Kind: FactUnmasking, Subject: SubjectActor, Witness: WitnessBystanders},
+			Outcomes: []world.Band{
+				{Emission: world.Emission{Kind: FactImpersonation, Witness: world.WitnessTarget}},
+			},
+			Otherwise: world.Emission{
+				Kind: FactUnmasking, Subject: world.SubjectActor, Witness: world.WitnessBystanders,
+			},
 		},
 		{
 			Name:      Parley,
-			OnSuccess: Emission{Kind: FactParley, Subject: SubjectTarget, Witness: WitnessTarget},
+			Otherwise: world.Emission{Kind: FactParley, Witness: world.WitnessTarget},
 		},
 		{
-			// Both branches write the same kind. The two Count declarations
+			// Both results write the same kind. The two Count declarations
 			// split on the outcome, so a bad argument costs you ground.
 			Name:       Persuade,
 			Approach:   viaPersuasion,
 			Difficulty: 13,
-			OnSuccess:  Emission{Kind: FactPersuasion, Subject: SubjectTarget, Witness: WitnessTarget},
-			OnFailure:  Emission{Kind: FactPersuasion, Subject: SubjectTarget, Witness: WitnessTarget},
+			Outcomes: []world.Band{
+				{Emission: world.Emission{Kind: FactPersuasion, Witness: world.WitnessTarget}},
+			},
+			Otherwise: world.Emission{Kind: FactPersuasion, Witness: world.WitnessTarget},
 		},
 	}
 }
@@ -295,17 +312,33 @@ func Verbs() []Verb {
 // Contract is the guild's job, and the one thing that decides whether a run
 // worked.
 //
-// The objective is read in the camp's own view, because the camp's own view is
-// what the camp acts on. A camp following an impostor is not hostile, however
-// much the party knows about the body behind the tent.
+// Its population is one place: this camp. The objective is read in the camp's
+// own view, because the camp's own view is what the camp acts on. A camp
+// following an impostor is not hostile, however much the party knows about the
+// body behind the tent.
 func Contract() quest.Template {
 	return quest.Template{
-		ID:   "quiet-the-bandit-camp",
-		Name: "Quiet the Bandit Camp",
+		ID:       ContractID,
+		Name:     "Quiet the Bandit Camp",
+		Subjects: []journal.EntityID{Camp},
 		Objectives: []quest.Objective{{
 			ID:        "camp-no-longer-hostile",
-			Observer:  Camp,
-			Predicate: quest.NoEdge{From: Camp, Rel: HostileTo, To: Party},
+			Observer:  quest.InstanceSubject,
+			Predicate: quest.NoEdge{From: quest.InstanceSubject, Rel: HostileTo, To: Party},
 		}},
+	}
+}
+
+// Scenario is what this content package hands the composer: everything
+// declared, and nothing injected.
+//
+// The resolver is conspicuously absent. That is the boundary — this camp does
+// not know what game it is being played in, and the same declarations run under
+// any rulebook that can answer "did this attempt work".
+func Scenario() world.Scenario {
+	return world.Scenario{
+		Graph:  Declaration(),
+		Verbs:  Verbs(),
+		Quests: []quest.Template{Contract()},
 	}
 }

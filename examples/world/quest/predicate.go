@@ -10,6 +10,42 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 )
 
+// InstanceSubject stands in for whichever individual an instance is about.
+//
+// One template, many instances, each minted about a different person: a
+// predicate written against this sentinel reads "my hostage is free", not
+// "Deryn is free". Authors write the template once and the mint supplies the
+// name — which is the whole of instance isolation, and the reason three
+// parties working the same job never collide.
+const InstanceSubject journal.EntityID = "quest:instance-subject"
+
+// Bindings are what a predicate is asked against: one observer's derived
+// present, and the individual this instance is about.
+//
+// The state is somebody's state — objectives are read in a named observer's
+// view, so a predicate never sees a truth nobody holds.
+type Bindings struct {
+	// State is the observer's derived present.
+	State *graph.State
+
+	// Subject is the individual this instance was minted about, substituted
+	// wherever a predicate names [InstanceSubject].
+	Subject journal.EntityID
+}
+
+// Resolve substitutes the instance's subject for [InstanceSubject], and
+// returns any other id unchanged.
+//
+// Custom predicates must call it on every entity id they name, or they will
+// silently ask about an entity that does not exist.
+func (b Bindings) Resolve(id journal.EntityID) journal.EntityID {
+	if id == InstanceSubject {
+		return b.Subject
+	}
+
+	return id
+}
+
 // Predicate is a question asked of derived state.
 //
 // Unlike graph's reducers and projections, this interface is open. The
@@ -18,7 +54,7 @@ import (
 // anything. A host with a question this package does not have may ask its own.
 type Predicate interface {
 	// Holds answers the question against one observer's derived present.
-	Holds(s *graph.State) bool
+	Holds(b Bindings) bool
 
 	// Describe renders the question for a transcript or a quest log. It is
 	// prose for humans, never parsed.
@@ -37,8 +73,8 @@ type NoEdge struct {
 }
 
 // Holds reports whether the relationship is absent from the observer's present.
-func (p NoEdge) Holds(s *graph.State) bool {
-	return !s.HasEdge(p.From, p.Rel, p.To)
+func (p NoEdge) Holds(b Bindings) bool {
+	return !b.State.HasEdge(b.Resolve(p.From), p.Rel, b.Resolve(p.To))
 }
 
 // Describe renders the question.
@@ -54,8 +90,8 @@ type HasEdge struct {
 }
 
 // Holds reports whether the relationship is present in the observer's present.
-func (p HasEdge) Holds(s *graph.State) bool {
-	return s.HasEdge(p.From, p.Rel, p.To)
+func (p HasEdge) Holds(b Bindings) bool {
+	return b.State.HasEdge(b.Resolve(p.From), p.Rel, b.Resolve(p.To))
 }
 
 // Describe renders the question.
@@ -70,8 +106,8 @@ type Flagged struct {
 }
 
 // Holds reports whether the flag is raised in the observer's present.
-func (p Flagged) Holds(s *graph.State) bool {
-	return s.Flagged(p.Flag, p.Of)
+func (p Flagged) Holds(b Bindings) bool {
+	return b.State.Flagged(p.Flag, b.Resolve(p.Of))
 }
 
 // Describe renders the question.
@@ -89,13 +125,13 @@ type Occupies struct {
 }
 
 // Holds reports whether the role is held as asked in the observer's present.
-func (p Occupies) Holds(s *graph.State) bool {
-	occupant := s.Occupant(p.Role, p.Of)
+func (p Occupies) Holds(b Bindings) bool {
+	occupant := b.State.Occupant(p.Role, b.Resolve(p.Of))
 	if p.Who == "" {
 		return occupant != ""
 	}
 
-	return occupant == p.Who
+	return occupant == b.Resolve(p.Who)
 }
 
 // Describe renders the question.
@@ -111,9 +147,9 @@ func (p Occupies) Describe() string {
 type All []Predicate
 
 // Holds reports whether every part holds.
-func (p All) Holds(s *graph.State) bool {
+func (p All) Holds(b Bindings) bool {
 	for _, part := range p {
-		if !part.Holds(s) {
+		if !part.Holds(b) {
 			return false
 		}
 	}
@@ -135,4 +171,22 @@ func (p All) Describe() string {
 	}
 
 	return out
+}
+
+// Anything holds always.
+//
+// Its use is as the last [Bucket] in a classification: the state an instance is
+// in when none of the interesting things have happened to it yet. Writing that
+// down beats leaving it implicit, because "captive" is a real answer and not an
+// absence of one.
+type Anything struct{}
+
+// Holds always reports true.
+func (Anything) Holds(Bindings) bool {
+	return true
+}
+
+// Describe renders the question.
+func (Anything) Describe() string {
+	return "anything"
 }

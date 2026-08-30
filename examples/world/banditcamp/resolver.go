@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -15,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/checks"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 
+	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 )
 
@@ -56,7 +56,7 @@ type CheckResolverConfig struct {
 // upstream learns that a d20 was involved.
 //
 // Swapping D&D 5e for another rulebook is a different implementation of
-// [journal.Resolver] and nothing else.
+// [world.Resolver] and nothing else.
 type CheckResolver struct {
 	sheets map[journal.EntityID]*character.Character
 	roller dice.Roller
@@ -87,7 +87,7 @@ func NewCheckResolver(cfg CheckResolverConfig) (*CheckResolver, error) {
 // Returns [ErrNoSheet] for an unknown actor, or an error for an approach D&D 5e
 // has no skill for. Both are wiring faults: the attempt could not be judged,
 // which is not the same as failing it.
-func (r *CheckResolver) Resolve(ctx context.Context, a journal.Attempt) (journal.Outcome, error) {
+func (r *CheckResolver) Resolve(ctx context.Context, a world.Attempt) (journal.Outcome, error) {
 	sheet, ok := r.sheets[a.Actor]
 	if !ok {
 		return journal.Outcome{}, fmt.Errorf("%w: %q", ErrNoSheet, a.Actor)
@@ -118,70 +118,4 @@ func (r *CheckResolver) Resolve(ctx context.Context, a journal.Attempt) (journal
 		Detail: fmt.Sprintf("%s: d20(%d)%+d = %d vs DC %d",
 			skill, result.Roll, modifier, result.Total, result.DC),
 	}, nil
-}
-
-// ErrOutOfRolls reports a scripted roller asked for more dice than it was given.
-var ErrOutOfRolls = errors.New("banditcamp: scripted roller is out of rolls")
-
-// ScriptedRoller is a [dice.Roller] that hands back a written-down sequence.
-//
-// It makes a whole run of the camp reproducible: the same script produces the
-// same facts, the same folds, and the same ending, every time. Running out is an
-// error rather than a wrap-around, so a test that quietly started rolling more
-// dice than it meant to finds out.
-type ScriptedRoller struct {
-	mu    sync.Mutex
-	rolls []int
-	next  int
-}
-
-// NewScriptedRoller returns a roller that yields the given results in order.
-func NewScriptedRoller(rolls ...int) *ScriptedRoller {
-	return &ScriptedRoller{rolls: append([]int(nil), rolls...)}
-}
-
-// Roll returns the next scripted result, ignoring the die size.
-//
-// Returns [ErrOutOfRolls] once the script is spent.
-func (r *ScriptedRoller) Roll(_ context.Context, size int) (int, error) {
-	if size <= 0 {
-		return 0, fmt.Errorf("banditcamp: invalid die size %d", size)
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.next >= len(r.rolls) {
-		return 0, ErrOutOfRolls
-	}
-	roll := r.rolls[r.next]
-	r.next++
-
-	return roll, nil
-}
-
-// RollN returns the next count scripted results.
-func (r *ScriptedRoller) RollN(ctx context.Context, count, size int) ([]int, error) {
-	if count < 0 {
-		return nil, fmt.Errorf("banditcamp: invalid die count %d", count)
-	}
-
-	out := make([]int, 0, count)
-	for i := 0; i < count; i++ {
-		roll, err := r.Roll(ctx, size)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, roll)
-	}
-
-	return out, nil
-}
-
-// Remaining reports how much script is left.
-func (r *ScriptedRoller) Remaining() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return len(r.rolls) - r.next
 }

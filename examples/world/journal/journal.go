@@ -4,7 +4,6 @@
 package journal
 
 import (
-	"context"
 	"errors"
 	"slices"
 )
@@ -53,7 +52,7 @@ func (a Audience) Includes(ids ...EntityID) bool {
 	return false
 }
 
-// Outcome is what a [Resolver] decided about an [Attempt].
+// Outcome is what the composer's resolver decided about an attempt.
 //
 // It is deliberately thin. Margin is how far past (or short of) the difficulty
 // the attempt landed, and Detail is free text for a transcript. Neither is
@@ -73,29 +72,6 @@ type Outcome struct {
 
 	// Detail carries a human-readable trace of how the outcome was reached.
 	Detail string
-}
-
-// Attempt is one actor trying something difficult.
-//
-// This is the whole of what the kernel says about resolution: who, by what
-// approach, against whom, at what difficulty. What a difficulty of 15 means,
-// and how "stealth" turns into a number, belong to the injected [Resolver].
-type Attempt struct {
-	Actor      EntityID
-	Approach   Approach
-	Target     EntityID
-	Difficulty int
-}
-
-// Resolver turns an [Attempt] into an [Outcome]. It is the one seam a host
-// fills in, and the only place randomness or rulebook mechanics may enter.
-//
-// Implementations must be safe for concurrent use.
-type Resolver interface {
-	// Resolve decides the attempt. Returning an error means the attempt could
-	// not be judged at all — an unknown actor, an approach the rulebook does
-	// not have — which is a wiring fault, not a failed attempt.
-	Resolve(ctx context.Context, a Attempt) (Outcome, error)
 }
 
 // Fact is one thing that happened, attributed to an actor and scoped to an

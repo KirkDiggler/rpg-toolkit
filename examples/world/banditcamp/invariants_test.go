@@ -19,19 +19,23 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
+	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
 )
 
 // toolkitPrefix is how a toolkit module import is recognised.
 const toolkitPrefix = "github.com/KirkDiggler/rpg-toolkit/"
 
-// The three kernel packages, by the path an import statement spells them.
+// The packages beneath the composer, by the path an import statement spells
+// them.
 const (
 	journalPkg = "examples/world/journal"
 	graphPkg   = "examples/world/graph"
 	questPkg   = "examples/world/quest"
+	composer   = "examples/world"
 )
 
 // InvariantSuite asserts the three standing claims that hold across every path:
@@ -56,36 +60,25 @@ func (s *InvariantSuite) SetupSuite() {
 	s.sheets = crew
 }
 
-// rig is one playable camp: a world, a log, and an executor over a script.
+// rig is one playable camp over a written-down sequence of d20 results.
 type rig struct {
-	world *graph.World
-	log   *journal.Journal
-	exec  *banditcamp.Executor
+	w *world.World
 }
 
 func (s *InvariantSuite) rig(rolls ...int) rig {
 	s.T().Helper()
 
-	w, err := graph.New(banditcamp.Declaration())
-	s.Require().NoError(err)
-
-	log := journal.New()
-
 	resolver, err := banditcamp.NewCheckResolver(banditcamp.CheckResolverConfig{
 		Sheets: s.sheets,
-		Roller: banditcamp.NewScriptedRoller(rolls...),
+		Roller: scripted.NewRoller(rolls...),
 		Bus:    events.NewEventBus(),
 	})
 	s.Require().NoError(err)
 
-	exec, err := banditcamp.NewExecutor(banditcamp.ExecutorConfig{
-		Journal:  log,
-		Resolver: resolver,
-		Verbs:    banditcamp.Verbs(),
-	})
+	built, err := world.New(world.Config{Scenario: banditcamp.Scenario(), Resolver: resolver})
 	s.Require().NoError(err)
 
-	return rig{world: w, log: log, exec: exec}
+	return rig{w: built}
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +88,7 @@ func (s *InvariantSuite) rig(rolls ...int) rig {
 func (s *InvariantSuite) TestAnyActorMayAttemptAnyPath() {
 	actors := []journal.EntityID{banditcamp.Rook, banditcamp.Brann, banditcamp.Sela}
 	attempts := []struct {
-		verb   banditcamp.VerbName
+		verb   world.VerbName
 		target journal.EntityID
 	}{
 		{banditcamp.Sneak, banditcamp.Camp},
@@ -110,13 +103,13 @@ func (s *InvariantSuite) TestAnyActorMayAttemptAnyPath() {
 		for _, attempt := range attempts {
 			r := s.rig(11)
 
-			fact, err := r.exec.Do(s.ctx, banditcamp.Act{
+			result, err := r.w.Act(s.ctx, world.Act{
 				Verb: attempt.verb, Actor: actor, Target: attempt.target,
 				Bystanders: []journal.EntityID{banditcamp.Lieutenant},
 			})
 			s.Require().NoErrorf(err, "%s attempting %s", actor, attempt.verb)
-			s.Truef(fact.Outcome.Contested, "%s attempting %s was never judged", actor, attempt.verb)
-			s.Equalf(actor, fact.Actor, "%s attempting %s lost its attribution", actor, attempt.verb)
+			s.Truef(result.Fact.Outcome.Contested, "%s attempting %s was never judged", actor, attempt.verb)
+			s.Equalf(actor, result.Fact.Actor, "%s attempting %s lost its attribution", actor, attempt.verb)
 		}
 	}
 }
@@ -124,12 +117,12 @@ func (s *InvariantSuite) TestAnyActorMayAttemptAnyPath() {
 func (s *InvariantSuite) TestProficiencyOnlyTiltsTheDice() {
 	sneak := func(actor journal.EntityID, roll int) journal.Fact {
 		r := s.rig(roll)
-		fact, err := r.exec.Do(s.ctx, banditcamp.Act{
+		result, err := r.w.Act(s.ctx, world.Act{
 			Verb: banditcamp.Sneak, Actor: actor, Target: banditcamp.Camp,
 		})
 		s.Require().NoError(err)
 
-		return fact
+		return result.Fact
 	}
 
 	expert := sneak(banditcamp.Rook, 10)
@@ -195,19 +188,19 @@ func (s *InvariantSuite) TestPresentStateIsDerivedByFoldAndNeverStored() {
 	fresh, err := graph.New(banditcamp.Declaration())
 	s.Require().NoError(err)
 
-	start := snap(r.world.StateFor(banditcamp.Camp, r.log))
+	start := snap(r.w.View(banditcamp.Camp))
 
-	_, err = r.exec.Do(s.ctx, banditcamp.Act{
+	_, err = r.w.Act(s.ctx, world.Act{
 		Verb: banditcamp.Assassinate, Actor: banditcamp.Rook, Target: banditcamp.Leader,
 	})
 	s.Require().NoError(err)
-	afterKill := snap(r.world.StateFor(banditcamp.Camp, r.log))
+	afterKill := snap(r.w.View(banditcamp.Camp))
 
-	_, err = r.exec.Do(s.ctx, banditcamp.Act{
+	_, err = r.w.Act(s.ctx, world.Act{
 		Verb: banditcamp.Impersonate, Actor: banditcamp.Rook, Target: banditcamp.Camp,
 	})
 	s.Require().NoError(err)
-	afterClaim := snap(r.world.StateFor(banditcamp.Camp, r.log))
+	afterClaim := snap(r.w.View(banditcamp.Camp))
 
 	s.Run("the run actually moved the world", func() {
 		s.Equal(start, afterKill) // The camp saw neither, so its present is unchanged.
@@ -216,31 +209,31 @@ func (s *InvariantSuite) TestPresentStateIsDerivedByFoldAndNeverStored() {
 	})
 
 	s.Run("a world that watched it all holds nothing a fresh one does not", func() {
-		s.Equal(afterClaim, snap(fresh.StateFor(banditcamp.Camp, r.log)))
+		s.Equal(afterClaim, snap(fresh.StateFor(banditcamp.Camp, r.w.Journal())))
 	})
 
 	s.Run("rewinding the journal rewinds the present", func() {
 		empty := journal.New()
-		s.Equal(start, snap(r.world.StateFor(banditcamp.Camp, empty)))
+		s.Equal(start, snap(r.w.Graph().StateFor(banditcamp.Camp, empty)))
 		s.Equal(start, snap(fresh.StateFor(banditcamp.Camp, empty)))
 	})
 
 	s.Run("replaying a prefix reproduces that moment exactly", func() {
 		prefix := journal.New()
-		for _, f := range r.log.All()[:1] {
+		for _, f := range r.w.Journal().All()[:1] {
 			_, err := prefix.Append(f)
 			s.Require().NoError(err)
 		}
-		s.Equal(afterKill, snap(r.world.StateFor(banditcamp.Camp, prefix)))
+		s.Equal(afterKill, snap(r.w.Graph().StateFor(banditcamp.Camp, prefix)))
 	})
 
 	s.Run("deriving twice from the same facts agrees", func() {
-		s.Equal(afterClaim, snap(r.world.StateFor(banditcamp.Camp, r.log)))
+		s.Equal(afterClaim, snap(r.w.View(banditcamp.Camp)))
 	})
 
 	s.Run("and nothing declined to fold along the way", func() {
-		s.Empty(r.world.StateFor(banditcamp.Camp, r.log).Refusals())
-		s.Empty(r.world.Truth(r.log).Refusals())
+		s.Empty(r.w.View(banditcamp.Camp).Refusals())
+		s.Empty(r.w.Truth().Refusals())
 	})
 }
 
@@ -258,6 +251,8 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 		{dir: "../journal", allowed: []string{journalPkg}},
 		{dir: "../graph", allowed: []string{journalPkg, graphPkg}},
 		{dir: "../quest", allowed: []string{journalPkg, graphPkg, questPkg}},
+		{dir: "../scripted", allowed: nil},
+		{dir: "..", allowed: []string{journalPkg, graphPkg, questPkg, composer}},
 	}
 
 	for _, pkg := range law {
@@ -270,12 +265,17 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 	}
 }
 
-func (s *InvariantSuite) TestTheExecutorIsRulebookFreeToo() {
-	// verbs.go is the piece with no obvious kernel home. It imports journal and
-	// nothing else, which is both why an attempt cannot be gated on a character
-	// sheet and the argument for moving it inside.
-	imports := s.toolkitImportsOfFile("verbs.go")
-	s.Equal([]string{toolkitPrefix + journalPkg}, imports)
+func (s *InvariantSuite) TestTheComposerKnowsNoRulebookEither() {
+	// The act loop moved up here from this package, where UC-1 left it homeless.
+	// It composes the three below it and imports no rulebook, which is why an
+	// attempt still cannot be gated on a character sheet: there is nowhere in
+	// the loop to look one up.
+	imports := s.toolkitImportsOf("..")
+	s.Equal([]string{
+		toolkitPrefix + graphPkg,
+		toolkitPrefix + journalPkg,
+		toolkitPrefix + questPkg,
+	}, imports)
 }
 
 // toolkitImportsOf returns every toolkit import in a package directory,
