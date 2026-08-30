@@ -1168,10 +1168,10 @@ func (d *Draft) compileConditions(characterID string) ([]dnd5eEvents.ConditionBe
 	for _, grant := range grants {
 		for _, condRef := range grant.Conditions {
 			output, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
-				Ref:         condRef.Ref,
-				Config:      condRef.Config,
-				CharacterID: characterID,
-				SourceRef:   classSourceRef,
+				Ref:       condRef.Ref,
+				Config:    condRef.Config,
+				MemberID:  characterID,
+				SourceRef: classSourceRef,
 			})
 			if err != nil {
 				return nil, rpgerr.Wrapf(err, "failed to create condition from ref %s", condRef.Ref)

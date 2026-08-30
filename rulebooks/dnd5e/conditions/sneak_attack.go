@@ -29,7 +29,7 @@ import (
 // See rpg-toolkit#654 for the broader sustainable-per-turn-state pattern.
 type SneakAttackData struct {
 	Ref          *core.Ref `json:"ref"`
-	CharacterID  string    `json:"character_id"`
+	CharacterID  string    `json:"member_id"`
 	Level        int       `json:"level"`
 	DamageDice   int       `json:"damage_dice"`
 	UsedThisTurn bool      `json:"used_this_turn"`
@@ -65,15 +65,15 @@ func (s *SneakAttackCondition) Ref() *core.Ref { return refs.Features.SneakAttac
 
 // SneakAttackInput provides configuration for creating a sneak attack condition
 type SneakAttackInput struct {
-	CharacterID string      // ID of the rogue
-	Level       int         // Rogue level (determines number of dice)
-	Roller      dice.Roller // Dice roller for rolling extra damage
+	MemberID string      // ID of the rogue
+	Level    int         // Rogue level (determines number of dice)
+	Roller   dice.Roller // Dice roller for rolling extra damage
 }
 
 // NewSneakAttackCondition creates a sneak attack condition from input
 func NewSneakAttackCondition(input SneakAttackInput) *SneakAttackCondition {
 	return &SneakAttackCondition{
-		CharacterID: input.CharacterID,
+		CharacterID: input.MemberID,
 		Level:       input.Level,
 		DamageDice:  calculateSneakAttackDice(input.Level),
 		roller:      input.Roller,

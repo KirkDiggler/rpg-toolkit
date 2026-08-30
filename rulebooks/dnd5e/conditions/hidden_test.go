@@ -35,7 +35,7 @@ func (s *HiddenConditionTestSuite) SetupTest() {
 }
 
 func (s *HiddenConditionTestSuite) TestNewHiddenCondition() {
-	s.Equal(s.characterID, s.condition.CharacterID)
+	s.Equal(s.characterID, s.condition.MemberID)
 	s.False(s.condition.IsApplied())
 }
 
@@ -155,7 +155,7 @@ func (s *HiddenConditionTestSuite) TestToJSON() {
 	loaded := &HiddenCondition{}
 	err = loaded.loadJSON(data)
 	s.Require().NoError(err)
-	s.Equal(s.characterID, loaded.CharacterID)
+	s.Equal(s.characterID, loaded.MemberID)
 }
 
 // TestLoaderRoundTrip proves HiddenCondition is registered in loader.go — an
@@ -174,7 +174,7 @@ func (s *HiddenConditionTestSuite) TestLoaderRoundTrip() {
 
 	hidden, ok := loaded.(*HiddenCondition)
 	s.Require().True(ok, "loaded condition should be a *HiddenCondition")
-	s.Equal(s.characterID, hidden.CharacterID)
+	s.Equal(s.characterID, hidden.MemberID)
 	s.False(hidden.IsApplied(), "a freshly loaded condition is not yet applied to a bus")
 
 	// Reconstitute it onto a bus and confirm it still subscribes and functions —
@@ -193,13 +193,13 @@ func (s *HiddenConditionTestSuite) TestLoaderRoundTrip() {
 // TestFactoryRoundTrip proves HiddenCondition is registered in factory.go.
 func (s *HiddenConditionTestSuite) TestFactoryRoundTrip() {
 	output, err := CreateFromRef(&CreateFromRefInput{
-		Ref:         refs.Conditions.Hidden().String(),
-		CharacterID: s.characterID,
+		Ref:      refs.Conditions.Hidden().String(),
+		MemberID: s.characterID,
 	})
 	s.Require().NoError(err)
 	s.Require().NotNil(output)
 
 	hidden, ok := output.Condition.(*HiddenCondition)
 	s.Require().True(ok)
-	s.Equal(s.characterID, hidden.CharacterID)
+	s.Equal(s.characterID, hidden.MemberID)
 }

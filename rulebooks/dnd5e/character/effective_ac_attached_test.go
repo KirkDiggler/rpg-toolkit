@@ -55,9 +55,9 @@ func (s *EffectiveACAttachmentSuite) SetupTest() { s.ctx = context.Background() 
 // answer here cannot coincide with the right one.
 func (s *EffectiveACAttachmentSuite) monkData() *Data {
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
-		CharacterID: "char-monk",
-		Type:        conditions.UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "char-monk",
+		Type:     conditions.UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 	raw, err := ud.ToJSON()
 	s.Require().NoError(err)

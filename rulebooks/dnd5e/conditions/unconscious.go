@@ -18,12 +18,12 @@ import (
 
 // UnconsciousData is the JSON structure for persisting unconscious condition state
 type UnconsciousData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	Successes   int       `json:"successes"`
-	Failures    int       `json:"failures"`
-	Stabilized  bool      `json:"stabilized"`
-	Dead        bool      `json:"dead"`
+	Ref        *core.Ref `json:"ref"`
+	MemberID   string    `json:"member_id"`
+	Successes  int       `json:"successes"`
+	Failures   int       `json:"failures"`
+	Stabilized bool      `json:"stabilized"`
+	Dead       bool      `json:"dead"`
 }
 
 // UnconsciousCondition represents an unconscious character making death saves.
@@ -127,8 +127,8 @@ func (c *UnconsciousCondition) Remove(ctx context.Context, bus events.EventBus) 
 // ToJSON converts the condition to JSON for persistence
 func (c *UnconsciousCondition) ToJSON() (json.RawMessage, error) {
 	data := UnconsciousData{
-		Ref:         refs.Conditions.Unconscious(),
-		CharacterID: c.CharacterID,
+		Ref:      refs.Conditions.Unconscious(),
+		MemberID: c.CharacterID,
 	}
 	if c.deathSaveState != nil {
 		data.Successes = c.deathSaveState.Successes
@@ -146,7 +146,7 @@ func (c *UnconsciousCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal unconscious data")
 	}
 
-	c.CharacterID = ud.CharacterID
+	c.CharacterID = ud.MemberID
 	c.deathSaveState = &saves.DeathSaveState{
 		Successes:  ud.Successes,
 		Failures:   ud.Failures,

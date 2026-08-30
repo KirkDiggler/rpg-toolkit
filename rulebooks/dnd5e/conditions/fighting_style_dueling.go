@@ -20,8 +20,8 @@ import (
 
 // FightingStyleDuelingData is the JSON structure for persisting dueling condition state
 type FightingStyleDuelingData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // FightingStyleDuelingCondition grants +2 damage when wielding one-handed melee weapon with no off-hand weapon.
@@ -96,8 +96,8 @@ func (f *FightingStyleDuelingCondition) Remove(ctx context.Context, bus events.E
 // ToJSON converts the condition to JSON for persistence.
 func (f *FightingStyleDuelingCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleDuelingData{
-		Ref:         refs.Conditions.FightingStyleDueling(),
-		CharacterID: f.CharacterID,
+		Ref:      refs.Conditions.FightingStyleDueling(),
+		MemberID: f.CharacterID,
 	}
 	return json.Marshal(data)
 }
@@ -109,7 +109,7 @@ func (f *FightingStyleDuelingCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal dueling data")
 	}
 
-	f.CharacterID = duelingData.CharacterID
+	f.CharacterID = duelingData.MemberID
 	return nil
 }
 

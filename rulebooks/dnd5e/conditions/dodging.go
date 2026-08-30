@@ -22,8 +22,8 @@ import (
 // DodgingConditionData is the serializable form of the dodging condition.
 // This is stored by the game server as an opaque JSON blob.
 type DodgingConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // DodgingCondition grants disadvantage on attack rolls against the character
@@ -31,7 +31,7 @@ type DodgingConditionData struct {
 // character uses the Dodge combat ability and automatically removes itself
 // at the start of the character's next turn.
 type DodgingCondition struct {
-	CharacterID     string
+	MemberID        string
 	bus             events.EventBus
 	subscriptionIDs []string
 }
@@ -46,9 +46,9 @@ func (d *DodgingCondition) Ref() *core.Ref { return refs.Conditions.Dodging() }
 // NewDodgingCondition creates a new Dodging condition for the specified character.
 // The condition grants disadvantage on attacks targeting this character and
 // advantage on DEX saves, and removes itself at the start of the character's next turn.
-func NewDodgingCondition(characterID string) *DodgingCondition {
+func NewDodgingCondition(memberID string) *DodgingCondition {
 	return &DodgingCondition{
-		CharacterID: characterID,
+		MemberID: memberID,
 	}
 }
 
@@ -123,8 +123,8 @@ func (d *DodgingCondition) Remove(ctx context.Context, bus events.EventBus) erro
 // ToJSON converts the condition to JSON for persistence.
 func (d *DodgingCondition) ToJSON() (json.RawMessage, error) {
 	data := DodgingConditionData{
-		Ref:         refs.Conditions.Dodging(),
-		CharacterID: d.CharacterID,
+		Ref:      refs.Conditions.Dodging(),
+		MemberID: d.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -136,7 +136,7 @@ func (d *DodgingCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal dodging data")
 	}
 
-	d.CharacterID = dodgingData.CharacterID
+	d.MemberID = dodgingData.MemberID
 	return nil
 }
 
@@ -147,7 +147,7 @@ func (d *DodgingCondition) onAttackChain(
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Only apply when this character is the target
-	if event.TargetID != d.CharacterID {
+	if event.TargetID != d.MemberID {
 		return c, nil
 	}
 
@@ -155,14 +155,14 @@ func (d *DodgingCondition) onAttackChain(
 	modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 		e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
 			SourceRef: refs.Conditions.Dodging(),
-			SourceID:  d.CharacterID,
+			SourceID:  d.MemberID,
 			Reason:    "Dodging",
 		})
 		return e, nil
 	}
 
 	if err := c.Add(combat.StageConditions, "dodging_disadvantage", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add dodging disadvantage modifier for character %s", d.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to add dodging disadvantage modifier for character %s", d.MemberID)
 	}
 
 	return c, nil
@@ -175,7 +175,7 @@ func (d *DodgingCondition) onSavingThrowChain(
 	c chain.Chain[*dnd5eEvents.SavingThrowChainEvent],
 ) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 	// Only apply to this character's saves
-	if event.SaverID != d.CharacterID {
+	if event.SaverID != d.MemberID {
 		return c, nil
 	}
 
@@ -190,13 +190,13 @@ func (d *DodgingCondition) onSavingThrowChain(
 			Name:       "Dodging",
 			SourceType: "condition",
 			SourceRef:  refs.Conditions.Dodging(),
-			EntityID:   d.CharacterID,
+			EntityID:   d.MemberID,
 		})
 		return e, nil
 	}
 
 	if err := c.Add(combat.StageConditions, "dodging_dex_advantage", modifySave); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add dodging DEX advantage modifier for character %s", d.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to add dodging DEX advantage modifier for character %s", d.MemberID)
 	}
 
 	return c, nil
@@ -205,7 +205,7 @@ func (d *DodgingCondition) onSavingThrowChain(
 // onTurnStart handles turn start events to remove this condition at the start of the character's next turn.
 func (d *DodgingCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
 	// Only remove on this character's turn start
-	if event.SubjectID != d.CharacterID {
+	if event.SubjectID != d.MemberID {
 		return nil
 	}
 
@@ -216,12 +216,12 @@ func (d *DodgingCondition) onTurnStart(ctx context.Context, event dnd5eEvents.Tu
 	// Publish condition removed event
 	removals := dnd5eEvents.ConditionRemovedTopic.On(d.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     d.CharacterID,
+		MemberID:     d.MemberID,
 		ConditionRef: refs.Conditions.Dodging().String(),
 		Reason:       "turn_start",
 	})
 	if err != nil {
-		return rpgerr.Wrapf(err, "failed to publish dodging removal for character %s", d.CharacterID)
+		return rpgerr.Wrapf(err, "failed to publish dodging removal for character %s", d.MemberID)
 	}
 
 	// Actually remove the condition (unsubscribe from events)

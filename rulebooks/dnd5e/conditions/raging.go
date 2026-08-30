@@ -24,7 +24,7 @@ import (
 // RagingData is the JSON structure for persisting raging condition state
 type RagingData struct {
 	Ref               *core.Ref `json:"ref"`
-	CharacterID       string    `json:"character_id"`
+	CharacterID       string    `json:"member_id"`
 	DamageBonus       int       `json:"damage_bonus"`
 	Level             int       `json:"level"`
 	Source            string    `json:"source"` // Ref string in "module:type:value" format (e.g., "dnd5e:features:rage")

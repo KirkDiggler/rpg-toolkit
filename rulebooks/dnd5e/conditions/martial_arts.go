@@ -24,15 +24,15 @@ import (
 
 // MartialArtsData is the JSON structure for persisting martial arts condition state
 type MartialArtsData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	MonkLevel   int       `json:"monk_level"`
+	Ref       *core.Ref `json:"ref"`
+	MemberID  string    `json:"member_id"`
+	MonkLevel int       `json:"monk_level"`
 }
 
 // MartialArtsCondition represents the Monk's Martial Arts feature.
 // Allows DEX for unarmed strikes and monk weapons, and scales unarmed damage.
 type MartialArtsCondition struct {
-	CharacterID     string
+	MemberID        string
 	MonkLevel       int
 	subscriptionIDs []string
 	bus             events.EventBus
@@ -110,9 +110,9 @@ func (ma *MartialArtsCondition) Remove(ctx context.Context, bus events.EventBus)
 // ToJSON converts the condition to JSON for persistence
 func (ma *MartialArtsCondition) ToJSON() (json.RawMessage, error) {
 	data := MartialArtsData{
-		Ref:         refs.Conditions.MartialArts(),
-		CharacterID: ma.CharacterID,
-		MonkLevel:   ma.MonkLevel,
+		Ref:       refs.Conditions.MartialArts(),
+		MemberID:  ma.MemberID,
+		MonkLevel: ma.MonkLevel,
 	}
 	return json.Marshal(data)
 }
@@ -126,7 +126,7 @@ func (ma *MartialArtsCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal martial arts data")
 	}
 
-	ma.CharacterID = maData.CharacterID
+	ma.MemberID = maData.MemberID
 	ma.MonkLevel = maData.MonkLevel
 
 	return nil
@@ -139,7 +139,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 	c chain.Chain[*dnd5eEvents.DamageChainEvent],
 ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
 	// Only modify damage for attacks by this character
-	if event.AttackerID != ma.CharacterID {
+	if event.AttackerID != ma.MemberID {
 		return c, nil
 	}
 
@@ -147,7 +147,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 	// cannot name this monk means no comparison to make — leave the chain
 	// untouched rather than erroring, which would discard every other damage
 	// component with it. See [member].
-	me, ok := member(ctx, ma.CharacterID)
+	me, ok := member(ctx, ma.MemberID)
 	if !ok {
 		return c, nil
 	}
@@ -234,7 +234,7 @@ func (ma *MartialArtsCondition) onDamageChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "martial_arts", modifyDamage); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply martial arts for character %s", ma.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply martial arts for character %s", ma.MemberID)
 	}
 
 	return c, nil
@@ -250,14 +250,14 @@ func (ma *MartialArtsCondition) onAttackChain(
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
 	// Only modify attacks by this character
-	if event.AttackerID != ma.CharacterID {
+	if event.AttackerID != ma.MemberID {
 		return c, nil
 	}
 
 	// Own sheet, read off the cast — the damage chain's twin, and it has to
 	// read the SAME scores through the SAME channel or attack and damage can
 	// disagree about the governing ability (#709).
-	me, ok := member(ctx, ma.CharacterID)
+	me, ok := member(ctx, ma.MemberID)
 	if !ok {
 		return c, nil
 	}
@@ -288,7 +288,7 @@ func (ma *MartialArtsCondition) onAttackChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "martial_arts", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply martial arts attack bonus for character %s", ma.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply martial arts attack bonus for character %s", ma.MemberID)
 	}
 
 	return c, nil
@@ -351,16 +351,16 @@ func isMonkWeapon(weapon *weapons.Weapon) bool {
 
 // MartialArtsInput provides configuration for creating a martial arts condition
 type MartialArtsInput struct {
-	CharacterID string
-	MonkLevel   int
-	Roller      dice.Roller // optional, uses default if nil
+	MemberID  string
+	MonkLevel int
+	Roller    dice.Roller // optional, uses default if nil
 }
 
 // NewMartialArtsCondition creates a new martial arts condition
 func NewMartialArtsCondition(input MartialArtsInput) *MartialArtsCondition {
 	return &MartialArtsCondition{
-		CharacterID: input.CharacterID,
-		MonkLevel:   input.MonkLevel,
-		roller:      input.Roller,
+		MemberID:  input.MemberID,
+		MonkLevel: input.MonkLevel,
+		roller:    input.Roller,
 	}
 }

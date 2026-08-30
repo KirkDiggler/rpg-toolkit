@@ -97,9 +97,9 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 	// Level 9 barbarian gets 1 extra weapon damage die on crits
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       9,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    9,
+		Roller:   s.roller,
 	})
 
 	// Apply condition to subscribe to damage chain
@@ -129,9 +129,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 	// Level 13 barbarian gets 2 extra weapon damage dice on crits
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       13,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    13,
+		Roller:   s.roller,
 	})
 
 	err := brutal.Apply(s.ctx, s.bus)
@@ -156,9 +156,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 	// Level 17 barbarian gets 3 extra weapon damage dice on crits
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       17,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    17,
+		Roller:   s.roller,
 	})
 
 	err := brutal.Apply(s.ctx, s.bus)
@@ -182,9 +182,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalIgnoresNonCriticalHits() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       9,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    9,
+		Roller:   s.roller,
 	})
 
 	err := brutal.Apply(s.ctx, s.bus)
@@ -202,9 +202,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalIgnoresNonCriticalHits() {
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       9,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    9,
+		Roller:   s.roller,
 	})
 
 	err := brutal.Apply(s.ctx, s.bus)
@@ -246,9 +246,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       9,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    9,
+		Roller:   s.roller,
 	})
 
 	err := brutal.Apply(s.ctx, s.bus)
@@ -300,9 +300,9 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalRemoveUnsubscribes() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       9,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    9,
+		Roller:   s.roller,
 	})
 
 	err := brutal.Apply(s.ctx, s.bus)
@@ -324,16 +324,16 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalRemoveUnsubscribes() {
 
 func (s *BrutalCriticalTestSuite) TestBrutalCriticalToJSON() {
 	brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-		CharacterID: "barbarian-1",
-		Level:       13,
-		Roller:      s.roller,
+		MemberID: "barbarian-1",
+		Level:    13,
+		Roller:   s.roller,
 	})
 
 	jsonData, err := brutal.ToJSON()
 	s.Require().NoError(err)
 
 	// Verify JSON contains expected fields
-	s.Contains(string(jsonData), `"character_id":"barbarian-1"`)
+	s.Contains(string(jsonData), `"member_id":"barbarian-1"`)
 	s.Contains(string(jsonData), `"level":13`)
 	s.Contains(string(jsonData), `"extra_dice":2`)
 	s.Contains(string(jsonData), `"ref":"dnd5e:conditions:brutal_critical"`)
@@ -356,9 +356,9 @@ func (s *BrutalCriticalTestSuite) TestCalculateExtraDice() {
 
 	for _, tc := range testCases {
 		brutal := NewBrutalCriticalCondition(BrutalCriticalInput{
-			CharacterID: "barbarian-1",
-			Level:       tc.level,
-			Roller:      s.roller,
+			MemberID: "barbarian-1",
+			Level:    tc.level,
+			Roller:   s.roller,
 		})
 		s.Equal(tc.extraDice, brutal.ExtraDice, "Level %d should have %d extra dice", tc.level, tc.extraDice)
 	}

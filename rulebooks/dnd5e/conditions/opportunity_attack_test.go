@@ -293,7 +293,7 @@ func (s *OpportunityAttackConditionSuite) TestJSONRoundTrip() {
 
 	roundTripped, ok := loaded.(*OpportunityAttackCondition)
 	s.Require().True(ok, "loader should return *OpportunityAttackCondition")
-	s.Equal("fighter-7", roundTripped.CharacterID)
+	s.Equal("fighter-7", roundTripped.MemberID)
 }
 
 func (s *OpportunityAttackConditionSuite) TestJSONShapeContainsRef() {

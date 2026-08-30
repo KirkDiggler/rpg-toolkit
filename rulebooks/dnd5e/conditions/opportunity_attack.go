@@ -36,8 +36,8 @@ const defaultMeleeReach = 1.0
 // variants (Sentinel, Polearm Master) can persist their state through the same
 // loader switch.
 type OpportunityAttackConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 
 	// UsedThisTurn is persisted rather than kept in memory for the reason
 	// SneakAttackData gives for its own copy of this field: every call
@@ -66,7 +66,7 @@ type OpportunityAttackConditionData struct {
 // Reach defaults to 5ft (1 grid unit). Reach weapons + action-economy reaction
 // availability are future extensions; the predicate is conservative today.
 type OpportunityAttackCondition struct {
-	CharacterID string
+	MemberID string
 
 	// UsedThisTurn is the meter EVERY reactor has, character and monster
 	// alike. It is cleared at the start of this reactor's OWN turn, which is
@@ -87,7 +87,7 @@ func (o *OpportunityAttackCondition) Ref() *core.Ref { return refs.Conditions.Op
 // stateChanged reports that the once-per-turn meter moved. See
 // [publishStateChanged].
 func (o *OpportunityAttackCondition) stateChanged(ctx context.Context) error {
-	return publishStateChanged(ctx, o.bus, o.CharacterID, o.Ref())
+	return publishStateChanged(ctx, o.bus, o.MemberID, o.Ref())
 }
 
 // canReact asks this reactor's own sheet whether it has a reaction to spend,
@@ -118,7 +118,7 @@ func (o *OpportunityAttackCondition) stateChanged(ctx context.Context) error {
 // failure this whole migration removes. RequireRoom below makes the same
 // choice for the same reason, and so does Protection.
 func (o *OpportunityAttackCondition) canReact(ctx context.Context) bool {
-	self, ok := member(ctx, o.CharacterID)
+	self, ok := member(ctx, o.MemberID)
 	if !ok {
 		return false
 	}
@@ -132,7 +132,7 @@ func (o *OpportunityAttackCondition) canReact(ctx context.Context) bool {
 // character.Data.Conditions.
 func NewOpportunityAttackCondition(characterID string) *OpportunityAttackCondition {
 	return &OpportunityAttackCondition{
-		CharacterID: characterID,
+		MemberID: characterID,
 	}
 }
 
@@ -186,7 +186,7 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 // start of every turn they did not react on, and a boundary already runs for
 // every participant.
 func (o *OpportunityAttackCondition) onTurnStart(ctx context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.SubjectID == o.CharacterID && o.UsedThisTurn {
+	if event.SubjectID == o.MemberID && o.UsedThisTurn {
 		o.UsedThisTurn = false
 
 		return o.stateChanged(ctx)
@@ -218,7 +218,7 @@ func (o *OpportunityAttackCondition) Remove(ctx context.Context, bus events.Even
 func (o *OpportunityAttackCondition) ToJSON() (json.RawMessage, error) {
 	data := OpportunityAttackConditionData{
 		Ref:          refs.Conditions.OpportunityAttack(),
-		CharacterID:  o.CharacterID,
+		MemberID:     o.MemberID,
 		UsedThisTurn: o.UsedThisTurn,
 	}
 	return json.Marshal(data)
@@ -230,7 +230,7 @@ func (o *OpportunityAttackCondition) loadJSON(data json.RawMessage) error {
 	if err := json.Unmarshal(data, &oaData); err != nil {
 		return rpgerr.Wrap(err, "failed to unmarshal opportunity attack data")
 	}
-	o.CharacterID = oaData.CharacterID
+	o.MemberID = oaData.MemberID
 	o.UsedThisTurn = oaData.UsedThisTurn
 	return nil
 }
@@ -247,7 +247,7 @@ func (o *OpportunityAttackCondition) onMovementChain(
 	c chain.Chain[*dnd5eEvents.MovementChainEvent],
 ) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
 	// Don't OA your own movement.
-	if event.EntityID == o.CharacterID {
+	if event.EntityID == o.MemberID {
 		return c, nil
 	}
 
@@ -270,7 +270,7 @@ func (o *OpportunityAttackCondition) onMovementChain(
 
 	// Readiness gate — opt-in at the orchestrator level. If unreadied,
 	// no trigger fires and the move proceeds single-phase.
-	if !gamectx.IsReactionReady(ctx, o.CharacterID, refs.Conditions.OpportunityAttack().String()) {
+	if !gamectx.IsReactionReady(ctx, o.MemberID, refs.Conditions.OpportunityAttack().String()) {
 		return c, nil
 	}
 
@@ -289,7 +289,7 @@ func (o *OpportunityAttackCondition) onMovementChain(
 	// Predicate matched — publish the trigger event for the orchestrator.
 	triggerTopic := dnd5eEvents.ReactionTriggerTopic.On(o.bus)
 	if pubErr := triggerTopic.Publish(ctx, dnd5eEvents.ReactionTriggerEvent{
-		ReactorID:    o.CharacterID,
+		ReactorID:    o.MemberID,
 		ConditionRef: refs.Conditions.OpportunityAttack().String(),
 		TriggerKind:  dnd5eEvents.TriggerKindMovementOA,
 		SourceEntity: event.EntityID,
@@ -316,7 +316,7 @@ func (o *OpportunityAttackCondition) onMovementChain(
 	// subscriptions each sheet keeper's table holds.
 	o.UsedThisTurn = true
 	if err := publishSpendRequested(
-		ctx, o.bus, o.CharacterID, coreCombat.ActionReaction, 1, o.Ref(),
+		ctx, o.bus, o.MemberID, coreCombat.ActionReaction, 1, o.Ref(),
 	); err != nil {
 		return c, rpgerr.Wrap(err, "failed to publish opportunity attack reaction spend")
 	}
@@ -335,7 +335,7 @@ func (o *OpportunityAttackCondition) isLeavingMyThreatRange(
 	room spatial.Room,
 	event *dnd5eEvents.MovementChainEvent,
 ) bool {
-	threatenerPos, found := room.GetEntityPosition(o.CharacterID)
+	threatenerPos, found := room.GetEntityPosition(o.MemberID)
 	if !found {
 		return false
 	}

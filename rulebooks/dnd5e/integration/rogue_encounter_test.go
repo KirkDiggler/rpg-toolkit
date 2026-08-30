@@ -207,9 +207,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_WithAdvantage_AddsDamage() {
 
 		// Apply Sneak Attack condition
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       1,
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    1,
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -263,9 +263,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_WithAllyAdjacent_AddsDamage() {
 		_ = s.room.PlaceEntity(s.ally, spatial.Position{X: 4, Y: 2}) // Adjacent to goblin at (3,2)
 
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       1,
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    1,
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -312,9 +312,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_NoAdvantageNoAlly_NoDamage() {
 
 		// Ally is far away (default position at 8,8)
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       1,
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    1,
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -354,9 +354,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_OncePerTurn() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       1,
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    1,
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -402,9 +402,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_ResetsOnTurnEnd() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       1,
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    1,
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -456,9 +456,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_RequiresFinesseOrRanged() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       1,
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    1,
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
@@ -493,9 +493,9 @@ func (s *RogueEncounterSuite) TestSneakAttack_ScalesWithLevel() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		sneakAttack := conditions.NewSneakAttackCondition(conditions.SneakAttackInput{
-			CharacterID: s.rogue.GetID(),
-			Level:       3, // Level 3 = 2d6
-			Roller:      s.mockRoller,
+			MemberID: s.rogue.GetID(),
+			Level:    3, // Level 3 = 2d6
+			Roller:   s.mockRoller,
 		})
 		err := sneakAttack.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)

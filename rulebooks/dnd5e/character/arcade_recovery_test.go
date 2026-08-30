@@ -42,10 +42,10 @@ func TestArcadeRecoveryTestSuite(t *testing.T) {
 func unconsciousBlob(t *testing.T, characterID string, failures int, dead bool) json.RawMessage {
 	t.Helper()
 	raw, err := json.Marshal(conditions.UnconsciousData{
-		Ref:         refs.Conditions.Unconscious(),
-		CharacterID: characterID,
-		Failures:    failures,
-		Dead:        dead,
+		Ref:      refs.Conditions.Unconscious(),
+		MemberID: characterID,
+		Failures: failures,
+		Dead:     dead,
 	})
 	require.NoError(t, err)
 	return raw

@@ -56,7 +56,7 @@ func strMonkScores() shared.AbilityScores {
 // only thing a rule's caller ever sees.
 func (s *MartialArtsCastSuite) apply(id string) {
 	s.T().Helper()
-	ma := NewMartialArtsCondition(MartialArtsInput{CharacterID: id, MonkLevel: 1})
+	ma := NewMartialArtsCondition(MartialArtsInput{MemberID: id, MonkLevel: 1})
 	s.Require().NoError(ma.Apply(context.Background(), s.bus))
 	s.T().Cleanup(func() { _ = ma.Remove(context.Background(), s.bus) })
 }

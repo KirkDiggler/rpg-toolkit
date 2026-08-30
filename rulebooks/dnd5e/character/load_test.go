@@ -81,9 +81,9 @@ func rageBlob(s *suite.Suite) json.RawMessage {
 // way, for the tests that need a sheet carrying more than one.
 func brutalCriticalBlob(s *suite.Suite) json.RawMessage {
 	brutal := &conditions.BrutalCriticalCondition{
-		CharacterID: "char-load",
-		Level:       9,
-		ExtraDice:   1,
+		MemberID:  "char-load",
+		Level:     9,
+		ExtraDice: 1,
 	}
 
 	raw, err := brutal.ToJSON()

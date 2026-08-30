@@ -74,9 +74,9 @@ func (s *UnarmoredDefenseCastSuite) foldAC(
 // 12 must read 15 once the cast is installed.
 func (s *UnarmoredDefenseCastSuite) TestABarbarianReadsCONOffTheCast() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barb-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barb-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	ctx := castOf(s.ctx, &fakeConditionOwner{
@@ -103,9 +103,9 @@ func (s *UnarmoredDefenseCastSuite) TestABarbarianReadsCONOffTheCast() {
 // would give 18, so the number names which ability was read.
 func (s *UnarmoredDefenseCastSuite) TestAMonkReadsWISOffTheCast() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "monk-1",
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	ctx := castOf(s.ctx, &fakeConditionOwner{
@@ -135,9 +135,9 @@ func (s *UnarmoredDefenseCastSuite) TestAMonkReadsWISOffTheCast() {
 // barbarian ended up at base AC with nothing logged.
 func (s *UnarmoredDefenseCastSuite) TestNoCastLeavesTheChainUntouched() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "monk-1",
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	final := s.foldAC(context.Background(), ud, "monk-1", 13)
@@ -154,9 +154,9 @@ func (s *UnarmoredDefenseCastSuite) TestNoCastLeavesTheChainUntouched() {
 // a lookup that ignored its own ID pass.
 func (s *UnarmoredDefenseCastSuite) TestACastWithoutThisCharacterLeavesTheChainUntouched() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "monk-1",
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	ctx := castOf(s.ctx, &fakeConditionOwner{

@@ -34,9 +34,9 @@ func TestUnarmoredDefenseTestSuite(t *testing.T) {
 func (s *UnarmoredDefenseTestSuite) TestBarbarianUnarmoredDefenseAC() {
 	// Barbarian: AC = 10 + DEX + CON
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	// DEX 14 (+2), CON 16 (+3) = 10 + 2 + 3 = 15
@@ -56,9 +56,9 @@ func (s *UnarmoredDefenseTestSuite) TestBarbarianUnarmoredDefenseAC() {
 func (s *UnarmoredDefenseTestSuite) TestMonkUnarmoredDefenseAC() {
 	// Monk: AC = 10 + DEX + WIS
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "monk-1",
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	// DEX 16 (+3), WIS 14 (+2) = 10 + 3 + 2 = 15
@@ -78,9 +78,9 @@ func (s *UnarmoredDefenseTestSuite) TestMonkUnarmoredDefenseAC() {
 func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseWithNegativeModifiers() {
 	// Test with negative modifiers
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	// DEX 8 (-1), CON 8 (-1) = 10 + (-1) + (-1) = 8
@@ -100,9 +100,9 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseWithNegativeModifiers() 
 func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseMaxStats() {
 	// Test with maximum ability scores (20)
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	// DEX 20 (+5), CON 20 (+5) = 10 + 5 + 5 = 20
@@ -121,25 +121,25 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseMaxStats() {
 
 func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseSecondaryAbility() {
 	barbarianUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 	s.Equal(abilities.CON, barbarianUD.SecondaryAbility(), "Barbarian should use CON")
 
 	monkUD := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "monk-1",
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "monk-1",
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 	s.Equal(abilities.WIS, monkUD.SecondaryAbility(), "Monk should use WIS")
 }
 
 func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseApplyRemove() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	// Apply should succeed
@@ -163,9 +163,9 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseACChainIntegration() {
 
 	// Create Monk Unarmored Defense: AC = 10 + DEX + WIS
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: characterID,
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: characterID,
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	// Apply the condition
@@ -227,9 +227,9 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseIgnoredWhenWearingArmor(
 	characterID := "monk-1"
 
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: characterID,
-		Type:        UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: characterID,
+		Type:     UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 
 	err := ud.Apply(s.ctx, s.bus)
@@ -275,16 +275,16 @@ func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseIgnoredWhenWearingArmor(
 
 func (s *UnarmoredDefenseTestSuite) TestUnarmoredDefenseToJSON() {
 	ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-		CharacterID: "barbarian-1",
-		Type:        UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: "barbarian-1",
+		Type:     UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	})
 
 	jsonData, err := ud.ToJSON()
 	s.Require().NoError(err)
 
 	// Verify JSON contains expected fields
-	s.Contains(string(jsonData), `"character_id":"barbarian-1"`)
+	s.Contains(string(jsonData), `"member_id":"barbarian-1"`)
 	s.Contains(string(jsonData), `"type":"barbarian"`)
 	s.Contains(string(jsonData), `"source":"dnd5e:classes:barbarian"`)
 	s.Contains(string(jsonData), `"ref":"dnd5e:conditions:unarmored_defense"`)
@@ -314,9 +314,9 @@ func (s *UnarmoredDefenseTestSuite) TestDifferentScoreCombinations() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			ud := NewUnarmoredDefenseCondition(UnarmoredDefenseInput{
-				CharacterID: "test-char",
-				Type:        tc.udType,
-				Source:      "test",
+				MemberID: "test-char",
+				Type:     tc.udType,
+				Source:   "test",
 			})
 
 			scores := shared.AbilityScores{

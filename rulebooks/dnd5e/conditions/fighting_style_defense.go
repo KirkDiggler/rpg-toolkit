@@ -20,13 +20,13 @@ import (
 
 // FightingStyleDefenseData is the JSON structure for persisting defense condition state
 type FightingStyleDefenseData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // FightingStyleDefenseCondition grants +1 to AC while wearing armor.
 type FightingStyleDefenseCondition struct {
-	CharacterID     string
+	MemberID        string
 	subscriptionIDs []string
 	bus             events.EventBus
 }
@@ -43,7 +43,7 @@ func (f *FightingStyleDefenseCondition) Ref() *core.Ref {
 // NewFightingStyleDefenseCondition creates a new Defense fighting style condition.
 func NewFightingStyleDefenseCondition(characterID string) *FightingStyleDefenseCondition {
 	return &FightingStyleDefenseCondition{
-		CharacterID: characterID,
+		MemberID: characterID,
 	}
 }
 
@@ -96,8 +96,8 @@ func (f *FightingStyleDefenseCondition) Remove(ctx context.Context, bus events.E
 // ToJSON converts the condition to JSON for persistence.
 func (f *FightingStyleDefenseCondition) ToJSON() (json.RawMessage, error) {
 	data := FightingStyleDefenseData{
-		Ref:         refs.Conditions.FightingStyleDefense(),
-		CharacterID: f.CharacterID,
+		Ref:      refs.Conditions.FightingStyleDefense(),
+		MemberID: f.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -109,7 +109,7 @@ func (f *FightingStyleDefenseCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal defense data")
 	}
 
-	f.CharacterID = defenseData.CharacterID
+	f.MemberID = defenseData.MemberID
 	return nil
 }
 
@@ -120,7 +120,7 @@ func (f *FightingStyleDefenseCondition) onACChain(
 	c chain.Chain[*combat.ACChainEvent],
 ) (chain.Chain[*combat.ACChainEvent], error) {
 	// Only modify AC for this character
-	if event.CharacterID != f.CharacterID {
+	if event.CharacterID != f.MemberID {
 		return c, nil
 	}
 
@@ -140,7 +140,7 @@ func (f *FightingStyleDefenseCondition) onACChain(
 	}
 
 	if err := c.Add(combat.StageFeatures, "defense", modifyAC); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to apply defense bonus for character %s", f.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to apply defense bonus for character %s", f.MemberID)
 	}
 
 	return c, nil

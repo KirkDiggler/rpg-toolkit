@@ -21,9 +21,9 @@ import (
 // HelpedConditionData is the serializable form of the helped condition.
 // This is stored by the game server as an opaque JSON blob.
 type HelpedConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
-	HelperID    string    `json:"helper_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
+	HelperID string    `json:"helper_id"`
 }
 
 // HelpedCondition grants advantage on the helped ally's next attack roll
@@ -40,7 +40,7 @@ type HelpedConditionData struct {
 //     place a condition's own turn-boundary trigger is a DIFFERENT actor than
 //     the condition's owner).
 type HelpedCondition struct {
-	CharacterID     string // the ally who benefits from the advantage
+	MemberID        string // the ally who benefits from the advantage
 	HelperID        string // the helper; their next turn is the safety-net removal trigger
 	bus             events.EventBus
 	subscriptionIDs []string
@@ -57,8 +57,8 @@ func (h *HelpedCondition) Ref() *core.Ref { return refs.Conditions.Helped() }
 // advantage, with removal tied to the helper's next turn as a safety net.
 func NewHelpedCondition(characterID, helperID string) *HelpedCondition {
 	return &HelpedCondition{
-		CharacterID: characterID,
-		HelperID:    helperID,
+		MemberID: characterID,
+		HelperID: helperID,
 	}
 }
 
@@ -122,9 +122,9 @@ func (h *HelpedCondition) Remove(ctx context.Context, bus events.EventBus) error
 // ToJSON converts the condition to JSON for persistence.
 func (h *HelpedCondition) ToJSON() (json.RawMessage, error) {
 	data := HelpedConditionData{
-		Ref:         refs.Conditions.Helped(),
-		CharacterID: h.CharacterID,
-		HelperID:    h.HelperID,
+		Ref:      refs.Conditions.Helped(),
+		MemberID: h.MemberID,
+		HelperID: h.HelperID,
 	}
 	return json.Marshal(data)
 }
@@ -136,7 +136,7 @@ func (h *HelpedCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal helped data")
 	}
 
-	h.CharacterID = helpedData.CharacterID
+	h.MemberID = helpedData.MemberID
 	h.HelperID = helpedData.HelperID
 	return nil
 }
@@ -150,7 +150,7 @@ func (h *HelpedCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	if event.AttackerID != h.CharacterID {
+	if event.AttackerID != h.MemberID {
 		return c, nil
 	}
 
@@ -163,20 +163,20 @@ func (h *HelpedCondition) onAttackChain(
 		return e, nil
 	}
 	if err := c.Add(combat.StageConditions, "helped_advantage", modifyAttack); err != nil {
-		return c, rpgerr.Wrapf(err, "failed to add helped advantage modifier for character %s", h.CharacterID)
+		return c, rpgerr.Wrapf(err, "failed to add helped advantage modifier for character %s", h.MemberID)
 	}
 
 	if h.bus != nil {
 		removals := dnd5eEvents.ConditionRemovedTopic.On(h.bus)
 		if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-			MemberID:     h.CharacterID,
+			MemberID:     h.MemberID,
 			ConditionRef: refs.Conditions.Helped().String(),
 			Reason:       "consumed",
 		}); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to publish helped removal for character %s", h.CharacterID)
+			return c, rpgerr.Wrapf(err, "failed to publish helped removal for character %s", h.MemberID)
 		}
 		if err := h.Remove(ctx, h.bus); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to remove helped condition for character %s", h.CharacterID)
+			return c, rpgerr.Wrapf(err, "failed to remove helped condition for character %s", h.MemberID)
 		}
 	}
 
@@ -197,12 +197,12 @@ func (h *HelpedCondition) onTurnStart(ctx context.Context, event dnd5eEvents.Tur
 
 	removals := dnd5eEvents.ConditionRemovedTopic.On(h.bus)
 	err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID:     h.CharacterID,
+		MemberID:     h.MemberID,
 		ConditionRef: refs.Conditions.Helped().String(),
 		Reason:       "turn_start",
 	})
 	if err != nil {
-		return rpgerr.Wrapf(err, "failed to publish helped removal for character %s", h.CharacterID)
+		return rpgerr.Wrapf(err, "failed to publish helped removal for character %s", h.MemberID)
 	}
 
 	return h.Remove(ctx, h.bus)

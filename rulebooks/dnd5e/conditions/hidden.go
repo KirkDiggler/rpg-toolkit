@@ -21,8 +21,8 @@ import (
 // HiddenConditionData is the serializable form of the hidden condition.
 // This is stored by the game server as an opaque JSON blob.
 type HiddenConditionData struct {
-	Ref         *core.Ref `json:"ref"`
-	CharacterID string    `json:"character_id"`
+	Ref      *core.Ref `json:"ref"`
+	MemberID string    `json:"member_id"`
 }
 
 // HiddenCondition grants advantage on the hidden character's attacks and
@@ -33,7 +33,7 @@ type HiddenConditionData struct {
 // DodgingCondition's registration shape but adds a self-consuming attacker
 // branch DodgingCondition doesn't need.
 type HiddenCondition struct {
-	CharacterID     string
+	MemberID        string
 	bus             events.EventBus
 	subscriptionIDs []string
 }
@@ -48,7 +48,7 @@ func (h *HiddenCondition) Ref() *core.Ref { return refs.Conditions.Hidden() }
 // NewHiddenCondition creates a new Hidden condition for the specified character.
 func NewHiddenCondition(characterID string) *HiddenCondition {
 	return &HiddenCondition{
-		CharacterID: characterID,
+		MemberID: characterID,
 	}
 }
 
@@ -103,8 +103,8 @@ func (h *HiddenCondition) Remove(ctx context.Context, bus events.EventBus) error
 // ToJSON converts the condition to JSON for persistence.
 func (h *HiddenCondition) ToJSON() (json.RawMessage, error) {
 	data := HiddenConditionData{
-		Ref:         refs.Conditions.Hidden(),
-		CharacterID: h.CharacterID,
+		Ref:      refs.Conditions.Hidden(),
+		MemberID: h.MemberID,
 	}
 	return json.Marshal(data)
 }
@@ -116,7 +116,7 @@ func (h *HiddenCondition) loadJSON(data json.RawMessage) error {
 		return rpgerr.Wrap(err, "failed to unmarshal hidden data")
 	}
 
-	h.CharacterID = hiddenData.CharacterID
+	h.MemberID = hiddenData.MemberID
 	return nil
 }
 
@@ -135,18 +135,18 @@ func (h *HiddenCondition) onAttackChain(
 	event dnd5eEvents.AttackChainEvent,
 	c chain.Chain[dnd5eEvents.AttackChainEvent],
 ) (chain.Chain[dnd5eEvents.AttackChainEvent], error) {
-	switch h.CharacterID {
+	switch h.MemberID {
 	case event.AttackerID:
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.AdvantageSources = append(e.AdvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.Hidden(),
-				SourceID:  h.CharacterID,
+				SourceID:  h.MemberID,
 				Reason:    "Hidden",
 			})
 			return e, nil
 		}
 		if err := c.Add(combat.StageConditions, "hidden_attacker_advantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add hidden advantage modifier for character %s", h.CharacterID)
+			return c, rpgerr.Wrapf(err, "failed to add hidden advantage modifier for character %s", h.MemberID)
 		}
 
 		// Hidden ends when the hidden character attacks. Publish the removal
@@ -155,14 +155,14 @@ func (h *HiddenCondition) onAttackChain(
 		if h.bus != nil {
 			removals := dnd5eEvents.ConditionRemovedTopic.On(h.bus)
 			if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				MemberID:     h.CharacterID,
+				MemberID:     h.MemberID,
 				ConditionRef: refs.Conditions.Hidden().String(),
 				Reason:       "attacked",
 			}); err != nil {
-				return c, rpgerr.Wrapf(err, "failed to publish hidden removal for character %s", h.CharacterID)
+				return c, rpgerr.Wrapf(err, "failed to publish hidden removal for character %s", h.MemberID)
 			}
 			if err := h.Remove(ctx, h.bus); err != nil {
-				return c, rpgerr.Wrapf(err, "failed to remove hidden condition for character %s", h.CharacterID)
+				return c, rpgerr.Wrapf(err, "failed to remove hidden condition for character %s", h.MemberID)
 			}
 		}
 
@@ -170,13 +170,13 @@ func (h *HiddenCondition) onAttackChain(
 		modifyAttack := func(_ context.Context, e dnd5eEvents.AttackChainEvent) (dnd5eEvents.AttackChainEvent, error) {
 			e.DisadvantageSources = append(e.DisadvantageSources, dnd5eEvents.AttackModifierSource{
 				SourceRef: refs.Conditions.Hidden(),
-				SourceID:  h.CharacterID,
+				SourceID:  h.MemberID,
 				Reason:    "Hidden",
 			})
 			return e, nil
 		}
 		if err := c.Add(combat.StageConditions, "hidden_target_disadvantage", modifyAttack); err != nil {
-			return c, rpgerr.Wrapf(err, "failed to add hidden disadvantage modifier for character %s", h.CharacterID)
+			return c, rpgerr.Wrapf(err, "failed to add hidden disadvantage modifier for character %s", h.MemberID)
 		}
 	}
 
