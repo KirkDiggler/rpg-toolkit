@@ -78,7 +78,7 @@ func (s *TurnRefreshTestSuite) spent() *Character {
 	char.SpendCapacity(combat.CapacityMovement, 30)
 	char.BankCapacity(combat.CapacityAttack, 2)
 	char.SpendCapacity(combat.CapacityAttack, 2)
-	char.MarkClean()
+	markSaved(char)
 
 	return char
 }
@@ -165,7 +165,7 @@ func (s *TurnRefreshTestSuite) TestATurnNumberThatWentBackwardsIsStale() {
 	_, err := char.RefreshForTurn(s.ctx, &RefreshForTurnInput{TurnNumber: 7, Speed: 30})
 	s.Require().NoError(err)
 	char.SpendSlots(coreCombat.ActionStandard, 1)
-	char.MarkClean()
+	markSaved(char)
 
 	out, err := char.RefreshForTurn(s.ctx, &RefreshForTurnInput{TurnNumber: 3, Speed: 30})
 	s.Require().NoError(err)
@@ -189,7 +189,7 @@ func (s *TurnRefreshTestSuite) TestMovementIsReseededFromTheStatedSpeed() {
 func (s *TurnRefreshTestSuite) TestASheetOutOfCombatIsNotReseeded() {
 	char, err := LoadFromData(s.ctx, s.sheet(), s.bus)
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	out, err := char.RefreshForTurn(s.ctx, &RefreshForTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
@@ -216,7 +216,7 @@ func (s *TurnRefreshTestSuite) TestRefreshWithoutInputIsRefused() {
 func (s *TurnRefreshTestSuite) TestStartingATurnWithoutInputIsRefused() {
 	char, err := LoadFromData(s.ctx, s.sheet(), s.bus)
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	_, err = char.StartTurn(s.ctx, nil)
 	s.Require().Error(err)

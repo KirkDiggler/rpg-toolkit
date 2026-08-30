@@ -83,7 +83,7 @@ func (s *SheetLedgerTestSuite) loaded() *Character {
 
 	_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	return char
 }
@@ -137,7 +137,7 @@ func (s *SheetLedgerTestSuite) TestEveryKindOfSpendMarksTheSheet() {
 func (s *SheetLedgerTestSuite) TestSpendingBankedCapacityMarksTheSheet() {
 	char := s.loaded()
 	char.BankCapacity(combat.CapacityAttack, 1)
-	char.MarkClean()
+	markSaved(char)
 
 	s.Require().NoError(combat.Pay(char, &combat.SpendProfile{
 		Capacity: map[combat.CapacityType]int{combat.CapacityAttack: 1},
@@ -185,7 +185,7 @@ func (s *SheetLedgerTestSuite) TestARefusedPaymentChangesNothingOnTheSheet() {
 func (s *SheetLedgerTestSuite) TestARefusedPaymentChangesNothingWhateverIsShort() {
 	char := s.loaded()
 	char.SpendSlots(coreCombat.ActionStandard, 1)
-	char.MarkClean()
+	markSaved(char)
 
 	profile := &combat.SpendProfile{
 		Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
@@ -203,7 +203,7 @@ func (s *SheetLedgerTestSuite) TestARefusedPaymentChangesNothingWhateverIsShort(
 func (s *SheetLedgerTestSuite) TestASheetOutOfCombatCannotPay() {
 	char, err := LoadFromData(s.ctx, s.monk(), s.bus)
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 	s.Require().False(char.InCombat())
 
 	profiles := []*combat.SpendProfile{
@@ -290,7 +290,7 @@ func (s *SheetLedgerTestSuite) TestASheetOutOfCombatHasNothingLeft() {
 func (s *SheetLedgerTestSuite) TestASheetOutOfCombatCannotBeWrittenTo() {
 	char, err := LoadFromData(s.ctx, s.monk(), s.bus)
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	char.SpendSlots(coreCombat.ActionStandard, 1)
 	char.BankCapacity(combat.CapacityAttack, 2)

@@ -381,7 +381,7 @@ func (s *ActionEconomyTestSuite) TestActivatingWithoutInputIsRefused() {
 	char := createTestFighterCharacter(s.T(), s.bus)
 	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	out, err := char.ActivateAbility(s.ctx, nil)
 
@@ -417,7 +417,7 @@ func (s *ActionEconomyTestSuite) TestActivatingWithoutARefIsRefused() {
 	char := createTestFighterCharacter(s.T(), s.bus)
 	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	out, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{})
 

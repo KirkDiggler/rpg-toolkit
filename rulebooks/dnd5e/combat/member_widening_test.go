@@ -49,7 +49,7 @@ const doorName = "GetEffectiveAC"
 //
 // Cast members are the LIVE sheets — gamectx/cast.go says "a view, not a copy"
 // and means it. Narrowing Cast.Member to combat.Member removes ApplyDamage,
-// IsDirty and MarkClean from what a rule can reach, and the compiler holds that
+// IsDirty from what a rule can reach, and the compiler holds that
 // for free. It holds it against everything except one line:
 //
 //	sheet := member.(*character.Character)  // and the writes are back

@@ -65,10 +65,16 @@ type ApplyDamageResult struct {
 //
 // # It is not the keeper's view
 //
-// [Combatant] is. ApplyDamage, IsDirty and MarkClean are one responsibility —
-// the write, and the bookkeeping that decides whether the sheet gets persisted
-// — and it belongs to whoever owns the sheet. A rule reading a participant has
-// no business with any of them, which is why none of them is here.
+// [Combatant] is. ApplyDamage and IsDirty are one responsibility — the write,
+// and the bookkeeping that decides whether the sheet gets persisted — and it
+// belongs to whoever owns the sheet. A rule reading a participant has no
+// business with either, which is why neither is here.
+//
+// MarkClean sat beside them until rpg-project#319 Phase 6 and does not any
+// more: nothing ever called it. resolve.go READS IsDirty to decide what to
+// hand back and never clears it, so the clearing half was a contract with no
+// second party — a host that persists a sheet is free to decide for itself
+// when the sheet is clean.
 //
 // # Widening it is the escape, and it is pinned
 //
@@ -152,9 +158,6 @@ type Combatant interface {
 
 	// IsDirty returns true if the combatant has been modified since last save
 	IsDirty() bool
-
-	// MarkClean marks the combatant as saved (not dirty)
-	MarkClean()
 }
 
 // EffectiveACCalculator is implemented by combatants that support dynamic AC calculation.

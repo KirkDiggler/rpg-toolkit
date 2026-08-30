@@ -168,18 +168,6 @@ func (mr *MockCombatantMockRecorder) IsDirty() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDirty", reflect.TypeOf((*MockCombatant)(nil).IsDirty))
 }
 
-// MarkClean mocks base method.
-func (m *MockCombatant) MarkClean() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "MarkClean")
-}
-
-// MarkClean indicates an expected call of MarkClean.
-func (mr *MockCombatantMockRecorder) MarkClean() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkClean", reflect.TypeOf((*MockCombatant)(nil).MarkClean))
-}
-
 // PassivePerception mocks base method.
 func (m *MockCombatant) PassivePerception() int {
 	m.ctrl.T.Helper()

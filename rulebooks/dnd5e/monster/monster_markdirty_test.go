@@ -27,7 +27,4 @@ func TestAMonsterCanBeToldItsPersistedStateChanged(t *testing.T) {
 
 	m.MarkDirty()
 	require.True(t, m.IsDirty(), "MarkDirty is what stops a silent update being dropped")
-
-	m.MarkClean()
-	require.False(t, m.IsDirty(), "and MarkClean is still its counterpart")
 }

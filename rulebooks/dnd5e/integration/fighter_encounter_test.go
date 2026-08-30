@@ -80,7 +80,6 @@ func (m *mockFighterCharacter) GetHitPoints() int                              {
 func (m *mockFighterCharacter) GetMaxHitPoints() int                           { return m.maxHitPoints }
 func (m *mockFighterCharacter) AC() int                                        { return m.armorClass }
 func (m *mockFighterCharacter) IsDirty() bool                                  { return false }
-func (m *mockFighterCharacter) MarkClean()                                     {}
 func (m *mockFighterCharacter) PassivePerception() int                         { return 10 }
 func (m *mockFighterCharacter) GetConditions() []dnd5eEvents.ConditionBehavior { return m.conditions }
 func (m *mockFighterCharacter) HasShieldEquipped() bool                        { return m.hasShield }
