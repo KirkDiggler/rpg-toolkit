@@ -15,6 +15,8 @@ const (
 	camp       journal.EntityID = "bandit-camp"
 	lieutenant journal.EntityID = "lieutenant-vek"
 	rogue      journal.EntityID = "shadow"
+
+	assault journal.Kind = "assault"
 )
 
 type JournalSuite struct {
@@ -32,9 +34,9 @@ func TestJournalSuite(t *testing.T) {
 }
 
 func (s *JournalSuite) TestAppendAssignsSequenceFromOne() {
-	first, err := s.log.Append(journal.Fact{Kind: "assault", Actor: rogue, Subject: camp})
+	first, err := s.log.Append(journal.Fact{Kind: assault, Actor: rogue, Subject: camp})
 	s.Require().NoError(err)
-	second, err := s.log.Append(journal.Fact{Kind: "assault", Actor: rogue, Subject: camp})
+	second, err := s.log.Append(journal.Fact{Kind: assault, Actor: rogue, Subject: camp})
 	s.Require().NoError(err)
 
 	s.Equal(1, first.Seq)
@@ -50,7 +52,7 @@ func (s *JournalSuite) TestAppendRefusesFactsNoFoldCouldUse() {
 	})
 
 	s.Run("no actor", func() {
-		_, err := s.log.Append(journal.Fact{Kind: "assault"})
+		_, err := s.log.Append(journal.Fact{Kind: assault})
 		s.Require().ErrorIs(err, journal.ErrEmptyActor)
 		s.Zero(s.log.Len())
 	})
@@ -73,7 +75,7 @@ func (s *JournalSuite) TestWitnessedByMatchesAnyGivenID() {
 	})
 	s.Require().NoError(err)
 	_, err = s.log.Append(journal.Fact{
-		Kind: "assault", Actor: rogue, Subject: camp,
+		Kind: assault, Actor: rogue, Subject: camp,
 		Audience: journal.Audience{camp},
 	})
 	s.Require().NoError(err)
@@ -81,7 +83,7 @@ func (s *JournalSuite) TestWitnessedByMatchesAnyGivenID() {
 	s.Run("the camp sees only the camp-audienced fact", func() {
 		seen := s.log.WitnessedBy(camp)
 		s.Require().Len(seen, 1)
-		s.Equal(journal.Kind("assault"), seen[0].Kind)
+		s.Equal(assault, seen[0].Kind)
 	})
 
 	s.Run("a member folded with its group sees both", func() {
@@ -98,7 +100,7 @@ func (s *JournalSuite) TestWitnessedByMatchesAnyGivenID() {
 
 func (s *JournalSuite) TestLogIsAppendOnlyThroughItsHandouts() {
 	stored, err := s.log.Append(journal.Fact{
-		Kind: "assault", Actor: rogue, Subject: camp,
+		Kind: assault, Actor: rogue, Subject: camp,
 		Audience: journal.Audience{camp},
 	})
 	s.Require().NoError(err)
@@ -113,7 +115,7 @@ func (s *JournalSuite) TestLogIsAppendOnlyThroughItsHandouts() {
 		handed[0].Audience[0] = lieutenant
 		handed[0].Kind = "nonsense"
 		s.True(s.log.All()[0].Audience.Includes(camp))
-		s.Equal(journal.Kind("assault"), s.log.All()[0].Kind)
+		s.Equal(assault, s.log.All()[0].Kind)
 	})
 
 	s.Run("mutating the caller's original audience does not reach the log", func() {

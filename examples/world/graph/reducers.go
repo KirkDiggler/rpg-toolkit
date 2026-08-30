@@ -76,12 +76,12 @@ func (o Occupy) reduce(f journal.Fact, s *State) {
 		return
 	}
 	if f.Subject == "" {
-		s.refuse("occupy %q: fact %d has no subject to hold the slot", o.Role, f.Seq)
+		s.refusef("occupy %q: fact %d has no subject to hold the slot", o.Role, f.Seq)
 
 		return
 	}
 	if !s.hasSlot(o.Role, f.Subject) {
-		s.refuse("occupy %q: %q has no such slot declared", o.Role, f.Subject)
+		s.refusef("occupy %q: %q has no such slot declared", o.Role, f.Subject)
 
 		return
 	}
@@ -112,7 +112,7 @@ func (v Vacate) reduce(f journal.Fact, s *State) {
 		return
 	}
 	if f.Subject == "" {
-		s.refuse("vacate %q: fact %d has no subject to remove", v.Role, f.Seq)
+		s.refusef("vacate %q: fact %d has no subject to remove", v.Role, f.Seq)
 
 		return
 	}
@@ -145,7 +145,7 @@ func (c Count) reduce(f journal.Fact, s *State) {
 		return
 	}
 	if f.Subject == "" {
-		s.refuse("count %q: fact %d has no subject to hold the counter", c.Into, f.Seq)
+		s.refusef("count %q: fact %d has no subject to hold the counter", c.Into, f.Seq)
 
 		return
 	}
@@ -173,7 +173,7 @@ func (r Raise) reduce(f journal.Fact, s *State) {
 		return
 	}
 	if f.Subject == "" {
-		s.refuse("raise %q: fact %d has no subject to flag", r.Flag, f.Seq)
+		s.refusef("raise %q: fact %d has no subject to flag", r.Flag, f.Seq)
 
 		return
 	}

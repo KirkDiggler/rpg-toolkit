@@ -22,6 +22,10 @@ const (
 	hostileTo graph.Relation = "hostile-to"
 
 	broken graph.Flag = "broken"
+
+	leads graph.Role = "leads"
+
+	routedKind journal.Kind = "routed"
 )
 
 type QuestSuite struct {
@@ -44,7 +48,7 @@ func (s *QuestSuite) SetupTest() {
 			{From: scoutID, Rel: belongsTo, To: bandID},
 			{From: holdID, Rel: hostileTo, To: bandID},
 		},
-		Reducers: []graph.Reducer{graph.Raise{On: "routed", Flag: broken}},
+		Reducers: []graph.Reducer{graph.Raise{On: routedKind, Flag: broken}},
 		Projections: []graph.Projection{
 			graph.Retire{OnFlag: broken, Relations: []graph.Relation{hostileTo}},
 		},
@@ -77,7 +81,7 @@ func (s *QuestSuite) offer() *quest.Instance {
 
 func (s *QuestSuite) rout() {
 	_, err := s.log.Append(journal.Fact{
-		Kind: "routed", Actor: scoutID, Subject: holdID,
+		Kind: routedKind, Actor: scoutID, Subject: holdID,
 		Audience: journal.Audience{holdID, bandID},
 	})
 	s.Require().NoError(err)
@@ -175,7 +179,7 @@ func (s *QuestSuite) TestObjectivesAreReadInTheNamedObserversView() {
 	// The band never witnessed the rout, so in the band's view the hold is
 	// still hostile — while in the hold's own view it is not.
 	_, err := s.log.Append(journal.Fact{
-		Kind: "routed", Actor: scoutID, Subject: holdID,
+		Kind: routedKind, Actor: scoutID, Subject: holdID,
 		Audience: journal.Audience{holdID},
 	})
 	s.Require().NoError(err)
@@ -202,8 +206,8 @@ func (s *QuestSuite) TestPredicatesDescribeThemselvesForAQuestLog() {
 	s.Equal("hold is not hostile-to band", quest.NoEdge{From: holdID, Rel: hostileTo, To: bandID}.Describe())
 	s.Equal("hold is hostile-to band", quest.HasEdge{From: holdID, Rel: hostileTo, To: bandID}.Describe())
 	s.Equal("hold is broken", quest.Flagged{Flag: broken, Of: holdID}.Describe())
-	s.Equal("scout leads hold", quest.Occupies{Who: scoutID, Role: "leads", Of: holdID}.Describe())
-	s.Equal("somebody leads hold", quest.Occupies{Role: "leads", Of: holdID}.Describe())
+	s.Equal("scout leads hold", quest.Occupies{Who: scoutID, Role: leads, Of: holdID}.Describe())
+	s.Equal("somebody leads hold", quest.Occupies{Role: leads, Of: holdID}.Describe())
 	s.Equal("nothing in particular", quest.All{}.Describe())
 }
 
@@ -217,7 +221,7 @@ func (s *QuestSuite) TestAllRequiresEveryPart() {
 	}
 	s.True(both.Holds(state))
 
-	withUnmet := append(both, quest.Occupies{Role: "leads", Of: holdID})
+	withUnmet := quest.All{both[0], both[1], quest.Occupies{Role: leads, Of: holdID}}
 	s.False(withUnmet.Holds(state))
 	s.True(quest.All{}.Holds(state))
 }

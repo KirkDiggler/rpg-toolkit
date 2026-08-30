@@ -65,6 +65,12 @@ const (
 
 	// Posture is the derived word behaviour reads to know how a fight starts.
 	Posture graph.LabelName = "posture"
+
+	// KindFaction is a group that holds a stance and can be led.
+	KindFaction graph.Kind = "faction"
+
+	// KindPerson is somebody who can act and be acted on.
+	KindPerson graph.Kind = "person"
 )
 
 // Postures a camp can be caught in.
@@ -169,14 +175,14 @@ func Declaration() graph.Config {
 	return graph.Config{
 		Membership: BelongsTo,
 		Entities: []graph.Entity{
-			{ID: Camp, Kind: "faction"},
-			{ID: Party, Kind: "faction"},
-			{ID: Leader, Kind: "person"},
-			{ID: Bandits, Kind: "person", Grain: graph.GrainGroup},
-			{ID: Lieutenant, Kind: "person", Grain: graph.GrainIndividual},
-			{ID: Rook, Kind: "person"},
-			{ID: Brann, Kind: "person"},
-			{ID: Sela, Kind: "person"},
+			{ID: Camp, Kind: KindFaction},
+			{ID: Party, Kind: KindFaction},
+			{ID: Leader, Kind: KindPerson},
+			{ID: Bandits, Kind: KindPerson, Grain: graph.GrainGroup},
+			{ID: Lieutenant, Kind: KindPerson, Grain: graph.GrainIndividual},
+			{ID: Rook, Kind: KindPerson},
+			{ID: Brann, Kind: KindPerson},
+			{ID: Sela, Kind: KindPerson},
 		},
 		Edges: []graph.Edge{
 			{From: Leader, Rel: BelongsTo, To: Camp},
@@ -214,7 +220,7 @@ func Declaration() graph.Config {
 			graph.FollowSlot{Role: Leads, Relations: []graph.Relation{HostileTo, AlliedWith}},
 			graph.Threshold{Counter: Regard, At: ConversionThreshold, From: HostileTo, To: AlliedWith},
 			graph.Retire{OnFlag: Defeated, Relations: []graph.Relation{HostileTo}},
-			graph.Label{Name: Posture, Of: "faction", WhenFlag: Alerted, Then: FormedUp, Else: Surprised},
+			graph.Label{Name: Posture, Of: KindFaction, WhenFlag: Alerted, Then: FormedUp, Else: Surprised},
 		},
 	}
 }

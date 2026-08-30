@@ -86,7 +86,9 @@ func (s *UC1Suite) script(rolls ...int) {
 	s.exec = exec
 }
 
-func (s *UC1Suite) do(verb banditcamp.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID) journal.Fact {
+func (s *UC1Suite) do(
+	verb banditcamp.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID,
+) journal.Fact {
 	s.T().Helper()
 
 	fact, err := s.exec.Do(s.ctx, banditcamp.Act{
@@ -185,9 +187,8 @@ func (s *UC1Suite) TestBackWay() {
 	s.Run("the sneak landed and the camp is in neither audience", func() {
 		s.True(infiltration.Outcome.Contested)
 		s.True(infiltration.Outcome.Succeeded)
-		s.False(infiltration.Audience.Includes(banditcamp.Camp))
-		s.False(entry.Audience.Includes(banditcamp.Camp))
-		s.False(infiltration.Audience.Includes(banditcamp.Lieutenant))
+		s.Equal(journal.Audience{banditcamp.Rook}, infiltration.Audience)
+		s.Equal(journal.Audience{banditcamp.Rook}, entry.Audience)
 	})
 
 	s.Run("the camp witnessed nothing at all", func() {
@@ -232,9 +233,11 @@ func (s *UC1Suite) TestChangeling() {
 	s.Run("the kill reached nobody in the camp", func() {
 		s.True(kill.Outcome.Succeeded)
 		s.Equal(banditcamp.FactKilling, kill.Kind)
-		s.False(kill.Audience.Includes(banditcamp.Camp))
-		s.False(kill.Audience.Includes(banditcamp.Lieutenant))
-		s.False(kill.Audience.Includes(banditcamp.Bandits))
+		// The assassin and nobody else. Not the camp, not the man he killed.
+		s.Equal(journal.Audience{banditcamp.Rook}, kill.Audience)
+		for _, witnessed := range s.log.WitnessedBy(s.world.AudienceOf(banditcamp.Camp)...) {
+			s.NotEqual(banditcamp.FactKilling, witnessed.Kind)
+		}
 	})
 
 	s.Run("the claim reached all of it", func() {

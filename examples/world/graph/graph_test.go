@@ -35,6 +35,13 @@ const (
 	broken  graph.Flag = "broken"
 
 	posture graph.LabelName = "posture"
+
+	assaultKind  journal.Kind = "assault"
+	commandKind  journal.Kind = "claims-command"
+	unmaskKind   journal.Kind = "unmasked"
+	persuadeKind journal.Kind = "persuasion"
+	routedKind   journal.Kind = "routed"
+	rumourKind   journal.Kind = "rumour"
 )
 
 type GraphSuite struct {
@@ -137,13 +144,13 @@ func (s *GraphSuite) TestAudienceReachesMembersThroughTheirGroups() {
 
 func (s *GraphSuite) TestRaiseFlagsTheSubjectForWhoeverWitnessedIt() {
 	cfg := s.declaration()
-	cfg.Reducers = []graph.Reducer{graph.Raise{On: "assault", Flag: alerted}}
+	cfg.Reducers = []graph.Reducer{graph.Raise{On: assaultKind, Flag: alerted}}
 	cfg.Projections = []graph.Projection{
 		graph.Label{Name: posture, Of: faction, WhenFlag: alerted, Then: "formed-up", Else: "surprised"},
 	}
 	w := s.world(cfg)
 
-	s.append(journal.Fact{Kind: "assault", Actor: scoutID, Subject: holdID, Audience: journal.Audience{holdID}})
+	s.append(journal.Fact{Kind: assaultKind, Actor: scoutID, Subject: holdID, Audience: journal.Audience{holdID}})
 
 	s.Run("the hold folds what it saw", func() {
 		state := w.StateFor(holdID, s.log)
@@ -164,10 +171,10 @@ func (s *GraphSuite) TestRaiseFlagsTheSubjectForWhoeverWitnessedIt() {
 
 func (s *GraphSuite) TestAnUnwitnessedFactChangesNobodysPresent() {
 	cfg := s.declaration()
-	cfg.Reducers = []graph.Reducer{graph.Raise{On: "assault", Flag: alerted}}
+	cfg.Reducers = []graph.Reducer{graph.Raise{On: assaultKind, Flag: alerted}}
 	w := s.world(cfg)
 
-	s.append(journal.Fact{Kind: "assault", Actor: scoutID, Subject: holdID})
+	s.append(journal.Fact{Kind: assaultKind, Actor: scoutID, Subject: holdID})
 
 	s.False(w.StateFor(holdID, s.log).Flagged(alerted, holdID))
 	s.False(w.StateFor(gruntID, s.log).Flagged(alerted, holdID))
@@ -179,8 +186,8 @@ func (s *GraphSuite) TestAnUnwitnessedFactChangesNobodysPresent() {
 func (s *GraphSuite) TestFollowSlotMakesAllegianceTrackWhoeverHoldsTheRole() {
 	cfg := s.declaration()
 	cfg.Reducers = []graph.Reducer{
-		graph.Occupy{On: "claims-command", When: graph.Succeeded, Role: leads},
-		graph.Vacate{On: "unmasked", Role: leads},
+		graph.Occupy{On: commandKind, When: graph.Succeeded, Role: leads},
+		graph.Vacate{On: unmaskKind, Role: leads},
 	}
 	cfg.Projections = []graph.Projection{
 		graph.FollowSlot{Role: leads, Relations: []graph.Relation{hostileTo, alliedWith}},
@@ -194,7 +201,7 @@ func (s *GraphSuite) TestFollowSlotMakesAllegianceTrackWhoeverHoldsTheRole() {
 	})
 
 	s.append(journal.Fact{
-		Kind: "claims-command", Actor: scoutID, Subject: holdID,
+		Kind: commandKind, Actor: scoutID, Subject: holdID,
 		Audience: journal.Audience{holdID, watcherID},
 		Outcome:  journal.Outcome{Contested: true, Succeeded: true},
 	})
@@ -207,7 +214,7 @@ func (s *GraphSuite) TestFollowSlotMakesAllegianceTrackWhoeverHoldsTheRole() {
 	})
 
 	s.append(journal.Fact{
-		Kind: "unmasked", Actor: watcherID, Subject: scoutID,
+		Kind: unmaskKind, Actor: watcherID, Subject: scoutID,
 		Audience: journal.Audience{watcherID},
 	})
 
@@ -225,8 +232,8 @@ func (s *GraphSuite) TestFollowSlotMakesAllegianceTrackWhoeverHoldsTheRole() {
 func (s *GraphSuite) TestCountPointsAtTheActorsFactionAndThresholdConverts() {
 	cfg := s.declaration()
 	cfg.Reducers = []graph.Reducer{
-		graph.Count{On: "persuasion", When: graph.Succeeded, Into: regard, By: 1},
-		graph.Count{On: "persuasion", When: graph.Failed, Into: regard, By: -1},
+		graph.Count{On: persuadeKind, When: graph.Succeeded, Into: regard, By: 1},
+		graph.Count{On: persuadeKind, When: graph.Failed, Into: regard, By: -1},
 	}
 	cfg.Projections = []graph.Projection{
 		graph.Threshold{Counter: regard, At: 2, From: hostileTo, To: alliedWith},
@@ -235,7 +242,7 @@ func (s *GraphSuite) TestCountPointsAtTheActorsFactionAndThresholdConverts() {
 
 	persuade := func(ok bool) {
 		s.append(journal.Fact{
-			Kind: "persuasion", Actor: scoutID, Subject: holdID,
+			Kind: persuadeKind, Actor: scoutID, Subject: holdID,
 			Audience: journal.Audience{holdID},
 			Outcome:  journal.Outcome{Contested: true, Succeeded: ok},
 		})
@@ -271,14 +278,14 @@ func (s *GraphSuite) TestCountPointsAtTheActorsFactionAndThresholdConverts() {
 
 func (s *GraphSuite) TestRetireStripsTheEdgesOfAFlaggedEntity() {
 	cfg := s.declaration()
-	cfg.Reducers = []graph.Reducer{graph.Raise{On: "routed", Flag: broken}}
+	cfg.Reducers = []graph.Reducer{graph.Raise{On: routedKind, Flag: broken}}
 	cfg.Projections = []graph.Projection{
 		graph.Retire{OnFlag: broken, Relations: []graph.Relation{hostileTo}},
 	}
 	w := s.world(cfg)
 
 	s.append(journal.Fact{
-		Kind: "routed", Actor: scoutID, Subject: holdID,
+		Kind: routedKind, Actor: scoutID, Subject: holdID,
 		Audience: journal.Audience{holdID, bandID},
 	})
 
@@ -292,16 +299,16 @@ func (s *GraphSuite) TestRetireStripsTheEdgesOfAFlaggedEntity() {
 func (s *GraphSuite) TestAFoldThatCannotApplyARuleSaysSoOutLoud() {
 	cfg := s.declaration()
 	cfg.Reducers = []graph.Reducer{
-		graph.Occupy{On: "claims-command", Role: "quartermasters"},
-		graph.Raise{On: "rumour", Flag: alerted},
+		graph.Occupy{On: commandKind, Role: "quartermasters"},
+		graph.Raise{On: rumourKind, Flag: alerted},
 	}
 	w := s.world(cfg)
 
 	s.append(journal.Fact{
-		Kind: "claims-command", Actor: scoutID, Subject: holdID,
+		Kind: commandKind, Actor: scoutID, Subject: holdID,
 		Audience: journal.Audience{holdID},
 	})
-	s.append(journal.Fact{Kind: "rumour", Actor: scoutID, Audience: journal.Audience{holdID}})
+	s.append(journal.Fact{Kind: rumourKind, Actor: scoutID, Audience: journal.Audience{holdID}})
 
 	refusals := w.StateFor(holdID, s.log).Refusals()
 	s.Require().Len(refusals, 2)
@@ -311,7 +318,7 @@ func (s *GraphSuite) TestAFoldThatCannotApplyARuleSaysSoOutLoud() {
 
 func (s *GraphSuite) TestPresentStateIsAPureFunctionOfDeclarationAndFacts() {
 	cfg := s.declaration()
-	cfg.Reducers = []graph.Reducer{graph.Raise{On: "assault", Flag: alerted}}
+	cfg.Reducers = []graph.Reducer{graph.Raise{On: assaultKind, Flag: alerted}}
 	cfg.Projections = []graph.Projection{
 		graph.Label{Name: posture, Of: faction, WhenFlag: alerted, Then: "formed-up", Else: "surprised"},
 	}
@@ -319,7 +326,7 @@ func (s *GraphSuite) TestPresentStateIsAPureFunctionOfDeclarationAndFacts() {
 
 	before := w.StateFor(holdID, s.log)
 
-	s.append(journal.Fact{Kind: "assault", Actor: scoutID, Subject: holdID, Audience: journal.Audience{holdID}})
+	s.append(journal.Fact{Kind: assaultKind, Actor: scoutID, Subject: holdID, Audience: journal.Audience{holdID}})
 	after := w.StateFor(holdID, s.log)
 
 	s.Run("two folds over the same facts agree", func() {

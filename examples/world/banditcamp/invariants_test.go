@@ -27,6 +27,13 @@ import (
 // toolkitPrefix is how a toolkit module import is recognised.
 const toolkitPrefix = "github.com/KirkDiggler/rpg-toolkit/"
 
+// The three kernel packages, by the path an import statement spells them.
+const (
+	journalPkg = "examples/world/journal"
+	graphPkg   = "examples/world/graph"
+	questPkg   = "examples/world/quest"
+)
+
 // InvariantSuite asserts the three standing claims that hold across every path:
 // nobody is gated, nothing present is stored, and the kernel does not know what
 // game it is in.
@@ -165,8 +172,9 @@ type snapshot struct {
 }
 
 func snap(state *graph.State) snapshot {
-	edges := make([]string, 0)
-	for _, e := range state.Edges() {
+	current := state.Edges()
+	edges := make([]string, 0, len(current))
+	for _, e := range current {
 		edges = append(edges, string(e.From)+" "+string(e.Rel)+" "+string(e.To))
 	}
 	slices.Sort(edges)
@@ -247,14 +255,9 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 		dir     string
 		allowed []string
 	}{
-		{dir: "../journal", allowed: []string{"examples/world/journal"}},
-		{dir: "../graph", allowed: []string{"examples/world/journal", "examples/world/graph"}},
-		{
-			dir: "../quest",
-			allowed: []string{
-				"examples/world/journal", "examples/world/graph", "examples/world/quest",
-			},
-		},
+		{dir: "../journal", allowed: []string{journalPkg}},
+		{dir: "../graph", allowed: []string{journalPkg, graphPkg}},
+		{dir: "../quest", allowed: []string{journalPkg, graphPkg, questPkg}},
 	}
 
 	for _, pkg := range law {
@@ -272,7 +275,7 @@ func (s *InvariantSuite) TestTheExecutorIsRulebookFreeToo() {
 	// nothing else, which is both why an attempt cannot be gated on a character
 	// sheet and the argument for moving it inside.
 	imports := s.toolkitImportsOfFile("verbs.go")
-	s.Equal([]string{toolkitPrefix + "examples/world/journal"}, imports)
+	s.Equal([]string{toolkitPrefix + journalPkg}, imports)
 }
 
 // toolkitImportsOf returns every toolkit import in a package directory,

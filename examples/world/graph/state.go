@@ -150,7 +150,7 @@ func (s *State) Refusals() []string {
 	return slices.Clone(s.refusals)
 }
 
-func (s *State) refuse(format string, args ...any) {
+func (s *State) refusef(format string, args ...any) {
 	s.refusals = append(s.refusals, fmt.Sprintf(format, args...))
 }
 
