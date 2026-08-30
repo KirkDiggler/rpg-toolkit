@@ -96,7 +96,7 @@ func (s *EconomyDirtyTestSuite) loaded() *Character {
 	s.Require().NoError(err)
 	s.Require().NoError(char.AddCombatAbility(combatabilities.NewAttack("attack-1")))
 	s.Require().NoError(char.AddCombatAbility(combatabilities.NewDash("dash-1")))
-	char.MarkClean()
+	markSaved(char)
 
 	return char
 }
@@ -108,7 +108,7 @@ func (s *EconomyDirtyTestSuite) inCombat() *Character {
 	char := s.loaded()
 	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	char.MarkClean()
+	markSaved(char)
 
 	return char
 }
@@ -334,7 +334,7 @@ func (s *EconomyDirtyTestSuite) TestAShortRestMarks() {
 	char := s.loaded()
 	char.bus = s.bus
 	s.Require().NoError(char.UseResource(resources.Ki, 2))
-	char.MarkClean()
+	markSaved(char)
 
 	s.Require().NoError(char.ShortRest(s.ctx))
 

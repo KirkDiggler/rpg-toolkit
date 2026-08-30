@@ -694,36 +694,23 @@ func (c *Character) poolChanged() {
 	c.dirty = true
 }
 
-// MarkClean marks the character as saved (not dirty).
-// Implements combat.Combatant interface.
-func (c *Character) MarkClean() {
-	c.dirty = false
-}
-
-// MarkDirty records that something changed on this sheet that has to be
-// persisted.
+// Character.MarkDirty was deleted here (rpg-project#319 Phase 6) with zero
+// callers, and the problem it was written for is worth leaving a note about,
+// because it is still real and is now solved somewhere else.
 //
-// This is the write half of an effect's owner handle. A condition keeps its
-// own turn-scoped memory in its own fields — RagingCondition.WasHitThisTurn,
-// SneakAttackCondition.UsedThisTurn — and those fields are serialized as part
-// of THIS character. Nothing else notices when one of them changes, and
-// resolution.Resolve hands back only participants that report IsDirty, so a
-// condition that updates itself and says nothing has its update thrown away.
+// A condition keeps turn-scoped memory in its own fields —
+// RagingCondition.WasHitThisTurn, SneakAttackCondition.UsedThisTurn — and
+// those fields serialize as part of THIS character. Nothing else notices when
+// one changes, and resolution hands back only participants that report
+// IsDirty, so a condition that updates itself in silence has its update
+// thrown away. Its doc opened "this is the write half of an effect's owner
+// handle", which is what dates it: the handle went in PR A of this same phase.
 //
-// Until now that survived on luck: the rogue who spent a sneak attack also
-// paid an action, and paying an action set the flag. An interaction whose
-// whole purpose is condition state — ending a turn, ending a fight, taking a
-// rest — has no such accident to rely on.
-//
-// Deliberately marking rather than diffing: a condition that mutates and does
-// not call this is an ordinary local bug, and a test catches it. That is not
-// the same as a misconfiguration, where identical code behaves differently
-// depending on whether something ran elsewhere; those earn a structural
-// guarantee, and this does not. The snapshot-diff that would make forgetting
-// impossible belongs in the test harness, and lives there.
-func (c *Character) MarkDirty() {
-	c.dirty = true
-}
+// A condition says so by publishing ConditionStateChangedEvent, and the
+// keeper that owns the sheet sets the flag — see onConditionStateChanged. The
+// sheet's own dirty marking is [Character.poolChanged] above and the keeper's
+// handlers; a condition never reaches in to set it directly, which is the
+// same read-law/write-law split the rest of this phase enforces.
 
 // emptyResource is returned when a resource doesn't exist.
 // It has 0 maximum and 0 current, so IsEmpty() returns true.

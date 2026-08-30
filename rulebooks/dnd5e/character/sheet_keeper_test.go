@@ -136,7 +136,7 @@ func (s *SheetKeeperTestSuite) TestConditionRemovedLeavesTheSheet() {
 		Target:    s.char,
 		Condition: &keptCondition{},
 	}))
-	s.char.MarkClean()
+	markSaved(s.char)
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
 		MemberID:     s.char.GetID(),
@@ -212,7 +212,7 @@ func (s *SheetKeeperTestSuite) TestKeeperIsTheCharactersOwn() {
 // without this row the update is written perfectly and then discarded, because
 // resolution keeps only the sheets reporting IsDirty.
 func (s *SheetKeeperTestSuite) TestConditionStateChangedMarksTheSheet() {
-	s.char.MarkClean()
+	markSaved(s.char)
 
 	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
 		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
@@ -225,7 +225,7 @@ func (s *SheetKeeperTestSuite) TestConditionStateChangedMarksTheSheet() {
 }
 
 func (s *SheetKeeperTestSuite) TestConditionStateChangedForSomeoneElseIsIgnored() {
-	s.char.MarkClean()
+	markSaved(s.char)
 
 	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
 		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
@@ -245,7 +245,7 @@ func (s *SheetKeeperTestSuite) TestSpendRequestedDebitsTheEconomy() {
 	_, err := s.char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
 	s.Require().Equal(1, s.char.SlotsLeft(coreCombat.ActionReaction))
-	s.char.MarkClean()
+	markSaved(s.char)
 
 	pubErr := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
 		MemberID:   s.char.GetID(),
@@ -263,7 +263,7 @@ func (s *SheetKeeperTestSuite) TestSpendRequestedDebitsTheEconomy() {
 func (s *SheetKeeperTestSuite) TestSpendRequestedForSomeoneElseIsIgnored() {
 	_, err := s.char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	s.char.MarkClean()
+	markSaved(s.char)
 
 	pubErr := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
 		MemberID:   "someone-else",

@@ -343,7 +343,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedLeavesTheMonster() {
 		Target:    s.mon,
 		Condition: &liveMonsterCondition{},
 	}))
-	s.mon.MarkClean()
+	markSaved(s.mon)
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
 		MemberID:     s.mon.GetID(),
@@ -365,7 +365,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedThatMatchesNothingLeavesThe
 		Target:    s.mon,
 		Condition: &liveMonsterCondition{},
 	}))
-	s.mon.MarkClean()
+	markSaved(s.mon)
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
 		MemberID:     s.mon.GetID(),
@@ -382,7 +382,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedFromSomeoneElseIsIgnored() 
 		Target:    s.mon,
 		Condition: &liveMonsterCondition{},
 	}))
-	s.mon.MarkClean()
+	markSaved(s.mon)
 
 	err := dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
 		MemberID:     "someone-else",
@@ -399,7 +399,7 @@ func (s *MonsterKeeperTestSuite) TestConditionRemovedFromSomeoneElseIsIgnored() 
 // see them move, so without this row a wolf that spent its reaction reloads
 // having spent nothing.
 func (s *MonsterKeeperTestSuite) TestConditionStateChangedMarksTheMonster() {
-	s.mon.MarkClean()
+	markSaved(s.mon)
 
 	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
 		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
@@ -412,7 +412,7 @@ func (s *MonsterKeeperTestSuite) TestConditionStateChangedMarksTheMonster() {
 }
 
 func (s *MonsterKeeperTestSuite) TestConditionStateChangedForSomeoneElseIsIgnored() {
-	s.mon.MarkClean()
+	markSaved(s.mon)
 
 	err := dnd5eEvents.ConditionStateChangedTopic.On(s.bus).Publish(
 		s.ctx, dnd5eEvents.ConditionStateChangedEvent{
@@ -429,7 +429,7 @@ func (s *MonsterKeeperTestSuite) TestConditionStateChangedForSomeoneElseIsIgnore
 // there is no ledger to debit and nothing to refuse. The keeper says so by
 // having no row for the topic — the sheet does not even go dirty.
 func (s *MonsterKeeperTestSuite) TestSpendRequestedPassesTheMonsterBy() {
-	s.mon.MarkClean()
+	markSaved(s.mon)
 
 	err := dnd5eEvents.SpendRequestedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.SpendRequestedEvent{
 		MemberID:   s.mon.GetID(),

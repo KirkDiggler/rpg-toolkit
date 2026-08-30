@@ -211,15 +211,10 @@ func (m *Monster) IsDirty() bool {
 	return m.dirty
 }
 
-// MarkClean marks the monster as saved (not dirty).
-// Implements combat.Combatant interface.
-func (m *Monster) MarkClean() {
-	m.dirty = false
-}
-
 // MarkDirty records that something this sheet persists has changed.
 //
-// The counterpart to MarkClean, for the change no other writer here reports.
+// The only half of the dirty pair that survived rpg-project#319 Phase 6, and
+// the asymmetry is the point: this one has a caller and MarkClean never did.
 // Every other one sets m.dirty inline because it is also the one changing the
 // field; a condition stores its turn-scoped memory in its OWN fields, which
 // are serialized as part of this sheet, so nothing else notices the change and

@@ -36,7 +36,6 @@ func (m *mockDirtyCombatant) GetHitPoints() int                   { return m.hp 
 func (m *mockDirtyCombatant) GetMaxHitPoints() int                { return m.maxHP }
 func (m *mockDirtyCombatant) AC() int                             { return m.ac }
 func (m *mockDirtyCombatant) IsDirty() bool                       { return m.dirty }
-func (m *mockDirtyCombatant) MarkClean()                          { m.dirty = false }
 func (m *mockDirtyCombatant) AbilityScores() shared.AbilityScores { return m.abilityScores }
 func (m *mockDirtyCombatant) ProficiencyBonus() int               { return m.proficiencyBonus }
 func (m *mockDirtyCombatant) PassivePerception() int              { return 10 }
@@ -86,21 +85,6 @@ func (s *CombatantDirtyTestSuite) TestCombatant_IsDirty() {
 	}
 
 	var c combat.Combatant = combatant
-	s.False(c.IsDirty())
-}
-
-// Test that Combatant interface includes MarkClean method
-func (s *CombatantDirtyTestSuite) TestCombatant_MarkClean() {
-	combatant := &mockDirtyCombatant{
-		id:    "test-1",
-		hp:    20,
-		maxHP: 20,
-		dirty: true,
-	}
-
-	var c combat.Combatant = combatant
-	s.True(c.IsDirty())
-	c.MarkClean()
 	s.False(c.IsDirty())
 }
 
