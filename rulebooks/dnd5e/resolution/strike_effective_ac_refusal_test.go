@@ -35,7 +35,6 @@ func (t *acRefusingTarget) ApplyDamage(
 	return nil
 }
 func (t *acRefusingTarget) IsDirty() bool                       { return false }
-func (t *acRefusingTarget) MarkClean()                          {}
 func (t *acRefusingTarget) AbilityScores() shared.AbilityScores { return shared.AbilityScores{} }
 func (t *acRefusingTarget) ProficiencyBonus() int               { return 2 }
 func (t *acRefusingTarget) PassivePerception() int              { return 10 }

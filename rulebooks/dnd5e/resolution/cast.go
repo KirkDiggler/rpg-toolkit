@@ -42,9 +42,11 @@ var _ gamectx.Cast = (*castView)(nil)
 // The narrowing is the whole point of the type and changes nothing about what
 // is behind it. These ARE the objects the machine is about to run against — the
 // paragraph above says a view, not a copy, and it still means it. What changes
-// is that an effect holding one can no longer call ApplyDamage or MarkClean on
-// a sheet it does not own: the read law and the write law now differ by a type
-// rather than by discipline (rpg-toolkit#1300).
+// is that an effect holding one can no longer call ApplyDamage on a sheet it
+// does not own: the read law and the write law now differ by a type rather
+// than by discipline (rpg-toolkit#1300). MarkClean used to be named here too
+// and is gone entirely — it was on combat.Combatant with no caller anywhere,
+// and rpg-project#319 Phase 6 deleted it.
 //
 // This package keeps the writer surface, and keeps it deliberately. Resolution
 // IS the keeper — it applies the damage and builds the dirty set — so
