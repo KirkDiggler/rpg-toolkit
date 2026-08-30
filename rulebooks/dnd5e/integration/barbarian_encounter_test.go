@@ -46,7 +46,6 @@ type BarbarianEncounterSuite struct {
 	ctx        context.Context
 	bus        events.EventBus
 	mockRoller *mock_dice.MockRoller
-	lookup     *integrationLookup
 	room       spatial.Room
 
 	barbarian *character.Character
@@ -54,32 +53,10 @@ type BarbarianEncounterSuite struct {
 	greataxe  *weapons.Weapon
 }
 
-// integrationLookup provides combatant lookup for tests
-// Named to match pattern in combat/integration_test.go
-type integrationLookup struct {
-	combatants map[string]combat.Combatant
-}
-
-func newIntegrationLookup() *integrationLookup {
-	return &integrationLookup{combatants: make(map[string]combat.Combatant)}
-}
-
-func (l *integrationLookup) Add(c combat.Combatant) {
-	l.combatants[c.GetID()] = c
-}
-
-func (l *integrationLookup) Get(id string) (combat.Combatant, error) {
-	if c, ok := l.combatants[id]; ok {
-		return c, nil
-	}
-	return nil, nil
-}
-
 func (s *BarbarianEncounterSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.bus = events.NewEventBus()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-	s.lookup = newIntegrationLookup()
 	s.ctx = context.Background()
 
 	// Create spatial room for movement
@@ -97,15 +74,11 @@ func (s *BarbarianEncounterSuite) SetupTest() {
 func (s *BarbarianEncounterSuite) SetupSubTest() {
 	// Fresh event bus for each subtest
 	s.bus = events.NewEventBus()
-	s.lookup = newIntegrationLookup()
 
 	// Create barbarian and goblin
 	s.barbarian = s.createLevel1Barbarian()
 	s.goblin = s.createGoblin()
 	s.greataxe = s.createGreataxe()
-
-	s.lookup.Add(s.barbarian)
-	s.lookup.Add(s.goblin)
 
 	// Set up context with combatant lookup for encounter fixtures.
 	s.ctx = context.Background()

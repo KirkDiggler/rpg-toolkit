@@ -43,7 +43,6 @@ type RogueEncounterSuite struct {
 	ctx        context.Context
 	bus        events.EventBus
 	mockRoller *mock_dice.MockRoller
-	lookup     *integrationLookup
 	room       spatial.Room
 
 	rogue  *mockRogueCharacter
@@ -119,7 +118,6 @@ func (s *RogueEncounterSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.bus = events.NewEventBus()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-	s.lookup = newIntegrationLookup()
 	s.ctx = context.Background()
 
 	// The grid the game actually compiles. encounter/compilefield.go builds an
@@ -132,15 +130,11 @@ func (s *RogueEncounterSuite) SetupTest() {
 
 func (s *RogueEncounterSuite) SetupSubTest() {
 	s.bus = events.NewEventBus()
-	s.lookup = newIntegrationLookup()
 
 	s.rogue = s.createLevel1Rogue()
 	s.ally = s.createAlly()
 	s.goblin = s.createGoblin()
 	s.rapier = s.createRapier()
-
-	s.lookup.Add(s.rogue)
-	s.lookup.Add(s.goblin)
 
 	s.ctx = context.Background()
 	s.ctx = gamectx.WithRoom(s.ctx, s.room)
