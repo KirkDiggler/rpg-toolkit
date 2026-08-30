@@ -631,6 +631,7 @@ func (e *Encounter) executeTurnIntent(
 		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
 		moved := 0
+		dropped := false
 		for _, cell := range it.Path {
 			// Where this member STILL stands, announced before the step is
 			// taken. The order is [Mover]'s contract: a reactor's swing is
@@ -654,6 +655,35 @@ func (e *Encounter) executeTurnIntent(
 			// composition accepts a caller context today.
 			if merr := e.mover.Move(context.Background(), e, activeID, from, cell); merr != nil {
 				return false, fmt.Errorf("move: %w", merr)
+			}
+
+			// A REACTION THAT DROPPED THE MOVER STOPS THE WALK, and the mover
+			// falls in the cell they were LEAVING rather than the one they
+			// were entering (rpg-project#316, ruling R6).
+			//
+			// That is the rules picture the announcement above creates. An
+			// opportunity attack fires BECAUSE its target is leaving reach, so
+			// the strike was checked against the cell the mover still stands
+			// on — and stepping them afterwards would be moving a body out of
+			// the square it fell in.
+			//
+			// ASKED PER CELL, because the answer changes mid-walk, which is
+			// precisely what a reaction does to it. The batched
+			// once-per-walk answer elsewhere in this rulebook rests on a move
+			// being unable to down anyone; announcing steps is what made that
+			// false.
+			//
+			// session's runWalk must give the SAME answer on the player's
+			// path — resolve the movement fold, then stop before Step if the
+			// mover went down. Two paths, one rule: a walk that continued on
+			// one of them would be the asymmetry [Mover] exists to prevent.
+			down, derr := e.standingNow()
+			if derr != nil {
+				return false, fmt.Errorf("move standing: %w", derr)
+			}
+			if down[activeID] {
+				dropped = true
+				break
 			}
 
 			action, stepped := e.stepTo(m, cell)
@@ -683,6 +713,13 @@ func (e *Encounter) executeTurnIntent(
 			if _, _, serr := e.refreshSight(audience); serr != nil {
 				return false, fmt.Errorf("refresh sight: %w", serr)
 			}
+		}
+
+		// A body takes no further intent. The turn ends whatever progress the
+		// walk made first, rather than reporting "still going" and asking a
+		// downed member what it would like to do next.
+		if dropped {
+			return true, nil
 		}
 
 		// Zero cells succeeded: the driver asked for a path that could not

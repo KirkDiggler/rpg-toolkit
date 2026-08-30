@@ -689,6 +689,88 @@ func (s *MonsterTurnTestSuite) TestRefusingMoverFailsLoudly() {
 	s.Require().ErrorIs(err, encounter.ErrRefusingMover)
 }
 
+// droppingMover is a Mover whose reaction kills the mover it was told about —
+// an opportunity attack that lands hard enough. It reports down through the
+// same mutable Standing double killerStriker uses, one capability over.
+type droppingMover struct {
+	standing *downList
+	after    int // announce this many cells, then drop the mover
+	calls    []announcedStep
+}
+
+func (d *droppingMover) Move(
+	_ context.Context, _ *encounter.Encounter, mover encounter.MemberID,
+	from, to spatial.Position,
+) error {
+	d.calls = append(d.calls, announcedStep{Mover: mover, From: from, To: to})
+	if len(d.calls) > d.after {
+		d.standing.down = append(d.standing.down, mover)
+	}
+	return nil
+}
+
+// TestAReactionThatDropsTheMoverStopsTheWalk is ruling R6 on the monster's
+// path, and the cell it stops in is the whole point.
+//
+// The mover falls in the square it was LEAVING, never the one it was entering.
+// That follows from why the reaction fired at all: an opportunity attack
+// triggers on a mover leaving reach, and its strike was checked against the
+// cell the mover still stood on. Stepping afterwards would carry a body out of
+// the square it dropped in — and would do it invisibly, because the walk would
+// simply look like it finished.
+//
+// session's runWalk owes the same answer on the player's path. Two paths, one
+// rule.
+func (s *MonsterTurnTestSuite) TestAReactionThatDropsTheMoverStopsTheWalk() {
+	standing := &downList{}
+	mover := &droppingMover{standing: standing, after: 1}
+
+	// Three cells asked for. The first is walked; the reaction lands as the
+	// second is announced, so the second and third never happen.
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
+		TurnDriver: &scriptedDriver{intents: []encounter.TurnIntent{
+			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
+		}},
+		Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{
+				ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2},
+				SpeedFeet: 30, Targeting: "closest",
+				Actions: []encounter.ActionView{
+					{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+				},
+			},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err, "a mover going down is an outcome, not a malfunction")
+
+	s.Require().Len(mover.calls, 2,
+		"the third cell is never announced: the walk stopped at the second")
+
+	members, merr := enc.Members()
+	s.Require().NoError(merr)
+	var goblinPos spatial.Position
+	for _, m := range members {
+		if m.ID == goblin {
+			goblinPos = m.Position
+		}
+	}
+	s.Equal(cellAt(5, 2), goblinPos,
+		"the mover fell in the cell it was LEAVING, not the one it was entering")
+	s.Equal(cellAt(5, 2), mover.calls[1].From,
+		"and that is the cell the fatal step was announced from")
+}
+
 // TestSetupRejectsANegativeMemberFact and TestJoinRejectsANegativeMemberFact
 // pin Copilot's PR #1187 review finding: SpeedFeet, SightFeet and an
 // action's RangeFeet are feet CellsFromFeet divides by FeetPerCell, and a
