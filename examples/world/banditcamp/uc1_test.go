@@ -12,10 +12,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
+	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
 )
 
 // objectiveID is the one objective on the guild's contract.
@@ -29,10 +32,8 @@ type UC1Suite struct {
 	ctx    context.Context
 	sheets map[journal.EntityID]*character.Character
 
-	world *graph.World
-	log   *journal.Journal
-	job   *quest.Instance
-	exec  *banditcamp.Executor
+	w   *world.World
+	job *quest.Instance
 }
 
 func TestUC1Suite(t *testing.T) {
@@ -47,69 +48,69 @@ func (s *UC1Suite) SetupSuite() {
 	s.sheets = crew
 }
 
-func (s *UC1Suite) SetupTest() {
-	s.freshWorld()
-}
-
-func (s *UC1Suite) freshWorld() {
-	w, err := graph.New(banditcamp.Declaration())
-	s.Require().NoError(err)
-	s.world = w
-
-	s.log = journal.New()
-
-	job, err := quest.Offer("camp-job-1", banditcamp.Contract())
-	s.Require().NoError(err)
-	_, err = job.Claim(banditcamp.Party)
-	s.Require().NoError(err)
-	s.job = job
-
-	s.exec = nil
-}
-
-// script arms the camp with a written-down sequence of d20 results and builds
-// the executor around it. Every contested attempt in a test consumes one.
+// script builds the whole camp around a written-down sequence of d20 results
+// and takes the contract off the board. Every contested attempt consumes one
+// roll.
+//
+// The camp is declared content; the dice are injected; the composer assembles
+// them. Those three lines are the entire wiring, and they are the same three
+// lines any rulebook would write.
 func (s *UC1Suite) script(rolls ...int) {
-	resolver, err := banditcamp.NewCheckResolver(banditcamp.CheckResolverConfig{
+	s.T().Helper()
+
+	resolver, err := dnd5eresolver.New(dnd5eresolver.Config{
 		Sheets: s.sheets,
-		Roller: banditcamp.NewScriptedRoller(rolls...),
+		Roller: scripted.NewRoller(rolls...),
 		Bus:    events.NewEventBus(),
 	})
 	s.Require().NoError(err)
 
-	exec, err := banditcamp.NewExecutor(banditcamp.ExecutorConfig{
-		Journal:  s.log,
+	built, err := world.New(world.Config{
+		Scenario: banditcamp.Scenario(),
 		Resolver: resolver,
-		Verbs:    banditcamp.Verbs(),
 	})
 	s.Require().NoError(err)
-	s.exec = exec
+	s.w = built
+
+	job, events, err := s.w.Claim(banditcamp.ContractID, banditcamp.Party)
+	s.Require().NoError(err)
+	s.Require().Len(events, 1)
+	s.Equal(quest.EventQuestClaimed, events[0].Kind)
+	s.job = job
 }
 
-func (s *UC1Suite) do(
-	verb banditcamp.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID,
-) journal.Fact {
+func (s *UC1Suite) act(
+	verb world.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID,
+) world.Result {
 	s.T().Helper()
 
-	fact, err := s.exec.Do(s.ctx, banditcamp.Act{
+	result, err := s.w.Act(s.ctx, world.Act{
 		Verb: verb, Actor: actor, Target: target, Bystanders: bystanders,
 	})
 	s.Require().NoError(err)
 
-	return fact
+	return result
+}
+
+func (s *UC1Suite) do(
+	verb world.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID,
+) journal.Fact {
+	s.T().Helper()
+
+	return s.act(verb, actor, target, bystanders...).Fact
 }
 
 func (s *UC1Suite) view(observer journal.EntityID) *graph.State {
-	return s.world.StateFor(observer, s.log)
+	return s.w.View(observer)
 }
 
 func (s *UC1Suite) observe() quest.Report {
-	return s.job.Observe(s.world, s.log)
+	return s.job.Observe(s.w.Graph(), s.w.Journal())
 }
 
 func (s *UC1Suite) factsOfKind(kind journal.Kind) []journal.Fact {
 	var out []journal.Fact
-	for _, f := range s.log.All() {
+	for _, f := range s.w.Journal().All() {
 		if f.Kind == kind {
 			out = append(out, f)
 		}
@@ -158,17 +159,21 @@ func (s *UC1Suite) TestFrontDoor() {
 	})
 
 	s.Run("defeat meets it", func() {
-		s.do(banditcamp.Defeat, banditcamp.Brann, banditcamp.Camp)
+		result := s.act(banditcamp.Defeat, banditcamp.Brann, banditcamp.Camp)
 
 		camp := s.view(banditcamp.Camp)
 		s.True(camp.Flagged(banditcamp.Defeated, banditcamp.Camp))
 		s.False(camp.HasEdge(banditcamp.Camp, banditcamp.HostileTo, banditcamp.Party))
 
+		// The act that changed the world is the act that closed the job: the
+		// composer lets the jobs look before it hands the result back.
+		s.Require().Len(result.Quests.Events, 1)
+		s.Equal(quest.EventQuestCompleted, result.Quests.Events[0].Kind)
+
 		report := s.observe()
 		s.True(report.Met[objectiveID])
 		s.Equal(quest.StatusCompleted, report.Status)
-		s.Require().Len(report.Events, 1)
-		s.Equal(quest.EventQuestCompleted, report.Events[0].Kind)
+		s.Empty(report.Events, "a job completes once")
 	})
 }
 
@@ -192,7 +197,7 @@ func (s *UC1Suite) TestBackWay() {
 	})
 
 	s.Run("the camp witnessed nothing at all", func() {
-		s.Empty(s.log.WitnessedBy(s.world.AudienceOf(banditcamp.Camp)...))
+		s.Empty(s.w.Journal().WitnessedBy(s.w.Graph().AudienceOf(banditcamp.Camp)...))
 	})
 
 	s.Run("so it is unsuspecting, and a fight would start surprised", func() {
@@ -203,7 +208,6 @@ func (s *UC1Suite) TestBackWay() {
 	})
 
 	s.Run("a botched sneak writes the same fact to a different audience", func() {
-		s.freshWorld()
 		s.script(2) // Rook, Stealth +7: 9 against DC 13.
 
 		heard := s.do(banditcamp.Sneak, banditcamp.Rook, banditcamp.Camp)
@@ -235,7 +239,7 @@ func (s *UC1Suite) TestChangeling() {
 		s.Equal(banditcamp.FactKilling, kill.Kind)
 		// The assassin and nobody else. Not the camp, not the man he killed.
 		s.Equal(journal.Audience{banditcamp.Rook}, kill.Audience)
-		for _, witnessed := range s.log.WitnessedBy(s.world.AudienceOf(banditcamp.Camp)...) {
+		for _, witnessed := range s.w.Journal().WitnessedBy(s.w.Graph().AudienceOf(banditcamp.Camp)...) {
 			s.NotEqual(banditcamp.FactKilling, witnessed.Kind)
 		}
 	})
@@ -305,7 +309,7 @@ func (s *UC1Suite) TestDiplomacy() {
 		// Ally behaviour is behaviour reading this fold. Every bandit reads the
 		// same edge, because group grain put the same facts in front of them.
 		for _, member := range []journal.EntityID{banditcamp.Bandits, banditcamp.Lieutenant} {
-			view := s.world.StateFor(member, s.log)
+			view := s.w.View(member)
 			s.True(view.HasEdge(banditcamp.Camp, banditcamp.AlliedWith, banditcamp.Party))
 			s.False(view.HasEdge(banditcamp.Camp, banditcamp.HostileTo, banditcamp.Party))
 		}
@@ -318,7 +322,6 @@ func (s *UC1Suite) TestDiplomacy() {
 	})
 
 	s.Run("a botched argument costs ground and holds the line", func() {
-		s.freshWorld()
 		s.script(10, 10, 2) // Two land; the third comes in at 7 against DC 13.
 
 		for range 3 {
@@ -373,7 +376,7 @@ func (s *UC1Suite) TestBlownDisguise() {
 	})
 
 	s.Run("and so is every other bandit's", func() {
-		bandits := s.world.StateFor(banditcamp.Bandits, s.log)
+		bandits := s.w.View(banditcamp.Bandits)
 		s.Equal(banditcamp.Rook, bandits.Occupant(banditcamp.Leads, banditcamp.Camp))
 		s.True(bandits.HasEdge(banditcamp.Camp, banditcamp.AlliedWith, banditcamp.Party))
 	})
@@ -382,9 +385,12 @@ func (s *UC1Suite) TestBlownDisguise() {
 		s.True(s.observe().Met[objectiveID])
 
 		doubted := banditcamp.Contract()
+		doubted.ID = "quiet-the-bandit-camp-doubted"
 		doubted.Objectives[0].Observer = banditcamp.Lieutenant
-		second, err := quest.Offer("camp-job-2", doubted)
+		board, err := quest.NewBoard(doubted)
 		s.Require().NoError(err)
-		s.False(second.Observe(s.world, s.log).Met[objectiveID])
+		second, _, err := board.Claim(banditcamp.Party)
+		s.Require().NoError(err)
+		s.False(second.Observe(s.w.Graph(), s.w.Journal()).Met[objectiveID])
 	})
 }

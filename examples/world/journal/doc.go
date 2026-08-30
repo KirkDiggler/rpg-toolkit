@@ -25,7 +25,8 @@
 //     to edit or remove what it holds. Present state is a pure function of the
 //     declaration and the facts, which is why nothing downstream stores it.
 //
-// [Resolver] is the one seam the host fills in. The journal defines what an
-// [Attempt] and an [Outcome] are; a rulebook decides how a d20 (or a coin, or
-// a model) turns one into the other. The kernel never learns what got rolled.
+// [Outcome] is the one piece of resolution vocabulary that lives here, because
+// facts carry it: a fact records whether the attempt behind it landed. Who
+// decides that — and whether a d20, a coin, or a model does the deciding — is
+// the composer's seam, one layer up. The journal never learns what got rolled.
 package journal

@@ -14,18 +14,34 @@ import (
 )
 
 const (
-	holdID  journal.EntityID = "hold"
-	bandID  journal.EntityID = "band"
-	scoutID journal.EntityID = "scout"
+	holdID   journal.EntityID = "hold"
+	bandID   journal.EntityID = "band"
+	scoutID  journal.EntityID = "scout"
+	firstID  journal.EntityID = "first-captive"
+	secondID journal.EntityID = "second-captive"
+	thirdID  journal.EntityID = "third-captive"
 
 	belongsTo graph.Relation = "belongs-to"
 	hostileTo graph.Relation = "hostile-to"
 
 	broken graph.Flag = "broken"
+	freed  graph.Flag = "freed"
+	lost   graph.Flag = "lost"
 
 	leads graph.Role = "leads"
 
 	routedKind journal.Kind = "routed"
+	freeKind   journal.Kind = "freeing"
+	lostKind   journal.Kind = "losing"
+
+	peaceJob  = "quiet-the-hold"
+	rescueJob = "free-the-captives"
+
+	person graph.Kind = "person"
+
+	freedBucket = "freed"
+	lostBucket  = "lost"
+	heldBucket  = "held"
 )
 
 type QuestSuite struct {
@@ -33,7 +49,6 @@ type QuestSuite struct {
 
 	world *graph.World
 	log   *journal.Journal
-	peace quest.Template
 }
 
 func (s *QuestSuite) SetupTest() {
@@ -42,13 +57,20 @@ func (s *QuestSuite) SetupTest() {
 		Entities: []graph.Entity{
 			{ID: holdID, Kind: "faction"},
 			{ID: bandID, Kind: "faction"},
-			{ID: scoutID, Kind: "person"},
+			{ID: scoutID, Kind: person},
+			{ID: firstID, Kind: person},
+			{ID: secondID, Kind: person},
+			{ID: thirdID, Kind: person},
 		},
 		Edges: []graph.Edge{
 			{From: scoutID, Rel: belongsTo, To: bandID},
 			{From: holdID, Rel: hostileTo, To: bandID},
 		},
-		Reducers: []graph.Reducer{graph.Raise{On: routedKind, Flag: broken}},
+		Reducers: []graph.Reducer{
+			graph.Raise{On: routedKind, Flag: broken},
+			graph.Raise{On: freeKind, Flag: freed},
+			graph.Raise{On: lostKind, Flag: lost},
+		},
 		Projections: []graph.Projection{
 			graph.Retire{OnFlag: broken, Relations: []graph.Relation{hostileTo}},
 		},
@@ -57,97 +79,267 @@ func (s *QuestSuite) SetupTest() {
 
 	s.world = w
 	s.log = journal.New()
-	s.peace = quest.Template{
-		ID:   "quiet-the-hold",
-		Name: "Quiet the Hold",
-		Objectives: []quest.Objective{{
-			ID:        "no-longer-hostile",
-			Observer:  holdID,
-			Predicate: quest.NoEdge{From: holdID, Rel: hostileTo, To: bandID},
-		}},
-	}
 }
 
 func TestQuestSuite(t *testing.T) {
 	suite.Run(t, new(QuestSuite))
 }
 
-func (s *QuestSuite) offer() *quest.Instance {
-	i, err := quest.Offer("job-1", s.peace)
-	s.Require().NoError(err)
-
-	return i
+// peace is the one-subject shape UC-1 uses: a job about a place.
+func (s *QuestSuite) peace() quest.Template {
+	return quest.Template{
+		ID:       peaceJob,
+		Name:     "Quiet the Hold",
+		Subjects: []journal.EntityID{holdID},
+		Objectives: []quest.Objective{{
+			ID:        "no-longer-hostile",
+			Observer:  quest.InstanceSubject,
+			Predicate: quest.NoEdge{From: quest.InstanceSubject, Rel: hostileTo, To: bandID},
+		}},
+	}
 }
 
-func (s *QuestSuite) rout() {
+// rescue is the population shape: one job, three captives, one each.
+func (s *QuestSuite) rescue() quest.Template {
+	return quest.Template{
+		ID:       rescueJob,
+		Name:     "Free the Captives",
+		Subjects: []journal.EntityID{firstID, secondID, thirdID},
+		Objectives: []quest.Objective{{
+			ID:        freedBucket,
+			Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject},
+		}},
+		Failure: &quest.Objective{
+			ID:        lostBucket,
+			Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject},
+		},
+		Buckets: []quest.Bucket{
+			{Name: freedBucket, Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject}},
+			{Name: lostBucket, Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject}},
+			{Name: heldBucket, Predicate: quest.Anything{}},
+		},
+	}
+}
+
+func (s *QuestSuite) board(t quest.Template) *quest.Board {
+	s.T().Helper()
+
+	b, err := quest.NewBoard(t)
+	s.Require().NoError(err)
+
+	return b
+}
+
+func (s *QuestSuite) append(kind journal.Kind, subject journal.EntityID) {
+	s.T().Helper()
+
 	_, err := s.log.Append(journal.Fact{
-		Kind: routedKind, Actor: scoutID, Subject: holdID,
-		Audience: journal.Audience{holdID, bandID},
+		Kind: kind, Actor: scoutID, Subject: subject,
+		Audience: journal.Audience{holdID, bandID, subject},
 	})
 	s.Require().NoError(err)
 }
 
-func (s *QuestSuite) TestOfferRefusesContentNobodyCouldFail() {
-	s.Run("a template needs an id", func() {
-		_, err := quest.Offer("job-1", quest.Template{Objectives: s.peace.Objectives})
-		s.Require().ErrorIs(err, quest.ErrNoTemplate)
+func (s *QuestSuite) TestNewBoardRefusesContentAnAuthorHasNotFinished() {
+	s.Run("a job needs an id", func() {
+		t := s.peace()
+		t.ID = ""
+		_, err := quest.NewBoard(t)
+		s.Require().ErrorIs(err, quest.ErrNoTemplateID)
 	})
 
-	s.Run("a template with no objectives would close on sight", func() {
-		_, err := quest.Offer("job-1", quest.Template{ID: "empty"})
+	s.Run("a job needs somebody to be about", func() {
+		t := s.peace()
+		t.Subjects = nil
+		_, err := quest.NewBoard(t)
+		s.Require().ErrorIs(err, quest.ErrNoSubjects)
+		s.Contains(err.Error(), "one name per copy")
+	})
+
+	s.Run("a job with no objectives would close on sight", func() {
+		t := s.peace()
+		t.Objectives = nil
+		_, err := quest.NewBoard(t)
 		s.Require().ErrorIs(err, quest.ErrNoObjectives)
 	})
+
+	s.Run("a subject may not be listed twice", func() {
+		t := s.rescue()
+		t.Subjects = []journal.EntityID{firstID, secondID, firstID}
+		_, err := quest.NewBoard(t)
+		s.Require().ErrorIs(err, quest.ErrDuplicateSubject)
+	})
+
+	s.Run("a follow-up needs buckets to count toward", func() {
+		t := s.rescue()
+		t.Buckets = nil
+		t.Successors = []quest.Successor{{Opens: s.peace(), When: quest.NoneIn{Bucket: heldBucket}}}
+		_, err := quest.NewBoard(t)
+		s.Require().ErrorIs(err, quest.ErrNoBuckets)
+	})
+
+	s.Run("a follow-up may not name its own subjects", func() {
+		t := s.rescue()
+		t.Successors = []quest.Successor{{
+			Opens: s.peace(), When: quest.NoneIn{Bucket: heldBucket}, SubjectsFrom: "lost",
+		}}
+		_, err := quest.NewBoard(t)
+		s.Require().ErrorIs(err, quest.ErrSuccessorHasSubjects)
+	})
+
+	s.Run("a follow-up may not target a bucket that does not exist", func() {
+		t := s.rescue()
+		opens := s.peace()
+		opens.Subjects = nil
+		t.Successors = []quest.Successor{{
+			Opens: opens, When: quest.NoneIn{Bucket: heldBucket}, SubjectsFrom: "vanished",
+		}}
+		_, err := quest.NewBoard(t)
+		s.Require().ErrorIs(err, quest.ErrUnknownBucket)
+	})
 }
 
-func (s *QuestSuite) TestLifecycleRunsOfferedToClaimedToCompleted() {
-	instance := s.offer()
-	s.Equal(quest.StatusOffered, instance.Status())
+func (s *QuestSuite) TestAClaimTakesOneSubjectAndNothingPutsItBack() {
+	board := s.board(s.rescue())
+	s.Equal(3, board.Available())
 
-	s.Run("the first claim moves the status and emits", func() {
-		events, err := instance.Claim(bandID)
-		s.Require().NoError(err)
-		s.Require().Len(events, 1)
-		s.Equal(quest.EventQuestClaimed, events[0].Kind)
-		s.Equal(quest.StatusClaimed, instance.Status())
+	first, events, err := board.Claim("party-a")
+	s.Require().NoError(err)
+	s.Require().Len(events, 1)
+	s.Equal(quest.EventQuestClaimed, events[0].Kind)
+
+	second, _, err := board.Claim("party-b")
+	s.Require().NoError(err)
+	third, _, err := board.Claim("party-c")
+	s.Require().NoError(err)
+
+	s.Run("each claimant got a different captive", func() {
+		s.Equal(firstID, first.Subject())
+		s.Equal(secondID, second.Subject())
+		s.Equal(thirdID, third.Subject())
+		s.Equal(journal.EntityID("party-a"), first.Claimant())
+		s.Zero(board.Available())
 	})
 
-	s.Run("a second claimant joins without a second transition", func() {
-		events, err := instance.Claim(scoutID)
-		s.Require().NoError(err)
-		s.Empty(events)
-		s.Equal([]journal.EntityID{bandID, scoutID}, instance.Claimants())
+	s.Run("a fourth claimant is told the job is taken, in words they can act on", func() {
+		_, _, err := board.Claim("party-d")
+		s.Require().ErrorIs(err, quest.ErrBoardExhausted)
+		s.Contains(err.Error(), "add more names")
 	})
 
-	s.Run("an unmet objective completes nothing", func() {
-		report := instance.Observe(s.world, s.log)
-		s.False(report.Met["no-longer-hostile"])
-		s.Empty(report.Events)
-		s.Equal(quest.StatusClaimed, report.Status)
+	s.Run("finishing and failing put nobody back on the board", func() {
+		s.append(freeKind, firstID)
+		s.append(lostKind, secondID)
+		board.Observe(s.world, s.log)
+
+		s.Equal(quest.StatusCompleted, first.Status())
+		s.Equal(quest.StatusFailed, second.Status())
+		s.Zero(board.Available())
+	})
+}
+
+func (s *QuestSuite) TestInstancesAreIsolatedByTheirOwnSubject() {
+	board := s.board(s.rescue())
+	first, _, err := board.Claim("party-a")
+	s.Require().NoError(err)
+	second, _, err := board.Claim("party-b")
+	s.Require().NoError(err)
+
+	s.append(lostKind, firstID)
+	board.Observe(s.world, s.log)
+
+	s.Equal(quest.StatusFailed, first.Status())
+	s.Equal(quest.StatusClaimed, second.Status())
+}
+
+func (s *QuestSuite) TestFailureIsWeighedBeforeSuccess() {
+	board := s.board(s.rescue())
+	instance, _, err := board.Claim("party-a")
+	s.Require().NoError(err)
+
+	s.append(freeKind, firstID)
+	s.append(lostKind, firstID)
+	board.Observe(s.world, s.log)
+
+	// Both hold. The one that cannot be taken back is the one that counts.
+	s.Equal(quest.StatusFailed, instance.Status())
+}
+
+func (s *QuestSuite) TestTallyCountsThePopulationNotTheClaims() {
+	board := s.board(s.rescue())
+
+	s.Run("nobody has claimed anything and the census is already three", func() {
+		tally := board.Tally(s.world, s.log)
+		s.Equal(3, tally.Total())
+		s.Equal(3, tally.Count(heldBucket))
 	})
 
-	s.Run("the world moving completes it, once", func() {
-		s.rout()
+	s.Run("the world moving moves the census, claims or no claims", func() {
+		s.append(freeKind, firstID)
+		s.append(lostKind, secondID)
 
-		report := instance.Observe(s.world, s.log)
-		s.True(report.Met["no-longer-hostile"])
-		s.Require().Len(report.Events, 1)
-		s.Equal(quest.EventQuestCompleted, report.Events[0].Kind)
-		s.Equal([]journal.EntityID{bandID, scoutID}, report.Events[0].Claimants)
+		tally := board.Tally(s.world, s.log)
+		s.Equal(3, tally.Total())
+		s.Equal(1, tally.Count(freedBucket))
+		s.Equal(1, tally.Count(lostBucket))
+		s.Equal(1, tally.Count(heldBucket))
+		s.Equal([]string{freedBucket, heldBucket, lostBucket}, tally.Buckets())
+	})
+}
 
-		again := instance.Observe(s.world, s.log)
-		s.Empty(again.Events)
-		s.Equal(quest.StatusCompleted, again.Status)
+func (s *QuestSuite) TestBucketsAreAPriorityListNotAPartition() {
+	// Flags only go up, so a captive who was lost and then freed still carries
+	// "lost". Whichever bucket is asked first is the answer.
+	s.append(lostKind, firstID)
+	s.append(freeKind, firstID)
+
+	s.Run("freed asked first wins", func() {
+		s.Equal(1, s.board(s.rescue()).Tally(s.world, s.log).Count(freedBucket))
 	})
 
-	s.Run("a closed instance takes no more claims", func() {
-		_, err := instance.Claim(scoutID)
-		s.Require().ErrorIs(err, quest.ErrClosed)
+	s.Run("lost asked first wins instead", func() {
+		t := s.rescue()
+		t.Buckets = []quest.Bucket{
+			{Name: lostBucket, Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject}},
+			{Name: freedBucket, Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject}},
+			{Name: heldBucket, Predicate: quest.Anything{}},
+		}
+		s.Equal(1, s.board(t).Tally(s.world, s.log).Count(lostBucket))
 	})
+}
+
+func (s *QuestSuite) TestDistributionsAskAboutTheWholePopulation() {
+	board := s.board(s.rescue())
+	s.append(lostKind, firstID)
+	s.append(lostKind, secondID)
+
+	partway := board.Tally(s.world, s.log)
+	s.False(quest.AllIn{Bucket: lostBucket}.Holds(partway))
+	s.False(quest.NoneIn{Bucket: heldBucket}.Holds(partway))
+	s.True(quest.AtLeastIn{Bucket: lostBucket, Count: 2}.Holds(partway))
+
+	s.append(lostKind, thirdID)
+	settled := board.Tally(s.world, s.log)
+	s.True(quest.AllIn{Bucket: lostBucket}.Holds(settled))
+	s.True(quest.NoneIn{Bucket: heldBucket}.Holds(settled))
+	s.True(quest.Every{
+		quest.NoneIn{Bucket: heldBucket},
+		quest.AllIn{Bucket: lostBucket},
+	}.Holds(settled))
+	s.True(quest.Every{}.Holds(settled))
+}
+
+func (s *QuestSuite) TestAllInIsFalseForAnEmptyPopulation() {
+	// "All of nothing" is true about arithmetic and false about the world. A
+	// follow-up that opened because a population was empty would be nonsense.
+	empty := quest.Tally{}
+	s.False(quest.AllIn{Bucket: lostBucket}.Holds(empty))
+	s.True(quest.NoneIn{Bucket: lostBucket}.Holds(empty))
 }
 
 func (s *QuestSuite) TestAbandonedInstancesDoNotCompleteLater() {
-	instance := s.offer()
-	_, err := instance.Claim(bandID)
+	board := s.board(s.rescue())
+	instance, _, err := board.Claim("party-a")
 	s.Require().NoError(err)
 
 	events, err := instance.Abandon()
@@ -155,21 +347,26 @@ func (s *QuestSuite) TestAbandonedInstancesDoNotCompleteLater() {
 	s.Require().Len(events, 1)
 	s.Equal(quest.EventQuestAbandoned, events[0].Kind)
 
-	s.rout()
+	s.append(freeKind, firstID)
 	report := instance.Observe(s.world, s.log)
-	s.True(report.Met["no-longer-hostile"])
+	s.True(report.Met[freedBucket])
 	s.Equal(quest.StatusAbandoned, report.Status)
 	s.Empty(report.Events)
+
+	_, err = instance.Abandon()
+	s.Require().ErrorIs(err, quest.ErrClosed)
 }
 
 func (s *QuestSuite) TestObservingWritesNothingToTheWorld() {
-	instance := s.offer()
-	s.rout()
+	board := s.board(s.peace())
+	_, _, err := board.Claim("party-a")
+	s.Require().NoError(err)
+	s.append(routedKind, holdID)
 
 	before := s.log.All()
 	stateBefore := s.world.StateFor(holdID, s.log)
 
-	instance.Observe(s.world, s.log)
+	board.Observe(s.world, s.log)
 
 	s.Equal(before, s.log.All())
 	s.Equal(stateBefore, s.world.StateFor(holdID, s.log))
@@ -184,19 +381,16 @@ func (s *QuestSuite) TestObjectivesAreReadInTheNamedObserversView() {
 	})
 	s.Require().NoError(err)
 
-	s.Run("read in the hold's view, the objective is met", func() {
-		instance := s.offer()
+	s.Run("read in the hold's own view, the objective is met", func() {
+		instance, _, err := s.board(s.peace()).Claim("party-a")
+		s.Require().NoError(err)
 		s.True(instance.Observe(s.world, s.log).Met["no-longer-hostile"])
 	})
 
 	s.Run("read in the band's view, it is not", func() {
-		template := s.peace
-		template.Objectives = []quest.Objective{{
-			ID:        "no-longer-hostile",
-			Observer:  bandID,
-			Predicate: quest.NoEdge{From: holdID, Rel: hostileTo, To: bandID},
-		}}
-		instance, err := quest.Offer("job-2", template)
+		t := s.peace()
+		t.Objectives[0].Observer = bandID
+		instance, _, err := s.board(t).Claim("party-a")
 		s.Require().NoError(err)
 		s.False(instance.Observe(s.world, s.log).Met["no-longer-hostile"])
 	})
@@ -209,19 +403,32 @@ func (s *QuestSuite) TestPredicatesDescribeThemselvesForAQuestLog() {
 	s.Equal("scout leads hold", quest.Occupies{Who: scoutID, Role: leads, Of: holdID}.Describe())
 	s.Equal("somebody leads hold", quest.Occupies{Role: leads, Of: holdID}.Describe())
 	s.Equal("nothing in particular", quest.All{}.Describe())
+	s.Equal("anything", quest.Anything{}.Describe())
+	s.Equal("none are held", quest.NoneIn{Bucket: heldBucket}.Describe())
+	s.Equal("all are lost", quest.AllIn{Bucket: lostBucket}.Describe())
+	s.Equal("at least 2 are lost", quest.AtLeastIn{Bucket: lostBucket, Count: 2}.Describe())
+	s.Equal("none are held and all are lost", quest.Every{
+		quest.NoneIn{Bucket: heldBucket}, quest.AllIn{Bucket: lostBucket},
+	}.Describe())
 }
 
 func (s *QuestSuite) TestAllRequiresEveryPart() {
-	s.rout()
-	state := s.world.StateFor(holdID, s.log)
+	s.append(routedKind, holdID)
+	bindings := quest.Bindings{State: s.world.StateFor(holdID, s.log), Subject: holdID}
 
 	both := quest.All{
 		quest.NoEdge{From: holdID, Rel: hostileTo, To: bandID},
 		quest.Flagged{Flag: broken, Of: holdID},
 	}
-	s.True(both.Holds(state))
+	s.True(both.Holds(bindings))
 
 	withUnmet := quest.All{both[0], both[1], quest.Occupies{Role: leads, Of: holdID}}
-	s.False(withUnmet.Holds(state))
-	s.True(quest.All{}.Holds(state))
+	s.False(withUnmet.Holds(bindings))
+	s.True(quest.All{}.Holds(bindings))
+}
+
+func (s *QuestSuite) TestInstanceSubjectSubstitutesTheClaimantsOwnSubject() {
+	bindings := quest.Bindings{State: s.world.StateFor(holdID, s.log), Subject: firstID}
+	s.Equal(firstID, bindings.Resolve(quest.InstanceSubject))
+	s.Equal(holdID, bindings.Resolve(holdID))
 }

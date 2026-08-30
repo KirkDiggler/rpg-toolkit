@@ -177,6 +177,28 @@ func (s *State) vacateHeldBy(role Role, occupant journal.EntityID) bool {
 	return vacated
 }
 
+// flaggedWith returns every entity carrying a flag, in a stable order.
+func (s *State) flaggedWith(name Flag) []journal.EntityID {
+	var out []journal.EntityID
+	for key, set := range s.flags {
+		if set && key.name == name {
+			out = append(out, key.of)
+		}
+	}
+	slices.Sort(out)
+
+	return out
+}
+
+// adopt replaces target's edges in the given relations with source's.
+func (s *State) adopt(target, source journal.EntityID, rels []Relation) {
+	inherited := s.edgesFrom(source, rels)
+	s.dropEdgesFrom(target, rels)
+	for _, e := range inherited {
+		s.addEdge(Edge{From: target, Rel: e.Rel, To: e.To})
+	}
+}
+
 func (s *State) addCount(name Counter, of, toward journal.EntityID, by int) {
 	s.counters[counterKey{name: name, of: of, toward: toward}] += by
 }

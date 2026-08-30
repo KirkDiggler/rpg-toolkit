@@ -4,8 +4,6 @@
 package graph
 
 import (
-	"slices"
-
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 )
 
@@ -58,11 +56,40 @@ func (p FollowSlot) project(s *State) {
 			continue
 		}
 
-		inherited := s.edgesFrom(source, p.Relations)
-		s.dropEdgesFrom(slot.Of, p.Relations)
-		for _, e := range inherited {
-			s.addEdge(Edge{From: slot.Of, Rel: e.Rel, To: e.To})
+		s.adopt(slot.Of, source, p.Relations)
+	}
+}
+
+// AdoptStance declares that an entity carrying a flag takes on another
+// entity's stance — the individual's counterpart to [FollowSlot], which does
+// the same thing for a group through its slot.
+//
+// A hostage who turns stands where their captors stand. Nothing in the fold
+// knows what turning means; it knows that a flag went up and whose edges to
+// copy.
+//
+// Flags only ever go up, so a later reversal is a second AdoptStance declared
+// after this one: projections run in order and the last one to speak about an
+// entity wins. Redemption is not the undoing of the flag — the flag stays, and
+// is overruled.
+type AdoptStance struct {
+	// OnFlag is the flag that moves the entity.
+	OnFlag Flag
+
+	// From is whose stance is adopted.
+	From journal.EntityID
+
+	// Relations are the stance edges that change. Membership must not be one
+	// of them: somebody changing sides does not change who they are part of.
+	Relations []Relation
+}
+
+func (p AdoptStance) project(s *State) {
+	for _, id := range s.flaggedWith(p.OnFlag) {
+		if id == p.From {
+			continue
 		}
+		s.adopt(id, p.From, p.Relations)
 	}
 }
 
@@ -120,15 +147,7 @@ type Retire struct {
 }
 
 func (p Retire) project(s *State) {
-	var flagged []journal.EntityID
-	for key, set := range s.flags {
-		if set && key.name == p.OnFlag {
-			flagged = append(flagged, key.of)
-		}
-	}
-	slices.Sort(flagged)
-
-	for _, id := range flagged {
+	for _, id := range s.flaggedWith(p.OnFlag) {
 		s.dropEdgesFrom(id, p.Relations)
 	}
 }

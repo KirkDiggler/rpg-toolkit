@@ -1,53 +1,80 @@
 # examples/world — the living-world spike
 
-One camp. Many ways in. Many endings. No code anywhere that knows which one you
-took.
+Two scenarios. One composer. No code anywhere that knows which route a player
+took, or which company took which job.
 
-This module is a spike, not a product. It holds three kernel packages and the
-bandit camp that wires them to real D&D 5e, and it lives under `examples/` on
-purpose: example code is unadoptable by construction, so the seams stay fluid
-and nothing here mints a tag or promises an API. If UC-1 proves the seams and
-the walk agrees, `journal`, `graph` and `quest` move out to `world/*` and this
-example gets rewired to import them exactly as a rulebook would.
+This module is a spike, not a product. It lives under `examples/` on purpose:
+example code is unadoptable by construction, so the seams stay fluid and nothing
+here mints a tag or promises an API. If the seams hold and the walk agrees,
+`journal`, `graph`, `quest` and the composer move out to `world/*`, and the
+scenarios get rewired to import them exactly as a rulebook would.
 
-## The three packages
+## Layout
 
 ```
-journal  <-  graph  <-  quest
-(memory)     (structure    (goals)
-              + present)
+world/                 the composer — assembly, the one write door, the one read door
+  journal/             memory: append-only, attributed, audience-scoped facts
+  graph/               structure and the present, derived by fold and never stored
+  quest/               goals: templates, populations, claims, distributions
+  dnd5eresolver/       the rulebook adapter — the only place a d20 exists
+  scripted/            deterministic dice, so a whole run reproduces
+  banditcamp/          UC-1 content: one camp, five ways through
+  hostagecamp/         UC-2 content: one job, three companies, three hostages
 ```
 
-- **`journal`** — an append-only log of attributed, audience-scoped facts.
-  Depends on nothing. Defines the vocabulary everything else is written in, plus
-  `Resolver`, the one seam a host fills in.
-- **`graph`** — entities, typed edges, roles as slots, and the declared folds
-  that turn facts into the present. Stores no present state at all.
-- **`quest`** — templates, instances, claims, and objectives as predicates over
-  derived state. Watches; never acts.
+The arrows only point one way: `journal <- graph <- quest <- world`, and the
+scenarios sit above all of it. A test parses the imports and fails if that ever
+stops being true.
 
-`banditcamp` is the only package permitted to import a rulebook, and a test
-enforces it.
+## Declare, inject, subscribe
 
-## The claim being tested
+A rulebook builds a world through exactly three touchpoints, and the types are
+those three:
 
-Present state is a pure function of *(what was declared, what was witnessed)*.
-Nothing is stored, so nothing can drift.
+1. **Declare** — `world.Scenario` is what a content package hands over: graph
+   declarations, verbs, quest templates. All data. See `banditcamp.Scenario`.
+2. **Inject** — `world.Resolver` is what content deliberately withholds.
+   `world.Config` is a Scenario plus a Resolver, and the split in that struct is
+   the whole boundary.
+3. **Subscribe** — `world.Result` carries the fact that was written and what the
+   jobs made of it, returned as values. No bus, and none wanted.
 
-Knowledge is the audience of facts. There is no belief database: an entity's
-present is the fold over the facts it witnessed, which is why stealth is
-controlling the audience of your own events and disguise is planting a fact in
-someone else's feed.
+```go
+w, err := world.New(world.Config{
+    Scenario: banditcamp.Scenario(),
+    Resolver: resolver,   // dnd5eresolver, or anything that answers "did that work"
+})
+result, err := w.Act(ctx, world.Act{Verb: banditcamp.Sneak, Actor: rook, Target: camp})
+state := w.View(camp)     // the camp's present, folded from what the camp saw
+```
 
-Five routes through one camp are asserted, and not one of them is a branch:
+## What the two scenarios prove
 
-| route | what the player did | why the world moved |
-|---|---|---|
-| Front door | approach, assault, win | the camp witnessed an assault, so it is alerted and formed up; defeat retires its hostility |
-| Back way | sneak, enter | the camp witnessed nothing, so it is surprised |
-| Changeling | quiet kill, claim command | allegiance follows whoever holds the `leads` slot, and the camp never heard about the body |
-| Diplomacy | parley, persuade ×3 | regard crossed the declared threshold, converting `hostile-to` into `allied-with` |
-| Blown disguise | changeling, then fail in front of one lieutenant | the lieutenant folded one extra fact and reached a different present from the camp he stands in |
+**UC-1, the bandit camp.** Five routes through one declaration, none of them a
+branch. Kick the door in and the camp is alerted because it witnessed an
+assault. Come over the wall and it is surprised because it witnessed nothing.
+Kill the chief quietly and wear his face and the camp follows you. Talk instead
+and regard crosses a threshold. Blow the disguise in front of one lieutenant and
+that lieutenant folds a different present from the camp he stands in.
+
+**UC-2, the hostage camp.** One job with three names on it. A claim takes one
+off the board and mints the claiming company's own instance about that person,
+and nothing ever puts one back. Ember's failure turns Ember's hostage; Quill's
+and Thorn's are untouched, and no code compares companies to make that so. When
+the population settles into "nobody captive, everybody turned", a follow-up
+opens about exactly those people — a fold over a census, not a rule anybody
+wrote — once, and never again.
+
+## Two things worth knowing before you read the code
+
+**Present state is a pure function of (what was declared, what was witnessed).**
+Nothing is stored, so nothing can drift. Rewind the journal and the world
+rewinds with it; the tests assert exactly that.
+
+**Flags only go up.** Nothing clears one, because unwitnessing is not an event.
+A redeemed hostage still carries the flag that says they turned. Redemption wins
+by *precedence*: its projection is declared after turning's, and its bucket is
+asked before turning's. Order carries meaning — see `hostagecamp.Declaration`.
 
 ## Running it
 
@@ -56,20 +83,8 @@ cd examples/world
 go test ./...
 ```
 
-Everything is deterministic: `ScriptedRoller` hands `checks.MakeAbilityCheck` a
+Everything is deterministic: `scripted.NewRoller` hands the rulebook a
 written-down sequence of d20 results, so the same script always produces the
 same facts, folds, and ending.
-
-## Wiring your own
-
-Three touchpoints, and no fourth:
-
-1. **Declare** — content as data. See `banditcamp.Declaration`, `Verbs`, and
-   `Contract`. There is no route into the camp in any of them.
-2. **Inject** — implement `journal.Resolver`. `banditcamp.CheckResolver` is
-   ~40 lines over real character sheets. A different rulebook is a different
-   resolver and nothing else.
-3. **Subscribe** — `quest.Instance.Observe` returns events as values. What
-   completing a contract is *worth* is your rulebook's opinion.
 
 Read the package doc comments before the code; each states its own contract.
