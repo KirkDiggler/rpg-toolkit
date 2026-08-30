@@ -272,7 +272,9 @@ func (e *tracked) observe(r Reading, now time.Time) (Standing, []Event) {
 		})
 		holds = holds && held
 	}
-	report.Holds = holds && len(e.goal.Conditions) > 0
+	// NewTracker refuses a goal with no conditions, so an empty set cannot
+	// reach here and meet itself vacuously.
+	report.Holds = holds
 
 	events := e.settle(report.Holds, now)
 	report.Status = e.status
