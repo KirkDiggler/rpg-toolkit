@@ -118,6 +118,15 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 		return nil, fmt.Errorf("opendoor: %w", err)
 	}
 
+	// A door opening can put two sides in sight of each other, which is a
+	// fight forming — and every combatant is lit when the bubble forms (R2),
+	// on whichever verb formed it.
+	if opened.Formed != nil {
+		if err := m.igniteFight(ctx, scope, opened.Formed.Order); err != nil {
+			return nil, fmt.Errorf("opendoor: %w", err)
+		}
+	}
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("opendoor: %w", err)
@@ -257,6 +266,15 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 	down, err := discoveryStanding(scope)
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w", err)
+	}
+
+	// A door opening can put two sides in sight of each other, which is a
+	// fight forming — and every combatant is lit when the bubble forms (R2),
+	// on whichever verb formed it.
+	if unlocked.Formed != nil {
+		if err := m.igniteFight(ctx, scope, unlocked.Formed.Order); err != nil {
+			return nil, fmt.Errorf("unlock: %w", err)
+		}
 	}
 
 	report, delivery, err := m.commit(ctx, scope)

@@ -263,23 +263,20 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		}
 	}
 
-	// Standing, asked here and only NOW — after every gate that must refuse
-	// without touching a sheet has already passed (Copilot's own precedence
-	// finding on #1171, pinned by TestNotActiveWinsOverAffordability).
+	// STANDING IS NO LONGER ASKED HERE. It was batched once for the whole walk
+	// (rpg-toolkit#1137) on the stated grounds that "a Move cannot down or
+	// revive anyone, so the answer is stable across every step's own
+	// Discovery". Announcing steps to the rules made that false: an opportunity
+	// attack resolves inside a step and can drop the walker mid-path
+	// (rpg-project#316, ruling R6), so runWalk asks per step and owns the
+	// answer. A batched copy passed in here would be overwritten before it was
+	// ever read.
 	//
-	// THIS IS THE WALK'S FIRST ANSWER, NOT ITS ONLY ONE. It was batched once
-	// for the whole walk (rpg-toolkit#1137) on the stated grounds that "a Move
-	// cannot down or revive anyone, so the answer is stable across every
-	// step's own Discovery". Announcing steps to the rules made that false: an
-	// opportunity attack resolves inside a step and can drop the walker
-	// mid-path (rpg-project#316, ruling R6). runWalk re-asks per step and
-	// stops when the walker goes down; this call is what the first step reads.
-	down, err := discoveryStanding(scope)
-	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
-	}
-
-	res, err := m.runWalk(ctx, scope, in.Member, in.Path, down)
+	// The ordering the batched ask protected still holds: runWalk runs after
+	// every gate that must refuse without touching a sheet (Copilot's own
+	// precedence finding on #1171, pinned by TestNotActiveWinsOverAffordability),
+	// so the first standing question is still asked after all of them.
+	res, err := m.runWalk(ctx, scope, in.Member, in.Path)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -399,7 +396,7 @@ type walkResult struct {
 // the next step with ErrInBubble — so stopping is a fact about the world rather
 // than a policy about perception.
 func (m *Manager) runWalk(
-	ctx context.Context, scope *writeScope, member string, path []spatial.Position, down map[string]bool,
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
 ) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
@@ -440,7 +437,7 @@ func (m *Manager) runWalk(
 		// its strike was checked against the cell they still stood on. The
 		// encounter's own Move case gives the identical answer on the driven
 		// path; two paths, one rule.
-		down, err = discoveryStanding(scope)
+		down, err := discoveryStanding(scope)
 		if err != nil {
 			return nil, err
 		}
@@ -487,6 +484,14 @@ func (m *Manager) runWalk(
 		}
 
 		if stepped.Formed != nil {
+			// Every combatant is lit the moment the bubble forms (R2). The
+			// walker who started the fight has not taken a turn in it yet, and
+			// neither has anyone they walked into — a reactor with a cold
+			// sheet cannot react, which is the whole reason this moved off
+			// first-act ignition. See [Manager.igniteFight].
+			if err := m.igniteFight(ctx, scope, stepped.Formed.Order); err != nil {
+				return nil, err
+			}
 			res.formed = projectFormed(stepped.Formed)
 			return res, nil
 		}

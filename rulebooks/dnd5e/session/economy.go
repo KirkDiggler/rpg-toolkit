@@ -200,3 +200,92 @@ func readyForTurn(ctx context.Context, sheet *character.Character, turn int) err
 	_, err := sheet.RefreshForTurn(ctx, &character.RefreshForTurnInput{TurnNumber: turn, Speed: speed})
 	return err
 }
+
+// igniteFight gives every member of a forming bubble their economy, and saves
+// it.
+//
+// # This supersedes the lazy ignition stated above, and does not merely add to it
+//
+// The rule directly above says the session lights a sheet WHEN AN ACTOR ON THE
+// FIGHT CLOCK FIRST ACTS, explicitly "not when the bubble forms, because
+// nothing loads the sheets then". Kirk ruled the other way (rpg-project#316,
+// 2026-08-28): "characters should start with their full economy I think they
+// just cant consume it if its not their turn. when we go into a combat bubble,
+// all players should have economy."
+//
+// The objection that rule records was a COST, not a disagreement — lighting at
+// formation means a fight starting must load every member's sheet, seed it and
+// save it, where before it loaded nobody. That cost is now paid here, and it is
+// paid because a reaction made it load-bearing rather than merely tidier.
+//
+// # Why a reaction forces it
+//
+// A reaction is spent on somebody else's turn BY DEFINITION, so the reactor is
+// by definition a member who has not acted yet. Under lazy ignition their sheet
+// is cold, [character.CanReact] answers false, and the opportunity attack
+// declines — silently, because a reactor with no economy looks exactly like a
+// reactor that chose not to react. The fighter who has not had a turn yet is
+// precisely the fighter a fleeing wolf runs past.
+//
+// # Granting is not consuming
+//
+// This grants; it does not open the door. Spending out of turn is still refused
+// by the TURN GATE that already exists — encounter.Step answers ErrNotActive
+// and Afford blocks the non-turn verbs. A reaction is the exception by
+// definition, which is why it is spent through the condition's own request
+// rather than through the turn-gated door.
+//
+// MONSTERS ARE SKIPPED, and that is not an omission. They have no action
+// economy at all — no sheet to light, nothing for a readiness gate to read —
+// which is exactly why the OA condition meters itself with UsedThisTurn rather
+// than relying on one. Both kinds get the same rule from the same place; only
+// one of them has a bank.
+func (m *Manager) igniteFight(ctx context.Context, scope *writeScope, order []encounter.MemberID) error {
+	if len(order) == 0 {
+		return nil
+	}
+
+	round, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: order[0]})
+	if err != nil {
+		return translate(err)
+	}
+
+	// KIND decides, read off the roster — NOT "is there a monster sheet for
+	// this id". A member can be on the roster with no stored sheet at all, and
+	// TestAMemberWithNoSheetIsUp pins that a sheetless monster is not a broken
+	// world; keying on the NPC store sends exactly that member down the
+	// character path and fails the fight it is standing in.
+	roster, err := scope.enc.Members()
+	if err != nil {
+		return translate(err)
+	}
+	players := map[encounter.MemberID]bool{}
+	for _, member := range roster {
+		if member.Kind == encounter.MemberKind(KindPlayer) {
+			players[member.ID] = true
+		}
+	}
+
+	for _, id := range order {
+		if !players[id] {
+			continue
+		}
+
+		data, err := m.fetchCharacterData(ctx, "combatant", string(id))
+		if err != nil {
+			return err
+		}
+		sheet, err := character.Load(ctx, data)
+		if err != nil {
+			return fmt.Errorf("combatant %q: %w: %v", id, ErrBadCharacter, err)
+		}
+		if err := readyForTurn(ctx, sheet, round.Round); err != nil {
+			return fmt.Errorf("combatant %q: %w: %v", id, ErrBadCharacter, err)
+		}
+		if err := m.saveWalker(ctx, scope, sheet); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

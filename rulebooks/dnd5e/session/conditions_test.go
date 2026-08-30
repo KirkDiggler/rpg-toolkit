@@ -128,9 +128,23 @@ func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.M
 // TestAVerbLeavesTheCharacterStoreUntouched is the no-clobber pin.
 //
 // Every write verb EXCEPT Attack, which must write — see
-// TestDamagePersists. That exception is the pin getting stronger rather than
-// weaker: the rule is now "only the verb that should, does", and the guard
-// still covers every verb that has no business touching a sheet.
+// TestDamagePersists — AND EXCEPT a verb that starts a fight, which must
+// write for a reason that arrived later (rpg-project#316, ruling R2). Each
+// exception is the pin getting stronger rather than weaker: the rule is
+// "only the verb that should, does", and the guard still covers every verb
+// that has no business touching a sheet.
+//
+// The fight-forming exception used to be covered by this pin and is now its
+// inverse, so it is asserted rather than dropped. Kirk ruled that every
+// combatant is lit when the bubble forms — "when we go into a combat bubble,
+// all players should have economy" — which means formation LOADS, SEEDS AND
+// SAVES every player member. The old claim was true only while nothing lit a
+// sheet at formation, and a reaction is what made lazy ignition untenable: a
+// reactor has by definition not acted yet, so a cold sheet answers "cannot
+// react" and the opportunity attack declines silently.
+//
+// A walk that starts no fight still touches nothing, which is the half of the
+// guarantee that survives intact and the one an ordinary walk depends on.
 //
 // Byte comparison rather
 // than a field-by-field check on purpose: the failure this guards against is a
@@ -151,11 +165,32 @@ func (s *ConditionsTestSuite) TestAVerbLeavesTheCharacterStoreUntouched() {
 		s.Equal(string(before), string(s.storedBytes("bob")))
 	})
 
-	s.Run("move that starts a fight", func() {
+	s.Run("move that starts no fight", func() {
+		before := s.storedBytes("alice")
+		out, err := s.mgr.Move(ctx, &session.MoveInput{
+			Session: "sess", Member: "alice",
+			Path: []spatial.Position{hexCell(1, 1)},
+		})
+		s.Require().NoError(err)
+		s.Require().Nil(out.Formed, "this walk is supposed to start no fight")
+		s.Equal(string(before), string(s.storedBytes("alice")),
+			"an ordinary walk still writes nobody")
+	})
+
+	s.Run("move that starts a fight lights every combatant", func() {
 		before := s.storedBytes("alice")
 		out := s.walkIntoTheAmbush(s.mgr)
 		s.Require().NotNil(out.Formed, "this walk is supposed to start a fight")
-		s.Equal(string(before), string(s.storedBytes("alice")))
+
+		after := s.storedBytes("alice")
+		s.NotEqual(string(before), string(after),
+			"formation lights every combatant, so the store MUST change (R2)")
+		s.Contains(string(after), `"action_economy"`,
+			"and what it gained is an economy — the thing a reactor needs to have "+
+				"before anyone walks past them")
+		s.Contains(string(after), `"reactions_remaining":1`,
+			"including the reaction, which is the whole point: it is spent on "+
+				"somebody else's turn, so a cold sheet could never have one")
 	})
 }
 
