@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.38.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.39.1
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
 	github.com/stretchr/testify v1.11.1
 )
