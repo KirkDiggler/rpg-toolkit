@@ -129,7 +129,7 @@ func (s *PreflightTestSuite) TestNothingIsLeftOnTheBus() {
 	inner := events.NewEventBus()
 
 	raw, err := (&conditions.UnarmoredDefenseCondition{
-		CharacterID: "hero-1", Type: conditions.UnarmoredDefenseBarbarian,
+		MemberID: "hero-1", Type: conditions.UnarmoredDefenseBarbarian,
 	}).ToJSON()
 	s.Require().NoError(err)
 

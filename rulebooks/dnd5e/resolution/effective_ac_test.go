@@ -90,7 +90,7 @@ func (s *EffectiveACTestSuite) armoredHero(conds ...json.RawMessage) *character.
 
 func (s *EffectiveACTestSuite) defenseStyle() json.RawMessage {
 	raw, err := (&conditions.FightingStyleDefenseCondition{
-		CharacterID: heroID,
+		MemberID: heroID,
 	}).ToJSON()
 	s.Require().NoError(err)
 
@@ -98,7 +98,7 @@ func (s *EffectiveACTestSuite) defenseStyle() json.RawMessage {
 }
 
 func (s *EffectiveACTestSuite) world() encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -171,9 +171,9 @@ func (s *EffectiveACTestSuite) unarmoredBarbarian(conds ...json.RawMessage) *cha
 
 func (s *EffectiveACTestSuite) unarmoredDefense() json.RawMessage {
 	raw, err := (&conditions.UnarmoredDefenseCondition{
-		CharacterID: heroID,
-		Type:        conditions.UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: heroID,
+		Type:     conditions.UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	}).ToJSON()
 	s.Require().NoError(err)
 
@@ -270,7 +270,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	second := monsters.NewWolf(secondWolfID).ToData()
 	attack := data.Actions[0]
 
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: noAttacksExpected{}, Mover: encounter.RefusingMover{}, Announcer: quietAnnouncer{}, Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},

@@ -311,6 +311,19 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		// never built for; RefusingAnnouncer names that loudly rather than
 		// swallowing it.
 		Announcer: encounter.RefusingAnnouncer{},
+		// And a construction-only Mover, third in the same family and by the
+		// same argument (rpg-project#316). A step is announced by the
+		// composition's own Move case, reached through the turn clock — which,
+		// per the two paragraphs above, this package does not run.
+		//
+		// It reads like recursion even more strongly than the Announcer does,
+		// because the Mover a host supplies resolves movement BY CALLING THIS
+		// PACKAGE, and here this package hands one over. It is not, for the
+		// same reason: nothing inside a resolution walks anybody. And the
+		// refusal is what makes that structural rather than a promise — a fold
+		// that somehow reached a step would refuse loudly instead of
+		// recursing into another fold.
+		Mover: encounter.RefusingMover{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolution: load world: %w", err)

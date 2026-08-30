@@ -92,10 +92,10 @@ func prepareCondition(
 		return preparedCondition{}, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
 	built, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
-		Ref:         application.Ref.String(),
-		Config:      application.Parameters,
-		CharacterID: targetID,
-		SourceRef:   sourceRef,
+		Ref:       application.Ref.String(),
+		Config:    application.Parameters,
+		MemberID:  targetID,
+		SourceRef: sourceRef,
 	})
 	if err != nil {
 		return preparedCondition{}, fmt.Errorf("build condition %s for %q: %w", application.Ref.ID, targetID, err)
