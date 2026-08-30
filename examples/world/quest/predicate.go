@@ -173,6 +173,39 @@ func (p All) Describe() string {
 	return out
 }
 
+// Any holds when at least one of its parts holds. An empty Any does not hold.
+//
+// It is what a job with two acceptable endings is written with: turn them back,
+// or put them down, and the quest does not care which.
+type Any []Predicate
+
+// Holds reports whether any part holds.
+func (p Any) Holds(b Bindings) bool {
+	for _, part := range p {
+		if part.Holds(b) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Describe renders the question.
+func (p Any) Describe() string {
+	out := ""
+	for i, part := range p {
+		if i > 0 {
+			out += " or "
+		}
+		out += part.Describe()
+	}
+	if out == "" {
+		return "nothing at all"
+	}
+
+	return out
+}
+
 // Anything holds always.
 //
 // Its use is as the last [Bucket] in a classification: the state an instance is

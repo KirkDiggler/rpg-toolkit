@@ -21,6 +21,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
@@ -68,7 +69,7 @@ type rig struct {
 func (s *InvariantSuite) rig(rolls ...int) rig {
 	s.T().Helper()
 
-	resolver, err := banditcamp.NewCheckResolver(banditcamp.CheckResolverConfig{
+	resolver, err := dnd5eresolver.New(dnd5eresolver.Config{
 		Sheets: s.sheets,
 		Roller: scripted.NewRoller(rolls...),
 		Bus:    events.NewEventBus(),
@@ -265,6 +266,39 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 	}
 }
 
+func (s *InvariantSuite) TestScenariosDoNotDependOnEachOther() {
+	// The second-instance law, made mechanical. Everything two scenarios both
+	// needed is one layer up — the act loop, the verb vocabulary, the resolver
+	// seam, the dice. If one scenario ever imports another, something they
+	// share failed to get promoted and is being borrowed sideways instead.
+	scenarios := map[string]string{
+		"../banditcamp":  "examples/world/hostagecamp",
+		"../hostagecamp": "examples/world/banditcamp",
+	}
+
+	for dir, forbidden := range scenarios {
+		for _, imported := range s.toolkitImportsOf(dir) {
+			s.NotContainsf(imported, forbidden, "%s reaches sideways into another scenario", dir)
+		}
+	}
+}
+
+func (s *InvariantSuite) TestOnlyOnePackageTeachesTheWorldADieRoll() {
+	// Scenarios import a rulebook for their cast; exactly one package imports
+	// one to resolve an attempt. Two would mean two answers to "did that work".
+	adapters := 0
+	for _, dir := range []string{"../journal", "../graph", "../quest", "../scripted", "..", "../dnd5eresolver"} {
+		for _, imported := range s.toolkitImportsOf(dir) {
+			if strings.Contains(imported, "rulebooks/") {
+				adapters++
+
+				break
+			}
+		}
+	}
+	s.Equal(1, adapters, "the resolver seam has exactly one rulebook-facing implementation here")
+}
+
 func (s *InvariantSuite) TestTheComposerKnowsNoRulebookEither() {
 	// The act loop moved up here from this package, where UC-1 left it homeless.
 	// It composes the three below it and imports no rulebook, which is why an
@@ -272,6 +306,8 @@ func (s *InvariantSuite) TestTheComposerKnowsNoRulebookEither() {
 	// the loop to look one up.
 	imports := s.toolkitImportsOf("..")
 	s.Equal([]string{
+		// Itself, from its own external test package, and the three below it.
+		toolkitPrefix + composer,
 		toolkitPrefix + graphPkg,
 		toolkitPrefix + journalPkg,
 		toolkitPrefix + questPkg,
@@ -294,15 +330,6 @@ func (s *InvariantSuite) toolkitImportsOf(dir string) []string {
 		}
 		out = append(out, s.parseToolkitImports(filepath.Join(dir, entry.Name()))...)
 	}
-	slices.Sort(out)
-
-	return slices.Compact(out)
-}
-
-func (s *InvariantSuite) toolkitImportsOfFile(name string) []string {
-	s.T().Helper()
-
-	out := s.parseToolkitImports(name)
 	slices.Sort(out)
 
 	return slices.Compact(out)

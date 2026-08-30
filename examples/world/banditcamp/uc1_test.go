@@ -14,6 +14,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
@@ -57,7 +58,7 @@ func (s *UC1Suite) SetupSuite() {
 func (s *UC1Suite) script(rolls ...int) {
 	s.T().Helper()
 
-	resolver, err := banditcamp.NewCheckResolver(banditcamp.CheckResolverConfig{
+	resolver, err := dnd5eresolver.New(dnd5eresolver.Config{
 		Sheets: s.sheets,
 		Roller: scripted.NewRoller(rolls...),
 		Bus:    events.NewEventBus(),

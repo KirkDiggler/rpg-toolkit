@@ -36,6 +36,12 @@ const (
 
 	peaceJob  = "quiet-the-hold"
 	rescueJob = "free-the-captives"
+
+	person graph.Kind = "person"
+
+	freedBucket = "freed"
+	lostBucket  = "lost"
+	heldBucket  = "held"
 )
 
 type QuestSuite struct {
@@ -51,10 +57,10 @@ func (s *QuestSuite) SetupTest() {
 		Entities: []graph.Entity{
 			{ID: holdID, Kind: "faction"},
 			{ID: bandID, Kind: "faction"},
-			{ID: scoutID, Kind: "person"},
-			{ID: firstID, Kind: "person"},
-			{ID: secondID, Kind: "person"},
-			{ID: thirdID, Kind: "person"},
+			{ID: scoutID, Kind: person},
+			{ID: firstID, Kind: person},
+			{ID: secondID, Kind: person},
+			{ID: thirdID, Kind: person},
 		},
 		Edges: []graph.Edge{
 			{From: scoutID, Rel: belongsTo, To: bandID},
@@ -100,17 +106,17 @@ func (s *QuestSuite) rescue() quest.Template {
 		Name:     "Free the Captives",
 		Subjects: []journal.EntityID{firstID, secondID, thirdID},
 		Objectives: []quest.Objective{{
-			ID:        "freed",
+			ID:        freedBucket,
 			Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject},
 		}},
 		Failure: &quest.Objective{
-			ID:        "lost",
+			ID:        lostBucket,
 			Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject},
 		},
 		Buckets: []quest.Bucket{
-			{Name: "freed", Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject}},
-			{Name: "lost", Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject}},
-			{Name: "held", Predicate: quest.Anything{}},
+			{Name: freedBucket, Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject}},
+			{Name: lostBucket, Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject}},
+			{Name: heldBucket, Predicate: quest.Anything{}},
 		},
 	}
 }
@@ -167,7 +173,7 @@ func (s *QuestSuite) TestNewBoardRefusesContentAnAuthorHasNotFinished() {
 	s.Run("a follow-up needs buckets to count toward", func() {
 		t := s.rescue()
 		t.Buckets = nil
-		t.Successors = []quest.Successor{{Opens: s.peace(), When: quest.NoneIn{Bucket: "held"}}}
+		t.Successors = []quest.Successor{{Opens: s.peace(), When: quest.NoneIn{Bucket: heldBucket}}}
 		_, err := quest.NewBoard(t)
 		s.Require().ErrorIs(err, quest.ErrNoBuckets)
 	})
@@ -175,7 +181,7 @@ func (s *QuestSuite) TestNewBoardRefusesContentAnAuthorHasNotFinished() {
 	s.Run("a follow-up may not name its own subjects", func() {
 		t := s.rescue()
 		t.Successors = []quest.Successor{{
-			Opens: s.peace(), When: quest.NoneIn{Bucket: "held"}, SubjectsFrom: "lost",
+			Opens: s.peace(), When: quest.NoneIn{Bucket: heldBucket}, SubjectsFrom: "lost",
 		}}
 		_, err := quest.NewBoard(t)
 		s.Require().ErrorIs(err, quest.ErrSuccessorHasSubjects)
@@ -186,7 +192,7 @@ func (s *QuestSuite) TestNewBoardRefusesContentAnAuthorHasNotFinished() {
 		opens := s.peace()
 		opens.Subjects = nil
 		t.Successors = []quest.Successor{{
-			Opens: opens, When: quest.NoneIn{Bucket: "held"}, SubjectsFrom: "vanished",
+			Opens: opens, When: quest.NoneIn{Bucket: heldBucket}, SubjectsFrom: "vanished",
 		}}
 		_, err := quest.NewBoard(t)
 		s.Require().ErrorIs(err, quest.ErrUnknownBucket)
@@ -265,7 +271,7 @@ func (s *QuestSuite) TestTallyCountsThePopulationNotTheClaims() {
 	s.Run("nobody has claimed anything and the census is already three", func() {
 		tally := board.Tally(s.world, s.log)
 		s.Equal(3, tally.Total())
-		s.Equal(3, tally.Count("held"))
+		s.Equal(3, tally.Count(heldBucket))
 	})
 
 	s.Run("the world moving moves the census, claims or no claims", func() {
@@ -274,10 +280,10 @@ func (s *QuestSuite) TestTallyCountsThePopulationNotTheClaims() {
 
 		tally := board.Tally(s.world, s.log)
 		s.Equal(3, tally.Total())
-		s.Equal(1, tally.Count("freed"))
-		s.Equal(1, tally.Count("lost"))
-		s.Equal(1, tally.Count("held"))
-		s.Equal([]string{"freed", "held", "lost"}, tally.Buckets())
+		s.Equal(1, tally.Count(freedBucket))
+		s.Equal(1, tally.Count(lostBucket))
+		s.Equal(1, tally.Count(heldBucket))
+		s.Equal([]string{freedBucket, heldBucket, lostBucket}, tally.Buckets())
 	})
 }
 
@@ -288,17 +294,17 @@ func (s *QuestSuite) TestBucketsAreAPriorityListNotAPartition() {
 	s.append(freeKind, firstID)
 
 	s.Run("freed asked first wins", func() {
-		s.Equal(1, s.board(s.rescue()).Tally(s.world, s.log).Count("freed"))
+		s.Equal(1, s.board(s.rescue()).Tally(s.world, s.log).Count(freedBucket))
 	})
 
 	s.Run("lost asked first wins instead", func() {
 		t := s.rescue()
 		t.Buckets = []quest.Bucket{
-			{Name: "lost", Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject}},
-			{Name: "freed", Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject}},
-			{Name: "held", Predicate: quest.Anything{}},
+			{Name: lostBucket, Predicate: quest.Flagged{Flag: lost, Of: quest.InstanceSubject}},
+			{Name: freedBucket, Predicate: quest.Flagged{Flag: freed, Of: quest.InstanceSubject}},
+			{Name: heldBucket, Predicate: quest.Anything{}},
 		}
-		s.Equal(1, s.board(t).Tally(s.world, s.log).Count("lost"))
+		s.Equal(1, s.board(t).Tally(s.world, s.log).Count(lostBucket))
 	})
 }
 
@@ -308,17 +314,17 @@ func (s *QuestSuite) TestDistributionsAskAboutTheWholePopulation() {
 	s.append(lostKind, secondID)
 
 	partway := board.Tally(s.world, s.log)
-	s.False(quest.AllIn{Bucket: "lost"}.Holds(partway))
-	s.False(quest.NoneIn{Bucket: "held"}.Holds(partway))
-	s.True(quest.AtLeastIn{Bucket: "lost", Count: 2}.Holds(partway))
+	s.False(quest.AllIn{Bucket: lostBucket}.Holds(partway))
+	s.False(quest.NoneIn{Bucket: heldBucket}.Holds(partway))
+	s.True(quest.AtLeastIn{Bucket: lostBucket, Count: 2}.Holds(partway))
 
 	s.append(lostKind, thirdID)
 	settled := board.Tally(s.world, s.log)
-	s.True(quest.AllIn{Bucket: "lost"}.Holds(settled))
-	s.True(quest.NoneIn{Bucket: "held"}.Holds(settled))
+	s.True(quest.AllIn{Bucket: lostBucket}.Holds(settled))
+	s.True(quest.NoneIn{Bucket: heldBucket}.Holds(settled))
 	s.True(quest.Every{
-		quest.NoneIn{Bucket: "held"},
-		quest.AllIn{Bucket: "lost"},
+		quest.NoneIn{Bucket: heldBucket},
+		quest.AllIn{Bucket: lostBucket},
 	}.Holds(settled))
 	s.True(quest.Every{}.Holds(settled))
 }
@@ -327,8 +333,8 @@ func (s *QuestSuite) TestAllInIsFalseForAnEmptyPopulation() {
 	// "All of nothing" is true about arithmetic and false about the world. A
 	// follow-up that opened because a population was empty would be nonsense.
 	empty := quest.Tally{}
-	s.False(quest.AllIn{Bucket: "lost"}.Holds(empty))
-	s.True(quest.NoneIn{Bucket: "lost"}.Holds(empty))
+	s.False(quest.AllIn{Bucket: lostBucket}.Holds(empty))
+	s.True(quest.NoneIn{Bucket: lostBucket}.Holds(empty))
 }
 
 func (s *QuestSuite) TestAbandonedInstancesDoNotCompleteLater() {
@@ -343,7 +349,7 @@ func (s *QuestSuite) TestAbandonedInstancesDoNotCompleteLater() {
 
 	s.append(freeKind, firstID)
 	report := instance.Observe(s.world, s.log)
-	s.True(report.Met["freed"])
+	s.True(report.Met[freedBucket])
 	s.Equal(quest.StatusAbandoned, report.Status)
 	s.Empty(report.Events)
 
@@ -398,11 +404,11 @@ func (s *QuestSuite) TestPredicatesDescribeThemselvesForAQuestLog() {
 	s.Equal("somebody leads hold", quest.Occupies{Role: leads, Of: holdID}.Describe())
 	s.Equal("nothing in particular", quest.All{}.Describe())
 	s.Equal("anything", quest.Anything{}.Describe())
-	s.Equal("none are held", quest.NoneIn{Bucket: "held"}.Describe())
-	s.Equal("all are lost", quest.AllIn{Bucket: "lost"}.Describe())
-	s.Equal("at least 2 are lost", quest.AtLeastIn{Bucket: "lost", Count: 2}.Describe())
+	s.Equal("none are held", quest.NoneIn{Bucket: heldBucket}.Describe())
+	s.Equal("all are lost", quest.AllIn{Bucket: lostBucket}.Describe())
+	s.Equal("at least 2 are lost", quest.AtLeastIn{Bucket: lostBucket, Count: 2}.Describe())
 	s.Equal("none are held and all are lost", quest.Every{
-		quest.NoneIn{Bucket: "held"}, quest.AllIn{Bucket: "lost"},
+		quest.NoneIn{Bucket: heldBucket}, quest.AllIn{Bucket: lostBucket},
 	}.Describe())
 }
 
