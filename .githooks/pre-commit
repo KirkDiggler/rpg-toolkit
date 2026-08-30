@@ -153,8 +153,11 @@ export STAGED_GO_FILES USE_CACHE CACHE_DIR
 if [[ $MODULE_COUNT -gt 1 && $PARALLEL_JOBS -gt 1 ]]; then
     echo -e "${CYAN}Running checks in parallel (max $PARALLEL_JOBS jobs)...${NC}"
     
-    # Run checks in parallel and collect results
-    FAILED_MODULES=$(echo "$CHANGED_MODULES" | xargs -P "$PARALLEL_JOBS" -I {} bash -c 'check_module "$@" || echo "$@"' _ {} | grep -v '^$' || true)
+    # Run checks in parallel and collect results. check_module's progress and
+    # success chatter goes to stderr so stdout carries ONLY the names of
+    # modules that failed — capturing its stdout as the failure list is what
+    # made all-passing multi-module commits report failure (#1316).
+    FAILED_MODULES=$(echo "$CHANGED_MODULES" | xargs -P "$PARALLEL_JOBS" -I {} bash -c 'check_module "$@" >&2 || echo "$@"' _ {} | grep -v '^$' || true)
 else
     # Run sequentially
     FAILED_MODULES=""
