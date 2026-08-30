@@ -179,6 +179,96 @@ func (s *MovementTestSuite) TestATriggeredReactionSwingsWithinTheSameInteraction
 	s.Positive(got.Struck.Total, "a strike that never rolled is not a strike")
 }
 
+// preventOAsInAStage adds OA prevention the way DisengagingCondition really
+// does it: as a CHAIN STAGE, not from the subscriber.
+//
+// That distinction is the whole point of the test below. A stage runs during
+// Execute, which is after every subscriber has already been and gone — so a
+// subscriber that tried to read IsOAPrevented() for itself would read an empty
+// field every time.
+func preventOAsInAStage(holder string) func(context.Context, events.EventBus) {
+	return func(ctx context.Context, bus events.EventBus) {
+		_, _ = dnd5eEvents.MovementChain.On(bus).SubscribeWithChain(ctx,
+			func(_ context.Context, _ *dnd5eEvents.MovementChainEvent,
+				c chain.Chain[*dnd5eEvents.MovementChainEvent],
+			) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
+				err := c.Add(combat.StageConditions, "disengaging",
+					func(_ context.Context, e *dnd5eEvents.MovementChainEvent,
+					) (*dnd5eEvents.MovementChainEvent, error) {
+						e.OAPreventionSources = append(e.OAPreventionSources,
+							dnd5eEvents.MovementModifierSource{
+								Name: "Disengaging", SourceType: "condition",
+								SourceRef: refs.Conditions.Disengaging(), EntityID: holder,
+							})
+						return e, nil
+					})
+				return c, err
+			})
+	}
+}
+
+// bothAttach installs two subscribers on the one bus runStep hands over.
+func bothAttach(a, b func(context.Context, events.EventBus)) func(context.Context, events.EventBus) {
+	return func(ctx context.Context, bus events.EventBus) { a(ctx, bus); b(ctx, bus) }
+}
+
+// TestAPreventedOpportunityAttackDoesNotSwing is Disengage actually working,
+// and it is here rather than in the condition because THIS is the only layer
+// that can enforce it.
+//
+// The ordering makes it so: prevention is written by a chain STAGE and read
+// after Execute, while a reaction condition publishes its trigger from a
+// SUBSCRIBER, strictly earlier. OpportunityAttackCondition used to check
+// IsOAPrevented() itself and could never have seen anything — a check that read
+// as load-bearing and was dead, found by the first end-to-end walk of both real
+// conditions through one real fold (rpg-project#316).
+//
+// So the machine drops the trigger after the fold, where the answer is
+// complete, and the condition no longer pretends to.
+func (s *MovementTestSuite) TestAPreventedOpportunityAttackDoesNotSwing() {
+	out, err := s.runStep(s.stepInput(),
+		bothAttach(triggerFrom(heroID, wolfID), preventOAsInAStage(wolfID)))
+	s.Require().NoError(err)
+
+	moved, ok := out.Outcome.(MovementOutcome)
+	s.Require().True(ok)
+	s.True(moved.OAPrevented, "the fold says opportunity attacks were prevented")
+	s.Empty(moved.Reactions,
+		"and so none swung — the outcome must not report prevention AND a swing")
+}
+
+// TestPreventionIsPreciseToOpportunityAttacks: Disengage stops opportunity
+// attacks, which is exactly as narrow as the rule is. A reaction of another
+// kind to the same step is untouched — Shield is the one coming.
+func (s *MovementTestSuite) TestPreventionIsPreciseToOpportunityAttacks() {
+	otherKind := func(ctx context.Context, bus events.EventBus) {
+		_, _ = dnd5eEvents.MovementChain.On(bus).SubscribeWithChain(ctx,
+			func(inner context.Context, e *dnd5eEvents.MovementChainEvent,
+				c chain.Chain[*dnd5eEvents.MovementChainEvent],
+			) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
+				err := dnd5eEvents.ReactionTriggerTopic.On(bus).Publish(inner,
+					dnd5eEvents.ReactionTriggerEvent{
+						ReactorID:    heroID,
+						ConditionRef: refs.Spells.Shield().String(),
+						TriggerKind:  dnd5eEvents.TriggerKindPostHit,
+						SourceEntity: wolfID,
+						Payload:      *e,
+					})
+				return c, err
+			})
+	}
+
+	out, err := s.runStep(s.stepInput(), bothAttach(otherKind, preventOAsInAStage(wolfID)))
+	s.Require().NoError(err)
+
+	moved, ok := out.Outcome.(MovementOutcome)
+	s.Require().True(ok)
+	s.True(moved.OAPrevented)
+	s.Require().Len(moved.Reactions, 1,
+		"an OA prevention must not silence a reaction that is not an OA")
+	s.Equal(refs.Spells.Shield().String(), moved.Reactions[0].ConditionRef)
+}
+
 // triggerFrom publishes a reaction trigger during the fold, which is exactly
 // what OpportunityAttackCondition does when its predicate matches — the
 // condition itself is not used here because this module cannot seat one, and

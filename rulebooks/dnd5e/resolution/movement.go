@@ -231,11 +231,38 @@ func (m *movementMachine) announce() Step {
 			}
 			m.folded = folded
 
+			// PREVENTION IS APPLIED HERE, AFTER THE FOLD, AND NOWHERE ELSE.
+			//
+			// A reaction condition cannot apply it for itself, and the reason
+			// is this function's own ordering: PublishWithChain runs every
+			// SUBSCRIBER, and Execute afterwards runs the STAGES they added.
+			// Disengaging writes OAPreventionSources in a stage, so any
+			// subscriber that read IsOAPrevented() for itself would be reading
+			// an always-empty field — a check that looks load-bearing and can
+			// never fire. OpportunityAttackCondition had exactly that check
+			// until rpg-project#316; nothing caught it because every OA test
+			// hand-published an event with the prevention source already in it,
+			// and the first walk of both real conditions through one real fold
+			// is what found it.
+			//
+			// Applying it here instead uses the COMPLETED event, which is the
+			// only place the answer is whole, and does not depend on subscriber
+			// order — which the sort below deliberately refuses to rely on.
+			//
+			// PRECISE TO OPPORTUNITY ATTACKS, by trigger kind. "Disengage stops
+			// opportunity attacks" is exactly as narrow as the rule is: a
+			// Shield reaction to the same step is not an OA and is not touched.
+			for _, trigger := range *collected {
+				if folded.IsOAPrevented() && trigger.TriggerKind == dnd5eEvents.TriggerKindMovementOA {
+					continue
+				}
+				m.triggers = append(m.triggers, trigger)
+			}
+
 			// Sorted by reactor, then by what let them react, so identical
 			// inputs produce identical stories (C8). Subscriber order is
 			// attach order today and that is already sorted — this does not
 			// depend on it staying that way.
-			m.triggers = append(m.triggers, *collected...)
 			sort.SliceStable(m.triggers, func(i, j int) bool {
 				if m.triggers[i].ReactorID != m.triggers[j].ReactorID {
 					return m.triggers[i].ReactorID < m.triggers[j].ReactorID
