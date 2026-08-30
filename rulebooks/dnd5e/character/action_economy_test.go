@@ -363,10 +363,12 @@ func (s *ActionEconomyTestSuite) TestEndTurn_ResetsButStaysInCombat() {
 	_, err = char.EndTurn(s.ctx, &EndTurnInput{})
 	s.Require().NoError(err)
 
-	// Verify resources zeroed
+	// Verify the TURN-SCOPED resources zeroed. The reaction is deliberately
+	// absent from this list and has its own test — see
+	// TestEndTurn_SparesTheReaction. This assertion used to demand it be zero,
+	// which pinned the bug rather than the rule (rpg-project#316).
 	s.Equal(0, char.actionEconomy.ActionsRemaining)
 	s.Equal(0, char.actionEconomy.BonusActionsRemaining)
-	s.Equal(0, char.actionEconomy.ReactionsRemaining)
 	s.Equal(0, char.actionEconomy.MovementRemaining)
 	s.Equal(0, char.actionEconomy.Granted[GrantedAttacks], "granted should be cleared")
 
@@ -485,4 +487,38 @@ func (s *ActionEconomyTestSuite) TestAnUnruledFeatureStillSurfacesAsUnspecified(
 	s.Equal(TargetKindUnspecified, targetKindForRef(refs.Features.ActionSurge()))
 	s.Equal(TargetKindUnspecified, targetKindForRef(refs.Features.FlurryOfBlows()))
 	s.Equal(TargetKindUnspecified, targetKindForRef(nil))
+}
+
+// TestEndTurn_SparesTheReaction is the one resource that must SURVIVE its
+// owner's turn.
+//
+// A reaction is spent on somebody else's turn by definition — an opportunity
+// attack is the whole reason the slot exists between your turns. 2014 RAW: you
+// regain your reaction at the START of each of your turns, so it persists from
+// the end of one turn until the start of your next. Zeroing it at end of turn
+// leaves a combatant unable to react for exactly the window the reaction
+// governs.
+//
+// This replaces a source-reading pin. Until Kirk ruled it a bug
+// (rpg-project#316), EndTurn zeroed the reaction and was safe only by accident
+// — it had no production callers, and TestNothingCallsEndTurn guarded that
+// accident. Guarding an accident is weaker than not having the bug: the method
+// is now safe to call, so the invariant is enforced by behaviour instead of by
+// nobody reaching it.
+func (s *ActionEconomyTestSuite) TestEndTurn_SparesTheReaction() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{Speed: 30})
+	s.Require().NoError(err)
+	s.Require().Equal(1, char.actionEconomy.ReactionsRemaining,
+		"the turn starts with a reaction to spend")
+
+	_, err = char.EndTurn(s.ctx, &EndTurnInput{})
+	s.Require().NoError(err)
+
+	s.Equal(1, char.actionEconomy.ReactionsRemaining,
+		"the reaction survives the turn that ended: it is spent on somebody "+
+			"else's turn, which is what an opportunity attack is")
+	s.True(char.CanReact(),
+		"and the sheet says so, which is what the OA condition asks")
 }
