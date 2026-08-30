@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -12,8 +13,10 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
@@ -205,6 +208,90 @@ func preventOAsInAStage(holder string) func(context.Context, events.EventBus) {
 				return c, err
 			})
 	}
+}
+
+// runStepWithCast is runStep with the participants supplied, so a test can
+// seat REAL conditions on the fold instead of standing in for them.
+func (s *MovementTestSuite) runStepWithCast(in *MovementInput, cast []Participant) (*Output, error) {
+	machine, err := NewMovement(in)
+	s.Require().NoError(err)
+
+	return resolveOn(s.ctx, &Input{
+		World:        s.world(),
+		Participants: cast,
+		Initiative:   orderAsGiven{}, TurnDriver: passDriver{},
+		Standing: everyoneStanding{}, Sight: everyoneSeesTheWholeMap{},
+		Roller:  dice.NewRoller(),
+		Machine: machine,
+	}, newSurface(events.NewEventBus()))
+}
+
+// reactorSheet is a probe sheet that can actually react: an economy with a
+// reaction in it, which is what canReact reads, plus whatever conditions the
+// test wants seated.
+func reactorSheet(id string, blobs ...json.RawMessage) *character.Data {
+	data := probeSheet(id)
+	data.ActionEconomy = &character.ActionEconomyData{
+		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
+		ReactionsRemaining: 1, MovementRemaining: 30,
+	}
+	data.Conditions = append(data.Conditions, blobs...)
+	return data
+}
+
+// TestBothRealConditionsOnOneRealFold is the pair that found the bug, run at
+// the layer that fixes it.
+//
+// Everything here is the production article: the real
+// OpportunityAttackCondition on the hero, the real DisengagingCondition on the
+// mover, both seated by attachAll out of ordinary character data, folded by the
+// ordinary machine. No hand-published event, no stand-in for a publish.
+//
+// That matters because hand-feeding is exactly how the bug hid. The condition
+// suite's own prevention case fed a pre-populated event straight to the
+// subscriber — a path production never runs — and passed for an unrelated
+// reason while the check it claimed to cover was dead. This test cannot pass
+// for an unrelated reason: remove the machine's filter and it fails.
+func (s *MovementTestSuite) TestBothRealConditionsOnOneRealFold() {
+	oaBlob, err := conditions.NewOpportunityAttackCondition(heroID).ToJSON()
+	s.Require().NoError(err)
+	disengageBlob, err := conditions.NewDisengagingCondition(wolfID).ToJSON()
+	s.Require().NoError(err)
+
+	s.Run("without Disengage the hero swings", func() {
+		out, rerr := s.runStepWithCast(s.stepInput(), []Participant{
+			{Character: reactorSheet(heroID, oaBlob)},
+			{Character: reactorSheet(wolfID)},
+		})
+		s.Require().NoError(rerr)
+
+		moved, ok := out.Outcome.(MovementOutcome)
+		s.Require().True(ok)
+		s.False(moved.OAPrevented, "nothing prevented anything")
+		s.Require().Len(moved.Reactions, 1,
+			"the real condition fired on a real fold — no publish stood in for it")
+		s.Equal(heroID, moved.Reactions[0].ReactorID)
+		s.Equal(refs.Conditions.OpportunityAttack().String(), moved.Reactions[0].ConditionRef)
+	})
+
+	s.Run("with Disengage the outcome is consistent with itself", func() {
+		out, rerr := s.runStepWithCast(s.stepInput(), []Participant{
+			{Character: reactorSheet(heroID, oaBlob)},
+			{Character: reactorSheet(wolfID, disengageBlob)},
+		})
+		s.Require().NoError(rerr)
+
+		moved, ok := out.Outcome.(MovementOutcome)
+		s.Require().True(ok)
+
+		// THE RECONCILIATION, asserted as a pair. The old code could report
+		// both of these at once — prevention true AND a swing — because the
+		// condition's own check was dead and nothing else looked. Either
+		// assertion alone would still pass in that world; together they are
+		// the statement.
+		s.True(moved.OAPrevented, "the fold says opportunity attacks were prevented")
+		s.Empty(moved.Reactions, "and none swung, which is what prevented has to mean")
+	})
 }
 
 // bothAttach installs two subscribers on the one bus runStep hands over.
