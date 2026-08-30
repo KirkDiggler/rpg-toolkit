@@ -67,7 +67,6 @@ type OpportunityAttackConditionData struct {
 // Subscribes to MovementChain. Predicate per move event, in the order the code
 // asks it:
 //   - Mover is not self (no self-OA).
-//   - Move is not OA-prevented (Disengaging short-circuits via OAPreventionSources).
 //   - This reactor has not already reacted (UsedThisTurn, cleared on its own
 //     turn start).
 //   - canReact: a reactor holding an economy must have a reaction to spend; a
@@ -258,6 +257,21 @@ func (o *OpportunityAttackCondition) loadJSON(data json.RawMessage) error {
 // resolution.NewMovement's collectTriggers is subscribed for the duration of
 // the fold and drains it. It named MoveEntity as the drainer until
 // rpg-project#316; that method went with the old encounter module.
+//
+// # Prevention is NOT checked here, and cannot be
+//
+// This predicate used to open with "is the move OA-prevented" and the check was
+// DEAD — it could never once have returned true. Disengaging writes
+// OAPreventionSources from a chain STAGE, and a stage runs during the chain's
+// Execute; this handler is a SUBSCRIBER, which runs strictly earlier, so it was
+// reading a field nothing had written yet. Every OA test hand-published an
+// event with the prevention source already in it, which is why four green
+// suites never showed it (rpg-project#316).
+//
+// resolution.NewMovement enforces prevention after the fold, where the answer
+// is complete, by dropping TriggerKindMovementOA triggers. So this condition
+// publishes its trigger and the machine decides whether it survives — which is
+// also why the trigger carries its kind.
 func (o *OpportunityAttackCondition) onMovementChain(
 	ctx context.Context,
 	event *dnd5eEvents.MovementChainEvent,
@@ -265,11 +279,6 @@ func (o *OpportunityAttackCondition) onMovementChain(
 ) (chain.Chain[*dnd5eEvents.MovementChainEvent], error) {
 	// Don't OA your own movement.
 	if event.EntityID == o.MemberID {
-		return c, nil
-	}
-
-	// Disengaging (or any other source) prevented OAs for this step.
-	if event.IsOAPrevented() {
 		return c, nil
 	}
 
