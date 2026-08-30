@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/goal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
@@ -54,13 +55,28 @@ type Scenario struct {
 	Quests []quest.Template
 }
 
-// Config is a scenario plus the one thing it deliberately withholds.
+// Config is a scenario plus the things it deliberately withholds.
+//
+// The split is the boundary. Content declares who exists and what may be tried;
+// the host injects the rulebook that judges an attempt and the clock that
+// deadlines are checked against. Goals sit on the host's side too, and that is
+// a statement rather than a convenience: a guild goal spans whatever content
+// the region was composed from, so no single piece of content is in a position
+// to declare one.
 type Config struct {
-	// Scenario is the declared content.
+	// Scenario is the declared content. Compose several with [Compose].
 	Scenario Scenario
 
 	// Resolver is the injected rulebook.
 	Resolver Resolver
+
+	// Goals are what the guild is trying to make true of the whole region.
+	Goals []goal.Goal
+
+	// Clock is what their deadlines are checked against. Required whenever
+	// there are goals, and never defaulted — a deadline nobody can check is
+	// worse than no deadline at all.
+	Clock goal.Clock
 }
 
 // ErrNoResolver reports a world built without one.
@@ -78,6 +94,10 @@ type Result struct {
 
 	// Quests is what the jobs made of it.
 	Quests quest.LedgerReport
+
+	// Goals is what the guild's needles made of it. Empty when the world was
+	// built without any.
+	Goals goal.Report
 }
 
 // World is the composer: the assembly of a scenario with a resolver, the one
@@ -91,6 +111,7 @@ type World struct {
 	graph    *graph.World
 	verbs    map[VerbName]Verb
 	ledger   *quest.Ledger
+	goals    *goal.Tracker
 	resolver Resolver
 	log      *journal.Journal
 }
@@ -119,10 +140,16 @@ func New(cfg Config) (*World, error) {
 		return nil, err
 	}
 
+	tracker, err := newTracker(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	w := &World{
 		graph:    structure,
 		verbs:    make(map[VerbName]Verb, len(cfg.Scenario.Verbs)),
 		ledger:   ledger,
+		goals:    tracker,
 		resolver: cfg.Resolver,
 		log:      journal.New(),
 	}
@@ -172,7 +199,22 @@ func (w *World) Act(ctx context.Context, act Act) (Result, error) {
 		return Result{}, fmt.Errorf("recording %q: %w", act.Verb, err)
 	}
 
-	return Result{Fact: fact, Quests: w.ledger.Observe(w.graph, w.log)}, nil
+	return Result{
+		Fact:   fact,
+		Quests: w.ledger.Observe(w.graph, w.log),
+		Goals:  w.ObserveGoals(),
+	}, nil
+}
+
+// newTracker builds the goal tracker, or nothing at all for a world with no
+// goals. A clock without goals is harmless; goals without a clock are refused
+// by [goal.NewTracker], which is where that message belongs.
+func newTracker(cfg Config) (*goal.Tracker, error) {
+	if len(cfg.Goals) == 0 {
+		return nil, nil
+	}
+
+	return goal.NewTracker(goal.TrackerConfig{Clock: cfg.Clock, Goals: cfg.Goals})
 }
 
 func (w *World) resolve(ctx context.Context, verb Verb, act Act) (journal.Outcome, error) {
@@ -207,6 +249,30 @@ func (w *World) Claim(templateID string, by journal.EntityID) (*quest.Instance, 
 // Observe asks the jobs where they stand without anybody having acted.
 func (w *World) Observe() quest.LedgerReport {
 	return w.ledger.Observe(w.graph, w.log)
+}
+
+// ObserveGoals asks the guild's needles where they stand, and settles whatever
+// the clock says is settled.
+//
+// [World.Act] calls it after every act, so an unlock fires on the act that
+// earned it. Calling it directly is how a host notices a deadline passing when
+// nobody is doing anything — which is the only way a miss can be noticed at
+// all, since missing a deadline is precisely the absence of an act.
+func (w *World) ObserveGoals() goal.Report {
+	if w.goals == nil {
+		return goal.Report{}
+	}
+
+	return w.goals.Observe(goal.Reading{Graph: w.graph, Log: w.log, Ledger: w.ledger})
+}
+
+// GoalStatus returns where a goal stands, and whether it is being watched.
+func (w *World) GoalStatus(id string) (goal.Status, bool) {
+	if w.goals == nil {
+		return "", false
+	}
+
+	return w.goals.Status(id)
 }
 
 // Ledger is the jobs in play, for a quest log.

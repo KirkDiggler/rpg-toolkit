@@ -33,10 +33,12 @@ const toolkitPrefix = "github.com/KirkDiggler/rpg-toolkit/"
 // The packages beneath the composer, by the path an import statement spells
 // them.
 const (
-	journalPkg = "examples/world/journal"
-	graphPkg   = "examples/world/graph"
-	questPkg   = "examples/world/quest"
-	composer   = "examples/world"
+	journalPkg  = "examples/world/journal"
+	graphPkg    = "examples/world/graph"
+	questPkg    = "examples/world/quest"
+	goalPkg     = "examples/world/goal"
+	scriptedPkg = "examples/world/scripted"
+	composer    = "examples/world"
 )
 
 // InvariantSuite asserts the three standing claims that hold across every path:
@@ -245,15 +247,19 @@ func (s *InvariantSuite) TestPresentStateIsDerivedByFoldAndNeverStored() {
 func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 	// Each kernel package's entire permitted toolkit surface. Anything else —
 	// and especially anything under rulebooks/ — is the layering breaking.
+	// scripted is allowed everywhere: it is test scaffolding, it imports
+	// nothing at all (asserted below by its own empty surface), and so it
+	// cannot smuggle a rulebook into anything that reaches for it.
 	law := []struct {
 		dir     string
 		allowed []string
 	}{
-		{dir: "../journal", allowed: []string{journalPkg}},
-		{dir: "../graph", allowed: []string{journalPkg, graphPkg}},
-		{dir: "../quest", allowed: []string{journalPkg, graphPkg, questPkg}},
+		{dir: "../journal", allowed: []string{journalPkg, scriptedPkg}},
+		{dir: "../graph", allowed: []string{journalPkg, graphPkg, scriptedPkg}},
+		{dir: "../quest", allowed: []string{journalPkg, graphPkg, questPkg, scriptedPkg}},
+		{dir: "../goal", allowed: []string{journalPkg, graphPkg, questPkg, goalPkg, scriptedPkg}},
 		{dir: "../scripted", allowed: nil},
-		{dir: "..", allowed: []string{journalPkg, graphPkg, questPkg, composer}},
+		{dir: "..", allowed: []string{journalPkg, graphPkg, questPkg, goalPkg, composer, scriptedPkg}},
 	}
 
 	for _, pkg := range law {
@@ -287,7 +293,8 @@ func (s *InvariantSuite) TestOnlyOnePackageTeachesTheWorldADieRoll() {
 	// Scenarios import a rulebook for their cast; exactly one package imports
 	// one to resolve an attempt. Two would mean two answers to "did that work".
 	adapters := 0
-	for _, dir := range []string{"../journal", "../graph", "../quest", "../scripted", "..", "../dnd5eresolver"} {
+	beneath := []string{"../journal", "../graph", "../quest", "../goal", "../scripted", "..", "../dnd5eresolver"}
+	for _, dir := range beneath {
 		for _, imported := range s.toolkitImportsOf(dir) {
 			if strings.Contains(imported, "rulebooks/") {
 				adapters++
@@ -306,8 +313,9 @@ func (s *InvariantSuite) TestTheComposerKnowsNoRulebookEither() {
 	// the loop to look one up.
 	imports := s.toolkitImportsOf("..")
 	s.Equal([]string{
-		// Itself, from its own external test package, and the three below it.
+		// Itself, from its own external test package, and the four below it.
 		toolkitPrefix + composer,
+		toolkitPrefix + goalPkg,
 		toolkitPrefix + graphPkg,
 		toolkitPrefix + journalPkg,
 		toolkitPrefix + questPkg,
