@@ -90,7 +90,7 @@ func (s *EffectiveACTestSuite) armoredHero(conds ...json.RawMessage) *character.
 
 func (s *EffectiveACTestSuite) defenseStyle() json.RawMessage {
 	raw, err := (&conditions.FightingStyleDefenseCondition{
-		CharacterID: heroID,
+		MemberID: heroID,
 	}).ToJSON()
 	s.Require().NoError(err)
 
@@ -171,9 +171,9 @@ func (s *EffectiveACTestSuite) unarmoredBarbarian(conds ...json.RawMessage) *cha
 
 func (s *EffectiveACTestSuite) unarmoredDefense() json.RawMessage {
 	raw, err := (&conditions.UnarmoredDefenseCondition{
-		CharacterID: heroID,
-		Type:        conditions.UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: heroID,
+		Type:     conditions.UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	}).ToJSON()
 	s.Require().NoError(err)
 
