@@ -85,8 +85,8 @@ func (s *ProjectionTestSuite) barbarian(conds ...json.RawMessage) *character.Dat
 
 func (s *ProjectionTestSuite) unarmoredDefense() json.RawMessage {
 	raw, err := (&conditions.UnarmoredDefenseCondition{
-		CharacterID: projectedHeroID,
-		Type:        conditions.UnarmoredDefenseBarbarian,
+		MemberID: projectedHeroID,
+		Type:     conditions.UnarmoredDefenseBarbarian,
 	}).ToJSON()
 	s.Require().NoError(err)
 
