@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Living World</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root{
+    --ground:#F2F4F1; --panel:#FFFFFF; --ink:#212827; --muted:#5F6B67;
+    --line:#C9D2CD; --accent:#2E7D5B; --accent-soft:#DDEBE3;
+    --hostile:#B4543A; --gold:#A8842C; --gold-soft:#F0E8D2;
+  }
+  :root:not([data-theme="light"]){}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#161B19; --panel:#1E2422; --ink:#DCE3DF; --muted:#93A09B;
+      --line:#39443F; --accent:#5CB68F; --accent-soft:#24352D;
+      --hostile:#D98166; --gold:#CBA84E; --gold-soft:#3A3321;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#161B19; --panel:#1E2422; --ink:#DCE3DF; --muted:#93A09B;
+    --line:#39443F; --accent:#5CB68F; --accent-soft:#24352D;
+    --hostile:#D98166; --gold:#CBA84E; --gold-soft:#3A3321;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"Public Sans",system-ui,sans-serif; font-size:16px; line-height:1.6;
+  }
+  .wrap{max-width:980px; margin:0 auto; padding:48px 24px 96px}
+  .prose{max-width:700px}
+  h1,h2{font-family:"Bricolage Grotesque","Public Sans",sans-serif; text-wrap:balance; line-height:1.12}
+  h1{font-size:clamp(2.4rem,6vw,3.6rem); font-weight:800; margin:.3em 0 .35em}
+  h2{font-size:1.55rem; font-weight:700; margin:2.6em 0 .5em}
+  p{margin:.75em 0}
+  .eyebrow{
+    font-family:"JetBrains Mono",monospace; font-size:.72rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); font-weight:600;
+  }
+  .dek{font-size:1.12rem; color:var(--muted); max-width:640px}
+  code,.m{font-family:"JetBrains Mono",monospace; font-size:.86em}
+  code{background:var(--accent-soft); color:var(--ink); padding:.1em .35em; border-radius:4px}
+  figure{margin:1.6em 0; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:20px 20px 12px; overflow-x:auto}
+  figure svg{display:block; max-width:100%; height:auto; min-width:640px; margin:0 auto}
+  figcaption{font-size:.85rem; color:var(--muted); margin-top:10px; max-width:66ch}
+  .law{
+    border-left:3px solid var(--accent); padding:.5em 1em; margin:1.4em 0;
+    background:var(--panel); border-radius:0 8px 8px 0; max-width:640px;
+  }
+  .law b{font-family:"Bricolage Grotesque",sans-serif}
+  ul{padding-left:1.2em} li{margin:.35em 0}
+  .map{list-style:none; padding:0; max-width:700px}
+  .map li{display:grid; grid-template-columns:200px 1fr; gap:14px; padding:.55em 0;
+    border-bottom:1px solid var(--line); margin:0}
+  .map li span:first-child{font-family:"JetBrains Mono",monospace; font-size:.82rem; color:var(--accent); font-weight:600; padding-top:.15em}
+  .status{display:flex; flex-wrap:wrap; gap:12px; margin-top:1.2em}
+  .chip{background:var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:.35em .9em; font-size:.82rem; font-family:"JetBrains Mono",monospace}
+  .chip b{color:var(--accent)}
+  .chip.next b{color:var(--gold)}
+  svg text{font-family:"Public Sans",sans-serif; font-size:12px; fill:currentColor}
+  svg .mono{font-family:"JetBrains Mono",monospace; font-size:11px}
+  svg .small{font-size:10.5px; fill:var(--muted)}
+  svg .box{fill:var(--panel); stroke:currentColor; stroke-width:1.2}
+  svg .soft{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2}
+  svg .goldbox{fill:var(--gold-soft); stroke:var(--gold); stroke-width:1.2}
+  svg .wire{stroke:currentColor; stroke-width:1.3; fill:none}
+  svg .good{stroke:var(--accent); stroke-width:1.8; fill:none}
+  svg .bad{stroke:var(--hostile); stroke-width:1.8; fill:none}
+  svg .goldw{stroke:var(--gold); stroke-width:1.8; fill:none}
+  svg .dash{stroke-dasharray:5 4}
+  @media (max-width:640px){ .map li{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="eyebrow">rpg-toolkit · examples/world · proven in 228 tests</div>
+  <h1>The Living World</h1>
+  <p class="dek">How the game becomes more than a dungeon clearer: every action becomes a
+  <b>fact</b>, facts fold into each witness's <b>present</b>, predicates watch the folds,
+  and the world moves — for one rogue, for one camp, for a whole Discord server at once.
+  Everything on this page is merged and under test.</p>
+
+  <h2>1 · The life of one act</h2>
+  <div class="prose">
+  <p>Rook tries to slip past the bandit camp. No prerequisite is checked — anyone may
+  attempt anything; the sheet only tilts the dice. The act enters through the composer's
+  one write door, the rulebook judges it, and what comes out is not "success" — it is a
+  <b>fact with an audience</b>.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 940 250" role="img" aria-label="An act flows through the composer to the dnd5e resolver and is written to the journal as an audience-scoped fact">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      <rect class="box" x="20" y="70" width="130" height="64" rx="8"/>
+      <text x="85" y="97" text-anchor="middle" font-weight="600">Rook</text>
+      <text x="85" y="115" text-anchor="middle" class="small">player, on Discord</text>
+
+      <line class="wire" x1="150" y1="102" x2="230" y2="102" marker-end="url(#a1)"/>
+      <text x="190" y="92" text-anchor="middle" class="mono">Act{sneak}</text>
+
+      <rect class="box" x="232" y="60" width="150" height="84" rx="8"/>
+      <text x="307" y="90" text-anchor="middle" font-weight="600">the composer</text>
+      <text x="307" y="108" text-anchor="middle" class="mono">world.Act()</text>
+      <text x="307" y="126" text-anchor="middle" class="small">the one write door</text>
+
+      <line class="wire" x1="382" y1="102" x2="462" y2="102" marker-end="url(#a1)"/>
+      <text x="422" y="92" text-anchor="middle" class="small">judges</text>
+
+      <rect class="box" x="464" y="52" width="168" height="100" rx="8"/>
+      <text x="548" y="78" text-anchor="middle" font-weight="600">the rulebook</text>
+      <text x="548" y="96" text-anchor="middle" class="mono">dnd5eresolver</text>
+      <text x="548" y="114" text-anchor="middle" class="small">real sheet · d20 · Stealth +6</text>
+      <text x="548" y="132" text-anchor="middle" class="small">expertise tilts, never gates</text>
+
+      <line class="good" x1="632" y1="102" x2="712" y2="102" marker-end="url(#a2)"/>
+      <text x="672" y="92" text-anchor="middle" class="small">margin +4</text>
+
+      <rect class="soft" x="714" y="46" width="206" height="112" rx="8"/>
+      <text x="817" y="72" text-anchor="middle" font-weight="600">the fact</text>
+      <text x="817" y="92" text-anchor="middle" class="mono">kind: sneak</text>
+      <text x="817" y="110" text-anchor="middle" class="mono">actor: Rook</text>
+      <text x="817" y="128" text-anchor="middle" class="mono" fill="var(--accent)" font-weight="600">audience: {Rook}</text>
+      <text x="817" y="146" text-anchor="middle" class="small">the camp saw nothing</text>
+
+      <line class="good" x1="817" y1="158" x2="817" y2="196" marker-end="url(#a2)"/>
+      <rect class="box" x="672" y="198" width="290" height="40" rx="8" transform="translate(-70 0)"/>
+      <text x="747" y="223" text-anchor="middle" class="mono">journal — append-only, attributed, forever</text>
+    </svg>
+    <figcaption>A landed sneak and a botched one write the <i>same kind of fact</i> —
+    all that differs is who witnessed it. Stealth is not a mechanic bolted on; it is
+    authorship of your own audience.</figcaption>
+  </figure>
+
+  <h2>2 · Knowledge is the audience of facts</h2>
+  <div class="prose">
+  <p>Nothing stores "what the camp believes." There is no belief database anywhere.
+  Every observer — a player, a camp, one suspicious lieutenant — derives its present by
+  folding <i>only the facts it witnessed</i>. The changeling play works because the
+  kill fact never reached the camp; the blown disguise works because the reveal reached
+  exactly one pair of eyes.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 900 320" role="img" aria-label="One journal folded by two observers produces two different presents: the camp still believes the impostor leads, the lieutenant sees a hostile stranger">
+      <defs>
+        <marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <rect class="box" x="30" y="60" width="300" height="200" rx="8"/>
+      <text x="180" y="88" text-anchor="middle" font-weight="600">one journal</text>
+      <text x="50" y="122" class="mono">1 kill(leader)</text>
+      <text x="50" y="140" class="small">   audience: nobody — the quiet blade</text>
+      <text x="50" y="170" class="mono">2 claim(leads)</text>
+      <text x="50" y="188" class="small">   audience: camp — “I am your leader”</text>
+      <text x="50" y="218" class="mono" fill="var(--hostile)" font-weight="600">3 reveal(impostor)</text>
+      <text x="50" y="236" class="small">   audience: lieutenant — one witness</text>
+
+      <line class="wire" x1="330" y1="120" x2="470" y2="105" marker-end="url(#b1)"/>
+      <text x="400" y="98" text-anchor="middle" class="mono">StateFor(camp)</text>
+      <line class="wire" x1="330" y1="220" x2="470" y2="230" marker-end="url(#b1)"/>
+      <text x="400" y="248" text-anchor="middle" class="mono">StateFor(lieutenant)</text>
+
+      <rect class="soft" x="472" y="52" width="390" height="98" rx="8"/>
+      <text x="492" y="80" font-weight="600">the camp’s present</text>
+      <text x="492" y="102" class="mono">folds facts 2 · leads: Whisper (impostor)</text>
+      <text x="492" y="122" class="mono" fill="var(--accent)" font-weight="600">allegiance follows the slot → allied</text>
+      <text x="492" y="140" class="small">the kill never reached them; they cannot know</text>
+
+      <rect x="472" y="182" width="390" height="98" rx="8" fill="var(--panel)" stroke="var(--hostile)" stroke-width="1.2"/>
+      <text x="492" y="210" font-weight="600">the lieutenant’s present</text>
+      <text x="492" y="232" class="mono">folds facts 2 + 3 · the claim collapses</text>
+      <text x="492" y="252" class="mono" fill="var(--hostile)" font-weight="600">slot vacant → hostile, alone in the camp</text>
+      <text x="492" y="270" class="small">same objective: met in one view, unmet in the other</text>
+    </svg>
+    <figcaption>The blown-disguise test asserts both presents from the same log —
+    and it cost <b>zero lines of special-case code</b>. Per-witness belief is not a
+    feature of the system; it is the system.</figcaption>
+  </figure>
+
+  <div class="law"><b>The ruling that started it:</b> “our events are player-detected.”
+  Generalize <i>player</i> to <i>entity</i> and stealth, disguise, false belief, and
+  dramatic irony all fall out of one mechanism. The streamer's camera sees everything;
+  each character sees only their own feed.</div>
+
+  <h2>3 · Every way in is a check, and no way is gated</h2>
+  <div class="prose">
+  <p>Content is the goal, not the path. The camp offers many ways in; none has a
+  prerequisite. The barbarian in a goblin costume is a legitimate play — expertise
+  moves the odds, the dice decide, and each route differs in <i>what the camp
+  witnesses</i> and therefore what fight, if any, you get.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 900 330" role="img" aria-label="Five approaches to one camp: front door alerts it, the back way surprises it, the changeling replaces its leader, diplomacy befriends it, a blown disguise alerts one lieutenant only">
+      <defs>
+        <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--hostile)"/>
+        </marker>
+        <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="c3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--gold)"/>
+        </marker>
+      </defs>
+      <rect class="box" x="330" y="90" width="240" height="150" rx="10"/>
+      <text x="450" y="120" text-anchor="middle" font-weight="600">the bandit camp</text>
+      <text x="450" y="140" text-anchor="middle" class="small">leader · lieutenant · crew</text>
+      <text x="450" y="162" text-anchor="middle" class="mono">hostile-to: guild</text>
+      <text x="450" y="182" text-anchor="middle" class="small">allegiance follows the leads slot</text>
+      <text x="450" y="202" text-anchor="middle" class="small">attitude folds what it witnessed</text>
+
+      <line class="bad" x1="60" y1="115" x2="328" y2="115" marker-end="url(#c1)"/>
+      <text x="62" y="100" font-weight="600" fill="var(--hostile)">front door — attack</text>
+      <text x="62" y="135" class="small">witnessed by all → alerted, formed up</text>
+
+      <line class="good dash" x1="60" y1="215" x2="328" y2="215" marker-end="url(#c2)"/>
+      <text x="62" y="200" font-weight="600" fill="var(--accent)">back way — sneak</text>
+      <text x="62" y="235" class="small">audience ∅ → unsuspecting, surprised</text>
+
+      <line class="goldw dash" x1="450" y1="308" x2="450" y2="242" marker-end="url(#c3)"/>
+      <text x="450" y="326" text-anchor="middle" font-weight="600" fill="var(--gold)">changeling — quiet kill + claim the slot: no fight at all</text>
+
+      <line class="good" x1="838" y1="115" x2="572" y2="115" marker-end="url(#c2)"/>
+      <text x="838" y="100" text-anchor="end" font-weight="600" fill="var(--accent)">diplomacy — persuade</text>
+      <text x="838" y="135" text-anchor="end" class="small">attitude crosses threshold → allied-with</text>
+
+      <line class="bad dash" x1="838" y1="215" x2="572" y2="215" marker-end="url(#c1)"/>
+      <text x="838" y="200" text-anchor="end" font-weight="600" fill="var(--hostile)">blown disguise</text>
+      <text x="838" y="235" text-anchor="end" class="small">reveal reaches one lieutenant; camp unchanged</text>
+    </svg>
+    <figcaption>Five paths, five tests, one declared camp — and zero path-specific
+    code. A route's real output is the encounter's starting state: alerted, surprised,
+    friendly, or no encounter at all. Deeper routes open <i>verbs</i>: in disguise
+    you may work on the leaders' minds.</figcaption>
+  </figure>
+
+  <h2>4 · Populations, not quest trees</h2>
+  <div class="prose">
+  <p>Quests come off the board: a claim mints an instance, and <b>your party's hostage
+  is your hostage</b> — three companies can fail and succeed in parallel without ever
+  colliding. The world changes by folding the whole population, and when the fold
+  crosses a declared shape, the next chapter opens itself. Nobody authors a tree;
+  the community's aggregate performance walks the world through states no one scripted.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Hostage instances move from captive to rescued or turned; rescued hostages roll dispositions; when all are turned the successor quest opens and can redeem them">
+      <defs>
+        <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--gold)"/>
+        </marker>
+      </defs>
+      <rect class="box" x="30" y="110" width="150" height="70" rx="8"/>
+      <text x="105" y="138" text-anchor="middle" font-weight="600">captive</text>
+      <text x="105" y="158" text-anchor="middle" class="small">minted per claim, named</text>
+
+      <line class="wire" x1="180" y1="128" x2="310" y2="82" marker-end="url(#d1)"/>
+      <text x="240" y="88" text-anchor="middle" class="small">rescue lands</text>
+      <rect class="soft" x="312" y="50" width="130" height="56" rx="8"/>
+      <text x="377" y="74" text-anchor="middle" font-weight="600">rescued</text>
+      <text x="377" y="92" text-anchor="middle" class="small">walks to town</text>
+
+      <line class="wire" x1="442" y1="78" x2="560" y2="78" marker-end="url(#d1)"/>
+      <text x="501" y="68" text-anchor="middle" class="small">the dice decide</text>
+      <rect class="box" x="562" y="34" width="300" height="88" rx="8"/>
+      <text x="582" y="60" class="mono">guard — joins the watch</text>
+      <text x="582" y="80" class="mono">repay — owes the company</text>
+      <text x="582" y="100" class="mono">quest-hook — knows something</text>
+
+      <line class="wire" x1="180" y1="162" x2="310" y2="208" marker-end="url(#d1)"/>
+      <text x="240" y="206" text-anchor="middle" class="small">rescue fails</text>
+      <rect x="312" y="180" width="130" height="56" rx="8" fill="var(--panel)" stroke="var(--hostile)" stroke-width="1.2"/>
+      <text x="377" y="204" text-anchor="middle" font-weight="600" fill="var(--hostile)">turned</text>
+      <text x="377" y="222" text-anchor="middle" class="small">joins the bandits</text>
+
+      <rect class="goldbox" x="510" y="170" width="352" height="76" rx="8"/>
+      <text x="686" y="196" text-anchor="middle" font-weight="600">distribution predicate</text>
+      <text x="686" y="216" text-anchor="middle" class="mono">captive = 0  ∧  turned = all</text>
+      <text x="686" y="234" text-anchor="middle" class="small">→ “turn them back — or put them down” opens</text>
+
+      <path class="goldw" d="M660 246 C 600 290, 460 290, 400 240" fill="none" marker-end="url(#d2)"/>
+      <text x="530" y="292" text-anchor="middle" class="small" fill="var(--gold)">the successor redeems (or ends) the turned — the flip repeats</text>
+    </svg>
+    <figcaption>Failure at scale manufactures act two: the turned hostages are its
+    antagonist roster, generated by the players' own history. Successes seed content
+    too — the rescued fill the town with rolled fates. No outcome is invalid.</figcaption>
+  </figure>
+
+  <h2>5 · One needle for the whole server</h2>
+  <div class="prose">
+  <p>The Discord server is the world — one journal, every party writing into it.
+  A <b>world goal</b> is a fold over all of it with a deadline: the streamer declares
+  “pacify the region before the weekend,” and three companies push one needle by
+  entirely different methods, because folds don't ask how.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 900 270" role="img" aria-label="Three parties acting by different methods write into one guild journal; a fold moves one needle against a deadline and GoalMet fires exactly once">
+      <defs>
+        <marker id="e1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="e2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--gold)"/>
+        </marker>
+      </defs>
+      <rect class="box" x="30" y="30" width="180" height="52" rx="8"/>
+      <text x="120" y="52" text-anchor="middle" font-weight="600">Ember Company</text>
+      <text x="120" y="70" text-anchor="middle" class="small">talks the camp round</text>
+      <rect class="box" x="30" y="106" width="180" height="52" rx="8"/>
+      <text x="120" y="128" text-anchor="middle" font-weight="600">Quill Company</text>
+      <text x="120" y="146" text-anchor="middle" class="small">frees two hostages</text>
+      <rect class="box" x="30" y="182" width="180" height="52" rx="8"/>
+      <text x="120" y="204" text-anchor="middle" font-weight="600">Thorn Company</text>
+      <text x="120" y="222" text-anchor="middle" class="small">loses one, puts them down</text>
+
+      <line class="wire" x1="210" y1="56" x2="330" y2="118" marker-end="url(#e1)"/>
+      <line class="wire" x1="210" y1="132" x2="330" y2="132" marker-end="url(#e1)"/>
+      <line class="wire" x1="210" y1="208" x2="330" y2="146" marker-end="url(#e1)"/>
+
+      <rect class="box" x="332" y="102" width="180" height="60" rx="8"/>
+      <text x="422" y="127" text-anchor="middle" font-weight="600">guild journal</text>
+      <text x="422" y="147" text-anchor="middle" class="small">every party, one history</text>
+
+      <line class="good" x1="512" y1="132" x2="600" y2="132" marker-end="url(#e1)"/>
+      <text x="556" y="122" text-anchor="middle" class="small">folds</text>
+
+      <rect class="goldbox" x="602" y="76" width="268" height="112" rx="8"/>
+      <text x="736" y="102" text-anchor="middle" font-weight="600">the weekend goal</text>
+      <text x="736" y="124" text-anchor="middle" class="mono">camp not hostile ∧ all resolved</text>
+      <text x="736" y="144" text-anchor="middle" class="mono">before deadline · injected clock</text>
+      <text x="736" y="166" text-anchor="middle" class="small">met once, never retro-unlocked</text>
+
+      <line class="goldw" x1="736" y1="188" x2="736" y2="226" marker-end="url(#e2)"/>
+      <text x="736" y="248" text-anchor="middle" class="mono" fill="var(--gold)" font-weight="600">GoalMet → the seat grants the bonus stream</text>
+    </svg>
+    <figcaption>Swap which company does what and the result is identical — the tests
+    prove it. What the unlock <i>means</i> belongs to the seat, exactly as what a
+    reward means belongs to the rulebook.</figcaption>
+  </figure>
+
+  <h2>6 · The DM seat and its three tenants</h2>
+  <div class="prose">
+  <p>The seat is a client, never the core. It speaks the same verbs as everyone else,
+  so it can only do what the verbs allow — which bounds a hallucinating model and a
+  chaos-minded streamer with the same law. Three tenants, ascending intelligence,
+  one protocol:</p>
+  <ul>
+    <li><b>Dice tables</b> — ship with v1. When the world needs a small decision nobody
+    authored (a rescued hostage's fate), roll on a table.</li>
+    <li><b>The streamer</b> — the paying human. Declares world goals, sets deadlines and
+    population dials; our tools advise the numbers, the seat decides them.</li>
+    <li><b>The local model</b> — arrives last, onto a road-tested seat: naming hostages
+    first, parsing “I search the desk” later, improvising over authored content in time.</li>
+  </ul>
+  </div>
+
+  <h2>7 · The machine's parts</h2>
+  <div class="prose">
+  <p>Everything above runs on four kernel packages, a small composer, and content that
+  is just declarations. The kernel never learns a d20 exists; the rulebook enters
+  through one injected seam. All of it lives in <code>examples/world</code> — its temp
+  home — until the seams are walked and the packages graduate.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 920 430" role="img" aria-label="Package map: journal, graph, quest, goal layered under the world composer; scenarios declare, the dnd5e resolver injects, region ties companies; the whole module graduates to world/* later">
+      <defs>
+        <marker id="f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      <rect x="20" y="20" width="700" height="390" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="7 5"/>
+      <text x="36" y="44" class="mono" fill="var(--muted)">examples/world — the temp home; location is the guard</text>
+
+      <rect class="box" x="60" y="330" width="620" height="52" rx="8"/>
+      <text x="370" y="352" text-anchor="middle" font-weight="600">journal</text>
+      <text x="370" y="370" text-anchor="middle" class="small">append-only, attributed, audience-scoped facts · depends on nothing</text>
+
+      <rect class="box" x="60" y="252" width="620" height="52" rx="8"/>
+      <text x="370" y="274" text-anchor="middle" font-weight="600">graph</text>
+      <text x="370" y="292" text-anchor="middle" class="small">entities · edges · slots · declared folds — never stores what it can derive</text>
+
+      <rect class="box" x="60" y="174" width="300" height="52" rx="8"/>
+      <text x="210" y="196" text-anchor="middle" font-weight="600">quest</text>
+      <text x="210" y="214" text-anchor="middle" class="small">templates · claims · populations</text>
+
+      <rect class="box" x="380" y="174" width="300" height="52" rx="8"/>
+      <text x="530" y="196" text-anchor="middle" font-weight="600">goal</text>
+      <text x="530" y="214" text-anchor="middle" class="small">guild needles · deadlines · GoalMet</text>
+
+      <rect class="soft" x="60" y="66" width="620" height="82" rx="8"/>
+      <text x="370" y="94" text-anchor="middle" font-weight="600">world — the composer (small on purpose)</text>
+      <text x="370" y="114" text-anchor="middle" class="mono">Config{ Scenario · Resolver · Goals · Clock }</text>
+      <text x="370" y="134" text-anchor="middle" class="small">Act() the one write door · View(observer) the read door</text>
+
+      <line class="wire" x1="210" y1="252" x2="210" y2="228" marker-end="url(#f1)"/>
+      <line class="wire" x1="530" y1="252" x2="530" y2="228" marker-end="url(#f1)"/>
+      <line class="wire" x1="370" y1="330" x2="370" y2="306" marker-end="url(#f1)"/>
+      <line class="wire" x1="210" y1="174" x2="300" y2="150" marker-end="url(#f1)"/>
+      <line class="wire" x1="530" y1="174" x2="440" y2="150" marker-end="url(#f1)"/>
+
+      <rect class="box" x="740" y="66" width="160" height="96" rx="8"/>
+      <text x="820" y="90" text-anchor="middle" font-weight="600">scenarios</text>
+      <text x="820" y="110" text-anchor="middle" class="mono">banditcamp</text>
+      <text x="820" y="128" text-anchor="middle" class="mono">hostagecamp</text>
+      <text x="820" y="148" text-anchor="middle" class="small">+ region (ties only)</text>
+      <line class="good" x1="740" y1="106" x2="686" y2="106" marker-end="url(#f2)"/>
+      <text x="713" y="96" text-anchor="middle" class="small">declares</text>
+
+      <rect class="box" x="740" y="196" width="160" height="76" rx="8"/>
+      <text x="820" y="220" text-anchor="middle" font-weight="600">injected</text>
+      <text x="820" y="240" text-anchor="middle" class="mono">dnd5eresolver</text>
+      <text x="820" y="258" text-anchor="middle" class="mono">clock · scripted</text>
+      <line class="good dash" x1="740" y1="226" x2="686" y2="140" marker-end="url(#f2)"/>
+      <text x="734" y="180" text-anchor="middle" class="small">injects</text>
+
+      <line class="good dash" x1="370" y1="410" x2="370" y2="426" opacity="0"/>
+      <path class="good dash" d="M720 396 L 860 396" marker-end="url(#f2)"/>
+      <text x="790" y="386" text-anchor="middle" class="small" fill="var(--accent)">graduation: packages move to world/*</text>
+      <text x="790" y="414" text-anchor="middle" class="small">then the example rewires to import them exactly as a rulebook would</text>
+    </svg>
+    <figcaption>Arrows point at what each package imports. The kernel is
+    rulebook-free by an enforced test; a scenario that shipped its own resolver would
+    not compile. Real = what a rulebook imports — the graduation test.</figcaption>
+  </figure>
+
+  <h2>8 · Where this meets the game you already have</h2>
+  <ul class="map">
+    <li><span>Discord server</span><div>= the world: one guild journal, seats capped and
+      concurrent — the tenant, the world, and the billing unit are one noun.</div></li>
+    <li><span>the town</span><div>a thin lobby over Discord's own voice and presence:
+      the quest board where claims happen, slowly filling with the people the community
+      actually rescued.</div></li>
+    <li><span>dungeon runs</span><div>instanced as today; outcomes flow back as facts.
+      The run-ending work was quest v0 all along.</div></li>
+    <li><span>the combat log</span><div>the journal is the log that never gets thrown
+      away — same law, bigger clock. Detection beats already go to the players who
+      earned them.</div></li>
+    <li><span>dungeon builder</span><div>scenario packages are its checklist: the config
+      a camp requires today is the form a streamer fills tomorrow, and constructor
+      refusals are its inline guidance.</div></li>
+    <li><span>monster behavior</span><div>Billy's lane reads the same folds — “who leads
+      my camp, how do I feel about these players” — and the DM seat is the monster seat,
+      grown up.</div></li>
+    <li><span>NPCs</span><div>FadedPez's feature: actors on the same bus, first voices
+      for the model to wear.</div></li>
+  </ul>
+
+  <h2>Status</h2>
+  <div class="status">
+    <span class="chip"><b>merged</b> #1326 bandit camp — five paths</span>
+    <span class="chip"><b>merged</b> #1328 hostages — populations & the composer</span>
+    <span class="chip"><b>merged</b> #1330 weekend goal — the guild needle</span>
+    <span class="chip">228 tests · kernel rulebook-free · freeze untouched</span>
+    <span class="chip next"><b>next</b> the sight seam — who witnesses an act</span>
+    <span class="chip next"><b>then</b> graduation to world/* · post-freeze: opposed checks, monster skills</span>
+  </div>
+  <p class="dek" style="margin-top:2em">Full record: <span class="m">rpg-project#325</span> —
+  twenty-one sections from “the fun is mostly outside combat” to this page.</p>
+</div>
+
+</body>
+</html>
