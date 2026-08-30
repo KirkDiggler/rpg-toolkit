@@ -45,7 +45,6 @@ type FighterEncounterSuite struct {
 	ctx        context.Context
 	bus        events.EventBus
 	mockRoller *mock_dice.MockRoller
-	lookup     *integrationLookup
 	room       spatial.Room
 
 	fighter *mockFighterCharacter
@@ -118,7 +117,6 @@ func (s *FighterEncounterSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.bus = events.NewEventBus()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-	s.lookup = newIntegrationLookup()
 	s.ctx = context.Background()
 
 	grid := spatial.NewSquareGrid(spatial.SquareGridConfig{Width: 10, Height: 10})
@@ -127,13 +125,9 @@ func (s *FighterEncounterSuite) SetupTest() {
 
 func (s *FighterEncounterSuite) SetupSubTest() {
 	s.bus = events.NewEventBus()
-	s.lookup = newIntegrationLookup()
 
 	s.fighter = s.createLevel1Fighter()
 	s.goblin = s.createGoblin()
-
-	s.lookup.Add(s.fighter)
-	s.lookup.Add(s.goblin)
 
 	s.ctx = context.Background()
 	s.ctx = gamectx.WithRoom(s.ctx, s.room)

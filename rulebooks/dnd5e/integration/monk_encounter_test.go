@@ -45,10 +45,9 @@ import (
 
 type MonkEncounterSuite struct {
 	suite.Suite
-	ctx    context.Context
-	bus    events.EventBus
-	lookup *integrationLookup
-	room   spatial.Room
+	ctx  context.Context
+	bus  events.EventBus
+	room spatial.Room
 
 	monk       *character.Character
 	goblin     *monster.Monster
@@ -57,7 +56,6 @@ type MonkEncounterSuite struct {
 
 func (s *MonkEncounterSuite) SetupTest() {
 	s.bus = events.NewEventBus()
-	s.lookup = newIntegrationLookup()
 	s.ctx = context.Background()
 
 	// Create spatial room
@@ -75,15 +73,11 @@ func (s *MonkEncounterSuite) SetupTest() {
 func (s *MonkEncounterSuite) SetupSubTest() {
 	// Fresh event bus for each subtest
 	s.bus = events.NewEventBus()
-	s.lookup = newIntegrationLookup()
 
 	// Default to level 1 monk — tests that need level 2 will override
 	s.monk = s.createLevel1Monk()
 	s.goblin = s.createGoblin()
 	s.shortsword = s.createShortsword()
-
-	s.lookup.Add(s.monk)
-	s.lookup.Add(s.goblin)
 
 	s.ctx = context.Background()
 
@@ -759,7 +753,6 @@ func (s *MonkEncounterSuite) TestFlurryOfBlows_BanksTwoStrikes() {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
-		s.lookup.Add(s.monk)
 
 		_, err := s.monk.StartTurn(s.ctx, &character.StartTurnInput{TurnNumber: 1, Speed: 30})
 		s.Require().NoError(err)
@@ -792,7 +785,6 @@ func (s *MonkEncounterSuite) TestPatientDefense_PublishesDodgeEvent() {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
-		s.lookup.Add(s.monk)
 
 		ki := s.monk.GetResource(resources.Ki)
 		s.Require().Equal(2, ki.Current())
@@ -855,7 +847,6 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDashEvent() {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
-		s.lookup.Add(s.monk)
 
 		ki := s.monk.GetResource(resources.Ki)
 		s.Require().Equal(2, ki.Current())
@@ -918,7 +909,6 @@ func (s *MonkEncounterSuite) TestStepOfTheWind_PublishesDisengageEvent() {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
-		s.lookup.Add(s.monk)
 
 		ki := s.monk.GetResource(resources.Ki)
 		s.Require().Equal(2, ki.Current())
@@ -977,7 +967,6 @@ func (s *MonkEncounterSuite) TestUnarmoredMovement_SpeedBonus() {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
-		s.lookup.Add(s.monk)
 
 		// No weapons registry, deliberately. The shield question is answered by
 		// the member surface every combatant carries, read out of the installed
@@ -1044,7 +1033,6 @@ func (s *MonkEncounterSuite) TestKi_ExhaustionPreventsActivation() {
 			_ = s.monk.Cleanup(s.ctx)
 		}
 		s.monk = s.createLevel2Monk()
-		s.lookup.Add(s.monk)
 
 		ki := s.monk.GetResource(resources.Ki)
 		s.T().Logf("  Monk: %s (Level 2, Ki: %d/2)", s.monk.GetName(), ki.Current())
