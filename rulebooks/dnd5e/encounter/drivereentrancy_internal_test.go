@@ -20,7 +20,7 @@ func threePlayerMonsterBubble(t *testing.T) *Encounter {
 	t.Helper()
 	enc, err := NewEncounter(&SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  openAir(),
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 8, 8)},

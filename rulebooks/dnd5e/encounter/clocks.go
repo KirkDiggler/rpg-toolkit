@@ -632,6 +632,30 @@ func (e *Encounter) executeTurnIntent(
 		audience := e.audienceFor(subjectBeat, activeID)
 		moved := 0
 		for _, cell := range it.Path {
+			// Where this member STILL stands, announced before the step is
+			// taken. The order is [Mover]'s contract: a reactor's swing is
+			// checked for reach against where the mover is, so announcing
+			// after the step would hand the reaction a departed target and
+			// the swing would refuse as out of range.
+			//
+			// A member the canvas cannot place has no cell to step FROM,
+			// which is not a step at all. It ends the walk exactly as any
+			// other refusal does rather than being announced from a
+			// fabricated position — and the walk ending here rather than at
+			// stepTo costs nothing, because stepTo refuses an unplaced member
+			// too.
+			from, placed := e.canvas.GetEntityPosition(string(activeID))
+			if !placed {
+				break
+			}
+
+			// context.Background() for the reason the Attack case above
+			// gives at length, and it is the same reason: no verb on this
+			// composition accepts a caller context today.
+			if merr := e.mover.Move(context.Background(), e, activeID, from, cell); merr != nil {
+				return false, fmt.Errorf("move: %w", merr)
+			}
+
 			action, stepped := e.stepTo(m, cell)
 			if !stepped {
 				// The same silent-refusal contract stepTo already has for

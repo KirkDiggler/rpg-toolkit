@@ -107,7 +107,7 @@ func solidPillar(x, y float64) encounter.PropInput {
 func dungeonSetup() *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{},
-		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Announcer: nobodyIsListening{},
+		TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{},
 		Field: encounter.FieldInput{
 			// You cannot see across the space the crypt's two regions do not
 			// cover — the fiction is the mountain they were cut from, and the
@@ -585,7 +585,7 @@ func main() {
 				continue
 			}
 			loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Announcer: nobodyIsListening{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
+				Sight: torchAndDarkvision{}, Standing: rollAllStanding{}, Initiative: rollOrderAsGiven{}, TurnDriver: encounter.PassDriver{}, Striker: noAttacksExpected{}, Mover: nothingReactsHere{}, Announcer: nobodyIsListening{}, Data: data, Deciders: map[encounter.MemberID]encounter.Decider{
 					"goblin": goblinPatrol(),
 				}})
 			if err != nil {
@@ -673,6 +673,21 @@ type noAttacksExpected struct{}
 
 func (noAttacksExpected) Strike(context.Context, *encounter.Encounter, encounter.MemberID, encounter.MemberID, core.Ref) error {
 	return errors.New("workbench: no driver here ever attacks")
+}
+
+// nothingReactsHere is the workbench's Mover capability.
+//
+// It SUCCEEDS where noAttacksExpected refuses, and the difference is real
+// rather than stylistic: this workbench walks constantly, so a refusing Mover
+// would break it, while nothing it builds carries a rulebook condition that
+// could react to a step. "No reaction fired" is therefore the true answer here
+// and not a stub standing in for one.
+type nothingReactsHere struct{}
+
+func (nothingReactsHere) Move(
+	context.Context, *encounter.Encounter, encounter.MemberID, spatial.Position, spatial.Position,
+) error {
+	return nil
 }
 
 // torchAndDarkvision is the workbench's Sight capability, and it is the one

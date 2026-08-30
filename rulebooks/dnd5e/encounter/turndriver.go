@@ -285,6 +285,17 @@ func (RefusingStriker) Strike(context.Context, *Encounter, MemberID, MemberID, c
 	return ErrRefusingStriker
 }
 
+// RefusingMover is a Mover for construction-only worlds — the exact twin of
+// [RefusingStriker], and for the identical reason. A world built to hold
+// members and geometry but never driven through a turn cannot walk anybody,
+// so reaching this is a HOST BUG rather than a legal outcome.
+type RefusingMover struct{}
+
+// Move always fails with ErrRefusingMover.
+func (RefusingMover) Move(context.Context, *Encounter, MemberID, spatial.Position, spatial.Position) error {
+	return ErrRefusingMover
+}
+
 // BoundaryKind names a temporal boundary a clock verb crossed.
 //
 // THREE KINDS, because three are what anything publishes. play/clock also
@@ -433,4 +444,47 @@ type Striker interface {
 	// verb exactly as a [TurnDriver.Act] error does; a miss is not an
 	// error — it is an ordinary [OutcomeMissed] recorded the same as a hit.
 	Strike(ctx context.Context, enc *Encounter, attacker, target MemberID, action core.Ref) error
+}
+
+// Mover announces one member's step before this composition takes it.
+//
+// THE SECOND CAPABILITY OF ITS KIND, and it exists because a step is not the
+// inert thing it looks like. Something may be waiting to react to it: an
+// opportunity attack when a mover leaves a threatened square, and — the test of
+// whether this was built right — a trap, a hazard aura, a Sentinel feat, none
+// of which need this module to learn anything new. This module cannot know any
+// of that (C1), so it does what it does for [Striker]: hands over everything
+// needed to decide, and takes the step afterwards.
+//
+// # Announce, THEN step
+//
+// The order is a contract, not an implementation detail. A reactor's swing is
+// checked for reach against where the mover still IS; a composition that
+// stepped first would hand the reaction a departed target, the strike would
+// refuse as out of range, and the reaction would be lost. So Move is called
+// with the mover still standing on From, and only then does the cell change.
+//
+// # Required at construction
+//
+// SUPPLIED, NEVER DEFAULTED (rpg-toolkit#1033), exactly as [Striker] and
+// [TurnDriver] are: an unplayed member's driver can decide to walk the moment a
+// fight forms. A nil Mover is not "reactions are switched off" — it is every
+// walk silently unobservable again, which is the state rpg-project#316 exists
+// to end and precisely the shape [Announcer]'s doc warns about, one capability
+// over. Refused at both doors (ErrNoMover).
+type Mover interface {
+	// Move announces mover's step from one cell to the next and resolves
+	// whatever reacts to it, recording any resulting beats itself via
+	// [Encounter.Record] — the same way [Striker.Strike] records its own.
+	//
+	// From is where the mover still stands; to is where this composition is
+	// about to put them. Both are dungeon-absolute, the frame every position
+	// on this module already speaks.
+	//
+	// Errors here are MOVER MALFUNCTIONS (a resolution failure, a corrupt
+	// sheet) and abort the caller's whole verb exactly as a [Striker.Strike]
+	// error does. A reaction that simply did not fire is not an error — it is
+	// the ordinary case, and says so by returning nil having recorded
+	// nothing.
+	Move(ctx context.Context, enc *Encounter, mover MemberID, from, to spatial.Position) error
 }

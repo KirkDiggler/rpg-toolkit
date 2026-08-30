@@ -117,6 +117,11 @@ type RecordInput struct {
 	// does not check about that.
 	Attack *AttackIdentity
 
+	// Reaction names what this outcome was taken AS, when it was a reaction
+	// rather than a declared action. Present for an opportunity attack, nil
+	// for an ordinary swing — see ReactionIdentity's own doc.
+	Reaction *ReactionIdentity
+
 	// DamageComponents are the ordered primitive facts that produced a struck
 	// outcome. Meaning belongs to the rulebook; this composition preserves the
 	// supplied order and values without interpreting them.
@@ -185,6 +190,37 @@ type AttackIdentity struct {
 	// session — which already depends on that package — that maps it onto
 	// a closed Go type.
 	DamageType string
+}
+
+// ReactionIdentity names what an outcome was taken AS, when the actor was
+// reacting rather than acting — carried on a [RecordInput] whose Kind is
+// OutcomeStruck or OutcomeMissed so the beat can answer "opportunity attack"
+// for every witness.
+//
+// It exists because without it the story is honestly confusing rather than
+// wrong. An opportunity attack IS a strike and records through this same verb,
+// so every number already crosses; what does not is why an actor dealt damage
+// during somebody else's turn. A reader sees a fighter hit on a wolf's turn
+// and has nothing to explain it with (rpg-project#316).
+//
+// PLAIN STRINGS, CHECKED FOR PRESENCE AND NOT FOR MEANING, exactly as
+// [AttackIdentity] is and for the identical reason: [Encounter.Record] refuses
+// ErrInvalidData when Ref or Name is empty — the minimum this composition CAN
+// check — and cannot validate that either names anything real, because this
+// module's go.mod cannot import the rulebook that would answer (C1). The
+// composition guarantees presence; the rulebook guarantees meaning.
+//
+// AN OPEN SET, so a string rather than a kind on [OutcomeKind]'s closed enum.
+// The closed enum answers "what happened", which this composition must know;
+// this answers "under which of the rulebook's rules", which it must not. Shield
+// and Uncanny Dodge join without a change here.
+type ReactionIdentity struct {
+	// Ref is the rulebook ref of the condition or feature that reacted —
+	// "dnd5e:conditions:opportunity_attack".
+	Ref string
+
+	// Name is the display name for Ref — "Opportunity Attack".
+	Name string
 }
 
 // RecordOutput reports where the outcome landed in the story.
@@ -259,8 +295,8 @@ type RecordOutput struct {
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
-// know, an Attack whose Ref or Name is empty, or a non-finite damage
-// multiplier JSON cannot represent), and anything the
+// know, an Attack or Reaction whose Ref or Name is empty, or a non-finite
+// damage multiplier JSON cannot represent), and anything the
 // [Standing] capability answers with — including ErrNotMember for an answer
 // naming a stranger.
 //
@@ -366,6 +402,18 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 			"ref":         in.Attack.Ref,
 			"name":        in.Attack.Name,
 			"damage_type": in.Attack.DamageType,
+		}
+	}
+	if in.Reaction != nil {
+		if in.Reaction.Ref == "" {
+			return nil, fmt.Errorf("record: reaction ref: %w", ErrInvalidData)
+		}
+		if in.Reaction.Name == "" {
+			return nil, fmt.Errorf("record: reaction name: %w", ErrInvalidData)
+		}
+		payload["reaction"] = map[string]string{
+			"ref":  in.Reaction.Ref,
+			"name": in.Reaction.Name,
 		}
 	}
 

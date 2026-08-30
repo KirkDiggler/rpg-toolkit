@@ -87,6 +87,49 @@ func (s *scriptedStriker) Strike(
 	return err
 }
 
+// recordingMover records every announced step AND where the mover actually
+// stood when it was announced.
+//
+// That second field is the whole point. Any mover can record a from and a to,
+// because those are handed to it — echoing them back proves nothing. Reading
+// the canvas at announce time is the independent witness: it says where the
+// composition had actually put the mover at the instant it asked, which is
+// what announce-before-step is a claim about.
+type recordingMover struct {
+	fail  error
+	calls []announcedStep
+}
+
+type announcedStep struct {
+	Mover    encounter.MemberID
+	From, To spatial.Position
+
+	// StoodAt is where the encounter itself had this member when the
+	// announcement arrived, read back rather than echoed.
+	StoodAt spatial.Position
+	Placed  bool
+}
+
+func (r *recordingMover) Move(
+	_ context.Context, enc *encounter.Encounter, mover encounter.MemberID,
+	from, to spatial.Position,
+) error {
+	call := announcedStep{Mover: mover, From: from, To: to}
+
+	members, err := enc.Members()
+	if err != nil {
+		return err
+	}
+	for _, m := range members {
+		if m.ID == mover {
+			call.StoodAt, call.Placed = m.Position, true
+		}
+	}
+	r.calls = append(r.calls, call)
+
+	return r.fail
+}
+
 // adjacentSkeletonEncounter builds a one-room fight: alice and a monster
 // standing next to each other (co-located rooms form the bubble at first
 // light — see twoMemberEncounter's own doc, one file over), the monster
@@ -94,7 +137,7 @@ func (s *scriptedStriker) Strike(
 func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDriver, striker encounter.Striker) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -120,10 +163,28 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.TurnDr
 // unlimited-sight fixture, so contact still forms the bubble at first light)
 // and within its own movement budget — near enough to close the distance in
 // one Move, far enough that an immediate Attack is [encounter.ErrBadIntent].
-func (s *MonsterTurnTestSuite) farSkeletonEncounter(driver encounter.TurnDriver, striker encounter.Striker) *encounter.Encounter {
+func (s *MonsterTurnTestSuite) farSkeletonEncounter(
+	driver encounter.TurnDriver, striker encounter.Striker,
+) *encounter.Encounter {
+	return s.farSkeletonFight(driver, striker, quietMover{})
+}
+
+// farSkeletonEncounterWithMover is the same fight WATCHED: the Mover is
+// supplied by the caller instead of quietly defaulted, so a test can see what
+// the composition announces. Its driver never attacks, so the Striker is the
+// one that refuses being called.
+func (s *MonsterTurnTestSuite) farSkeletonEncounterWithMover(
+	driver encounter.TurnDriver, mover encounter.Mover,
+) *encounter.Encounter {
+	return s.farSkeletonFight(driver, passStriker{}, mover)
+}
+
+func (s *MonsterTurnTestSuite) farSkeletonFight(
+	driver encounter.TurnDriver, striker encounter.Striker, mover encounter.Mover,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: striker, Mover: mover, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -451,7 +512,7 @@ func (s *MonsterTurnTestSuite) TestMemberFactsRoundTripThroughToDataAndLoadEncou
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  saved,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 	})
 	s.Require().NoError(err)
 
@@ -484,6 +545,150 @@ func (s *MonsterTurnTestSuite) TestRefusingStrikerFailsLoudly() {
 	s.Require().ErrorIs(err, encounter.ErrRefusingStriker)
 }
 
+// TestAWalkIsAnnouncedCellByCell: the Mover hears one announcement per cell
+// executed, naming the pair of cells that step crosses.
+//
+// PER CELL, not per Move intent, because that is the granularity a reaction
+// is decided at: leaving a threatened square is a fact about one step, and a
+// mover that announced "I walked from here to there" would have collapsed the
+// three squares in between where the answer might differ.
+func (s *MonsterTurnTestSuite) TestAWalkIsAnnouncedCellByCell() {
+	mover := &recordingMover{}
+	enc := s.farSkeletonEncounterWithMover(
+		&scriptedDriver{intents: []encounter.TurnIntent{
+			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2)}},
+		}},
+		mover,
+	)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(mover.calls, 2, "one announcement per executed cell")
+	s.Equal(goblin, mover.calls[0].Mover)
+	s.Equal(cellAt(6, 2), mover.calls[0].From, "the first step leaves the starting cell")
+	s.Equal(cellAt(5, 2), mover.calls[0].To)
+	s.Equal(cellAt(5, 2), mover.calls[1].From, "the second step leaves where the first arrived")
+	s.Equal(cellAt(4, 2), mover.calls[1].To)
+}
+
+// TestTheStepIsAnnouncedBeforeItIsTaken is [encounter.Mover]'s contract, and
+// the reason the Move case reads the canvas before calling rather than after.
+//
+// A reactor's swing is checked for reach against where the mover IS. Announce
+// after the step and the reaction is handed a target that already left, the
+// strike refuses as out of range, and the opportunity attack is silently lost
+// — which is a bug that would look exactly like "no reaction fired".
+//
+// This asserts against what the ENCOUNTER says, not against the arguments the
+// mover was handed: StoodAt is read back off the live encounter inside the
+// announcement. A composition that stepped first would report the destination
+// here while still passing a correct-looking From.
+func (s *MonsterTurnTestSuite) TestTheStepIsAnnouncedBeforeItIsTaken() {
+	mover := &recordingMover{}
+	enc := s.farSkeletonEncounterWithMover(
+		&scriptedDriver{intents: []encounter.TurnIntent{
+			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2)}},
+		}},
+		mover,
+	)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(mover.calls, 2)
+	for i, call := range mover.calls {
+		s.True(call.Placed, "call %d: the mover is on the canvas when announced", i)
+		s.Equal(call.From, call.StoodAt,
+			"call %d: the encounter still has the mover on the cell being left", i)
+		s.NotEqual(call.To, call.StoodAt,
+			"call %d: the step had not been taken yet", i)
+	}
+}
+
+// TestAMoverMalfunctionAbortsTheVerb: an error from the capability is a MOVER
+// MALFUNCTION and aborts the whole verb, exactly as a Striker error does —
+// not a silently skipped step. Nothing is persisted, so the caller's retry
+// costs the retry and nothing else.
+func (s *MonsterTurnTestSuite) TestAMoverMalfunctionAbortsTheVerb() {
+	boom := errors.New("mover exploded")
+	enc := s.farSkeletonEncounterWithMover(
+		&scriptedDriver{intents: []encounter.TurnIntent{
+			encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2)}},
+		}},
+		&recordingMover{fail: boom},
+	)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().ErrorIs(err, boom)
+}
+
+// TestAnOverBudgetMoveAnnouncesNothing: a Move the composition refuses as
+// ErrBadIntent never reaches the Mover at all.
+//
+// The refusal is the composition's own arithmetic and happens before any cell
+// executes, so nothing is announced — which matters because an announcement is
+// not free: it is where a reaction gets to fire, and firing one for a step
+// that never happened would spend a reactor's reaction on nothing.
+func (s *MonsterTurnTestSuite) TestAnOverBudgetMoveAnnouncesNothing() {
+	// The goblin's 30-foot speed affords 6 cells; ask for 7.
+	path := make([]spatial.Position, 7)
+	for i := range path {
+		path[i] = cellAt(6-i, 2)
+	}
+	mover := &recordingMover{}
+	enc := s.farSkeletonEncounterWithMover(
+		&scriptedDriver{intents: []encounter.TurnIntent{encounter.Move{Path: path}}},
+		mover,
+	)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Empty(mover.calls, "a refused intent executes no cells, so it announces none")
+}
+
+// TestSetupRefusesAnEncounterWithNoMover mirrors
+// TestSetupRefusesAnEncounterWithNoStriker for the capability beside it: a
+// Mover-less encounter is refused at construction rather than discovered when
+// the first monster decides to walk.
+func (s *MonsterTurnTestSuite) TestSetupRefusesAnEncounterWithNoMover() {
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 8, 8)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoMover)
+}
+
+// TestLoadRefusesAnEncounterWithNoMover is the other door — see
+// TestSetupRefusesAnEncounterWithNoMover's own doc.
+func (s *MonsterTurnTestSuite) TestLoadRefusesAnEncounterWithNoMover() {
+	saved := s.adjacentSkeletonEncounter(passDriver{}, passStriker{}).ToData()
+
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:  saved,
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+	})
+	s.Require().ErrorIs(err, encounter.ErrNoMover)
+}
+
+// TestRefusingMoverFailsLoudly pins the construction-only-world Mover, the
+// exact twin of TestRefusingStrikerFailsLoudly.
+func (s *MonsterTurnTestSuite) TestRefusingMoverFailsLoudly() {
+	err := (encounter.RefusingMover{}).Move(
+		context.Background(), nil, goblin, cellAt(1, 1), cellAt(2, 1),
+	)
+	s.Require().ErrorIs(err, encounter.ErrRefusingMover)
+}
+
 // TestSetupRejectsANegativeMemberFact and TestJoinRejectsANegativeMemberFact
 // pin Copilot's PR #1187 review finding: SpeedFeet, SightFeet and an
 // action's RangeFeet are feet CellsFromFeet divides by FeetPerCell, and a
@@ -499,7 +704,7 @@ func (s *MonsterTurnTestSuite) TestSetupRejectsANegativeMemberFact() {
 		mutate(&mi)
 		return &encounter.SetupInput{
 			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: encounter.FieldInput{
 				Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 				Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 8, 8)},
@@ -582,7 +787,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathWalksAroundAWall() {
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 5, 3)}, Walls: wall,
@@ -633,7 +838,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathIsEmptyWhenSightedButUnreachabl
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			// Sight crosses void here (VoidIsTransparent), but a 4-cell gap
 			// of void between the two rooms is still not floor for either
@@ -672,7 +877,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathStopsAtTheMemberOwnLongestReach
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 3)},
@@ -748,7 +953,7 @@ func (s *MonsterTurnTestSuite) TestSeenMemberPathFindsTheNearestInRangeCellNotJu
 	driver := &scriptedDriver{}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 5, 3)}, Walls: wall,
@@ -831,7 +1036,7 @@ func (s *MonsterTurnTestSuite) TestDrivenKillingBlowEndsTheDriveCleanly() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
@@ -938,7 +1143,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: quietAnnouncer{},
+		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},

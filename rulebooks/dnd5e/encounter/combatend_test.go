@@ -95,7 +95,7 @@ func (s *CombatEndTestSuite) fightWithStanding(
 	}
 	return encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{},
-		TurnDriver: driver, Striker: striker, Announcer: announcer,
+		TurnDriver: driver, Striker: striker, Mover: quietMover{}, Announcer: announcer,
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},

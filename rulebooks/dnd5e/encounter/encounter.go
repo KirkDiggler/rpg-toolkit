@@ -188,6 +188,11 @@ type Encounter struct {
 	// [Striker].
 	striker Striker
 
+	// mover announces a [Move] intent's steps before this composition takes
+	// them. Required at both constructors for the same reason striker is;
+	// see [Mover], whose doc explains why announce-before-step is a contract.
+	mover Mover
+
 	// announcer publishes the temporal boundaries a clock advance crossed.
 	// Required at both constructors for the same reason striker is; see
 	// [Announcer], whose doc explains why it is a capability rather than a
@@ -499,6 +504,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", ErrNoStriker)
 	}
 
+	// And again, for the seam beside it: a TurnDriver can decide to WALK the
+	// moment a fight forms, and a step nothing observed is an opportunity
+	// attack that silently never fired (rpg-project#316). Never defaulted —
+	// see [Mover]'s own doc.
+	if in.Mover == nil {
+		return nil, fmt.Errorf("newencounter: %w", ErrNoMover)
+	}
+
 	// And once more, one seam further on: a fight forming starts round 1 and
 	// somebody's first turn, so an encounter that cannot announce a boundary
 	// would let every turn-scoped condition in it live forever — silently,
@@ -597,6 +610,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		sight:       in.Sight,
 		turnDriver:  in.TurnDriver,
 		striker:     in.Striker,
+		mover:       in.Mover,
 		announcer:   in.Announcer,
 		endings:     nil,
 		retention:   normalizeRetention(in.Retention),
@@ -1351,6 +1365,16 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 			continue
 		}
 		if intent, ok := p.intent.(IntentMoveTo); ok {
+			// NOT ANNOUNCED THROUGH [Mover], and the omission is deliberate
+			// rather than missed. This is the world clock: nobody is in a
+			// fight, so there is no threatened square to leave and no
+			// reaction to spend. The turn clock's own Move case announces
+			// every cell (executeTurnIntent) because that is where a step can
+			// provoke one.
+			//
+			// The day a hazard wants to notice a wanderer — a trap in a
+			// corridor nobody is fighting in — this is the line that changes,
+			// and it changes to the same call the turn clock already makes.
 			if action, stepped := e.stepTo(member, intent.To); stepped {
 				executed = append(executed, action)
 			}

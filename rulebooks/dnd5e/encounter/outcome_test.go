@@ -30,7 +30,7 @@ const outcomeRoom = "yard"
 // other's sight, so nothing forms a fight before a test asks for one.
 func (s *OutcomeTestSuite) scene() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: encounter.FieldInput{Canvas: encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}, Regions: []encounter.RegionInput{rectRegion(outcomeRoom, 0, 0, 12, 12)}, Props: wallRow(6, 4, 8)},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
@@ -253,9 +253,30 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 // rulebook words carried as primitives. AttackModifierSource deliberately has
 // no Reason string: the rules engine's human-readable explanation does not
 // become caller-authored prose in this transcript.
+//
+// REACTION IS THE ARGUMENT AGAIN, ONE CATEGORY OVER (rpg-project#316).
+// [encounter.ReactionIdentity] is the same shape as AttackIdentity minus the
+// damage type — a rulebook ref and the display name that ref owns
+// ("dnd5e:conditions:opportunity_attack", "Opportunity Attack") — and Record
+// holds it to the identical presence floor, refusing ErrInvalidData for an
+// empty Ref or Name.
+//
+// It is worth being explicit about why a NAME is not prose here, because that
+// is the line this test defends. Name is authored by the reacting rule, fixed
+// in the rulebook beside the ref it belongs to, and a caller cannot compose a
+// different one for effect any more than it can rename a longsword. The
+// alternative — deriving the label downstream from the ref — would put a
+// rulebook's vocabulary in every client that renders a beat, which is the
+// boundary rule inverted.
+//
+// What it buys is a transcript that stops lying by omission. An opportunity
+// attack IS a strike and records through this same verb, so without this field
+// a reader sees a fighter deal damage in the middle of a wolf's turn with
+// nothing in the beat to explain it. That reads as a bug in the log rather
+// than as the rule working.
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
-		"Kind", "Actor", "Targets", "Values", "Critical", "Attack",
+		"Kind", "Actor", "Targets", "Values", "Critical", "Attack", "Reaction",
 		"DamageComponents", "AdvantageSources", "DisadvantageSources",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
@@ -362,6 +383,83 @@ func (s *OutcomeTestSuite) TestAnAttackWithNoRefOrNameIsRefused() {
 			Attack: &encounter.AttackIdentity{},
 		})
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
+// TestAReactionWithNoRefOrNameIsRefused is the identical floor one field over
+// — see TestAnAttackWithNoRefOrNameIsRefused. Presence, not meaning.
+func (s *OutcomeTestSuite) TestAReactionWithNoRefOrNameIsRefused() {
+	s.Run("empty ref", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Reaction: &encounter.ReactionIdentity{Name: "Opportunity Attack"},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("empty name", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Reaction: &encounter.ReactionIdentity{Ref: "dnd5e:conditions:opportunity_attack"},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+
+	s.Run("both empty", func() {
+		_, err := s.scene().Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Reaction: &encounter.ReactionIdentity{},
+		})
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	})
+}
+
+// TestTheBeatSaysWhichReactionItWas is why the field exists: the label reaches
+// the story, so a reader can tell an opportunity attack from an ordinary swing.
+//
+// Both halves are asserted, because only the pair is the claim. An ordinary
+// strike must carry NO reaction key at all — absent rather than empty — since
+// that absence is what a client reads to decide whether to say "Opportunity
+// Attack" at all, and a key that was always present would make every swing
+// look like a reaction with a blank name.
+func (s *OutcomeTestSuite) TestTheBeatSaysWhichReactionItWas() {
+	s.Run("a reaction names itself", func() {
+		enc := s.scene()
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
+			Reaction: &encounter.ReactionIdentity{
+				Ref: "dnd5e:conditions:opportunity_attack", Name: "Opportunity Attack",
+			},
+		})
+		s.Require().NoError(err)
+
+		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
+		s.Require().NoError(serr)
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+
+		reaction, ok := beat["reaction"].(map[string]any)
+		s.Require().True(ok, "the beat carries the reaction: %+v", beat)
+		s.Equal("dnd5e:conditions:opportunity_attack", reaction["ref"])
+		s.Equal("Opportunity Attack", reaction["name"])
+	})
+
+	s.Run("an ordinary swing carries no reaction key", func() {
+		enc := s.scene()
+		_, err := enc.Record(&encounter.RecordInput{
+			Kind: encounter.OutcomeStruck, Actor: alice, Targets: []encounter.MemberID{goblin},
+			Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 7},
+		})
+		s.Require().NoError(err)
+
+		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
+		s.Require().NoError(serr)
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+
+		_, present := beat["reaction"]
+		s.False(present, "absent, not empty: %+v", beat)
 	})
 }
 
