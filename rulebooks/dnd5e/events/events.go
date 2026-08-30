@@ -514,9 +514,6 @@ type MovementChainEvent struct {
 	FromPosition Position // Starting position (grid coordinates)
 	ToPosition   Position // Ending position (single step)
 
-	// Threat tracking - populated by the movement system
-	ThreateningEntities []string // Entity IDs that threaten this movement
-
 	// OA Prevention - conditions can add sources here to prevent OA
 	OAPreventionSources []MovementModifierSource
 

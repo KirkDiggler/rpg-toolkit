@@ -50,21 +50,36 @@ type OpportunityAttackConditionData struct {
 // leaves the holder's threatened reach AND the holder has the OA reaction
 // readied (gamectx.IsReactionReady).
 //
-// Per Wave 2.11d Director ruling B4: BOTH player and NPC reactors publish the
-// trigger event; the encounter SDK wrapper (Encounter.MoveEntity) iterates the
-// buffered events and either resolves NPC OAs inline (no prompt) or surfaces
-// player OAs as InputRequired{reaction_prompt} on the reactor's stream. The
-// condition handler itself does NOT make re-entrant Strike calls.
+// BOTH player and NPC reactors publish the trigger event, and the drainer is
+// resolution.NewMovement: its collectTriggers subscribes ReactionTriggerTopic
+// for the duration of the movement fold, buffers whatever this condition
+// publishes, sorts by ReactorID then ConditionRef, and yields one Request per
+// trigger. The condition handler itself does NOT make re-entrant Strike calls.
 //
-// Subscribes to MovementChain. Predicate per move event:
+// This paragraph used to name Encounter.MoveEntity as the drainer, prompting
+// players and resolving NPC OAs inline per Wave 2.11d ruling B4. Both halves
+// are gone: MoveEntity was deleted with the old encounter module, and Kirk's
+// autofire ruling superseded B4 — nobody is prompted, the OA simply fires
+// (rpg-project#316, which is also what wires a production caller to
+// NewMovement; until it lands the trigger is published to a fold nothing
+// enters).
+//
+// Subscribes to MovementChain. Predicate per move event, in the order the code
+// asks it:
 //   - Mover is not self (no self-OA).
 //   - Move is not OA-prevented (Disengaging short-circuits via OAPreventionSources).
-//   - Self threatens the move's FromPosition (within reach).
-//   - Self does NOT threaten ToPosition (mover is leaving reach).
+//   - This reactor has not already reacted (UsedThisTurn, cleared on its own
+//     turn start).
+//   - canReact: a reactor holding an economy must have a reaction to spend; a
+//     monster holds none and is metered by UsedThisTurn alone.
 //   - gamectx.IsReactionReady(self, OA-ref) returns true.
+//   - A room is in context; without one the geometry cannot be evaluated and
+//     the condition is a silent no-op.
+//   - Self threatens the move's FromPosition and does NOT threaten
+//     ToPosition — the mover is leaving reach.
 //
-// Reach defaults to 5ft (1 grid unit). Reach weapons + action-economy reaction
-// availability are future extensions; the predicate is conservative today.
+// Reach defaults to 5ft (1 grid unit). Reach weapons are a future extension;
+// the predicate is conservative today.
 type OpportunityAttackCondition struct {
 	MemberID string
 
@@ -239,8 +254,10 @@ func (o *OpportunityAttackCondition) loadJSON(data json.RawMessage) error {
 // ReactionTriggerEvent when this combatant has a triggerable OA opportunity.
 //
 // The chain itself is NOT modified — the condition does not append a stage.
-// The trigger event is published on the encounter bus; the orchestrator
-// (encounter SDK wrapper) drains it after MoveEntity returns.
+// The trigger is published on the interaction's own bus, where
+// resolution.NewMovement's collectTriggers is subscribed for the duration of
+// the fold and drains it. It named MoveEntity as the drainer until
+// rpg-project#316; that method went with the old encounter module.
 func (o *OpportunityAttackCondition) onMovementChain(
 	ctx context.Context,
 	event *dnd5eEvents.MovementChainEvent,
