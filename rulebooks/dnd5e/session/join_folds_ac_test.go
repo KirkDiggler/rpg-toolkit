@@ -75,8 +75,8 @@ const ragingID = "standre"
 // sheet reports 11 and says so out loud.
 func barbarianCharacter(id string) *character.Data {
 	raw, err := (&conditions.UnarmoredDefenseCondition{
-		CharacterID: id,
-		Type:        conditions.UnarmoredDefenseBarbarian,
+		MemberID: id,
+		Type:     conditions.UnarmoredDefenseBarbarian,
 	}).ToJSON()
 	if err != nil {
 		panic("barbarian fixture: " + err.Error())

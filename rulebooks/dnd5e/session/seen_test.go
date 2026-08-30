@@ -48,8 +48,13 @@ func (s *SeenTestSuite) SetupTest() {
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: testCharacters(),
-		Events: session.DiscardEvents{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		// The fighter is a KindPlayer member of this world, so the world needs
+		// their sheet: a walk attaches the whole cast (rpg-project#316), and a
+		// roster player with no character record is a world that cannot answer
+		// for one of its own members.
+		Characters: newFakeCharacters(dwarfCharacter("fighter")),
+		Events:     session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -60,7 +65,7 @@ func (s *SeenTestSuite) SetupTest() {
 // else along the shared edge. skeleton-1 stands well inside hall at authored
 // [9,3], where nothing but the doorway can put it in sight.
 func skeletonBehindADoor(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{},
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{},
 		Sight: encEveryoneSees{}, Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{}, Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{
 			Canvas: pointyCanvas(),

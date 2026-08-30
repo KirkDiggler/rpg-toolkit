@@ -263,18 +263,23 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		}
 	}
 
-	// Standing, batched once for the whole walk (rpg-toolkit#1137) and only
-	// NOW — after every gate that must refuse without touching a sheet has
-	// already passed (Copilot's own precedence finding on #1171, pinned by
-	// TestNotActiveWinsOverAffordability): a Move cannot down or revive
-	// anyone, so the answer is stable across every step's own Discovery, and
-	// asking once here beats asking once per step.
+	// Standing, asked here and only NOW — after every gate that must refuse
+	// without touching a sheet has already passed (Copilot's own precedence
+	// finding on #1171, pinned by TestNotActiveWinsOverAffordability).
+	//
+	// THIS IS THE WALK'S FIRST ANSWER, NOT ITS ONLY ONE. It was batched once
+	// for the whole walk (rpg-toolkit#1137) on the stated grounds that "a Move
+	// cannot down or revive anyone, so the answer is stable across every
+	// step's own Discovery". Announcing steps to the rules made that false: an
+	// opportunity attack resolves inside a step and can drop the walker
+	// mid-path (rpg-project#316, ruling R6). runWalk re-asks per step and
+	// stops when the walker goes down; this call is what the first step reads.
 	down, err := discoveryStanding(scope)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
-	res, err := m.runWalk(scope, in.Member, in.Path, down)
+	res, err := m.runWalk(ctx, scope, in.Member, in.Path, down)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
 	}
@@ -394,11 +399,55 @@ type walkResult struct {
 // the next step with ErrInBubble — so stopping is a fact about the world rather
 // than a policy about perception.
 func (m *Manager) runWalk(
-	scope *writeScope, member string, path []spatial.Position, down map[string]bool,
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position, down map[string]bool,
 ) (*walkResult, error) {
 	res := &walkResult{discovered: map[string]Discovery{}}
 
 	for i, cell := range path {
+		// Where the walker STILL stands, read off the composition rather than
+		// carried forward from the previous cell — the same reason the step's
+		// landing is read off the answer below instead of echoed from the
+		// input.
+		from, err := positionOf(scope.enc, member)
+		if err != nil {
+			return nil, err
+		}
+
+		// ANNOUNCE, THEN STEP. This is resolution.NewMovement's contract, not
+		// an ordering preference: an opportunity attack fires because the
+		// mover is LEAVING reach, and the reactor's swing enforces melee reach
+		// against where the target IS. Announcing after the step would hand
+		// the strike a departed target, the swing would refuse as out of
+		// range, and a refused reaction fails the whole interaction.
+		//
+		// The same call the monster's path makes through moverSeam, so both
+		// walks provoke the same things in the same order.
+		if _, err := m.announceStep(
+			ctx, scope, scope.enc, encounter.MemberID(member), string(KindPlayer), from, cell,
+		); err != nil {
+			return nil, err
+		}
+
+		// STANDING IS RE-ASKED PER STEP, and the walk stops here if a reaction
+		// dropped the walker (rpg-project#316, ruling R6). Before this slice a
+		// Move could not down anyone, so Manager.Move asked once for the whole
+		// walk; announcing steps made that false. The batched answer above is
+		// refreshed rather than kept, so the discoveries this step projects
+		// are read against who is standing NOW.
+		//
+		// The walker falls in the cell they were LEAVING, never the one they
+		// were entering — the reaction fired because they were leaving it, and
+		// its strike was checked against the cell they still stood on. The
+		// encounter's own Move case gives the identical answer on the driven
+		// path; two paths, one rule.
+		down, err = discoveryStanding(scope)
+		if err != nil {
+			return nil, err
+		}
+		if down[member] {
+			return res, nil
+		}
+
 		stepped, err := scope.enc.Step(&encounter.StepInput{
 			Member: encounter.MemberID(member),
 			To:     cell,

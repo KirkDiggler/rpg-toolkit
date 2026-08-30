@@ -335,7 +335,8 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
 	enc, _, _, err := m.loadWorldWithBaseline(
-		ctx, data, encounter.RefusingStriker{}, encounter.RefusingAnnouncer{}, &sightSeam{})
+		ctx, data, encounter.RefusingStriker{}, encounter.RefusingMover{},
+		encounter.RefusingAnnouncer{}, &sightSeam{})
 	return enc, err
 }
 
@@ -363,7 +364,8 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 // throwaway that nothing reaches again.
 func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
-	striker encounter.Striker, announcer encounter.Announcer, sight *sightSeam,
+	striker encounter.Striker, mover encounter.Mover,
+	announcer encounter.Announcer, sight *sightSeam,
 ) (*encounter.Encounter, uint64, encounter.Standing, error) {
 	encID := data.Encounter
 
@@ -392,6 +394,11 @@ func (m *Manager) loadWorldWithBaseline(
 		// scope, or RefusingStriker{} for a read that must never drive a
 		// turn. See [Manager.loadWorld] and [Manager.openForWrite].
 		Striker: striker,
+		// The caller says which here too: a real one bound to a write verb's
+		// own scope, or RefusingMover{} for a read that must never walk
+		// anybody. A step announced on a read path is the same bug an
+		// announced boundary would be.
+		Mover: mover,
 		// And the same, one capability over. A read verb cannot advance a
 		// clock, so a boundary announced on a read path is a bug rather
 		// than an event — RefusingAnnouncer says so at the point of

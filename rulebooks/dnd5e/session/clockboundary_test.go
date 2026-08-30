@@ -108,7 +108,7 @@ func (s *ClockBoundaryTestSuite) raw(c interface {
 // alice dodges and ends her turn; bob ends his; the clock comes back to alice
 // and HER turn start is what removes it.
 func (s *ClockBoundaryTestSuite) TestDodgeLapsesWhenItsOwnersTurnComesAround() {
-	mgr := s.fight(s.raw(&conditions.DodgingCondition{CharacterID: "alice"}))
+	mgr := s.fight(s.raw(&conditions.DodgingCondition{MemberID: "alice"}))
 	s.Require().Len(s.storedConditions("alice"), 1, "alice starts the fight dodging")
 
 	s.endTurn(mgr, "alice")
@@ -198,11 +198,11 @@ func (s *ClockBoundaryTestSuite) TestRageLapsesWhenTheBarbarianDidNothing() {
 // That is the failure R1 exists to prevent, and this is what noticing it looks
 // like.
 func (s *ClockBoundaryTestSuite) TestOneAdvanceReachesEveryoneAndEachDecidesForItself() {
-	mgr := s.fight(s.raw(&conditions.DodgingCondition{CharacterID: "alice"}))
+	mgr := s.fight(s.raw(&conditions.DodgingCondition{MemberID: "alice"}))
 
 	bob, err := s.characters.GetCharacter(s.ctx, "bob")
 	s.Require().NoError(err)
-	bob.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{CharacterID: "bob"})}
+	bob.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{MemberID: "bob"})}
 	s.Require().NoError(s.characters.SaveCharacter(s.ctx, bob))
 
 	s.endTurn(mgr, "alice")
@@ -320,7 +320,7 @@ func (i *impersonatingCharacters) GetCharacter(ctx context.Context, id string) (
 // only thing that has gone wrong is one lookup.
 func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
 	alice := armedFighter("alice")
-	alice.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{CharacterID: "alice"})}
+	alice.Conditions = []json.RawMessage{s.raw(&conditions.DodgingCondition{MemberID: "alice"})}
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))

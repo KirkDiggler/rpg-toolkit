@@ -42,7 +42,7 @@ func deftCharacter(id string, dex int) *character.Data {
 // and alice standing at its west cell, one step from crossing it.
 func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
+		Striker: encounter.RefusingStriker{}, Mover: encounter.RefusingMover{}, Announcer: encQuietAnnouncer{}, Sight: encEveryoneSees{},
 		Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Standing: encEveryoneStanding{},
 		Field: encounter.FieldInput{Canvas: pointyCanvas(),
@@ -135,7 +135,7 @@ func (s *DoorsSuite) TestDoorsReadsTheLiveState() {
 	})
 
 	s.Run("a locked gate reports its lock, DC and all", func() {
-		s.startWith(gatedWorld(s.T(), tombLock()))
+		s.startWith(gatedWorld(s.T(), tombLock()), deftCharacter("alice", 14))
 		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess"})
 		s.Require().NoError(err)
 		s.Require().Len(out.Doors, 1)
@@ -148,7 +148,7 @@ func (s *DoorsSuite) TestAWalkIntoTheDoorSaysWhatStoppedIt() {
 	ctx := context.Background()
 
 	s.Run("locked says locked — the fiction beat, not a bad cell", func() {
-		s.startWith(gatedWorld(s.T(), tombLock()))
+		s.startWith(gatedWorld(s.T(), tombLock()), deftCharacter("alice", 14))
 		_, err := s.mgr.Move(ctx, &session.MoveInput{
 			Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
 		s.Require().ErrorIs(err, session.ErrLocked)
@@ -157,7 +157,7 @@ func (s *DoorsSuite) TestAWalkIntoTheDoorSaysWhatStoppedIt() {
 	})
 
 	s.Run("shut says shut — the remedy is OpenDoor, not new coordinates", func() {
-		s.startWith(gatedWorld(s.T(), encounter.DoorIsClosed()))
+		s.startWith(gatedWorld(s.T(), encounter.DoorIsClosed()), deftCharacter("alice", 14))
 		_, err := s.mgr.Move(ctx, &session.MoveInput{
 			Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(6, 0)}})
 		s.Require().ErrorIs(err, session.ErrDoorShut)
@@ -167,7 +167,7 @@ func (s *DoorsSuite) TestAWalkIntoTheDoorSaysWhatStoppedIt() {
 
 func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 	ctx := context.Background()
-	s.startWith(gatedWorld(s.T(), encounter.DoorIsClosed()))
+	s.startWith(gatedWorld(s.T(), encounter.DoorIsClosed()), deftCharacter("alice", 14))
 
 	out, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{
 		Session: "sess", Member: "alice", Door: "gate"})
@@ -189,7 +189,7 @@ func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 }
 
 func (s *DoorsSuite) TestOpenDoorRefusesALockedOne() {
-	s.startWith(gatedWorld(s.T(), tombLock()))
+	s.startWith(gatedWorld(s.T(), tombLock()), deftCharacter("alice", 14))
 	_, err := s.mgr.OpenDoor(context.Background(), &session.OpenDoorInput{
 		Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().ErrorIs(err, session.ErrLocked, "Unlock is the way through a lock")

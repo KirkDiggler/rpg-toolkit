@@ -457,6 +457,11 @@ func drive(out *bytes.Buffer) error {
 func authoredCrypt() (*encounter.EncounterData, error) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{Initiative: encOrderAsGiven{}, TurnDriver: encPassDriver{},
 		Striker: encounter.RefusingStriker{},
+		// Governs THIS construction only, like the Striker above and the
+		// announcer below: session installs its own mover when it loads this
+		// world, and the walk that matters runs on that one. Nothing steps
+		// while the scene is being assembled.
+		Mover: encounter.RefusingMover{},
 		// Governs THIS construction only, exactly as the sight seam below
 		// does: session installs its own announcer the moment it loads this
 		// world, and the walk runs on that one. Quiet rather than refusing
