@@ -10,15 +10,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// AssembleTwoWeaponAttackInput supplies the compiled price for a two-weapon
+// AssembleOffHandAttackInput supplies the compiled price for a two-weapon
 // bonus attack. Equipment and attack evidence come from the character.
-type AssembleTwoWeaponAttackInput struct {
+type AssembleOffHandAttackInput struct {
 	Cost *combat.SpendProfile
 }
 
-// CanTwoWeaponAttack reports whether the character currently wields a light
+// CanMakeOffHandAttack reports whether the character currently wields a light
 // melee weapon in each hand.
-func CanTwoWeaponAttack(c *Character) bool {
+func CanMakeOffHandAttack(c *Character) bool {
 	if c == nil {
 		return false
 	}
@@ -26,10 +26,10 @@ func CanTwoWeaponAttack(c *Character) bool {
 	return hasLightMeleeWeapon(c, SlotMainHand) && hasLightMeleeWeapon(c, SlotOffHand)
 }
 
-// AssembleTwoWeaponAttack compiles the off-hand weapon as the bonus attack
+// AssembleOffHandAttack compiles the off-hand weapon as the bonus attack
 // granted by two-weapon fighting.
-func AssembleTwoWeaponAttack(
-	c *Character, input *AssembleTwoWeaponAttackInput,
+func AssembleOffHandAttack(
+	c *Character, input *AssembleOffHandAttackInput,
 ) (combatActions.Definition, error) {
 	if c == nil {
 		return combatActions.Definition{}, rpgerr.New(rpgerr.CodeNil, "no character to assemble a two-weapon attack for")
@@ -37,7 +37,7 @@ func AssembleTwoWeaponAttack(
 	if input == nil {
 		return combatActions.Definition{}, rpgerr.New(rpgerr.CodeNil, "no two-weapon attack input")
 	}
-	if !CanTwoWeaponAttack(c) {
+	if !CanMakeOffHandAttack(c) {
 		return combatActions.Definition{}, rpgerr.New(
 			rpgerr.CodeInvalidArgument, "two-weapon attack requires two light melee weapons",
 		)
@@ -47,7 +47,7 @@ func AssembleTwoWeaponAttack(
 	if err != nil {
 		return combatActions.Definition{}, err
 	}
-	definition.Attack.TwoWeaponBonus = true
+	definition.Attack.IsOffHandAttack = true
 	if err := definition.Validate(); err != nil {
 		return combatActions.Definition{}, rpgerr.Wrap(err, "assembled two-weapon attack is invalid")
 	}

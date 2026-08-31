@@ -70,7 +70,7 @@ func (s *CostCompilerTestSuite) sheetOf(class classes.Class, level int) *Charact
 	return char
 }
 
-func (s *CostCompilerTestSuite) twoWeaponFighter() *Character {
+func (s *CostCompilerTestSuite) offHandFighter() *Character {
 	char, err := LoadFromData(s.ctx, &Data{
 		ID:               "cost-two-weapon-fighter",
 		PlayerID:         "cost-player",
@@ -131,8 +131,8 @@ func (s *CostCompilerTestSuite) TestOtherClassesArePricedByTheSameTable() {
 	s.Equal(1, s.banked(classes.Wizard, 20), "no Extra Attack at any level")
 }
 
-func (s *CostCompilerTestSuite) TestAQualifyingAttackActionGrantsOneTwoWeaponBonusAttack() {
-	profile, err := CostOfAttack(s.twoWeaponFighter())
+func (s *CostCompilerTestSuite) TestAQualifyingAttackActionGrantsOneOffHandAttack() {
+	profile, err := CostOfAttack(s.offHandFighter())
 	s.Require().NoError(err)
 
 	s.Equal(1, profile.Grants[combat.CapacityOffHandAttack])
@@ -142,8 +142,8 @@ func (s *CostCompilerTestSuite) TestAQualifyingAttackActionGrantsOneTwoWeaponBon
 	s.NotContains(ordinary.Grants, combat.CapacityOffHandAttack)
 }
 
-func (s *CostCompilerTestSuite) TestTwoWeaponBonusAttackSpendsBonusActionAndGrantedCapacity() {
-	profile, err := CostOfTwoWeaponAttack(s.twoWeaponFighter())
+func (s *CostCompilerTestSuite) TestOffHandAttackSpendsBonusActionAndGrantedCapacity() {
+	profile, err := CostOfOffHandAttack(s.offHandFighter())
 	s.Require().NoError(err)
 	s.Require().NoError(profile.Validate())
 
@@ -154,15 +154,15 @@ func (s *CostCompilerTestSuite) TestTwoWeaponBonusAttackSpendsBonusActionAndGran
 	s.Empty(profile.Requires)
 }
 
-func (s *CostCompilerTestSuite) TestTwoWeaponBonusAttackPriceRevalidatesEquipment() {
-	_, err := CostOfTwoWeaponAttack(s.sheetOf(classes.Fighter, 1))
+func (s *CostCompilerTestSuite) TestOffHandAttackPriceRevalidatesEquipment() {
+	_, err := CostOfOffHandAttack(s.sheetOf(classes.Fighter, 1))
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "two light melee weapons")
 }
 
 func (s *CostCompilerTestSuite) TestQualifyingFirstSwingCarriesTheOffHandGrantThroughNetting() {
-	profile, err := CostOfSwing(s.twoWeaponFighter())
+	profile, err := CostOfSwing(s.offHandFighter())
 	s.Require().NoError(err)
 
 	s.Equal(1, profile.Slots[coreCombat.ActionStandard])
@@ -206,7 +206,7 @@ func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
 	_, err = CostOfStrike(nil)
 	s.Require().Error(err)
 
-	_, err = CostOfTwoWeaponAttack(nil)
+	_, err = CostOfOffHandAttack(nil)
 	s.Require().Error(err)
 }
 

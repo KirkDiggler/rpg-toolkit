@@ -49,7 +49,7 @@ func validDefinition() combatActions.Definition {
 
 func TestDefinitionRoundTrip(t *testing.T) {
 	original := validDefinition()
-	original.Attack.TwoWeaponBonus = true
+	original.Attack.IsOffHandAttack = true
 	original.Attack.OnHit = []combatActions.ConditionApplication{{
 		Ref:  *refs.Conditions.Prone(),
 		Save: saves.NewSaveGate(abilities.STR, 11),
@@ -137,17 +137,17 @@ func TestDefinitionValidationAllowsNilCost(t *testing.T) {
 	require.NoError(t, def.Validate())
 }
 
-func TestTwoWeaponBonusValidation(t *testing.T) {
+func TestOffHandAttackValidation(t *testing.T) {
 	t.Run("light-melee eligibility remains the producer's rule", func(t *testing.T) {
 		def := validDefinition()
-		def.Attack.TwoWeaponBonus = true
+		def.Attack.IsOffHandAttack = true
 
 		require.NoError(t, def.Validate())
 	})
 
 	t.Run("requires weapon context", func(t *testing.T) {
 		def := validDefinition()
-		def.Attack.TwoWeaponBonus = true
+		def.Attack.IsOffHandAttack = true
 		def.Attack.Weapon = nil
 
 		err := def.Validate()
@@ -158,7 +158,7 @@ func TestTwoWeaponBonusValidation(t *testing.T) {
 
 	t.Run("requires melee delivery", func(t *testing.T) {
 		def := validDefinition()
-		def.Attack.TwoWeaponBonus = true
+		def.Attack.IsOffHandAttack = true
 		def.Attack.Delivery = combatActions.AttackDelivery{
 			Ranged: &combatActions.RangedDelivery{NormalFeet: 30, LongFeet: 120},
 		}
@@ -172,7 +172,7 @@ func TestTwoWeaponBonusValidation(t *testing.T) {
 
 func TestDefinitionCloneDoesNotAliasNestedData(t *testing.T) {
 	original := validDefinition()
-	original.Attack.TwoWeaponBonus = true
+	original.Attack.IsOffHandAttack = true
 	original.Cost = &combat.SpendProfile{
 		Slots:    map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
 		Capacity: map[combat.CapacityType]int{combat.CapacityAttack: 1},
@@ -188,7 +188,7 @@ func TestDefinitionCloneDoesNotAliasNestedData(t *testing.T) {
 	}}
 
 	clone := original.Clone()
-	clone.Attack.TwoWeaponBonus = false
+	clone.Attack.IsOffHandAttack = false
 	clone.Cost.Slots[coreCombat.ActionStandard] = 2
 	clone.Cost.Capacity[combat.CapacityAttack] = 2
 	clone.Cost.Grants[combat.CapacityMovement] = 10
@@ -202,7 +202,7 @@ func TestDefinitionCloneDoesNotAliasNestedData(t *testing.T) {
 	clone.Attack.OnHit[0].Parameters[0] = '['
 	clone.Attack.OnHit[0].Save.Abilities[0] = abilities.DEX
 
-	assert.True(t, original.Attack.TwoWeaponBonus)
+	assert.True(t, original.Attack.IsOffHandAttack)
 	assert.Equal(t, 1, original.Cost.Slots[coreCombat.ActionStandard])
 	assert.Equal(t, 1, original.Cost.Capacity[combat.CapacityAttack])
 	assert.Equal(t, 5, original.Cost.Grants[combat.CapacityMovement])

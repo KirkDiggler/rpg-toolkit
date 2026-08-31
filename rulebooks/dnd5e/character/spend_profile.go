@@ -35,7 +35,7 @@ import (
 // grants at this class and level, which is the table
 // [Character.GetExtraAttacksCount] already keeps. A level-5 fighter's Attack
 // action buys two swings; a level-1 fighter's buys one; a level-20 fighter's
-// buys four. When [CanTwoWeaponAttack] is true, the same action also banks the
+// buys four. When [CanMakeOffHandAttack] is true, the same action also banks the
 // one two-weapon bonus attack that a later bonus-action declaration may spend.
 //
 // Note what it does NOT cost: the swings themselves. The action banks capacity
@@ -49,7 +49,7 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 	grants := map[combat.CapacityType]int{
 		combat.CapacityAttack: 1 + c.GetExtraAttacksCount(),
 	}
-	if CanTwoWeaponAttack(c) {
+	if CanMakeOffHandAttack(c) {
 		grants[combat.CapacityOffHandAttack] = 1
 	}
 
@@ -83,14 +83,14 @@ func CostOfStrike(c *Character) (*combat.SpendProfile, error) {
 	}, nil
 }
 
-// CostOfTwoWeaponAttack compiles the complete price of the bonus attack
+// CostOfOffHandAttack compiles the complete price of the bonus attack
 // granted by two-weapon fighting: one bonus-action slot and one granted
 // off-hand attack capacity.
-func CostOfTwoWeaponAttack(c *Character) (*combat.SpendProfile, error) {
+func CostOfOffHandAttack(c *Character) (*combat.SpendProfile, error) {
 	if c == nil {
 		return nil, rpgerr.New(rpgerr.CodeNil, "no character to price a two-weapon attack for")
 	}
-	if !CanTwoWeaponAttack(c) {
+	if !CanMakeOffHandAttack(c) {
 		return nil, rpgerr.New(
 			rpgerr.CodeInvalidArgument, "two-weapon attack requires two light melee weapons",
 		)

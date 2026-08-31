@@ -329,7 +329,7 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_RefusesUnreadableEquipment
 	})
 }
 
-func (s *CharacterAttackTestSuite) TestTwoWeaponAttackEligibilityRequiresTwoLightMeleeWeapons() {
+func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRequiresTwoLightMeleeWeapons() {
 	tests := []struct {
 		name string
 		data *Data
@@ -367,12 +367,12 @@ func (s *CharacterAttackTestSuite) TestTwoWeaponAttackEligibilityRequiresTwoLigh
 
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			s.Equal(tc.want, CanTwoWeaponAttack(s.load(tc.data)))
+			s.Equal(tc.want, CanMakeOffHandAttack(s.load(tc.data)))
 		})
 	}
 }
 
-func (s *CharacterAttackTestSuite) TestTwoWeaponAttackEligibilityRejectsAShield() {
+func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRejectsAShield() {
 	data := s.heroSheet(nil, map[InventorySlot]string{
 		SlotMainHand: string(weapons.Shortsword),
 	})
@@ -381,10 +381,10 @@ func (s *CharacterAttackTestSuite) TestTwoWeaponAttackEligibilityRejectsAShield(
 	})
 	data.EquipmentSlots[SlotOffHand] = string(armor.Shield)
 
-	s.False(CanTwoWeaponAttack(s.load(data)))
+	s.False(CanMakeOffHandAttack(s.load(data)))
 }
 
-func (s *CharacterAttackTestSuite) TestAssembleTwoWeaponAttackUsesTheOffHandWeapon() {
+func (s *CharacterAttackTestSuite) TestAssembleOffHandAttackUsesTheOffHandWeapon() {
 	data := s.heroSheet(
 		[]proficiencies.Weapon{proficiencies.WeaponMartial},
 		map[InventorySlot]string{
@@ -399,24 +399,24 @@ func (s *CharacterAttackTestSuite) TestAssembleTwoWeaponAttackUsesTheOffHandWeap
 		},
 	}
 
-	definition, err := AssembleTwoWeaponAttack(s.load(data), &AssembleTwoWeaponAttackInput{Cost: cost})
+	definition, err := AssembleOffHandAttack(s.load(data), &AssembleOffHandAttackInput{Cost: cost})
 
 	s.Require().NoError(err)
 	s.Equal(*refs.Weapons.Scimitar(), definition.Ref)
 	s.Equal(cost, definition.Cost)
-	s.True(definition.Attack.TwoWeaponBonus)
+	s.True(definition.Attack.IsOffHandAttack)
 	s.Equal(refs.Weapons.Scimitar(), definition.Attack.Weapon.Ref)
 	s.Require().NotNil(definition.Attack.Delivery.Melee)
 	s.Require().NoError(definition.Validate())
 }
 
-func (s *CharacterAttackTestSuite) TestAssembleTwoWeaponAttackRevalidatesEquipment() {
+func (s *CharacterAttackTestSuite) TestAssembleOffHandAttackRevalidatesEquipment() {
 	data := s.heroSheet(nil, map[InventorySlot]string{
 		SlotMainHand: string(weapons.Rapier),
 		SlotOffHand:  string(weapons.Scimitar),
 	})
 
-	_, err := AssembleTwoWeaponAttack(s.load(data), &AssembleTwoWeaponAttackInput{})
+	_, err := AssembleOffHandAttack(s.load(data), &AssembleOffHandAttackInput{})
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "two light melee weapons")

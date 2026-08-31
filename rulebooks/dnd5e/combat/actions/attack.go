@@ -34,13 +34,13 @@ type AttackProfile struct {
 	AttackBonus int                  `json:"attack_bonus"`
 	Ability     *AbilityContribution `json:"ability,omitempty"`
 	Weapon      *WeaponContext       `json:"weapon,omitempty"`
-	// TwoWeaponBonus identifies the bonus attack granted after attacking with
+	// IsOffHandAttack identifies the bonus attack granted after attacking with
 	// one of two light melee weapons. It is action semantics, not merely the
 	// physical equipment slot holding the weapon. Resolution consumes this
 	// declaration under rpg-toolkit#1348; producers never execute it here.
-	TwoWeaponBonus bool                   `json:"two_weapon_bonus,omitempty"`
-	Damage         []damage.Damage        `json:"damage,omitempty"`
-	OnHit          []ConditionApplication `json:"on_hit,omitempty"`
+	IsOffHandAttack bool                   `json:"off_hand_attack,omitempty"`
+	Damage          []damage.Damage        `json:"damage,omitempty"`
+	OnHit           []ConditionApplication `json:"on_hit,omitempty"`
 }
 
 // Validate reports whether the profile declares a supported category,
@@ -59,7 +59,7 @@ func (p AttackProfile) Validate() error {
 	if err := p.Delivery.Validate(); err != nil {
 		return err
 	}
-	if p.TwoWeaponBonus {
+	if p.IsOffHandAttack {
 		if p.Category != AttackCategoryWeapon {
 			return fmt.Errorf("two-weapon bonus attack must be a weapon attack")
 		}
