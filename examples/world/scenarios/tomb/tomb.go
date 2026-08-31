@@ -33,7 +33,8 @@ const (
 	// enters as a declared fact.
 	Thane journal.EntityID = "thane"
 
-	// HiddenRoom holds the artifact, behind the door.
+	// HiddenRoom holds the artifact, behind the door. Declared concealed —
+	// see [declaration].
 	HiddenRoom journal.EntityID = "hidden-room"
 
 	// BossRoom holds the captain and the loot chest.
@@ -46,8 +47,10 @@ const (
 	BelongsTo graph.Relation = "belongs-to"
 
 	// LeadsTo is the passage from the boss room to the hidden room — a plain
-	// structural edge, real from the moment the world exists. What is scoped
-	// is knowledge of it, and that scoping lives in the journal, not here.
+	// structural edge, real from the moment the world exists. Declared
+	// concealed: the kernel hides it from a stranger's structural view until
+	// somebody finds it, pierces it for themselves, or opens the door for
+	// good. See [declaration].
 	LeadsTo graph.Relation = "leads-to"
 
 	// Recovered is raised on the artifact once a knower gets through the
@@ -194,11 +197,22 @@ func New(cfg Config) (world.Scenario, error) {
 	}, nil
 }
 
-// declaration is the tomb as data: the cast, the door's structure, and the
-// two flags that are ordinary completion signals rather than anything
-// knowledge-scoped. There is no reducer for [FactLocationKnown] — see the
-// package doc for why one would only re-derive what the journal already
-// answers.
+// declaration is the tomb as data: the cast, the door's structure, the two
+// flags that are ordinary completion signals, and the concealment that
+// keeps a stranger's structural view from showing the hidden room at all.
+//
+// The room, the artifact inside it, and the door edge are three separate
+// declarations, concealed independently — there is no cascade from marking
+// one concealed to the others, per the kernel's own second-instance law.
+// All three are named together in the same [graph.Pierce] and [graph.Reveal]
+// because in this content they always move together, not because the
+// kernel requires it: a scenario that wanted the artifact to stay hidden
+// after the door opened could reveal the door alone.
+//
+// There is no reducer for [FactLocationKnown] — that fact only pierces
+// concealment (see the package doc for why that is not a graph flag); the
+// kernel's own concealment machinery is what a stranger's view now answers
+// with, not a hand-rolled journal query.
 func declaration(cfg Config) graph.Config {
 	return graph.Config{
 		Membership: BelongsTo,
@@ -208,22 +222,35 @@ func declaration(cfg Config) graph.Config {
 			{ID: Bram, Kind: KindPerson},
 			{ID: Thane, Kind: KindPerson},
 			{ID: cfg.Captain, Kind: KindMonster},
-			{ID: HiddenRoom, Kind: KindRoom},
+			{ID: HiddenRoom, Kind: KindRoom, Concealed: true},
 			{ID: BossRoom, Kind: KindRoom},
-			{ID: cfg.Artifact, Kind: KindItem},
+			{ID: cfg.Artifact, Kind: KindItem, Concealed: true},
 		},
 		Edges: []graph.Edge{
 			{From: Finch, Rel: BelongsTo, To: Party},
 			{From: Bram, Rel: BelongsTo, To: Party},
 			{From: Thane, Rel: BelongsTo, To: Party},
 
-			// The door, real from birth. Nothing about who knows it is here.
-			{From: BossRoom, Rel: LeadsTo, To: HiddenRoom},
+			// The door, real from birth. Concealed until pierced or revealed
+			// — see the Pierces and Reveals below.
+			{From: BossRoom, Rel: LeadsTo, To: HiddenRoom, Concealed: true},
 		},
 		Reducers: []graph.Reducer{
 			graph.Raise{On: FactDoorOpened, Flag: Recovered},
 			graph.Raise{On: FactLooted, Flag: Looted},
 		},
+		Pierces: []graph.Pierce{{
+			// Search's success and Defeat's Otherwise both write this kind —
+			// the "two writers" story — so one pierce covers both.
+			On:       FactLocationKnown,
+			Entities: []journal.EntityID{HiddenRoom, cfg.Artifact},
+			Edges:    []graph.Edge{{From: BossRoom, Rel: LeadsTo, To: HiddenRoom}},
+		}},
+		Reveals: []graph.Reveal{{
+			On:       FactDoorOpened,
+			Entities: []journal.EntityID{HiddenRoom, cfg.Artifact},
+			Edges:    []graph.Edge{{From: BossRoom, Rel: LeadsTo, To: HiddenRoom}},
+		}},
 	}
 }
 
@@ -290,22 +317,18 @@ func contract(cfg Config) quest.Template {
 	}
 }
 
-// Knows reports whether an observer's own witnessed facts include the hidden
-// room's location — either told directly (a successful search or the
-// captain's own defeat) or seen for themselves (present when a knower opens
-// the door).
+// Knows reports whether the hidden room is visible in an observer's own
+// present.
 //
-// This is a journal query, not anything read from [graph.State]. The door
-// itself is a plain declared edge and is present in every observer's derived
-// present from the moment the world exists — nothing about it is gated. What
-// is scoped is knowledge, and the journal's own audience already answers that
-// question; adding a graph flag on top would only store it a second time.
+// This used to be a hand-rolled journal query — the kernel's structural view
+// had no way to answer it before concealment existed (rpg-toolkit#1338's
+// finding). It is a one-line wrapper over [graph.State.Visible] now: the
+// room, the artifact inside it, and the door edge are all declared
+// concealed, pierced by a successful search or the captain's own defeat, and
+// revealed for good once a knower gets the door open. Kept as a named
+// function rather than inlined at every call site because "knows the hidden
+// room" reads as a question about this content, not about the kernel
+// mechanism that answers it.
 func Knows(w *world.World, observer journal.EntityID) bool {
-	for _, f := range w.Journal().WitnessedBy(w.Graph().AudienceOf(observer)...) {
-		if f.Kind == FactLocationKnown || f.Kind == FactDoorOpened {
-			return true
-		}
-	}
-
-	return false
+	return w.View(observer).Visible(HiddenRoom)
 }
