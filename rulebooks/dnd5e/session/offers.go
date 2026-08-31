@@ -319,15 +319,9 @@ func (m *Manager) compileOffersFor(
 			},
 			payer: price.payer,
 		}
-		offHandCandidates, candidateErr := m.targetPreflight(
-			enc, positions, holdings, member, offHandDefinition.Attack.Delivery.MaxRangeFeet(),
-		)
-		if candidateErr != nil {
-			return nil, candidateErr
-		}
 		offHandAttack, offerErr := compileAttackOffer(&compileAttackOfferInput{
 			SessionID: sessionID, Member: member, Sheet: sheet,
-			Definition: offHandDefinition, Price: offHandPrice, Candidates: offHandCandidates,
+			Definition: offHandDefinition, Price: offHandPrice, Candidates: candidates,
 			Cast: cast, DependencyFailures: dependencyFailures,
 		})
 		if offerErr != nil {
@@ -366,7 +360,10 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 		budgetWhy = &shortfall
 	}
 
-	candidates := input.Candidates
+	// Each offer gets an independent working copy. Dependency failures annotate
+	// candidates, and main/off-hand variants must share the same preflight facts
+	// without sharing those mutable annotations.
+	candidates := cloneTargetPreflights(input.Candidates)
 	var dependencyWhy *Shortfall
 	for _, failure := range input.DependencyFailures {
 		why := Shortfall{
@@ -598,6 +595,18 @@ func buildTargetPreflight(
 		out = append(out, targetPreflight{member: id, available: false, why: &why})
 	}
 	return out, nil
+}
+
+func cloneTargetPreflights(in []targetPreflight) []targetPreflight {
+	out := make([]targetPreflight, len(in))
+	for i, candidate := range in {
+		out[i] = candidate
+		if candidate.why != nil {
+			why := *candidate.why
+			out[i].why = &why
+		}
+	}
+	return out
 }
 
 // projectCandidates copies the internal preflight slice into the public

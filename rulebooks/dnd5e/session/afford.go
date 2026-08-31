@@ -198,9 +198,9 @@ type AffordOutput struct {
 	// and that IS the answer rather than a shorter way of asking again.
 	Clock ClockKind `json:"clock"`
 
-	// Declarations is one entry per compiled OFFER — one each for Attack, Move
-	// and EndTurn, and one per activatable thing the member carries — empty on
-	// the world clock — where empty IS the answer rather than a shorter way
+	// Declarations is one entry per compiled OFFER — one per current Attack
+	// variant, one each for Move and EndTurn, and one per activatable thing the
+	// member carries — empty on the world clock — where empty IS the answer rather than a shorter way
 	// of asking again, so it is never omitted from the wire either: the same
 	// false-vs-absent law types.go keeps for every bool at this seam applies
 	// here to the list itself. A non-Go client must read "declarations": [],
@@ -209,9 +209,9 @@ type AffordOutput struct {
 }
 
 // Afford reports the current compiled Attack, Move, Activate and EndTurn
-// offers for one active turn member. Activate compiles one per thing the
-// member carries rather than one for the verb; the rest compile exactly one
-// each. Each offer carries an opaque selector execution must echo.
+// offers for one active turn member. Activate compiles one per thing the member
+// carries; Attack compiles its main-hand variant and any granted off-hand
+// variant. Each offer carries an opaque selector execution must echo.
 // Move reports Remaining rather than a fixed price because a walk's cost
 // depends on a path this read is never given. On the world clock declarations
 // is the complete empty answer.

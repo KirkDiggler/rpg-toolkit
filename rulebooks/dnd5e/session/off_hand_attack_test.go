@@ -133,7 +133,7 @@ func TestSpentBonusActionKeepsDisabledOffHandDeclaration(t *testing.T) {
 	require.Equal(t, 1, characters.byID["alice"].ActionEconomy.Granted[character.GrantedOffHandStrikes])
 }
 
-func TestChangedEquipmentMakesOffHandSelectorStale(t *testing.T) {
+func TestChangedEligibleOffHandWeaponMakesSelectorStale(t *testing.T) {
 	mgr, _, _, characters := aFight(t, offHandFighter("alice"), []int{1})
 	main := attackDeclarationForSlot(t, affordOffHandFight(t, mgr).Declarations, session.SlotAction)
 	_, err := mgr.Attack(context.Background(), &session.AttackInput{
@@ -142,7 +142,15 @@ func TestChangedEquipmentMakesOffHandSelectorStale(t *testing.T) {
 	require.NoError(t, err)
 	bonus := attackDeclarationForSlot(t, affordOffHandFight(t, mgr).Declarations, session.SlotBonus)
 
-	characters.byID["alice"].EquipmentSlots.Clear(character.SlotOffHand)
+	characters.byID["alice"].Inventory = append(characters.byID["alice"].Inventory,
+		character.InventoryItemData{
+			Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dagger), Quantity: 1,
+		})
+	characters.byID["alice"].EquipmentSlots.Set(character.SlotOffHand, string(weapons.Dagger))
+	replacement := attackDeclarationForSlot(t, affordOffHandFight(t, mgr).Declarations, session.SlotBonus)
+	require.Equal(t, "dnd5e:weapons:dagger", replacement.Attack.Ref)
+	require.NotEqual(t, bonus.ID, replacement.ID)
+
 	_, err = mgr.Attack(context.Background(), &session.AttackInput{
 		Session: "sess", Attacker: "alice", Target: "skeleton", DeclarationID: bonus.ID,
 	})
@@ -170,6 +178,23 @@ func TestTurnResetRemovesUnusedOffHandDeclaration(t *testing.T) {
 	refreshed := affordOffHandFight(t, mgr)
 	require.Len(t, attackDeclarations(refreshed.Declarations), 1)
 	require.Equal(t, session.SlotAction, attackDeclarations(refreshed.Declarations)[0].Slot)
+}
+
+func TestBankedMainHandAttackSortsBeforeBonusAttack(t *testing.T) {
+	fighter := offHandFighter("alice")
+	fighter.Level = 5
+	mgr, _, _, _ := aFight(t, fighter, []int{1})
+	main := attackDeclarationForSlot(t, affordOffHandFight(t, mgr).Declarations, session.SlotAction)
+	_, err := mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton", DeclarationID: main.ID,
+	})
+	require.NoError(t, err)
+
+	attacks := attackDeclarations(affordOffHandFight(t, mgr).Declarations)
+	require.Len(t, attacks, 2)
+	require.Equal(t, []session.Slot{session.SlotNone, session.SlotBonus}, []session.Slot{
+		attacks[0].Slot, attacks[1].Slot,
+	})
 }
 
 func TestQualifyingMissAddsBonusAttackDeclaration(t *testing.T) {
