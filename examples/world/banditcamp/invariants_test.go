@@ -271,7 +271,9 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 func (s *InvariantSuite) worldModuleDeps(pkg string) []string {
 	s.T().Helper()
 
-	out, err := exec.Command("go", "list", "-f", "{{join .Deps \"\\n\"}}", pkg).Output()
+	// #nosec G204 -- pkg always comes from the hardcoded literal list of toolkit
+	// package paths in TestKernelPackagesImportNoRulebook, never from external input.
+	out, err := exec.CommandContext(s.T().Context(), "go", "list", "-f", "{{join .Deps \"\\n\"}}", pkg).Output()
 	s.Require().NoError(err)
 
 	var deps []string
