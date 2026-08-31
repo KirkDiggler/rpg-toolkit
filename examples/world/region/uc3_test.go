@@ -77,6 +77,7 @@ func (s *UC3Suite) build(now time.Time, rolls ...int) {
 	built, err := world.New(world.Config{
 		Scenario: s.scenario,
 		Resolver: resolver,
+		Witness:  scripted.NewWitness(hostagecamp.Witnesses()...),
 		Goals:    []goal.Goal{region.WeekendGoal(weekend)},
 		Clock:    s.clock,
 	})
@@ -87,10 +88,7 @@ func (s *UC3Suite) build(now time.Time, rolls ...int) {
 func (s *UC3Suite) act(verb world.VerbName, actor, target journal.EntityID) world.Result {
 	s.T().Helper()
 
-	result, err := s.w.Act(s.ctx, world.Act{
-		Verb: verb, Actor: actor, Target: target,
-		Bystanders: hostagecamp.Witnesses(),
-	})
+	result, err := s.w.Act(s.ctx, world.Act{Verb: verb, Actor: actor, Target: target})
 	s.Require().NoError(err)
 
 	return result
@@ -403,6 +401,7 @@ func (s *UC3Suite) TestAWorldWithGoalsAndNoClockRefuses() {
 		_, err := world.New(world.Config{
 			Scenario: s.scenario,
 			Resolver: resolver,
+			Witness:  scripted.NewWitness(hostagecamp.Witnesses()...),
 			Goals:    []goal.Goal{region.WeekendGoal(weekend)},
 		})
 		s.Require().ErrorIs(err, goal.ErrNoClock)
@@ -410,7 +409,11 @@ func (s *UC3Suite) TestAWorldWithGoalsAndNoClockRefuses() {
 	})
 
 	s.Run("a region with no goals needs no clock", func() {
-		built, err := world.New(world.Config{Scenario: s.scenario, Resolver: resolver})
+		built, err := world.New(world.Config{
+			Scenario: s.scenario,
+			Resolver: resolver,
+			Witness:  scripted.NewWitness(hostagecamp.Witnesses()...),
+		})
 		s.Require().NoError(err)
 		s.Empty(built.ObserveGoals().Goals)
 

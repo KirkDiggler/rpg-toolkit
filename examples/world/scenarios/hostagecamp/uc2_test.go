@@ -86,6 +86,7 @@ func (s *UC2Suite) script(rolls ...int) {
 	built, err := world.New(world.Config{
 		Scenario: hostagecamp.Scenario(),
 		Resolver: resolver,
+		Witness:  scripted.NewWitness(hostagecamp.Witnesses()...),
 	})
 	s.Require().NoError(err)
 	s.w = built
@@ -103,10 +104,7 @@ func (s *UC2Suite) claim(job string, party journal.EntityID) *quest.Instance {
 func (s *UC2Suite) act(verb world.VerbName, actor, target journal.EntityID) world.Result {
 	s.T().Helper()
 
-	result, err := s.w.Act(s.ctx, world.Act{
-		Verb: verb, Actor: actor, Target: target,
-		Bystanders: hostagecamp.Witnesses(),
-	})
+	result, err := s.w.Act(s.ctx, world.Act{Verb: verb, Actor: actor, Target: target})
 	s.Require().NoError(err)
 
 	return result

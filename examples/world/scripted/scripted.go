@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package scripted holds the deterministic stand-ins that make a whole run of a
-// world reproducible: dice that hand back a written-down sequence, and a clock
-// that only moves when you move it.
+// world reproducible: dice that hand back a written-down sequence, a clock
+// that only moves when you move it, and a witness that answers a written-down
+// cast of onlookers.
 //
 // It exists here rather than in the dice module by ruling: a scripted roller is
 // test scaffolding, not a game mechanic, and dice should not grow one. It sits
@@ -13,6 +14,11 @@
 // The clock is here for the same reason and one more: a goal's clock is an
 // injected capability, so the only way to test a deadline is to hold time
 // still and move it by hand.
+//
+// The witness joined for the same reason again (rpg-project
+// ideas/living-world/brainstorm.md §22): world.Witness is an injected
+// capability, never defaulted, so the only way to test who saw a
+// bystander-inclusive act is to hand the world a truth to consult.
 package scripted
 
 import (
@@ -21,6 +27,9 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/KirkDiggler/rpg-toolkit/world"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // ErrOutOfRolls reports a roller asked for more dice than it was given.
@@ -125,4 +134,29 @@ func (c *Clock) Advance(d time.Duration) {
 	defer c.mu.Unlock()
 
 	c.now = c.now.Add(d)
+}
+
+// Witness is a world.Witness that answers the same declared cast of
+// onlookers to every question it is asked, regardless of actor, target, or
+// mode.
+//
+// Unlike Roller there is nothing here to consume: who is standing nearby
+// does not change moment to moment the way a die roll does, so one script
+// answers every bystander-inclusive act for as long as the world it was
+// built for is in play.
+type Witness struct {
+	bystanders []journal.EntityID
+}
+
+// NewWitness returns a witness that always answers with the given ids.
+func NewWitness(bystanders ...journal.EntityID) *Witness {
+	return &Witness{bystanders: append([]journal.EntityID(nil), bystanders...)}
+}
+
+// Bystanders returns the declared cast, unconditionally. The actor, target,
+// and mode it is asked about are the kernel's business, not this script's.
+func (w *Witness) Bystanders(
+	_ context.Context, _, _ journal.EntityID, _ world.Witnessing,
+) ([]journal.EntityID, error) {
+	return append([]journal.EntityID(nil), w.bystanders...), nil
 }
