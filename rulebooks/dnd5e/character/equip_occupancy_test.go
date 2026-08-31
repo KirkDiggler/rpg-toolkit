@@ -133,6 +133,22 @@ func (s *EquipOccupancyTestSuite) TestTwoCopiesOccupyBothSlots() {
 	s.Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotOffHand))
 }
 
+func (s *EquipOccupancyTestSuite) TestLegacyDuplicateRowsAreSummedForOccupancy() {
+	handaxe := weapons.All[weapons.Handaxe]
+	s.char.inventory = []InventoryItem{
+		{Equipment: &handaxe, Quantity: 1},
+		{Equipment: &handaxe, Quantity: 1},
+	}
+
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Handaxe))
+	s.Require().NoError(s.char.EquipItem(SlotOffHand, weapons.Handaxe))
+
+	// Both pins kill a first-match ownership regression: treating only the first
+	// legacy row as owned would move one copy and clear the main hand here.
+	s.Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotMainHand))
+	s.Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotOffHand))
+}
+
 func (s *EquipOccupancyTestSuite) TestReequippingOneOfTwoOccupiedSlotsIsIdempotent() {
 	handaxe := weapons.All[weapons.Handaxe]
 	s.char.inventory = []InventoryItem{{Equipment: &handaxe, Quantity: 2}}

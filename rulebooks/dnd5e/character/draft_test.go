@@ -565,6 +565,45 @@ func (s *DraftTestSuite) TestCompileInventory_RepeatedCategorySelectionsCompileT
 		"two identical legal picks become one quantity-two stack")
 }
 
+func (s *DraftTestSuite) TestCompileInventory_DuplicateRetainsFirstOccurrenceOrder() {
+	draft := s.createBarbarianDraft()
+
+	err := draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{
+					ChoiceID:           choices.BarbarianWeaponsSecondary,
+					OptionID:           choices.BarbarianSecondarySimple,
+					CategorySelections: []shared.EquipmentID{weapons.Javelin},
+				},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
+		},
+	})
+	s.Require().NoError(err)
+
+	char, err := draft.ToCharacter(s.ctx, "barbarian-javelin-order", s.bus)
+	s.Require().NoError(err)
+	inventory := char.ToData().Inventory
+
+	inventoryIDs := make([]string, len(inventory))
+	for i, item := range inventory {
+		inventoryIDs[i] = item.ID
+	}
+	// The grant's javelins precede the greataxe, then a later selected javelin
+	// folds back into that first row. This exact sequence kills sorting and
+	// keep-last folding regressions that would relocate the stack.
+	s.Require().Equal([]string{
+		weapons.Javelin,
+		weapons.Greataxe,
+		packs.ExplorerPack,
+	}, inventoryIDs)
+	s.Equal(5, inventory[0].Quantity)
+}
+
 func (s *DraftTestSuite) TestCompileInventory_PreservesBundleQuantities() {
 	draft := s.createFighterDraft()
 
@@ -732,8 +771,10 @@ func (s *DraftTestSuite) TestCompileInventory_EquipmentChoices() {
 	})
 }
 
-// Test: Multiple same items (no merging)
-func (s *DraftTestSuite) TestCompileInventory_NoMerging() {
+// TestCompileInventory_KeepsFixedHandaxeStack verifies a fixed two-handaxe
+// bundle remains one quantity-two inventory stack after canonical compilation,
+// catching either duplicate-row expansion or a reset of the fixed quantity.
+func (s *DraftTestSuite) TestCompileInventory_KeepsFixedHandaxeStack() {
 	// Create a fresh draft for this test
 	draft := s.createFighterDraft()
 
