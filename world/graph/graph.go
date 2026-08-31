@@ -57,6 +57,13 @@ type Entity struct {
 	ID    journal.EntityID
 	Kind  Kind
 	Grain Grain
+
+	// Concealed marks the entity hidden from every observer's structural
+	// view until a [Reveal] ends that for good or a [Pierce] ends it for one
+	// observer. False by default: nothing is concealed unless a scenario
+	// says so, and a world with no concealment behaves exactly as it always
+	// has.
+	Concealed bool
 }
 
 // Edge is a declared typed relationship. Edges are structure, but they are not
@@ -65,6 +72,12 @@ type Edge struct {
 	From journal.EntityID
 	Rel  Relation
 	To   journal.EntityID
+
+	// Concealed marks the edge hidden the same way [Entity.Concealed] does.
+	// The physical connection is real from the moment the world exists —
+	// concealment hides knowledge of it, not the edge's existence in
+	// [World.Truth].
+	Concealed bool
 }
 
 // Slot is a declared role together with whoever starts out in it.
@@ -102,6 +115,14 @@ type Config struct {
 
 	// Projections rewrite the folded state, in this order, once per fold.
 	Projections []Projection
+
+	// Reveals declare which facts end concealment on named structure for
+	// good, on the truth grain. See [Reveal].
+	Reveals []Reveal
+
+	// Pierces declare which facts let their own audience see concealed
+	// structure, on the audience grain. See [Pierce].
+	Pierces []Pierce
 }
 
 // ErrNoMembership reports a Config with no Membership relation.
@@ -128,14 +149,17 @@ type World struct {
 
 	reducers    []Reducer
 	projections []Projection
+	reveals     []Reveal
+	pierces     []Pierce
 }
 
 // New validates a declaration and returns the world it describes.
 //
-// Returns [ErrNoMembership], [ErrDuplicateEntity], [ErrDuplicateSlot], or
-// [ErrUnknownEntity], each wrapped with what was wrong. Validation is strict on
-// purpose: an edge pointing at an entity nobody declared would fold into
-// derived state that silently mentions a thing that does not exist.
+// Returns [ErrNoMembership], [ErrDuplicateEntity], [ErrDuplicateSlot],
+// [ErrUnknownEntity], [ErrUnknownConcealedEntity], or [ErrUnknownConcealedEdge],
+// each wrapped with what was wrong. Validation is strict on purpose: an edge
+// pointing at an entity nobody declared would fold into derived state that
+// silently mentions a thing that does not exist.
 func New(cfg Config) (*World, error) {
 	if cfg.Membership == "" {
 		return nil, ErrNoMembership
@@ -160,6 +184,9 @@ func New(cfg Config) (*World, error) {
 		return nil, err
 	}
 	if err := w.adoptSlots(cfg.Slots); err != nil {
+		return nil, err
+	}
+	if err := w.adoptConceal(cfg.Reveals, cfg.Pierces); err != nil {
 		return nil, err
 	}
 
@@ -228,20 +255,27 @@ func (w *World) Membership() Relation {
 // in Seq order, and nothing else. Two observers looking at the same journal get
 // two different presents whenever the audiences differ — which is the point.
 //
+// Concealed structure is the one exception to "audience only": a [Reveal]
+// folds on the truth grain, so this observer sees revealed structure even
+// with zero witnessed facts of their own about it. See [State.Visible].
+//
 // Nothing is cached. Call it twice and the same state is computed twice; append
 // a fact and the next call reflects it; truncate the journal and the state goes
 // back to what it was.
 func (w *World) StateFor(observer journal.EntityID, log *journal.Journal) *State {
-	return w.fold(observer, log.WitnessedBy(w.AudienceOf(observer)...))
+	return w.fold(observer, log.WitnessedBy(w.AudienceOf(observer)...), log.All())
 }
 
 // Truth derives the present from every fact, audience ignored.
 //
 // This is the game master's view and the test's view. It is never how anyone in
 // the world behaves — behaviour reads [World.StateFor], or the quiet kill would
-// not work.
+// not work. Concealment is bypassed entirely here, revealed or not: the GM
+// sees everything.
 func (w *World) Truth(log *journal.Journal) *State {
-	return w.fold("", log.All())
+	all := log.All()
+
+	return w.fold("", all, all)
 }
 
 // AudienceOf returns the observer together with every group it belongs to,
@@ -270,12 +304,20 @@ func (w *World) AudienceOf(observer journal.EntityID) []journal.EntityID {
 	return out
 }
 
-func (w *World) fold(observer journal.EntityID, facts []journal.Fact) *State {
-	s := w.initialState(observer)
+// fold builds the present. facts is what the reducers and pierces see —
+// the observer's own witnessed set for [World.StateFor], everything for
+// [World.Truth]. allFacts is always everything: reveals fold on the truth
+// grain regardless of who is asking, which is the one place these two lists
+// have to differ.
+func (w *World) fold(observer journal.EntityID, facts, allFacts []journal.Fact) *State {
+	s := w.initialState(observer, allFacts)
 
 	for _, f := range facts {
 		for _, r := range w.reducers {
 			r.reduce(f, s)
+		}
+		for _, p := range w.pierces {
+			p.pierce(f, s)
 		}
 	}
 	for _, p := range w.projections {
