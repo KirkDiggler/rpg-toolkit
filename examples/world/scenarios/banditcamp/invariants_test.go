@@ -20,8 +20,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/scenarios/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
 	"github.com/KirkDiggler/rpg-toolkit/world"
 	"github.com/KirkDiggler/rpg-toolkit/world/graph"
@@ -260,7 +260,7 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 	// share a directory with. It still imports nothing at all, toolkit or
 	// otherwise, so it cannot smuggle a rulebook into anything that reaches
 	// for it.
-	s.Empty(s.toolkitImportsOf("../scripted"))
+	s.Empty(s.toolkitImportsOf("../../scripted"))
 }
 
 // worldModuleDeps returns pkg's full transitive dependency closure, filtered
@@ -292,8 +292,8 @@ func (s *InvariantSuite) TestScenariosDoNotDependOnEachOther() {
 	// seam, the dice. If one scenario ever imports another, something they
 	// share failed to get promoted and is being borrowed sideways instead.
 	scenarios := map[string]string{
-		"../banditcamp":  "examples/world/hostagecamp",
-		"../hostagecamp": "examples/world/banditcamp",
+		"../banditcamp":  "examples/world/scenarios/hostagecamp",
+		"../hostagecamp": "examples/world/scenarios/banditcamp",
 	}
 
 	for dir, forbidden := range scenarios {
@@ -311,7 +311,7 @@ func (s *InvariantSuite) TestOnlyOnePackageTeachesTheWorldADieRoll() {
 	// that test asks the build graph, not this directory tree); what is left
 	// to check locally is whatever still lives in examples/world.
 	adapters := 0
-	beneath := []string{"../scripted", "../dnd5eresolver"}
+	beneath := []string{"../../scripted", "../../dnd5eresolver"}
 	for _, dir := range beneath {
 		for _, imported := range s.toolkitImportsOf(dir) {
 			if strings.Contains(imported, "rulebooks/") {
