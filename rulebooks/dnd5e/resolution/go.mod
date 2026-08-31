@@ -9,6 +9,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.123.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.37.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.11.0
+	github.com/KirkDiggler/rpg-toolkit/world v0.3.0
 	github.com/stretchr/testify v1.11.1
 )
 

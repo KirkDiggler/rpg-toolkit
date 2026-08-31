@@ -4,8 +4,13 @@
 package resolution
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/world/graph"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // castView answers [gamectx.Cast] over the participants this interaction
@@ -76,18 +81,21 @@ func (v *castView) Members() []string {
 
 // IsHostile answers whether b is an enemy of a.
 //
-// v1 answers "one of you is a character and the other is a monster", and that
-// is a LIE with a known expiry. Allegiance is a directed relation between
-// factions that quest events can change mid-run — the design case is a dungeon
-// holding two monster factions hostile to each other and to the party, and a
-// party that can shift one of them by returning something it wants
-// (rpg-project#286, ideas/session-combat/effect-context/brainstorm.md).
+// This body reads a relation table now — [castRelations] — instead of
+// computing a guess. v1's TABLE still only has two sides, mutually hostile
+// and each self-allied, so the ANSWER is unchanged: "one of you is a
+// character and the other is a monster." What changed is the SHAPE. Allegiance
+// is a directed relation between factions that quest events can change
+// mid-run — the design case is a dungeon holding two monster factions hostile
+// to each other and to the party, and a party that can shift one of them by
+// returning something it wants (rpg-project#286,
+// ideas/session-combat/effect-context/brainstorm.md) — and a relation table
+// is what has room for that; a two-valued guess never did.
 //
-// The lie is confined HERE, to one function, on purpose. That is the whole
-// reason [gamectx.Cast] exposes questions instead of fields: when stance
-// arrives, this body reads a relation table and not one rule changes.
 // conditions/sneak_attack.go used to make the same guess for itself, inline,
-// and was wrong in both directions the moment a third faction existed.
+// and was wrong in both directions the moment a third faction existed. That
+// this body can now change without touching sneak_attack.go at all is the
+// whole reason [gamectx.Cast] exposes questions instead of fields.
 func (v *castView) IsHostile(a, b string) (hostile, known bool) {
 	sideA, ok := v.side(a)
 	if !ok {
@@ -98,17 +106,18 @@ func (v *castView) IsHostile(a, b string) (hostile, known bool) {
 		return false, false
 	}
 
-	return sideA != sideB, true
+	return castRelations().HasEdge(sideEntity(sideA), hostileTo, sideEntity(sideB)), true
 }
 
 // IsAllied answers whether b is on a's side.
 //
-// Not the negation of [castView.IsHostile], even though today it computes as
-// one. Both derive from the same two-valued guess, so they are momentarily
-// complements; the moment a faction can be NEUTRAL toward another they stop
-// being, and a rule written against the wrong one starts counting bystanders.
+// Not the negation of [castView.IsHostile] — read literally from the table,
+// not derived from it. Today the two sides are declared BOTH mutually hostile
+// and each self-allied, so the numbers still agree; the moment a third side
+// is declared merely hostile-to the other two, without an allied-with edge of
+// its own, the agreement ends on its own, in data, with no rule to update.
 // Pack Tactics wants allies, Sneak Attack wants the target's enemies, and each
-// asks for what it means.
+// asks the table for what it means.
 func (v *castView) IsAllied(a, b string) (allied, known bool) {
 	sideA, ok := v.side(a)
 	if !ok {
@@ -119,7 +128,7 @@ func (v *castView) IsAllied(a, b string) (allied, known bool) {
 		return false, false
 	}
 
-	return sideA == sideB, true
+	return castRelations().HasEdge(sideEntity(sideA), alliedWith, sideEntity(sideB)), true
 }
 
 // castSide is v1's stand-in for allegiance: which map a participant loaded
@@ -149,3 +158,77 @@ func (v *castView) side(id string) (castSide, bool) {
 
 	return 0, false
 }
+
+// The relation table's two entities, and the two relations declared over
+// them. Not participant ids — those never enter the table at all, because
+// what the table answers depends on KIND, not on who happens to be standing
+// here today. See [castRelations] for why that is v1's honest shape rather
+// than a shortcut.
+const (
+	characterSide journal.EntityID = "resolution:cast-side:character"
+	monsterSide   journal.EntityID = "resolution:cast-side:monster"
+
+	// membershipRelation satisfies graph.Config.Membership, which every
+	// declaration must name one of (graph.ErrNoMembership). Nothing in this
+	// table ever uses it — two sides with no sub-groups have nothing to
+	// belong to — so it is declared and never spent, the same as a scenario
+	// with no slots still names a Role type.
+	membershipRelation graph.Relation = "belongs-to"
+
+	hostileTo  graph.Relation = "hostile-to"
+	alliedWith graph.Relation = "allied-with"
+)
+
+// sideEntity names the relation-table entity a [castSide] stands for.
+func sideEntity(s castSide) journal.EntityID {
+	if s == sideMonster {
+		return monsterSide
+	}
+
+	return characterSide
+}
+
+// castRelations is v1's relation table: two sides, mutually hostile, each
+// self-allied — exactly today's guess, read as data instead of computed.
+//
+// It is a fixed, cast-independent declaration on purpose. What [IsHostile]
+// and [IsAllied] answer today depends only on KIND — character or monster —
+// never on which specific participants are in this interaction's cast, so a
+// table built once and shared by every castView is the honest shape for that:
+// rebuilding it per interaction would suggest the cast changes what it says,
+// and it does not, yet. Rung 2 (rpg-project's living-world integration study)
+// is where a stance WRITER — a quest event, a betrayal — earns a table that
+// does depend on the specific cast; nothing about that rung requires this
+// one's shape to change first.
+//
+// Built once, lazily, and memoized: every castView reads the same table
+// rather than each paying to build it. The declaration is fixed and
+// hand-verified valid — see TestCastRelationsBuilds — so a [graph.New] error
+// here is not a caller mistake to recover from; it would mean this literal
+// declaration is wrong, which panics loudly rather than silently answering
+// every question "unknown" for the rest of the process. See doc.go's own
+// stance on ambient dependencies that fail without being loud about it.
+var castRelations = sync.OnceValue(func() *graph.State {
+	w, err := graph.New(graph.Config{
+		Membership: membershipRelation,
+		Entities: []graph.Entity{
+			{ID: characterSide, Kind: "cast-side"},
+			{ID: monsterSide, Kind: "cast-side"},
+		},
+		Edges: []graph.Edge{
+			{From: characterSide, Rel: hostileTo, To: monsterSide},
+			{From: monsterSide, Rel: hostileTo, To: characterSide},
+			{From: characterSide, Rel: alliedWith, To: characterSide},
+			{From: monsterSide, Rel: alliedWith, To: monsterSide},
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("resolution: the cast relation table's own declaration is invalid: %v", err))
+	}
+
+	// No facts exist yet — rung 1 is a read with nothing written. Truth over
+	// an empty journal is exactly the declared table, unconditionally, for
+	// every observer; that stops being true only once rung 2 gives some fact
+	// a reason to be witnessed unevenly, which is a question for that rung.
+	return w.Truth(journal.New())
+})
