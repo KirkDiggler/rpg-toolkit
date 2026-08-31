@@ -124,6 +124,7 @@ type strikeMachine struct {
 	sourceRef        *core.Ref
 	ability          abilities.Ability
 	abilityModifier  int
+	isOffHandAttack  bool
 	twoHanded        bool
 	offHandWeaponRef *core.Ref
 	prepared         []preparedCondition
@@ -148,6 +149,7 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 	m.cast = cast
 	m.attack = m.in.Definition.Attack
 	m.sourceRef = &m.in.Definition.Ref
+	m.isOffHandAttack = m.attack.IsOffHandAttack
 	if m.attack.Weapon != nil {
 		m.twoHanded = m.attack.Weapon.TwoHanded
 		m.offHandWeaponRef = m.attack.Weapon.OffHandWeaponRef
@@ -384,7 +386,10 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		}
 	}
 
-	if primary != nil {
+	// The two-weapon bonus attack omits a positive ability modifier from
+	// base damage. A negative modifier remains part of the base rule; the
+	// Two-Weapon Fighting style may restore a positive one during the fold.
+	if primary != nil && (!m.isOffHandAttack || m.abilityModifier < 0) {
 		components = append(components, dnd5eEvents.DamageComponent{
 			Source:     dnd5eEvents.DamageSourceAbility,
 			SourceRef:  attackAbilityRef(m.ability),
@@ -417,6 +422,7 @@ func (m *strikeMachine) rollDamage(ctx context.Context, roller dice.Roller) (Ste
 		// named none, which is a stat block's honest answer.
 		AbilityUsed:     m.ability,
 		AbilityModifier: m.abilityModifier,
+		IsOffHandAttack: m.isOffHandAttack,
 		WeaponRef:       m.sourceRef,
 		// Static equipment facts the compiler already knew (rpg-toolkit#1178)
 		// — Dueling's predicate decides eligibility from these rather than a
