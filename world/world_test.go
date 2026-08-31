@@ -54,6 +54,27 @@ func (r fixedResolver) Resolve(context.Context, world.Attempt) (journal.Outcome,
 	return journal.Outcome{Contested: true, Succeeded: r.margin >= 0, Margin: r.margin}, nil
 }
 
+// scriptedWitness is a Witness that answers a written-down list of
+// bystanders however it is asked, and remembers whether it was ever asked at
+// all — this suite is the capability's first consumer, the same move
+// goal_test.go made for a stopped clock.
+type scriptedWitness struct {
+	bystanders []journal.EntityID
+	err        error
+	asked      bool
+}
+
+func (w *scriptedWitness) Bystanders(
+	_ context.Context, _, _ journal.EntityID, _ world.Witnessing,
+) ([]journal.EntityID, error) {
+	w.asked = true
+	if w.err != nil {
+		return nil, w.err
+	}
+
+	return w.bystanders, nil
+}
+
 type WorldSuite struct {
 	suite.Suite
 
@@ -119,6 +140,12 @@ func (s *WorldSuite) job() quest.Template {
 func (s *WorldSuite) build(margin int, verbs ...world.Verb) *world.World {
 	s.T().Helper()
 
+	return s.buildWithWitness(margin, &scriptedWitness{}, verbs...)
+}
+
+func (s *WorldSuite) buildWithWitness(margin int, witness world.Witness, verbs ...world.Verb) *world.World {
+	s.T().Helper()
+
 	built, err := world.New(world.Config{
 		Scenario: world.Scenario{
 			Graph:  s.structure(),
@@ -126,6 +153,7 @@ func (s *WorldSuite) build(margin int, verbs ...world.Verb) *world.World {
 			Quests: []quest.Template{s.job()},
 		},
 		Resolver: fixedResolver{margin: margin},
+		Witness:  witness,
 	})
 	s.Require().NoError(err)
 
@@ -136,15 +164,26 @@ func (s *WorldSuite) TestNewRefusesWiringItCannotRun() {
 	s.Run("a world with no resolver is told what a resolver is for", func() {
 		_, err := world.New(world.Config{
 			Scenario: world.Scenario{Graph: s.structure(), Verbs: []world.Verb{s.graded()}},
+			Witness:  &scriptedWitness{},
 		})
 		s.Require().ErrorIs(err, world.ErrNoResolver)
 		s.Contains(err.Error(), "the rules of your game plug in")
+	})
+
+	s.Run("a world with no witness is told what a witness is for", func() {
+		_, err := world.New(world.Config{
+			Scenario: world.Scenario{Graph: s.structure(), Verbs: []world.Verb{s.graded()}},
+			Resolver: fixedResolver{},
+		})
+		s.Require().ErrorIs(err, world.ErrNoWitness)
+		s.Contains(err.Error(), "presence and sight")
 	})
 
 	s.Run("a world with no verbs is a world nobody can do anything in", func() {
 		_, err := world.New(world.Config{
 			Scenario: world.Scenario{Graph: s.structure()},
 			Resolver: fixedResolver{},
+			Witness:  &scriptedWitness{},
 		})
 		s.Require().ErrorIs(err, world.ErrNoVerbs)
 	})
@@ -155,6 +194,7 @@ func (s *WorldSuite) TestNewRefusesWiringItCannotRun() {
 		_, err := world.New(world.Config{
 			Scenario: world.Scenario{Graph: broken, Verbs: []world.Verb{s.graded()}},
 			Resolver: fixedResolver{},
+			Witness:  &scriptedWitness{},
 		})
 		s.Require().ErrorIs(err, graph.ErrNoMembership)
 	})
@@ -168,6 +208,7 @@ func (s *WorldSuite) TestNewRefusesWiringItCannotRun() {
 				Quests: []quest.Template{bad},
 			},
 			Resolver: fixedResolver{},
+			Witness:  &scriptedWitness{},
 		})
 		s.Require().ErrorIs(err, quest.ErrNoSubjects)
 	})
@@ -226,6 +267,7 @@ func (s *WorldSuite) TestNewRefusesVerbsAnAuthorHasNotFinished() {
 			_, err := world.New(world.Config{
 				Scenario: world.Scenario{Graph: s.structure(), Verbs: []world.Verb{tc.verb}},
 				Resolver: fixedResolver{},
+				Witness:  &scriptedWitness{},
 			})
 			s.Require().ErrorIs(err, tc.want)
 		})
@@ -237,6 +279,7 @@ func (s *WorldSuite) TestNewRefusesVerbsAnAuthorHasNotFinished() {
 				Graph: s.structure(), Verbs: []world.Verb{s.graded(), s.graded()},
 			},
 			Resolver: fixedResolver{},
+			Witness:  &scriptedWitness{},
 		})
 		s.Require().ErrorIs(err, world.ErrDuplicateVerb)
 	})
@@ -289,6 +332,7 @@ func (s *WorldSuite) TestActRefusesWhatItCannotRun() {
 				Quests: []quest.Template{s.job()},
 			},
 			Resolver: fixedResolver{err: boom},
+			Witness:  &scriptedWitness{},
 		})
 		s.Require().NoError(err)
 
@@ -296,35 +340,75 @@ func (s *WorldSuite) TestActRefusesWhatItCannotRun() {
 		s.Require().ErrorIs(err, boom)
 		s.Zero(built.Journal().Len())
 	})
+
+	s.Run("a witness that could not answer leaves the journal alone too", func() {
+		boom := errors.New("no line of sight for that actor")
+		verb := s.graded()
+		verb.Outcomes[0].Emission.Witness = world.WitnessBystanders
+		w := s.buildWithWitness(9, &scriptedWitness{err: boom}, verb)
+
+		_, err := w.Act(s.ctx, world.Act{Verb: strike, Actor: scoutID, Target: holdID})
+		s.Require().ErrorIs(err, boom)
+		s.Zero(w.Journal().Len())
+	})
 }
 
 func (s *WorldSuite) TestAnActorAlwaysWitnessesTheirOwnAct() {
 	verb := s.graded()
 	verb.Outcomes[0].Emission.Witness = world.WitnessNobody
-	w := s.build(9, verb)
+	// The witness would hand back watchID if asked. WitnessNobody never asks.
+	witness := &scriptedWitness{bystanders: []journal.EntityID{watchID}}
+	w := s.buildWithWitness(9, witness, verb)
 
-	result, err := w.Act(s.ctx, world.Act{
-		Verb: strike, Actor: scoutID, Target: holdID,
-		Bystanders: []journal.EntityID{watchID},
-	})
+	result, err := w.Act(s.ctx, world.Act{Verb: strike, Actor: scoutID, Target: holdID})
 	s.Require().NoError(err)
 
 	s.Equal(journal.Audience{scoutID}, result.Fact.Audience)
+	s.False(witness.asked, "WitnessNobody has nothing for the capability to answer")
 }
 
 func (s *WorldSuite) TestBystandersAndTargetCanBothBeToldAtOnce() {
 	verb := s.graded()
 	verb.Outcomes[0].Emission.Witness = world.WitnessTargetAndBystanders
-	w := s.build(9, verb)
+	witness := &scriptedWitness{bystanders: []journal.EntityID{watchID, holdID}}
+	w := s.buildWithWitness(9, witness, verb)
 
-	result, err := w.Act(s.ctx, world.Act{
-		Verb: strike, Actor: scoutID, Target: holdID,
-		Bystanders: []journal.EntityID{watchID, holdID},
-	})
+	result, err := w.Act(s.ctx, world.Act{Verb: strike, Actor: scoutID, Target: holdID})
 	s.Require().NoError(err)
 
 	s.Equal(journal.Audience{scoutID, holdID, watchID}, result.Fact.Audience,
 		"the target listed twice is still one witness")
+	s.True(witness.asked)
+}
+
+// TestTheWitnessIsConsultedOnlyForBystanderModes covers all four modes: the
+// capability answers for the two that name bystanders, and is never even
+// asked for the two the kernel already knows the whole answer to.
+func (s *WorldSuite) TestTheWitnessIsConsultedOnlyForBystanderModes() {
+	cases := []struct {
+		name string
+		mode world.Witnessing
+		want bool
+	}{
+		{name: "nobody", mode: world.WitnessNobody, want: false},
+		{name: "target", mode: world.WitnessTarget, want: false},
+		{name: "bystanders", mode: world.WitnessBystanders, want: true},
+		{name: "target and bystanders", mode: world.WitnessTargetAndBystanders, want: true},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			verb := s.graded()
+			verb.Outcomes[0].Emission.Witness = tc.mode
+			witness := &scriptedWitness{}
+			w := s.buildWithWitness(9, witness, verb)
+
+			_, err := w.Act(s.ctx, world.Act{Verb: strike, Actor: scoutID, Target: holdID})
+			s.Require().NoError(err)
+
+			s.Equal(tc.want, witness.asked)
+		})
+	}
 }
 
 func (s *WorldSuite) TestActIsTheOnlyDoorAndTheJobsLookThroughIt() {
