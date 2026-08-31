@@ -12,7 +12,7 @@
 // the map and in the roster, and stops acting: no turn, no side in a contact,
 // no tick action, and a beat in the story saying so.
 //
-// LOCATION KNOWLEDGE IS ENCOUNTER-OWNED (ADR-0046). play/intel stores channel-
+// LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. play/intel stores channel-
 // sourced testimony opaquely; this composition gives sight payloads their
 // strict Known(position) or Unknown meaning. New payloads are tagged, legacy
 // untagged coordinates remain readable as known, and malformed or current-
