@@ -8,7 +8,6 @@ import "github.com/KirkDiggler/rpg-toolkit/core"
 var (
 	actionMove          = &core.Ref{Module: Module, Type: TypeActions, ID: "move"}
 	actionStrike        = &core.Ref{Module: Module, Type: TypeActions, ID: "strike"}
-	actionOffHandStrike = &core.Ref{Module: Module, Type: TypeActions, ID: "off_hand_strike"}
 	actionFlurryStrike  = &core.Ref{Module: Module, Type: TypeActions, ID: "flurry_strike"}
 	actionUnarmedStrike = &core.Ref{Module: Module, Type: TypeActions, ID: "unarmed_strike"}
 )
@@ -28,10 +27,6 @@ func (n actionsNS) Move() *core.Ref { return actionMove }
 // Strike returns the ref for the Strike action.
 // Strike consumes an attack from AttacksRemaining to make a weapon attack.
 func (n actionsNS) Strike() *core.Ref { return actionStrike }
-
-// OffHandStrike returns the ref for the OffHandStrike action.
-// OffHandStrike is granted by two-weapon fighting and consumes a bonus action.
-func (n actionsNS) OffHandStrike() *core.Ref { return actionOffHandStrike }
 
 // FlurryStrike returns the ref for the FlurryStrike action.
 // FlurryStrike is granted by Flurry of Blows and consumes FlurryStrikesRemaining.

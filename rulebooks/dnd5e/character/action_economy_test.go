@@ -478,9 +478,18 @@ func (s *ActionEconomyTestSuite) TestTwoWeaponsDoNotSynthesizeAnActivateAbility(
 	_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
 
+	offered := make([]string, 0)
 	for _, ability := range char.AvailableAbilities() {
-		s.NotEqual(refs.CombatAbilities.OffHandAttack().String(), ability.Ref.String())
+		offered = append(offered, ability.Ref.String())
 	}
+	s.ElementsMatch([]string{
+		refs.CombatAbilities.Attack().String(),
+		refs.CombatAbilities.Dash().String(),
+		refs.CombatAbilities.Dodge().String(),
+		refs.CombatAbilities.Disengage().String(),
+		refs.CombatAbilities.Help().String(),
+		refs.CombatAbilities.Hide().String(),
+	}, offered)
 }
 
 // --- rpg-project#300: the target table has to answer for features too ---

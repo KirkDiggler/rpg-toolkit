@@ -372,6 +372,58 @@ func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRequiresTwoLightM
 	}
 }
 
+func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRequiresTwoOwnedWeaponUnits() {
+	tests := []struct {
+		name      string
+		inventory []InventoryItemData
+		slots     EquipmentSlots
+		want      bool
+	}{
+		{
+			name: "one shortsword mapped to both hands",
+			inventory: []InventoryItemData{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Shortsword),
+			},
+		},
+		{
+			name: "two shortswords mapped to both hands",
+			inventory: []InventoryItemData{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 2},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Shortsword),
+			},
+			want: true,
+		},
+		{
+			name: "zero off-hand copies",
+			inventory: []InventoryItemData{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 0},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Scimitar),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			data := s.heroSheet(nil, nil)
+			data.Inventory = tc.inventory
+			data.EquipmentSlots = tc.slots
+
+			s.Equal(tc.want, CanMakeOffHandAttack(s.load(data)))
+		})
+	}
+}
+
 func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRejectsAShield() {
 	data := s.heroSheet(nil, map[InventorySlot]string{
 		SlotMainHand: string(weapons.Shortsword),

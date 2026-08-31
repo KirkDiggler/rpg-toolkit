@@ -173,9 +173,6 @@ const (
 
 	// GrantedMartialArtsBonus tracks martial arts bonus strike (from Martial Arts).
 	GrantedMartialArtsBonus GrantedActionKey = "martial_arts_bonus"
-
-	// GrantedOffHandAttack tracks off-hand attack ability availability.
-	GrantedOffHandAttack GrantedActionKey = "off_hand_attack"
 )
 
 // ActionEconomyData is the serializable form of the action economy state.

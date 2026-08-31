@@ -23,7 +23,16 @@ func CanMakeOffHandAttack(c *Character) bool {
 		return false
 	}
 
-	return hasLightMeleeWeapon(c, SlotMainHand) && hasLightMeleeWeapon(c, SlotOffHand)
+	mainID, mainOK := lightMeleeWeaponID(c, SlotMainHand)
+	offID, offOK := lightMeleeWeaponID(c, SlotOffHand)
+	if !mainOK || !offOK {
+		return false
+	}
+
+	if mainID == offID {
+		return ownedQuantity(c, mainID) >= 2
+	}
+	return true
 }
 
 // AssembleOffHandAttack compiles the off-hand weapon as the bonus attack
@@ -55,11 +64,29 @@ func AssembleOffHandAttack(
 	return definition, nil
 }
 
-func hasLightMeleeWeapon(c *Character, slot InventorySlot) bool {
+func lightMeleeWeaponID(c *Character, slot InventorySlot) (string, bool) {
+	itemID := c.equipmentSlots.Get(slot)
+	if itemID == "" || ownedQuantity(c, itemID) <= 0 {
+		return "", false
+	}
+
 	equipped := c.GetEquippedSlot(slot)
 	if equipped == nil {
-		return false
+		return "", false
 	}
 	weapon := equipped.AsWeapon()
-	return weapon != nil && weapon.IsMelee() && weapon.HasProperty(weapons.PropertyLight)
+	if weapon == nil || !weapon.IsMelee() || !weapon.HasProperty(weapons.PropertyLight) {
+		return "", false
+	}
+	return itemID, true
+}
+
+func ownedQuantity(c *Character, itemID string) int {
+	quantity := 0
+	for _, item := range c.inventory {
+		if item.Equipment != nil && string(item.Equipment.EquipmentID()) == itemID {
+			quantity += item.Quantity
+		}
+	}
+	return quantity
 }
