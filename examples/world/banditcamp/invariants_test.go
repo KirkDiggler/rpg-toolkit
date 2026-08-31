@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -19,27 +20,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
+	"github.com/KirkDiggler/rpg-toolkit/world"
+	"github.com/KirkDiggler/rpg-toolkit/world/graph"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // toolkitPrefix is how a toolkit module import is recognised.
 const toolkitPrefix = "github.com/KirkDiggler/rpg-toolkit/"
-
-// The packages beneath the composer, by the path an import statement spells
-// them.
-const (
-	journalPkg  = "examples/world/journal"
-	graphPkg    = "examples/world/graph"
-	questPkg    = "examples/world/quest"
-	goalPkg     = "examples/world/goal"
-	scriptedPkg = "examples/world/scripted"
-	composer    = "examples/world"
-)
 
 // InvariantSuite asserts the three standing claims that hold across every path:
 // nobody is gated, nothing present is stored, and the kernel does not know what
@@ -245,31 +235,55 @@ func (s *InvariantSuite) TestPresentStateIsDerivedByFoldAndNeverStored() {
 // ---------------------------------------------------------------------------
 
 func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
-	// Each kernel package's entire permitted toolkit surface. Anything else —
-	// and especially anything under rulebooks/ — is the layering breaking.
-	// scripted is allowed everywhere: it is test scaffolding, it imports
-	// nothing at all (asserted below by its own empty surface), and so it
-	// cannot smuggle a rulebook into anything that reaches for it.
-	law := []struct {
-		dir     string
-		allowed []string
-	}{
-		{dir: "../journal", allowed: []string{journalPkg, scriptedPkg}},
-		{dir: "../graph", allowed: []string{journalPkg, graphPkg, scriptedPkg}},
-		{dir: "../quest", allowed: []string{journalPkg, graphPkg, questPkg, scriptedPkg}},
-		{dir: "../goal", allowed: []string{journalPkg, graphPkg, questPkg, goalPkg, scriptedPkg}},
-		{dir: "../scripted", allowed: nil},
-		{dir: "..", allowed: []string{journalPkg, graphPkg, questPkg, goalPkg, composer, scriptedPkg}},
-	}
-
-	for _, pkg := range law {
-		imports := s.toolkitImportsOf(pkg.dir)
-		for _, imported := range imports {
-			s.NotContainsf(imported, "rulebooks/", "%s imports a rulebook: %s", pkg.dir, imported)
-			s.Containsf(pkg.allowed, strings.TrimPrefix(imported, toolkitPrefix),
-				"%s imports %s, which is outside its permitted surface", pkg.dir, imported)
+	// The kernel graduated out of this repository into its own module
+	// (github.com/KirkDiggler/rpg-toolkit/world, #1333/#1334): journal, graph,
+	// quest, goal, and the composer no longer live under examples/world, so
+	// this can no longer be checked by parsing local directories — that
+	// mechanism only ever proved the invariant for a checkout where the
+	// kernel happened to sit monorepo-adjacent, which a real consumer (an
+	// rpg-api import, say) is not. The resolved build graph is the honest
+	// check now: world's own go.mod requires only testify, so nothing under
+	// it can reach a rulebook no matter who is asking.
+	for _, pkg := range []string{
+		toolkitPrefix + "world",
+		toolkitPrefix + "world/journal",
+		toolkitPrefix + "world/graph",
+		toolkitPrefix + "world/quest",
+		toolkitPrefix + "world/goal",
+	} {
+		for _, dep := range s.worldModuleDeps(pkg) {
+			s.NotContainsf(dep, "rulebooks/", "%s depends on a rulebook: %s", pkg, dep)
 		}
 	}
+
+	// scripted is the one thing left here that the kernel packages used to
+	// share a directory with. It still imports nothing at all, toolkit or
+	// otherwise, so it cannot smuggle a rulebook into anything that reaches
+	// for it.
+	s.Empty(s.toolkitImportsOf("../scripted"))
+}
+
+// worldModuleDeps returns pkg's full transitive dependency closure, filtered
+// to toolkit modules, via the resolved build graph rather than source on
+// disk. This is what makes the check honest for the graduated kernel: it
+// gives the same answer for this monorepo checkout and for a bare `go get`
+// in a repository that has never heard of examples/world.
+func (s *InvariantSuite) worldModuleDeps(pkg string) []string {
+	s.T().Helper()
+
+	// #nosec G204 -- pkg always comes from the hardcoded literal list of toolkit
+	// package paths in TestKernelPackagesImportNoRulebook, never from external input.
+	out, err := exec.CommandContext(s.T().Context(), "go", "list", "-f", "{{join .Deps \"\\n\"}}", pkg).Output()
+	s.Require().NoError(err)
+
+	var deps []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.HasPrefix(line, toolkitPrefix) {
+			deps = append(deps, line)
+		}
+	}
+
+	return deps
 }
 
 func (s *InvariantSuite) TestScenariosDoNotDependOnEachOther() {
@@ -291,9 +305,13 @@ func (s *InvariantSuite) TestScenariosDoNotDependOnEachOther() {
 
 func (s *InvariantSuite) TestOnlyOnePackageTeachesTheWorldADieRoll() {
 	// Scenarios import a rulebook for their cast; exactly one package imports
-	// one to resolve an attempt. Two would mean two answers to "did that work".
+	// one to resolve an attempt. Two would mean two answers to "did that
+	// work". The kernel and composer are proven clean of rulebooks by
+	// TestKernelPackagesImportNoRulebook (they are a separate module now, and
+	// that test asks the build graph, not this directory tree); what is left
+	// to check locally is whatever still lives in examples/world.
 	adapters := 0
-	beneath := []string{"../journal", "../graph", "../quest", "../goal", "../scripted", "..", "../dnd5eresolver"}
+	beneath := []string{"../scripted", "../dnd5eresolver"}
 	for _, dir := range beneath {
 		for _, imported := range s.toolkitImportsOf(dir) {
 			if strings.Contains(imported, "rulebooks/") {
@@ -304,22 +322,6 @@ func (s *InvariantSuite) TestOnlyOnePackageTeachesTheWorldADieRoll() {
 		}
 	}
 	s.Equal(1, adapters, "the resolver seam has exactly one rulebook-facing implementation here")
-}
-
-func (s *InvariantSuite) TestTheComposerKnowsNoRulebookEither() {
-	// The act loop moved up here from this package, where UC-1 left it homeless.
-	// It composes the three below it and imports no rulebook, which is why an
-	// attempt still cannot be gated on a character sheet: there is nowhere in
-	// the loop to look one up.
-	imports := s.toolkitImportsOf("..")
-	s.Equal([]string{
-		// Itself, from its own external test package, and the four below it.
-		toolkitPrefix + composer,
-		toolkitPrefix + goalPkg,
-		toolkitPrefix + graphPkg,
-		toolkitPrefix + journalPkg,
-		toolkitPrefix + questPkg,
-	}, imports)
 }
 
 // toolkitImportsOf returns every toolkit import in a package directory,

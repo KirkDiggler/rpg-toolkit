@@ -12,13 +12,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
+	"github.com/KirkDiggler/rpg-toolkit/world"
+	"github.com/KirkDiggler/rpg-toolkit/world/graph"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
+	"github.com/KirkDiggler/rpg-toolkit/world/quest"
 )
 
 // objectiveID is the one objective on the guild's contract.

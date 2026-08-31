@@ -26,8 +26,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/checks"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
+	"github.com/KirkDiggler/rpg-toolkit/world"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // ErrNoSheet reports an attempt by somebody the resolver has no character for.
