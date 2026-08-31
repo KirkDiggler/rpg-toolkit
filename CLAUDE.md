@@ -5,6 +5,9 @@ game rules and returns rich breakdowns. Consumed by rpg-api (the game server) an
 any other rulebook host. The toolkit never orchestrates data, never persists state,
 and never imports rpg-api or rpg-api-protos.
 
+`AGENTS.md` is a symlink to this file so every agent runtime boots from the
+same instructions.
+
 ## Where things live
 
 - `docs/architecture/overview.md` — layer rules (Core → Events → Mechanics → Tools → Rulebooks), module map, boundary with rpg-api, named violations
@@ -54,16 +57,40 @@ of these states its own contract in `doc.go`, names the laws that bind it, and
 points at its design doc. That is the discoverable surface; this section only
 tells you the shape so you know to go looking.
 
-## RPG Toolkit Development Guidelines
+## How We Ship — Versions, Tags, and Freezes
 
-## Slash Commands for Common Workflows
+This workspace moves fast pre-v1.0, and the version system is what makes that
+safe. Internalize this model before reasoning about releases, freezes, or
+"breaking" changes:
 
-Use these slash commands to follow structured workflows:
+1. **A tag can't break you. Only a bump you choose can.** Every module pins its
+   dependencies by exact version in its own `go.mod`. A merged change — even a
+   breaking one — does not exist for any consumer's build until that consumer
+   runs `go get` and opts in. That is why APIs change freely here: the pin
+   system, not caution, is the safety mechanism.
 
-- `/bugfix` - Complete bug fix workflow (branch creation, failing test, fix, PR)
-- `/feature` - Feature development workflow (TDD, implementation, documentation, PR)
+2. **Toolkit is main-only, permanently.** There is no `dev` branch and never
+   will be: the toolkit's staging *is* its versions. (rpg-api and rpg-dnd5e-web
+   have `dev` branches because *deployments* need staging.) A breaking toolkit
+   merge leaves every consumer pinned exactly where it was.
 
-These commands guide you through best practices and ensure nothing is missed.
+3. **Merges mint tags — nobody hand-tags.** CI tags each changed module
+   automatically when a PR merges to main. Never cut a tag by hand, and never
+   from a side branch: a hand-cut tag can reference API that no released
+   dependency has, which makes it unbuildable for everyone but you. Let the
+   merge flow mint tags and "latest of everything builds together" stays true.
+
+4. **Develop outside-in, publish inside-out.** Build the consumer against a
+   local sibling to discover the contract (see local overrides below). To
+   publish, merge the innermost module's PR first, let CI mint its tag,
+   `go get` that minted version in the consumer, then merge the consumer.
+
+5. **A freeze protects files, not versions.** Tags elsewhere cannot affect
+   in-flight work (point 1), so there is no reason to pause tagging repo-wide.
+   What can collide is concurrent edits to the same module's files — if you
+   need protection for an in-flight slice, ask on the owning issue for a
+   freeze scoped to exactly the modules your branch reworks, and post there
+   to release it when you merge.
 
 ## Module Development Workflow
 
@@ -81,13 +108,14 @@ the actual failure, and that is what stays banned.
    - Use `replace` or `go.work` freely while developing across modules
    - **Never commit them.** A `replace` pointing at a local path fails CI, and
      it fails it for everyone, not just you
-   - Before merging: publish the dependency, then point at the published
-     version and remove the override
+   - Before merging: merge the dependency so CI mints its tag, then point at
+     the minted version and remove the override
 
 2. **Dependency Management**
    - Committed `go.mod` files reference published versions (e.g., `v0.1.0`)
-   - To take an update from another module: tag and push that module first,
-     then `go get` it in the dependent module
+   - To take an update from another module: merge that module's change to
+     main first (CI mints its tag), then `go get` the minted version in the
+     dependent module
    - Go creates pseudo-versions automatically for un-tagged commits
      (e.g., `v0.0.0-20230907052031-37f5183ecf93`)
 
@@ -187,43 +215,29 @@ These run automatically on commit.
    - Games implement their specific rules using our tools
    - Example: We provide proficiency infrastructure, games define what "Acrobatics" means
 
-2. **Event-Driven Architecture**
-   - Modules communicate through events, not direct calls
-   - Use the event bus for all inter-module communication
-   - This allows maximum flexibility for game implementations
+2. **Events Observe, Values Decide**
+   - Typed topics (`events.DefineTypedTopic`, the `.On(bus)` pattern) carry
+     game occurrences to whoever subscribed; rules and observers react there
+   - Results still **return as values**: `play/*` leaves never publish, and
+     spatial publication is observer-only
+   - See "How live play is layered" above for which layer owns the bus
 
 3. **Entity-Based Design**
    - All game objects implement core.Entity interface
    - Entities have ID and Type
    - This provides consistent patterns across the toolkit
 
-## Current Project Status
+## Current Status
 
-### Completed Modules
-1. **core** - Base interfaces and types
-2. **events** - Event bus system for module communication
-3. **dice** - Dice rolling infrastructure
-4. **mechanics/proficiency** - Proficiency system
-5. **mechanics/effects** - Shared infrastructure for proficiencies
-6. **mechanics/resources** - Resource management (spell slots, abilities, etc.)
-7. **tools/spatial** - Complete spatial positioning system with multi-room orchestration
-8. **tools/spawn** - Complete entity spawn engine with Phases 1-4 implementation per ADR-0013
+Live status is never snapshotted here — it rots (an old revision of this file
+still listed 2025's module list as "current"). Read instead:
 
-### Spatial Module Features (Completed)
-- **Grid Systems**: Square (D&D 5e), Hex, and Gridless positioning
-- **Room Management**: Entity placement, movement, and spatial queries
-- **Multi-Room Orchestration**: Connection system, layout patterns, entity transitions
-- **Event Integration**: Full event-driven architecture
-- **Query System**: Efficient spatial queries with filtering
-- **Connection Types**: Doors, stairs, passages, portals, bridges, tunnels
-- **Layout Patterns**: Tower, branching, grid, and organic arrangements
+- `docs/status.md` — active work, paused items, rough edges (a living doc,
+  updated in the same PR that invalidates a line)
+- `docs/quality.md` — per-module A-D scorecard
+- the GitHub issues and Project 19 board — what is actually in flight
 
-### Pending Work (Issues #31-#33)
-1. **Equipment System (#31)** - Items, inventory, equip/unequip mechanics
-2. **Enhanced Conditions (#32)** - Advanced condition features
-3. **Feature System (#33)** - Character features and traits
-
-### Important Patterns
+## Important Patterns
 1. **Config Pattern**: Use config structs for constructors
 2. **Composition Over Inheritance**: Use embedded structs and interfaces
 3. **Error Handling**: Always check errors in tests with require.NoError(t, err)
@@ -231,7 +245,7 @@ These run automatically on commit.
 5. **Typed Constants Pattern**: See below
 6. **JSON Serialization Pattern**: See below
 
-### Typed Constants Pattern
+## Typed Constants Pattern
 
 **Toolkit is the source of truth for game mechanics identifiers.**
 
@@ -257,7 +271,7 @@ const (
 
 **Toolkit validates everything.** Error messages are user-facing since they pass through unchanged.
 
-### Feature/Condition Serialization Pattern
+## Feature/Condition Serialization Pattern
 
 **IMPORTANT: Typed Data Structs for JSON**
 
@@ -326,75 +340,21 @@ func LoadJSON(data json.RawMessage) (ConditionBehavior, error) {
 - Game server doesn't need to understand toolkit internals
 - Easy to add new condition/feature types
 
-### Recent Architectural Decisions
-- **ADR-0005**: Extract shared effect infrastructure from conditions/proficiencies
-- **Journey 005**: Documents the discovery of duplicate code and extraction pattern
-- **Dice Modifiers**: Need fresh rolls each time (e.g., Bless adds 1d4 per attack)
-- **ADR-0009**: Multi-room orchestration architecture (extend spatial module with architectural validation)
-- **Journey 013**: Multi-room orchestration implementation complete with thread safety and type safety
+## Development Workflow Reminders
 
-### Multi-Room Orchestrator Usage
-The spatial module now includes multi-room orchestration capabilities:
-
-```go
-// Create orchestrator. Event wiring is optional and observer-only.
-orchestrator := spatial.NewBasicRoomOrchestrator(spatial.BasicRoomOrchestratorConfig{
-    ID:     "dungeon-orchestrator",
-    Type:   "orchestrator",
-    Layout: spatial.LayoutTypeOrganic,
-})
-orchestrator.ConnectToEventBus(eventBus) // Optional observer publication.
-room1.ConnectToEventBus(eventBus)        // Optional room-event publication.
-room2.ConnectToEventBus(eventBus)
-
-// Add rooms, then mutate their membership through the managed seam.
-orchestrator.AddRoom(room1)
-orchestrator.AddRoom(room2)
-_, err := orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-    RoomID: "room-1", Entity: hero, Position: spatial.Position{X: 9, Y: 5},
-})
-
-// Connections are abstract; the cost is spatial infrastructure.
-door := spatial.CreateDoorConnection("door-1", "room-1", "room-2", 1.0)
-orchestrator.AddConnection(door)
-
-// Transition removes and returns the entity; the composition chooses its
-// destination position through a second managed placement.
-transitioned, err := orchestrator.TransitionEntity(&spatial.TransitionEntityInput{
-    EntityID: "hero", FromRoom: "room-1", ToRoom: "room-2", ConnectionID: "door-1",
-})
-_, err = orchestrator.PlaceEntity(&spatial.PlaceEntityInput{
-    RoomID: "room-2", Entity: transitioned.Entity, Position: spatial.Position{X: 0, Y: 5},
-})
-```
-
-**Key Features**:
-- Connection types: doors, stairs, passages, portals, bridges, tunnels
-- Layout patterns: tower, branching, grid, organic
-- Entity tracking across rooms
-- Observer-only event publication; spatial results return as values
-- Pathfinding between connected rooms
-
-### Spawn Module Features (Completed)
-- **Phase 1**: Basic spawn engine infrastructure with entity selection and pattern support
-- **Phase 2**: Advanced patterns (formation, team-based, player choice, clustered spawning)
-- **Phase 3**: Constraint system (spatial constraints, line of sight, area of effect, wall proximity)
-- **Phase 4**: Environment integration (capacity analysis, room scaling, split recommendations)
-- **Cross-Cutting**: Event system, split-aware architecture, gridless room support, configuration validation
-
-### Development Workflow Reminders
-
-**Git Workflow (see /home/kirk/personal/CLAUDE.md for full details):**
+**Git workflow:**
 ```bash
-gcm                           # Switch to main
-gl                            # Pull latest changes
-gcb fix/issue-number          # Create new feature branch
+git checkout main && git pull
+git checkout -b fix/NNN-short-slug    # or feat/, docs/
 # ... make changes, run tests ...
-git add .
-git commit -m "Description"
-git push -u origin fix/issue-number
-gh pr create                  # Create PR
+git add -A
+git commit -m "type: description"
+git push -u origin fix/NNN-short-slug
+gh pr create                          # ready for review — not draft
 ```
+
+Open PRs ready-for-review and drive CI green; draft PRs sit outside the
+review queue. Branch from and merge to `main` — there is no `dev` here.
 
 **Development checklist:**
 1. Always check existing patterns in similar modules
@@ -405,7 +365,7 @@ gh pr create                  # Create PR
 6. **Run `go fmt ./...` and `go mod tidy` before committing** - CI checks for diffs
 7. Use `gh pr create` for PRs with proper formatting
 
-### Critical Module Isolation Rules
+## Critical Module Isolation Rules
 **LEARNED FROM PR #76 TROUBLESHOOTING**
 
 1. **NEVER touch other modules when working on a specific module**
@@ -452,14 +412,13 @@ gh pr create                  # Create PR
    - Update long-term memory (this file) with correct information
    - Learn from the correction to avoid similar errors
 
-5. **Context Disambiguation**
-   - **CRITICAL**: This project uses two different "context" concepts
-   - **Go Context**: Standard `context.Context` for cancellation, timeouts, request-scoped values
-   - **Event Context**: Custom `events.Context` for game data (damage, modifiers, entities)
-   - Always specify which context you're referring to
-   - Use Go context only where cancellation/timeouts are genuinely needed
-   - Remove unused Go context parameters from internal functions
-   - Use event context for game data flow between event handlers
+5. **Context Discipline**
+   - **Go Context**: standard `context.Context` for cancellation, timeouts,
+     request-scoped values — use it only where cancellation/timeouts are
+     genuinely needed, and remove unused context parameters
+   - `play/*` packages take no `context.Context` at all, by contract
+   - Game data flows through typed topic events and returned values, not
+     through a general-purpose context bag
 
 ## CI Protection Guidelines
 
@@ -494,7 +453,7 @@ Follow these patterns to avoid CI failures:
    ```
 
 ### Documentation Patterns from Environments Package
-Based on `/home/frank/projects/rpg-toolkit/tools/environments/`:
+Based on `tools/environments/`:
 
 1. **Multi-line purpose explanations**:
    ```go
