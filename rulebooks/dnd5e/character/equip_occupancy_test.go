@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
@@ -112,6 +113,66 @@ func (s *EquipOccupancyTestSuite) TestMovingEquippedItemVacatesOldSlot() {
 	s.Assert().Equal(weapons.Longsword, s.char.equipmentSlots[SlotOffHand])
 	_, mainHandOccupied := s.char.equipmentSlots[SlotMainHand]
 	s.Assert().False(mainHandOccupied)
+}
+
+func (s *EquipOccupancyTestSuite) TestOneCopyCannotOccupyTwoSlots() {
+	handaxe := weapons.All[weapons.Handaxe]
+	s.char.inventory = []InventoryItem{{Equipment: &handaxe, Quantity: 1}}
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Handaxe))
+	s.Require().NoError(s.char.EquipItem(SlotOffHand, weapons.Handaxe))
+	s.Empty(s.char.equipmentSlots.Get(SlotMainHand))
+	s.Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotOffHand))
+}
+
+func (s *EquipOccupancyTestSuite) TestTwoCopiesOccupyBothSlots() {
+	handaxe := weapons.All[weapons.Handaxe]
+	s.char.inventory = []InventoryItem{{Equipment: &handaxe, Quantity: 2}}
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Handaxe))
+	s.Require().NoError(s.char.EquipItem(SlotOffHand, weapons.Handaxe))
+	s.Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotMainHand))
+	s.Equal(weapons.Handaxe, s.char.equipmentSlots.Get(SlotOffHand))
+}
+
+func (s *EquipOccupancyTestSuite) TestReequippingOneOfTwoOccupiedSlotsIsIdempotent() {
+	handaxe := weapons.All[weapons.Handaxe]
+	s.char.inventory = []InventoryItem{{Equipment: &handaxe, Quantity: 2}}
+	s.char.equipmentSlots = EquipmentSlots{
+		SlotMainHand: weapons.Handaxe,
+		SlotOffHand:  weapons.Handaxe,
+	}
+
+	s.Require().NoError(s.char.EquipItem(SlotMainHand, weapons.Handaxe))
+
+	s.Equal(EquipmentSlots{
+		SlotMainHand: weapons.Handaxe,
+		SlotOffHand:  weapons.Handaxe,
+	}, s.char.equipmentSlots)
+}
+
+// More existing slot references than owned copies can only come from future
+// slot taxonomies or malformed persisted state. Equipping must report that
+// overdraw rather than turn it into another equipped copy.
+func (s *EquipOccupancyTestSuite) TestMultipleCopiesCannotBeOverdrawn() {
+	handaxe := weapons.All[weapons.Handaxe]
+	s.char.inventory = []InventoryItem{{Equipment: &handaxe, Quantity: 2}}
+	s.char.equipmentSlots = EquipmentSlots{
+		SlotArmor: weapons.Handaxe,
+		SlotHelm:  weapons.Handaxe,
+	}
+
+	err := s.char.EquipItem(SlotMainHand, weapons.Handaxe)
+
+	s.Require().Error(err)
+	s.Equal(rpgerr.CodeResourceExhausted, rpgerr.GetCode(err))
+	s.Equal(map[string]any{
+		"equipped": 2,
+		"item_id":  string(weapons.Handaxe),
+		"owned":    2,
+	}, rpgerr.GetMeta(err))
+	s.Equal(EquipmentSlots{
+		SlotArmor: weapons.Handaxe,
+		SlotHelm:  weapons.Handaxe,
+	}, s.char.equipmentSlots, "a refused overdraw must not change occupancy")
 }
 
 // equipping into an occupied slot returns the previous occupant to

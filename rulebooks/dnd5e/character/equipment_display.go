@@ -6,6 +6,7 @@ package character
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -16,18 +17,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
-// EquippedItemView is the display projection of one inventory item: its
+// EquippedItemView is the display projection of one inventory stack: its
 // identity (Name, Kind — "weapon" | "shield" | "armor" | "gear"), the
-// slots it MAY occupy (SlotKeys, from CompatibleSlots), the slot it
-// currently occupies (Slot — empty if merely carried), and the
-// server-composed stat_line the web renders verbatim.
+// slots it MAY occupy (SlotKeys, from CompatibleSlots), its owned Quantity,
+// and the server-composed stat_line the web renders verbatim. Current
+// occupancy lives once in EquipmentView.Equipped because one stack can occupy
+// more than one slot.
 type EquippedItemView struct {
 	ItemID   string
 	Name     string
 	Kind     string
 	SlotKeys []string
-	Slot     InventorySlot
 	StatLine string
+	Quantity int
 }
 
 // SlotDefView is one entry in the character's equip-slot taxonomy: which
@@ -66,13 +68,14 @@ func cloneSlotTaxonomy() []SlotDefView {
 
 // EquipmentView is the display projection rpg-api needs to serve
 // equipped/inventory items and armor class (rpg-toolkit#811) — every item
-// the character owns, the slot taxonomy, the composed AC total and note,
-// and the resolved main-hand damage display (contract §5). This is THE
-// single projection rpg-api maps to the wire CharacterData: every display
-// field comes from here, composed with zero rules knowledge required
-// upstream.
+// stack the character owns, a cloned authoritative occupancy map, the slot
+// taxonomy, the composed AC total and note, and the resolved main-hand damage
+// display (contract §5). This is THE single projection rpg-api maps to the wire
+// CharacterData: every display field comes from here, composed with zero rules
+// knowledge required upstream.
 type EquipmentView struct {
 	Items          []EquippedItemView
+	Equipped       EquipmentSlots
 	Slots          []SlotDefView
 	ACTotal        int
 	ACNote         string
@@ -80,9 +83,10 @@ type EquipmentView struct {
 }
 
 // EquipmentView composes the display projection for this character's
-// inventory and effective AC: identity + SlotKeys + stat_line per owned
-// item (equipped or carried), the slot taxonomy, AC total + note, and the
-// resolved main-hand damage display. Consumable by rpg-api with zero
+// inventory and effective AC: identity + SlotKeys + stat_line + Quantity per
+// owned item stack, a cloned authoritative slot map, the slot taxonomy, AC
+// total + note, and the resolved main-hand damage display. Legacy duplicate
+// inventory rows are aggregated by item ID. Consumable by rpg-api with zero
 // rules knowledge.
 //
 // Fallible because the AC it carries is folded, not echoed: an unattached sheet
@@ -91,15 +95,22 @@ type EquipmentView struct {
 // for the same reason and this now matches it.
 func (c *Character) EquipmentView(ctx context.Context) (*EquipmentView, error) {
 	items := make([]EquippedItemView, 0, len(c.inventory))
+	itemIndexes := make(map[string]int, len(c.inventory))
 	for _, invItem := range c.inventory {
 		id := invItem.Equipment.EquipmentID()
+		if index, ok := itemIndexes[id]; ok {
+			items[index].Quantity += invItem.Quantity
+			continue
+		}
+
+		itemIndexes[id] = len(items)
 		items = append(items, EquippedItemView{
 			ItemID:   id,
 			Name:     invItem.Equipment.EquipmentName(),
 			Kind:     itemKind(invItem.Equipment),
 			SlotKeys: slotKeys(CompatibleSlots(invItem.Equipment)),
-			Slot:     c.equipmentSlots.slotFor(id),
 			StatLine: StatLine(equipment.ResolveEquipmentDetail(id)),
+			Quantity: invItem.Quantity,
 		})
 	}
 
@@ -110,6 +121,7 @@ func (c *Character) EquipmentView(ctx context.Context) (*EquipmentView, error) {
 	mainHand := c.GetEquippedSlot(SlotMainHand)
 	return &EquipmentView{
 		Items:          items,
+		Equipped:       maps.Clone(c.equipmentSlots),
 		Slots:          cloneSlotTaxonomy(),
 		ACTotal:        breakdown.Total,
 		ACNote:         ACNote(breakdown),
@@ -156,17 +168,6 @@ func MainHandDamage(mainWeapon *weapons.Weapon, offHand *EquippedItem) string {
 		}
 	}
 	return line
-}
-
-// slotFor returns the slot itemID is equipped in, or "" if it's carried
-// but not equipped.
-func (e EquipmentSlots) slotFor(itemID string) InventorySlot {
-	for slot, id := range e {
-		if id == itemID {
-			return slot
-		}
-	}
-	return ""
 }
 
 // StatLine composes the display line rpg-api passes through and the web

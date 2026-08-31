@@ -116,10 +116,12 @@ type RecoverableResourceData struct {
 // rpg-toolkit#965 and #966 retire the verb methods that need the character to
 // be holding a bus of its own.
 //
-// This path is forgiving where Load is strict: a condition, feature, inventory
-// item, or character-owned resource with malformed bounds is dropped and the
-// load continues, which is the behaviour every existing caller has. Malformed
-// resource counts are never clamped into a valid-looking entry. Read that as a warning
+// This path is forgiving where Load is strict: a condition, feature, unknown
+// inventory item, inventory row with a nonpositive quantity, or character-owned
+// resource with malformed bounds is dropped and the load continues, which is
+// the behaviour every existing caller has. Malformed quantities are never
+// defaulted to one, and malformed resource counts are never clamped into a
+// valid-looking entry. Read that as a warning
 // rather than a feature — it means a sheet can come back from a round trip
 // missing something nobody removed (rpg-toolkit#948). Load refuses instead,
 // and names the blob.
