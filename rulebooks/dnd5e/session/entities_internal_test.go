@@ -41,7 +41,7 @@ import (
 // and says so.
 func TestProjectCharacterFoldsFromTheRecord(t *testing.T) {
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
-		CharacterID: "unattached", Type: conditions.UnarmoredDefenseMonk,
+		MemberID: "unattached", Type: conditions.UnarmoredDefenseMonk,
 		Source: "dnd5e:classes:monk",
 	})
 	raw, err := ud.ToJSON()

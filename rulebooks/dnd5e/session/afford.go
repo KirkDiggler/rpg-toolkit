@@ -31,8 +31,8 @@ type AffordInput struct {
 //
 // A closed enum owned here rather than a reuse of the rulebook's own action
 // vocabulary — a declaration is a question about what THIS SEAM lets a member
-// declare, not the currency the rulebook happens to price it in. v1 has
-// exactly one entry because v1 has exactly one gated verb.
+// declare, not the currency the rulebook happens to price it in. One verb may
+// produce several declarations when several compiled variants exist.
 type Verb string
 
 const (
@@ -48,13 +48,9 @@ const (
 	// character already carries — Dodge, Dash, Disengage, Help, Hide, Rage,
 	// Second Wind.
 	//
-	// THE FIRST VERB THAT COMPILES MORE THAN ONE OFFER. Attack, Move and
-	// EndTurn each compile exactly one, so "one offer per verb" and "one
-	// declaration per verb" were the same sentence for three verbs and nothing
-	// said which one a reader relied on. A level-1 barbarian gets seven of
-	// these, and [Slot] is what separates Rage on the bonus shape from Dodge
-	// on the action one — they cannot share a row, because Slot is per
-	// declaration.
+	// One offer per carried ability. A level-1 barbarian gets several of these,
+	// and [Slot] is what separates Rage on the bonus shape from Dodge on the
+	// action one — they cannot share a row, because Slot is per declaration.
 	//
 	// Its selector variant is the ability's own ref rather than a sealed
 	// string: one verb, seven offers, and the ref is what tells them apart.
@@ -109,20 +105,17 @@ const (
 // ONE DECLARATION PER COMPILED OFFER — which is NOT one per verb, and was
 // never quite the same claim.
 //
-// Attack, Move and EndTurn each compile exactly one, so for three verbs the
-// two readings coincided and nothing said which one a reader relied on.
-// [VerbActivate] separates them: a level-1 barbarian gets six Activate
-// declarations, and [Slot] is what distinguishes Rage on the bonus shape from
-// Dodge on the action one — they cannot share a row, because Slot is per
-// declaration. A consumer that indexes declarations BY VERB, or treats a
-// second row for a verb as a producer defect, is reading a coincidence as a
-// contract.
+// [VerbActivate] contributes one declaration per carried ability. [VerbAttack]
+// contributes the main-hand swing and, after a qualifying Attack action, a
+// bonus-slot off-hand swing. A consumer that indexes declarations BY VERB, or
+// treats a second row for a verb as a producer defect, is reading a coincidence
+// as a contract.
 //
-// It is still not one declaration per TARGET: the candidate universe lives on
-// the single Attack declaration's Candidates, each carrying its own
-// target-specific availability. The client renders availability, identity,
-// target kind, and candidates verbatim and never derives game rules; every
-// verb regenerates the selected offer before execution.
+// It is still not one declaration per TARGET: each Attack declaration carries
+// its own candidate universe, with target-specific availability on each row.
+// The client renders availability, identity, target kind, and candidates
+// verbatim and never derives game rules; every verb regenerates the selected
+// offer before execution.
 type Declaration struct {
 	// Verb is which seam action this prices.
 	Verb Verb `json:"verb"`
@@ -242,12 +235,12 @@ type AffordOutput struct {
 //
 // # The same price Attack pays, never a second copy of it
 //
-// [Manager.compileOffersFor] assembles and prices one Attack definition, clones the
-// actual SpendProfile into Definition.Cost before hashing it, and asks
-// [combat.CanPay] against the same readied sheet execution will regenerate.
-// It also gathers and strictly preflights one raw resolution cast. Attack then
-// selects and reuses that compiled definition, price, sheet, shared target
-// preflight, and exact raw cast without refetching participants. Move likewise
+// [Manager.compileOffersFor] assembles and prices each current Attack variant,
+// clones its actual SpendProfile into Definition.Cost before hashing it, and
+// asks [combat.CanPay] against the same readied sheet execution will regenerate.
+// It gathers and strictly preflights one raw resolution cast shared by those
+// variants. Attack then selects and reuses the chosen definition, price, sheet,
+// target preflight, and exact raw cast without refetching participants. Move likewise
 // reuses its compiled readied sheet; EndTurn compiles from the clock alone.
 //
 // # The full current gate
