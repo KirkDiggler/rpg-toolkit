@@ -535,6 +535,36 @@ func (s *DraftTestSuite) TestCompileInventory_FixedClassGrants() {
 	})
 }
 
+func (s *DraftTestSuite) TestCompileInventory_RepeatedCategorySelectionsCompileToStack() {
+	draft := s.createFighterDraft()
+
+	err := draft.SetClass(&character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID: choices.FighterWeaponsPrimary,
+					OptionID: choices.FighterWeaponTwoMartial,
+					CategorySelections: []shared.EquipmentID{
+						weapons.Longsword,
+						weapons.Longsword,
+					},
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
+		},
+	})
+	s.Require().NoError(err)
+	char, err := draft.ToCharacter(s.ctx, "fighter-two-longswords", s.bus)
+	s.Require().NoError(err)
+	s.assertInventoryStack(char.ToData().Inventory, weapons.Longsword, 2,
+		"two identical legal picks become one quantity-two stack")
+}
+
 func (s *DraftTestSuite) TestCompileInventory_PreservesBundleQuantities() {
 	draft := s.createFighterDraft()
 

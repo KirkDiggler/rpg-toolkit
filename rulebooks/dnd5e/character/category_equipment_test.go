@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -117,6 +118,20 @@ func (s *CategoryBasedEquipmentTestSuite) TestBarbarianSecondaryWeaponCategoryCh
 	s.Require().NotEmpty(secondaryWeaponChoice.EquipmentSelection, "Should have equipment selection")
 	s.Assert().Contains(secondaryWeaponChoice.EquipmentSelection, weapons.Spear,
 		"Should have the selected spear in equipment selection")
+}
+
+func (s *CategoryBasedEquipmentTestSuite) TestFighterTwoMartialRejectsRepeatedIneligibleSelection() {
+	err := s.draft.SetClass(fighterTwoMartialClassInput(weapons.Club, weapons.Club))
+
+	s.Require().Error(err)
+	s.ErrorContains(err, "Invalid equipment choice 'club'")
+}
+
+func (s *CategoryBasedEquipmentTestSuite) TestFighterTwoMartialRejectsWrongSelectionCount() {
+	err := s.draft.SetClass(fighterTwoMartialClassInput(weapons.Longsword))
+
+	s.Require().Error(err)
+	s.ErrorContains(err, "option 'fighter-weapon-b' requires 2 category selections, got 1")
 }
 
 func (s *CategoryBasedEquipmentTestSuite) TestMonkCategoryChoiceRejectsEverySpecialWeaponViaSetClass() {
@@ -286,6 +301,26 @@ func (s *CategoryBasedEquipmentTestSuite) loadPersistedMonkCategoryDraft(weaponI
 	s.Require().NoError(err)
 	s.Require().NoError(json.Unmarshal(serialized, &data))
 	return character.LoadDraftFromData(&data)
+}
+
+func fighterTwoMartialClassInput(weaponIDs ...shared.EquipmentID) *character.SetClassInput {
+	return &character.SetClassInput{
+		ClassID: classes.Fighter,
+		Choices: character.ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []character.EquipmentChoiceSelection{
+				{ChoiceID: choices.FighterArmor, OptionID: choices.FighterArmorChainMail},
+				{
+					ChoiceID:           choices.FighterWeaponsPrimary,
+					OptionID:           choices.FighterWeaponTwoMartial,
+					CategorySelections: weaponIDs,
+				},
+				{ChoiceID: choices.FighterWeaponsSecondary, OptionID: choices.FighterRangedCrossbow},
+				{ChoiceID: choices.FighterPack, OptionID: choices.FighterPackDungeoneer},
+			},
+			FightingStyle: fightingstyles.Defense,
+		},
+	}
 }
 
 func monkClassInput(weaponID shared.EquipmentID) *character.SetClassInput {
