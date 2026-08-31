@@ -458,6 +458,73 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	require.JSONEq(t, string(beforeState), string(afterState), "target preflight refusal changes no position or clock")
 }
 
+func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	alice := strikeFixtureFighter("alice")
+	alice.Inventory = []character.InventoryItemData{
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},
+	}
+	alice.EquipmentSlots = character.EquipmentSlots{
+		character.SlotMainHand: string(weapons.Shortsword),
+		character.SlotOffHand:  string(weapons.Scimitar),
+	}
+	alice.ActionEconomy = &character.ActionEconomyData{
+		TurnNumber: 1, ActionsRemaining: 0, BonusActionsRemaining: 1,
+		ReactionsRemaining: 1, MovementRemaining: 30,
+		Granted: map[character.GrantedActionKey]int{character.GrantedOffHandStrikes: 1},
+	}
+	characters := &strikeCharacters{byID: map[string]*character.Data{
+		"alice": alice,
+		"bob":   strikeFixtureFighter("bob"),
+	}}
+	mgr, err := NewManager(&Config{
+		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
+		Characters: characters, Events: DiscardEvents{},
+	})
+	require.NoError(t, err)
+
+	world, err := encounter.NewEncounter(&encounter.SetupInput{
+		Striker: encounter.RefusingStriker{}, Announcer: encQuietAnnouncer{}, Sight: aggregateRecordEveryoneSees{},
+		Initiative: aggregateRecordOrderAsGiven{}, TurnDriver: passDriver{}, Standing: aggregateRecordEveryoneStanding{},
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)}},
+		Members: []encounter.MemberInput{
+			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+	data := world.ToData()
+	delete(data.Clock.Budgets, core.EntityID("alice"))
+	delete(data.Clock.Budgets, core.EntityID("bob"))
+	require.NoError(t, json.Unmarshal([]byte(`[{"order":["alice","bob"],"round":1}]`), &data.Bubbles))
+	_, err = mgr.StartSession(ctx, &StartSessionInput{Session: "sess", Encounter: "world", World: &data})
+	require.NoError(t, err)
+
+	calls := 0
+	mgr.targetPreflight = func(
+		_ *encounter.Encounter, _ map[string]spatial.Position, _ []intel.Holding, _ string, _ int,
+	) ([]targetPreflight, error) {
+		calls++
+		return []targetPreflight{{member: "bob", available: true}}, nil
+	}
+
+	afford, err := mgr.Afford(ctx, &AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	attacks := make([]Declaration, 0, 2)
+	for _, declaration := range afford.Declarations {
+		if declaration.Verb == VerbAttack {
+			attacks = append(attacks, declaration)
+		}
+	}
+	require.Len(t, attacks, 2)
+	require.Equal(t, 1, calls, "all Attack variants share one target preflight snapshot")
+	require.Equal(t, attacks[0].Candidates, attacks[1].Candidates)
+}
+
 func strikeFixtureFighter(id string) *character.Data {
 	return &character.Data{
 		ID:       id,

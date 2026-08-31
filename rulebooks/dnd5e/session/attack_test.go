@@ -270,9 +270,9 @@ func (s *AttackTestSuite) unarmoredBarbarian(id string) *character.Data {
 	sheet.EquipmentSlots = character.EquipmentSlots{}
 
 	raw, err := (&conditions.UnarmoredDefenseCondition{
-		CharacterID: id,
-		Type:        conditions.UnarmoredDefenseBarbarian,
-		Source:      "dnd5e:classes:barbarian",
+		MemberID: id,
+		Type:     conditions.UnarmoredDefenseBarbarian,
+		Source:   "dnd5e:classes:barbarian",
 	}).ToJSON()
 	s.Require().NoError(err)
 	sheet.Conditions = []json.RawMessage{raw}
@@ -328,7 +328,7 @@ func (s *AttackTestSuite) TestUnarmoredDefenseDefendsOnTheSessionStack() {
 
 // protectionBlob is the persisted Protection fighting style condition.
 func (s *AttackTestSuite) protectionBlob(id string) json.RawMessage {
-	raw, err := (&conditions.FightingStyleProtectionCondition{CharacterID: id}).ToJSON()
+	raw, err := (&conditions.FightingStyleProtectionCondition{MemberID: id}).ToJSON()
 	s.Require().NoError(err)
 
 	return raw

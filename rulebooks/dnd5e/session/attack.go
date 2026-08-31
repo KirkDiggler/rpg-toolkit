@@ -87,9 +87,11 @@ type AttackOutput struct {
 // which is its caller, and it earns its shape then. The same discipline
 // [DissolveCause] uses for defeat.
 //
-// Main hand with the compiler's authored delivery profile. Off-hand variants
-// remain a named gap; two-handed and ranged semantics come from the selected
-// definition rather than from this seam.
+// Afford normally compiles the main-hand swing and, after a qualifying Attack
+// action, also compiles the granted off-hand bonus attack. The selector chooses
+// the complete authored definition and price; no hand flag or weapon choice
+// crosses this seam. Two-handed and ranged semantics likewise come from the
+// selected definition.
 //
 // # A swing costs something, in a fight
 //

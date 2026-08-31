@@ -23,13 +23,11 @@ import (
 // mutating verb regenerates before execution. It never crosses the host
 // boundary: only its [Declaration] projection does.
 //
-// ONE COMPILED OFFER PER ACTION/SPEND VARIANT — per VERB only for the verbs
-// that have exactly one variant, which is every verb except Activate. v1 has exactly one spend
-// variant per verb — the next swing's profile for Attack, SlotNone for Move
-// and EndTurn — so full Afford compilation produces one offer per verb. The day
-// a bonus-action strike lands, it arrives as a second Attack offer with a
-// distinct slot, and the collision guard keys the two apart by selector
-// material.
+// ONE COMPILED OFFER PER ACTION/SPEND VARIANT — never one per verb. Activate
+// contributes one offer per carried ability. Attack always contributes its
+// main-hand swing and, while two-weapon capacity remains, contributes a second
+// off-hand variant with a distinct slot and definition. The collision guard
+// keys every variant apart by selector material.
 //
 // The [targets] map is the shared, target-specific gate result Attack enforces
 // against a chosen target before executing: it carries each candidate's
@@ -275,34 +273,99 @@ func (m *Manager) compileOffersFor(
 			}, activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
-	slot := slotOf(definition.Cost)
 
-	// Budget gate, asked non-mutatingly through the SAME check combat.Pay
-	// runs to completion before touching anything. The sheet this call
-	// loaded is shared with Move above, so the gate must not spend from it;
-	// CanPay is exactly the check, and a failing check leaves the ledger
-	// untouched for the move declaration already built.
-	budgetOK := combat.CanPay(sheet, definition.Cost)
-	var budgetWhy *Shortfall
-	if !budgetOK {
-		sf := shortfallForPay(sheet, definition.Cost, slot)
-		budgetWhy = &sf
-	}
+	// Compile the raw resolution cast once, then strictly exercise the same
+	// public character/monster load-and-attach APIs resolution uses. Every
+	// Attack variant reuses this exact participant snapshot; selection never
+	// triggers a second repository read.
+	cast, dependencyFailures := m.compileResolutionCast(ctx, data, roster, price.payer)
 
-	candidates, err := m.targetPreflight(enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet())
+	candidates, err := m.targetPreflight(
+		enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet(),
+	)
 	if err != nil {
 		return nil, err
 	}
+	mainAttack, err := compileAttackOffer(&compileAttackOfferInput{
+		SessionID: sessionID, Member: member, Sheet: sheet,
+		Definition: definition, Price: price, Candidates: candidates,
+		Cast: cast, DependencyFailures: dependencyFailures,
+	})
+	if err != nil {
+		return nil, err
+	}
+	attacks := []compiledOffer{mainAttack}
 
-	// Compile the raw resolution cast once, then strictly exercise the same
-	// public character/monster load-and-attach APIs resolution uses. Candidate
-	// failures stay on their rows; any unreadable participant also disables the
-	// declaration globally because resolution's pass-everyone cast could not
-	// start against any selected target. The ephemeral attach bus and loaded
-	// runtime values die here; only the exact raw data snapshot is retained.
-	cast, dependencyFailures := m.compileResolutionCast(ctx, data, roster, price.payer)
+	// The grant is the prior-Attack evidence. Equipment is rechecked before an
+	// off-hand definition is projected, so changing either weapon makes an old
+	// selector stale instead of executing against a declaration that is no
+	// longer true.
+	if sheet.CapacityLeft(combat.CapacityOffHandAttack) > 0 && character.CanMakeOffHandAttack(sheet) {
+		offHandCost, costErr := character.CostOfOffHandAttack(sheet)
+		if costErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, costErr)
+		}
+		offHandDefinition, assembleErr := character.AssembleOffHandAttack(
+			sheet, &character.AssembleOffHandAttackInput{Cost: offHandCost},
+		)
+		if assembleErr != nil {
+			return nil, fmt.Errorf("member %q: %w: %v", member, ErrBadAttack, assembleErr)
+		}
+		offHandPrice := &swingPrice{
+			cost: &resolution.Cost{
+				PayerID: price.cost.PayerID,
+				Profile: combatActions.CloneSpendProfile(offHandDefinition.Cost),
+				Turn:    price.cost.Turn,
+			},
+			payer: price.payer,
+		}
+		offHandAttack, offerErr := compileAttackOffer(&compileAttackOfferInput{
+			SessionID: sessionID, Member: member, Sheet: sheet,
+			Definition: offHandDefinition, Price: offHandPrice, Candidates: candidates,
+			Cast: cast, DependencyFailures: dependencyFailures,
+		})
+		if offerErr != nil {
+			return nil, offerErr
+		}
+		attacks = append(attacks, offHandAttack)
+	}
+
+	offers := append(attacks, move, endTurn)
+	return finishRequestedOffers(requested, append(offers, activations...)...)
+}
+
+// compileAttackOfferInput carries one fully assembled and priced Attack
+// variant into the shared declaration compiler.
+type compileAttackOfferInput struct {
+	SessionID          string
+	Member             string
+	Sheet              *character.Character
+	Definition         combatActions.Definition
+	Price              *swingPrice
+	Candidates         []targetPreflight
+	Cast               []resolution.Participant
+	DependencyFailures []resolutionDependencyFailure
+}
+
+// compileAttackOffer applies the shared budget, dependency, candidate,
+// selector, and projection rules to one Attack variant.
+func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
+	definition := input.Definition
+	slot := slotOf(definition.Cost)
+
+	budgetOK := combat.CanPay(input.Sheet, definition.Cost)
+	var budgetWhy *Shortfall
+	if !budgetOK {
+		shortfall := shortfallForPay(input.Sheet, definition.Cost, slot)
+		budgetWhy = &shortfall
+	}
+
+	// Each offer gets an independent working copy. Dependency failures annotate
+	// candidates, and main/off-hand variants must share the same preflight facts
+	// without sharing those mutable annotations.
+	candidates := cloneTargetPreflights(input.Candidates)
 	var dependencyWhy *Shortfall
-	for _, failure := range dependencyFailures {
+	for _, failure := range input.DependencyFailures {
 		why := Shortfall{
 			Reason: ShortfallUnreadable,
 			Text:   fmt.Sprintf("resolution participant %q is unreadable: %v", failure.member, failure.err),
@@ -321,72 +384,51 @@ func (m *Manager) compileOffersFor(
 		}
 	}
 
-	// Top Attack available requires the global dependency and budget gates AND at least one
-	// candidate in reach. The global budget reason takes precedence over the
-	// no-target-in-reach reason at the declaration level; if the budget
-	// passes but no candidate is in reach, the declaration's Why is
-	// NoTargetInReach while the candidate rows remain, each carrying its own
-	// target-specific verdict.
 	anyAvailable := false
-	for _, c := range candidates {
-		if c.available {
+	for _, candidate := range candidates {
+		if candidate.available {
 			anyAvailable = true
 			break
 		}
 	}
-	attackAvailable := dependencyWhy == nil && budgetOK && anyAvailable
-	var attackWhy *Shortfall
+	available := dependencyWhy == nil && budgetOK && anyAvailable
+	var why *Shortfall
 	switch {
 	case dependencyWhy != nil:
-		attackWhy = dependencyWhy
+		why = dependencyWhy
 	case !budgetOK:
-		attackWhy = budgetWhy
+		why = budgetWhy
 	case !anyAvailable:
 		noTarget := Shortfall{Reason: ShortfallNoTargetInReach, Text: "no target in reach"}
-		attackWhy = &noTarget
+		why = &noTarget
 	}
 
 	attackRef := attackRefFor(definition)
-	attackID, attackVariant, err := selectorIDFor(sessionID, member, VerbAttack, slot, &definition, "")
+	id, variant, err := selectorIDFor(input.SessionID, input.Member, VerbAttack, slot, &definition, "")
 	if err != nil {
-		return nil, err
+		return compiledOffer{}, err
 	}
-
 	targets := make(map[string]targetPreflight, len(candidates))
-	for _, c := range candidates {
-		targets[c.member] = c
+	for _, candidate := range candidates {
+		targets[candidate.member] = candidate
 	}
 
-	attack := compiledOffer{
+	return compiledOffer{
 		declaration: Declaration{
-			Verb:       VerbAttack,
-			Slot:       slot,
-			Available:  attackAvailable,
-			Why:        attackWhy,
-			ID:         attackID,
-			Attack:     &attackRef,
-			TargetKind: TargetMember,
-			Candidates: projectCandidates(candidates),
+			Verb: VerbAttack, Slot: slot, Available: available, Why: why, ID: id,
+			Attack: &attackRef, TargetKind: TargetMember, Candidates: projectCandidates(candidates),
 		},
-		attack:  &definition,
-		targets: targets,
-		sheet:   sheet,
-		price:   price,
-		cast:    cast,
-		verb:    VerbAttack,
-		slot:    slot,
-		variant: attackVariant,
-	}
-
-	return finishRequestedOffers(requested, append([]compiledOffer{attack, move, endTurn}, activations...)...)
+		attack: &definition, targets: targets, sheet: input.Sheet,
+		price: input.Price, cast: input.Cast, verb: VerbAttack, slot: slot, variant: variant,
+	}, nil
 }
 
 // finishRequestedOffers filters candidate offers to the requested verbs and
 // runs every compiled selector through the collision guard. Zero-value
 // candidates are ignored; blockers are retained by their declaration verb.
 func finishRequestedOffers(requested map[Verb]bool, candidates ...compiledOffer) ([]compiledOffer, error) {
-	// len(requested) is a floor rather than a count now that VerbActivate
-	// contributes N rows for one requested verb.
+	// len(requested) is a floor rather than a count: Activate and Attack can
+	// each contribute multiple rows for one requested verb.
 	offers := make([]compiledOffer, 0, len(requested))
 	for _, offer := range candidates {
 		if requested[offer.declaration.Verb] {
@@ -555,6 +597,18 @@ func buildTargetPreflight(
 	return out, nil
 }
 
+func cloneTargetPreflights(in []targetPreflight) []targetPreflight {
+	out := make([]targetPreflight, len(in))
+	for i, candidate := range in {
+		out[i] = candidate
+		if candidate.why != nil {
+			why := *candidate.why
+			out[i].why = &why
+		}
+	}
+	return out
+}
+
 // projectCandidates copies the internal preflight slice into the public
 // candidate slice, preserving the sorted order buildTargetPreflight fixed.
 func projectCandidates(candidates []targetPreflight) []TargetCandidate {
@@ -699,17 +753,31 @@ func sortDeclarations(decls []Declaration) {
 		if verbRank(decls[i].Verb) != verbRank(decls[j].Verb) {
 			return verbRank(decls[i].Verb) < verbRank(decls[j].Verb)
 		}
-		// WITHIN a verb, and only Activate ever has more than one — six at
-		// level 1, and however many the character carries after that, which is
-		// the point: the count is a fact about the sheet, not a constant.
-		//
-		// Verb rank alone was a total order while every verb compiled exactly
-		// one offer. With many Activate rows it leaves their order to whatever
-		// the caller appended — stable today, and stable by accident. Ability
-		// ref is a fact about the character, so the panel's order is too.
+		// Main-hand and banked swings precede the bonus-action off-hand attack.
+		// Slot is authored on each declaration, so this order is a server fact
+		// rather than the order two builders happened to append their rows.
+		if decls[i].Verb == VerbAttack && decls[i].Slot != decls[j].Slot {
+			return attackSlotRank(decls[i].Slot) < attackSlotRank(decls[j].Slot)
+		}
+		// Activate rows sort by the ability ref the character carries.
 		if decls[i].Ability != nil && decls[j].Ability != nil {
 			return decls[i].Ability.Ref < decls[j].Ability.Ref
 		}
 		return false
 	})
+}
+
+func attackSlotRank(slot Slot) int {
+	switch slot {
+	case SlotAction:
+		return 0
+	case SlotNone:
+		return 1
+	case SlotBonus:
+		return 2
+	case SlotReaction:
+		return 3
+	default:
+		return 4
+	}
 }

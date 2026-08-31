@@ -385,9 +385,9 @@ func (s *EntitiesTestSuite) TestAMonksUnarmoredDefenseReachesTheJoinedAC() {
 	monk.ArmorClass = 13
 
 	ud := conditions.NewUnarmoredDefenseCondition(conditions.UnarmoredDefenseInput{
-		CharacterID: "bob",
-		Type:        conditions.UnarmoredDefenseMonk,
-		Source:      "dnd5e:classes:monk",
+		MemberID: "bob",
+		Type:     conditions.UnarmoredDefenseMonk,
+		Source:   "dnd5e:classes:monk",
 	})
 	raw, err := ud.ToJSON()
 	s.Require().NoError(err)
