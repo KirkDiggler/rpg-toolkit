@@ -4,6 +4,7 @@
 package world
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -29,9 +30,10 @@ const (
 	// every member of a group target.
 	WitnessTarget
 
-	// WitnessBystanders audiences it to the ids the caller supplied — whoever
-	// happened to be looking. Individual grain enters here: name one lieutenant
-	// and the fact reaches that lieutenant and nobody else.
+	// WitnessBystanders audiences it to whoever the injected [Witness]
+	// capability says was close enough to see. Individual grain enters here:
+	// a host that answers with one lieutenant reaches that lieutenant and
+	// nobody else.
 	WitnessBystanders
 
 	// WitnessTargetAndBystanders audiences it to both. Some things are done in
@@ -123,13 +125,36 @@ type Act struct {
 
 	// Target is who it is aimed at.
 	Target journal.EntityID
-
-	// Bystanders are the ids a bystander-witnessed emission is audienced to.
-	//
-	// The spike takes them from the caller. A finished world would derive them
-	// from sight and position, and that is a seam this example does not have.
-	Bystanders []journal.EntityID
 }
+
+// Witness answers who witnessed a bystander-inclusive act, beyond the actor
+// and target the kernel already knows to include on its own.
+//
+// Witnessing joins the [Resolver] and the clock as a thing this kernel
+// cannot honestly answer for itself. The kernel hands over only what it
+// owns — who acted, who (if anyone) they acted on, and which bystander mode
+// the verb declared — and the host answers from whatever truth it holds.
+// Position, facing, line of sight, room adjacency: none of it is named
+// here, on purpose, so a host built entirely out of those concepts fits
+// behind this interface without the kernel ever learning they exist.
+//
+// Called only for [WitnessBystanders] and [WitnessTargetAndBystanders] —
+// never for [WitnessNobody] or [WitnessTarget], which the kernel already
+// knows the whole answer to without asking.
+//
+// Implementations must be safe for concurrent use.
+type Witness interface {
+	// Bystanders answers who, besides the actor and target, witnessed this
+	// act. Returning an error means the question could not be answered at
+	// all — a wiring fault, the same as a [Resolver] that cannot judge an
+	// attempt.
+	Bystanders(ctx context.Context, actor, target journal.EntityID, mode Witnessing) ([]journal.EntityID, error)
+}
+
+// ErrNoWitness reports a world built without one.
+var ErrNoWitness = errors.New(
+	"this world needs a witness — something to decide who else was close enough to see, and this is the " +
+		"one place a host's own truth about presence and sight plugs in")
 
 // ErrUnknownVerb reports an act naming a verb the world was not given.
 var ErrUnknownVerb = errors.New("nobody here knows how to do that")
@@ -202,7 +227,12 @@ func subjectOf(emission Emission, act Act) journal.EntityID {
 
 // audienceOf always includes the actor: whatever else happened, you saw
 // yourself do it. An audience of nobody else is still nobody else.
-func audienceOf(emission Emission, act Act) journal.Audience {
+//
+// Bystanders are asked for, never assumed: [WitnessBystanders] and
+// [WitnessTargetAndBystanders] are the only modes that consult the injected
+// [Witness] capability. [WitnessNobody] and [WitnessTarget] are answered
+// without it, because the kernel already knows the whole answer.
+func (w *World) audienceOf(ctx context.Context, emission Emission, act Act) (journal.Audience, error) {
 	audience := journal.Audience{act.Actor}
 
 	add := func(id journal.EntityID) {
@@ -211,20 +241,19 @@ func audienceOf(emission Emission, act Act) journal.Audience {
 		}
 	}
 
-	switch emission.Witness {
-	case WitnessTarget:
+	if emission.Witness == WitnessTarget || emission.Witness == WitnessTargetAndBystanders {
 		add(act.Target)
-	case WitnessBystanders:
-		for _, id := range act.Bystanders {
-			add(id)
-		}
-	case WitnessTargetAndBystanders:
-		add(act.Target)
-		for _, id := range act.Bystanders {
-			add(id)
-		}
-	case WitnessNobody:
 	}
 
-	return audience
+	if emission.Witness == WitnessBystanders || emission.Witness == WitnessTargetAndBystanders {
+		bystanders, err := w.witness.Bystanders(ctx, act.Actor, act.Target, emission.Witness)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range bystanders {
+			add(id)
+		}
+	}
+
+	return audience, nil
 }

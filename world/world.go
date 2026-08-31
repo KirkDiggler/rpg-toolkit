@@ -70,6 +70,11 @@ type Config struct {
 	// Resolver is the injected rulebook.
 	Resolver Resolver
 
+	// Witness is the injected answer to who else saw a bystander-inclusive
+	// act. Required, like Resolver, and never defaulted — witnessing is
+	// exactly as much this kernel's business to guess at as dice are.
+	Witness Witness
+
 	// Goals are what the guild is trying to make true of the whole region.
 	Goals []goal.Goal
 
@@ -113,6 +118,7 @@ type World struct {
 	ledger   *quest.Ledger
 	goals    *goal.Tracker
 	resolver Resolver
+	witness  Witness
 	log      *journal.Journal
 }
 
@@ -120,11 +126,14 @@ type World struct {
 //
 // Everything is checked here rather than at first use, so a content package
 // that is missing something is told at startup. Returns [ErrNoResolver],
-// [ErrNoVerbs], one of the verb errors, or whatever graph and quest say about
-// the declarations they were handed.
+// [ErrNoWitness], [ErrNoVerbs], one of the verb errors, or whatever graph and
+// quest say about the declarations they were handed.
 func New(cfg Config) (*World, error) {
 	if cfg.Resolver == nil {
 		return nil, ErrNoResolver
+	}
+	if cfg.Witness == nil {
+		return nil, ErrNoWitness
 	}
 	if len(cfg.Scenario.Verbs) == 0 {
 		return nil, ErrNoVerbs
@@ -151,6 +160,7 @@ func New(cfg Config) (*World, error) {
 		ledger:   ledger,
 		goals:    tracker,
 		resolver: cfg.Resolver,
+		witness:  cfg.Witness,
 		log:      journal.New(),
 	}
 	for _, v := range cfg.Scenario.Verbs {
@@ -169,13 +179,15 @@ func New(cfg Config) (*World, error) {
 // Act is the one door that writes.
 //
 // Look the verb up, ask the resolver if there is anything to ask, pick the
-// outcome the margin reached, work out who saw it, append the fact, and let the
-// jobs look at what the world became. Nothing is checked about the actor beyond
-// the verb existing, because there is nothing to check.
+// outcome the margin reached, ask the witness who else saw it if the
+// emission calls for bystanders, append the fact, and let the jobs look at
+// what the world became. Nothing is checked about the actor beyond the verb
+// existing, because there is nothing to check.
 //
-// Returns [ErrUnknownVerb], or whatever the resolver returned — a resolver
-// error means the attempt could not be judged, which is a wiring fault and
-// leaves the journal untouched.
+// Returns [ErrUnknownVerb], whatever the resolver returned, or whatever the
+// witness returned — either a resolver or a witness error means the attempt
+// could not be judged or its audience could not be answered, which are
+// wiring faults and leave the journal untouched.
 func (w *World) Act(ctx context.Context, act Act) (Result, error) {
 	verb, ok := w.verbs[act.Verb]
 	if !ok {
@@ -188,11 +200,16 @@ func (w *World) Act(ctx context.Context, act Act) (Result, error) {
 	}
 
 	emission := verb.emissionFor(outcome.Margin)
+	audience, err := w.audienceOf(ctx, emission, act)
+	if err != nil {
+		return Result{}, fmt.Errorf("witnessing %q: %w", act.Verb, err)
+	}
+
 	fact, err := w.log.Append(journal.Fact{
 		Kind:     emission.Kind,
 		Actor:    act.Actor,
 		Subject:  subjectOf(emission, act),
-		Audience: audienceOf(emission, act),
+		Audience: audience,
 		Outcome:  outcome,
 	})
 	if err != nil {
