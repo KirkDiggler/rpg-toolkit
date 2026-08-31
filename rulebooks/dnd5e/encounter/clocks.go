@@ -162,17 +162,17 @@ func (e *Encounter) bubbleFor(id MemberID) (*clock.Turn, error) {
 // use this rather than leaving the world clock directly: a member caught in a
 // bubble is NOT on the world clock, so a bare tick Leave would fail for exactly
 // the members most likely to be leaving — the ones in a fight.
-func (e *Encounter) leaveAnyClock(id MemberID) error {
+func (e *Encounter) leaveAnyClock(id MemberID) (map[MemberID]*IntelDelta, error) {
 	bubble, err := e.bubbleFor(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if bubble != nil {
 		if _, rerr := bubble.Remove(&clock.RemoveInput{ID: core.EntityID(id)}); rerr != nil {
-			return rerr
+			return nil, rerr
 		}
 		if derr := e.dropBubbleIfIdle(bubble); derr != nil {
-			return derr
+			return nil, derr
 		}
 		// The exiting member may have been active; see driveIfStillRunning
 		// (rpg-toolkit#1162) — Exit reaches this the same as a mid-fight
@@ -180,7 +180,7 @@ func (e *Encounter) leaveAnyClock(id MemberID) error {
 		return e.driveIfStillRunning(bubble)
 	}
 	_, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)})
-	return lerr
+	return nil, lerr
 }
 
 // dropBubbleIfIdle removes b from the bubble list once its order has emptied.
@@ -294,7 +294,7 @@ func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
 	return false
 }
 
-func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, err error) {
+func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
 	// RE-ENTRANCY GUARD (rpg-toolkit#1207). driveMonsterTurns is the single
 	// owner of driving a bubble forward, and this call may already be
 	// running deeper on THIS SAME Go call stack: a driven member's own
@@ -308,18 +308,18 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 	// ignores: the outer call already owns driving this bubble and will
 	// finish it once its own Strike call returns.
 	if e.driving {
-		return false, 0, nil
+		return false, 0, nil, nil
 	}
 	e.driving = true
 	defer func() { e.driving = false }()
 
 	order, err := bubble.Order()
 	if err != nil {
-		return false, 0, fmt.Errorf("drive monster turns: %w", err)
+		return false, 0, nil, fmt.Errorf("drive monster turns: %w", err)
 	}
 
 	if !e.bubbleHasPlayer(order) {
-		return false, 0, fmt.Errorf("drive monster turns: %w", ErrNoPlayerInBubble)
+		return false, 0, nil, fmt.Errorf("drive monster turns: %w", ErrNoPlayerInBubble)
 	}
 
 	// Bounded by the order's own length: driving past every member once is
@@ -336,7 +336,7 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 		// is.
 		remaining, oerr := bubble.Order()
 		if oerr != nil {
-			return wrapped, lastSeq, fmt.Errorf("drive monster turns: %w", oerr)
+			return wrapped, lastSeq, deltas, fmt.Errorf("drive monster turns: %w", oerr)
 		}
 		if len(remaining) == 0 {
 			break
@@ -344,7 +344,7 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 
 		active, aerr := bubble.Active()
 		if aerr != nil {
-			return wrapped, lastSeq, fmt.Errorf("drive monster turns: %w", aerr)
+			return wrapped, lastSeq, deltas, fmt.Errorf("drive monster turns: %w", aerr)
 		}
 		activeID := MemberID(active)
 		m, ok := e.members[activeID]
@@ -352,15 +352,16 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 			break
 		}
 
-		seq, roundWrapped, derr := e.driveOneMonsterTurn(bubble, active, m)
+		seq, roundWrapped, turnDeltas, derr := e.driveOneMonsterTurn(bubble, active, m)
 		if derr != nil {
-			return wrapped, lastSeq, fmt.Errorf("drive monster turns %q: %w", activeID, derr)
+			return wrapped, lastSeq, deltas, fmt.Errorf("drive monster turns %q: %w", activeID, derr)
 		}
 		wrapped = wrapped || roundWrapped
 		lastSeq = seq
+		deltas = mergeIntelDeltas(deltas, turnDeltas)
 	}
 
-	return wrapped, lastSeq, nil
+	return wrapped, lastSeq, deltas, nil
 }
 
 // driveOneMonsterTurn runs ONE unplayed member's whole turn: build view →
@@ -383,15 +384,16 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 // one of those should cost the whole call.
 func (e *Encounter) driveOneMonsterTurn(
 	bubble *clock.Turn, active core.EntityID, m *memberRecord,
-) (seq uint64, roundWrapped bool, err error) {
+) (seq uint64, roundWrapped bool, deltas map[MemberID]*IntelDelta, err error) {
 	activeID := MemberID(active)
 
 	round, rerr := bubble.Round()
 	if rerr != nil {
-		return 0, false, fmt.Errorf("round: %w", rerr)
+		return 0, false, nil, fmt.Errorf("round: %w", rerr)
 	}
 
 	budget := TurnBudget{AttacksLeft: 1, MovementFeet: m.SpeedFeet}
+	var turnDeltas map[MemberID]*IntelDelta
 
 	// See the function doc: bounded so a misbehaving driver cannot spin the
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
@@ -402,18 +404,19 @@ func (e *Encounter) driveOneMonsterTurn(
 	for j := 0; j < innerBound; j++ {
 		view, verr := e.buildMonsterView(m, budget, round)
 		if verr != nil {
-			return 0, false, fmt.Errorf("view: %w", verr)
+			return 0, false, nil, fmt.Errorf("view: %w", verr)
 		}
 
 		intent, derr := e.turnDriver.Act(view)
 		if derr != nil {
-			return 0, false, fmt.Errorf("act: %w", derr)
+			return 0, false, nil, fmt.Errorf("act: %w", derr)
 		}
 
-		done, dexecerr := e.executeTurnIntent(activeID, m, view, intent, &budget)
+		done, intentDeltas, dexecerr := e.executeTurnIntent(activeID, m, view, intent, &budget)
 		if dexecerr != nil {
-			return 0, false, fmt.Errorf("execute: %w", dexecerr)
+			return 0, false, nil, fmt.Errorf("execute: %w", dexecerr)
 		}
+		turnDeltas = mergeIntelDeltas(turnDeltas, intentDeltas)
 		if done {
 			break
 		}
@@ -434,20 +437,20 @@ func (e *Encounter) driveOneMonsterTurn(
 	// verb (rpg-project#254's live walk, round 4) until this check existed.
 	stillRunning, cerr := bubble.Contains(&clock.ContainsInput{ID: active})
 	if cerr != nil {
-		return 0, false, fmt.Errorf("contains: %w", cerr)
+		return 0, false, nil, fmt.Errorf("contains: %w", cerr)
 	}
 	if !stillRunning {
-		return e.lastRecordedSeq(), false, nil
+		return e.lastRecordedSeq(), false, turnDeltas, nil
 	}
 
 	out, eerr := bubble.End(&clock.EndInput{Actor: active})
 	if eerr != nil {
-		return 0, false, fmt.Errorf("end: %w", eerr)
+		return 0, false, nil, fmt.Errorf("end: %w", eerr)
 	}
 
 	order, oerr := bubble.Order()
 	if oerr != nil {
-		return 0, false, fmt.Errorf("order: %w", oerr)
+		return 0, false, nil, fmt.Errorf("order: %w", oerr)
 	}
 
 	seq, berr := e.appendClockBeat(map[string]interface{}{
@@ -456,7 +459,7 @@ func (e *Encounter) driveOneMonsterTurn(
 		"next":   out.Next,
 	}, order...)
 	if berr != nil {
-		return 0, false, fmt.Errorf("append beat: %w", berr)
+		return 0, false, nil, fmt.Errorf("append beat: %w", berr)
 	}
 
 	// ANNOUNCE HERE, not from the caller once the whole drive is done. This
@@ -466,9 +469,9 @@ func (e *Encounter) driveOneMonsterTurn(
 	// turn-start after the next one had already swung — the exact ordering
 	// [Announcer]'s own doc exists to explain.
 	if aerr := e.announce(out.Milestones); aerr != nil {
-		return 0, false, fmt.Errorf("announce: %w", aerr)
+		return 0, false, nil, fmt.Errorf("announce: %w", aerr)
 	}
-	return seq, out.RoundWrapped, nil
+	return seq, out.RoundWrapped, turnDeltas, nil
 }
 
 // boundariesFrom translates the leaf's milestones into this composition's own
@@ -591,16 +594,16 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 // elsewhere.
 func (e *Encounter) executeTurnIntent(
 	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
-) (done bool, err error) {
+) (done bool, deltas map[MemberID]*IntelDelta, err error) {
 	switch it := intent.(type) {
 	case Pass:
-		return true, nil
+		return true, nil, nil
 
 	case Attack:
 		if !attackIsInReach(view, it) || budget.AttacksLeft <= 0 {
 			// ErrBadIntent: not a driver malfunction (see the type's own
 			// doc) — this member's turn simply ends, exactly like Pass.
-			return true, nil
+			return true, nil, nil
 		}
 
 		// context.Background() rather than a threaded caller context: no
@@ -613,10 +616,10 @@ func (e *Encounter) executeTurnIntent(
 		// cancellation propagated from the host, that is the day to revisit
 		// this rather than the day to speculatively add it everywhere now.
 		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
-			return false, fmt.Errorf("strike: %w", serr)
+			return false, nil, fmt.Errorf("strike: %w", serr)
 		}
 		budget.AttacksLeft = 0
-		return false, nil
+		return false, nil, nil
 
 	case Move:
 		cellsAffordable := CellsFromFeet(budget.MovementFeet)
@@ -625,7 +628,7 @@ func (e *Encounter) executeTurnIntent(
 			// for nothing at all (that is what Pass is for) — this member's
 			// turn ends rather than executing a path it did not fully ask
 			// for.
-			return true, nil
+			return true, nil, nil
 		}
 
 		at := uint64(e.clock.ToData().HighWater)
@@ -641,12 +644,13 @@ func (e *Encounter) executeTurnIntent(
 				break
 			}
 			if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
-				return false, fmt.Errorf("move beat: %w", berr)
+				return false, nil, fmt.Errorf("move beat: %w", berr)
 			}
 			moved++
 		}
 		budget.MovementFeet -= moved * FeetPerCell
 
+		var intelDeltas map[MemberID]*IntelDelta
 		if moved > 0 {
 			// Refreshed once for the whole intent, not per cell — the same
 			// batching Pump uses for its own multi-member tick, and what
@@ -656,8 +660,19 @@ func (e *Encounter) executeTurnIntent(
 			// starting a second one (trigger.go's classify: "a fight
 			// already running is joined, not started again") — the one-
 			// bubble policy is not at risk here.
-			if _, _, serr := e.refreshSight(audience); serr != nil {
-				return false, fmt.Errorf("refresh sight: %w", serr)
+			var serr error
+			intelDeltas, _, serr = e.refreshSight(audience)
+			if serr != nil {
+				return false, nil, fmt.Errorf("refresh sight: %w", serr)
+			}
+			corrected, cerr := e.correctArrivedLocations(activeID, uint64(e.clock.ToData().HighWater), intelDeltas[activeID])
+			if cerr != nil {
+				return false, nil, fmt.Errorf("correct arrived locations: %w", cerr)
+			}
+			if len(corrected) > 0 {
+				intelDeltas = mergeIntelDeltas(intelDeltas, map[MemberID]*IntelDelta{
+					activeID: &IntelDelta{Corrected: corrected},
+				})
 			}
 		}
 
@@ -665,10 +680,10 @@ func (e *Encounter) executeTurnIntent(
 		// even start from here. Ending the turn rather than re-asking
 		// avoids spinning on a request that will not succeed differently
 		// next time this same view is built.
-		return moved == 0, nil
+		return moved == 0, intelDeltas, nil
 
 	default:
-		return false, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
+		return false, nil, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
 	}
 }
 
@@ -702,11 +717,6 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		return MonsterView{}, fmt.Errorf("position: %w", err)
 	}
 
-	down, err := e.standingNow()
-	if err != nil {
-		return MonsterView{}, fmt.Errorf("standing: %w", err)
-	}
-
 	// The member's own holdings and nothing else (C2) — the same call
 	// Pump's own Decider consult makes for a Snapshot, one seam over.
 	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: m.ID})
@@ -731,12 +741,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	}
 
 	var seen []SeenMember
+	var remembered []RememberedMember
+	var down map[MemberID]bool
+	standingLoaded := false
 	for _, h := range holdings {
-		// Sight channel, ACTIVELY sustained only (intel.Current) — a stale
-		// "held" memory (intel.Held, a ghost: known but not currently
-		// sustained) is not something this member can act on this turn, so
-		// it is excluded here rather than left for a driver to filter.
-		if h.Channel != intel.Sight || h.Status != intel.Current {
+		// Only location testimony from the sight channel is meaningful here.
+		// Unknown testimony deliberately populates neither collection.
+		if h.Channel != intel.Sight {
 			continue
 		}
 		subjectID := MemberID(h.Subject)
@@ -744,9 +755,40 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		if !ok {
 			continue
 		}
-		pos, ok := DecodeSightPayload(h.Payload)
-		if !ok {
+		location, ok := DecodeLocationPayload(h.Payload)
+		if !ok || location.State == LocationUnknown {
 			continue
+		}
+		pos := location.Position
+
+		if h.Status == intel.Held {
+			path, reachable := e.bfsShortestPath(ownCell, func(cell spatial.Position) bool {
+				return cell == pos
+			})
+			if !reachable {
+				path = nil
+			}
+			remembered = append(remembered, RememberedMember{
+				ID:            subjectID,
+				Kind:          other.Kind,
+				Position:      pos,
+				DistanceCells: e.Distance(ownCell, pos),
+				Path:          path,
+			})
+			continue
+		}
+		if h.Status != intel.Current {
+			continue
+		}
+
+		// Standing is needed only for current sightings. Held memories are
+		// intentionally not enriched with a hidden standing fact.
+		if !standingLoaded {
+			down, err = e.standingNow()
+			if err != nil {
+				return MonsterView{}, fmt.Errorf("standing: %w", err)
+			}
+			standingLoaded = true
 		}
 
 		dist := e.Distance(ownCell, pos)
@@ -794,15 +836,17 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// C8: a driver asked twice against unchanged data must see the same
 	// order, not whatever order the intel map happened to range in.
 	sort.Slice(seen, func(i, j int) bool { return seen[i].ID < seen[j].ID })
+	sort.Slice(remembered, func(i, j int) bool { return remembered[i].ID < remembered[j].ID })
 
 	return MonsterView{
-		Self:      m.ID,
-		Position:  ownCell,
-		Actions:   m.Actions,
-		Targeting: m.Targeting,
-		Seen:      seen,
-		Budget:    budget,
-		Round:     round,
+		Self:       m.ID,
+		Position:   ownCell,
+		Actions:    m.Actions,
+		Targeting:  m.Targeting,
+		Seen:       seen,
+		Remembered: remembered,
+		Budget:     budget,
+		Round:      round,
 	}, nil
 }
 
@@ -917,13 +961,13 @@ func (e *Encounter) bfsShortestPath(from spatial.Position, goal func(spatial.Pos
 // (rpg-toolkit#1162). Both callers reach this through the SAME
 // driveMonsterTurns, so there remains exactly one place that decides what an
 // unplayed member does.
-func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) error {
+func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) (map[MemberID]*IntelDelta, error) {
 	order, err := bubble.Order()
 	if err != nil {
-		return fmt.Errorf("drive if still running: %w", err)
+		return nil, fmt.Errorf("drive if still running: %w", err)
 	}
 	if len(order) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// UNLIKE EndTurn and form, a player-free bubble IS reachable here: Exit
@@ -934,11 +978,11 @@ func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) error {
 	// driven-through turn back to, so this is a no-op rather than the defect
 	// ErrNoPlayerInBubble names for EndTurn/form's unreachable case.
 	if !e.bubbleHasPlayer(order) {
-		return nil
+		return nil, nil
 	}
 
-	_, _, err = e.driveMonsterTurns(bubble)
-	return err
+	_, _, deltas, err := e.driveMonsterTurns(bubble)
+	return deltas, err
 }
 
 // FormInput carries the rulebook-rolled initiative order a new bubble starts
@@ -962,6 +1006,10 @@ type FormInput struct {
 
 // FormOutput reports what forming the bubble appended to the story.
 type FormOutput struct {
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns started by formation.
+	IntelDeltas map[MemberID]*IntelDelta
+
 	// Seq is the story sequence of the formation beat.
 	Seq uint64
 }
@@ -1081,11 +1129,12 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	// reader replaying the story must see the fight announced before anyone's
 	// turn inside it can end, and a client reading FIGHT_STARTED sees a
 	// PLAYED member active by the time this verb returns either way.
-	if _, _, derr := e.driveMonsterTurns(bubble); derr != nil {
+	_, _, intelDeltas, derr := e.driveMonsterTurns(bubble)
+	if derr != nil {
 		return nil, fmt.Errorf("form: %w", derr)
 	}
 
-	return &FormOutput{Seq: seq}, nil
+	return &FormOutput{IntelDeltas: intelDeltas, Seq: seq}, nil
 }
 
 // TransferInput moves one member between the world clock and the running
@@ -1108,6 +1157,10 @@ type TransferInput struct {
 
 // TransferOutput reports what the transfer appended to the story.
 type TransferOutput struct {
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns started by the transfer.
+	IntelDeltas map[MemberID]*IntelDelta
+
 	// Seq is the story sequence of the transfer beat.
 	Seq uint64
 }
@@ -1145,6 +1198,7 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("transfer %q: %w", in.Member, err)
 	}
+	var intelDeltas map[MemberID]*IntelDelta
 
 	switch in.To {
 	case ClockTurn:
@@ -1208,7 +1262,9 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		// this branch would otherwise be making is simply the wrong one to
 		// make at all when nothing is actually stalled.
 		if departedWasActive {
-			if derr := e.driveIfStillRunning(bubble); derr != nil {
+			var derr error
+			intelDeltas, derr = e.driveIfStillRunning(bubble)
+			if derr != nil {
 				return nil, fmt.Errorf("transfer %q: %w", in.Member, derr)
 			}
 		}
@@ -1236,7 +1292,7 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("transfer append beat: %w", err)
 	}
-	return &TransferOutput{Seq: seq}, nil
+	return &TransferOutput{IntelDeltas: intelDeltas, Seq: seq}, nil
 }
 
 // EndTurnInput names the member ending their own turn in the fight they are
@@ -1275,6 +1331,10 @@ type EndTurnOutput struct {
 	// each one reads Story from its own baseline, the same way every other
 	// verb's fan-out works.
 	Seq uint64
+
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns this end advanced through.
+	IntelDeltas map[MemberID]*IntelDelta
 }
 
 // EndTurn advances the fight past the member's turn — and past every
@@ -1350,6 +1410,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	next := MemberID(out.Next)
 	wrapped := out.RoundWrapped
 	lastSeq := seq
+	var intelDeltas map[MemberID]*IntelDelta
 
 	// If the clock landed on a member with no player, drive them (and any
 	// consecutive unplayed members after them) forward before this verb
@@ -1357,11 +1418,12 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	// actually waiting on THEM in one round trip; the intervening passes ride
 	// the story and the event stream as their own turn-ended beats.
 	if m, ok := e.members[next]; ok && m.Kind != KindPlayer {
-		moreWrapped, moreSeq, derr := e.driveMonsterTurns(bubble)
+		moreWrapped, moreSeq, moreDeltas, derr := e.driveMonsterTurns(bubble)
 		if derr != nil {
 			return nil, fmt.Errorf("end turn %q: %w", in.Member, derr)
 		}
 		wrapped = wrapped || moreWrapped
+		intelDeltas = mergeIntelDeltas(intelDeltas, moreDeltas)
 		if moreSeq != 0 {
 			lastSeq = moreSeq
 		}
@@ -1399,5 +1461,6 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		Next:         next,
 		RoundWrapped: wrapped,
 		Seq:          lastSeq,
+		IntelDeltas:  intelDeltas,
 	}, nil
 }

@@ -115,7 +115,7 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// the open seam at first light and trigger detection forms a bubble —
 	// so this is the one place the bubbles array and intel's holdings are
 	// pinned as exact bytes.
-	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJ4IjotMTMsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJ4IjotNSwieSI6N30=","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":4,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"clock":{"driver_progress":{"world":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":1}],"intel":{"holdings":{"g1":{"p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3fQ==","channel":"sight","at":1,"current_via":["sight"]}},"p1":{"g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjd9","channel":"sight","at":1,"current_via":["sight"]}}}},"log":{"next_seq":5,"entries":[{"seq":1,"audience":["p1","g1"],"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":3,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":4,"at":1,"audience":["g1","p1"],"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7}},{"id":"p1","kind":"player","cell":{"x":-13,"y":7}}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
 	s.Equal(expected, string(bs))
 }
 
@@ -1138,6 +1138,35 @@ func validEncounterData() encounter.EncounterData {
 	}
 }
 
+func setSightHolding(t *testing.T, data *encounter.EncounterData, payload []byte, currentVia []intel.Channel) {
+	t.Helper()
+	// The minimal fixture has no intel holdings, so use one deterministic
+	// observer/subject pair when the caller asks to add a testimony. Existing
+	// holdings are preserved if a richer fixture supplies them.
+	for observer, subjects := range data.Intel.Holdings {
+		for subject, holding := range subjects {
+			if holding.Channel != intel.Sight {
+				continue
+			}
+			holding.Payload = append([]byte(nil), payload...)
+			holding.CurrentVia = append([]intel.Channel(nil), currentVia...)
+			data.Intel.Holdings[observer][subject] = holding
+			return
+		}
+	}
+	if data.Intel.Holdings == nil {
+		data.Intel.Holdings = make(map[core.EntityID]map[intel.Subject]intel.HoldingData)
+	}
+	if data.Intel.Holdings["p1"] == nil {
+		data.Intel.Holdings["p1"] = make(map[intel.Subject]intel.HoldingData)
+	}
+	payloadCopy := append([]byte(nil), payload...)
+	viaCopy := append([]intel.Channel(nil), currentVia...)
+	data.Intel.Holdings["p1"][intel.Subject("target")] = intel.HoldingData{
+		Payload: payloadCopy, Channel: intel.Sight, At: 1, CurrentVia: viaCopy,
+	}
+}
+
 // TestLoadNilInputRejected pins the guard the Input signature introduced (#976).
 // A nil input is the one failure the two-parameter form could not have: it must
 // reject rather than panicking on a nil dereference.
@@ -1328,6 +1357,36 @@ func (s *DataTestSuite) TestLoadRejections() {
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: validEncounterData()})
 	s.Require().NoError(err, "the valid base fixture must load")
+}
+
+func (s *DataTestSuite) TestLoadRejectsMalformedOrUnknownSightLocation() {
+	tests := []struct {
+		name       string
+		payload    []byte
+		currentVia []intel.Channel
+	}{
+		{name: "unknown carries coordinate", payload: []byte(`{"state":"unknown","x":1}`)},
+		{name: "current unknown", payload: []byte(`{"state":"unknown"}`), currentVia: []intel.Channel{intel.Sight}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			data := validEncounterData()
+			setSightHolding(s.T(), &data, tt.payload, tt.currentVia)
+			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+				Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data,
+			})
+			s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		})
+	}
+}
+
+func (s *DataTestSuite) TestLoadAcceptsHeldUnknownSightLocation() {
+	data := validEncounterData()
+	setSightHolding(s.T(), &data, []byte(`{"state":"unknown"}`), nil)
+	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data,
+	})
+	s.Require().NoError(err)
 }
 
 // ============================================================
@@ -1597,4 +1656,53 @@ func (s *DataTestSuite) TestMutation7TickResetOnLoad() {
 		s.Equal(tick1, tick2, "clock must not reset on load")
 		s.Equal(int(0), tick2, "initial tick reading should be 0")
 	})
+}
+
+// TestRememberedArrivalCorrectionPersistsUnknown verifies that a lawful
+// driven-arrival correction survives ToData/LoadEncounter without being
+// silently re-surveiled, and that the next driven view treats the corrected
+// subject as neither Seen nor Remembered.
+func (s *DataTestSuite) TestRememberedArrivalCorrectionPersistsUnknown() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	enc := newDrivenArrivalEncounter(s.T(), driver, &sightList{fallback: 0}, arrival, cellAt(7, 7), false)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Contains(out.IntelDeltas[goblin].Corrected, intel.Subject(billy))
+
+	data := enc.ToData()
+	nextDriver := &scriptedDriver{}
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: &sightList{fallback: 0}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		TurnDriver: nextDriver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+
+	holding := requireHolding(s.T(), loaded, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, holding.Status)
+	requireUnknownLocation(s.T(), holding.Payload)
+
+	// Walk the persisted bubble back to Alice's turn. The next driven view is
+	// then built from the Held+Unknown holding, so Billy must not appear in
+	// either current or remembered sight.
+	next := out.Next
+	for _, want := range []encounter.MemberID{billy, carol, alice} {
+		s.Require().Equal(want, next)
+		advanced, advanceErr := loaded.EndTurn(&encounter.EndTurnInput{Member: next})
+		s.Require().NoError(advanceErr)
+		next = advanced.Next
+	}
+
+	s.Require().Len(nextDriver.calls, 1)
+	view := nextDriver.calls[0]
+	for _, seen := range view.Seen {
+		s.Require().NotEqual(encounter.MemberID(billy), seen.ID)
+	}
+	for _, remembered := range view.Remembered {
+		s.Require().NotEqual(encounter.MemberID(billy), remembered.ID)
+	}
 }

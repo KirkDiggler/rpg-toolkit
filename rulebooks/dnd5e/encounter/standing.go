@@ -180,18 +180,18 @@ func (e *Encounter) standingNow() (map[MemberID]bool, error) {
 // The cost, stated rather than hidden: the story has a retention window, so a
 // down beat can age out of it, and the next consult will say it again. That is
 // accepted. The obvious fix is to remember, and remembering is the disease.
-func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
+func (e *Encounter) noticeDown() (map[MemberID]bool, map[MemberID]*IntelDelta, error) {
 	down, err := e.standingNow()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(down) == 0 {
-		return down, nil
+		return down, nil, nil
 	}
 
 	told, err := e.storyToldDown()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	fallen := make([]MemberID, 0, len(down))
@@ -206,15 +206,16 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 			continue
 		}
 		if berr := e.appendDownBeat(id); berr != nil {
-			return nil, berr
+			return nil, nil, berr
 		}
 	}
 
 	// Then what the news does.
+	var intelDeltas map[MemberID]*IntelDelta
 	for _, id := range fallen {
 		bubble, berr := e.bubbleFor(id)
 		if berr != nil {
-			return nil, fmt.Errorf("standing bubble %q: %w", id, berr)
+			return nil, nil, fmt.Errorf("standing bubble %q: %w", id, berr)
 		}
 		if bubble == nil {
 			continue
@@ -226,11 +227,11 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 		// fell alongside this one find no bubble to be spliced out of.
 		decided, derr := e.fightIsDecided(bubble, down)
 		if derr != nil {
-			return nil, fmt.Errorf("standing fight %q: %w", id, derr)
+			return nil, nil, fmt.Errorf("standing fight %q: %w", id, derr)
 		}
 		if decided {
 			if _, xerr := e.dissolveBubble(bubble, ByDefeat()); xerr != nil {
-				return nil, fmt.Errorf("standing dissolve %q: %w", id, xerr)
+				return nil, nil, fmt.Errorf("standing dissolve %q: %w", id, xerr)
 			}
 			continue
 		}
@@ -242,9 +243,11 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 		// The world clock, not nowhere: R6 says every member is on exactly one
 		// clock, and ruled fork (a) on rpg-toolkit#959 says a body is still a
 		// member — on the map, in the roster, recordable, carried by Exit.
-		if _, terr := e.Transfer(&TransferInput{Member: id, To: ClockWorld}); terr != nil {
-			return nil, fmt.Errorf("standing transfer %q: %w", id, terr)
+		transferred, terr := e.Transfer(&TransferInput{Member: id, To: ClockWorld})
+		if terr != nil {
+			return nil, nil, fmt.Errorf("standing transfer %q: %w", id, terr)
 		}
+		intelDeltas = mergeIntelDeltas(intelDeltas, transferred.IntelDeltas)
 	}
 
 	// Then whether the world just ended. AFTER the bubble logic above, so a
@@ -259,11 +262,11 @@ func (e *Encounter) noticeDown() (map[MemberID]bool, error) {
 	// at the next consult.
 	if e.outcome == nil {
 		if err := e.firedMemberDown(down); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	return down, nil
+	return down, intelDeltas, nil
 }
 
 // firedMemberDown evaluates every declared MemberDown ending against who is

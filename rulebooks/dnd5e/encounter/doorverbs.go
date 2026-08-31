@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
@@ -82,7 +81,7 @@ type OpenDoorOutput struct {
 
 	// IntelDeltas maps member IDs to their updated percepts after the refresh.
 	// An opened door is the whole reason this verb refreshes sight.
-	IntelDeltas map[MemberID]*intel.SurveilOutput
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seq is the sequence number of the recorded beat.
 	Seq uint64
@@ -160,7 +159,7 @@ type CloseDoorOutput struct {
 	// IntelDeltas maps member IDs to their updated percepts after the refresh.
 	// Shutting a door takes things OUT of sight, which is a change a percept
 	// has to hear about just as much as one that puts things in.
-	IntelDeltas map[MemberID]*intel.SurveilOutput
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seq is the sequence number of the recorded beat.
 	Seq uint64
@@ -274,7 +273,7 @@ type UnlockOutput struct {
 
 	// IntelDeltas maps member IDs to their updated percepts. Empty of changes
 	// on a failed attempt, because nothing moved.
-	IntelDeltas map[MemberID]*intel.SurveilOutput
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seq is the sequence number of the recorded beat. A failed attempt gets
 	// one too: somebody tried, and the story is what happened rather than what
@@ -362,7 +361,7 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 // it refreshed.
 type doorChange struct {
 	seq    uint64
-	deltas map[MemberID]*intel.SurveilOutput
+	deltas map[MemberID]*IntelDelta
 	formed *FormedBubble
 }
 
