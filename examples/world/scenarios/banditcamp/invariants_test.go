@@ -291,14 +291,29 @@ func (s *InvariantSuite) TestScenariosDoNotDependOnEachOther() {
 	// needed is one layer up — the act loop, the verb vocabulary, the resolver
 	// seam, the dice. If one scenario ever imports another, something they
 	// share failed to get promoted and is being borrowed sideways instead.
-	scenarios := map[string]string{
-		"../banditcamp":  "examples/world/scenarios/hostagecamp",
-		"../hostagecamp": "examples/world/scenarios/banditcamp",
+	//
+	// Three scenarios now (tomb joined on #1337), so each entry names every
+	// sibling it must not reach into rather than just the one it used to.
+	scenarios := map[string][]string{
+		"../banditcamp": {
+			"examples/world/scenarios/hostagecamp",
+			"examples/world/scenarios/tomb",
+		},
+		"../hostagecamp": {
+			"examples/world/scenarios/banditcamp",
+			"examples/world/scenarios/tomb",
+		},
+		"../tomb": {
+			"examples/world/scenarios/banditcamp",
+			"examples/world/scenarios/hostagecamp",
+		},
 	}
 
 	for dir, forbidden := range scenarios {
 		for _, imported := range s.toolkitImportsOf(dir) {
-			s.NotContainsf(imported, forbidden, "%s reaches sideways into another scenario", dir)
+			for _, f := range forbidden {
+				s.NotContainsf(imported, f, "%s reaches sideways into another scenario", dir)
+			}
 		}
 	}
 }
