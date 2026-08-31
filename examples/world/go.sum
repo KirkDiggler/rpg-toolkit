@@ -14,8 +14,8 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.122.2 h1:w82uNMTXkQFKLRLMA
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.122.2/go.mod h1:DimIKXyoLKh2S3LO0FZBHaB5QBq4biIgVoQ0FekbXnY=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.2-0.20260804104806-a8a4dd3fc92a h1:RakGkKXCpu/2wDWOs4bbnEWibpJLlTr0OW1w77JCyxI=
 github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.2-0.20260804104806-a8a4dd3fc92a/go.mod h1:z5WFtaT46GCz4lmDOKzeuFbSk8SRuZbKCf441M0yDa8=
-github.com/KirkDiggler/rpg-toolkit/world v0.1.0 h1:1GAAGEU88VY9Gdur3iAoVTyICl1229vfnyl/HFzFIcY=
-github.com/KirkDiggler/rpg-toolkit/world v0.1.0/go.mod h1:HguA/PKp3dW1zKbdiU/4qwtrxZ1Uj6eBoVcLaBKzhsw=
+github.com/KirkDiggler/rpg-toolkit/world v0.2.0 h1:/ctNJ4FGrMpoBqW3N3Iu5Y4wz/otPY6gcsipS9ugnVc=
+github.com/KirkDiggler/rpg-toolkit/world v0.2.0/go.mod h1:HguA/PKp3dW1zKbdiU/4qwtrxZ1Uj6eBoVcLaBKzhsw=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=

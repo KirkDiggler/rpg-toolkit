@@ -90,7 +90,11 @@ func (s *UC4Suite) build(rolls ...int) *world.World {
 	scenario, err := tomb.New(s.config())
 	s.Require().NoError(err)
 
-	built, err := world.New(world.Config{Scenario: scenario, Resolver: resolver})
+	built, err := world.New(world.Config{
+		Scenario: scenario,
+		Resolver: resolver,
+		Witness:  scripted.NewWitness(tomb.Party),
+	})
 	s.Require().NoError(err)
 
 	return built
@@ -166,10 +170,7 @@ func (s *UC4Suite) TestFightPathTransfersKnowledgeAndPaysTwice() {
 	s.Require().NoError(err)
 
 	s.Run("defeating the captain teaches whoever was there", func() {
-		result, err := w.Act(s.ctx, world.Act{
-			Verb: tomb.Defeat, Actor: tomb.Thane, Target: captainID,
-			Bystanders: []journal.EntityID{tomb.Party},
-		})
+		result, err := w.Act(s.ctx, world.Act{Verb: tomb.Defeat, Actor: tomb.Thane, Target: captainID})
 		s.Require().NoError(err)
 		s.Equal(tomb.FactLocationKnown, result.Fact.Kind)
 
@@ -178,10 +179,7 @@ func (s *UC4Suite) TestFightPathTransfersKnowledgeAndPaysTwice() {
 	})
 
 	s.Run("the boss room's chest is a reward of its own", func() {
-		result, err := w.Act(s.ctx, world.Act{
-			Verb: tomb.Loot, Actor: tomb.Thane, Target: tomb.BossRoom,
-			Bystanders: []journal.EntityID{tomb.Party},
-		})
+		result, err := w.Act(s.ctx, world.Act{Verb: tomb.Loot, Actor: tomb.Thane, Target: tomb.BossRoom})
 		s.Require().NoError(err)
 		s.Equal(tomb.FactLooted, result.Fact.Kind)
 		s.True(w.View(tomb.Thane).Flagged(tomb.Looted, tomb.BossRoom))
@@ -190,10 +188,7 @@ func (s *UC4Suite) TestFightPathTransfersKnowledgeAndPaysTwice() {
 	s.Run("a knower still has to get through the door", func() {
 		// Thane's fighting arm does not pick locks — Finch is the one with
 		// Sleight of Hand, and the captain's defeat already taught her too.
-		result, err := w.Act(s.ctx, world.Act{
-			Verb: tomb.Open, Actor: tomb.Finch, Target: artifactID,
-			Bystanders: []journal.EntityID{tomb.Party},
-		})
+		result, err := w.Act(s.ctx, world.Act{Verb: tomb.Open, Actor: tomb.Finch, Target: artifactID})
 		s.Require().NoError(err)
 		s.Equal(tomb.FactDoorOpened, result.Fact.Kind)
 		s.True(w.View(tomb.Finch).Flagged(tomb.Recovered, artifactID))
@@ -262,10 +257,7 @@ func (s *UC4Suite) TestPartyMatesSeeNoDoorUntilAKnowerOpensIt() {
 	})
 
 	s.Run("Finch opening it in front of him shares it", func() {
-		result, err := w.Act(s.ctx, world.Act{
-			Verb: tomb.Open, Actor: tomb.Finch, Target: artifactID,
-			Bystanders: []journal.EntityID{tomb.Bram},
-		})
+		result, err := w.Act(s.ctx, world.Act{Verb: tomb.Open, Actor: tomb.Finch, Target: artifactID})
 		s.Require().NoError(err)
 		s.Equal(tomb.FactDoorOpened, result.Fact.Kind)
 

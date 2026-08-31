@@ -68,7 +68,11 @@ func (s *InvariantSuite) rig(rolls ...int) rig {
 	})
 	s.Require().NoError(err)
 
-	built, err := world.New(world.Config{Scenario: banditcamp.Scenario(), Resolver: resolver})
+	built, err := world.New(world.Config{
+		Scenario: banditcamp.Scenario(),
+		Resolver: resolver,
+		Witness:  scripted.NewWitness(banditcamp.Lieutenant),
+	})
 	s.Require().NoError(err)
 
 	return rig{w: built}
@@ -98,7 +102,6 @@ func (s *InvariantSuite) TestAnyActorMayAttemptAnyPath() {
 
 			result, err := r.w.Act(s.ctx, world.Act{
 				Verb: attempt.verb, Actor: actor, Target: attempt.target,
-				Bystanders: []journal.EntityID{banditcamp.Lieutenant},
 			})
 			s.Require().NoErrorf(err, "%s attempting %s", actor, attempt.verb)
 			s.Truef(result.Fact.Outcome.Contested, "%s attempting %s was never judged", actor, attempt.verb)
@@ -256,11 +259,14 @@ func (s *InvariantSuite) TestKernelPackagesImportNoRulebook() {
 		}
 	}
 
-	// scripted is the one thing left here that the kernel packages used to
-	// share a directory with. It still imports nothing at all, toolkit or
-	// otherwise, so it cannot smuggle a rulebook into anything that reaches
-	// for it.
-	s.Empty(s.toolkitImportsOf("../../scripted"))
+	// scripted now legitimately depends on world and world/journal — the
+	// scripted witness answers world.Witness, per rpg-project
+	// ideas/living-world/brainstorm.md §22 — so it no longer imports nothing
+	// at all. What still holds, and is still worth checking, is that it never
+	// reaches for a rulebook either.
+	for _, imported := range s.toolkitImportsOf("../../scripted") {
+		s.NotContainsf(imported, "rulebooks/", "scripted imports a rulebook: %s", imported)
+	}
 }
 
 // worldModuleDeps returns pkg's full transitive dependency closure, filtered

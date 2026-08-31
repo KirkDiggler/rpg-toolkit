@@ -68,6 +68,9 @@ func (s *UC1Suite) script(rolls ...int) {
 	built, err := world.New(world.Config{
 		Scenario: banditcamp.Scenario(),
 		Resolver: resolver,
+		// The camp's only bystander-inclusive fact is a failed impersonation,
+		// witnessed by the one lieutenant close enough to see through it.
+		Witness: scripted.NewWitness(banditcamp.Lieutenant),
 	})
 	s.Require().NoError(err)
 	s.w = built
@@ -79,25 +82,19 @@ func (s *UC1Suite) script(rolls ...int) {
 	s.job = job
 }
 
-func (s *UC1Suite) act(
-	verb world.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID,
-) world.Result {
+func (s *UC1Suite) act(verb world.VerbName, actor, target journal.EntityID) world.Result {
 	s.T().Helper()
 
-	result, err := s.w.Act(s.ctx, world.Act{
-		Verb: verb, Actor: actor, Target: target, Bystanders: bystanders,
-	})
+	result, err := s.w.Act(s.ctx, world.Act{Verb: verb, Actor: actor, Target: target})
 	s.Require().NoError(err)
 
 	return result
 }
 
-func (s *UC1Suite) do(
-	verb world.VerbName, actor, target journal.EntityID, bystanders ...journal.EntityID,
-) journal.Fact {
+func (s *UC1Suite) do(verb world.VerbName, actor, target journal.EntityID) journal.Fact {
 	s.T().Helper()
 
-	return s.act(verb, actor, target, bystanders...).Fact
+	return s.act(verb, actor, target).Fact
 }
 
 func (s *UC1Suite) view(observer journal.EntityID) *graph.State {
@@ -348,8 +345,9 @@ func (s *UC1Suite) TestBlownDisguise() {
 	s.do(banditcamp.Assassinate, banditcamp.Rook, banditcamp.Leader)
 	s.do(banditcamp.Impersonate, banditcamp.Rook, banditcamp.Camp)
 
-	// Only the lieutenant is close enough to see this one fail.
-	reveal := s.do(banditcamp.Impersonate, banditcamp.Rook, banditcamp.Camp, banditcamp.Lieutenant)
+	// The scripted witness answers the lieutenant for this whole suite — he
+	// is the only one close enough to see this one fail.
+	reveal := s.do(banditcamp.Impersonate, banditcamp.Rook, banditcamp.Camp)
 
 	s.Run("the reveal is about the impostor and reaches one witness", func() {
 		s.False(reveal.Outcome.Succeeded)
