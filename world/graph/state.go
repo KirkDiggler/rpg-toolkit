@@ -49,24 +49,65 @@ type State struct {
 
 	edges    []Edge
 	refusals []string
+
+	// hiddenEntities are the concealed entities not currently visible to
+	// this observer — empty for [World.Truth], which bypasses concealment
+	// entirely, and for any world with nothing declared concealed at all.
+	hiddenEntities map[journal.EntityID]bool
 }
 
-func (w *World) initialState(observer journal.EntityID) *State {
+// initialState seeds a fold's starting point: slots as declared, and
+// structure filtered by concealment. allFacts is the truth-grain fact list —
+// used here to resolve every [Reveal] before a single reducer runs, since a
+// reveal has to hold for an observer with zero witnessed facts of their own,
+// which the reducer pass below never sees. [World.Truth] passes an empty
+// observer and bypasses concealment altogether: nothing is ever hidden from
+// it, revealed or not.
+func (w *World) initialState(observer journal.EntityID, allFacts []journal.Fact) *State {
 	s := &State{
-		observer: observer,
-		world:    w,
-		slots:    make(map[slotKey]journal.EntityID, len(w.slots)),
-		counters: make(map[counterKey]int),
-		flags:    make(map[flagKey]bool),
-		labels:   make(map[labelKey]string),
-		edges:    slices.Clone(w.edges),
+		observer:       observer,
+		world:          w,
+		slots:          make(map[slotKey]journal.EntityID, len(w.slots)),
+		counters:       make(map[counterKey]int),
+		flags:          make(map[flagKey]bool),
+		labels:         make(map[labelKey]string),
+		hiddenEntities: make(map[journal.EntityID]bool),
 	}
 
 	for _, slot := range w.slots {
 		s.slots[slotKey{role: slot.Role, of: slot.Of}] = slot.Occupant
 	}
 
+	truth := observer == ""
+	revealedEntities, revealedEdges := w.revealed(allFacts)
+
+	for _, id := range w.order {
+		e := w.entities[id]
+		if e.Concealed && !truth && !revealedEntities[id] {
+			s.hiddenEntities[id] = true
+		}
+	}
+
+	for _, e := range w.edges {
+		if e.Concealed && !truth && !revealedEdges[bareEdge(e)] {
+			continue
+		}
+		s.edges = append(s.edges, bareEdge(e))
+	}
+
 	return s
+}
+
+// Visible reports whether an entity's own structure is visible in this
+// present.
+//
+// An entity that was never declared concealed is always visible — this is
+// the zero-value truth that keeps every world with no concealment behaving
+// exactly as it did before this existed. A concealed one is visible once
+// [World.Truth] is asking, once a [Reveal] has fired for it on the truth
+// grain, or once a [Pierce] has fired for it in this observer's own fold.
+func (s *State) Visible(id journal.EntityID) bool {
+	return !s.hiddenEntities[id]
 }
 
 // Observer names whose present this is. It is empty for [World.Truth].

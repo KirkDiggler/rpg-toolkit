@@ -30,6 +30,26 @@
 // [World.Truth] folds every fact regardless of audience. It is for tests and
 // for a game master's seat, never for deciding how someone behaves.
 //
+// # Concealment has two grains
+//
+// An [Entity] or [Edge] may be declared [Entity.Concealed] or
+// [Edge.Concealed]: hidden from [World.StateFor] until something says
+// otherwise, present in [World.Truth] always. Two declarations say otherwise,
+// on two different grains:
+//
+//   - [Pierce] folds on the audience grain, exactly like a reducer: the
+//     observer whose own witnessed facts include the piercing fact sees the
+//     structure, and nobody else does — a search that finds a hidden door
+//     tells the searcher, and only the searcher.
+//   - [Reveal] folds on the truth grain: once any fact has ever satisfied it,
+//     every observer sees the structure from then on, including one with no
+//     witnessed facts about it at all. Perceiving present state is not
+//     witnessing past events, so a party that arrives after a door was
+//     opened sees an open door.
+//
+// [State.Visible] answers for an entity; [State.HasEdge] and [State.Edges]
+// already answer for an edge, concealment-aware without a second method.
+//
 // # The two stages of a fold
 //
 // Reducers run first, once per witnessed fact in Seq order: [Occupy] and

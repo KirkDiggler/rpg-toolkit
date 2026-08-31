@@ -19,6 +19,7 @@ const (
 	watcherID journal.EntityID = "watcher"
 	bandID    journal.EntityID = "band"
 	scoutID   journal.EntityID = "scout"
+	ghostID   journal.EntityID = "ghost" // never declared, for refusal tests
 
 	faction graph.Kind = "faction"
 	person  graph.Kind = "person"
@@ -107,14 +108,14 @@ func (s *GraphSuite) TestNewRefusesDeclarationsItCannotFold() {
 
 	s.Run("an edge may not name an undeclared entity", func() {
 		cfg := s.declaration()
-		cfg.Edges = append(cfg.Edges, graph.Edge{From: holdID, Rel: hostileTo, To: "ghost"})
+		cfg.Edges = append(cfg.Edges, graph.Edge{From: holdID, Rel: hostileTo, To: ghostID})
 		_, err := graph.New(cfg)
 		s.Require().ErrorIs(err, graph.ErrUnknownEntity)
 	})
 
 	s.Run("a slot may not name an undeclared occupant", func() {
 		cfg := s.declaration()
-		cfg.Slots = append(cfg.Slots, graph.Slot{Role: "guards", Of: bandID, Occupant: "ghost"})
+		cfg.Slots = append(cfg.Slots, graph.Slot{Role: "guards", Of: bandID, Occupant: ghostID})
 		_, err := graph.New(cfg)
 		s.Require().ErrorIs(err, graph.ErrUnknownEntity)
 	})
