@@ -99,6 +99,42 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 	s.False(finalEvent.Components[1].IsCritical, "flat two-weapon fighting damage is not doubled")
 }
 
+func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddANegativeModifierTwice() {
+	twf := conditions.NewFightingStyleTwoWeaponFightingCondition("fighter-1")
+	s.Require().NoError(twf.Apply(s.ctx, s.bus))
+	defer func() { _ = twf.Remove(s.ctx, s.bus) }()
+
+	damageEvent := &dnd5eEvents.DamageChainEvent{
+		AttackerID:       "fighter-1",
+		TargetID:         "goblin-1",
+		WeaponDamageType: damage.Slashing,
+		IsOffHandAttack:  true,
+		AbilityModifier:  -2,
+		Components: []dnd5eEvents.DamageComponent{
+			{
+				Source:         dnd5eEvents.DamageSourceWeapon,
+				Properties:     []damage.Property{damage.AddsAttackAbilityModifier},
+				FinalDiceRolls: []int{4},
+				DamageType:     damage.Slashing,
+			},
+			{
+				Source:     dnd5eEvents.DamageSourceAbility,
+				FlatBonus:  -2,
+				DamageType: damage.Slashing,
+			},
+		},
+	}
+
+	damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
+	modifiedChain, err := dnd5eEvents.DamageChain.On(s.bus).PublishWithChain(s.ctx, damageEvent, damageChain)
+	s.Require().NoError(err)
+	finalEvent, err := modifiedChain.Execute(s.ctx, damageEvent)
+	s.Require().NoError(err)
+
+	s.Len(finalEvent.Components, 2, "the base rule already retains the negative modifier")
+	s.Equal(-2, finalEvent.Components[1].FlatBonus)
+}
+
 func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack() {
 	twf := conditions.NewFightingStyleTwoWeaponFightingCondition("fighter-1")
 

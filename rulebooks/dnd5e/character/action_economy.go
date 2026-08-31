@@ -12,7 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // GetActionEconomy returns the current action economy data, or nil if not in combat.
@@ -263,7 +262,6 @@ func targetKindForRef(ref *core.Ref) TargetKind {
 	switch ref.ID {
 	// Attack-shaped abilities target one entity.
 	case refs.CombatAbilities.Attack().ID,
-		refs.CombatAbilities.OffHandAttack().ID,
 		refs.CombatAbilities.Help().ID:
 		return TargetKindSingleEntity
 	// Self-affecting abilities (grant a condition on the actor).
@@ -330,21 +328,6 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 			Reason:          c.actionReason(canUse, reason),
 			ResourceCurrent: current,
 			ResourceMax:     max,
-		})
-	}
-
-	// Check for equipment-based Off-Hand Attack
-	if c.hasTwoLightWeapons() {
-		canUse := c.canUseAbilityByActionType(coreCombat.ActionBonus)
-		reason := c.actionTypeExhaustedReason(coreCombat.ActionBonus)
-		result = append(result, AvailableAbility{
-			Ref:         refs.CombatAbilities.OffHandAttack(),
-			Name:        "Off-Hand Attack",
-			ActionType:  coreCombat.ActionBonus,
-			EconomySlot: economySlotForActionType(coreCombat.ActionBonus),
-			TargetKind:  targetKindForRef(refs.CombatAbilities.OffHandAttack()),
-			CanUse:      canUse,
-			Reason:      c.actionReason(canUse, reason),
 		})
 	}
 
@@ -615,23 +598,4 @@ func (c *Character) featureResourceInfo(f features.Feature) (current, max int) {
 
 	_ = key
 	return 0, 0
-}
-
-// hasTwoLightWeapons checks if the character has light weapons in both hands.
-func (c *Character) hasTwoLightWeapons() bool {
-	mainHand := c.GetEquippedSlot(SlotMainHand)
-	offHand := c.GetEquippedSlot(SlotOffHand)
-
-	if mainHand == nil || offHand == nil {
-		return false
-	}
-
-	mainWeapon := mainHand.AsWeapon()
-	offWeapon := offHand.AsWeapon()
-
-	if mainWeapon == nil || offWeapon == nil {
-		return false
-	}
-
-	return mainWeapon.HasProperty(weapons.PropertyLight) && offWeapon.HasProperty(weapons.PropertyLight)
 }

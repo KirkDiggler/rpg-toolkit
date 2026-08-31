@@ -35,7 +35,8 @@ import (
 // grants at this class and level, which is the table
 // [Character.GetExtraAttacksCount] already keeps. A level-5 fighter's Attack
 // action buys two swings; a level-1 fighter's buys one; a level-20 fighter's
-// buys four.
+// buys four. When [CanMakeOffHandAttack] is true, the same action also banks the
+// one two-weapon bonus attack that a later bonus-action declaration may spend.
 //
 // Note what it does NOT cost: the swings themselves. The action banks capacity
 // and [CostOfStrike] spends it, which is why the second swing needs no second
@@ -45,13 +46,18 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 		return nil, rpgerr.New(rpgerr.CodeNil, "no character to price the Attack action for")
 	}
 
+	grants := map[combat.CapacityType]int{
+		combat.CapacityAttack: 1 + c.GetExtraAttacksCount(),
+	}
+	if CanMakeOffHandAttack(c) {
+		grants[combat.CapacityOffHandAttack] = 1
+	}
+
 	return &combat.SpendProfile{
 		Slots: map[coreCombat.ActionType]int{
 			coreCombat.ActionStandard: 1,
 		},
-		Grants: map[combat.CapacityType]int{
-			combat.CapacityAttack: 1 + c.GetExtraAttacksCount(),
-		},
+		Grants: grants,
 	}, nil
 }
 
@@ -73,6 +79,29 @@ func CostOfStrike(c *Character) (*combat.SpendProfile, error) {
 	return &combat.SpendProfile{
 		Capacity: map[combat.CapacityType]int{
 			combat.CapacityAttack: 1,
+		},
+	}, nil
+}
+
+// CostOfOffHandAttack compiles the complete price of the bonus attack
+// granted by two-weapon fighting: one bonus-action slot and one granted
+// off-hand attack capacity.
+func CostOfOffHandAttack(c *Character) (*combat.SpendProfile, error) {
+	if c == nil {
+		return nil, rpgerr.New(rpgerr.CodeNil, "no character to price a two-weapon attack for")
+	}
+	if !CanMakeOffHandAttack(c) {
+		return nil, rpgerr.New(
+			rpgerr.CodeInvalidArgument, "two-weapon attack requires two light melee weapons",
+		)
+	}
+
+	return &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{
+			coreCombat.ActionBonus: 1,
+		},
+		Capacity: map[combat.CapacityType]int{
+			combat.CapacityOffHandAttack: 1,
 		},
 	}, nil
 }

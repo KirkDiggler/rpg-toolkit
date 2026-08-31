@@ -329,6 +329,151 @@ func (s *CharacterAttackTestSuite) TestAssembleAttack_RefusesUnreadableEquipment
 	})
 }
 
+func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRequiresTwoLightMeleeWeapons() {
+	tests := []struct {
+		name string
+		data *Data
+		want bool
+	}{
+		{
+			name: "shortsword and scimitar",
+			data: s.heroSheet(nil, map[InventorySlot]string{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Scimitar),
+			}),
+			want: true,
+		},
+		{
+			name: "missing off hand",
+			data: s.heroSheet(nil, map[InventorySlot]string{
+				SlotMainHand: string(weapons.Shortsword),
+			}),
+		},
+		{
+			name: "non-light main hand",
+			data: s.heroSheet(nil, map[InventorySlot]string{
+				SlotMainHand: string(weapons.Rapier),
+				SlotOffHand:  string(weapons.Scimitar),
+			}),
+		},
+		{
+			name: "light ranged off hand",
+			data: s.heroSheet(nil, map[InventorySlot]string{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.HandCrossbow),
+			}),
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.Equal(tc.want, CanMakeOffHandAttack(s.load(tc.data)))
+		})
+	}
+}
+
+func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRequiresTwoOwnedWeaponUnits() {
+	tests := []struct {
+		name      string
+		inventory []InventoryItemData
+		slots     EquipmentSlots
+		want      bool
+	}{
+		{
+			name: "one shortsword mapped to both hands",
+			inventory: []InventoryItemData{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Shortsword),
+			},
+		},
+		{
+			name: "two shortswords mapped to both hands",
+			inventory: []InventoryItemData{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 2},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Shortsword),
+			},
+			want: true,
+		},
+		{
+			name: "zero off-hand copies",
+			inventory: []InventoryItemData{
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 0},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Shortsword),
+				SlotOffHand:  string(weapons.Scimitar),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			data := s.heroSheet(nil, nil)
+			data.Inventory = tc.inventory
+			data.EquipmentSlots = tc.slots
+
+			s.Equal(tc.want, CanMakeOffHandAttack(s.load(data)))
+		})
+	}
+}
+
+func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRejectsAShield() {
+	data := s.heroSheet(nil, map[InventorySlot]string{
+		SlotMainHand: string(weapons.Shortsword),
+	})
+	data.Inventory = append(data.Inventory, InventoryItemData{
+		Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1,
+	})
+	data.EquipmentSlots[SlotOffHand] = string(armor.Shield)
+
+	s.False(CanMakeOffHandAttack(s.load(data)))
+}
+
+func (s *CharacterAttackTestSuite) TestAssembleOffHandAttackUsesTheOffHandWeapon() {
+	data := s.heroSheet(
+		[]proficiencies.Weapon{proficiencies.WeaponMartial},
+		map[InventorySlot]string{
+			SlotMainHand: string(weapons.Shortsword),
+			SlotOffHand:  string(weapons.Scimitar),
+		},
+	)
+	cost := &combat.SpendProfile{
+		Slots: map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1},
+		Capacity: map[combat.CapacityType]int{
+			combat.CapacityOffHandAttack: 1,
+		},
+	}
+
+	definition, err := AssembleOffHandAttack(s.load(data), &AssembleOffHandAttackInput{Cost: cost})
+
+	s.Require().NoError(err)
+	s.Equal(*refs.Weapons.Scimitar(), definition.Ref)
+	s.Equal(cost, definition.Cost)
+	s.True(definition.Attack.IsOffHandAttack)
+	s.Equal(refs.Weapons.Scimitar(), definition.Attack.Weapon.Ref)
+	s.Require().NotNil(definition.Attack.Delivery.Melee)
+	s.Require().NoError(definition.Validate())
+}
+
+func (s *CharacterAttackTestSuite) TestAssembleOffHandAttackRevalidatesEquipment() {
+	data := s.heroSheet(nil, map[InventorySlot]string{
+		SlotMainHand: string(weapons.Rapier),
+		SlotOffHand:  string(weapons.Scimitar),
+	})
+
+	_, err := AssembleOffHandAttack(s.load(data), &AssembleOffHandAttackInput{})
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "two light melee weapons")
+}
+
 func (s *CharacterAttackTestSuite) TestCostOfSwing_FirstSwingNetsTheAttackGrant() {
 	fighter := s.load(s.martialHero())
 

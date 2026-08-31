@@ -29,13 +29,18 @@ const (
 
 // AttackProfile declares everything the attack-roll resolution machine needs.
 type AttackProfile struct {
-	Category    AttackCategory         `json:"category"`
-	Delivery    AttackDelivery         `json:"delivery"`
-	AttackBonus int                    `json:"attack_bonus"`
-	Ability     *AbilityContribution   `json:"ability,omitempty"`
-	Weapon      *WeaponContext         `json:"weapon,omitempty"`
-	Damage      []damage.Damage        `json:"damage,omitempty"`
-	OnHit       []ConditionApplication `json:"on_hit,omitempty"`
+	Category    AttackCategory       `json:"category"`
+	Delivery    AttackDelivery       `json:"delivery"`
+	AttackBonus int                  `json:"attack_bonus"`
+	Ability     *AbilityContribution `json:"ability,omitempty"`
+	Weapon      *WeaponContext       `json:"weapon,omitempty"`
+	// IsOffHandAttack identifies the bonus attack granted after attacking with
+	// one of two light melee weapons. It is action semantics, not merely the
+	// physical equipment slot holding the weapon. Resolution consumes this
+	// declaration under rpg-toolkit#1348; producers never execute it here.
+	IsOffHandAttack bool                   `json:"off_hand_attack,omitempty"`
+	Damage          []damage.Damage        `json:"damage,omitempty"`
+	OnHit           []ConditionApplication `json:"on_hit,omitempty"`
 }
 
 // Validate reports whether the profile declares a supported category,
@@ -53,6 +58,17 @@ func (p AttackProfile) Validate() error {
 
 	if err := p.Delivery.Validate(); err != nil {
 		return err
+	}
+	if p.IsOffHandAttack {
+		if p.Category != AttackCategoryWeapon {
+			return fmt.Errorf("two-weapon bonus attack must be a weapon attack")
+		}
+		if p.Weapon == nil {
+			return fmt.Errorf("two-weapon bonus attack requires weapon context")
+		}
+		if !p.Delivery.IsMelee() {
+			return fmt.Errorf("two-weapon bonus attack requires melee delivery")
+		}
 	}
 	if len(p.Damage) == 0 && len(p.OnHit) == 0 {
 		return fmt.Errorf("attack must declare damage or an on-hit condition")
