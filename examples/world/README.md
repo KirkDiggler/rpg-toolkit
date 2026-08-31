@@ -1,33 +1,34 @@
-# examples/world — the living-world spike
+# examples/world — a rulebook consuming the world module
 
 Two scenarios, one composer, one needle. No code anywhere that knows which route
 a player took, which company took which job, or who to thank when a region gets
 pacified.
 
-This module is a spike, not a product. It lives under `examples/` on purpose:
-example code is unadoptable by construction, so the seams stay fluid and nothing
-here mints a tag or promises an API. If the seams hold and the walk agrees,
-`journal`, `graph`, `quest` and the composer move out to `world/*`, and the
-scenarios get rewired to import them exactly as a rulebook would.
+The kernel — `journal`, `graph`, `quest`, `goal`, and the composer — graduated
+out of this spike into its own module,
+[`github.com/KirkDiggler/rpg-toolkit/world`](https://github.com/KirkDiggler/rpg-toolkit/tree/main/world)
+(design record: https://kirkdiggler.github.io/rpg-toolkit/living-world/).
+What is left here is worked examples of a rulebook consuming it: content
+(`banditcamp`, `hostagecamp`, `region`), the rulebook adapter
+(`dnd5eresolver`), and deterministic test scaffolding (`scripted`). This
+module still lives under `examples/` and still mints no tag — it imports the
+published `world` tag exactly as any other host would.
 
 ## Layout
 
 ```
-world/                 the composer — assembly, the one write door, the one read door
-  journal/             memory: append-only, attributed, audience-scoped facts
-  graph/               structure and the present, derived by fold and never stored
-  quest/               jobs: templates, populations, claims, distributions
-  goal/                the guild's needle: a condition over a region, with a clock
-  dnd5eresolver/       the rulebook adapter — the only place a d20 exists
-  scripted/            deterministic dice and a stopped clock, so a run reproduces
-  banditcamp/          UC-1 content: one camp, five ways through
-  hostagecamp/         UC-2 content: one job, three companies, three hostages
-  region/              UC-3: composes both camps and states one goal over them
+dnd5eresolver/       the rulebook adapter — the only place a d20 exists
+scripted/            deterministic dice and a stopped clock, so a run reproduces
+banditcamp/          UC-1 content: one camp, five ways through
+hostagecamp/         UC-2 content: one job, three companies, three hostages
+region/              UC-3: composes both camps and states one goal over them
 ```
 
-The arrows only point one way: `journal <- graph <- quest <- goal <- world`, and
-the content sits above all of it. A test parses the imports and fails if that
-ever stops being true.
+The kernel's internal arrows (`journal <- graph <- quest <- goal <- world`) are
+now the `world` module's own invariant to keep — see its doc comment. What
+this package still checks locally: nothing here reaches sideways into another
+scenario, and exactly one package (`dnd5eresolver`) teaches the world a die
+roll. See `banditcamp/invariants_test.go`.
 
 A quest is somebody's job — claimed, about a person or a place, finished by
 whoever took it. A goal is nobody's job: no claimant, no subject, and it moves

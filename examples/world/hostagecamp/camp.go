@@ -4,10 +4,10 @@
 package hostagecamp
 
 import (
-	"github.com/KirkDiggler/rpg-toolkit/examples/world"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
+	"github.com/KirkDiggler/rpg-toolkit/world"
+	"github.com/KirkDiggler/rpg-toolkit/world/graph"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
+	"github.com/KirkDiggler/rpg-toolkit/world/quest"
 )
 
 // The cast. Three factions took the job, one faction is holding the hostages,

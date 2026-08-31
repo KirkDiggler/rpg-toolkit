@@ -22,13 +22,13 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/goal"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/graph"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/hostagecamp"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/quest"
+	"github.com/KirkDiggler/rpg-toolkit/world"
+	"github.com/KirkDiggler/rpg-toolkit/world/goal"
+	"github.com/KirkDiggler/rpg-toolkit/world/graph"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
+	"github.com/KirkDiggler/rpg-toolkit/world/quest"
 )
 
 // WeekendGoalID names the guild's standing ambition for the region.

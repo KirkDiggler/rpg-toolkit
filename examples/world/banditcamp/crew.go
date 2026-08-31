@@ -14,7 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/journal"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // Crew loads the three guild characters as real D&D 5e sheets.
