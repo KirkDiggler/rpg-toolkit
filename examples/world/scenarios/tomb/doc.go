@@ -11,15 +11,18 @@
 // every absence in words meant for whoever is filling the form in, not for a
 // debugger reading a stack trace.
 //
-// # The door is real; knowing about it is not stored
+// # The door is concealed, not gated
 //
 // The passage from the boss room to the hidden room is a plain declared
-// [graph.Edge] — real from the moment the world exists, the same as any other
-// structure in this kernel. What is scoped is KNOWLEDGE of it, and that scoping
-// is deliberately not a graph flag: a flag would only re-derive what the
-// journal's own audience already answers. [Knows] asks the journal directly —
-// has this observer witnessed a fact that says where the room is — because
-// that question already has an honest answer without adding anything to fold.
+// [graph.Edge], real from the moment the world exists — and, along with the
+// hidden room and the artifact inside it, declared [graph.Edge.Concealed].
+// The kernel's own two-grain concealment (rpg-toolkit#1342) is what a
+// stranger's structural view answers with now: a [graph.Pierce] un-hides it
+// for whoever's own witnessed facts include a successful search or the
+// captain's defeat, and a [graph.Reveal] un-hides it for everyone, arrival
+// order be damned, once a knower gets the door open. [Knows] is a one-line
+// wrapper over [graph.State.Visible] — this used to be a hand-rolled journal
+// query before the kernel could answer the question itself.
 //
 // # Two writers of one fact
 //

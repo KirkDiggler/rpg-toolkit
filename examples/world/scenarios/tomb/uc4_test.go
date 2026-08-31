@@ -153,10 +153,18 @@ func (s *UC4Suite) TestAPartyHoldingNoLocationFactGetsAViewWithNoDoorInIt() {
 	s.False(tomb.Knows(w, tomb.Bram), "Bram has not been told anything and has not searched")
 	s.False(tomb.Knows(w, tomb.Finch), "nor has Finch, before she does anything")
 
-	// Nothing is gated: the passage is a plain declared edge, present in
-	// every observer's derived structure from the start. What is missing is
-	// knowledge, not the door.
-	s.True(w.View(tomb.Finch).HasEdge(tomb.BossRoom, tomb.LeadsTo, tomb.HiddenRoom))
+	// This is now literally true, not a journal workaround standing in for
+	// it (rpg-toolkit#1342): a stranger's own structural view contains
+	// neither the door edge nor the hidden room it leads to. Concealment,
+	// not the absence of a fact, is why. Truth still sees both — the GM's
+	// view bypasses concealment entirely.
+	stranger := w.View(tomb.Finch)
+	s.False(stranger.HasEdge(tomb.BossRoom, tomb.LeadsTo, tomb.HiddenRoom))
+	s.False(stranger.Visible(tomb.HiddenRoom))
+
+	truth := w.Truth()
+	s.True(truth.HasEdge(tomb.BossRoom, tomb.LeadsTo, tomb.HiddenRoom))
+	s.True(truth.Visible(tomb.HiddenRoom))
 }
 
 // ---------------------------------------------------------------------------
@@ -298,4 +306,53 @@ func (s *UC4Suite) TestAFailedSearchWritesAFactAndRevealsNothing() {
 
 	s.False(tomb.Knows(w, tomb.Finch), "a miss reveals nothing, not even to the searcher")
 	s.False(tomb.Knows(w, tomb.Bram))
+}
+
+// ---------------------------------------------------------------------------
+// 8. Piercing at the structural level, not just through Knows.
+// ---------------------------------------------------------------------------
+
+func (s *UC4Suite) TestPiercingIsVisibleInTheStructuralViewToo() {
+	w := s.build(findLands)
+
+	_, err := w.Act(s.ctx, world.Act{Verb: tomb.Search, Actor: tomb.Finch, Target: tomb.HiddenRoom})
+	s.Require().NoError(err)
+
+	s.Run("the finder's own structural view has both the edge and the room", func() {
+		found := w.View(tomb.Finch)
+		s.True(found.HasEdge(tomb.BossRoom, tomb.LeadsTo, tomb.HiddenRoom))
+		s.True(found.Visible(tomb.HiddenRoom))
+	})
+
+	s.Run("a party-mate who was not in the audience sees neither", func() {
+		mate := w.View(tomb.Bram)
+		s.False(mate.HasEdge(tomb.BossRoom, tomb.LeadsTo, tomb.HiddenRoom))
+		s.False(mate.Visible(tomb.HiddenRoom))
+	})
+}
+
+// ---------------------------------------------------------------------------
+// 9. A reveal holds for someone who was never even in this run.
+// ---------------------------------------------------------------------------
+
+func (s *UC4Suite) TestALateArrivalSeesTheRevealedDoorWithZeroWitnessedFacts() {
+	w := s.build(openLands)
+
+	_, err := w.Act(s.ctx, world.Act{Verb: tomb.Defeat, Actor: tomb.Thane, Target: captainID})
+	s.Require().NoError(err)
+	_, err = w.Act(s.ctx, world.Act{Verb: tomb.Open, Actor: tomb.Finch, Target: artifactID})
+	s.Require().NoError(err)
+
+	// Nobody this content declared — a new hire who joined the party after
+	// the tomb was already cleared. Not a party member, not audienced to
+	// anything, ever.
+	const lateArrival journal.EntityID = "someone-who-joined-later"
+	s.Empty(w.Journal().WitnessedBy(w.Graph().AudienceOf(lateArrival)...),
+		"confirm this observer truly witnessed nothing before trusting what they see")
+
+	late := w.View(lateArrival)
+	s.True(late.HasEdge(tomb.BossRoom, tomb.LeadsTo, tomb.HiddenRoom),
+		"perceiving present state is not witnessing past events")
+	s.True(late.Visible(tomb.HiddenRoom))
+	s.True(tomb.Knows(w, lateArrival))
 }
