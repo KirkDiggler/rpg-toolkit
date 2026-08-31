@@ -151,7 +151,7 @@ type trigger struct {
 //
 // # Transitions, not states
 //
-// Only intel.SurveilOutput.FirstContact is read — never Refreshed. A subject
+// Only IntelDelta.FirstContact is read — never Refreshed. A subject
 // already being watched is not news, so a player who spotted a wolf and keeps
 // walking with it in view does not re-trigger on every step: the sneak-past
 // works by construction rather than by a "have I already reported this" flag.
@@ -205,7 +205,7 @@ type trigger struct {
 // PLAYER has been watching the whole time and is plainly not surprised, while
 // FirstContact-only surprise would say they were, because the player's own
 // first contact happened long ago and is not in this delta.
-func (e *Encounter) classify(deltas map[MemberID]*intel.SurveilOutput, down map[MemberID]bool) (*trigger, error) {
+func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, down map[MemberID]bool) (*trigger, error) {
 	sawFirst := func(observer, subject MemberID) bool {
 		delta, ok := deltas[observer]
 		if !ok || delta == nil {
@@ -401,15 +401,20 @@ func (e *Encounter) sidesInContactOrder(down map[MemberID]bool) (players, monste
 // calling its check from two call sites (encounter/combat.go's
 // checkCombatEntry, reached from Move AND AddMonster); this sits at the one
 // place all of them already pass through.
-func (e *Encounter) applyTrigger(deltas map[MemberID]*intel.SurveilOutput) (*FormedBubble, error) {
+func (e *Encounter) applyTrigger(deltas map[MemberID]*IntelDelta) (*FormedBubble, map[MemberID]*IntelDelta, error) {
 	// The world notices who is down BEFORE it works out who is fighting whom.
 	// Both halves of that order matter: a body must not be classified as an
 	// enemy, and the beat saying so must not land after a bubble-formed beat
 	// it contradicts (rpg-toolkit#1075).
-	down, err := e.noticeDown()
+	down, noticedDeltas, err := e.noticeDown()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	// The deltas noticeDown returns were already classified by the nested
+	// driven refresh that produced them. Compose them for the caller without
+	// feeding them through classification a second time below.
+	outputDeltas := mergeIntelDeltas(nil, deltas)
+	outputDeltas = mergeIntelDeltas(outputDeltas, noticedDeltas)
 
 	// The consult may have CLOSED the encounter (TriggerMemberDown fires
 	// there). A closed scene forms no new fights: the ended beat is the
@@ -417,47 +422,50 @@ func (e *Encounter) applyTrigger(deltas map[MemberID]*intel.SurveilOutput) (*For
 	// that is over — a bubble-formed after an ended is the contradiction
 	// rpg-toolkit#1075 guards against, told forward.
 	if e.outcome != nil {
-		return nil, nil
+		return nil, outputDeltas, nil
 	}
 
 	verdict, err := e.classify(deltas, down)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(verdict.joined) > 0 {
 		for _, id := range verdict.joined {
-			if _, err := e.Transfer(&TransferInput{
+			transferred, err := e.Transfer(&TransferInput{
 				Member: id,
 				To:     ClockTurn,
 				Pos:    e.bubbleSize(),
-			}); err != nil {
-				return nil, fmt.Errorf("trigger transfer %q: %w", id, err)
+			})
+			if err != nil {
+				return nil, nil, fmt.Errorf("trigger transfer %q: %w", id, err)
 			}
+			outputDeltas = mergeIntelDeltas(outputDeltas, transferred.IntelDeltas)
 		}
 
-		return nil, nil
+		return nil, outputDeltas, nil
 	}
 
 	if len(verdict.form) == 0 {
-		return nil, nil
+		return nil, outputDeltas, nil
 	}
 
 	order, err := e.initiative.RollInitiative(append([]MemberID(nil), verdict.form...))
 	if err != nil {
-		return nil, fmt.Errorf("trigger roll initiative: %w", err)
+		return nil, nil, fmt.Errorf("trigger roll initiative: %w", err)
 	}
 
 	formed, err := e.form(&FormInput{Order: order, Surprised: verdict.surprised})
 	if err != nil {
-		return nil, fmt.Errorf("trigger form: %w", err)
+		return nil, nil, fmt.Errorf("trigger form: %w", err)
 	}
+	outputDeltas = mergeIntelDeltas(outputDeltas, formed.IntelDeltas)
 
 	return &FormedBubble{
 		Order:     order,
 		Surprised: verdict.surprised,
 		Seq:       formed.Seq,
-	}, nil
+	}, outputDeltas, nil
 }
 
 // bubbleSize reports how many members the running bubble holds, which is the

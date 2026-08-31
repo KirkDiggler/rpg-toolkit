@@ -12,6 +12,29 @@
 // the map and in the roster, and stops acting: no turn, no side in a contact,
 // no tick action, and a beat in the story saying so.
 //
+// LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. play/intel stores channel-
+// sourced testimony opaquely; this composition gives sight payloads their
+// strict Known(position) or Unknown meaning. New payloads are tagged, legacy
+// untagged coordinates remain readable as known, and malformed or current-
+// unknown sight testimony is refused on load. Other Intel channel payloads
+// remain uninterpreted.
+//
+// A fight-time [MonsterView] keeps current sight in Seen and held known
+// locations in Remembered. Remembered members carry no concealed standing or
+// reach fact, are never attackable, and have paths ending on the exact
+// remembered cell. Held unknown testimony persists but is not actionable. A
+// view is rebuilt after each driven move, so a visible-first driver such as
+// behavior.Basic can abandon remembered pursuit for new sight on its next
+// call.
+//
+// Only a successful fight-time driver move performs arrival correction: after
+// sight refresh, the composition compares the mover's prior held Intel and
+// arrival cell with that lawful complete percept. An absent subject remembered
+// at the exact cell becomes Held + Unknown without exposing its concealed live
+// position. Encounter-owned [IntelDelta] values surface the correction for
+// persistence; public Step and free-roam Pump do not independently correct
+// location testimony.
+//
 // The composition holds no rules of its own that it could hold instead: three
 // capabilities are SUPPLIED at construction and consulted during play, never
 // defaulted (rpg-toolkit#1033). InitiativeRoller says what order a fight goes

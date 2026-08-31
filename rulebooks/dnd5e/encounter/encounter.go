@@ -4,7 +4,6 @@
 package encounter
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -17,66 +16,14 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// SightPayload is the composition-owned encoding of a sighted member's position —
-// the payload of every sight-channel intel report. Hosts decode it to render what
-// a player sees; intel itself never interprets it.
+// SightPayload is the legacy untagged known-location shape retained for source
+// compatibility. New encounter testimony is encoded with LocationKnowledge.
 //
-// DUNGEON-ABSOLUTE, and carrying no room (rpg-toolkit#1044). A sighted member is
-// somewhere on the map, and the chamber they happen to be standing in is this
-// composition's own bookkeeping. It matters most here of all the projections,
-// because this is the payload a DECIDER reads: a monster comparing a target's
-// position against its own needs both in one frame, and the two used to be in
-// different ones for every room whose origin is not (0,0).
+// It describes dungeon-absolute coordinates and is readable by
+// DecodeLocationPayload as the legacy known form.
 type SightPayload struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
-}
-
-// DecodeSightPayload decodes a sight channel's payload into the dungeon-
-// absolute position it encodes. ok is false when payload does not parse as a
-// SightPayload — the caller is holding testimony from some other channel, or
-// bytes this composition did not produce.
-//
-// This is the seam ADR-0041 asks for: the composition decodes its own
-// encoding rather than handing a caller bytes it would otherwise have to
-// unmarshal itself, re-deriving a shape that was never a contract
-// (rpg-toolkit#1157, and the same argument ADR-0040 already made about
-// Atlas.Layout). session calls this and copies the result into its own Seen;
-// it never reaches into payload with encoding/json on its own.
-//
-// STRICT on purpose (Copilot review, PR #1158). A plain json.Unmarshal into
-// SightPayload would accept "null" and "{}" as the zero-value position —
-// silently reporting "sight at the origin" for testimony that named no
-// position at all — and would accept the pre-#1044 room-bearing dialect
-// (data.go's refuseRoomLocalSightings), whose extra "room" key
-// encoding/json ignores by default while still parsing x and y as if they
-// were already dungeon-absolute. Both are wrong answers to hand back rather
-// than refuse, so X and Y must both be PRESENT — not merely zero-valued
-// after a no-op decode of "null" or "{}" — and no field beside them, known
-// or not, may appear.
-func DecodeSightPayload(payload []byte) (spatial.Position, bool) {
-	if len(payload) == 0 {
-		return spatial.Position{}, false
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(payload))
-	dec.DisallowUnknownFields()
-
-	var p struct {
-		X *float64 `json:"x"`
-		Y *float64 `json:"y"`
-	}
-	if err := dec.Decode(&p); err != nil {
-		return spatial.Position{}, false
-	}
-	if p.X == nil || p.Y == nil {
-		return spatial.Position{}, false
-	}
-	if dec.More() {
-		return spatial.Position{}, false // trailing data after the one object
-	}
-
-	return spatial.Position{X: *p.X, Y: *p.Y}, true
 }
 
 // declaredEnding pairs an ending key with its trigger, in Setup order, plus
@@ -704,7 +651,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// everywhere else: every awareness that exists was created by some
 	// refreshSight, and this is the first one, so no awareness predates
 	// classification and no stale asymmetry can be missed.
-	if _, terr := e.applyTrigger(firstLight); terr != nil {
+	if _, _, terr := e.applyTrigger(firstLight); terr != nil {
 		return nil, fmt.Errorf("newencounter first light: %w", terr)
 	}
 
@@ -1474,7 +1421,7 @@ func (e *Encounter) Pump(in *PumpInput) (*PumpOutput, error) {
 // [Encounter.rebuildPercepts] is the half without the rule, and Setup is its
 // only caller — Setup needs the two halves separated so its scene-opened beat
 // can land between them.
-func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.SurveilOutput, *FormedBubble, error) {
+func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*IntelDelta, *FormedBubble, error) {
 	deltas, err := e.rebuildPercepts(observers)
 	if err != nil {
 		return nil, nil, err
@@ -1486,7 +1433,7 @@ func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.Surv
 		return deltas, nil, nil
 	}
 
-	formed, err := e.applyTrigger(deltas)
+	formed, deltas, err := e.applyTrigger(deltas)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1495,13 +1442,14 @@ func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*intel.Surv
 }
 
 // rebuildPercepts rebuilds the complete percept for all given observers,
-// surveils each, and returns a map of member IDs to their SurveilOutput deltas.
+// surveils each, and returns a map of member IDs to encounter-owned intel
+// deltas.
 // The current clock reading is stamped on each Surveil call.
-func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.SurveilOutput, error) {
+func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDelta, error) {
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)
-	deltas := make(map[MemberID]*intel.SurveilOutput)
+	deltas := make(map[MemberID]*IntelDelta)
 
 	// Asked ONCE per refresh and never carried between them — see [Sight] for
 	// why remembering the answer would be the smallest possible version of the
@@ -1579,8 +1527,12 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 				continue // A wall, or something standing in the way
 			}
 
-			pos := SightPayload{X: otherCell.X, Y: otherCell.Y}
-			payload, _ := json.Marshal(pos)
+			payload, err := EncodeLocationPayload(LocationKnowledge{
+				State: LocationKnown, Position: otherCell,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("encode sight location: %w", err)
+			}
 			percept = append(percept, intel.Report{
 				Subject: intel.Subject(otherMember.ID),
 				Payload: payload,
@@ -1597,7 +1549,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*intel.S
 		if serr != nil {
 			return nil, fmt.Errorf("refreshsight surveil: %w", serr)
 		}
-		deltas[observerID] = out
+		deltas[observerID] = intelDeltaFromSurveil(out)
 	}
 
 	return deltas, nil
@@ -1841,9 +1793,11 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	// Remove from whichever clock holds them — the world clock normally, a
 	// bubble if they were in a fight when they left.
-	if cerr := e.leaveAnyClock(in.Member); cerr != nil {
+	clockDeltas, cerr := e.leaveAnyClock(in.Member)
+	if cerr != nil {
 		return nil, fmt.Errorf("exit member %q clock: %w", in.Member, cerr)
 	}
+	intelDeltas := mergeIntelDeltas(nil, clockDeltas)
 
 	// The exit beat's audience, captured HERE, before the exiter is removed
 	// from e.members below: it is every member INCLUDING the exiter — they
@@ -1885,10 +1839,11 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 
 	// refreshSight for REMAINING members only (the exiter's holdings remain in intel archive)
 	if len(memberIDs) > 0 {
-		_, _, err := e.refreshSight(memberIDs)
+		refreshDeltas, _, err := e.refreshSight(memberIDs)
 		if err != nil {
 			return nil, fmt.Errorf("exit refresh sight: %w", err)
 		}
+		intelDeltas = mergeIntelDeltas(intelDeltas, refreshDeltas)
 	}
 
 	// Check if we need to auto-close (last member exited and no ending has fired)
@@ -1912,9 +1867,10 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 			Region:   finalRegion,
 			Position: finalCell,
 		},
-		Carry:  carry,
-		Seq:    seqNum,
-		Closed: closedOutcome,
+		Carry:       carry,
+		Seq:         seqNum,
+		Closed:      closedOutcome,
+		IntelDeltas: intelDeltas,
 	}, nil
 }
 

@@ -189,6 +189,10 @@ type AttackIdentity struct {
 
 // RecordOutput reports where the outcome landed in the story.
 type RecordOutput struct {
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns caused by noticing the recorded outcome's consequences.
+	IntelDeltas map[MemberID]*IntelDelta
+
 	// Seq is the story sequence of the recorded beat.
 	Seq uint64
 }
@@ -248,6 +252,11 @@ type RecordOutput struct {
 // [RecordOutput.Seq] is therefore the OUTCOME beat and never the last one
 // written. A caller asked for one thing to be recorded and is told where that
 // thing landed.
+//
+// [RecordOutput.IntelDeltas] carries any percept changes produced when that
+// consult transfers a fallen active member and drives the next monster. The
+// mutation belongs to this Record even though it happened in a nested turn, so
+// dropping it would leave the caller unable to publish the correction.
 //
 // The consult runs for EVERY kind rather than only for [OutcomeStruck]. Which
 // outcomes can drop somebody is a rulebook fact and this module cannot import
@@ -390,9 +399,10 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 	// And now the world finds out what that beat just changed. AFTER the append,
 	// never before: the outcome is the cause, and a down beat ahead of the strike
 	// that explains it would be a story told backwards. See the godoc.
-	if _, nerr := e.noticeDown(); nerr != nil {
+	_, intelDeltas, nerr := e.noticeDown()
+	if nerr != nil {
 		return nil, fmt.Errorf("record: %w", nerr)
 	}
 
-	return &RecordOutput{Seq: appended.Seq}, nil
+	return &RecordOutput{IntelDeltas: intelDeltas, Seq: appended.Seq}, nil
 }

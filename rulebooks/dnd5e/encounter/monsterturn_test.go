@@ -9,9 +9,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -29,6 +31,294 @@ func TestMonsterTurnSuite(t *testing.T) {
 }
 
 var testMeleeAction = core.Ref{Module: "dnd5e", Type: "monster_actions", ID: "melee"}
+
+const billy = core.EntityID("billy")
+
+// requireHolding reads one holding through the public View seam and fails
+// immediately when the requested subject is absent. Returning a zero holding
+// after a failed lookup would let a test continue against invented state.
+func requireHolding(t *testing.T, enc *encounter.Encounter, observer encounter.MemberID, subject intel.Subject) intel.Holding {
+	t.Helper()
+	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
+	require.NoError(t, err)
+	for _, holding := range holdings {
+		if holding.Subject == subject {
+			return holding
+		}
+	}
+	require.Failf(t, "holding not found", "observer %q has no holding for %q", observer, subject)
+	return intel.Holding{}
+}
+
+// requireKnownLocation decodes a holding's payload through the encounter's
+// public location codec and asserts the complete known-state shape.
+func requireKnownLocation(t *testing.T, payload []byte, want spatial.Position) {
+	t.Helper()
+	location, ok := encounter.DecodeLocationPayload(payload)
+	require.True(t, ok, "payload must be valid encounter location testimony")
+	require.Equal(t, encounter.LocationKnown, location.State)
+	require.Equal(t, want, location.Position)
+}
+
+// requireUnknownLocation decodes a holding's payload through the encounter's
+// public location codec and asserts explicit unknown testimony.
+func requireUnknownLocation(t *testing.T, payload []byte) {
+	t.Helper()
+	location, ok := encounter.DecodeLocationPayload(payload)
+	require.True(t, ok, "payload must be valid encounter location testimony")
+	require.Equal(t, encounter.LocationUnknown, location.State)
+	require.Equal(t, spatial.Position{}, location.Position)
+}
+
+// arrivalOrder puts the active player before the driven goblin and the target
+// player after it, so one public EndTurn reaches the monster's turn.
+type arrivalOrder struct{}
+
+func (arrivalOrder) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+	ordered := make([]encounter.MemberID, 0, len(members))
+	for _, id := range []encounter.MemberID{alice, goblin, billy, carol, "ogre"} {
+		for _, member := range members {
+			if member == id {
+				ordered = append(ordered, member)
+				break
+			}
+		}
+	}
+	return ordered, nil
+}
+
+// newDrivenArrivalEncounter loads a real encounter whose goblin holdings name
+// stale cells. The persisted bubble lets the test enter the driven turn
+// directly, while the replacement Sight capability controls the complete
+// percept produced after arrival.
+func newDrivenArrivalEncounter(
+	t *testing.T,
+	driver *scriptedDriver, sight encounter.Sight, remembered, billyCell spatial.Position, includeOgre bool,
+	rememberedSubjects ...encounter.MemberID,
+) *encounter.Encounter {
+	t.Helper()
+	members := []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 1}, SpeedFeet: 30},
+		{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 7}},
+		{ID: carol, Kind: encounter.KindPlayer, Position: spatial.Position{X: 8, Y: 8}},
+	}
+	if includeOgre {
+		members = append(members, encounter.MemberInput{
+			ID: "ogre", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 2}, SpeedFeet: 30,
+		})
+	}
+
+	base, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		TurnDriver: passDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: members,
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NoError(t, err)
+
+	data := base.ToData()
+	known, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{
+		State: encounter.LocationKnown, Position: remembered,
+	})
+	require.NoError(t, err)
+	if len(rememberedSubjects) == 0 {
+		rememberedSubjects = []encounter.MemberID{billy}
+	}
+	for _, observer := range []encounter.MemberID{goblin, "ogre"} {
+		if _, present := data.Intel.Holdings[observer]; !present {
+			continue
+		}
+		for _, subject := range rememberedSubjects {
+			holding, present := data.Intel.Holdings[observer][intel.Subject(subject)]
+			require.True(t, present, "fixture must start with a sight holding")
+			holding.Payload = known
+			holding.CurrentVia = nil
+			data.Intel.Holdings[observer][intel.Subject(subject)] = holding
+		}
+	}
+
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: sight, Standing: everyoneStanding{}, Initiative: arrivalOrder{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+	})
+	require.NoError(t, err)
+	return loaded
+}
+
+// drivenArrivalEncounter is the suite-facing convenience wrapper around the
+// standalone fixture, which is also reused by the persistence suite.
+func (s *MonsterTurnTestSuite) drivenArrivalEncounter(
+	driver *scriptedDriver, sight encounter.Sight, remembered, billyCell spatial.Position, includeOgre bool,
+	rememberedSubjects ...encounter.MemberID,
+) *encounter.Encounter {
+	return newDrivenArrivalEncounter(s.T(), driver, sight, remembered, billyCell, includeOgre, rememberedSubjects...)
+}
+
+// TestRememberedArrivalCorrectsHeldKnownLocation exercises the complete
+// driven-arrival path: a monster follows its own held sight testimony to the
+// remembered cell, the refresh sees nobody, and only then does the encounter
+// replace that testimony with canonical unknown while preserving Held.
+func (s *MonsterTurnTestSuite) TestRememberedArrivalCorrectsHeldKnownLocation() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	enc := s.drivenArrivalEncounter(driver, &sightList{fallback: 0}, arrival, cellAt(7, 7), false)
+
+	before := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, before.Status)
+	requireKnownLocation(s.T(), before.Payload, arrival)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Contains(out.IntelDeltas[goblin].Corrected, intel.Subject(billy))
+
+	after := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, after.Status)
+	requireUnknownLocation(s.T(), after.Payload)
+}
+
+// TestRecordSurfacesCorrectionDrivenByNoticingTheActiveMemberDown reproduces
+// the silent correction path through Record: noticing the fallen active
+// player transfers them out, that transfer drives the next monster, and the
+// monster corrects its stale arrival testimony. Record must return that
+// correction because it caused the nested drive.
+func (s *MonsterTurnTestSuite) TestRecordSurfacesCorrectionDrivenByNoticingTheActiveMemberDown() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	sight := &sightList{fallback: 0}
+	seeded := s.drivenArrivalEncounter(driver, sight, arrival, cellAt(7, 7), false)
+	down := &downList{}
+
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: seeded.ToData(), Sight: sight, Standing: down, Initiative: arrivalOrder{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	down.down = []encounter.MemberID{alice}
+
+	out, err := enc.Record(&encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: billy, Targets: []encounter.MemberID{alice},
+	})
+	s.Require().NoError(err)
+	delta := out.IntelDeltas[goblin]
+	s.Require().NotNil(delta, "Record must surface the nested driven correction")
+	s.Require().Contains(delta.Corrected, intel.Subject(billy))
+
+	after := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, after.Status)
+	requireUnknownLocation(s.T(), after.Payload)
+}
+
+// TestRememberedArrivalDoesNotCorrectBeforeExactCellArrival keeps the stale
+// testimony when the driven path ends somewhere other than the remembered
+// cell, even though the refresh still found nobody.
+func (s *MonsterTurnTestSuite) TestRememberedArrivalDoesNotCorrectBeforeExactCellArrival() {
+	remembered := cellAt(3, 1)
+	shortOfArrival := cellAt(3, 2)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{shortOfArrival}},
+		encounter.Pass{},
+	}}
+	enc := s.drivenArrivalEncounter(driver, &sightList{fallback: 0}, remembered, cellAt(7, 7), false)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	if delta := out.IntelDeltas[goblin]; delta != nil {
+		s.Require().NotContains(delta.Corrected, intel.Subject(billy))
+	}
+
+	holding := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, holding.Status)
+	requireKnownLocation(s.T(), holding.Payload, remembered)
+}
+
+// TestRememberedArrivalDoesNotCorrectCompletePercept ensures a subject in the
+// refresh's complete lawful percept wins over stale held testimony at the same
+// cell: the new sight report is retained as Current and no correction delta is
+// emitted.
+func (s *MonsterTurnTestSuite) TestRememberedArrivalDoesNotCorrectCompletePercept() {
+	arrival := cellAt(3, 1)
+	billyCell := cellAt(7, 7)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	enc := s.drivenArrivalEncounter(driver, everyoneSeesTheWholeMap{}, arrival, billyCell, false)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	if delta := out.IntelDeltas[goblin]; delta != nil {
+		s.Require().NotContains(delta.Corrected, intel.Subject(billy))
+	}
+
+	holding := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Current, holding.Status)
+	requireKnownLocation(s.T(), holding.Payload, billyCell)
+}
+
+// TestRememberedArrivalOnlyMoverCorrects proves that arrival correction is
+// authored by the moving observer alone. A second monster has the same stale
+// testimony and remains Held+Known until it itself reaches that cell.
+func (s *MonsterTurnTestSuite) TestRememberedArrivalOnlyMoverCorrects() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	enc := s.drivenArrivalEncounter(driver, &sightList{fallback: 0}, arrival, cellAt(7, 7), true)
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Contains(out.IntelDeltas[goblin].Corrected, intel.Subject(billy))
+	if delta := out.IntelDeltas["ogre"]; delta != nil {
+		s.Require().NotContains(delta.Corrected, intel.Subject(billy))
+	}
+
+	goblinHolding := requireHolding(s.T(), enc, goblin, intel.Subject(billy))
+	s.Require().Equal(intel.Held, goblinHolding.Status)
+	requireUnknownLocation(s.T(), goblinHolding.Payload)
+	ogreHolding := requireHolding(s.T(), enc, "ogre", intel.Subject(billy))
+	s.Require().Equal(intel.Held, ogreHolding.Status)
+	requireKnownLocation(s.T(), ogreHolding.Payload, arrival)
+}
+
+// TestRememberedArrivalCorrectsAbsentSubjectsInOrder makes both stale
+// subjects share the arrival cell and pins deterministic subject ordering in
+// the single mover's correction delta.
+func (s *MonsterTurnTestSuite) TestRememberedArrivalCorrectsAbsentSubjectsInOrder() {
+	arrival := cellAt(3, 1)
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{arrival}},
+		encounter.Pass{},
+	}}
+	enc := s.drivenArrivalEncounter(driver, &sightList{fallback: 0}, arrival, cellAt(7, 7), false, billy, carol)
+
+	for _, subject := range []intel.Subject{intel.Subject(billy), intel.Subject(carol)} {
+		before := requireHolding(s.T(), enc, goblin, subject)
+		s.Require().Equal(intel.Held, before.Status)
+		requireKnownLocation(s.T(), before.Payload, arrival)
+	}
+
+	out, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal([]intel.Subject{intel.Subject(billy), intel.Subject(carol)}, out.IntelDeltas[goblin].Corrected)
+
+	for _, subject := range []intel.Subject{intel.Subject(billy), intel.Subject(carol)} {
+		after := requireHolding(s.T(), enc, goblin, subject)
+		s.Require().Equal(intel.Held, after.Status)
+		requireUnknownLocation(s.T(), after.Payload)
+	}
+}
 
 // scriptedDriver returns intents from a fixed queue, one per Act call, and
 // records every View it was handed so a test can assert on what this
@@ -51,6 +341,22 @@ func (d *scriptedDriver) Act(view encounter.MonsterView) (encounter.TurnIntent, 
 		return d.intents[i], nil
 	}
 	return encounter.Pass{}, nil
+}
+
+// stagedSight keeps the first sight refresh broad enough to form the fight,
+// then removes sight so the next view must rely on the held testimony from
+// that first refresh.
+type stagedSight struct {
+	refreshes int
+}
+
+func (s *stagedSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	s.refreshes++
+	reach := unlimitedSight
+	if s.refreshes > 1 {
+		reach = 0
+	}
+	return sameForEveryone(members, reach), nil
 }
 
 // scriptedStriker records every Strike call and, unless told to fail,
@@ -195,6 +501,223 @@ func (s *MonsterTurnTestSuite) TestMonsterViewCarriesStaticFactsAndSeen() {
 	s.Equal(cellAt(2, 2), seen.Position)
 	s.InDelta(1.0, seen.DistanceCells, 0.001, "adjacent cells are 1 cell apart")
 	s.True(seen.InReach[testMeleeAction], "1 cell is within a 5-foot (1-cell) reach")
+	s.Empty(view.Remembered, "current known sight belongs only in Seen")
+}
+
+// TestMonsterViewProjectsHeldKnownSightIntoRemembered pins the lawful ghost:
+// once the sight channel fades, the driver's view retains only the last-known
+// location, with an exact-cell path that ends on that remembered cell.
+func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemembered() {
+	driver := &scriptedDriver{}
+	sight := &stagedSight{}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: sight, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, SpeedFeet: 30,
+				Actions: []encounter.ActionView{{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"}}},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	// Joining after first light forces a refresh that fades the goblin's
+	// sighting of alice while the existing bubble remains active.
+	_, err = enc.Join(&encounter.JoinInput{Member: bob, Kind: encounter.KindPlayer, Cell: cellAt(8, 8)})
+	s.Require().NoError(err)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	view := driver.calls[0]
+
+	s.Empty(view.Seen, "held known sight is not currently seen")
+	s.Require().Len(view.Remembered, 1)
+	s.Equal(encounter.RememberedMember{
+		ID:            alice,
+		Kind:          encounter.KindPlayer,
+		Position:      cellAt(2, 2),
+		DistanceCells: enc.Distance(cellAt(3, 2), cellAt(2, 2)),
+		Path:          []spatial.Position{cellAt(2, 2)},
+	}, view.Remembered[0])
+}
+
+// loadEncounterData loads a real persisted encounter with the supplied
+// turn-driver seam, preserving its active bubble and intel exactly.
+func (s *MonsterTurnTestSuite) loadEncounterData(data encounter.EncounterData, driver *scriptedDriver) *encounter.Encounter {
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: driver, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+	})
+	s.Require().NoError(err)
+	return loaded
+}
+
+// loadHeldMonsterEncounter starts from a real persisted encounter, replaces
+// the goblin's own testimony, and loads it without a sight refresh. This keeps
+// the fixture's live geometry and intel state separate, as a real stale
+// holding does, while exercising the public load and turn seams.
+func (s *MonsterTurnTestSuite) loadHeldMonsterEncounter(
+	data encounter.EncounterData, payload []byte, subject encounter.MemberID,
+	driver *scriptedDriver,
+) *encounter.Encounter {
+	holdings := data.Intel.Holdings[goblin]
+	holding := holdings[intel.Subject(subject)]
+	holding.Payload = payload
+	holding.CurrentVia = nil
+	holdings[intel.Subject(subject)] = holding
+
+	return s.loadEncounterData(data, driver)
+}
+
+// threeMemberSkeletonEncounter builds a real three-member bubble so the
+// remembered projection can prove deterministic ordering for multiple held
+// subjects.
+func (s *MonsterTurnTestSuite) threeMemberSkeletonEncounter() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, SpeedFeet: 30},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestMonsterViewHeldUnknownProjectsIntoNeitherCollection catches the
+// production break that treats an unknown location as (0,0), leaking an
+// invented target into Remembered or Seen.
+func (s *MonsterTurnTestSuite) TestMonsterViewHeldUnknownProjectsIntoNeitherCollection() {
+	driver := &scriptedDriver{}
+	base := s.adjacentSkeletonEncounter(passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed})
+	data := base.ToData()
+	unknown, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationUnknown})
+	s.Require().NoError(err)
+	enc := s.loadHeldMonsterEncounter(data, unknown, alice, driver)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Empty(driver.calls[0].Seen)
+	s.Empty(driver.calls[0].Remembered)
+}
+
+// TestMonsterViewHeldKnownUsesStalePosition catches the production break that
+// reads the subject's concealed live cell instead of the observer's held
+// location testimony.
+func (s *MonsterTurnTestSuite) TestMonsterViewHeldKnownUsesStalePosition() {
+	driver := &scriptedDriver{}
+	base := s.adjacentSkeletonEncounter(passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed})
+	data := base.ToData()
+	oldCell := cellAt(2, 2)
+	for i := range data.Members {
+		if data.Members[i].ID == alice {
+			data.Members[i].Cell = &encounter.PositionData{X: cellAt(7, 7).X, Y: cellAt(7, 7).Y}
+		}
+	}
+	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: oldCell})
+	s.Require().NoError(err)
+	enc := s.loadHeldMonsterEncounter(data, payload, alice, driver)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Require().Len(driver.calls[0].Remembered, 1)
+	s.Equal(oldCell, driver.calls[0].Remembered[0].Position)
+	s.NotEqual(oldCell, driver.calls[0].Position, "the subject's live position is concealed and differs")
+	s.Empty(driver.calls[0].Seen)
+}
+
+// TestMonsterViewRememberedSortsIDsIndependently catches the production break
+// that ranges intel's map directly, making a driver's remembered target order
+// depend on map iteration.
+func (s *MonsterTurnTestSuite) TestMonsterViewRememberedSortsIDsIndependently() {
+	driver := &scriptedDriver{}
+	base := s.threeMemberSkeletonEncounter()
+	data := base.ToData()
+	payloadAlice, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: cellAt(2, 2)})
+	s.Require().NoError(err)
+	payloadBob, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: cellAt(4, 2)})
+	s.Require().NoError(err)
+	// Mutate in reverse ID order to ensure output ordering is a projection law,
+	// not an accident of fixture or insertion order.
+	holdings := data.Intel.Holdings[goblin]
+	holdingBob := holdings[intel.Subject(bob)]
+	holdingBob.Payload, holdingBob.CurrentVia = payloadBob, nil
+	holdings[intel.Subject(bob)] = holdingBob
+	holdingAlice := holdings[intel.Subject(alice)]
+	holdingAlice.Payload, holdingAlice.CurrentVia = payloadAlice, nil
+	holdings[intel.Subject(alice)] = holdingAlice
+	enc := s.loadEncounterData(data, driver)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: bob})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	view := driver.calls[0]
+	s.Require().Len(view.Remembered, 2)
+	s.Equal(alice, view.Remembered[0].ID)
+	s.Equal(bob, view.Remembered[1].ID)
+}
+
+// TestMonsterViewRememberedSupportsOriginCell catches the production break
+// that treats the legal (0,0) cell as absent or silently substitutes a zero
+// value for malformed testimony.
+func (s *MonsterTurnTestSuite) TestMonsterViewRememberedSupportsOriginCell() {
+	driver := &scriptedDriver{}
+	base := s.adjacentSkeletonEncounter(passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed})
+	data := base.ToData()
+	for i := range data.Members {
+		if data.Members[i].ID == goblin {
+			start := cellAt(1, 0)
+			data.Members[i].Cell = &encounter.PositionData{X: start.X, Y: start.Y}
+		}
+	}
+	origin := spatial.Position{}
+	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: origin})
+	s.Require().NoError(err)
+	enc := s.loadHeldMonsterEncounter(data, payload, alice, driver)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Require().Len(driver.calls[0].Remembered, 1)
+	s.Equal(origin, driver.calls[0].Remembered[0].Position)
+	s.Equal([]spatial.Position{origin}, driver.calls[0].Remembered[0].Path)
+}
+
+// TestMonsterViewRememberedUnreachableHasEmptyPath catches the production
+// break that fabricates a route to an off-floor remembered cell or drops the
+// memory entirely when exact-cell BFS cannot reach it.
+func (s *MonsterTurnTestSuite) TestMonsterViewRememberedUnreachableHasEmptyPath() {
+	driver := &scriptedDriver{}
+	base := s.adjacentSkeletonEncounter(passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed})
+	data := base.ToData()
+	farOutside := spatial.Position{X: 100, Y: 100}
+	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationKnown, Position: farOutside})
+	s.Require().NoError(err)
+	enc := s.loadHeldMonsterEncounter(data, payload, alice, driver)
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Require().Len(driver.calls[0].Remembered, 1)
+	s.Equal(farOutside, driver.calls[0].Remembered[0].Position)
+	s.Empty(driver.calls[0].Remembered[0].Path)
 }
 
 // TestAttackExecutesAndConsumesTheBudget: an in-reach Attack calls the

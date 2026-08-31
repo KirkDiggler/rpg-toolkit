@@ -66,7 +66,7 @@ func TestNestedDriveMonsterTurnsWhileOneIsRunningIsANoOp(t *testing.T) {
 	// encounter's own drive — exactly the state Strike -> Record ->
 	// noticeDown -> Transfer -> driveIfStillRunning reaches mid-Strike.
 	enc.driving = true
-	wrapped, seq, err := enc.driveMonsterTurns(bubble)
+	wrapped, seq, _, err := enc.driveMonsterTurns(bubble)
 	require.NoError(t, err)
 	require.False(t, wrapped)
 	require.Zero(t, seq, "a re-entrant call must not touch the story at all")

@@ -30,6 +30,78 @@ func TestDecodeSightPayloadRoundTripsASightPayload(t *testing.T) {
 	require.Equal(t, spatial.Position{X: 10, Y: 3}, pos)
 }
 
+func TestLocationPayloadRoundTrip(t *testing.T) {
+	known := encounter.LocationKnowledge{State: encounter.LocationKnown, Position: spatial.Position{X: 0, Y: -2}}
+	payload, err := encounter.EncodeLocationPayload(known)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"state":"known","x":0,"y":-2}`, string(payload))
+
+	got, ok := encounter.DecodeLocationPayload(payload)
+	require.True(t, ok)
+	require.Equal(t, known, got)
+	pos, ok := encounter.DecodeSightPayload(payload)
+	require.True(t, ok)
+	require.Equal(t, known.Position, pos)
+
+	unknown, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationUnknown})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"state":"unknown"}`, string(unknown))
+	_, ok = encounter.DecodeSightPayload(unknown)
+	require.False(t, ok)
+}
+
+func TestDecodeLocationPayloadReadsLegacyKnownPosition(t *testing.T) {
+	got, ok := encounter.DecodeLocationPayload([]byte(`{"x":0,"y":4}`))
+	require.True(t, ok)
+	require.Equal(t, encounter.LocationKnowledge{
+		State:    encounter.LocationKnown,
+		Position: spatial.Position{X: 0, Y: 4},
+	}, got)
+}
+
+func TestDecodeLocationPayloadRejectsMalformedOrContradictoryShapes(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{name: "empty", payload: ``},
+		{name: "null", payload: `null`},
+		{name: "unsupported state", payload: `{"state":"maybe","x":1,"y":2}`},
+		{name: "known without x", payload: `{"state":"known","y":2}`},
+		{name: "known without y", payload: `{"state":"known","x":1}`},
+		{name: "unknown with x", payload: `{"state":"unknown","x":1}`},
+		{name: "unknown with y", payload: `{"state":"unknown","y":2}`},
+		{name: "unknown with null x", payload: `{"state":"unknown","x":null}`},
+		{name: "extra field", payload: `{"state":"known","x":1,"y":2,"extra":true}`},
+		{name: "case variant state", payload: `{"State":"unknown"}`},
+		{name: "case variant coordinate", payload: `{"state":"known","X":1,"y":2}`},
+		{name: "non numeric x", payload: `{"state":"known","x":"1","y":2}`},
+		{name: "non numeric y", payload: `{"state":"known","x":1,"y":"2"}`},
+		{name: "duplicate state", payload: `{"state":"known","state":"known","x":1,"y":2}`},
+		{name: "conflicting state", payload: `{"state":"known","state":"unknown","x":1,"y":2}`},
+		{name: "duplicate x", payload: `{"state":"known","x":1,"x":1,"y":2}`},
+		{name: "conflicting x", payload: `{"state":"known","x":1,"x":2,"y":2}`},
+		{name: "duplicate y", payload: `{"state":"known","x":1,"y":2,"y":2}`},
+		{name: "conflicting y", payload: `{"state":"known","x":1,"y":2,"y":3}`},
+		{name: "trailing json", payload: `{"state":"known","x":1,"y":2}{}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := encounter.DecodeLocationPayload([]byte(tc.payload))
+			require.False(t, ok)
+		})
+	}
+}
+
+func TestEncodeLocationPayloadRejectsInvalidKnowledge(t *testing.T) {
+	for _, knowledge := range []encounter.LocationKnowledge{
+		{State: "maybe", Position: spatial.Position{X: 1, Y: 2}},
+		{State: encounter.LocationUnknown, Position: spatial.Position{Y: 1}},
+	} {
+		_, err := encounter.EncodeLocationPayload(knowledge)
+		require.Error(t, err)
+	}
+}
+
 // TestDecodeSightPayloadRefusesWhatItDidNotEncode pins the failure case:
 // bytes that are not a SightPayload come back refused rather than
 // zero-valued and silently accepted, which would let a caller mistake "not

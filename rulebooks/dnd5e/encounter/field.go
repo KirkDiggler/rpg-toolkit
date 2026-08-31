@@ -784,8 +784,8 @@ type StepOutput struct {
 	Doors []CrossedDoor
 
 	// IntelDeltas maps member IDs to their updated percepts after the step
-	// (SurveilOutput deltas from the refreshSight cycle).
-	IntelDeltas map[MemberID]*intel.SurveilOutput
+	// (IntelDelta values from the refreshSight cycle).
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seq is the sequence number of the recorded movement beat.
 	Seq uint64
@@ -829,8 +829,8 @@ type PumpOutput struct {
 	}
 
 	// IntelDeltas maps member IDs to their updated percepts after all monster actions
-	// (SurveilOutput deltas from the single refreshSight cycle).
-	IntelDeltas map[MemberID]*intel.SurveilOutput
+	// (IntelDelta values from the single refreshSight cycle).
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seqs contains the sequence numbers of the recorded beats (tick beat
 	// first, then movement beats in decision order).
@@ -907,8 +907,8 @@ type JoinOutput struct {
 	Formed *FormedBubble
 
 	// IntelDeltas maps member IDs to their updated percepts after the join
-	// (SurveilOutput deltas from the refreshSight cycle).
-	IntelDeltas map[MemberID]*intel.SurveilOutput
+	// (IntelDelta values from the refreshSight cycle).
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seq is the sequence number of the recorded join beat.
 	Seq uint64
@@ -930,6 +930,10 @@ type ExitOutput struct {
 
 	// Carry contains the exiting member's holdings at the time of exit (copy-out).
 	Carry []intel.Holding
+
+	// IntelDeltas maps member IDs to their updated percepts after any driven
+	// monster turns and remaining-member refresh caused by the exit.
+	IntelDeltas map[MemberID]*IntelDelta
 
 	// Seq is the sequence number of the recorded exit beat.
 	Seq uint64
