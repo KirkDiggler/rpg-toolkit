@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
 // CostCompilerTestSuite pins the one thing the gate is never allowed to know:
@@ -69,6 +70,40 @@ func (s *CostCompilerTestSuite) sheetOf(class classes.Class, level int) *Charact
 	return char
 }
 
+func (s *CostCompilerTestSuite) twoWeaponFighter() *Character {
+	char, err := LoadFromData(s.ctx, &Data{
+		ID:               "cost-two-weapon-fighter",
+		PlayerID:         "cost-player",
+		Name:             "Two Weapons",
+		Level:            1,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Fighter,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:    20,
+		MaxHitPoints: 20,
+		ArmorClass:   16,
+		Inventory: []InventoryItemData{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},
+		},
+		EquipmentSlots: EquipmentSlots{
+			SlotMainHand: string(weapons.Shortsword),
+			SlotOffHand:  string(weapons.Scimitar),
+		},
+	}, s.bus)
+	s.Require().NoError(err)
+
+	return char
+}
+
 func (s *CostCompilerTestSuite) banked(class classes.Class, level int) int {
 	profile, err := CostOfAttack(s.sheetOf(class, level))
 	s.Require().NoError(err)
@@ -96,9 +131,48 @@ func (s *CostCompilerTestSuite) TestOtherClassesArePricedByTheSameTable() {
 	s.Equal(1, s.banked(classes.Wizard, 20), "no Extra Attack at any level")
 }
 
-// The Attack action costs the action slot, and nothing else. It banks capacity
-// rather than spending it, which is why a fighter's second swing needs no
-// second action.
+func (s *CostCompilerTestSuite) TestAQualifyingAttackActionGrantsOneTwoWeaponBonusAttack() {
+	profile, err := CostOfAttack(s.twoWeaponFighter())
+	s.Require().NoError(err)
+
+	s.Equal(1, profile.Grants[combat.CapacityOffHandAttack])
+
+	ordinary, err := CostOfAttack(s.sheetOf(classes.Fighter, 1))
+	s.Require().NoError(err)
+	s.NotContains(ordinary.Grants, combat.CapacityOffHandAttack)
+}
+
+func (s *CostCompilerTestSuite) TestTwoWeaponBonusAttackSpendsBonusActionAndGrantedCapacity() {
+	profile, err := CostOfTwoWeaponAttack(s.twoWeaponFighter())
+	s.Require().NoError(err)
+	s.Require().NoError(profile.Validate())
+
+	s.Equal(map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1}, profile.Slots)
+	s.Equal(map[combat.CapacityType]int{combat.CapacityOffHandAttack: 1}, profile.Capacity)
+	s.Empty(profile.Grants)
+	s.Empty(profile.Pools)
+	s.Empty(profile.Requires)
+}
+
+func (s *CostCompilerTestSuite) TestTwoWeaponBonusAttackPriceRevalidatesEquipment() {
+	_, err := CostOfTwoWeaponAttack(s.sheetOf(classes.Fighter, 1))
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "two light melee weapons")
+}
+
+func (s *CostCompilerTestSuite) TestQualifyingFirstSwingCarriesTheOffHandGrantThroughNetting() {
+	profile, err := CostOfSwing(s.twoWeaponFighter())
+	s.Require().NoError(err)
+
+	s.Equal(1, profile.Slots[coreCombat.ActionStandard])
+	s.Equal(1, profile.Grants[combat.CapacityOffHandAttack])
+	s.NotContains(profile.Grants, combat.CapacityAttack)
+	s.NotContains(profile.Capacity, combat.CapacityAttack)
+}
+
+// The Attack action costs the action slot and banks capacity rather than
+// spending it, which is why a fighter's second swing needs no second action.
 func (s *CostCompilerTestSuite) TestTheAttackActionCostsExactlyOneActionSlot() {
 	profile, err := CostOfAttack(s.sheetOf(classes.Fighter, 5))
 	s.Require().NoError(err)
@@ -130,6 +204,9 @@ func (s *CostCompilerTestSuite) TestCompilingWithoutASheetIsRefused() {
 	s.Require().Error(err)
 
 	_, err = CostOfStrike(nil)
+	s.Require().Error(err)
+
+	_, err = CostOfTwoWeaponAttack(nil)
 	s.Require().Error(err)
 }
 

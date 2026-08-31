@@ -131,8 +131,9 @@ func (f *FightingStyleTwoWeaponFightingCondition) onDamageChain(
 		return c, nil
 	}
 
-	// Check if there's an ability modifier to add
-	if event.AbilityModifier == 0 {
+	// The base two-weapon rule already retains a negative modifier. The style
+	// restores only the positive modifier that the bonus attack omitted.
+	if event.AbilityModifier <= 0 {
 		return c, nil
 	}
 

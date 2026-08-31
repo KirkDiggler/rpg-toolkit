@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -442,6 +443,44 @@ func (s *ActionEconomyTestSuite) TestAnUnknownAbilityIsStillAnAnswer() {
 	s.Require().NotNil(out)
 	s.False(out.Success)
 	s.Equal("unknown ability", out.Error)
+}
+
+func (s *ActionEconomyTestSuite) TestTwoWeaponsDoNotSynthesizeAnActivateAbility() {
+	char, err := LoadFromData(s.ctx, &Data{
+		ID:               "two-weapon-fighter",
+		PlayerID:         "player-1",
+		Name:             "Two Weapons",
+		Level:            1,
+		ClassID:          classes.Fighter,
+		RaceID:           races.Human,
+		ProficiencyBonus: 2,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:    12,
+		MaxHitPoints: 12,
+		ArmorClass:   14,
+		Inventory: []InventoryItemData{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},
+		},
+		EquipmentSlots: EquipmentSlots{
+			SlotMainHand: string(weapons.Shortsword),
+			SlotOffHand:  string(weapons.Scimitar),
+		},
+	}, s.bus)
+	s.Require().NoError(err)
+	_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	s.Require().NoError(err)
+
+	for _, ability := range char.AvailableAbilities() {
+		s.NotEqual(refs.CombatAbilities.OffHandAttack().String(), ability.Ref.String())
+	}
 }
 
 // --- rpg-project#300: the target table has to answer for features too ---
