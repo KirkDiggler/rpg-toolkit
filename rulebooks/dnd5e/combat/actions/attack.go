@@ -36,7 +36,8 @@ type AttackProfile struct {
 	Weapon      *WeaponContext       `json:"weapon,omitempty"`
 	// TwoWeaponBonus identifies the bonus attack granted after attacking with
 	// one of two light melee weapons. It is action semantics, not merely the
-	// physical equipment slot holding the weapon.
+	// physical equipment slot holding the weapon. Resolution consumes this
+	// declaration under rpg-toolkit#1348; producers never execute it here.
 	TwoWeaponBonus bool                   `json:"two_weapon_bonus,omitempty"`
 	Damage         []damage.Damage        `json:"damage,omitempty"`
 	OnHit          []ConditionApplication `json:"on_hit,omitempty"`

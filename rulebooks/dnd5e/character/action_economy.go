@@ -262,7 +262,6 @@ func targetKindForRef(ref *core.Ref) TargetKind {
 	switch ref.ID {
 	// Attack-shaped abilities target one entity.
 	case refs.CombatAbilities.Attack().ID,
-		refs.CombatAbilities.OffHandAttack().ID,
 		refs.CombatAbilities.Help().ID:
 		return TargetKindSingleEntity
 	// Self-affecting abilities (grant a condition on the actor).
