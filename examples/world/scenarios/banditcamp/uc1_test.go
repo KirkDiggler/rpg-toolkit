@@ -12,8 +12,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
-	"github.com/KirkDiggler/rpg-toolkit/examples/world/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/dnd5eresolver"
+	"github.com/KirkDiggler/rpg-toolkit/examples/world/scenarios/banditcamp"
 	"github.com/KirkDiggler/rpg-toolkit/examples/world/scripted"
 	"github.com/KirkDiggler/rpg-toolkit/world"
 	"github.com/KirkDiggler/rpg-toolkit/world/graph"
