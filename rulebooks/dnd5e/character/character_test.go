@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/stretchr/testify/suite"
@@ -138,8 +139,7 @@ func (s *CharacterResourceTestSuite) TestGetResourceDataReturnsNilWhenResourcesN
 	s.Assert().Nil(data)
 }
 
-func (s *CharacterResourceTestSuite) TestLoadResourceDataRestoresResources() {
-	// Create data
+func (s *CharacterResourceTestSuite) TestLoadResourceDataIsInertUntilCharacterRest() {
 	data := map[coreResources.ResourceKey]RecoverableResourceData{
 		"rage": {
 			Current:   1,
@@ -153,27 +153,39 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataRestoresResources() {
 		},
 	}
 
-	// Load it
 	s.character.LoadResourceData(s.ctx, s.bus, data)
-
-	// Verify resources were loaded correctly
-	s.Assert().Equal(2, len(s.character.resources))
-
-	// Check rage
+	s.Require().Len(s.character.resources, 2)
 	rage := s.character.GetResource("rage")
-	s.Require().NotNil(rage)
-	s.Assert().Equal(1, rage.Current())
-	s.Assert().Equal(2, rage.Maximum())
-	s.Assert().Equal(coreResources.ResetLongRest, rage.ResetType)
-	s.Assert().True(rage.IsApplied()) // Should be applied to bus
-
-	// Check ki
 	ki := s.character.GetResource("ki")
-	s.Require().NotNil(ki)
-	s.Assert().Equal(3, ki.Current())
-	s.Assert().Equal(5, ki.Maximum())
-	s.Assert().Equal(coreResources.ResetShortRest, ki.ResetType)
-	s.Assert().True(ki.IsApplied()) // Should be applied to bus
+	s.Require().Equal(2, rage.Maximum())
+	s.Require().Equal(coreResources.ResetLongRest, rage.ResetType)
+	s.Require().Equal(5, ki.Maximum())
+	s.Require().Equal(coreResources.ResetShortRest, ki.ResetType)
+
+	// Neither the supplied bus nor any other bus owns character-resource
+	// recovery. Raw events cannot move the persisted values.
+	otherBus := events.NewEventBus()
+	for _, bus := range []events.EventBus{otherBus, s.bus} {
+		err := dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
+			RestType: coreResources.ResetLongRest, CharacterID: s.character.GetID(),
+		})
+		s.Require().NoError(err)
+		s.Require().Equal(1, rage.Current())
+		s.Require().Equal(3, ki.Current())
+	}
+	s.False(rage.IsApplied())
+	s.False(ki.IsApplied())
+
+	// The Character verbs remain the sole rule owners and respect each reset
+	// type: short rest restores Ki only; long rest restores both.
+	s.character.bus = s.bus
+	s.Require().NoError(s.character.ShortRest(s.ctx))
+	s.Equal(1, rage.Current())
+	s.Equal(5, ki.Current())
+	s.Require().NoError(ki.Use(2))
+	s.Require().NoError(s.character.LongRest(s.ctx))
+	s.Equal(2, rage.Current())
+	s.Equal(5, ki.Current())
 }
 
 func (s *CharacterResourceTestSuite) TestLoadResourceDataWithFullResources() {
@@ -195,7 +207,7 @@ func (s *CharacterResourceTestSuite) TestLoadResourceDataWithFullResources() {
 	s.Assert().Equal(2, rage.Current())
 	s.Assert().Equal(2, rage.Maximum())
 	s.Assert().True(rage.IsFull())
-	s.Assert().True(rage.IsApplied())
+	s.Assert().False(rage.IsApplied())
 }
 
 func (s *CharacterResourceTestSuite) TestLoadResourceDataHandlesNilData() {
@@ -260,14 +272,14 @@ func (s *CharacterResourceTestSuite) TestRoundTripSerialization() {
 	s.Assert().Equal(1, rage.Current())
 	s.Assert().Equal(2, rage.Maximum())
 	s.Assert().Equal(coreResources.ResetLongRest, rage.ResetType)
-	s.Assert().True(rage.IsApplied())
+	s.Assert().False(rage.IsApplied())
 
 	ki := newChar.GetResource("ki")
 	s.Require().NotNil(ki)
 	s.Assert().Equal(5, ki.Current())
 	s.Assert().Equal(5, ki.Maximum())
 	s.Assert().Equal(coreResources.ResetShortRest, ki.ResetType)
-	s.Assert().True(ki.IsApplied())
+	s.Assert().False(ki.IsApplied())
 }
 
 func TestCharacterResourceSuite(t *testing.T) {

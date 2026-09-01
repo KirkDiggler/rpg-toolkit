@@ -826,15 +826,17 @@ func (c *Character) GetResourceData() map[coreResources.ResourceKey]RecoverableR
 	return data
 }
 
-// LoadResourceData loads resources from serialized data and applies them to the event bus.
-// Resources are applied so they subscribe to rest events for automatic recovery.
+// LoadResourceData loads character-owned resources from serialized data at
+// their persisted values. The context and bus remain for source compatibility;
+// resources stay inert because Character.LongRest and Character.ShortRest own
+// their recovery directly.
 //
 // A load path, so it does not mark the sheet dirty: the pools come back at the
 // values they were read from, and a sheet that reported itself dirty for
 // having been read would write those values straight back over storage.
 func (c *Character) LoadResourceData(
-	ctx context.Context,
-	bus events.EventBus,
+	_ context.Context,
+	_ events.EventBus,
 	data map[coreResources.ResourceKey]RecoverableResourceData,
 ) {
 	if data == nil {
@@ -857,13 +859,6 @@ func (c *Character) LoadResourceData(
 		if resData.Current != resData.Maximum {
 			deficit := resData.Maximum - resData.Current
 			_ = resource.Use(deficit) // Ignore error - we know the value is valid
-		}
-
-		// Apply resource to subscribe to rest events
-		if err := resource.Apply(ctx, bus); err != nil {
-			// Clean up on failure and skip this resource
-			_ = resource.Remove(ctx, bus)
-			continue
 		}
 
 		c.resources[key] = resource

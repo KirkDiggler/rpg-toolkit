@@ -100,6 +100,8 @@ func (s *AttachRollbackTestSuite) assertRetryWorks(char *Character) {
 	bus := events.NewEventBus()
 
 	s.Require().NoError(Attach(s.ctx, char, bus))
+	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
+		"a successful Attach still does not own character resources")
 
 	s.Require().Len(char.GetConditions(), 1)
 	s.Require().True(char.GetConditions()[0].IsApplied(), "the condition attached on the retry")
@@ -121,6 +123,8 @@ func (s *AttachRollbackTestSuite) TestKeeperRollsBackAPartialSubscribe() {
 	char, err := Load(s.ctx, fullSheet(&s.Suite))
 	s.Require().NoError(err)
 	before := marshalData(&s.Suite, char.ToData())
+	resource := char.GetResource(resources.RageCharges)
+	s.Require().False(resource.IsApplied())
 
 	bus := newFailingBus(3)
 	err = Attach(s.ctx, char, bus)
@@ -130,6 +134,7 @@ func (s *AttachRollbackTestSuite) TestKeeperRollsBackAPartialSubscribe() {
 	s.Require().Equal(before, marshalData(&s.Suite, char.ToData()))
 	s.Require().Empty(char.subscriptionIDs, "the sheet claims no subscriptions")
 	s.Require().Nil(char.bus, "and holds the bus it held before, which was none")
+	s.Require().False(resource.IsApplied(), "failed Attach does not change resource lifecycle")
 	s.assertNothingListening(char, bus)
 	s.assertRetryWorks(char)
 }

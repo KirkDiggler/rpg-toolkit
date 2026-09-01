@@ -196,13 +196,11 @@ func (k *SheetKeeper) unsubscribeSelf(ctx context.Context, bus events.EventBus) 
 	k.subscriptionIDs = nil
 }
 
-// Remove revokes every subscription this keeper granted and any character
-// resource still applied by the legacy LoadResourceData path.
+// Remove revokes every subscription this keeper granted.
 //
-// Normal Load/Attach resources are inert and are not touched here. Checking
-// IsApplied before Remove preserves that single-owner rest path while still
-// cleaning the older path's live subscription before its bus is reused.
-// Features come off newest first, reversing their persisted-order Apply calls.
+// It revokes what it granted and nothing else: character-owned resources are
+// inert and belong to the Character rest verbs. Features come off newest
+// first, reversing their persisted-order Apply calls.
 func (k *SheetKeeper) Remove(ctx context.Context, bus events.EventBus) error {
 	if k.character == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "sheet keeper has no character")
@@ -212,15 +210,6 @@ func (k *SheetKeeper) Remove(ctx context.Context, bus events.EventBus) error {
 	}
 
 	var firstErr error
-
-	for key, resource := range k.character.resources {
-		if !resource.IsApplied() {
-			continue
-		}
-		if err := resource.Remove(ctx, bus); err != nil && firstErr == nil {
-			firstErr = rpgerr.Wrapf(err, "failed to remove resource %q", key)
-		}
-	}
 
 	for i := len(k.attachedFeatures) - 1; i >= 0; i-- {
 		attached := k.attachedFeatures[i]

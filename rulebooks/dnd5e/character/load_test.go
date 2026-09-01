@@ -208,6 +208,9 @@ func (s *PureLoadTestSuite) TestLoadAppliesNothing() {
 	for _, cond := range char.GetConditions() {
 		s.Require().False(cond.IsApplied(), "a pure load applies no condition")
 	}
+	for key, resource := range char.resources {
+		s.Require().False(resource.IsApplied(), "a pure load applies no resource: %s", key)
+	}
 }
 
 // The strict path refuses a condition blob it cannot read, and the error says
@@ -473,6 +476,8 @@ func (s *PureLoadTestSuite) TestAttachAppliesWhatLoadParsed() {
 
 	s.Require().Len(char.GetConditions(), 1)
 	s.Require().True(char.GetConditions()[0].IsApplied())
+	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
+		"Attach does not apply character-owned resources")
 	s.Require().NotEmpty(char.subscriptionIDs, "the sheet keeper subscribed")
 }
 
