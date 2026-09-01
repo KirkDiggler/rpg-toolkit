@@ -395,7 +395,9 @@ func (s *StandingSuite) TestTheStorySaysItOnce() {
 // composition asks the rulebook who is down, and asks its own STORY whether it
 // has already said so. The story is the only memory involved, and the story has
 // a retention window — so when the window forgets the down beat, the next
-// consult says it again.
+// consult says it again. Forgetting happens at the storage boundary (#1381):
+// the live log never trims mid-load, so the loop below saves between pumps,
+// the way a load-per-verb host would.
 //
 // Pinned rather than left to be discovered, because the obvious "fix" is to
 // remember it, and remembering it is the dual state this whole shape exists to
@@ -435,6 +437,7 @@ func (s *StandingSuite) TestAForgottenDeathIsToldAgain() {
 		_, perr := enc.Pump(&encounter.PumpInput{})
 		s.Require().NoError(perr)
 		collect()
+		enc.ToData() // the save is what lets the window forget (#1381)
 	}
 
 	s.Greater(len(told), 1, "the story forgot the body, so the world noticed it again")

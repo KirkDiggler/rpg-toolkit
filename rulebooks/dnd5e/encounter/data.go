@@ -568,7 +568,26 @@ type EndingData struct {
 // ToData returns a persistent snapshot of this Encounter.
 // All slices and embedded data are deep-copied; mutating the returned
 // EncounterData will not affect this Encounter (snapshot immunity).
+//
+// ToData is the storage boundary, and it is where retention enforces (#1381):
+// it first trims the live story log to the retention window — advancing the
+// floor — then snapshots, so the emitted Log holds at most the window while
+// the live Story between saves serves a whole verb's delta regardless of
+// size. It is therefore not a pure read: the one mutation it performs is the
+// trim, and two consecutive calls still emit identical snapshots because the
+// second finds nothing left to trim.
 func (e *Encounter) ToData() EncounterData {
+	// Trim the live log, not just the emitted copy: the host discards the
+	// runtime object after saving (load-per-verb), and for the callers that
+	// don't — examples, workbenches — the in-memory log stays bounded too,
+	// with logFloor always agreeing with the entries the log actually holds.
+	// The error is structurally impossible (NextSeq never errs, and the
+	// computed floor is always at or below it), so it surfaces loudly rather
+	// than letting the blob grow without bound in silence.
+	if err := e.enforceRetention(); err != nil {
+		panic(fmt.Errorf("encounter: retention at storage boundary: %w", err))
+	}
+
 	// Members in sorted-ID order: an unchanged encounter must produce
 	// byte-identical snapshots (T6 review M1 — map iteration here made
 	// ToData nondeterministic and the round-trip suite ~16% flaky).

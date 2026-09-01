@@ -290,29 +290,28 @@ func logFloorOf(data record.LogData) uint64 {
 	return floor
 }
 
-// appendBeat appends one story beat and then enforces the retention window.
+// appendBeat appends one story beat. Every beat in the composition goes
+// through here rather than calling story.Append directly, so "all beats flow
+// through one place" stays true and any future per-append concern has a
+// single seam that cannot rot as verbs are added.
 //
-// Every beat in the composition goes through here rather than calling
-// story.Append directly — eight call sites today. That is the point: a retention
-// policy applied at seven of eight append sites is not a policy, and a single
-// seam is the only version of this that cannot rot as verbs are added.
+// Retention is deliberately NOT enforced here (#1381). A verb that mints more
+// beats than the window would trim its own earliest beats mid-verb — entries
+// no reader has been handed yet — so the live log holds everything appended
+// since load and the window is enforced at the storage boundary, in ToData.
 func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
-	out, err := e.story.Append(in)
-	if err != nil {
-		return nil, err
-	}
-	if err := e.enforceRetention(); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return e.story.Append(in)
 }
 
 // enforceRetention trims the story log down to the retention window and advances
-// logFloor to match.
+// logFloor to match. Called from ToData — the storage boundary — and nowhere
+// else (#1381): retention is a fact about what is WRITTEN, applied at the one
+// place writing happens, so it is structurally unable to touch a verb's own
+// beats before that verb has returned them.
 //
 // No-op when unbounded, and no-op while the log is still shorter than the window
 // — TrimBefore treats a bound at or below the oldest retained Seq as a no-op
-// anyway, but returning early keeps logFloor from being written on every append.
+// anyway, but returning early keeps logFloor from being written on every save.
 func (e *Encounter) enforceRetention() error {
 	if e.retention == RetentionUnbounded {
 		return nil
@@ -344,7 +343,7 @@ func (e *Encounter) enforceRetention() error {
 	// oldest entry rejects nothing that the log can still serve — which is
 	// exactly why no test in this package can distinguish the two versions. It
 	// is fixed anyway: the comment above claims the early return keeps logFloor
-	// from being written on every append, and code that contradicts its own
+	// from being written on every save, and code that contradicts its own
 	// documentation is a trap for whoever next reasons about the floor
 	// (Copilot, PR #939).
 	//
