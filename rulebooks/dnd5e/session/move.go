@@ -80,6 +80,9 @@ type MoveOutput struct {
 	// walk, keyed by observer.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
 
+	// Corrected reports location-belief corrections made during driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
+
 	// Outcome is present if an ending fired underfoot, which is also why the
 	// walk stopped.
 	Outcome *Outcome `json:"outcome,omitempty"`
@@ -298,6 +301,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	return &MoveOutput{
 		Steps:      res.steps,
 		Discovered: nilIfEmpty(res.discovered),
+		Corrected:  sortIntelCorrections(res.corrected),
 		Outcome:    res.outcome,
 		Formed:     res.formed,
 		Saved:      report,
@@ -371,6 +375,7 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 type walkResult struct {
 	steps      []Step
 	discovered map[string]Discovery
+	corrected  []IntelCorrection
 	outcome    *Outcome
 	formed     *Formed
 }
@@ -428,6 +433,7 @@ func (m *Manager) runWalk(
 			Seq:      stepped.Seq,
 		})
 		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas, down))
+		res.corrected = append(res.corrected, projectIntelCorrections(stepped.IntelDeltas)...)
 
 		if stepped.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:

@@ -303,7 +303,7 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 	}
 	s.Require().NotNil(payload, "alice and bob share an open hall in plain sight")
 
-	s.Equal(map[string]any{"x": bobsCell.X, "y": bobsCell.Y}, payload,
+	s.Equal(map[string]any{"state": string(encounter.LocationKnown), "x": bobsCell.X, "y": bobsCell.Y}, payload,
 		"bob's cell on the dungeon map — authored [42,21] as one axial cell")
 	s.NotContains(payload, "room", "a sighting names no room; there is one map")
 
