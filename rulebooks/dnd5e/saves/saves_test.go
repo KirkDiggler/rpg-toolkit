@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -528,6 +529,7 @@ func (s *SavingThrowTestSuite) TestRefusesNilEventBus() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "EventBus is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
 }
 
 // TestRefusesEmptySaverID pins the other required parameter: chain
@@ -543,4 +545,5 @@ func (s *SavingThrowTestSuite) TestRefusesEmptySaverID() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "SaverID is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
 }

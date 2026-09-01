@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -196,6 +197,7 @@ func (s *AbilityCheckTestSuite) TestRefusesNilEventBus() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "EventBus is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
 }
 
 // TestRefusesEmptyCheckerID pins the other required parameter: chain
@@ -211,6 +213,7 @@ func (s *AbilityCheckTestSuite) TestRefusesEmptyCheckerID() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "CheckerID is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
 }
 
 // TestChainGrantsAdvantage tests that a chain subscriber (e.g. a future

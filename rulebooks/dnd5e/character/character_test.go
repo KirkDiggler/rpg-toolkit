@@ -6,8 +6,10 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -426,6 +428,40 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedChar
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "on no bus")
+	s.Equal(rpgerr.CodePrerequisiteNotMet, rpgerr.GetCode(err))
+}
+
+// TestMakeSavingThrowConsultsParkedBusConditions pins the PR's headline
+// behavior (rpg-toolkit#1357): a condition subscribed on the character's
+// parked bus reaches Character.MakeSavingThrow — the verb passes THAT bus and
+// the character's own id, not a fresh bus and not nothing. Dodging grants
+// advantage on DEX saves keyed by SaverID; if a refactor ever swaps in a
+// different bus or id, this modifier vanishes and this test fails while every
+// arithmetic-only test stays green.
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowConsultsParkedBusConditions() {
+	char := s.createTestCharacter(
+		map[string]int{"dex": 14},
+		[]string{},
+	)
+	char.bus = events.NewEventBus()
+
+	dodging := conditions.NewDodgingCondition(char.GetID())
+	s.Require().NoError(dodging.Apply(s.ctx, char.bus))
+
+	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
+		Ability: abilities.DEX,
+		DC:      10,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	var names []string
+	for _, src := range result.AdvantageSources {
+		names = append(names, src.Name)
+	}
+	s.Contains(names, "Dodging",
+		"the Dodging condition on the parked bus must reach the save through the chain")
 }
 
 func TestCharacterSavingThrowSuite(t *testing.T) {
