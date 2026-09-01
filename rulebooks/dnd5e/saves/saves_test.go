@@ -514,9 +514,8 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 }
 
 // TestRefusesNilEventBus pins the required-bus contract (rpg-toolkit#1357):
-// a full saving throw consults the chain, so a nil bus is refused by name
-// rather than quietly skipping every condition. The error points the caller
-// at the unaided variant.
+// a saving throw consults the chain, so a nil bus is refused by name
+// rather than quietly skipping every condition.
 func (s *SavingThrowTestSuite) TestRefusesNilEventBus() {
 	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
 		Roller:   s.mockRoller,
@@ -529,7 +528,6 @@ func (s *SavingThrowTestSuite) TestRefusesNilEventBus() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "EventBus is required")
-	s.Contains(err.Error(), "MakeUnaidedSavingThrow")
 }
 
 // TestRefusesEmptySaverID pins the other required parameter: chain
@@ -545,145 +543,4 @@ func (s *SavingThrowTestSuite) TestRefusesEmptySaverID() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "SaverID is required")
-}
-
-// UnaidedSavingThrowTestSuite pins MakeUnaidedSavingThrow's contract: the
-// same roll arithmetic as the full save — advantage/disadvantage
-// cancellation, modifier, DC, natural 1/20 — with no chain and no bus, so
-// no condition can reach the roll (rpg-toolkit#1357).
-type UnaidedSavingThrowTestSuite struct {
-	suite.Suite
-	ctrl       *gomock.Controller
-	ctx        context.Context
-	mockRoller *mock_dice.MockRoller
-}
-
-func TestUnaidedSavingThrowSuite(t *testing.T) {
-	suite.Run(t, new(UnaidedSavingThrowTestSuite))
-}
-
-func (s *UnaidedSavingThrowTestSuite) SetupTest() {
-	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
-	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-}
-
-func (s *UnaidedSavingThrowTestSuite) TearDownTest() {
-	s.ctrl.Finish()
-}
-
-// TestBasicSuccess is the fold-outside shape (the resolution module's save
-// machine): the caller hands in what its own fold settled on and takes back
-// the arithmetic — no chain fires here.
-func (s *UnaidedSavingThrowTestSuite) TestBasicSuccess() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
-		Roller:   s.mockRoller,
-		DC:       12,
-		Modifier: 3,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll)
-	s.Equal(18, result.Total, "total should be 15 + 3 = 18")
-	s.Equal(12, result.DC)
-	s.True(result.Success, "18 should succeed against DC 12")
-	s.Empty(result.AdvantageSources, "no conditions consulted, nothing granted advantage")
-	s.Empty(result.DisadvantageSources)
-	s.Empty(result.BonusSources)
-}
-
-func (s *UnaidedSavingThrowTestSuite) TestBasicFailure() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(9, nil)
-
-	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
-		Roller:   s.mockRoller,
-		DC:       13,
-		Modifier: 3,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(9, result.Roll)
-	s.Equal(12, result.Total, "total should be 9 + 3 = 12")
-	s.False(result.Success, "12 should fail against DC 13")
-}
-
-func (s *UnaidedSavingThrowTestSuite) TestAdvantage() {
-	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
-
-	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
-		Roller:       s.mockRoller,
-		DC:           12,
-		Modifier:     2,
-		HasAdvantage: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll, "should use higher roll of 8 and 15")
-	s.Equal(17, result.Total)
-	s.True(result.Success)
-	s.Len(result.AdvantageSources, 1, "input advantage is tracked for auditability")
-	s.Equal("Input", result.AdvantageSources[0].Name)
-}
-
-func (s *UnaidedSavingThrowTestSuite) TestDisadvantage() {
-	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
-
-	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
-		Roller:          s.mockRoller,
-		DC:              15,
-		Modifier:        4,
-		HasDisadvantage: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(5, result.Roll, "should use lower roll of 18 and 5")
-	s.Equal(9, result.Total)
-	s.False(result.Success)
-	s.Len(result.DisadvantageSources, 1, "input disadvantage is tracked for auditability")
-	s.Equal("Input", result.DisadvantageSources[0].Name)
-}
-
-func (s *UnaidedSavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(11, nil)
-
-	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
-		Roller:          s.mockRoller,
-		DC:              15,
-		Modifier:        2,
-		HasAdvantage:    true,
-		HasDisadvantage: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(11, result.Roll, "should roll normally when advantage and disadvantage cancel")
-	s.Equal(13, result.Total)
-	s.False(result.Success)
-}
-
-func (s *UnaidedSavingThrowTestSuite) TestNatural1AndNatural20() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil)
-
-	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
-		Roller:   s.mockRoller,
-		DC:       30,
-		Modifier: -2,
-	})
-	s.Require().NoError(err)
-	s.False(result.IsNat1)
-	s.True(result.IsNat20, "should detect natural 20")
-	s.False(result.Success, "18 should fail against DC 30 (nat 20 doesn't auto-succeed saves)")
-}
-
-func (s *UnaidedSavingThrowTestSuite) TestNilInput() {
-	result, err := MakeUnaidedSavingThrow(s.ctx, nil)
-	s.Require().Error(err)
-	s.Nil(result)
-	s.Contains(err.Error(), "input cannot be nil")
 }

@@ -182,9 +182,8 @@ func (s *AbilityCheckTestSuite) TestNilInput() {
 }
 
 // TestRefusesNilEventBus pins the required-bus contract (rpg-toolkit#1357):
-// a full ability check consults the chain, so a nil bus is refused by name
-// rather than quietly skipping every condition. The error points the caller
-// at the unaided variant.
+// an ability check consults the chain, so a nil bus is refused by name
+// rather than quietly skipping every condition.
 func (s *AbilityCheckTestSuite) TestRefusesNilEventBus() {
 	result, err := MakeAbilityCheck(s.ctx, &AbilityCheckInput{
 		Roller:    s.mockRoller,
@@ -197,7 +196,6 @@ func (s *AbilityCheckTestSuite) TestRefusesNilEventBus() {
 	s.Require().Error(err)
 	s.Nil(result)
 	s.Contains(err.Error(), "EventBus is required")
-	s.Contains(err.Error(), "MakeUnaidedAbilityCheck")
 }
 
 // TestRefusesEmptyCheckerID pins the other required parameter: chain
@@ -312,144 +310,4 @@ func (s *AbilityCheckTestSuite) TestChainAddsBonus() {
 	s.Len(result.BonusSources, 1)
 	s.Equal("Bless", result.BonusSources[0].Name)
 	s.Equal(3, result.BonusSources[0].Bonus)
-}
-
-// UnaidedAbilityCheckTestSuite pins MakeUnaidedAbilityCheck's contract: the
-// same roll arithmetic as the full check — advantage/disadvantage
-// cancellation, modifier, DC, natural 1/20 — with no chain and no bus, so
-// no condition can reach the roll (rpg-toolkit#1357).
-type UnaidedAbilityCheckTestSuite struct {
-	suite.Suite
-	ctrl       *gomock.Controller
-	ctx        context.Context
-	mockRoller *mock_dice.MockRoller
-}
-
-func TestUnaidedAbilityCheckSuite(t *testing.T) {
-	suite.Run(t, new(UnaidedAbilityCheckTestSuite))
-}
-
-func (s *UnaidedAbilityCheckTestSuite) SetupTest() {
-	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
-	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TearDownTest() {
-	s.ctrl.Finish()
-}
-
-// TestBasicSuccess is the session-resolver shape: roll + sheet modifier
-// against a DC, no conditions consulted (the session seam is bus-free by
-// structural pin).
-func (s *UnaidedAbilityCheckTestSuite) TestBasicSuccess() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	result, err := MakeUnaidedAbilityCheck(s.ctx, &UnaidedAbilityCheckInput{
-		Roller:   s.mockRoller,
-		DC:       12,
-		Modifier: 3,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll)
-	s.Equal(18, result.Total, "total should be 15 + 3 = 18")
-	s.Equal(12, result.DC)
-	s.True(result.Success, "18 should succeed against DC 12")
-	s.Empty(result.AdvantageSources, "no conditions consulted, nothing granted advantage")
-	s.Empty(result.DisadvantageSources)
-	s.Empty(result.BonusSources)
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TestBasicFailure() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(5, nil)
-
-	result, err := MakeUnaidedAbilityCheck(s.ctx, &UnaidedAbilityCheckInput{
-		Roller:   s.mockRoller,
-		DC:       15,
-		Modifier: 3,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(5, result.Roll)
-	s.Equal(8, result.Total, "total should be 5 + 3 = 8")
-	s.False(result.Success, "8 should fail against DC 15")
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TestAdvantage() {
-	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
-
-	result, err := MakeUnaidedAbilityCheck(s.ctx, &UnaidedAbilityCheckInput{
-		Roller:       s.mockRoller,
-		DC:           12,
-		Modifier:     2,
-		HasAdvantage: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll, "should use higher roll of 8 and 15")
-	s.Equal(17, result.Total)
-	s.True(result.Success)
-	s.Len(result.AdvantageSources, 1, "input advantage is tracked for auditability")
-	s.Equal("Input", result.AdvantageSources[0].Name)
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TestDisadvantage() {
-	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
-
-	result, err := MakeUnaidedAbilityCheck(s.ctx, &UnaidedAbilityCheckInput{
-		Roller:          s.mockRoller,
-		DC:              15,
-		Modifier:        4,
-		HasDisadvantage: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(5, result.Roll, "should use lower roll of 18 and 5")
-	s.Equal(9, result.Total)
-	s.False(result.Success)
-	s.Len(result.DisadvantageSources, 1, "input disadvantage is tracked for auditability")
-	s.Equal("Input", result.DisadvantageSources[0].Name)
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TestAdvantageAndDisadvantageCancelOut() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(11, nil)
-
-	result, err := MakeUnaidedAbilityCheck(s.ctx, &UnaidedAbilityCheckInput{
-		Roller:          s.mockRoller,
-		DC:              15,
-		Modifier:        2,
-		HasAdvantage:    true,
-		HasDisadvantage: true,
-	})
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(11, result.Roll, "should roll normally when advantage and disadvantage cancel")
-	s.Equal(13, result.Total)
-	s.False(result.Success)
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TestNatural1AndNatural20() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(1, nil)
-
-	result, err := MakeUnaidedAbilityCheck(s.ctx, &UnaidedAbilityCheckInput{
-		Roller:   s.mockRoller,
-		DC:       5,
-		Modifier: 10,
-	})
-	s.Require().NoError(err)
-	s.True(result.IsNat1)
-	s.False(result.IsNat20)
-}
-
-func (s *UnaidedAbilityCheckTestSuite) TestNilInput() {
-	result, err := MakeUnaidedAbilityCheck(s.ctx, nil)
-	s.Require().Error(err)
-	s.Nil(result)
-	s.Contains(err.Error(), "input cannot be nil")
 }

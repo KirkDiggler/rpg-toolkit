@@ -3,12 +3,10 @@
 // advantage/disadvantage/bonuses shape, applied to skill checks instead of
 // saving throws.
 //
-// Two total functions, never one partial one (rpg-toolkit#1357):
-//
-//   - MakeAbilityCheck is the full check. It requires an event bus and fires
-//     AbilityCheckChain so conditions and features can modify the roll.
-//   - MakeUnaidedAbilityCheck consults no conditions. It has no bus
-//     parameter, so nothing is silently skipped because nothing was promised.
+// Every check consults the AbilityCheckChain — the bus is required, never
+// defaulted (rpg-toolkit#1357). There is no bus-free entry point: for a real
+// character nobody can prove no condition applies, so a check that skips the
+// chain is a claim this package refuses to express.
 package checks
 
 import (
@@ -22,7 +20,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
-// AbilityCheckInput contains all parameters needed to make a full ability check.
+// AbilityCheckInput contains all parameters needed to make an ability check.
 type AbilityCheckInput struct {
 	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
 	// Pass a mock roller here for testing.
@@ -30,9 +28,10 @@ type AbilityCheckInput struct {
 
 	// EventBus is the event bus the AbilityCheckChain fires on, so that
 	// conditions and features (guidance, inspiration, a blinded checker's
-	// disadvantage) can modify the check. Required — a full ability check
-	// consults the chain. A caller with no bus makes that choice by name
-	// with MakeUnaidedAbilityCheck instead of passing nil here.
+	// disadvantage) can modify the check. Required — an ability check
+	// consults the chain, and no caller can prove no condition applies,
+	// so nil is refused rather than quietly skipping every condition
+	// (rpg-toolkit#1357).
 	EventBus events.EventBus
 
 	// CheckerID is the ID of the entity making the check.
@@ -44,31 +43,6 @@ type AbilityCheckInput struct {
 
 	// DC is the Difficulty Class that must be met or exceeded (e.g. the
 	// highest observer passive Perception for a Hide check).
-	DC int
-
-	// Modifier is the total bonus/penalty to add to the roll
-	// (typically ability modifier + proficiency bonus if proficient)
-	Modifier int
-
-	// HasAdvantage indicates rolling two d20s and taking the higher result
-	HasAdvantage bool
-
-	// HasDisadvantage indicates rolling two d20s and taking the lower result
-	// Note: If both HasAdvantage and HasDisadvantage are true, they cancel out
-	// and a single d20 is rolled (D&D 5e rule)
-	HasDisadvantage bool
-}
-
-// UnaidedAbilityCheckInput contains all parameters needed to make an unaided
-// ability check: roll, modifier, advantage/disadvantage, DC. There is no
-// EventBus and no CheckerID because no chain fires — see
-// MakeUnaidedAbilityCheck.
-type UnaidedAbilityCheckInput struct {
-	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
-	// Pass a mock roller here for testing.
-	Roller dice.Roller
-
-	// DC is the Difficulty Class that must be met or exceeded
 	DC int
 
 	// Modifier is the total bonus/penalty to add to the roll
@@ -114,8 +88,8 @@ type AbilityCheckResult struct {
 	BonusSources []dnd5eEvents.CheckBonusSource
 }
 
-// MakeAbilityCheck executes a full ability check: the AbilityCheckChain fires
-// on the supplied bus so conditions and features can grant advantage, impose
+// MakeAbilityCheck executes an ability check: the AbilityCheckChain fires on
+// the supplied bus so conditions and features can grant advantage, impose
 // disadvantage, or add bonuses, and the modified roll is scored against the DC.
 //
 // The function handles:
@@ -126,10 +100,13 @@ type AbilityCheckResult struct {
 //   - Natural 1 and natural 20 detection
 //   - Chain event modifiers (advantage, disadvantage, bonuses from conditions/features)
 //
-// EventBus and CheckerID are required — supplied, never defaulted. A full
-// ability check consults the chain; a nil bus here is refused rather than
-// quietly skipping every condition (rpg-toolkit#1357). A caller that has no
-// bus wants MakeUnaidedAbilityCheck, which states that choice by name.
+// EventBus and CheckerID are required — supplied, never defaulted, refused
+// loudly when absent. An ability check consults the chain, period: the day a
+// condition subscribes, a bus-less call site would be a silent rules bug, so
+// that call site cannot be written (rpg-toolkit#1357). The production caller
+// is the resolution rung's check machine, which loads the character with
+// conditions and fires the chain through resolution's lawful bus
+// (rpg-project#351, ideas/living-world/concealed-door/design.md).
 //
 // If input.Roller is nil, a default CryptoRoller is used.
 // Returns an error if the dice roller fails or chain execution fails.
@@ -139,15 +116,39 @@ func MakeAbilityCheck(ctx context.Context, input *AbilityCheckInput) (*AbilityCh
 	}
 	if input.EventBus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
-			"EventBus is required: a full ability check consults the AbilityCheckChain — "+
-				"a caller with no bus rolls unaided, by name, with MakeUnaidedAbilityCheck")
+			"EventBus is required: an ability check consults the AbilityCheckChain, "+
+				"and without the bus no condition can reach the roll")
 	}
 	if input.CheckerID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
 			"CheckerID is required: chain subscribers key off the checker's id")
 	}
 
-	tally := newCheckTally(input.HasAdvantage, input.HasDisadvantage)
+	roller := input.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
+
+	// Initialize modifier tracking from input
+	hasAdvantage := input.HasAdvantage
+	hasDisadvantage := input.HasDisadvantage
+	var advantageSources []dnd5eEvents.CheckModifierSource
+	var disadvantageSources []dnd5eEvents.CheckModifierSource
+	var bonusSources []dnd5eEvents.CheckBonusSource
+
+	// Track input-provided advantage/disadvantage as sources for auditability
+	if input.HasAdvantage {
+		advantageSources = append(advantageSources, dnd5eEvents.CheckModifierSource{
+			Name:       "Input",
+			SourceType: "input",
+		})
+	}
+	if input.HasDisadvantage {
+		disadvantageSources = append(disadvantageSources, dnd5eEvents.CheckModifierSource{
+			Name:       "Input",
+			SourceType: "input",
+		})
+	}
 
 	chainEvent := &dnd5eEvents.AbilityCheckChainEvent{
 		CheckerID: input.CheckerID,
@@ -172,97 +173,21 @@ func MakeAbilityCheck(ctx context.Context, input *AbilityCheckInput) (*AbilityCh
 
 	// Collect modifiers from chain (append to input sources)
 	if result.HasAdvantage() {
-		tally.hasAdvantage = true
-		tally.advantageSources = append(tally.advantageSources, result.AdvantageSources...)
+		hasAdvantage = true
+		advantageSources = append(advantageSources, result.AdvantageSources...)
 	}
 	if result.HasDisadvantage() {
-		tally.hasDisadvantage = true
-		tally.disadvantageSources = append(tally.disadvantageSources, result.DisadvantageSources...)
+		hasDisadvantage = true
+		disadvantageSources = append(disadvantageSources, result.DisadvantageSources...)
 	}
-	tally.bonus = result.TotalBonus()
-	tally.bonusSources = append(tally.bonusSources, result.BonusSources...)
-
-	return rollCheck(ctx, input.Roller, input.DC, input.Modifier, tally)
-}
-
-// MakeUnaidedAbilityCheck executes an ability check that consults no
-// conditions: d20 with advantage/disadvantage cancellation, plus the
-// caller-supplied modifier, against the DC, with natural 1/20 detection —
-// and nothing else. It has no bus parameter, so no chain fires and none is
-// promised: the absence of condition modifiers is this function's stated
-// contract, never a silent degradation (rpg-toolkit#1357).
-//
-// A caller holding a bus wants MakeAbilityCheck, the full check. Bus-free
-// callers — the session seam is bus-free by structural pin — roll unaided
-// here; their checks meet conditions at the resolution rung, the layer that
-// owns interaction machinery (rpg-project#351,
-// ideas/living-world/concealed-door/design.md, "the resolver and the
-// no-bus law").
-//
-// If input.Roller is nil, a default CryptoRoller is used.
-// Returns an error if the dice roller fails.
-func MakeUnaidedAbilityCheck(ctx context.Context, input *UnaidedAbilityCheckInput) (*AbilityCheckResult, error) {
-	if input == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
-	}
-
-	tally := newCheckTally(input.HasAdvantage, input.HasDisadvantage)
-
-	return rollCheck(ctx, input.Roller, input.DC, input.Modifier, tally)
-}
-
-// checkTally is what a check has gathered before the die is rolled: the
-// effective advantage/disadvantage flags, the chain bonus, and the sources
-// behind each. The full check merges chain output into it; the unaided check
-// carries only the caller's own flags.
-type checkTally struct {
-	hasAdvantage        bool
-	hasDisadvantage     bool
-	bonus               int
-	advantageSources    []dnd5eEvents.CheckModifierSource
-	disadvantageSources []dnd5eEvents.CheckModifierSource
-	bonusSources        []dnd5eEvents.CheckBonusSource
-}
-
-// newCheckTally seeds a tally from caller-supplied advantage/disadvantage,
-// tracking each as an "Input" source for auditability.
-func newCheckTally(hasAdvantage, hasDisadvantage bool) checkTally {
-	tally := checkTally{
-		hasAdvantage:    hasAdvantage,
-		hasDisadvantage: hasDisadvantage,
-	}
-	if hasAdvantage {
-		tally.advantageSources = append(tally.advantageSources, dnd5eEvents.CheckModifierSource{
-			Name:       "Input",
-			SourceType: "input",
-		})
-	}
-	if hasDisadvantage {
-		tally.disadvantageSources = append(tally.disadvantageSources, dnd5eEvents.CheckModifierSource{
-			Name:       "Input",
-			SourceType: "input",
-		})
-	}
-	return tally
-}
-
-// rollCheck is the one implementation of the roll arithmetic both public
-// functions share: advantage/disadvantage cancellation, the d20, the total
-// against the DC, natural 1/20 detection. The unaided check is the full
-// check minus the chain, structurally, not a copy.
-func rollCheck(
-	ctx context.Context, roller dice.Roller, dc, modifier int, tally checkTally,
-) (*AbilityCheckResult, error) {
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
+	bonusFromChain := result.TotalBonus()
+	bonusSources = append(bonusSources, result.BonusSources...)
 
 	var roll int
-	var err error
 
 	// D&D 5e Rule: Advantage and Disadvantage cancel each other out
-	effectiveAdvantage := tally.hasAdvantage && !tally.hasDisadvantage
-	effectiveDisadvantage := tally.hasDisadvantage && !tally.hasAdvantage
+	effectiveAdvantage := hasAdvantage && !hasDisadvantage
+	effectiveDisadvantage := hasDisadvantage && !hasAdvantage
 
 	switch {
 	case effectiveAdvantage:
@@ -288,17 +213,17 @@ func rollCheck(
 	}
 
 	// Calculate total (base modifier + chain bonuses)
-	total := roll + modifier + tally.bonus
+	total := roll + input.Modifier + bonusFromChain
 
 	return &AbilityCheckResult{
 		Roll:                roll,
 		Total:               total,
-		DC:                  dc,
-		Success:             total >= dc,
+		DC:                  input.DC,
+		Success:             total >= input.DC,
 		IsNat1:              roll == 1,
 		IsNat20:             roll == 20,
-		AdvantageSources:    tally.advantageSources,
-		DisadvantageSources: tally.disadvantageSources,
-		BonusSources:        tally.bonusSources,
+		AdvantageSources:    advantageSources,
+		DisadvantageSources: disadvantageSources,
+		BonusSources:        bonusSources,
 	}, nil
 }

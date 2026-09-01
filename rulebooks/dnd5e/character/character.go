@@ -243,7 +243,6 @@ type MakeSavingThrowInput struct {
 // The character must be attached to a bus ([Attach] / Draft.Finalize): a full
 // save consults the chain, and a sheet on no bus has every save-modifying
 // condition absent — refused loudly rather than rolled wrong (rpg-toolkit#1357).
-// A bare stat block that wants arithmetic only uses saves.MakeUnaidedSavingThrow.
 func (c *Character) MakeSavingThrow(
 	ctx context.Context, input *MakeSavingThrowInput,
 ) (*saves.SavingThrowResult, error) {

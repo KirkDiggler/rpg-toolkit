@@ -1,11 +1,9 @@
 // Package saves implements D&D 5e saving throw mechanics.
 //
-// Two total functions, never one partial one (rpg-toolkit#1357):
-//
-//   - MakeSavingThrow is the full save. It requires an event bus and fires
-//     SavingThrowChain so conditions and features can modify the roll.
-//   - MakeUnaidedSavingThrow consults no conditions. It has no bus
-//     parameter, so nothing is silently skipped because nothing was promised.
+// Every saving throw consults the SavingThrowChain — the bus is required,
+// never defaulted (rpg-toolkit#1357). There is no bus-free entry point: for a
+// real character nobody can prove no condition applies, so a save that skips
+// the chain is a claim this package refuses to express.
 package saves
 
 import (
@@ -19,7 +17,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// SavingThrowInput contains all parameters needed to make a full saving throw
+// SavingThrowInput contains all parameters needed to make a saving throw
 type SavingThrowInput struct {
 	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
 	// Pass a mock roller here for testing.
@@ -27,9 +25,9 @@ type SavingThrowInput struct {
 
 	// EventBus is the event bus the SavingThrowChain fires on, so that
 	// conditions like Dodging can grant advantage on DEX saves. Required —
-	// a full saving throw consults the chain. A caller with no bus makes
-	// that choice by name with MakeUnaidedSavingThrow instead of passing
-	// nil here.
+	// a saving throw consults the chain, and no caller can prove no
+	// condition applies, so nil is refused rather than quietly skipping
+	// every condition (rpg-toolkit#1357).
 	EventBus events.EventBus
 
 	// SaverID is the ID of the entity making the saving throw.
@@ -42,30 +40,6 @@ type SavingThrowInput struct {
 
 	// Ability is the ability score being tested (STR, DEX, CON, INT, WIS, CHA)
 	Ability abilities.Ability
-
-	// DC is the Difficulty Class that must be met or exceeded
-	DC int
-
-	// Modifier is the total bonus/penalty to add to the roll
-	// (typically ability modifier + proficiency bonus if proficient)
-	Modifier int
-
-	// HasAdvantage indicates rolling two d20s and taking the higher result
-	HasAdvantage bool
-
-	// HasDisadvantage indicates rolling two d20s and taking the lower result
-	// Note: If both HasAdvantage and HasDisadvantage are true, they cancel out
-	// and a single d20 is rolled (D&D 5e rule)
-	HasDisadvantage bool
-}
-
-// UnaidedSavingThrowInput contains all parameters needed to make an unaided
-// saving throw: roll, modifier, advantage/disadvantage, DC. There is no
-// EventBus and no SaverID because no chain fires — see MakeUnaidedSavingThrow.
-type UnaidedSavingThrowInput struct {
-	// Roller is the dice roller to use. If nil, defaults to dice.NewRoller().
-	// Pass a mock roller here for testing.
-	Roller dice.Roller
 
 	// DC is the Difficulty Class that must be met or exceeded
 	DC int
@@ -115,8 +89,8 @@ type SavingThrowResult struct {
 	BonusSources []dnd5eEvents.SaveBonusSource
 }
 
-// MakeSavingThrow executes a full saving throw: the SavingThrowChain fires
-// on the supplied bus so conditions and features can grant advantage, impose
+// MakeSavingThrow executes a saving throw: the SavingThrowChain fires on the
+// supplied bus so conditions and features can grant advantage, impose
 // disadvantage, or add bonuses, and the modified roll is scored against the DC.
 //
 // The function handles:
@@ -127,10 +101,10 @@ type SavingThrowResult struct {
 //   - Natural 1 and natural 20 detection
 //   - Chain event modifiers (advantage, disadvantage, bonuses from conditions/features)
 //
-// EventBus and SaverID are required — supplied, never defaulted. A full
-// saving throw consults the chain; a nil bus here is refused rather than
-// quietly skipping every condition (rpg-toolkit#1357). A caller that has no
-// bus wants MakeUnaidedSavingThrow, which states that choice by name.
+// EventBus and SaverID are required — supplied, never defaulted, refused
+// loudly when absent. A saving throw consults the chain, period: the day a
+// condition subscribes, a bus-less call site would be a silent rules bug, so
+// that call site cannot be written (rpg-toolkit#1357).
 //
 // If input.Roller is nil, a default CryptoRoller is used.
 // Returns an error if the dice roller fails or chain execution fails.
@@ -140,15 +114,39 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 	}
 	if input.EventBus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
-			"EventBus is required: a full saving throw consults the SavingThrowChain — "+
-				"a caller with no bus rolls unaided, by name, with MakeUnaidedSavingThrow")
+			"EventBus is required: a saving throw consults the SavingThrowChain, "+
+				"and without the bus no condition can reach the roll")
 	}
 	if input.SaverID == "" {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument,
 			"SaverID is required: chain subscribers key off the saver's id")
 	}
 
-	tally := newSaveTally(input.HasAdvantage, input.HasDisadvantage)
+	roller := input.Roller
+	if roller == nil {
+		roller = dice.NewRoller()
+	}
+
+	// Initialize modifier tracking from input
+	hasAdvantage := input.HasAdvantage
+	hasDisadvantage := input.HasDisadvantage
+	var advantageSources []dnd5eEvents.SaveModifierSource
+	var disadvantageSources []dnd5eEvents.SaveModifierSource
+	var bonusSources []dnd5eEvents.SaveBonusSource
+
+	// Track input-provided advantage/disadvantage as sources for auditability
+	if input.HasAdvantage {
+		advantageSources = append(advantageSources, dnd5eEvents.SaveModifierSource{
+			Name:       "Input",
+			SourceType: "input",
+		})
+	}
+	if input.HasDisadvantage {
+		disadvantageSources = append(disadvantageSources, dnd5eEvents.SaveModifierSource{
+			Name:       "Input",
+			SourceType: "input",
+		})
+	}
 
 	chainEvent := &dnd5eEvents.SavingThrowChainEvent{
 		SaverID: input.SaverID,
@@ -174,99 +172,21 @@ func MakeSavingThrow(ctx context.Context, input *SavingThrowInput) (*SavingThrow
 
 	// Collect modifiers from chain (append to input sources)
 	if result.HasAdvantage() {
-		tally.hasAdvantage = true
-		tally.advantageSources = append(tally.advantageSources, result.AdvantageSources...)
+		hasAdvantage = true
+		advantageSources = append(advantageSources, result.AdvantageSources...)
 	}
 	if result.HasDisadvantage() {
-		tally.hasDisadvantage = true
-		tally.disadvantageSources = append(tally.disadvantageSources, result.DisadvantageSources...)
+		hasDisadvantage = true
+		disadvantageSources = append(disadvantageSources, result.DisadvantageSources...)
 	}
-	tally.bonus = result.TotalBonus()
-	tally.bonusSources = append(tally.bonusSources, result.BonusSources...)
-
-	return rollSave(ctx, input.Roller, input.DC, input.Modifier, tally)
-}
-
-// MakeUnaidedSavingThrow executes a saving throw that consults no conditions:
-// d20 with advantage/disadvantage cancellation, plus the caller-supplied
-// modifier, against the DC, with natural 1/20 detection — and nothing else.
-// It has no bus parameter, so no chain fires and none is promised: the
-// absence of condition modifiers is this function's stated contract, never a
-// silent degradation (rpg-toolkit#1357).
-//
-// A caller holding a bus wants MakeSavingThrow, the full save. A caller that
-// folds the saving-throw chain on its own bus (the resolution module's save
-// machine) hands in what the fold settled on and takes back the arithmetic
-// here — the same fold-outside shape as combat.FinalDamage. Checks made at
-// bus-free seams meet conditions at the resolution rung, the layer that owns
-// interaction machinery (rpg-project#351,
-// ideas/living-world/concealed-door/design.md, "the resolver and the
-// no-bus law").
-//
-// If input.Roller is nil, a default CryptoRoller is used.
-// Returns an error if the dice roller fails.
-func MakeUnaidedSavingThrow(ctx context.Context, input *UnaidedSavingThrowInput) (*SavingThrowResult, error) {
-	if input == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "input cannot be nil")
-	}
-
-	tally := newSaveTally(input.HasAdvantage, input.HasDisadvantage)
-
-	return rollSave(ctx, input.Roller, input.DC, input.Modifier, tally)
-}
-
-// saveTally is what a save has gathered before the die is rolled: the
-// effective advantage/disadvantage flags, the chain bonus, and the sources
-// behind each. The full save merges chain output into it; the unaided save
-// carries only the caller's own flags.
-type saveTally struct {
-	hasAdvantage        bool
-	hasDisadvantage     bool
-	bonus               int
-	advantageSources    []dnd5eEvents.SaveModifierSource
-	disadvantageSources []dnd5eEvents.SaveModifierSource
-	bonusSources        []dnd5eEvents.SaveBonusSource
-}
-
-// newSaveTally seeds a tally from caller-supplied advantage/disadvantage,
-// tracking each as an "Input" source for auditability.
-func newSaveTally(hasAdvantage, hasDisadvantage bool) saveTally {
-	tally := saveTally{
-		hasAdvantage:    hasAdvantage,
-		hasDisadvantage: hasDisadvantage,
-	}
-	if hasAdvantage {
-		tally.advantageSources = append(tally.advantageSources, dnd5eEvents.SaveModifierSource{
-			Name:       "Input",
-			SourceType: "input",
-		})
-	}
-	if hasDisadvantage {
-		tally.disadvantageSources = append(tally.disadvantageSources, dnd5eEvents.SaveModifierSource{
-			Name:       "Input",
-			SourceType: "input",
-		})
-	}
-	return tally
-}
-
-// rollSave is the one implementation of the roll arithmetic both public
-// functions share: advantage/disadvantage cancellation, the d20, the total
-// against the DC, natural 1/20 detection. The unaided save is the full save
-// minus the chain, structurally, not a copy.
-func rollSave(
-	ctx context.Context, roller dice.Roller, dc, modifier int, tally saveTally,
-) (*SavingThrowResult, error) {
-	if roller == nil {
-		roller = dice.NewRoller()
-	}
+	bonusFromChain := result.TotalBonus()
+	bonusSources = append(bonusSources, result.BonusSources...)
 
 	var roll int
-	var err error
 
 	// D&D 5e Rule: Advantage and Disadvantage cancel each other out
-	effectiveAdvantage := tally.hasAdvantage && !tally.hasDisadvantage
-	effectiveDisadvantage := tally.hasDisadvantage && !tally.hasAdvantage
+	effectiveAdvantage := hasAdvantage && !hasDisadvantage
+	effectiveDisadvantage := hasDisadvantage && !hasAdvantage
 
 	switch {
 	case effectiveAdvantage:
@@ -292,17 +212,17 @@ func rollSave(
 	}
 
 	// Calculate total (base modifier + chain bonuses)
-	total := roll + modifier + tally.bonus
+	total := roll + input.Modifier + bonusFromChain
 
 	return &SavingThrowResult{
 		Roll:                roll,
 		Total:               total,
-		DC:                  dc,
-		Success:             total >= dc,
+		DC:                  input.DC,
+		Success:             total >= input.DC,
 		IsNat1:              roll == 1,
 		IsNat20:             roll == 20,
-		AdvantageSources:    tally.advantageSources,
-		DisadvantageSources: tally.disadvantageSources,
-		BonusSources:        tally.bonusSources,
+		AdvantageSources:    advantageSources,
+		DisadvantageSources: disadvantageSources,
+		BonusSources:        bonusSources,
 	}, nil
 }
