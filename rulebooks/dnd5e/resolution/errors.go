@@ -165,6 +165,14 @@ var (
 	// remaining" survives the crossing the way a shortfall's currency does.
 	ErrActivationRefused = errors.New("resolution: ability refused to activate")
 
+	// ErrBadCheck indicates an ability check nobody could make: an empty
+	// approach list, a route with no difficulty, or a route naming an
+	// identifier the rulebook has neither skill nor ability for. The
+	// declaration is content, so this is content or wiring being wrong rather
+	// than a failed roll — a malformed route must not reach a player as "you
+	// didn't find anything".
+	ErrBadCheck = errors.New("resolution: invalid check")
+
 	// ErrRecurrenceUnsupported indicates a gate asking for a repeat save this
 	// package cannot yet run. Refusing is the point: treating "save again at
 	// the end of each of your turns" as a single save would produce a

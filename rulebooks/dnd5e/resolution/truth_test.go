@@ -157,12 +157,14 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 // foldEntries are the functions in this package that stand a fold up from
 // nothing, and therefore the functions that must go through the door first.
 //
-// THREE of them now, and the growth is why this is a table. Resolve runs an
+// FOUR of them now, and the growth is why this is a table. Resolve runs an
 // interaction. ProjectCharacter folds one derived number for a caller with no
 // interaction to run — a character joining a session, who is not standing
 // anywhere yet. Standing answers a question about live sheets for a caller that
-// must not hold any. All three need the truth installed for the same reason and
-// install it the same way; none is a mode of another.
+// must not hold any. MakeCheck makes one character's ability check with their
+// conditions attached, for a seam that holds records and never sheets. All four
+// need the truth installed for the same reason and install it the same way;
+// none is a mode of another.
 //
 // PREFLIGHT IS DELIBERATELY ABSENT, and its absence is the interesting entry in
 // this list. It attaches every participant and folds nothing — it is asking
@@ -182,6 +184,7 @@ var foldEntries = []struct{ file, fn string }{
 	{"resolve.go", "resolveOn"},
 	{"projection.go", "projectCharacterOn"},
 	{"standing.go", "standingOn"},
+	{"check.go", "makeCheckOn"},
 }
 
 func entryNames(entries []struct{ file, fn string }) []string {

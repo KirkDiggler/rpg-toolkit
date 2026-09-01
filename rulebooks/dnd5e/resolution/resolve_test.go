@@ -227,9 +227,8 @@ func (s *ResolveTestSuite) TestRagingBarbarianGetsAdvantageOnAStrengthSave() {
 	s.Require().Equal(advantageRoll+heroSaveBonus, got.Result.Total)
 	s.Require().True(got.Result.Success)
 
-	s.Require().True(got.Folded.HasAdvantage())
-	s.Require().Len(got.Folded.AdvantageSources, 1)
-	s.Require().Equal(refs.Conditions.Raging(), got.Folded.AdvantageSources[0].SourceRef,
+	s.Require().Len(got.Result.AdvantageSources, 1)
+	s.Require().Equal(refs.Conditions.Raging(), got.Result.AdvantageSources[0].SourceRef,
 		"and it is Raging that says so, not the wiring")
 }
 
@@ -245,8 +244,7 @@ func (s *ResolveTestSuite) TestTheSameBarbarianWithoutRageRollsStraight() {
 
 	got := s.outcomeOf(out)
 	s.Require().Equal(straightRoll, got.Result.Roll)
-	s.Require().False(got.Folded.HasAdvantage())
-	s.Require().Empty(got.Folded.AdvantageSources)
+	s.Require().Empty(got.Result.AdvantageSources)
 }
 
 // The second effect, on a different chain, through the same machinery.
@@ -260,7 +258,7 @@ func (s *ResolveTestSuite) TestDodgingGrantsAdvantageOnADexteritySave() {
 
 	got := s.outcomeOf(out)
 	s.Require().Equal(advantageRoll, got.Result.Roll)
-	s.Require().Equal(refs.Conditions.Dodging(), got.Folded.AdvantageSources[0].SourceRef)
+	s.Require().Equal(refs.Conditions.Dodging(), got.Result.AdvantageSources[0].SourceRef)
 }
 
 // Applicability is the effect's own predicate, never resolution's. Raging is
@@ -275,7 +273,7 @@ func (s *ResolveTestSuite) TestRagingDeclinesADexteritySaveOnItsOwn() {
 
 	got := s.outcomeOf(out)
 	s.Require().Equal(straightRoll, got.Result.Roll)
-	s.Require().False(got.Folded.HasAdvantage())
+	s.Require().Empty(got.Result.AdvantageSources)
 
 	s.Require().NotEmpty(hooksFor(out.Hooks, *refs.Conditions.Raging()),
 		"it was attached — it simply decided the save was not its business")

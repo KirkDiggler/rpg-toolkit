@@ -118,11 +118,18 @@
 // # The bus-effect tally
 //
 // [Gather] is a step resolution runs with the bus in hand — folding a chain,
-// first and mainly. Three of the four do exactly that and hand back the folded
-// event: the saving throw, the attack chain, the damage chain. The fourth does
+// first and mainly. The attack chain, the damage chain and the movement chain
+// do exactly that and hand back the folded event. The post-attack-roll chain
+// folds too but hands back only the next step: its subscribers do the
+// remembering (Rage's sustain tracking is why it exists), so the folded event
+// has nobody to go back to. The saving throw hands the bus to
+// [saves.MakeSavingThrow] instead and hands back that entry's result, because
+// rpg-toolkit#1382 sealed the rules packages' bus-free entries — a save or
+// check that skips its chain is a claim they refuse to express — and folding
+// here before calling there would fold the chain twice. One more does
 // something on the bus and hands back nothing but the next step — imposing a
-// contest's consequence. All four are built by constructors here, all four run
-// on resolution's bus, and each is named for what it does.
+// contest's consequence. All are built by constructors here, all run on
+// resolution's bus, and each is named for what it does.
 //
 // ADR-0026's Notify would have been a second of the latter kind, and is
 // deliberately absent — see strikeMachine.afterDamage. Publishing
@@ -158,13 +165,26 @@
 // to be told apart by TYPE rather than by [Gather.Name] — which is a different
 // question from the one this section settled, and a better one.
 //
-// All three folds are this package's own. The damage chain was the last one
-// held elsewhere: slice 1 handed resolution's bus to combat.ResolveDamage,
-// because every exported attack and damage entry point in that package required
-// one and the multiplier arithmetic was unexported. Slice 2 exported that
-// arithmetic bus-free ([combat.FinalDamage]) and moved the fold here, so
-// custody now matches where the bus lives. The grep-able worklist that tracked
-// it — every call site marked "divestment debt — #965 slice 2" — is empty.
+// The attack and damage folds are this package's own. The damage chain was
+// the last one held elsewhere: slice 1 handed resolution's bus to
+// combat.ResolveDamage, because every exported attack and damage entry point
+// in that package required one and the multiplier arithmetic was unexported.
+// Slice 2 exported that arithmetic bus-free ([combat.FinalDamage]) and moved
+// the fold here, so custody matched where the bus lives. The grep-able
+// worklist that tracked it — every call site marked "divestment debt — #965
+// slice 2" — is empty.
+//
+// The saving-throw and ability-check folds moved the OTHER way, and the
+// difference is a ruling rather than a drift. rpg-toolkit#1357 ruled that no
+// unaided character check may be expressible — nobody can prove no condition
+// applies — so #1382 made the bus REQUIRED in [saves.MakeSavingThrow] and
+// [checks.MakeAbilityCheck] and removed the bus-free arithmetic a
+// FinalDamage-style divestment would need. Custody of those two folds
+// therefore follows the ruling: the rules entries fold, exactly once, and
+// this package is their one lawful bus supplier — the save machine's Gather
+// and [MakeCheck] hand over the interaction's own bus and take the result.
+// What the ruling protects is not WHERE the fold runs but that no call site
+// can skip it, and both custody shapes keep that true.
 //
 // # What this package does not do yet
 //
@@ -233,11 +253,15 @@
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
 // and that every path which folds reaches it.
 //
-// There are two such paths. [Resolve] runs an interaction; [ProjectCharacter]
-// folds one derived number for a caller with no interaction to run — a
-// character joining a session, who is not standing anywhere yet and so gets a
-// context whose room is honestly ABSENT rather than invented. Both go through
-// the same door, and neither is a mode of the other. A behavioural suite cannot make any of those
+// There are four such paths, and TestOnlyTheDoorInstallsGameContext holds the
+// list. [Resolve] runs an interaction. [ProjectCharacter] folds one derived
+// number for a caller with no interaction to run — a character joining a
+// session, who is not standing anywhere yet and so gets a context whose room
+// is honestly ABSENT rather than invented. [Standing] asks who is down.
+// [MakeCheck] makes one character's ability check with their conditions
+// attached — the living-world rung (rpg-toolkit#1380), and the check chain's
+// first live production audience. Each goes through the same door, and none
+// is a mode of another. A behavioural suite cannot make any of those
 // claims: the defect is that tests supply what production does not, so the
 // tests are the last place it shows up.
 //
