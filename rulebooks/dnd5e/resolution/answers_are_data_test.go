@@ -122,7 +122,7 @@ func TestEveryOutcomeIsAnswerShaped(t *testing.T) {
 // TestTheOutcomeTableIsComplete holds the table above to the source, so the
 // allow-list cannot quietly fall behind a new outcome.
 //
-// The same argument foldEntries makes: the count IS the assertion, so the
+// The same argument truthEntries makes: the count IS the assertion, so the
 // source is the assertion. A new outcome type is a deliberate join, not a
 // silent one.
 func TestTheOutcomeTableIsComplete(t *testing.T) {
