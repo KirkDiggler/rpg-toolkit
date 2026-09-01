@@ -42,6 +42,8 @@ The three files have different jobs:
 - [Encounter anchoring](encounter-anchoring/)
 - [Encounter transitions](encounter-transitions/)
 - [Monster behavior](monster-behavior/)
+- [NPC](npc/)
 - [Play](play/)
 - [Session SDK](session-sdk/)
 - [Type-safe refs](type-safe-refs/)
+- [World NPCs](world-npcs/)

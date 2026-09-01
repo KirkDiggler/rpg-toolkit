@@ -25,6 +25,10 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   one. *Rule: infrastructure and rules live in different places.*
 - **0023** — `core` provides types and contracts only; rulebooks implement.
   *Rule: the shared layer defines vocabulary, never behaviour.*
+- **0046** *(proposed)* — Generic NPCs are top-level content: `npc` owns shared
+  identity and policies, rulebooks own concrete vendors, and movement is a named
+  policy rather than `BlocksMovement bool`. *Rule: shared content should not
+  inherit the limits of today's runtime adapter.*
 - **0021** *(superseded by ADR-0045)* — Actions were executable internal
   rulebook objects; ADR-0045 replaces them with shared inert definitions.
 - **0022** — `Repository (data) → Loader (domain objects) → Orchestrator (workflow)`.
