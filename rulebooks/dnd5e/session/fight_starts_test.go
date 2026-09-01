@@ -484,13 +484,15 @@ func (s *FightStartsTestSuite) TestTheFightsOrderIsAFunctionOfPersistedData() {
 		"every participant, in an order that does not depend on iteration")
 }
 
-// TestAWalkWritesOnlyTheEncounter pins write proportionality.
-//
-// Session state did not change, so the session blob is not rewritten — and a
-// walk cannot change session state at all now that it opens no window. The
-// other side of the rule moved to Spawn, which is the one verb that still
-// writes both aggregates (it puts an NPC sheet in the session record).
-func (s *FightStartsTestSuite) TestAWalkWritesOnlyTheEncounter() {
+// TestAWalkWritesWhatAWalkChanges pins write proportionality — in the shape
+// per-recipient numbering gave it (rpg-toolkit#1375). A walk appends beats,
+// appended beats advance every member's delivered-stream cursor, and the
+// cursors ride SessionData (stream.go) — so a beat-appending verb now writes
+// BOTH aggregates, encounter first (persist's own ordering argument). What
+// survives of the old rule is its principle: a verb that changes nothing
+// writes nothing extra — a verb that appends no beat leaves the cursors
+// untouched and the session blob alone (cursorsEqual's early-out).
+func (s *FightStartsTestSuite) TestAWalkWritesWhatAWalkChanges() {
 	s.startAmbush()
 
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
@@ -498,8 +500,8 @@ func (s *FightStartsTestSuite) TestAWalkWritesOnlyTheEncounter() {
 		Path: []spatial.Position{{X: 2, Y: 0}},
 	})
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:world"}, out.Saved.Written,
-		"the session blob is left alone when session state did not change")
+	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written,
+		"the walk's beats advance the stream cursors, and the cursors are session state")
 }
 
 // TestAPartialSaveTellsTheCallerWhichHalfLanded is S6 reaching a caller, which

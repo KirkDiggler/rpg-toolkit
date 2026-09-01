@@ -125,7 +125,8 @@ func (m *Manager) projectEvents(
 		}
 
 		for _, entry := range entries {
-			events = append(events, projectEntry(scope.session, string(member), entry))
+			events = append(events, projectEntry(scope.session, string(member), entry,
+				scope.deliveredSeq(string(member), entry.Seq)))
 		}
 	}
 
@@ -144,7 +145,10 @@ func (m *Manager) projectEvents(
 // re-queried Story got a shape it had to decode a second, different way —
 // exactly the drift #239 found live in the debug feed (kind=UNKNOWN
 // body=null on every caught-up entry).
-func projectEntry(session, recipient string, e record.Entry) Event {
+// seq is the RECIPIENT's own number for this entry, computed by the caller
+// from the one persisted cursor (stream.go) — never the record's global
+// sequence, which stays internal to the seam.
+func projectEntry(session, recipient string, e record.Entry, seq uint64) Event {
 	kind, body := decodeBeat(e.Payload)
 
 	var tags map[string]string
@@ -157,7 +161,7 @@ func projectEntry(session, recipient string, e record.Entry) Event {
 
 	return Event{
 		Session:     session,
-		Seq:         e.Seq,
+		Seq:         seq,
 		At:          e.At,
 		Correlation: e.Correlation,
 		Tags:        tags,
@@ -258,6 +262,10 @@ func kindFor(beat string) EventKind {
 		return EventDowned
 	case "door":
 		return EventDoor
+	case "door_revealed":
+		return EventDoorRevealed
+	case "region_revealed":
+		return EventRegionRevealed
 	default:
 		return EventUnknown
 	}
@@ -351,6 +359,41 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DownedBody{Member: p.Member}
+	case EventDoorRevealed:
+		// The composition writes doorways as bare from/to pairs; the body
+		// re-carries them as [AtlasDoorway] entries with Door filled, so
+		// the patch appends to the cached atlas's own list without reshaping.
+		var p struct {
+			Door       string         `json:"door"`
+			State      string         `json:"state"`
+			Doorways   []AtlasDoorway `json:"doorways"`
+			Approaches []DoorApproach `json:"approaches"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Door == "" || p.State == "" {
+			return nil
+		}
+		for i := range p.Doorways {
+			p.Doorways[i].Door = p.Door
+		}
+		return DoorRevealedBody{
+			Door: p.Door, State: p.State,
+			Doorways: p.Doorways, Approaches: p.Approaches,
+		}
+	case EventRegionRevealed:
+		// The payload's region, props and boundaries carry exactly this
+		// package's atlas field names — the beat is the recipient's own
+		// atlas answer, sliced — so the types decode directly.
+		var p struct {
+			Region     AtlasRegion     `json:"region"`
+			Props      []AtlasProp     `json:"props"`
+			Boundaries []AtlasBoundary `json:"boundaries"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
+			return nil
+		}
+		return RegionRevealedBody{
+			Region: p.Region, Props: p.Props, Boundaries: p.Boundaries,
+		}
 	default:
 		// EventSceneOpened, EventTick: no body member exists for these — see
 		// EventBody's own doc.

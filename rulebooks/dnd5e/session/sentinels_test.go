@@ -84,6 +84,7 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrLocked":                 encounter.ErrLocked,
 	"encounter.ErrDoorShut":               encounter.ErrDoorShut,
 	"encounter.ErrNoRegion":               encounter.ErrNoRegion,
+	"encounter.ErrElsewhere":              encounter.ErrElsewhere,
 	"encounter.ErrInBubble":               encounter.ErrInBubble,
 	"encounter.ErrNoBubble":               encounter.ErrNoBubble,
 	"encounter.ErrBadClock":               encounter.ErrBadClock,
@@ -202,6 +203,7 @@ var sessionSentinels = map[string]error{
 	"ErrBrokenPath":       session.ErrBrokenPath,
 	"ErrLocked":           session.ErrLocked,
 	"ErrDoorShut":         session.ErrDoorShut,
+	"ErrElsewhere":        session.ErrElsewhere,
 	"ErrNoConnection":     session.ErrNoConnection,
 	"ErrBadPosition":      session.ErrBadPosition,
 	"ErrNoSessionID":      session.ErrNoSessionID,
@@ -462,16 +464,40 @@ func (s *SentinelSuite) TestAWorldThatWillNotLoad() {
 }
 
 // TestATrimmedStory is the case that already held, kept here so the list of
-// refusals is the list of refusals rather than a list of bugs once fixed.
+// refusals is the list of refusals rather than a list of bugs once fixed —
+// reconstructed for per-recipient numbering (stream.go): a session with no
+// cursor has never issued a number, so any resume point the retained window
+// can seed is answerable, and the trimmed refusal needs a cursor that
+// remembers MORE than the window still holds — a session that delivered
+// beats, then aged them out.
 func (s *SentinelSuite) TestATrimmedStory() {
-	_, err := s.mgr.StartSession(context.Background(), &session.StartSessionInput{
-		Session: "trimmed", Encounter: "trimmed-world", World: trimmedWorld(s.T()),
+	ctx := context.Background()
+	world := trimmedWorld(s.T())
+	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "trimmed", Encounter: "trimmed-world", World: world,
 	})
 	s.Require().NoError(err)
 
-	_, err = s.mgr.Story(context.Background(),
+	// Five beats were delivered to alice before the surviving window — the
+	// state a long-running session reaches on its own, planted through the
+	// repository because driving 30+ verbs here would test patience, not
+	// the refusal.
+	data, err := s.sessions.GetSession(ctx, "trimmed")
+	s.Require().NoError(err)
+	data.Streams = map[string]session.StreamCursor{
+		"alice": {UpTo: world.Log.NextSeq - 1, Count: uint64(len(world.Log.Entries)) + 5},
+	}
+	s.Require().NoError(s.sessions.SaveSession(ctx, data))
+
+	_, err = s.mgr.Story(ctx,
 		&session.StoryInput{Session: "trimmed", Member: "alice", FromSeq: 1})
 	s.refusedInOurVocabulary(err, session.ErrStoryTrimmed)
+
+	resumable, err := s.mgr.Story(ctx,
+		&session.StoryInput{Session: "trimmed", Member: "alice", FromSeq: 6})
+	s.Require().NoError(err, "the oldest surviving number is still honoured")
+	s.Require().NotEmpty(resumable)
+	s.Equal(uint64(6), resumable[0].Seq)
 }
 
 // TestAMemberTheEncounterDoesNotHave covers the reads that ask the composition

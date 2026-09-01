@@ -307,7 +307,7 @@ func (s *OneMapSuite) TestASightingIsReportedOnTheMap() {
 		"bob's cell on the dungeon map — authored [42,21] as one axial cell")
 	s.NotContains(payload, "room", "a sighting names no room; there is one map")
 
-	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Contains(atlas.Cells, bobsCell,
 		"the sighted cell is a cell of the map the same client renders")

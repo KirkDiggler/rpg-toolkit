@@ -321,7 +321,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Hit:      struck.Hit,
 		Critical: struck.Critical,
 		Damage:   struck.Damage,
-		Seq:      recorded.Seq,
+		Seq:      scope.deliveredSeq(in.Attacker, recorded.Seq),
 		Saved:    report,
 		Delivery: delivery,
 		Attack:   attackRefFor(definition),

@@ -54,4 +54,16 @@ type SessionData struct {
 	// A session written before this field has no npcs key and unmarshals to
 	// nil, which reads as "no NPCs" — so older sessions load unchanged.
 	NPCs []monster.Data `json:"npcs,omitempty"`
+
+	// Streams is each ever-member's delivered-stream cursor — the persisted
+	// half of per-recipient dense numbering (stream.go's whole account of
+	// why it must persist and what it survives). Keyed by member ID.
+	//
+	// It lives HERE, not in EncounterData, by the split the composition
+	// already draws: the record numbers the story globally and is complete
+	// at that; who has been DELIVERED what is a fact about the table.
+	//
+	// A session written before this field unmarshals to nil, which reads as
+	// "no number was ever issued" — the one legal seeding (stream.go).
+	Streams map[string]StreamCursor `json:"streams,omitempty"`
 }

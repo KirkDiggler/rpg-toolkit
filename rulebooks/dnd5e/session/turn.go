@@ -306,7 +306,7 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 	return &EndTurnOutput{
 		Next:         string(ended.Next),
 		RoundWrapped: ended.RoundWrapped,
-		Seq:          ended.Seq,
+		Seq:          scope.deliveredSeq(in.Member, ended.Seq),
 		Corrected:    projectIntelCorrections(ended.IntelDeltas),
 		Saved:        report,
 		Delivery:     delivery,

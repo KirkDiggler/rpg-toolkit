@@ -597,8 +597,16 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	// scope.enc — so there is no seam here for round 2's own baseline to
 	// advance past or skip over what round 1 already delivered. A gap
 	// above 0 would mean some beat between the two calls reached nobody.
+	//
+	// PER RECIPIENT, since rpg-toolkit#1375: Seq is each member's own
+	// delivered numbering, so continuity is asserted member by member —
+	// which is the stronger form of the same guarantee, and the form a
+	// real client (who holds exactly one member's stream) experiences.
 	s.Require().NotEmpty(stream.published)
-	round1Last := stream.published[len(stream.published)-1].Seq
+	round1LastFor := map[string]uint64{}
+	for _, e := range stream.published {
+		round1LastFor[e.Recipient] = e.Seq
+	}
 
 	// Round 2: the same call again. The skeleton's SECOND driven strike is
 	// round 2's own struck beat — the one the live evidence says never
@@ -608,9 +616,17 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(stream.published)
-	round2First := stream.published[0].Seq
-	s.Equal(round1Last+1, round2First,
-		"round 2's own publish batch starts exactly one seq after round 1's last — no gap, no bypass")
+	round2FirstFor := map[string]uint64{}
+	for _, e := range stream.published {
+		if _, seen := round2FirstFor[e.Recipient]; !seen {
+			round2FirstFor[e.Recipient] = e.Seq
+		}
+	}
+	for member, last := range round1LastFor {
+		s.Equal(last+1, round2FirstFor[member],
+			"round 2's own publish batch starts exactly one seq after round 1's last "+
+				"for %s — no gap, no bypass", member)
+	}
 
 	struck, ok := skelStruckFighter(stream.published)
 	s.Require().True(ok,
@@ -986,14 +1002,17 @@ func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSes
 	ctx := context.Background()
 	_, err = mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: doubleDoorWorld(t, withDavid)})
 	require.NoError(t, err)
-	doors, err := mgr.Doors(ctx, &session.DoorsInput{Session: "sess"})
+	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "billy", Position: hexCell(21, 1)})
+	require.NoError(t, err)
+	// Doors answers as one member now (rpg-toolkit#1375), so the fixture's
+	// sanity read happens through Billy once he is seated — nothing here is
+	// concealed, so his answer IS the whole truth.
+	doors, err := mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "billy"})
 	require.NoError(t, err)
 	require.Equal(t, []session.Door{
 		{ID: "door-a", State: "open"},
 		{ID: "door-b", State: "open"},
 	}, doors.Doors, "the scene must contain two real open session doors")
-	_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "billy", Position: hexCell(21, 1)})
-	require.NoError(t, err)
 	if withDavid {
 		_, err = mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "david", Position: hexCell(2, 3)})
 		require.NoError(t, err)

@@ -195,7 +195,7 @@ func (m *Manager) Dissolve(ctx context.Context, in *DissolveInput) (*DissolveOut
 	return &DissolveOutput{
 		Members:  members,
 		Cause:    cause.Kind(),
-		Seq:      dissolved.Seq,
+		Seq:      scope.deliveredSeq(in.Member, dissolved.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil

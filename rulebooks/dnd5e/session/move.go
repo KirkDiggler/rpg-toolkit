@@ -63,7 +63,8 @@ type Step struct {
 	// Position is the cell entered, in dungeon-absolute space.
 	Position spatial.Position `json:"position"`
 
-	// Seq is the story sequence of the recorded step.
+	// Seq is the step beat's sequence IN THE MOVER'S OWN delivered
+	// numbering (stream.go).
 	Seq uint64 `json:"seq"`
 }
 
@@ -298,6 +299,17 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", err)
 	}
 
+	// The walk collected the record's own sequences step by step; the
+	// numbering exists only once commit has run, so the translation into
+	// the MOVER's delivered numbering happens here (stream.go) — the mover
+	// is audience to every one of their own steps, frontier or not.
+	for i := range res.steps {
+		res.steps[i].Seq = scope.deliveredSeq(in.Member, res.steps[i].Seq)
+	}
+	if res.formed != nil {
+		res.formed.Seq = scope.deliveredSeq(in.Member, res.formed.Seq)
+	}
+
 	return &MoveOutput{
 		Steps:      res.steps,
 		Discovered: nilIfEmpty(res.discovered),
@@ -471,6 +483,18 @@ func refusedStep(i, n int, cell spatial.Position, err error) error {
 		return fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, n, cell.X, cell.Y, err)
 	}
 	return fmt.Errorf("step %d of %d to (%v,%v): %w: %v", i+1, n, cell.X, cell.Y, ours, err)
+}
+
+// projectFormedFor is projectFormed with the beat's sequence translated into
+// one member's own delivered numbering — for verb outputs, which report in
+// their actor's numbering (stream.go). Callable only after commit has
+// numbered the streams.
+func projectFormedFor(scope *writeScope, member string, f *encounter.FormedBubble) *Formed {
+	out := projectFormed(f)
+	if out != nil {
+		out.Seq = scope.deliveredSeq(member, f.Seq)
+	}
+	return out
 }
 
 // projectFormed turns the composition's report of a started fight into the

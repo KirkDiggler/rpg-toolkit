@@ -74,7 +74,8 @@ func gatedWorld(t fataler, state encounter.DoorState) *encounter.EncounterData {
 const tombDC = 12
 
 func tombLock() encounter.DoorState {
-	return encounter.DoorIsLocked(encounter.Lock{DC: tombDC, Ability: "dex"})
+	return encounter.DoorIsLocked(encounter.Lock{
+		Approaches: []encounter.CheckApproach{{Ability: "dex", DC: tombDC}}})
 }
 
 type DoorsSuite struct {
@@ -128,7 +129,7 @@ func (s *DoorsSuite) TestDoorsReadsTheLiveState() {
 
 	s.Run("an open gate has no lock to report", func() {
 		s.startWith(hexWorld(s.T()))
-		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess"})
+		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
 		s.Require().Len(out.Doors, 1)
 		s.Equal(session.Door{ID: "gate", State: "open"}, out.Doors[0])
@@ -136,11 +137,12 @@ func (s *DoorsSuite) TestDoorsReadsTheLiveState() {
 
 	s.Run("a locked gate reports its lock, DC and all", func() {
 		s.startWith(gatedWorld(s.T(), tombLock()))
-		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess"})
+		out, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
 		s.Require().Len(out.Doors, 1)
 		s.Equal(session.Door{ID: "gate", State: "locked",
-			Lock: &session.DoorLock{DC: tombDC, Ability: "dex"}}, out.Doors[0])
+			Lock: &session.DoorLock{Approaches: []session.DoorApproach{
+				{Ability: "dex", DC: tombDC}}}}, out.Doors[0])
 	})
 }
 
@@ -174,7 +176,7 @@ func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 	s.Require().NoError(err)
 	s.Equal(session.Door{ID: "gate", State: "open"}, out.Door)
 
-	read, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess"})
+	read, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal("open", read.Doors[0].State, "the read agrees with the verb")
 
@@ -239,7 +241,8 @@ func (s *DoorsSuite) TestAFailedUnlockIsAnOutcomeNotAnError() {
 
 func (s *DoorsSuite) TestALockNamingNoRulebookAbilityIsRefusedLoudly() {
 	s.startWith(
-		gatedWorld(s.T(), encounter.DoorIsLocked(encounter.Lock{DC: tombDC, Ability: "luck"})),
+		gatedWorld(s.T(), encounter.DoorIsLocked(encounter.Lock{
+			Approaches: []encounter.CheckApproach{{Ability: "luck", DC: tombDC}}})),
 		deftCharacter("alice", 14))
 	_, err := s.mgr.Unlock(context.Background(), &session.UnlockInput{
 		Session: "sess", Member: "alice", Door: "gate"})

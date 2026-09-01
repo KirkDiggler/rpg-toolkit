@@ -82,7 +82,7 @@ func (s *AtlasMapSuite) SetupTest() {
 }
 
 func (s *AtlasMapSuite) atlas() *session.Atlas {
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	return atlas
 }

@@ -155,7 +155,7 @@ func (s *TurnTestSuite) TestEndingATurnHandsItOn() {
 		"the ogre has no player; TurnDriver passes its turn and the round wraps straight back to her")
 	s.True(out.RoundWrapped, "two in the fight, so the ogre's driven-through pass closes the round")
 	s.NotZero(out.Seq)
-	s.Equal([]string{"encounter:world"}, out.Saved.Written)
+	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
 
 	after, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)

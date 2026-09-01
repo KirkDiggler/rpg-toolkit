@@ -319,7 +319,7 @@ func drive(out *bytes.Buffer) error {
 			n.Name, n.ID, n.HitPoints, n.MaxHitPoints, n.ArmorClass, n.Speed)
 	}
 
-	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "crypt-run"})
+	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "crypt-run", Member: "alice"})
 	if err != nil {
 		return err
 	}

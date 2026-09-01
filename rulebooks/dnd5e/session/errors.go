@@ -290,6 +290,13 @@ var (
 	// case arrives with the behavior work that calls for it.
 	ErrNotACharacter = errors.New("member is not a character")
 
+	// ErrElsewhere is returned by Search when the named region is not the
+	// one the searcher stands in — INCLUDING a region that does not exist,
+	// deliberately indistinguishably: a distinct no-such-region answer
+	// would let a guessed ID probe for hidden rooms (the composition's own
+	// contract, carried across unweakened).
+	ErrElsewhere = errors.New("not standing in that region")
+
 	// ErrNoSheet is returned when a member has no stored sheet to resolve
 	// against — an authored monster standing in a world nobody spawned.
 	//

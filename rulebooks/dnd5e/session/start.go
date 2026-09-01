@@ -165,6 +165,13 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 		// Authored worlds are loaded to be inspected and re-serialized, never
 		// driven — no clock advances here. Same reasoning as the Striker above.
 		Announcer: encounter.RefusingAnnouncer{},
+		// And the concealment pair: an authored world is never searched and
+		// never refreshes sight, so this package's refusing stand-ins hold
+		// the same line (conceal.go). AtlasOf deliberately answers the WHOLE
+		// truth for an authored world — the author's own view — which is
+		// why it stays on the unscoped Atlas.
+		CheckResolver: refusingCheckResolver{},
+		Witness:       refusingWitness{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
