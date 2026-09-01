@@ -241,7 +241,8 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 
 	require.NoError(t, char.LongRest(ctx))
 	got := char.ToData()
-	require.Equal(t, got.MaxHitPoints, got.HitPoints)
+	require.Equal(t, 36, got.HitPoints)
+	require.Equal(t, 36, got.MaxHitPoints)
 	if got.DeathSaveState != nil {
 		require.Zero(t, got.DeathSaveState.Successes)
 		require.Zero(t, got.DeathSaveState.Failures)
@@ -252,7 +253,8 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 
 	var restoredSecondWind features.SecondWindData
 	require.NoError(t, json.Unmarshal(featureByRef(t, got.Features, refs.Features.SecondWind()), &restoredSecondWind))
-	require.Equal(t, restoredSecondWind.MaxUses, restoredSecondWind.Uses)
+	require.Equal(t, 1, restoredSecondWind.Uses)
+	require.Equal(t, 1, restoredSecondWind.MaxUses)
 
 	require.Equal(t, 0, got.SpellSlots[1].Used)
 }

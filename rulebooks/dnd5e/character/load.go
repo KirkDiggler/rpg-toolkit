@@ -451,8 +451,9 @@ func loadEffects(raw []json.RawMessage, characterID string, policy effectPolicy)
 // loadResources rebuilds the character's recoverable resources at their
 // persisted values. Strict loads reject malformed bounds before construction;
 // lenient loads drop those entries rather than allowing a constructor or failed
-// Use call to normalize them into valid-looking counts. Valid resources are
-// inert until a [SheetKeeper] puts them on a bus, which makes them recover on a rest.
+// Use call to normalize them into valid-looking counts. Valid resources stay
+// inert: Character.LongRest and Character.ShortRest recover these
+// character-owned pools directly rather than subscribing them to RestTopic.
 func loadResources(
 	persisted map[coreResources.ResourceKey]RecoverableResourceData,
 	characterID string,

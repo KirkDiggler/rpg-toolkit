@@ -205,6 +205,26 @@ func (s *SheetKeeperTestSuite) TestRemoveStopsTheSheetListening() {
 	s.Require().Empty(s.char.subscriptionIDs, "and no longer claims to be")
 }
 
+// LoadResourceData is a legacy path that applies the resource itself. Cleanup
+// must still remove that live subscription before its bus is reused, while
+// normal Load/Attach resources remain inert and need no removal.
+func (s *SheetKeeperTestSuite) TestCleanupRemovesLegacyAppliedResource() {
+	s.char.LoadResourceData(s.ctx, s.bus, map[coreResources.ResourceKey]RecoverableResourceData{
+		resources.Ki: {Current: 1, Maximum: 3, ResetType: coreResources.ResetShortRest},
+	})
+	ki := s.char.GetResource(resources.Ki)
+	s.Require().True(ki.IsApplied(), "LoadResourceData applies its reconstructed resource")
+
+	s.Require().NoError(s.char.Cleanup(s.ctx))
+	s.Require().False(ki.IsApplied(), "Cleanup removes the legacy-applied resource")
+
+	s.Require().NoError(dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: s.char.GetID(),
+	}))
+	s.Equal(1, ki.Current(), "a cleaned sheet does not react when the bus is reused")
+}
+
 // A keeper is the character's own, not a fresh one per call: two callers asking
 // cannot subscribe the same sheet twice between them.
 func (s *SheetKeeperTestSuite) TestKeeperIsTheCharactersOwn() {
