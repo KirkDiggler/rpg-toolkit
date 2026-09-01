@@ -330,6 +330,18 @@ func (s *SheetLedgerTestSuite) TestTheKeyedViewIsTheStoredEconomy() {
 	s.Equal(3, char.GetActionEconomy().Granted[GrantedAttacks], "and a feature reads what the gate banked")
 }
 
+func (s *SheetLedgerTestSuite) TestMartialArtsCapacityUsesTheExistingPersistedKey() {
+	char := s.loaded()
+
+	char.BankCapacity(combat.CapacityMartialArtsBonusAttack, 1)
+
+	s.Equal(1, char.GetActionEconomy().Granted[GrantedMartialArtsBonus],
+		"the current gate and the previously shipped persisted vocabulary are one state")
+	s.NotContains(char.GetActionEconomy().Granted,
+		GrantedActionKey(combat.CapacityMartialArtsBonusAttack),
+		"a second spelling would strand previously persisted grants")
+}
+
 // Movement is keyed capacity to the gate and a field on the sheet, and they
 // are one thing. What a path costs is the path's business — the profile only
 // ever says "spend this much".

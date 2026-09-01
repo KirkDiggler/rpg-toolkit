@@ -436,6 +436,9 @@ func (c *Character) toToolkitActionEconomy() *combat.ActionEconomy {
 	if offHand, ok := c.actionEconomy.Granted[GrantedOffHandStrikes]; ok {
 		ae.OffHandAttacksRemaining = offHand
 	}
+	if martialArts, ok := c.actionEconomy.Granted[GrantedMartialArtsBonus]; ok {
+		ae.MartialArtsBonusAttacksRemaining = martialArts
+	}
 	if flurry, ok := c.actionEconomy.Granted[GrantedFlurryStrikes]; ok {
 		ae.FlurryStrikesRemaining = flurry
 	}
@@ -461,6 +464,9 @@ func (c *Character) fromToolkitActionEconomy(ae *combat.ActionEconomy) {
 	}
 	if ae.OffHandAttacksRemaining > 0 {
 		c.actionEconomy.Granted[GrantedOffHandStrikes] = ae.OffHandAttacksRemaining
+	}
+	if ae.MartialArtsBonusAttacksRemaining > 0 {
+		c.actionEconomy.Granted[GrantedMartialArtsBonus] = ae.MartialArtsBonusAttacksRemaining
 	}
 	if ae.FlurryStrikesRemaining > 0 {
 		c.actionEconomy.Granted[GrantedFlurryStrikes] = ae.FlurryStrikesRemaining

@@ -5,6 +5,8 @@ package character
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -13,8 +15,11 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -104,6 +109,50 @@ func (s *CostCompilerTestSuite) offHandFighter() *Character {
 	return char
 }
 
+func (s *CostCompilerTestSuite) martialArtsMonk(
+	id string,
+	inventory []InventoryItemData,
+	slots EquipmentSlots,
+	withMartialArts bool,
+) *Character {
+	var conditionData []json.RawMessage
+	if withMartialArts {
+		martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
+			MemberID: id, MonkLevel: 1,
+		}).ToJSON()
+		s.Require().NoError(err)
+		conditionData = []json.RawMessage{martialArts}
+	}
+
+	char, err := Load(s.ctx, &Data{
+		ID: id, PlayerID: "cost-player", Name: "Martial Artist",
+		Level: 1, ProficiencyBonus: 2, RaceID: races.Human, ClassID: classes.Monk,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 14, abilities.CHA: 8,
+		},
+		HitPoints: 10, MaxHitPoints: 10, ArmorClass: 15,
+		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple},
+		Inventory:           inventory,
+		EquipmentSlots:      slots,
+		Conditions:          conditionData,
+	})
+	s.Require().NoError(err)
+
+	return char
+}
+
+func (s *CostCompilerTestSuite) quarterstaffMonk() *Character {
+	return s.martialArtsMonk(
+		"cost-quarterstaff-monk",
+		[]InventoryItemData{{
+			Type: shared.EquipmentTypeWeapon, ID: string(weapons.Quarterstaff), Quantity: 1,
+		}},
+		EquipmentSlots{SlotMainHand: string(weapons.Quarterstaff)},
+		true,
+	)
+}
+
 func (s *CostCompilerTestSuite) banked(class classes.Class, level int) int {
 	profile, err := CostOfAttack(s.sheetOf(class, level))
 	s.Require().NoError(err)
@@ -129,6 +178,112 @@ func (s *CostCompilerTestSuite) TestOtherClassesArePricedByTheSameTable() {
 	s.Equal(2, s.banked(classes.Paladin, 5))
 	s.Equal(2, s.banked(classes.Ranger, 5))
 	s.Equal(1, s.banked(classes.Wizard, 20), "no Extra Attack at any level")
+}
+
+func (s *CostCompilerTestSuite) TestAQuarterstaffAttackGrantsOneMartialArtsBonusAttack() {
+	const martialArtsBonusAttack = combat.CapacityType("martial_arts_bonus_attack")
+
+	profile, err := CostOfAttack(s.quarterstaffMonk())
+	s.Require().NoError(err)
+
+	s.Equal(1, profile.Grants[martialArtsBonusAttack],
+		"a Quarterstaff is a Monk weapon, so its Attack action grants the bonus unarmed strike")
+}
+
+func (s *CostCompilerTestSuite) TestMartialArtsBonusRequiresItsFeatureAndLegalEquipment() {
+	const capacity = combat.CapacityMartialArtsBonusAttack
+	quarterstaff := InventoryItemData{
+		Type: shared.EquipmentTypeWeapon, ID: string(weapons.Quarterstaff), Quantity: 1,
+	}
+
+	tests := []struct {
+		name             string
+		inventory        []InventoryItemData
+		slots            EquipmentSlots
+		withMartialArts  bool
+		wantMartialGrant bool
+	}{
+		{name: "unarmed", withMartialArts: true, wantMartialGrant: true},
+		{
+			name: "Quarterstaff", inventory: []InventoryItemData{quarterstaff},
+			slots:           EquipmentSlots{SlotMainHand: string(weapons.Quarterstaff)},
+			withMartialArts: true, wantMartialGrant: true,
+		},
+		{
+			name: "Shortsword", inventory: []InventoryItemData{{
+				Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1,
+			}},
+			slots:           EquipmentSlots{SlotMainHand: string(weapons.Shortsword)},
+			withMartialArts: true, wantMartialGrant: true,
+		},
+		{
+			name: "simple ranged Dart", inventory: []InventoryItemData{{
+				Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dart), Quantity: 1,
+			}},
+			slots: EquipmentSlots{SlotMainHand: string(weapons.Dart)}, withMartialArts: true,
+		},
+		{
+			name: "Two-Handed Greatclub", inventory: []InventoryItemData{{
+				Type: shared.EquipmentTypeWeapon, ID: string(weapons.Greatclub), Quantity: 1,
+			}},
+			slots: EquipmentSlots{SlotMainHand: string(weapons.Greatclub)}, withMartialArts: true,
+		},
+		{
+			name: "no Martial Arts condition", inventory: []InventoryItemData{quarterstaff},
+			slots: EquipmentSlots{SlotMainHand: string(weapons.Quarterstaff)},
+		},
+		{
+			name: "wearing armor", inventory: []InventoryItemData{
+				quarterstaff,
+				{Type: shared.EquipmentTypeArmor, ID: string(armor.Leather), Quantity: 1},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Quarterstaff), SlotArmor: string(armor.Leather),
+			},
+			withMartialArts: true,
+		},
+		{
+			name: "wielding a shield", inventory: []InventoryItemData{
+				quarterstaff,
+				{Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1},
+			},
+			slots: EquipmentSlots{
+				SlotMainHand: string(weapons.Quarterstaff), SlotOffHand: string(armor.Shield),
+			},
+			withMartialArts: true,
+		},
+	}
+
+	for i, tc := range tests {
+		s.Run(tc.name, func() {
+			profile, err := CostOfAttack(s.martialArtsMonk(
+				fmt.Sprintf("martial-eligibility-%d", i), tc.inventory, tc.slots, tc.withMartialArts,
+			))
+			s.Require().NoError(err)
+			s.Equal(tc.wantMartialGrant, profile.Grants[capacity] == 1)
+		})
+	}
+}
+
+func (s *CostCompilerTestSuite) TestMartialArtsTakesPriorityOverTwoWeaponFighting() {
+	monk := s.martialArtsMonk(
+		"martial-priority",
+		[]InventoryItemData{
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
+			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 1},
+		},
+		EquipmentSlots{
+			SlotMainHand: string(weapons.Shortsword), SlotOffHand: string(weapons.Scimitar),
+		},
+		true,
+	)
+
+	profile, err := CostOfAttack(monk)
+	s.Require().NoError(err)
+
+	s.Equal(1, profile.Grants[combat.CapacityMartialArtsBonusAttack])
+	s.NotContains(profile.Grants, combat.CapacityOffHandAttack,
+		"the established Monk rule wins instead of exposing the two-weapon strike")
 }
 
 func (s *CostCompilerTestSuite) TestAQualifyingAttackActionGrantsOneOffHandAttack() {

@@ -7,6 +7,8 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // The cost compilers: where an action's price stops being a class table and
@@ -35,7 +37,8 @@ import (
 // grants at this class and level, which is the table
 // [Character.GetExtraAttacksCount] already keeps. A level-5 fighter's Attack
 // action buys two swings; a level-1 fighter's buys one; a level-20 fighter's
-// buys four. When [CanMakeOffHandAttack] is true, the same action also banks the
+// buys four. An eligible Martial Arts attack also banks its bonus unarmed
+// strike. Otherwise, when [CanMakeOffHandAttack] is true, the action banks the
 // one two-weapon bonus attack that a later bonus-action declaration may spend.
 //
 // Note what it does NOT cost: the swings themselves. The action banks capacity
@@ -49,7 +52,9 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 	grants := map[combat.CapacityType]int{
 		combat.CapacityAttack: 1 + c.GetExtraAttacksCount(),
 	}
-	if CanMakeOffHandAttack(c) {
+	if qualifiesForMartialArtsBonusAttack(c) {
+		grants[combat.CapacityMartialArtsBonusAttack] = 1
+	} else if CanMakeOffHandAttack(c) {
 		grants[combat.CapacityOffHandAttack] = 1
 	}
 
@@ -59,6 +64,36 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 		},
 		Grants: grants,
 	}, nil
+}
+
+// qualifiesForMartialArtsBonusAttack reports whether the sheet's current
+// main-hand Attack satisfies the static Martial Arts bonus-attack rules.
+func qualifiesForMartialArtsBonusAttack(c *Character) bool {
+	if c == nil {
+		return false
+	}
+
+	hasMartialArts := false
+	for _, condition := range c.GetConditions() {
+		conditionRef := condition.Ref()
+		if conditionRef != nil && conditionRef.Equals(refs.Conditions.MartialArts()) {
+			hasMartialArts = true
+			break
+		}
+	}
+	if !hasMartialArts || c.HasShieldEquipped() {
+		return false
+	}
+	if equippedArmor := c.GetEquippedSlot(SlotArmor); equippedArmor != nil &&
+		equippedArmor.AsArmor() != nil {
+		return false
+	}
+
+	weapon, _, err := equippedWeapon(c, SlotMainHand)
+	if err != nil {
+		return false
+	}
+	return conditions.IsMartialArtsWeapon(refs.Weapons.ByID(string(weapon.ID)))
 }
 
 // CostOfStrike compiles what one swing costs this character: a single banked

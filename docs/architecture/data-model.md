@@ -151,22 +151,24 @@ Introduced in PR #597. Tracks per-turn action spending:
 
 ```go
 type ActionEconomyData struct {
-    TurnNumber             int
-    ActionsRemaining       int
-    BonusActionsRemaining  int
-    ReactionsRemaining     int
-    AttacksRemaining       int
-    MovementRemaining      int
-    OffHandAttacksRemaining int
-    FlurryStrikesRemaining int
+    TurnNumber            int
+    ActionsRemaining      int
+    BonusActionsRemaining int
+    ReactionsRemaining    int
+    MovementRemaining     int
+    Granted               map[GrantedActionKey]int
 }
 ```
 
 Two-level model:
 - **Action economy** — what you spend (action, bonus action, reaction)
-- **Capacity** — what you get to do (attacks, movement, off-hand attacks, flurry strikes)
+- **Capacity** — what you get to do (attacks, movement, off-hand attacks, Martial Arts bonus attacks, flurry strikes)
 
-Taking the Attack ability spends an action and grants attack capacity. Each Strike action consumes one attack from that capacity.
+The rulebook compiles these currencies into inert `combat.SpendProfile` data.
+A qualifying Attack spends the action and grants attack capacity; it may also
+bank one mutually selected bonus-attack capacity (Martial Arts takes precedence
+over two-weapon fighting). Each resulting attack definition carries the exact
+capacity and slot cost that resolution pays.
 
 ---
 

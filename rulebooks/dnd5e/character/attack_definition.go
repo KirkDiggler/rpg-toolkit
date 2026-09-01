@@ -43,6 +43,15 @@ func AssembleAttack(c *Character, in *AssembleAttackInput) (combatActions.Defini
 		return combatActions.Definition{}, err
 	}
 
+	return assembleWeaponAttack(c, weapon, unarmed, in)
+}
+
+func assembleWeaponAttack(
+	c *Character,
+	weapon *weapons.Weapon,
+	unarmed bool,
+	in *AssembleAttackInput,
+) (combatActions.Definition, error) {
 	weaponRef := refs.Weapons.ByID(string(weapon.ID))
 	if weaponRef == nil {
 		return combatActions.Definition{}, rpgerr.Newf(
