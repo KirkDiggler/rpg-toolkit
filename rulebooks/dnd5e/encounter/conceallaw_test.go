@@ -115,6 +115,51 @@ func (s *ConcealLawSuite) TestPresencePiercesFromFrameOne() {
 	_, masked := hasBoundary(atlas, spatial.Position{X: 8, Y: concealRow}, spatial.Position{X: 9, Y: concealRow})
 	s.True(masked, "which is masked as wall between two spaces the occupant sees")
 
+	// THE BEAT IS THE ATLAS'S OWN PATCH (PR #1373 review, Minor 1): its
+	// boundary list equals, entry for entry, what the occupant's AtlasFor
+	// answers at the vault's cells — the mask at their own still-unfound
+	// door seam included. Expected computed from the atlas, decoded side
+	// normalized through the same JSON both travel as.
+	vaultCells := map[string]bool{}
+	for col := 9; col < 12; col++ {
+		for row := 0; row < 8; row++ {
+			c := cellAt(col, row)
+			vaultCells[posKey(c.X, c.Y)] = true
+		}
+	}
+	expected := make([]map[string]any, 0)
+	for _, b := range atlas.Boundaries {
+		if !vaultCells[posKey(b.From.X, b.From.Y)] && !vaultCells[posKey(b.To.X, b.To.Y)] {
+			continue
+		}
+		expected = append(expected, map[string]any{
+			"from":                 map[string]any{"x": b.From.X, "y": b.From.Y},
+			"to":                   map[string]any{"x": b.To.X, "y": b.To.Y},
+			"blocks_movement":      b.BlocksMovement,
+			"blocks_line_of_sight": b.BlocksLineOfSight,
+			"height":               b.Height,
+		})
+	}
+	decoded, ok := reveals[0]["boundaries"].([]any)
+	s.Require().True(ok)
+	got := make([]map[string]any, 0, len(decoded))
+	for _, b := range decoded {
+		got = append(got, b.(map[string]any))
+	}
+	s.Require().ElementsMatch(expected, got,
+		"the reveal beat and the member-scoped atlas answer with the same boundaries — mask included")
+	maskOnBeat := false
+	edge := doorEdgesAcross(8, concealRow)[0]
+	for _, b := range got {
+		from := b["from"].(map[string]any)
+		to := b["to"].(map[string]any)
+		if (from["x"] == edge.From.X && from["y"] == edge.From.Y && to["x"] == edge.To.X && to["y"] == edge.To.Y) ||
+			(from["x"] == edge.To.X && from["y"] == edge.To.Y && to["x"] == edge.From.X && to["y"] == edge.From.Y) {
+			maskOnBeat = true
+		}
+	}
+	s.True(maskOnBeat, "the patch carries the mask at the occupant's own unfound door seam")
+
 	outsiderAtlas, err := enc.AtlasFor(seeker)
 	s.Require().NoError(err)
 	for _, r := range outsiderAtlas.Regions {

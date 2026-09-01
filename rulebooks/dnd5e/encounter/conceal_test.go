@@ -562,20 +562,129 @@ func (s *ConcealSuite) TestKnowledgeRidesTheBlob() {
 	s.Equal(string(blob), string(reblob), "an unchanged encounter round-trips byte-identically")
 }
 
-// TestABlobWorldMustMatchItsField: the trust boundary — a world for a field
-// with nothing concealed, or a fact naming a kind this field cannot mint,
-// is a blob whose halves disagree, refused by name.
+// TestABlobWorldMustMatchItsField: the trust boundary. This composition
+// writes ONE fact shape — a minted kind, its entity as subject, an
+// ever-member as actor, audienced to that actor alone — so a world on a
+// field with nothing concealed, and every other fact shape, means the blob
+// was edited and refuses by name (PR #1373 review, Minors 2 and 3).
 func (s *ConcealSuite) TestABlobWorldMustMatchItsField() {
-	data := s.open(findsNothing{}, false).ToData()
-	data.World.Facts = append(data.World.Facts, encounter.FactData{
-		Kind: "known:door:some-other-dungeons-door", Actor: string(seeker), Audience: []string{string(seeker)},
+	load := func(data encounter.EncounterData) error {
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data:  data,
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			CheckResolver: findsNothing{}, Witness: s.witness,
+		})
+		return err
+	}
+	// A well-formed veil-door fact to corrupt one field at a time.
+	honest := func() encounter.FactData {
+		return encounter.FactData{
+			Kind:     "known:door:veil-door",
+			Subject:  "door:veil-door",
+			Actor:    string(seeker),
+			Audience: []string{string(seeker)},
+		}
+	}
+	withFact := func(f encounter.FactData) encounter.EncounterData {
+		data := s.open(findsNothing{}, false).ToData()
+		data.World.Facts = append(data.World.Facts, f)
+		return data
+	}
+
+	s.Run("the honest shape loads", func() {
+		s.Require().NoError(load(withFact(honest())))
 	})
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	s.Run("a kind this field does not mint", func() {
+		f := honest()
+		f.Kind = "known:door:some-other-dungeons-door"
+		err := load(withFact(f))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Contains(err.Error(), "does not mint")
+	})
+	s.Run("a subject that does not match its kind", func() {
+		f := honest()
+		f.Subject = "door:vault-door"
+		err := load(withFact(f))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Contains(err.Error(), "does not match its kind")
+	})
+	s.Run("an actor this encounter never had", func() {
+		f := honest()
+		f.Actor, f.Audience = "stranger", []string{"stranger"}
+		err := load(withFact(f))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Contains(err.Error(), "no member this encounter has ever had")
+	})
+	s.Run("an audience that is not exactly its actor", func() {
+		f := honest()
+		f.Audience = []string{string(seeker), string(buddy)}
+		err := load(withFact(f))
+		s.Require().ErrorIs(err, encounter.ErrInvalidData)
+		s.Contains(err.Error(), "audienced to exactly its actor")
+	})
+	s.Run("a world on a field with nothing concealed", func() {
+		plain, err := encounter.NewEncounter(&encounter.SetupInput{
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+			TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			Field: doorField(3, encounter.DoorIsClosed(), "plain-door", 1),
+			Members: []encounter.MemberInput{
+				{ID: nessa, Kind: encounter.KindPlayer, Position: nessaCell},
+				{ID: orin, Kind: encounter.KindPlayer, Position: orinCell},
+			},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		})
+		s.Require().NoError(err)
+		data := plain.ToData()
+		data.World = &encounter.WorldData{Facts: []encounter.FactData{}}
+		lerr := load(data)
+		s.Require().ErrorIs(lerr, encounter.ErrInvalidData)
+		s.Contains(lerr.Error(), "no concealed structure")
+	})
+}
+
+// TestAnOldBlobsOccupantIsPiercedAtLoad — PR #1373 review, Minor 4: a blob
+// saved between v0.41.0's carried concealment and the world existing holds
+// an occupant of a concealed region with no occupancy fact. Presence
+// pierces from frame one applies to loads too: the occupant knows the
+// floor under their feet BEFORE any verb runs, the fact is minted for the
+// next save, and their reveal beat is on their story — while a blob this
+// build wrote reloads with nothing to do (the byte-identity pin in
+// TestKnowledgeRidesTheBlob).
+func (s *ConcealSuite) TestAnOldBlobsOccupantIsPiercedAtLoad() {
+	live := s.open(findsNothing{}, true)
+	data := live.ToData()
+	data.World = nil // the v0.41.0-era dialect: concealment authored, no world key
+
+	// The simulation strips the FACTS but the story blob keeps Setup's own
+	// reveal beat (a true old blob would carry neither); knowledge is the
+	// facts, so the load must pierce again — measure the beats it ADDS.
+	beatsBefore := len(s.beatsFor(live, lurker, "region_revealed"))
+
+	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
 		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
 		CheckResolver: findsNothing{}, Witness: s.witness,
 	})
-	s.Require().ErrorIs(err, encounter.ErrInvalidData)
-	s.Contains(err.Error(), "does not mint")
+	s.Require().NoError(err)
+
+	atlas, err := back.AtlasFor(lurker)
+	s.Require().NoError(err)
+	holdsVault := false
+	for _, r := range atlas.Regions {
+		holdsVault = holdsVault || r.ID == vaultRegion
+	}
+	s.True(holdsVault, "the occupant knows the floor under their feet before any verb runs")
+
+	s.Len(s.beatsFor(back, lurker, "region_revealed"), beatsBefore+1, "with their reveal minted onto their own story")
+	s.Empty(s.beatsFor(back, seeker, "region_revealed"), "and nobody else's")
+
+	found := false
+	for _, f := range back.ToData().World.Facts {
+		if f.Kind == "known:region:"+vaultRegion && f.Actor == string(lurker) {
+			found = true
+		}
+	}
+	s.True(found, "the next save persists the minted occupancy fact")
 }

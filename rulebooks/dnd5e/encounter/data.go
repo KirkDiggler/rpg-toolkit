@@ -54,7 +54,9 @@ type EncounterData struct {
 	// world for a field with nothing concealed is refused at load (its two
 	// halves disagree). Absent on a concealed field is legal and means
 	// nobody has learned anything yet — which is every blob written between
-	// v0.41.0's carried concealment and this field existing. The graph the
+	// v0.41.0's carried concealment and this field existing (an occupant of
+	// a concealed region in such a blob is pierced at load, so presence
+	// holds from frame one for reloads too). The graph the
 	// facts fold against is NOT stored: it is construction truth, reseeded
 	// from the field at every load, so it cannot drift from the dungeon.
 	World       *WorldData   `json:"world,omitempty"`
@@ -326,29 +328,49 @@ func worldDataFrom(w *encounterWorld) *WorldData {
 }
 
 // validateWorldFacts rejects persisted knowledge facts this field cannot
-// have produced, before any construction begins (R5): every kind must be
-// one the field's concealed structure mints, and every fact needs its actor
-// — the journal's own law, checked here so the refusal names the blob
-// rather than surfacing as a construction failure.
-func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInput) error {
-	minted := make(map[string]bool)
+// have produced, before any construction begins (R5). The check is exact,
+// not permissive: this composition writes ONE fact shape — a minted
+// knowledge kind, its entity as subject, a member this encounter has ever
+// had as actor, audienced to that actor alone — so any other shape means
+// the blob was edited, and it is refused by name rather than loaded as
+// knowledge nobody here ever minted (the idle-bubble precedent in this
+// file, applied to the world; PR #1373 review, Minor 2).
+func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInput, everMembers []MemberID) error {
+	// kind -> the subject that kind's writer always records.
+	minted := make(map[string]string)
 	for _, r := range regions {
 		if r.Concealed {
-			minted[string(regionKnownKind(r.ID))] = true
+			minted[string(regionKnownKind(r.ID))] = string(regionEntityID(r.ID))
 		}
 	}
 	for _, d := range doors {
 		if d.Concealed != nil {
-			minted[string(doorKnownKind(d.ID))] = true
+			minted[string(doorKnownKind(d.ID))] = string(doorEntityID(d.ID))
 		}
 	}
+	members := make(map[string]bool, len(everMembers))
+	for _, id := range everMembers {
+		members[string(id)] = true
+	}
+
 	for i, f := range data.Facts {
-		if f.Kind == "" || !minted[f.Kind] {
+		subject, mints := minted[f.Kind]
+		if f.Kind == "" || !mints {
 			return fmt.Errorf("world fact %d names kind %q, which this field's concealed structure does not mint: %w",
 				i, f.Kind, ErrInvalidData)
 		}
-		if f.Actor == "" {
-			return fmt.Errorf("world fact %d has no actor: %w", i, ErrInvalidData)
+		if f.Subject != subject {
+			return fmt.Errorf("world fact %d subject %q does not match its kind (want %q): %w",
+				i, f.Subject, subject, ErrInvalidData)
+		}
+		if f.Actor == "" || !members[f.Actor] {
+			return fmt.Errorf("world fact %d actor %q is no member this encounter has ever had: %w",
+				i, f.Actor, ErrInvalidData)
+		}
+		if len(f.Audience) != 1 || f.Audience[0] != f.Actor {
+			return fmt.Errorf(
+				"world fact %d is not audienced to exactly its actor — this module never writes that shape: %w",
+				i, ErrInvalidData)
 		}
 	}
 	return nil
@@ -1036,7 +1058,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf(
 				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
 		}
-		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs); err != nil {
+		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, data.EverMembers); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
 	}
@@ -1383,6 +1405,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 		}
 		e.outcome = outcome
+	}
+
+	// Presence pierces AT LOAD too, for a still-open encounter: an occupant
+	// of a concealed region must not wait for the first refresh-bearing
+	// verb to know the floor under their feet — the one reachable case is a
+	// blob from before the world existed, whose occupant arrives here with
+	// no occupancy fact (see sweepOccupancy). A no-op on every blob this
+	// build wrote, so the byte-identical round-trip holds; on the old blob
+	// it writes the fact and the recipient's reveal beat, which the next
+	// save persists.
+	if e.outcome == nil {
+		if err := e.sweepOccupancy(uint64(e.clock.ToData().HighWater)); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
 	}
 
 	return e, nil

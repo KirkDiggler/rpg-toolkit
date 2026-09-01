@@ -321,21 +321,8 @@ func (e *Encounter) sweepConcealment() error {
 	}
 	at := uint64(e.clock.ToData().HighWater)
 
-	// Presence pierces (rpg-project#351): a member standing in a concealed
-	// region perceives it, from the first frame — you cannot occupy a
-	// secret you do not know exists.
-	for _, id := range e.rosterIDs() {
-		cell, placed := e.canvas.GetEntityPosition(string(id))
-		if !placed {
-			continue
-		}
-		region, owned := e.field.regionOf(cell)
-		if !owned || !e.world.concealedRegions[region] || e.world.knowsRegion(id, region) {
-			continue
-		}
-		if err := e.revealRegionTo(id, region, "stands inside it", at); err != nil {
-			return err
-		}
+	if err := e.sweepOccupancy(at); err != nil {
+		return err
 	}
 
 	// Perceiving a concealed door OPEN reveals the door to a non-knower and
@@ -371,6 +358,35 @@ func (e *Encounter) sweepConcealment() error {
 		}
 	}
 
+	return nil
+}
+
+// sweepOccupancy is the presence-pierce half of the sweep, on its own so
+// LOAD can run it too (rpg-project#351): a member standing in a concealed
+// region perceives it, from the first frame — you cannot occupy a secret
+// you do not know exists. LoadEncounter calls this directly for the one
+// window the rule would otherwise miss: a blob saved between v0.41.0's
+// carried concealment and the world existing holds an occupant with no
+// occupancy fact, and their own atlas may not withhold the floor under
+// their feet until some verb happens to refresh sight (PR #1373 review,
+// Minor 4). Idempotent — knowledge already held is never re-written.
+func (e *Encounter) sweepOccupancy(at uint64) error {
+	if e.world == nil {
+		return nil
+	}
+	for _, id := range e.rosterIDs() {
+		cell, placed := e.canvas.GetEntityPosition(string(id))
+		if !placed {
+			continue
+		}
+		region, owned := e.field.regionOf(cell)
+		if !owned || !e.world.concealedRegions[region] || e.world.knowsRegion(id, region) {
+			continue
+		}
+		if err := e.revealRegionTo(id, region, "stands inside it", at); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

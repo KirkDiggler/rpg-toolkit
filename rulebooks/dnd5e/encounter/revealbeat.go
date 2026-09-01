@@ -54,21 +54,28 @@ func (e *Encounter) appendDoorRevealedBeat(recipient MemberID, d *doorRecord, at
 // them all. The beat is the patch for the recipient's cached atlas: the
 // load-once, beat-refreshed shape (rpg-project#264).
 //
-// RECIPIENT-SCOPED down to its boundary list: a boundary shared with a
-// still-hidden neighbour stays withheld — the member-scoped answer governs,
-// not a literal every-touching-boundary sweep (the Wave 1b interpretation
-// pin). The recipient's knowledge fact is already written when this runs,
-// so the region being revealed is not hidden from its own beat.
+// BUILT FROM THE RECIPIENT'S OWN [Encounter.AtlasFor], deliberately: the
+// beat documents itself as the patch for that answer, so it is derived from
+// that answer rather than recomputed beside it — two computations of one
+// truth is how a patch and an atlas learn to disagree (PR #1373 review,
+// Minor 1: the first version rebuilt the list from the unscoped Atlas and
+// omitted the masquerade mask at the recipient's own still-unfound door
+// seam). Everything member-scoped falls out for free: a boundary shared
+// with a still-hidden neighbour stays withheld (the Wave 1b interpretation
+// pin), and the synthetic mask at a concealed door the recipient has NOT
+// found rides the slice exactly as their atlas draws it. The recipient's
+// knowledge fact is already written when this runs, so the region being
+// revealed is present in its own patch.
 func (e *Encounter) appendRegionRevealedBeat(recipient MemberID, region RegionID, at uint64) (uint64, error) {
-	full, err := e.Atlas()
+	scoped, err := e.AtlasFor(recipient)
 	if err != nil {
 		return 0, fmt.Errorf("region reveal %q: %w", region, err)
 	}
 
 	var entry *AtlasRegion
-	for i := range full.Regions {
-		if full.Regions[i].ID == region {
-			entry = &full.Regions[i]
+	for i := range scoped.Regions {
+		if scoped.Regions[i].ID == region {
+			entry = &scoped.Regions[i]
 			break
 		}
 	}
@@ -82,22 +89,17 @@ func (e *Encounter) appendRegionRevealedBeat(recipient MemberID, region RegionID
 	}
 
 	props := make([]AtlasProp, 0)
-	for _, p := range full.Props {
+	for _, p := range scoped.Props {
 		if owned[p.At] {
 			props = append(props, p)
 		}
 	}
 
-	stillHidden, _ := e.hiddenFrom(recipient)
 	boundaries := make([]AtlasBoundary, 0)
-	for _, b := range full.Boundaries {
-		if !owned[b.From] && !owned[b.To] {
-			continue
+	for _, b := range scoped.Boundaries {
+		if owned[b.From] || owned[b.To] {
+			boundaries = append(boundaries, b)
 		}
-		if stillHidden[b.From] || stillHidden[b.To] {
-			continue
-		}
-		boundaries = append(boundaries, b)
 	}
 
 	payload := map[string]interface{}{
