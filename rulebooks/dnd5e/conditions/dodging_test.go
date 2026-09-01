@@ -48,7 +48,7 @@ func (s *DodgingConditionTestSuite) TestApply() {
 		err := s.condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		s.Assert().True(s.condition.IsApplied())
-		s.Assert().Len(s.condition.subscriptionIDs, 3)
+		s.Assert().Len(s.condition.subscriptionIDs, 4)
 	})
 
 	s.Run("returns error if already applied", func() {

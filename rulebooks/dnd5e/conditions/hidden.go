@@ -74,6 +74,13 @@ func (h *HiddenCondition) Apply(ctx context.Context, bus events.EventBus) error 
 	}
 	h.subscriptionIDs = append(h.subscriptionIDs, subID)
 
+	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, h.MemberID, h.Ref())
+	if err != nil {
+		_ = h.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+	}
+	h.subscriptionIDs = append(h.subscriptionIDs, longRestSubID)
+
 	return nil
 }
 
