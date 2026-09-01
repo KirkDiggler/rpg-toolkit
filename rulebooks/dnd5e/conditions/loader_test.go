@@ -5,6 +5,7 @@ package conditions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -185,6 +186,22 @@ func (s *LoaderTestSuite) TestLoadUnknownCondition() {
 	_, err := LoadJSON(jsonData)
 	s.Error(err)
 	s.Contains(err.Error(), "unknown condition ref")
+}
+
+func (s *LoaderTestSuite) TestLoadRejectsKnownIDUnderWrongCanonicalRef() {
+	cases := map[string]json.RawMessage{
+		"wrong module":           json.RawMessage(`{"ref":{"module":"other","type":"conditions","id":"raging"}}`),
+		"wrong type":             json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"raging"}}`),
+		"condition-shaped sneak": json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"sneak_attack"}}`),
+	}
+
+	for name, data := range cases {
+		s.Run(name, func() {
+			_, err := LoadJSON(data)
+			s.Error(err)
+			s.Contains(err.Error(), "unknown condition ref")
+		})
+	}
 }
 
 func (s *LoaderTestSuite) TestLoadInvalidJSON() {
