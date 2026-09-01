@@ -90,9 +90,9 @@ func Load(_ context.Context, d *Data) (*Character, error) {
 	return loadSheet(d, strictEffects)
 }
 
-// Attach puts a loaded sheet on an event bus: the sheet's own keeper first,
-// then every condition the load parsed, each through the bus scoped to its own
-// ref.
+// Attach puts a loaded sheet on an event bus: the sheet's own keeper and
+// attachable features first, then every condition the load parsed. Features
+// and conditions each receive the bus scoped to their own ref.
 //
 // This is the whole attach loop, in one call, on the dnd5e side of the seam.
 // Ordering is fixed rather than incidental: the sheet's own hooks are attached
@@ -100,11 +100,13 @@ func Load(_ context.Context, d *Data) (*Character, error) {
 // registrations in identical order (ADR-0038 R4), and so an effect's hooks are
 // never interleaved with the sheet's in a registration list.
 //
-// Each condition goes on through [dnd5eEvents.BusForEffect] with the ref the
-// load captured. A plain bus returns itself and nothing changes; a bus that
-// keeps a registration list gets to record which effect made which
-// subscription. The sheet keeper is applied with the bus itself, so the
-// character's own machinery is never laundered into an effect's name.
+// Each attachable feature and condition goes on through
+// [dnd5eEvents.BusForEffect]. Features name themselves through Feature.Ref;
+// conditions use the ref the load captured. A plain bus returns itself and
+// nothing changes; a bus that keeps a registration list gets to record which
+// effect made which subscription. The sheet keeper's own hooks use the bus
+// itself, so the character's own machinery is never laundered into an effect's
+// name.
 //
 // Attaching also parks the bus on the sheet, for the verb methods that still
 // read it (MakeSavingThrow, EffectiveAC, the rests).

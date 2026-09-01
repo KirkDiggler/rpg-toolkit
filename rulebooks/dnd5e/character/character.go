@@ -468,8 +468,19 @@ func (c *Character) LongRest(ctx context.Context) error {
 		}
 	}
 
-	// Covers all three writes above — hit points, death saves, pools — in one
-	// place, because a rest is one change to the sheet.
+	// Spell slots are persisted directly rather than as recoverable resources,
+	// so their long-rest reset belongs here with the other character-owned
+	// state and before feature/condition listeners hear the rest.
+	for level, slots := range c.spellSlots {
+		if slots.Used == 0 {
+			continue
+		}
+		slots.Used = 0
+		c.spellSlots[level] = slots
+	}
+
+	// Covers all four writes above — hit points, death saves, pools, spell
+	// slots — in one place, because a rest is one change to the sheet.
 	c.poolChanged()
 
 	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
@@ -1094,11 +1105,12 @@ func (c *Character) ToData() *Data {
 // subscribeToEvents subscribes the character to gameplay events on the bus it
 // is already holding.
 //
-// The subscriptions are the [SheetKeeper]'s — this is the same five handlers,
-// reached the way a character that was built rather than loaded reaches them:
+// The subscriptions are the [SheetKeeper]'s five sheet handlers, reached the
+// way a character that was built rather than loaded reaches them:
 // Draft.Finalize wires the bus into the sheet and then asks it to listen.
-// Deliberately not the keeper's full Apply, which would also put the
-// character's resources on the bus; see SheetKeeper.subscribeSelf.
+// Persisted feature lifecycles are attached by the full [SheetKeeper.Apply]
+// path used from [Attach]; this helper preserves Finalize's existing self-only
+// construction path.
 func (c *Character) subscribeToEvents(ctx context.Context) error {
 	if c.bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
@@ -1286,7 +1298,8 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 	return nil
 }
 
-// Cleanup unsubscribes from all events and removes all active conditions.
+// Cleanup removes active conditions, attachable features, and the sheet's own
+// event subscriptions.
 func (c *Character) Cleanup(ctx context.Context) error {
 	if c.bus == nil {
 		return nil
@@ -1302,13 +1315,20 @@ func (c *Character) Cleanup(ctx context.Context) error {
 	}
 	c.conditions = nil
 
-	// Unsubscribe from events - collect errors but try to unsubscribe all
-	for _, subID := range c.subscriptionIDs {
-		if err := c.bus.Unsubscribe(ctx, subID); err != nil {
-			errors = append(errors, rpgerr.Wrapf(err, "failed to unsubscribe"))
+	if c.keeper != nil {
+		if err := c.keeper.Remove(ctx, c.bus); err != nil {
+			errors = append(errors, err)
 		}
+	} else {
+		// A defensive compatibility path for a manually assembled character
+		// carrying subscriptions without its keeper.
+		for _, subID := range c.subscriptionIDs {
+			if err := c.bus.Unsubscribe(ctx, subID); err != nil {
+				errors = append(errors, rpgerr.Wrapf(err, "failed to unsubscribe"))
+			}
+		}
+		c.subscriptionIDs = nil
 	}
-	c.subscriptionIDs = nil
 
 	// Return first error if any occurred
 	if len(errors) > 0 {

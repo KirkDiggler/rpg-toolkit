@@ -171,18 +171,23 @@ func (s *SheetKeeperTestSuite) TestHealingIsCappedAtMaximum() {
 	s.Require().Equal(30, s.char.GetHitPoints())
 }
 
-// The keeper's other half: the character's recoverable resources are on the
-// bus, so a rest recovers them.
-func (s *SheetKeeperTestSuite) TestResourcesHearARest() {
+// Character-owned recoverable resources belong to the Character rest verbs,
+// not RestTopic. A naked event cannot recover the same pool a second time;
+// LongRest remains the positive owner proof.
+func (s *SheetKeeperTestSuite) TestCharacterResourcesRecoverOnlyThroughCharacterRest() {
 	s.Require().Equal(1, s.char.GetResource(resources.RageCharges).Current())
 
 	err := dnd5eEvents.RestTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.RestEvent{
 		RestType:    coreResources.ResetLongRest,
 		CharacterID: s.char.GetID(),
 	})
-
 	s.Require().NoError(err)
-	s.Require().Equal(3, s.char.GetResource(resources.RageCharges).Current())
+	s.Require().Equal(1, s.char.GetResource(resources.RageCharges).Current(),
+		"a naked RestEvent does not own character pools")
+
+	s.Require().NoError(s.char.LongRest(s.ctx))
+	s.Require().Equal(3, s.char.GetResource(resources.RageCharges).Current(),
+		"the Character rest verb owns pool recovery")
 }
 
 // Remove gives the bus back: nothing the keeper subscribed is still listening,
