@@ -233,13 +233,15 @@
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
 // and that every path which folds reaches it.
 //
-// There are two such paths. [Resolve] runs an interaction; [ProjectCharacter]
-// folds one derived number for a caller with no interaction to run — a
-// character joining a session, who is not standing anywhere yet and so gets a
-// context whose room is honestly ABSENT rather than invented. Both go through
-// the same door, and neither is a mode of the other. A behavioural suite cannot make any of those
-// claims: the defect is that tests supply what production does not, so the
-// tests are the last place it shows up.
+// Four entries run attached behavior through that door. [Resolve] runs an
+// interaction. [ProjectCharacter] folds one derived number for a caller with no
+// interaction to run. [Standing] asks a read-only question of loaded sheets.
+// [LongRest] publishes the root rest rule to one attached character. The latter
+// three have no world, so their context carries a room that is honestly ABSENT
+// rather than invented. All four go through the same door, and none is a mode
+// of another. A behavioural suite cannot make any of those claims: the defect
+// is that tests supply what production does not, so the tests are the last
+// place it shows up.
 //
 // This package builds no geometry of its own. It held a room it assembled out
 // of the encounter's persisted description, carrying a second copy of grid
