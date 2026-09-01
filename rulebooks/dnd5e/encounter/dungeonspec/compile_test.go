@@ -149,10 +149,60 @@ func (s *CompileSuite) TestADoorIsMintedUnderTheDungeonsKeyInItsAuthoredState() 
 	s.Equal(encounter.DoorLocked, locked.State.Kind())
 	lock, ok := locked.State.Lock()
 	s.Require().True(ok)
-	s.Equal(encounter.Lock{DC: 12, Ability: "dex"}, lock)
+	s.Equal(encounter.Lock{Approaches: []encounter.CheckApproach{{Ability: "dex", DC: 12}}}, lock,
+		"the authored approach list, carried whole")
 
-	shut := s.load(s.tombWith("    locked: { dc: 12, ability: dex }", "    closed: true"))
+	s.Nil(open.Concealed, "the tomb conceals neither door — nil is what \"said nothing\" always means")
+	s.Nil(locked.Concealed)
+
+	shut := s.load(s.tombWith("    locked: [{ ability: dex, dc: 12 }]", "    closed: true"))
 	s.Equal(encounter.DoorClosed, shut.Field.Doors[1].State.Kind(), "closed: shut but not locked")
+}
+
+// TestALockMayListSeveralApproaches — the multi-approach ruling
+// (rpg-project#350): success by any listed route, each priced separately,
+// carried whole and in authored order. The compiler never learns which route
+// an attempt would take, or what any of the words mean.
+func (s *CompileSuite) TestALockMayListSeveralApproaches() {
+	c := s.load(s.tombWith("locked: [{ ability: dex, dc: 12 }]",
+		`locked: [{ ability: str, dc: 15 }, { ability: dex, tool: "dnd5e:item:thieves-tools", dc: 12 }]`))
+	lock, ok := c.Field.Doors[1].State.Lock()
+	s.Require().True(ok)
+	s.Equal(encounter.Lock{Approaches: []encounter.CheckApproach{
+		{Ability: "str", DC: 15},
+		{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: 12},
+	}}, lock, "forcing the door and picking its lock need not cost the same")
+}
+
+// TestAConcealedDoorCarriesItsFindCheckThrough — living-world slice 1, wave 1a
+// (rpg-toolkit#1369): concealment is one more property on the door
+// declaration, its find check an approach list in the same shape as a lock's,
+// carried opaquely to [encounter.DoorInput.Concealed]. It COMPOSES with
+// plain, closed, or locked underneath — the state switch never reads it and
+// it never reads the state.
+func (s *CompileSuite) TestAConcealedDoorCarriesItsFindCheckThrough() {
+	const find = "\n    concealed: [{ ability: perception, dc: 15 }, { ability: investigation, dc: 12 }]"
+	wantFind := []encounter.CheckApproach{
+		{Ability: "perception", DC: 15},
+		{Ability: "investigation", DC: 12},
+	}
+
+	hidden := s.load(s.tombWith("    locked: [{ ability: dex, dc: 12 }]",
+		"    locked: [{ ability: dex, dc: 12 }]"+find))
+	s.Equal(encounter.DoorLocked, hidden.Field.Doors[1].State.Kind(),
+		"concealment does not displace the lock underneath")
+	s.Equal(wantFind, hidden.Field.Doors[1].Concealed,
+		"the find approaches, in authored order, priced per route")
+	s.Nil(hidden.Field.Doors[0].Concealed, "and the doorway beside it is untouched")
+
+	plain := s.load(s.tombWith("    edges: [[[5,4],[6,4]]]", "    edges: [[[5,4],[6,4]]]"+find))
+	s.Equal(encounter.DoorOpen, plain.Field.Doors[0].State.Kind(),
+		"a concealed door can stand open underneath — a hidden passage nobody shut")
+	s.Equal(wantFind, plain.Field.Doors[0].Concealed)
+
+	shut := s.load(s.tombWith("    locked: [{ ability: dex, dc: 12 }]", "    closed: true"+find))
+	s.Equal(encounter.DoorClosed, shut.Field.Doors[1].State.Kind())
+	s.Equal(wantFind, shut.Field.Doors[1].Concealed)
 }
 
 // TestCompile_DoorInsideARegionIsLegal — a door need not sit on a seam.

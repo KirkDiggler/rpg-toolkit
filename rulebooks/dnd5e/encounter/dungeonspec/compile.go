@@ -238,13 +238,31 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 		var state encounter.DoorState
 		switch {
 		case d.Locked != nil:
-			state = encounter.DoorIsLocked(encounter.Lock{DC: d.Locked.DC, Ability: d.Locked.Ability, Tool: d.Locked.Tool})
+			state = encounter.DoorIsLocked(encounter.Lock{Approaches: approachesOf(d.Locked)})
 		case d.Closed:
 			state = encounter.DoorIsClosed()
 		default:
 			state = encounter.DoorIsOpen()
 		}
-		out = append(out, encounter.DoorInput{ID: spec.Key + "/" + d.ID, Edges: edges, State: state})
+		out = append(out, encounter.DoorInput{
+			ID: spec.Key + "/" + d.ID, Edges: edges, State: state,
+			Concealed: approachesOf(d.Concealed),
+		})
+	}
+	return out
+}
+
+// approachesOf carries an authored check's approaches to the composition's
+// shape — copied, not aliased, for regionsOf's reason — with nil staying nil:
+// a door that was never concealed carries nothing, which is the zero value
+// telling the truth. Uninterpreted, every field.
+func approachesOf(check CheckSpec) []encounter.CheckApproach {
+	if len(check) == 0 {
+		return nil
+	}
+	out := make([]encounter.CheckApproach, 0, len(check))
+	for _, a := range check {
+		out = append(out, encounter.CheckApproach{Ability: a.Ability, Tool: a.Tool, DC: a.DC})
 	}
 	return out
 }

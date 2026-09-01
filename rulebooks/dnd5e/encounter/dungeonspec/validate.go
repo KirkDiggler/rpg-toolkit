@@ -290,12 +290,34 @@ func (v *validation) doors() {
 			v.crossings[c] = ep
 		}
 		if d.Locked != nil {
-			if d.Locked.DC < 1 {
-				v.fail(p+".locked.dc", "a lock with dc %d has nothing to beat", d.Locked.DC)
-			}
-			if d.Locked.Ability == "" {
-				v.fail(p+".locked.ability", "a lock must say which ability beats it")
-			}
+			v.approaches(p+".locked",
+				"this locked door needs at least one way through it — an ability and a DC", d.Locked)
+		}
+		if d.Concealed != nil {
+			v.approaches(p+".concealed",
+				"this concealed door needs at least one way to find it — an ability and a DC", d.Concealed)
+		}
+	}
+}
+
+// approaches validates one authored check: at least one approach, each naming
+// the ability it rolls and a DC of at least 1. The empty-check refusal is the
+// caller's sentence — worded for the form-filler at the door, since "the
+// check has no approaches" means one thing on a lock and another on a
+// concealment — and every per-approach refusal names the field that is
+// missing at the row that misses it.
+func (v *validation) approaches(path, none string, check CheckSpec) {
+	if len(check) == 0 {
+		v.fail(path, "%s", none)
+		return
+	}
+	for j, a := range check {
+		ap := fmt.Sprintf("%s[%d]", path, j)
+		if a.Ability == "" {
+			v.fail(ap+".ability", "the approach does not say which ability it rolls")
+		}
+		if a.DC < 1 {
+			v.fail(ap+".dc", "an approach with dc %d has nothing to beat", a.DC)
 		}
 	}
 }

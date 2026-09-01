@@ -224,20 +224,61 @@ type DoorSpec struct {
 
 	// Locked, when present, makes the door locked behind the check it
 	// carries. Nil with Closed false is an open doorway.
-	Locked *LockSpec `yaml:"locked,omitempty"`
+	//
+	// NIL, NOT LEN 0, IS "NOT LOCKED" — [PlaceSpec.Offset]'s law: yaml.v3
+	// leaves this nil when the key is absent but decodes `locked: []` to a
+	// non-nil, zero-length list, and the second is an authored lock that
+	// forgot to say how it is beaten — refused at validate rather than
+	// silently read as an open doorway.
+	Locked CheckSpec `yaml:"locked,omitempty"`
 
 	// Closed makes the door shut but not locked. Ignored when Locked is
 	// set — a locked door is shut by definition.
 	Closed bool `yaml:"closed,omitempty"`
+
+	// Concealed, when present, hides the door behind the find check it
+	// carries — e.g. Perception 15 or Investigation 12. It COMPOSES with
+	// plain, closed, or locked underneath: what a door is doing and whether
+	// anyone knows it is there are two separate authored facts
+	// (rpg-project#350). Nil vs empty is Locked's law: `concealed: []` is a
+	// door hidden with no way to ever find it, refused at validate by name.
+	Concealed CheckSpec `yaml:"concealed,omitempty"`
 }
 
-// LockSpec is the check that opens a locked door. Both fields are carried to
-// the composition opaquely — [encounter.Lock] never inspects an ability
-// either, because "does a DEX check of 12 succeed" is a rule.
-type LockSpec struct {
-	DC      int    `yaml:"dc"`
+// CheckSpec is one authored check: the accepted approaches through it, AT
+// LEAST ONE, success by any listed one (ruled on rpg-project#350 — a locked
+// door is forced with Strength or picked with Dexterity and tools; a
+// concealed door is spotted with Perception or reasoned out with
+// Investigation). The whole list is carried to the composition opaquely, for
+// the reason the single-approach lock was: "does a DEX check of 12 succeed"
+// is a rule, and this package never learns what "perception" means either.
+//
+// A bare list rather than a wrapping object, deliberately: the builder
+// authors a check as approach rows, and the YAML reads as the rows it is.
+//
+// This is the generalized [DoorSpec] lock shape — LockSpec's single
+// dc/ability/tool became one entry in this list, in place, free under the
+// pin system pre-adoption.
+type CheckSpec []ApproachSpec
+
+// ApproachSpec is one accepted route through a check: an ability or skill,
+// maybe a tool, and the DC that route must beat. Every field is carried
+// uninterpreted; the DC is priced PER APPROACH, not per check — forcing the
+// door and picking its lock need not cost the same.
+type ApproachSpec struct {
+	// Ability is the opaque rulebook ref this approach rolls — "str",
+	// "dex", "perception", "investigation". REQUIRED non-empty, and never
+	// inspected here.
 	Ability string `yaml:"ability"`
-	Tool    string `yaml:"tool,omitempty"`
+
+	// Tool is the opaque item ref for a named tool, e.g.
+	// "dnd5e:item:thieves-tools". Optional: empty means the approach names
+	// none — the reference tomb's lock does not.
+	Tool string `yaml:"tool,omitempty"`
+
+	// DC is what this route must beat. REQUIRED at least 1 — a check with
+	// dc 0 is what an undeclared one would look like.
+	DC int `yaml:"dc"`
 }
 
 // PlaceSpec is one authored placement at an ABSOLUTE cell.

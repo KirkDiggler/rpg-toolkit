@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -78,38 +79,57 @@ const (
 	DoorLocked DoorStateKind = "locked"
 )
 
-// Lock is what it takes to beat a locked door: three facts this module carries
-// from authoring to the caller, and never acts on.
+// CheckApproach is one accepted route through an authored check: an ability
+// or skill, maybe a tool, and the DC that route must beat.
 //
-// DC IS CARRIED, NOT INTERPRETED, AND NOT COMPARED. This module cannot import
-// the rulebook (law C1), so it does not know what a difficulty class IS — and it
-// deliberately does not find out by measuring anything against one.
-// [Encounter.Unlock] is TOLD whether the lock was beaten; deciding that is 5e's
-// job, and "a total that meets the DC succeeds" is a 5e rule that briefly lived
-// here and was taken out (Kirk: "I agree on rules leaking in we need to be
-// diligent"). What the DC is FOR is content: a client shows "DC 12", and the
-// rulebook rolling against it knows the number because this reports it. The
-// precedent is the save gate's — it is data; content carries it, nothing here
-// executes it.
-//
-// Ability and Tool are opaque host/rulebook-owned refs (the old stack's
-// canonical values are lowercase "dex" and a toolkit item ref like
-// "dnd5e:item:thieves-tools"); this module carries them and does nothing else
-// with them.
-type Lock struct {
-	// DC is the lock's authored difficulty, reported to whoever does the
-	// deciding. Must be at least 1 — a lock with nothing to beat is not a
-	// lock, and zero is what an undeclared one would look like. That check is
-	// a well-formedness rule about the DATA, not a judgement about a roll.
-	DC int
-
-	// Ability is the opaque ability identifier the check is made with, or
-	// empty. Never inspected here.
+// A CHECK IS A LIST OF THESE, NOT ONE ABILITY AND ONE DC (ruled on
+// rpg-project#350): a locked door is forced with Strength or picked with
+// Dexterity and tools; a concealed door is spotted with Perception or
+// reasoned out with Investigation. Success by any listed approach, and the
+// author prices each route separately. Which approach an attempt actually
+// used is the caller's business — the resolver on the far side of the seam
+// picks it, rolls it, and tells this module only the verdict.
+type CheckApproach struct {
+	// Ability is the opaque ability or skill identifier this approach rolls
+	// (the old stack's canonical values are lowercase refs like "dex"), or
+	// empty at this seam — what it means is host/rulebook business. Never
+	// inspected here.
 	Ability string
 
-	// Tool is the opaque tool proficiency ref that applies, or empty. Never
-	// inspected here.
+	// Tool is the opaque tool proficiency ref that applies (a toolkit item
+	// ref like "dnd5e:item:thieves-tools"), or empty. Never inspected here.
 	Tool string
+
+	// DC is this route's authored difficulty, reported to whoever does the
+	// deciding. Must be at least 1 — a check with nothing to beat is not a
+	// check, and zero is what an undeclared one would look like. That check
+	// is a well-formedness rule about the DATA, not a judgement about a
+	// roll.
+	DC int
+}
+
+// Lock is what it takes to beat a locked door: facts this module carries
+// from authoring to the caller, and never acts on.
+//
+// THE DCs ARE CARRIED, NOT INTERPRETED, AND NOT COMPARED. This module cannot
+// import the rulebook (law C1), so it does not know what a difficulty class
+// IS — and it deliberately does not find out by measuring anything against
+// one. [Encounter.Unlock] is TOLD whether the lock was beaten; deciding that
+// is 5e's job, and "a total that meets the DC succeeds" is a 5e rule that
+// briefly lived here and was taken out (Kirk: "I agree on rules leaking in we
+// need to be diligent"). What the DCs are FOR is content: a client shows
+// "DC 12", and the rulebook rolling against one knows the number because this
+// reports it. The precedent is the save gate's — it is data; content carries
+// it, nothing here executes it.
+//
+// Until the multi-approach ruling (rpg-project#350) a lock was one flat
+// dc/ability/tool; the reshape is in place, free under the pin system
+// pre-adoption, and mirrors rpg-api-protos' DoorLock.
+type Lock struct {
+	// Approaches are the accepted ways through, each with its own DC — AT
+	// LEAST ONE. An attempt resolves through exactly one of them, chosen by
+	// the caller; this module never learns which.
+	Approaches []CheckApproach
 }
 
 // DoorState is what state a door is in: a closed set, sealed the way
@@ -219,6 +239,23 @@ type DoorInput struct {
 
 	// State is what state the door starts in. REQUIRED — see [DoorState].
 	State DoorState
+
+	// Concealed is the find check when the door is authored concealed: the
+	// approaches that can find it, AT LEAST ONE when present. Nil means the
+	// door was never concealed — the zero value telling the truth — and nil
+	// with zero length is refused, a door hidden with no way to ever find
+	// it.
+	//
+	// NOT A FOURTH [DoorState]: concealment COMPOSES with open, closed, or
+	// locked underneath (rpg-project#350) — what a door is doing and
+	// whether anyone knows it is there are two separate authored facts, and
+	// this one never changes at this seam.
+	//
+	// CARRIED, NOT INTERPRETED. This module's geometry ignores it entirely:
+	// a concealed door blocks exactly what its state blocks, and who has
+	// FOUND it is knowledge the world layer owns (living-world slice 1,
+	// wave 1b), not a fact about the map.
+	Concealed []CheckApproach
 }
 
 // Door is a door's public read shape: what it is called, where it stands, and
@@ -233,16 +270,23 @@ type Door struct {
 
 	// State is its state RIGHT NOW, not the one it was authored in.
 	State DoorState
+
+	// Concealed is the authored find check, or nil for a door that was
+	// never concealed — [DoorInput.Concealed], read back verbatim. Freshly
+	// allocated per call, as the edges are.
+	Concealed []CheckApproach
 }
 
 // doorRecord is what the composition stores about a door.
 //
-// The edges are construction truth and never change; the state is the only
-// mutable thing, and it is held ONCE for however many edges the door has.
+// The edges and the concealment are construction truth and never change; the
+// state is the only mutable thing, and it is held ONCE for however many edges
+// the door has.
 type doorRecord struct {
-	id    DoorID
-	edges []DoorEdge
-	state DoorState
+	id        DoorID
+	edges     []DoorEdge
+	state     DoorState
+	concealed []CheckApproach
 }
 
 // Doors reports every door, in stable ID order, with the state each is in now.
@@ -274,9 +318,10 @@ func (e *Encounter) Doors() []Door {
 	out := make([]Door, 0, len(e.doors))
 	for _, d := range e.doors {
 		out = append(out, Door{
-			ID:    d.id,
-			Edges: append([]DoorEdge(nil), d.edges...),
-			State: d.state,
+			ID:        d.id,
+			Edges:     append([]DoorEdge(nil), d.edges...),
+			State:     d.state,
+			Concealed: copyApproaches(d.concealed),
 		})
 	}
 
@@ -345,8 +390,15 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 		if d.State == nil {
 			return fmt.Errorf("door %q does not say what state it is in (DoorInput.State): %w", d.ID, ErrBadDoor)
 		}
-		if lock, locked := d.State.Lock(); locked && lock.DC < 1 {
-			return fmt.Errorf("door %q is locked at DC %d, which nothing has to beat: %w", d.ID, lock.DC, ErrBadDoor)
+		if lock, locked := d.State.Lock(); locked {
+			if err := validateCheck(d.ID, "is locked and lists no way through", lock.Approaches); err != nil {
+				return err
+			}
+		}
+		if d.Concealed != nil {
+			if err := validateCheck(d.ID, "is concealed and lists no way to find it", d.Concealed); err != nil {
+				return err
+			}
 		}
 
 		if len(d.Edges) == 0 {
@@ -394,6 +446,56 @@ func validateDoorInputs(f *field, doors []DoorInput) error {
 	return nil
 }
 
+// validateCheck rejects a malformed approach list: empty, or any approach
+// with nothing to beat. The empty-list sentence is the caller's, because a
+// lock nobody can pick and a concealment nobody can find are different
+// defects to the author fixing them. Abilities are NOT checked at this seam —
+// they are opaque host refs a check may legally leave empty here; requiring
+// one is the content compiler's rule ([CheckApproach]).
+func validateCheck(id DoorID, empty string, approaches []CheckApproach) error {
+	if len(approaches) == 0 {
+		return fmt.Errorf("door %q %s: %w", id, empty, ErrBadDoor)
+	}
+	for _, a := range approaches {
+		if a.DC < 1 {
+			return fmt.Errorf("door %q lists an approach at DC %d, which nothing has to beat: %w", id, a.DC, ErrBadDoor)
+		}
+	}
+
+	return nil
+}
+
+// copyApproaches is a check's deep copy, with nil staying nil — an absent
+// concealment must read back as absent, not as an empty one.
+func copyApproaches(approaches []CheckApproach) []CheckApproach {
+	if approaches == nil {
+		return nil
+	}
+
+	return append([]CheckApproach(nil), approaches...)
+}
+
+// lockLabel renders a lock for a refusal — "DC 12 (dex)", or the routes
+// joined by "or" when the author priced several. RENDERING, NOT
+// INTERPRETATION: every word is the author's, and nothing is compared; the
+// label exists so a refused walker is told the stakes, exactly as the
+// single-approach refusal told them.
+func lockLabel(lock Lock) string {
+	parts := make([]string, 0, len(lock.Approaches))
+	for _, a := range lock.Approaches {
+		label := fmt.Sprintf("DC %d", a.DC)
+		switch {
+		case a.Ability != "" && a.Tool != "":
+			label += fmt.Sprintf(" (%s, %s)", a.Ability, a.Tool)
+		case a.Ability != "":
+			label += fmt.Sprintf(" (%s)", a.Ability)
+		}
+		parts = append(parts, label)
+	}
+
+	return strings.Join(parts, " or ")
+}
+
 // doorRecordsFrom turns validated inputs into the records the encounter keeps,
 // sorted by ID (C8 determinism — order is observable in Doors and ToData), with
 // every edge normalized and deep-copied so a caller cannot move a door after
@@ -407,7 +509,7 @@ func doorRecordsFrom(doors []DoorInput) ([]*doorRecord, map[DoorID]*doorRecord) 
 		for _, e := range d.Edges {
 			edges = append(edges, normalizeDoorEdge(e))
 		}
-		rec := &doorRecord{id: d.ID, edges: edges, state: d.State}
+		rec := &doorRecord{id: d.ID, edges: edges, state: d.State, concealed: copyApproaches(d.Concealed)}
 		records = append(records, rec)
 		byID[d.ID] = rec
 	}
