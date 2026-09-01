@@ -32,17 +32,17 @@ const doorFile = "truth.go"
 // TestNoCodePathProducesACastlessInteraction and
 // TestNoCodePathProducesAReadinesslessInteraction — each say that ONE fact is
 // installed once and unconditionally. None of them can say what this one says:
-// that no SECOND installer exists, and that the paths which fold reach the door
-// at all. Drop the call to installTruth and all three still pass, because each
-// of them is reading the door's own body.
+// that no SECOND installer exists, and that every path which runs attached
+// behavior reaches the door at all. Drop the call to installTruth and all three
+// still pass, because each of them is reading the door's own body.
 //
-// "The paths which fold" is a list now, not a single function — see
-// [foldEntries]. Resolution grew a second entry when the projection landed, and
-// the law it serves is that FOLDS LIVE IN RESOLUTION: a caller that needs a
+// Those paths are a list now, not a single function — see [truthEntries]. The
+// law folds serve is that FOLDS LIVE IN RESOLUTION: a caller that needs a
 // derived number brings the computation here rather than carrying truth out to
-// itself. This pin holds the near half of that law, the half resolution can
-// see — every fold that starts here starts by opening the door, and nothing
-// else opens it.
+// itself. LongRest does not fold, but it publishes to every attached behavior,
+// so it enters through the same door before invoking the rule. This pin holds
+// the near half of the law resolution can see — every attached operation opens
+// the door, and nothing else opens it.
 //
 // That gap is the defect they were written for, seen from the other side.
 // gamectx reached five registries and a sixth in combat by exactly this route —
@@ -127,9 +127,10 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 			"repository it is a record, not a tenant, and admission is a ruling either way",
 		doorFile)
 
-	// And the door is ON every path that reaches a fold. Everything above is
-	// about who may install; this is the half that says the installing happens.
-	for _, entry := range foldEntries {
+	// And the door is ON every path that runs attached behavior. Everything
+	// above is about who may install; this is the half that says the installing
+	// happens.
+	for _, entry := range truthEntries {
 		file, err := parser.ParseFile(fset, entry.file, nil, 0)
 		require.NoError(t, err)
 
@@ -139,32 +140,32 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 		require.Len(t, calls, 1, "%s goes through the door exactly once", entry.fn)
 
 		requireUnconditional(t, fset, fn, calls[0],
-			"calls the door inside a condition — a fold that skips it reads a world, "+
-				"a cast and a readiness map that nobody installed, which is every "+
-				"failure the three pins beside this one were written for at once")
+			"calls the door inside a condition — an attached operation that skips it "+
+				"runs with a world, a cast and a readiness map that nobody installed, "+
+				"which is every failure the three pins beside this one were written for at once")
 	}
 
 	// And nothing ELSE reaches the door, which is what makes the list above a
-	// list rather than a sample. A new entry that folds is a design moment: it
-	// either goes through installTruth and gets named here, or it folds without
-	// truth, which is the bug R6 is about.
-	require.Equal(t, entryNames(foldEntries), doorCallers(t, fset, entries),
-		"every non-test caller of installTruth is a declared fold entry, and every "+
-			"declared fold entry calls it — a fold reached any other way is a fold "+
-			"outside the door")
+	// list rather than a sample. A new entry that runs attached behavior is a
+	// design moment: it either goes through installTruth and gets named here, or
+	// it runs without truth, which is the bug these pins are about.
+	require.Equal(t, entryNames(truthEntries), doorCallers(t, fset, entries),
+		"every non-test caller of installTruth is a declared truth-bearing entry, and every "+
+			"declared truth-bearing entry calls it — attached behavior reached any other "+
+			"way is outside the door")
 }
 
-// foldEntries are the functions in this package that stand a fold up from
-// nothing, and therefore the functions that must go through the door first.
+// truthEntries are the functions in this package that run attached behavior or
+// stand a fold up from nothing, and therefore must go through the door first.
 //
-// FOUR of them now, and the growth is why this is a table. Resolve runs an
+// FIVE of them now, and the growth is why this is a table. Resolve runs an
 // interaction. ProjectCharacter folds one derived number for a caller with no
 // interaction to run — a character joining a session, who is not standing
 // anywhere yet. Standing answers a question about live sheets for a caller that
 // must not hold any. MakeCheck makes one character's ability check with their
-// conditions attached, for a seam that holds records and never sheets. All four
-// need the truth installed for the same reason and install it the same way;
-// none is a mode of another.
+// conditions attached, for a seam that holds records and never sheets. LongRest
+// publishes a rule event to its attached sheet with no world. All five install
+// the same truth before behavior runs; none is a mode of another.
 //
 // PREFLIGHT IS DELIBERATELY ABSENT, and its absence is the interesting entry in
 // this list. It attaches every participant and folds nothing — it is asking
@@ -180,11 +181,12 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 // The functions named are the *On forms rather than their exported wrappers,
 // because those are where the bus is held and the door is called. A wrapper
 // that stopped delegating would fail funcDecl or the count, loudly.
-var foldEntries = []struct{ file, fn string }{
+var truthEntries = []struct{ file, fn string }{
 	{"resolve.go", "resolveOn"},
 	{"projection.go", "projectCharacterOn"},
 	{"standing.go", "standingOn"},
 	{"check.go", "makeCheckOn"},
+	{"long_rest.go", "longRestOn"},
 }
 
 func entryNames(entries []struct{ file, fn string }) []string {
@@ -221,8 +223,9 @@ func doorCalls(fn *ast.FuncDecl) []token.Pos {
 // TEST FILES ARE EXCLUDED here, and the asymmetry with the scan above is
 // deliberate rather than an oversight. That scan asks who may INSTALL, where a
 // test installing by hand is the original defect wearing a disguise. This one
-// asks which production paths fold, and a test calling the door is a test using
-// the sanctioned entrance — the one this file tells authors to use. Counting
+// asks which production paths run attached behavior, and a test calling the
+// door is a test using the sanctioned entrance — the one this file tells
+// authors to use. Counting
 // those would turn a correct test into a failure and teach the wrong lesson.
 func doorCallers(t *testing.T, fset *token.FileSet, entries []os.DirEntry) []string {
 	t.Helper()

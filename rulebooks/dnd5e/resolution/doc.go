@@ -251,19 +251,22 @@
 // TestNoCodePathProducesAReadinesslessInteraction hold all three structurally
 // rather than by example, by reading the door's source; a fourth,
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
-// and that every path which folds reaches it.
+// and that every truth-bearing attached-behavior path reaches it.
 //
-// There are four such paths, and TestOnlyTheDoorInstallsGameContext holds the
-// list. [Resolve] runs an interaction. [ProjectCharacter] folds one derived
+// There are five such truth-bearing attached-behavior paths, and
+// TestOnlyTheDoorInstallsGameContext holds the list. [Resolve] runs an
+// interaction. [ProjectCharacter] folds one derived
 // number for a caller with no interaction to run — a character joining a
 // session, who is not standing anywhere yet and so gets a context whose room
 // is honestly ABSENT rather than invented. [Standing] asks who is down.
 // [MakeCheck] makes one character's ability check with their conditions
 // attached — the living-world rung (rpg-toolkit#1380), and the check chain's
-// first live production audience. Each goes through the same door, and none
-// is a mode of another. A behavioural suite cannot make any of those
-// claims: the defect is that tests supply what production does not, so the
-// tests are the last place it shows up.
+// first live production audience. [LongRest] publishes the root rest rule to
+// one attached character. The latter four have no world, so their context
+// carries a room that is honestly ABSENT rather than invented. Each goes
+// through the same door, and none is a mode of another. A behavioural suite
+// cannot make any of those claims: the defect is that tests supply what
+// production does not, so the tests are the last place it shows up.
 //
 // This package builds no geometry of its own. It held a room it assembled out
 // of the encounter's persisted description, carrying a second copy of grid
