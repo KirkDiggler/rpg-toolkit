@@ -20,6 +20,7 @@ type SavingThrowTestSuite struct {
 	ctrl       *gomock.Controller
 	ctx        context.Context
 	mockRoller *mock_dice.MockRoller
+	bus        events.EventBus
 }
 
 func TestSavingThrowSuite(t *testing.T) {
@@ -30,6 +31,7 @@ func (s *SavingThrowTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.ctx = context.Background()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	s.bus = events.NewEventBus()
 }
 
 func (s *SavingThrowTestSuite) TearDownTest() {
@@ -43,6 +45,8 @@ func (s *SavingThrowTestSuite) TestBasicSuccess() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.CON,
 		DC:       13,
 		Modifier: 3,
@@ -67,6 +71,8 @@ func (s *SavingThrowTestSuite) TestBasicFailure() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.CON,
 		DC:       13,
 		Modifier: 3,
@@ -91,6 +97,8 @@ func (s *SavingThrowTestSuite) TestAdvantage() {
 
 	input := &SavingThrowInput{
 		Roller:       s.mockRoller,
+		EventBus:     s.bus,
+		SaverID:      "hero",
 		Ability:      abilities.WIS,
 		DC:           12,
 		Modifier:     2,
@@ -116,6 +124,8 @@ func (s *SavingThrowTestSuite) TestDisadvantage() {
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		SaverID:         "hero",
 		Ability:         abilities.DEX,
 		DC:              15,
 		Modifier:        4,
@@ -141,6 +151,8 @@ func (s *SavingThrowTestSuite) TestNatural1() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.STR,
 		DC:       5,
 		Modifier: 10, // Even with a huge modifier, nat 1 is still detected
@@ -165,6 +177,8 @@ func (s *SavingThrowTestSuite) TestNatural20() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.INT,
 		DC:       30,
 		Modifier: -2, // Even with a negative modifier, nat 20 is still detected
@@ -189,6 +203,8 @@ func (s *SavingThrowTestSuite) TestNatural20WithAdvantage() {
 
 	input := &SavingThrowInput{
 		Roller:       s.mockRoller,
+		EventBus:     s.bus,
+		SaverID:      "hero",
 		Ability:      abilities.CHA,
 		DC:           15,
 		Modifier:     1,
@@ -213,6 +229,8 @@ func (s *SavingThrowTestSuite) TestNatural1WithDisadvantage() {
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		SaverID:         "hero",
 		Ability:         abilities.CON,
 		DC:              10,
 		Modifier:        3,
@@ -236,6 +254,8 @@ func (s *SavingThrowTestSuite) TestNegativeModifier() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.INT,
 		DC:       10,
 		Modifier: -2,
@@ -257,6 +277,8 @@ func (s *SavingThrowTestSuite) TestZeroModifier() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.WIS,
 		DC:       14,
 		Modifier: 0,
@@ -279,6 +301,8 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		SaverID:         "hero",
 		Ability:         abilities.DEX,
 		DC:              15,
 		Modifier:        2,
@@ -308,10 +332,8 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 	// With advantage from chain, should roll 2d20 and take higher
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to grant advantage on DEX saves
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, event *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			// Grant advantage on DEX saves
@@ -334,7 +356,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: bus,
+		EventBus: s.bus,
 		SaverID:  "hero",
 		Ability:  abilities.DEX,
 		DC:       15,
@@ -357,10 +379,8 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 	// With disadvantage from chain, should roll 2d20 and take lower
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to impose disadvantage
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			addErr := c.Add(combat.StageConditions, "poisoned", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
@@ -380,7 +400,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: bus,
+		EventBus: s.bus,
 		SaverID:  "hero",
 		Ability:  abilities.CON,
 		DC:       15,
@@ -403,10 +423,8 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 	// Normal roll (no advantage/disadvantage)
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(10, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to add Bless bonus
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			addErr := c.Add(combat.StageConditions, "bless", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
@@ -429,7 +447,7 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: bus,
+		EventBus: s.bus,
 		SaverID:  "hero",
 		Ability:  abilities.WIS,
 		DC:       15,
@@ -453,10 +471,8 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 	// Should roll normally when they cancel out
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(12, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to grant advantage
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			addErr := c.Add(combat.StageConditions, "dodging", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
@@ -475,7 +491,7 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
-		EventBus:        bus,
+		EventBus:        s.bus,
 		SaverID:         "hero",
 		Ability:         abilities.DEX,
 		DC:              15,
@@ -497,27 +513,177 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 	s.Equal("Input", result.DisadvantageSources[0].Name)
 }
 
-// TestNoEventBusStillWorks tests that MakeSavingThrow works without an EventBus
-func (s *SavingThrowTestSuite) TestNoEventBusStillWorks() {
-	// Normal roll without EventBus
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	input := &SavingThrowInput{
+// TestRefusesNilEventBus pins the required-bus contract (rpg-toolkit#1357):
+// a full saving throw consults the chain, so a nil bus is refused by name
+// rather than quietly skipping every condition. The error points the caller
+// at the unaided variant.
+func (s *SavingThrowTestSuite) TestRefusesNilEventBus() {
+	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: nil, // No event bus
+		EventBus: nil,
+		SaverID:  "hero",
 		Ability:  abilities.STR,
 		DC:       12,
 		Modifier: 3,
-	}
+	})
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "EventBus is required")
+	s.Contains(err.Error(), "MakeUnaidedSavingThrow")
+}
 
-	result, err := MakeSavingThrow(s.ctx, input)
+// TestRefusesEmptySaverID pins the other required parameter: chain
+// subscribers key off the saver's id, so an empty id is refused by name.
+func (s *SavingThrowTestSuite) TestRefusesEmptySaverID() {
+	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		Ability:  abilities.STR,
+		DC:       12,
+		Modifier: 3,
+	})
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "SaverID is required")
+}
+
+// UnaidedSavingThrowTestSuite pins MakeUnaidedSavingThrow's contract: the
+// same roll arithmetic as the full save — advantage/disadvantage
+// cancellation, modifier, DC, natural 1/20 — with no chain and no bus, so
+// no condition can reach the roll (rpg-toolkit#1357).
+type UnaidedSavingThrowTestSuite struct {
+	suite.Suite
+	ctrl       *gomock.Controller
+	ctx        context.Context
+	mockRoller *mock_dice.MockRoller
+}
+
+func TestUnaidedSavingThrowSuite(t *testing.T) {
+	suite.Run(t, new(UnaidedSavingThrowTestSuite))
+}
+
+func (s *UnaidedSavingThrowTestSuite) SetupTest() {
+	s.ctrl = gomock.NewController(s.T())
+	s.ctx = context.Background()
+	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+}
+
+func (s *UnaidedSavingThrowTestSuite) TearDownTest() {
+	s.ctrl.Finish()
+}
+
+// TestBasicSuccess is the fold-outside shape (the resolution module's save
+// machine): the caller hands in what its own fold settled on and takes back
+// the arithmetic — no chain fires here.
+func (s *UnaidedSavingThrowTestSuite) TestBasicSuccess() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
+
+	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
+		Roller:   s.mockRoller,
+		DC:       12,
+		Modifier: 3,
+	})
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
-	s.Equal(15, result.Roll, "roll should be 15")
+	s.Equal(15, result.Roll)
 	s.Equal(18, result.Total, "total should be 15 + 3 = 18")
+	s.Equal(12, result.DC)
 	s.True(result.Success, "18 should succeed against DC 12")
-	s.Empty(result.AdvantageSources, "should have no advantage sources")
-	s.Empty(result.DisadvantageSources, "should have no disadvantage sources")
-	s.Empty(result.BonusSources, "should have no bonus sources")
+	s.Empty(result.AdvantageSources, "no conditions consulted, nothing granted advantage")
+	s.Empty(result.DisadvantageSources)
+	s.Empty(result.BonusSources)
+}
+
+func (s *UnaidedSavingThrowTestSuite) TestBasicFailure() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(9, nil)
+
+	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
+		Roller:   s.mockRoller,
+		DC:       13,
+		Modifier: 3,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(9, result.Roll)
+	s.Equal(12, result.Total, "total should be 9 + 3 = 12")
+	s.False(result.Success, "12 should fail against DC 13")
+}
+
+func (s *UnaidedSavingThrowTestSuite) TestAdvantage() {
+	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
+
+	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
+		Roller:       s.mockRoller,
+		DC:           12,
+		Modifier:     2,
+		HasAdvantage: true,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(15, result.Roll, "should use higher roll of 8 and 15")
+	s.Equal(17, result.Total)
+	s.True(result.Success)
+	s.Len(result.AdvantageSources, 1, "input advantage is tracked for auditability")
+	s.Equal("Input", result.AdvantageSources[0].Name)
+}
+
+func (s *UnaidedSavingThrowTestSuite) TestDisadvantage() {
+	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
+
+	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
+		Roller:          s.mockRoller,
+		DC:              15,
+		Modifier:        4,
+		HasDisadvantage: true,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(5, result.Roll, "should use lower roll of 18 and 5")
+	s.Equal(9, result.Total)
+	s.False(result.Success)
+	s.Len(result.DisadvantageSources, 1, "input disadvantage is tracked for auditability")
+	s.Equal("Input", result.DisadvantageSources[0].Name)
+}
+
+func (s *UnaidedSavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(11, nil)
+
+	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
+		Roller:          s.mockRoller,
+		DC:              15,
+		Modifier:        2,
+		HasAdvantage:    true,
+		HasDisadvantage: true,
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(result)
+
+	s.Equal(11, result.Roll, "should roll normally when advantage and disadvantage cancel")
+	s.Equal(13, result.Total)
+	s.False(result.Success)
+}
+
+func (s *UnaidedSavingThrowTestSuite) TestNatural1AndNatural20() {
+	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil)
+
+	result, err := MakeUnaidedSavingThrow(s.ctx, &UnaidedSavingThrowInput{
+		Roller:   s.mockRoller,
+		DC:       30,
+		Modifier: -2,
+	})
+	s.Require().NoError(err)
+	s.False(result.IsNat1)
+	s.True(result.IsNat20, "should detect natural 20")
+	s.False(result.Success, "18 should fail against DC 30 (nat 20 doesn't auto-succeed saves)")
+}
+
+func (s *UnaidedSavingThrowTestSuite) TestNilInput() {
+	result, err := MakeUnaidedSavingThrow(s.ctx, nil)
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "input cannot be nil")
 }

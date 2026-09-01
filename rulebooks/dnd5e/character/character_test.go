@@ -388,6 +388,8 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
 		map[string]int{"wis": 16}, // +3 modifier
 		[]string{"wis"},           // Proficient
 	)
+	// A full save consults the chain on the character's bus (rpg-toolkit#1357)
+	char.bus = events.NewEventBus()
 
 	// Make a saving throw against DC 15
 	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
@@ -404,6 +406,26 @@ func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowFunctionExists() {
 	// Total should be roll + 5 (+3 ability + 2 proficiency)
 	expectedTotal := result.Roll + 5
 	s.Equal(expectedTotal, result.Total, "total should be roll + modifier")
+}
+
+// TestMakeSavingThrowRefusesUnattachedCharacter pins the fail-closed side of
+// rpg-toolkit#1357: a full save consults the chain, and a character on no bus
+// has every save-modifying condition absent — refused loudly, never rolled
+// wrong.
+func (s *CharacterSavingThrowTestSuite) TestMakeSavingThrowRefusesUnattachedCharacter() {
+	char := s.createTestCharacter(
+		map[string]int{"wis": 16},
+		[]string{"wis"},
+	)
+
+	result, err := char.MakeSavingThrow(s.ctx, &MakeSavingThrowInput{
+		Ability: abilities.WIS,
+		DC:      15,
+	})
+
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "on no bus")
 }
 
 func TestCharacterSavingThrowSuite(t *testing.T) {
