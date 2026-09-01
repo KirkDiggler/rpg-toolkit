@@ -140,14 +140,15 @@ func (s *TombSuite) TestTheTombIsWalkedEntranceToHallToBoss() {
 	failed, err := s.enc.Unlock(&encounter.UnlockInput{Door: door.ID, Beaten: false})
 	s.Require().NoError(err)
 	s.False(failed.Beaten, "a missed check leaves it locked")
-	s.Equal(tombLockDC, failed.DC, "and reports the DC it carries")
+	s.Equal([]encounter.CheckApproach{{Ability: "dex", DC: tombLockDC}}, failed.Approaches,
+		"and reports the approaches it carries")
 	s.Require().Equal(encounter.DoorStateKind("locked"), s.tombDoor().State.Kind(),
 		"and leaves it there to try again")
 
 	beaten, err := s.enc.Unlock(&encounter.UnlockInput{Door: door.ID, Beaten: true})
 	s.Require().NoError(err)
 	s.True(beaten.Beaten)
-	s.Equal(tombLockDC, beaten.DC)
+	s.Equal([]encounter.CheckApproach{{Ability: "dex", DC: tombLockDC}}, beaten.Approaches)
 
 	// Beaten, the door ends OPEN rather than merely unlocked — a party that
 	// just picked a lock is going through, and a second OpenDoor call would be

@@ -159,6 +159,13 @@ type RegionData struct {
 	Cells     []PositionData `json:"cells"`
 	Archetype string         `json:"archetype"`
 	Lighting  *LightingData  `json:"lighting"`
+
+	// Concealed mirrors [RegionInput.Concealed]. NOT REQUIRED AT LOAD,
+	// unlike Lighting, and PropData.Facing states the rule: omitted and
+	// written-as-false are the same fact by design, so an old blob simply
+	// unmarshals to false and a never-concealed region writes no key at
+	// all — the exact bytes every pre-concealment blob already has.
+	Concealed bool `json:"concealed,omitempty"`
 }
 
 // LightingData is the persistent representation of a [Lighting] block.
@@ -226,6 +233,14 @@ type DoorData struct {
 	Edges []EdgeData `json:"edges"`
 	State string     `json:"state"`
 	Lock  *LockData  `json:"lock,omitempty"`
+
+	// Concealed is the authored find check, absent for the door that was
+	// never concealed — which is every door in every blob written before
+	// concealment existed, so those blobs load unchanged. Present means
+	// non-empty: a blob whose door is concealed with no way to find it is
+	// refused at load by the same shared validator that refuses it at
+	// construction.
+	Concealed []CheckApproachData `json:"concealed,omitempty"`
 }
 
 // EdgeData is the persistent representation of a [DoorEdge]: one crossing,
@@ -235,13 +250,22 @@ type EdgeData struct {
 	To   PositionData `json:"to"`
 }
 
-// LockData is the persistent representation of a [Lock]. Ability and Tool are
-// opaque host/rulebook refs this module never looks inside, so they persist
-// verbatim and omit when empty.
+// LockData is the persistent representation of a [Lock]: the approach list,
+// wholesale. It reshaped in place from a flat dc/ability/tool when the
+// multi-approach ruling landed (rpg-project#350) — free under the pin
+// system pre-adoption, no migration, per the standing precedent
+// (rpg-toolkit#1053/#1068: fail loudly on a shape this build does not speak).
 type LockData struct {
-	DC      int    `json:"dc"`
+	Approaches []CheckApproachData `json:"approaches"`
+}
+
+// CheckApproachData is the persistent representation of a [CheckApproach].
+// Ability and Tool are opaque host/rulebook refs this module never looks
+// inside, so they persist verbatim and omit when empty.
+type CheckApproachData struct {
 	Ability string `json:"ability,omitempty"`
 	Tool    string `json:"tool,omitempty"`
+	DC      int    `json:"dc"`
 }
 
 // doorDataFrom renders a door record for the blob.
@@ -258,7 +282,37 @@ func doorDataFrom(d *doorRecord) DoorData {
 		})
 	}
 	if lock, locked := d.state.Lock(); locked {
-		out.Lock = &LockData{DC: lock.DC, Ability: lock.Ability, Tool: lock.Tool}
+		out.Lock = &LockData{Approaches: approachesDataFrom(lock.Approaches)}
+	}
+	out.Concealed = approachesDataFrom(d.concealed)
+
+	return out
+}
+
+// approachesDataFrom renders a check's approaches for the blob, nil staying
+// nil so a door that was never concealed writes no key at all — the exact
+// bytes every pre-concealment blob already has.
+func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
+	if approaches == nil {
+		return nil
+	}
+	out := make([]CheckApproachData, 0, len(approaches))
+	for _, a := range approaches {
+		out = append(out, CheckApproachData(a))
+	}
+
+	return out
+}
+
+// approachesFromData resolves persisted approaches back to the check they
+// name, nil staying nil for approachesDataFrom's reason.
+func approachesFromData(data []CheckApproachData) []CheckApproach {
+	if data == nil {
+		return nil
+	}
+	out := make([]CheckApproach, 0, len(data))
+	for _, a := range data {
+		out = append(out, CheckApproach(a))
 	}
 
 	return out
@@ -287,7 +341,7 @@ func doorStateFromData(id string, name string, lock *LockData) (DoorState, error
 		if lock == nil {
 			return nil, fmt.Errorf("door %q is locked and says nothing about the lock: %w", id, ErrBadDoor)
 		}
-		return DoorIsLocked(Lock{DC: lock.DC, Ability: lock.Ability, Tool: lock.Tool}), nil
+		return DoorIsLocked(Lock{Approaches: approachesFromData(lock.Approaches)}), nil
 	case "":
 		return nil, fmt.Errorf("door %q does not say what state it is in (doors[].state): %w", id, ErrBadDoor)
 	default:
@@ -313,7 +367,7 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 				To:   spatial.Position{X: e.To.X, Y: e.To.Y},
 			})
 		}
-		out = append(out, DoorInput{ID: dd.ID, Edges: edges, State: state})
+		out = append(out, DoorInput{ID: dd.ID, Edges: edges, State: state, Concealed: approachesFromData(dd.Concealed)})
 	}
 
 	return out, nil
@@ -524,7 +578,8 @@ func fieldDataFrom(f *field) FieldData {
 		intensity := r.Lighting.Intensity
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
-			Lighting: &LightingData{Intensity: &intensity},
+			Lighting:  &LightingData{Intensity: &intensity},
+			Concealed: r.Concealed,
 		}
 	}
 
@@ -1307,7 +1362,8 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		}
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
-			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
+			Lighting:  &Lighting{Intensity: *rd.Lighting.Intensity},
+			Concealed: rd.Concealed,
 		}
 	}
 

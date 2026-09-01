@@ -94,7 +94,8 @@ type OpenDoorOutput struct {
 // OpenDoor opens a door: its edges stop blocking, and whatever stood behind it
 // comes into view.
 //
-// Refuses a LOCKED door with ErrLocked, naming the DC — [Encounter.Unlock] is
+// Refuses a LOCKED door with ErrLocked, naming every route through the lock
+// and its price — [Encounter.Unlock] is
 // the way through one. Refuses an already-open door with ErrBadDoor, for the
 // reason this file's doc comment gives.
 //
@@ -119,7 +120,7 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	}
 
 	if lock, locked := door.state.Lock(); locked {
-		return nil, fmt.Errorf("open door %q: locked, DC %d: %w", door.id, lock.DC, ErrLocked)
+		return nil, fmt.Errorf("open door %q: locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
 	}
 	if door.state.Kind() == DoorOpen {
 		return nil, fmt.Errorf("open door %q: it is already open: %w", door.id, ErrBadDoor)
@@ -262,10 +263,12 @@ type UnlockOutput struct {
 	// no such door".
 	Beaten bool
 
-	// DC is the lock's authored difficulty, echoed either way so a caller
-	// narrating a near miss does not have to go looking for it. CARRIED, never
-	// compared — see [Lock].
-	DC int
+	// Approaches are the lock's authored ways through, echoed either way so
+	// a caller narrating a near miss does not have to go looking for them.
+	// The WHOLE list, because this module never learned which route the
+	// attempt took — the caller that rolled knows, and holds its DC already.
+	// CARRIED, never compared — see [Lock].
+	Approaches []CheckApproach
 
 	// State is what state the door is in now: [DoorOpen] when beaten,
 	// [DoorLocked] when not.
@@ -337,7 +340,7 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	if extra == nil {
 		extra = map[string]interface{}{}
 	}
-	extra["dc"] = lock.DC
+	extra["approaches"] = approachesDataFrom(lock.Approaches)
 	extra["beaten"] = in.Beaten
 	extra["total"] = in.Total
 
@@ -349,7 +352,7 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	return &UnlockOutput{
 		Door:        door.id,
 		Beaten:      in.Beaten,
-		DC:          lock.DC,
+		Approaches:  copyApproaches(lock.Approaches),
 		State:       door.state.Kind(),
 		IntelDeltas: changed.deltas,
 		Seq:         changed.seq,

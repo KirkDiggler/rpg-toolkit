@@ -198,7 +198,8 @@ func (f *field) compileRegions(regions []RegionInput) error {
 		lighting := *r.Lighting
 		f.regions[i] = RegionInput{
 			ID: r.ID, Name: r.Name, Archetype: r.Archetype, Lighting: &lighting,
-			Cells: append([]spatial.Position(nil), r.Cells...),
+			Cells:     append([]spatial.Position(nil), r.Cells...),
+			Concealed: r.Concealed,
 		}
 	}
 	sortCells(f.cells)

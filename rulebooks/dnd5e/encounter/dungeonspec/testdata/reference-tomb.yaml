@@ -100,7 +100,7 @@ doors:
     edges: [[[5,4],[6,4]]]
   - id: hall-tomb
     edges: [[[15,4],[16,4]]]
-    locked: { dc: 12, ability: dex }
+    locked: [{ ability: dex, dc: 12 }]
 
 # Everything standing on the floor, at absolute cells. Every prop says what it
 # blocks; every monster says how it targets; the boss is a monster with a flag.

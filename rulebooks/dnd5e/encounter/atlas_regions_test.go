@@ -65,6 +65,26 @@ func (s *AtlasRegionsSuite) reload(enc *encounter.Encounter) *encounter.Encounte
 	return back
 }
 
+// TestAtlas_RegionsCarryConcealment: the concealed marker round-trips through
+// ToData -> Load -> Atlas exactly as lighting does — carried, never read
+// (rpg-project#351, living-world wave 1a) — and a region that authored
+// nothing reports false on the far side, the same fact it went in as.
+func (s *AtlasRegionsSuite) TestAtlas_RegionsCarryConcealment() {
+	field := atlasField()
+	for i := range field.Regions {
+		if field.Regions[i].ID == "tomb" {
+			field.Regions[i].Concealed = true
+		}
+	}
+
+	atlas, err := s.reload(s.open(field)).Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(atlas.Regions, 3)
+	for _, r := range atlas.Regions {
+		s.Equal(r.ID == "tomb", r.Concealed, "region %q", r.ID)
+	}
+}
+
 // TestAtlas_RegionsCarryLighting: archetype and intensity round-trip through
 // ToData -> Load -> Atlas, unread and unchanged.
 func (s *AtlasRegionsSuite) TestAtlas_RegionsCarryLighting() {

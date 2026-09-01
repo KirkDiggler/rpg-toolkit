@@ -222,10 +222,34 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"place[8].targeting", "lowest-helth"},
 		{"a boss that is a prop", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, boss: true }`,
 			"place[0].boss", "not a monster"},
-		{"a lock nothing has to beat", "locked: { dc: 12, ability: dex }", "locked: { dc: 0, ability: dex }",
-			"doors[1].locked.dc", "nothing to beat"},
-		{"a lock with no ability", "locked: { dc: 12, ability: dex }", "locked: { dc: 12 }",
-			"doors[1].locked.ability", "ability"},
+		{"a lock approach nothing has to beat", "locked: [{ ability: dex, dc: 12 }]", "locked: [{ ability: dex, dc: 0 }]",
+			"doors[1].locked[0].dc", "nothing to beat"},
+		{"a lock approach with no ability", "locked: [{ ability: dex, dc: 12 }]", "locked: [{ dc: 12 }]",
+			"doors[1].locked[0].ability", "ability"},
+		{"a locked door with no approaches", "locked: [{ ability: dex, dc: 12 }]", "locked: []",
+			"doors[1].locked", "at least one way through"},
+		// The concealed-check shape cases stand on an INNER shortcut door —
+		// both endpoints in the hall — so each differs from a valid file by
+		// exactly the malformed check, with no coherence refusal beside it
+		// (a shortcut inside a room is nobody's entrance).
+		{"a concealed door with no find approach", "doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: []\n",
+			"doors[0].concealed", "at least one way to find it"},
+		{"a find approach with no ability", "doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ dc: 15 }]\n",
+			"doors[0].concealed[0].ability", "ability"},
+		{"a find approach nothing has to beat", "doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ ability: perception, dc: 0 }]\n",
+			"doors[0].concealed[0].dc", "nothing to beat"},
+		// Authoring coherence (rpg-project#351): the room hides with its
+		// door, and the incoherent halves refuse — each at the region,
+		// which is the field the form-filler flips.
+		{"a room only enterable through a concealed door", "locked: [{ ability: dex, dc: 12 }]",
+			"locked: [{ ability: dex, dc: 12 }]\n    concealed: [{ ability: perception, dc: 15 }]",
+			"regions[2].concealed", "can only be entered through a concealed door"},
+		{"a concealed room anyone can walk into", "  - id: tomb\n",
+			"  - id: tomb\n    concealed: true\n",
+			"regions[2].concealed", "a walk-in room cannot be a secret"},
 		{"a door with no edges", "edges: [[[5,4],[6,4]]]", "edges: []", "doors[0].edges", "no edges"},
 		{"a door with no id", "  - id: entrance-hall\n", "  - id: \"\"\n", "doors[0].id", "no id"},
 	} {
@@ -248,6 +272,139 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		s.Require().NotEmpty(errs)
 		s.Equal("regions[0].cells", errs[0].Path)
 		s.Contains(errs[0].Message, "no cells")
+	})
+
+	s.Run("a concealed room with a doorless open way in", func() {
+		// The coherent secret room — tomb concealed, its door concealed —
+		// with one wall of its border erased: a bare crossing no author can
+		// conceal, named in the refusal by the file's own coordinates.
+		secret := s.tombWith("locked: [{ ability: dex, dc: 12 }]",
+			"locked: [{ ability: dex, dc: 12 }]\n    concealed: [{ ability: perception, dc: 15 }]")
+		secret = strings.Replace(secret, "  - id: tomb\n", "  - id: tomb\n    concealed: true\n", 1)
+		s.Empty(s.validate(secret), "concealed door + concealed room is the coherent whole")
+
+		gap := strings.Replace(secret, "  - [[15,0],[16,0]]\n", "", 1)
+		errs := s.validate(gap)
+		s.Equal([]string{"regions[2].concealed"}, paths(errs))
+		s.Contains(errs[0].Message, "the open way between [15,0] and [16,0]")
+		s.Contains(errs[0].Message, "a walk-in room cannot be a secret")
+	})
+
+	s.Run("the minimal secret closet compiles", func() {
+		// The review probe that caught the entrance-local first draft
+		// (rpg-project#351's reformulation): a visible start room whose
+		// ONLY crossing is the one concealed door is slice 1's smallest
+		// honest dungeon, and the frontier form admits it.
+		closet := `
+version: 2
+key: closet
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+  - id: closet
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[2,0]]
+start: [0, 0]
+doors:
+  - id: secret
+    edges: [[[1,0],[2,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+`
+		s.Empty(s.validate(closet))
+	})
+
+	s.Run("a two-room secret suite compiles", func() {
+		// Everything wholly inside hidden space is nobody's business: the
+		// suite's interior door between two concealed rooms obliges nobody,
+		// and only the one frontier crossing must be the concealed door.
+		suite := `
+version: 2
+key: suite
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[2,0]]
+  - id: sanctum
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[3,0]]
+start: [0, 0]
+doors:
+  - id: secret
+    edges: [[[1,0],[2,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+  - id: inner
+    edges: [[[2,0],[3,0]]]
+    closed: true
+`
+		s.Empty(s.validate(suite))
+	})
+
+	s.Run("a two-edge gate refuses once per door, not per edge", func() {
+		// A door is ONE state over its edges (rpg-toolkit#1123), so a
+		// plain two-edge gate into a concealed vault is one way in and one
+		// refusal — not one per crossing. Rows 0 and 2 are both even, so
+		// under pointy-top the seam has exactly the two straight crossings
+		// the gate stands in and no staggered third.
+		gate := `
+version: 2
+key: gate
+orientation: pointy
+void: opaque
+regions:
+  - id: hallway
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+      - [[0,2],[1,2]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[2,0],[2,2]]
+start: [0, 0]
+doors:
+  - id: gate
+    edges: [[[1,0],[2,0]],[[1,2],[2,2]]]
+    closed: true
+`
+		errs := s.validate(gate)
+		s.Equal([]string{"regions[1].concealed"}, paths(errs))
+		s.Contains(errs[0].Message, `its door "gate" (doors[0])`)
+		s.Contains(errs[0].Message, "a walk-in room cannot be a secret")
+	})
+
+	s.Run("one open door and one concealed shortcut stays legal", func() {
+		// The room is no secret, the shortcut is (rpg-project#351): the
+		// hall keeps its two plain entrances, and a concealed inner door
+		// obliges nobody to conceal anything.
+		shortcut := s.tombWith("doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ ability: perception, dc: 15 }]\n")
+		s.Empty(s.validate(shortcut))
 	})
 
 	s.Run("two bosses in one region", func() {

@@ -208,12 +208,12 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position) (execu
 					continue
 				}
 				// Three cases, three sentinels (rpg-toolkit#1135): a locked
-				// door is a fiction beat and names its DC, exactly as
+				// door is a fiction beat and names its stakes, exactly as
 				// OpenDoor's refusal does; a merely-shut door is its own
 				// answer; and ErrBadPlacement goes back to meaning what its
 				// name says — the position itself is not usable.
 				if lock, locked := door.state.Lock(); locked {
-					return executedAction{}, fmt.Errorf("door %q is locked, DC %d: %w", door.id, lock.DC, ErrLocked)
+					return executedAction{}, fmt.Errorf("door %q is locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
 				}
 				return executedAction{}, fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
 			}
