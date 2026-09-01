@@ -49,9 +49,11 @@ import (
 // chain going LIVE is the already-named resolution.Resolve rung — "swaps
 // depth, not rules" lands exactly there, where the bus lawfully lives and
 // the whole cast attaches (R3). Until then a condition that would modify a
-// check is not silently degraded by wiring; it is unreachable by module law,
-// with this comment and the friction record on rpg-toolkit#1375 pointing at
-// the rung that changes it.
+// check is not silently degraded by wiring; it is unreachable by module law.
+// RULED on the rpg-toolkit#1375 friction report and recorded on
+// rpg-project#351: "first production subscriber" narrows to first production
+// CALLER of the check machinery, chain dormant until the resolution rung —
+// which the resolution-rung slice inherits in writing.
 type stagedCheck struct {
 	// ctx is the staging verb's own context, carried because the
 	// composition's capability interface takes none — the consult happens
