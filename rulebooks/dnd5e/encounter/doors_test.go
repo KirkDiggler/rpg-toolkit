@@ -473,6 +473,7 @@ func (s *DoorSuite) TestConcealmentIsCarriedNotInterpreted() {
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: nessa, Kind: encounter.KindPlayer, Position: nessaCell},
@@ -500,6 +501,7 @@ func (s *DoorSuite) TestConcealmentIsCarriedNotInterpreted() {
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:  data,
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
 	s.Require().NoError(err)
 	_, err = back.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})

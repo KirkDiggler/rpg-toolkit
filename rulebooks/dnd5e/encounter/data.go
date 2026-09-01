@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
 // EncounterData is the persistent representation of an Encounter.
@@ -44,7 +45,21 @@ type EncounterData struct {
 	// from before doors existed, which load as a field with none — an
 	// ordinary field where every opening is a gap nobody can shut, which is
 	// exactly what those encounters meant.
-	Doors       []DoorData   `json:"doors,omitempty"`
+	Doors []DoorData `json:"doors,omitempty"`
+	// World is the run's concealment knowledge: the journal facts recording
+	// who has found which concealed door and perceived which concealed
+	// region (rpg-toolkit#1371). PRESENT EXACTLY WHEN THE FIELD CARRIES
+	// CONCEALED STRUCTURE — a plain dungeon writes no key at all, the exact
+	// bytes every pre-concealment blob already has, and a blob carrying a
+	// world for a field with nothing concealed is refused at load (its two
+	// halves disagree). Absent on a concealed field is legal and means
+	// nobody has learned anything yet — which is every blob written between
+	// v0.41.0's carried concealment and this field existing (an occupant of
+	// a concealed region in such a blob is pierced at load, so presence
+	// holds from frame one for reloads too). The graph the
+	// facts fold against is NOT stored: it is construction truth, reseeded
+	// from the field at every load, so it cannot drift from the dungeon.
+	World       *WorldData   `json:"world,omitempty"`
 	Endings     []EndingData `json:"endings"`
 	EverMembers []MemberID   `json:"ever_members"`
 	// Retention is the story-beat window this encounter was built with (see
@@ -266,6 +281,122 @@ type CheckApproachData struct {
 	Ability string `json:"ability,omitempty"`
 	Tool    string `json:"tool,omitempty"`
 	DC      int    `json:"dc"`
+}
+
+// WorldData is the persistent representation of the run's concealment
+// knowledge: the journal, and nothing else — see [EncounterData.World] for
+// why the graph is reseeded rather than stored.
+type WorldData struct {
+	// Facts are the knowledge facts in append order. Order IS the journal's
+	// clock (facts fold in sequence), so load replays them in this order
+	// and the reassigned sequence numbers come out identical.
+	Facts []FactData `json:"facts"`
+}
+
+// FactData is the persistent representation of one journal fact, exactly as
+// this composition writes them: a minted knowledge kind, the learner as
+// actor and sole audience, the concealed entity as subject, and the cause as
+// detail. Persisted verbatim and validated at load against the kinds this
+// field's concealed structure mints — a fact naming a kind this dungeon
+// cannot produce is a blob from some other dungeon, refused by name.
+type FactData struct {
+	Kind     string   `json:"kind"`
+	Actor    string   `json:"actor"`
+	Subject  string   `json:"subject,omitempty"`
+	Audience []string `json:"audience"`
+	Detail   string   `json:"detail,omitempty"`
+}
+
+// worldDataFrom renders the world's journal for the blob.
+func worldDataFrom(w *encounterWorld) *WorldData {
+	facts := w.log.All()
+	out := &WorldData{Facts: make([]FactData, 0, len(facts))}
+	for _, f := range facts {
+		audience := make([]string, 0, len(f.Audience))
+		for _, id := range f.Audience {
+			audience = append(audience, string(id))
+		}
+		out.Facts = append(out.Facts, FactData{
+			Kind:     string(f.Kind),
+			Actor:    string(f.Actor),
+			Subject:  string(f.Subject),
+			Audience: audience,
+			Detail:   f.Outcome.Detail,
+		})
+	}
+	return out
+}
+
+// validateWorldFacts rejects persisted knowledge facts this field cannot
+// have produced, before any construction begins (R5). The check is exact,
+// not permissive: this composition writes ONE fact shape — a minted
+// knowledge kind, its entity as subject, a member this encounter has ever
+// had as actor, audienced to that actor alone — so any other shape means
+// the blob was edited, and it is refused by name rather than loaded as
+// knowledge nobody here ever minted (the idle-bubble precedent in this
+// file, applied to the world; PR #1373 review, Minor 2).
+func validateWorldFacts(data *WorldData, regions []RegionInput, doors []DoorInput, everMembers []MemberID) error {
+	// kind -> the subject that kind's writer always records.
+	minted := make(map[string]string)
+	for _, r := range regions {
+		if r.Concealed {
+			minted[string(regionKnownKind(r.ID))] = string(regionEntityID(r.ID))
+		}
+	}
+	for _, d := range doors {
+		if d.Concealed != nil {
+			minted[string(doorKnownKind(d.ID))] = string(doorEntityID(d.ID))
+		}
+	}
+	members := make(map[string]bool, len(everMembers))
+	for _, id := range everMembers {
+		members[string(id)] = true
+	}
+
+	for i, f := range data.Facts {
+		subject, mints := minted[f.Kind]
+		if f.Kind == "" || !mints {
+			return fmt.Errorf("world fact %d names kind %q, which this field's concealed structure does not mint: %w",
+				i, f.Kind, ErrInvalidData)
+		}
+		if f.Subject != subject {
+			return fmt.Errorf("world fact %d subject %q does not match its kind (want %q): %w",
+				i, f.Subject, subject, ErrInvalidData)
+		}
+		if f.Actor == "" || !members[f.Actor] {
+			return fmt.Errorf("world fact %d actor %q is no member this encounter has ever had: %w",
+				i, f.Actor, ErrInvalidData)
+		}
+		if len(f.Audience) != 1 || f.Audience[0] != f.Actor {
+			return fmt.Errorf(
+				"world fact %d is not audienced to exactly its actor — this module never writes that shape: %w",
+				i, ErrInvalidData)
+		}
+	}
+	return nil
+}
+
+// replayWorldFacts appends persisted facts back into a freshly seeded
+// world's journal, in stored order — the journal reassigns the same
+// sequence numbers, so a fold over the reloaded world answers exactly what
+// the saved one did.
+func replayWorldFacts(w *encounterWorld, data *WorldData) error {
+	for i, fd := range data.Facts {
+		audience := make(journal.Audience, 0, len(fd.Audience))
+		for _, id := range fd.Audience {
+			audience = append(audience, journal.EntityID(id))
+		}
+		if _, err := w.log.Append(journal.Fact{
+			Kind:     journal.Kind(fd.Kind),
+			Actor:    journal.EntityID(fd.Actor),
+			Subject:  journal.EntityID(fd.Subject),
+			Audience: audience,
+			Outcome:  journal.Outcome{Detail: fd.Detail},
+		}); err != nil {
+			return fmt.Errorf("world fact %d: %w: %w", i, ErrInvalidData, err)
+		}
+	}
+	return nil
 }
 
 // doorDataFrom renders a door record for the blob.
@@ -542,6 +673,13 @@ func (e *Encounter) ToData() EncounterData {
 		}
 	}
 
+	// The world's journal, present exactly when the world is — see
+	// EncounterData.World.
+	var worldData *WorldData
+	if e.world != nil {
+		worldData = worldDataFrom(e.world)
+	}
+
 	return EncounterData{
 		Outcome:     outcomeData,
 		Clock:       e.clock.ToData(),
@@ -551,6 +689,7 @@ func (e *Encounter) ToData() EncounterData {
 		Field:       fieldData,
 		Members:     membersData,
 		Doors:       doorData,
+		World:       worldData,
 		Endings:     endingsData,
 		EverMembers: everMembersSlice,
 		Retention:   e.retention,
@@ -708,6 +847,17 @@ type LoadEncounterInput struct {
 	// expires. Refused at the door, never guarded at the use site, and never
 	// defaulted.
 	Announcer Announcer
+
+	// CheckResolver resolves a find check when a member searches — required
+	// exactly when the persisted field carries concealed structure, refused
+	// in LoadEncounter's body rather than in Validate because the answer
+	// depends on the Data (SetupInput.CheckResolver's contract). Legally
+	// nil for a blob with none.
+	CheckResolver CheckResolver
+
+	// Witness answers who perceives an open concealed door — required under
+	// exactly CheckResolver's rule, refused beside it.
+	Witness Witness
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -759,7 +909,10 @@ func (in *LoadEncounterInput) Validate() error {
 // absent — concerns that exist only because the wire uses strings and
 // pointers where the construction form uses typed values), then the field
 // converted back into a [FieldInput] and handed to the SAME compileField and
-// validateDoorInputs Setup uses; THEN empty or duplicate member IDs, member
+// validateDoorInputs Setup uses; THEN the concealment gate (the two
+// capabilities required exactly when the field carries concealed structure,
+// and the persisted world agreeing with the field — rpg-toolkit#1371); THEN
+// empty or duplicate member IDs, member
 // cell presence (a missing cell is the pre-#1106 room-local dialect
 // announcing itself — MemberData's doc comment) then integrality then that
 // cell being floor, ending trigger validity (the SAME validateEndingTriggers
@@ -883,6 +1036,31 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 	if err = validateDoorInputs(f, doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
+	// Concealment (rpg-toolkit#1371): the two capabilities are required
+	// exactly when the field carries concealed structure — SetupInput's own
+	// rule, applied at the load door — and the persisted world must agree
+	// with the field it rides beside: a world for a field with nothing
+	// concealed is a blob whose two halves disagree, and its facts must all
+	// be ones this field's structure mints.
+	fieldConcealed := fieldHasConcealment(fieldInput.Regions, doorInputs)
+	if fieldConcealed {
+		if input.CheckResolver == nil {
+			return nil, fmt.Errorf("load encounter: %w", ErrNoCheckResolver)
+		}
+		if input.Witness == nil {
+			return nil, fmt.Errorf("load encounter: %w", ErrNoWitness)
+		}
+	}
+	if data.World != nil {
+		if !fieldConcealed {
+			return nil, fmt.Errorf(
+				"load encounter: blob carries a world but the field has no concealed structure: %w", ErrInvalidData)
+		}
+		if err = validateWorldFacts(data.World, fieldInput.Regions, doorInputs, data.EverMembers); err != nil {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
 	}
 
 	// Validate members: no duplicates, cells present, integral and floor
@@ -1104,6 +1282,24 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// construction).
 	e.doors, e.doorsByID = doorRecordsFrom(doorInputs)
 
+	// Reseed the world from the field (construction truth) and replay the
+	// persisted facts into it (world state) — load-act-save, no migration:
+	// an absent world key on a concealed field is a run where nobody has
+	// learned anything yet, which is what every pre-#1371 blob meant.
+	if fieldConcealed {
+		e.checkResolver = input.CheckResolver
+		e.witness = input.Witness
+		e.world, err = newEncounterWorld(f, e.doors)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
+		if data.World != nil {
+			if err = replayWorldFacts(e.world, data.World); err != nil {
+				return nil, fmt.Errorf("load encounter: %w", err)
+			}
+		}
+	}
+
 	e.canvas, err = f.compileCanvas(e.doors)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
@@ -1209,6 +1405,20 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 		}
 		e.outcome = outcome
+	}
+
+	// Presence pierces AT LOAD too, for a still-open encounter: an occupant
+	// of a concealed region must not wait for the first refresh-bearing
+	// verb to know the floor under their feet — the one reachable case is a
+	// blob from before the world existed, whose occupant arrives here with
+	// no occupancy fact (see sweepOccupancy). A no-op on every blob this
+	// build wrote, so the byte-identical round-trip holds; on the old blob
+	// it writes the fact and the recipient's reveal beat, which the next
+	// save persists.
+	if e.outcome == nil {
+		if err := e.sweepOccupancy(uint64(e.clock.ToData().HighWater)); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
 	}
 
 	return e, nil

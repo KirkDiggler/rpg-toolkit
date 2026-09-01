@@ -137,7 +137,8 @@ func (s *TombSuite) TestTheTombIsWalkedEntranceToHallToBoss() {
 	s.False(s.canSee(far), "the tomb is dark through a shut door")
 
 	// ── beaten, it opens and reveals the chamber ──────────────────────────
-	failed, err := s.enc.Unlock(&encounter.UnlockInput{Door: door.ID, Beaten: false})
+	failed, err := s.enc.Unlock(&encounter.UnlockInput{Door: door.ID, Beaten: false,
+		Applied: encounter.CheckApproach{Ability: "dex", DC: tombLockDC}})
 	s.Require().NoError(err)
 	s.False(failed.Beaten, "a missed check leaves it locked")
 	s.Equal([]encounter.CheckApproach{{Ability: "dex", DC: tombLockDC}}, failed.Approaches,
@@ -145,7 +146,8 @@ func (s *TombSuite) TestTheTombIsWalkedEntranceToHallToBoss() {
 	s.Require().Equal(encounter.DoorStateKind("locked"), s.tombDoor().State.Kind(),
 		"and leaves it there to try again")
 
-	beaten, err := s.enc.Unlock(&encounter.UnlockInput{Door: door.ID, Beaten: true})
+	beaten, err := s.enc.Unlock(&encounter.UnlockInput{Door: door.ID, Beaten: true,
+		Applied: encounter.CheckApproach{Ability: "dex", DC: tombLockDC}})
 	s.Require().NoError(err)
 	s.True(beaten.Beaten)
 	s.Equal([]encounter.CheckApproach{{Ability: "dex", DC: tombLockDC}}, beaten.Approaches)
