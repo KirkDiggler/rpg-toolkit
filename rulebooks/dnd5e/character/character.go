@@ -898,13 +898,19 @@ func (c *Character) HasShieldEquipped() bool {
 	return false
 }
 
-// EquipItem equips an inventory item to the specified slot, enforcing
-// two-handed weapon occupancy (rpg-toolkit#811): a two-handed weapon
-// always claims main hand and clears the off hand; equipping into the off
-// hand while a two-handed weapon is held frees the main hand for the new
+// EquipItem equips an inventory item to the specified slot, with each occupied
+// slot consuming one owned copy. A single copy moves between compatible slots;
+// multiple copies can occupy multiple slots, but cannot be overdrawn.
+//
+// It also enforces two-handed weapon occupancy (rpg-toolkit#811): a two-handed
+// weapon always claims main hand and clears the off hand; equipping into the
+// off hand while a two-handed weapon is held frees the main hand for the new
 // item. Equipping into an occupied slot overwrites the slot mapping — the
 // previous occupant remains in inventory, simply no longer equipped.
-// Returns error if the item is not in inventory or cannot occupy the slot.
+//
+// Returns CodeNotFound if the item is not in inventory, CodeInvalidArgument if
+// it cannot occupy the slot, or CodeResourceExhausted if existing occupancy has
+// already consumed every owned copy.
 func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 	// Verify item exists in inventory and count how many copies are owned.
 	var item equipment.Equipment
@@ -935,15 +941,33 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 		c.equipmentSlots = make(EquipmentSlots)
 	}
 
-	// Only vacate the old slot when the character owns a single copy.
-	// Duplicate equippable items (daggers, handaxes, etc.) need both
-	// copies to remain equip-able at the same time; a one-copy weapon still
-	// moves between slots as before.
-	if copies <= 1 {
-		for s, id := range c.equipmentSlots {
-			if id == itemID {
-				c.equipmentSlots.Clear(s)
+	// Count copies already occupying other slots. The requested slot is
+	// excluded so equipping an item where it already sits is idempotent.
+	equipped := 0
+	for equippedSlot, id := range c.equipmentSlots {
+		if equippedSlot != slot && id == itemID {
+			equipped++
+		}
+	}
+
+	if equipped >= copies {
+		if copies == 1 {
+			// A single copy moves: vacate every old reference before setting the
+			// requested slot. Clearing every match also repairs duplicate legacy
+			// references for this one-copy item.
+			for equippedSlot, id := range c.equipmentSlots {
+				if equippedSlot != slot && id == itemID {
+					c.equipmentSlots.Clear(equippedSlot)
+				}
 			}
+		} else {
+			// Today's compatible-slot taxonomy cannot overdraw a multi-copy
+			// stack, but future slots or malformed persisted maps can. Refuse
+			// rather than manufacture another equipped copy.
+			return rpgerr.ResourceExhausted("owned equipment copies",
+				rpgerr.WithMeta("item_id", itemID),
+				rpgerr.WithMeta("owned", copies),
+				rpgerr.WithMeta("equipped", equipped))
 		}
 	}
 

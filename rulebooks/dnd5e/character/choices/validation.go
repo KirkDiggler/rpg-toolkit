@@ -317,21 +317,6 @@ func (v *Validator) validateEquipmentCategory(
 					}
 				}
 			}
-
-			// Check for duplicates if choosing multiple items
-			if req.Choose > 1 {
-				seen := make(map[string]bool)
-				for _, chosenID := range sub.Values {
-					if seen[chosenID] {
-						return &ValidationError{
-							Category: shared.ChoiceEquipment,
-							ChoiceID: req.ID,
-							Message:  fmt.Sprintf("Cannot choose the same item '%s' multiple times", chosenID),
-						}
-					}
-					seen[chosenID] = true
-				}
-			}
 		}
 	}
 

@@ -865,19 +865,12 @@ func (d *Draft) validatePersistedCategoryEquipmentChoice(
 		}
 
 		selected := choice.EquipmentSelection[selectionOffset : selectionOffset+categoryChoice.Choose]
-		seen := make(map[shared.SelectionID]struct{}, len(selected))
 		for _, equipmentID := range selected {
 			if _, eligible := eligibleIDs[equipmentID]; !eligible {
 				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
 					"invalid persisted category equipment selection for choice '%s' option '%s': '%s' is not eligible",
 					choice.ChoiceID, choice.OptionID, equipmentID)
 			}
-			if _, duplicate := seen[equipmentID]; duplicate {
-				return rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"invalid persisted category equipment selection for choice '%s' option '%s': duplicate '%s'",
-					choice.ChoiceID, choice.OptionID, equipmentID)
-			}
-			seen[equipmentID] = struct{}{}
 		}
 		selectionOffset += categoryChoice.Choose
 	}
@@ -1048,7 +1041,25 @@ func (d *Draft) compileInventory() []InventoryItem {
 		inventory = append(inventory, d.materializeEquipmentOption(option, choice.EquipmentSelection)...)
 	}
 
-	return inventory
+	return stackInventory(inventory)
+}
+
+func stackInventory(items []InventoryItem) []InventoryItem {
+	out := make([]InventoryItem, 0, len(items))
+	index := make(map[shared.EquipmentID]int, len(items))
+	for _, item := range items {
+		id := item.Equipment.EquipmentID()
+		if item.Quantity <= 0 {
+			panic(fmt.Sprintf("BUG: nonpositive quantity %d for %s", item.Quantity, id))
+		}
+		if at, ok := index[id]; ok {
+			out[at].Quantity += item.Quantity
+			continue
+		}
+		index[id] = len(out)
+		out = append(out, item)
+	}
+	return out
 }
 
 func (d *Draft) inventoryItemsFromGrant(grant classes.Grant) []InventoryItem {
@@ -1606,7 +1617,6 @@ func (d *Draft) validateCategorySelections(
 		}
 
 		selected := selection.CategorySelections[selectionOffset : selectionOffset+categoryChoice.Choose]
-		seen := make(map[shared.EquipmentID]struct{}, len(selected))
 		for _, equipID := range selected {
 			if _, err := equipment.GetByID(equipID); err != nil {
 				return nil, rpgerr.Newf(rpgerr.CodeNotFound, "invalid equipment ID '%s'", equipID)
@@ -1615,11 +1625,6 @@ func (d *Draft) validateCategorySelections(
 				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
 					"Invalid equipment choice '%s' - must be from specified categories", equipID)
 			}
-			if _, duplicate := seen[equipID]; duplicate {
-				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-					"Cannot choose the same item '%s' multiple times", equipID)
-			}
-			seen[equipID] = struct{}{}
 		}
 		selectionOffset += categoryChoice.Choose
 	}

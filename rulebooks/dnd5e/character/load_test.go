@@ -6,6 +6,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -266,6 +268,57 @@ func (s *PureLoadTestSuite) TestStrictLoadRefusesAnUnknownInventoryItem() {
 
 	s.Require().Error(err)
 	s.Require().Contains(err.Error(), "vorpal-spork")
+}
+
+func (s *PureLoadTestSuite) TestStrictLoadRejectsNonpositiveInventoryQuantity() {
+	for _, quantity := range []int{0, -1} {
+		s.Run(fmt.Sprintf("quantity %d", quantity), func() {
+			data := fullSheet(&s.Suite)
+			data.Inventory = append(data.Inventory, InventoryItemData{
+				ID:       string(weapons.Handaxe),
+				Quantity: quantity,
+			})
+
+			loaded, err := Load(s.ctx, data)
+
+			s.Require().Error(err)
+			s.Nil(loaded)
+			s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err))
+			s.Contains(err.Error(), `inventory item 1 ("handaxe")`,
+				"the error must identify the malformed row by index and item")
+			s.Equal(map[string]any{
+				"index":    1,
+				"item_id":  "handaxe",
+				"quantity": quantity,
+			}, rpgerr.GetMeta(err))
+		})
+	}
+}
+
+func (s *PureLoadTestSuite) TestLenientLoadWarnsAndDropsNonpositiveInventoryQuantity() {
+	for _, quantity := range []int{0, -1} {
+		s.Run(fmt.Sprintf("quantity %d", quantity), func() {
+			logs := captureWarnings(s.T())
+			data := fullSheet(&s.Suite)
+			data.Inventory = append(data.Inventory, InventoryItemData{
+				ID:       string(weapons.Handaxe),
+				Quantity: quantity,
+			})
+
+			loaded, err := LoadFromData(s.ctx, data, events.NewEventBus())
+
+			s.Require().NoError(err)
+			s.Require().Len(loaded.ToData().Inventory, 1,
+				"the malformed row is dropped rather than defaulted to one")
+			s.Require().Len(logs.records, 1)
+			got := attrs(logs.records[0])
+			s.Equal("inventory item", got["dropped"])
+			s.Equal("1", got["index"])
+			s.Equal("handaxe", got["item"])
+			s.Equalf(fmt.Sprint(quantity), got["quantity"],
+				"the warning must preserve the malformed persisted value")
+		})
+	}
 }
 
 func (s *PureLoadTestSuite) TestLoadRejectsNilData() {

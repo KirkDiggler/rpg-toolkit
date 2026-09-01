@@ -401,10 +401,9 @@ func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRequiresTwoOwnedW
 			want: true,
 		},
 		{
-			name: "zero off-hand copies",
+			name: "off-hand mapping absent from inventory",
 			inventory: []InventoryItemData{
 				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
-				{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Scimitar), Quantity: 0},
 			},
 			slots: EquipmentSlots{
 				SlotMainHand: string(weapons.Shortsword),

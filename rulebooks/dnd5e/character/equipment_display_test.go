@@ -162,9 +162,9 @@ func (s *EquipmentDisplayTestSuite) TestACNote_NilOrEmpty() {
 }
 
 // TestEquipmentView proves the full wiring: a real character's equipped
-// gear projects into items with composed stat_line, plus AC total + note
-// derived from EffectiveAC — the shape rpg-api consumes with zero rules
-// knowledge.
+// gear projects into quantity-bearing items with composed stat_line and an
+// authoritative slot map, plus AC total + note derived from EffectiveAC — the
+// shape rpg-api consumes with zero rules knowledge.
 func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 	chainMail := armor.All[armor.ChainMail]
 	shield := armor.All[armor.Shield]
@@ -196,29 +196,34 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 	// one-handed: its base die, not the versatile two-handed upgrade.
 	s.Assert().Equal("1d8 slashing damage", view.MainHandDamage)
 	s.Require().Len(view.Items, 3)
+	s.Equal(EquipmentSlots{
+		SlotArmor:    armor.ChainMail,
+		SlotOffHand:  armor.Shield,
+		SlotMainHand: weapons.Longsword,
+	}, view.Equipped)
 
 	byID := make(map[string]EquippedItemView, len(view.Items))
 	for _, it := range view.Items {
 		byID[it.ItemID] = it
 	}
 
-	s.Assert().Equal(SlotArmor, byID[armor.ChainMail].Slot)
 	s.Assert().Equal("AC 16 · heavy", byID[armor.ChainMail].StatLine)
 	s.Assert().Equal("Chain Mail", byID[armor.ChainMail].Name)
 	s.Assert().Equal("armor", byID[armor.ChainMail].Kind)
 	s.Assert().Equal([]string{"armor"}, byID[armor.ChainMail].SlotKeys)
+	s.Assert().Equal(1, byID[armor.ChainMail].Quantity)
 
-	s.Assert().Equal(SlotOffHand, byID[armor.Shield].Slot)
 	s.Assert().Equal("+2 AC", byID[armor.Shield].StatLine)
 	s.Assert().Equal("Shield", byID[armor.Shield].Name)
 	s.Assert().Equal("shield", byID[armor.Shield].Kind)
 	s.Assert().Equal([]string{"off_hand"}, byID[armor.Shield].SlotKeys)
+	s.Assert().Equal(1, byID[armor.Shield].Quantity)
 
-	s.Assert().Equal(InventorySlot(SlotMainHand), byID["longsword"].Slot)
 	s.Assert().Equal("1d8 slashing damage · versatile", byID["longsword"].StatLine)
 	s.Assert().Equal("Longsword", byID["longsword"].Name)
 	s.Assert().Equal("weapon", byID["longsword"].Kind)
 	s.Assert().Equal([]string{"main_hand", "off_hand"}, byID["longsword"].SlotKeys)
+	s.Assert().Equal(1, byID["longsword"].Quantity)
 
 	s.Require().Len(view.Slots, 3)
 	s.Assert().Equal([]SlotDefView{
@@ -226,6 +231,74 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView() {
 		{Key: "off_hand", DisplayLabel: "Off hand", Accepts: []string{"weapon", "shield"}},
 		{Key: "armor", DisplayLabel: "Armor", Accepts: []string{"armor"}},
 	}, view.Slots)
+}
+
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_ProjectsStackQuantityAndEveryOccupiedSlot() {
+	handaxe := weapons.All[weapons.Handaxe]
+	char := &Character{
+		id:            "char-stack",
+		bus:           s.bus,
+		abilityScores: shared.AbilityScores{abilities.DEX: 10},
+		inventory:     []InventoryItem{{Equipment: &handaxe, Quantity: 2}},
+		equipmentSlots: EquipmentSlots{
+			SlotMainHand: weapons.Handaxe,
+			SlotOffHand:  weapons.Handaxe,
+		},
+	}
+
+	view, err := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(err)
+	s.Require().Len(view.Items, 1)
+	s.Equal(2, view.Items[0].Quantity)
+	s.Equal(EquipmentSlots{
+		SlotMainHand: weapons.Handaxe,
+		SlotOffHand:  weapons.Handaxe,
+	}, view.Equipped)
+}
+
+// Persisted sheets predating canonical stacks can carry duplicate rows. The
+// display boundary normalizes those rows so every item ID has one quantity.
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_AggregatesLegacyDuplicateRows() {
+	handaxe := weapons.All[weapons.Handaxe]
+	char := &Character{
+		id:            "char-legacy-stack",
+		bus:           s.bus,
+		abilityScores: shared.AbilityScores{abilities.DEX: 10},
+		inventory: []InventoryItem{
+			{Equipment: &handaxe, Quantity: 1},
+			{Equipment: &handaxe, Quantity: 2},
+		},
+		equipmentSlots: EquipmentSlots{SlotMainHand: weapons.Handaxe},
+	}
+
+	view, err := char.EquipmentView(s.ctx)
+
+	s.Require().NoError(err)
+	s.Require().Len(view.Items, 1)
+	s.Equal(string(weapons.Handaxe), view.Items[0].ItemID)
+	s.Equal(3, view.Items[0].Quantity)
+}
+
+// TestEquipmentView_EquippedIsDefensiveCopy proves the authoritative slot map
+// is projected by value rather than exposing mutable character state.
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_EquippedIsDefensiveCopy() {
+	longsword := weapons.All[weapons.Longsword]
+	char := &Character{
+		id:             "char-equipped-copy",
+		bus:            s.bus,
+		abilityScores:  shared.AbilityScores{abilities.DEX: 10},
+		inventory:      []InventoryItem{{Equipment: &longsword, Quantity: 1}},
+		equipmentSlots: EquipmentSlots{SlotMainHand: weapons.Longsword},
+	}
+
+	view, err := char.EquipmentView(s.ctx)
+	s.Require().NoError(err)
+
+	view.Equipped[SlotMainHand] = weapons.Handaxe
+	view.Equipped[SlotOffHand] = weapons.Handaxe
+
+	s.Equal(EquipmentSlots{SlotMainHand: weapons.Longsword}, char.equipmentSlots)
 }
 
 // TestEquipmentView_SlotsIsDefensiveCopy proves Slots (and each
@@ -260,9 +333,10 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_SlotsIsDefensiveCopy() {
 	}, second.Slots)
 }
 
-// TestEquipmentView_CarriedItemHasNoSlot proves inventory items that
-// aren't equipped are still listed, just with an empty Slot.
-func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
+// TestEquipmentView_CarriedItemIsAbsentFromEquipped proves inventory items
+// that aren't equipped are still listed, while the authoritative slot map has
+// no entry for them.
+func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemIsAbsentFromEquipped() {
 	handaxe := weapons.All[weapons.Handaxe]
 
 	char := &Character{
@@ -277,7 +351,8 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_CarriedItemHasNoSlot() {
 
 	s.Require().NoError(viewErr)
 	s.Require().Len(view.Items, 1)
-	s.Assert().Equal(InventorySlot(""), view.Items[0].Slot)
+	s.Assert().Empty(view.Equipped)
+	s.Assert().Equal(1, view.Items[0].Quantity)
 	s.Assert().Equal("1d6 slashing damage · light, thrown 20/60", view.Items[0].StatLine)
 	s.Assert().Equal("Handaxe", view.Items[0].Name)
 	s.Assert().Equal("weapon", view.Items[0].Kind)
@@ -328,29 +403,20 @@ func (s *EquipmentDisplayTestSuite) TestEquipmentView_VersatileFreeOffHand() {
 	s.Assert().Equal("1d10 slashing damage", view.MainHandDamage)
 }
 
-// TestEquipmentView_DualWield proves dual-wielding folds the off-hand
-// weapon's pool into the display, e.g. "1d4 piercing damage · off-hand 1d4 piercing damage".
+// TestEquipmentView_DualWield proves two copies from one stack can occupy
+// both hands and fold the off-hand weapon's pool into the display, e.g.
+// "1d4 piercing damage · off-hand 1d4 piercing damage".
 func (s *EquipmentDisplayTestSuite) TestEquipmentView_DualWield() {
-	// Two distinct inventory entries of the same weapon type need distinct
-	// IDs (EquipmentID() would otherwise collide and both slots would
-	// resolve to the same inventory item). weapons.All returns copies, so
-	// mutating the ID on each copy is safe — the registry is untouched.
-	daggerMain := weapons.All[weapons.Dagger]
-	daggerMain.ID = "dagger-main"
-	daggerOff := weapons.All[weapons.Dagger]
-	daggerOff.ID = "dagger-off"
+	dagger := weapons.All[weapons.Dagger]
 
 	char := &Character{
 		id:            "char-4",
 		bus:           s.bus,
 		abilityScores: shared.AbilityScores{abilities.DEX: 10},
-		inventory: []InventoryItem{
-			{Equipment: &daggerMain, Quantity: 1},
-			{Equipment: &daggerOff, Quantity: 1},
-		},
+		inventory:     []InventoryItem{{Equipment: &dagger, Quantity: 2}},
 		equipmentSlots: EquipmentSlots{
-			SlotMainHand: "dagger-main",
-			SlotOffHand:  "dagger-off",
+			SlotMainHand: weapons.Dagger,
+			SlotOffHand:  weapons.Dagger,
 		},
 	}
 

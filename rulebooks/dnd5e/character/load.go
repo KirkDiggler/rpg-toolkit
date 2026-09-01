@@ -60,8 +60,9 @@ type loadedEffect struct {
 // the sheet was loaded with. Load(d).ToData() is the data it was handed.
 //
 // Load is strict where [LoadFromData] is forgiving: a persisted blob it cannot
-// make sense of — a condition, a feature, an inventory item — fails the load,
-// and the error names the blob. Invalid character-owned resource bounds
+// make sense of — a condition, a feature, an unknown inventory item, or an
+// inventory row with a nonpositive quantity — fails the load, and the error
+// names the blob. Invalid character-owned resource bounds
 // (negative current/maximum or current above maximum) fail before a resource is
 // constructed. LoadFromData drops that blob or malformed resource and carries on,
 // which is the behaviour its callers have today and keep. The divergence is
@@ -310,14 +311,32 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 	return char, nil
 }
 
-// loadInventory resolves persisted item IDs against the equipment catalog.
-// An ID the catalog does not know is a lost item: ToData writes back only what
-// resolved, so the lenient path's skip is how an item disappears from a
-// character between two saves.
+// loadInventory validates persisted quantities and resolves item IDs against
+// the equipment catalog. A nonpositive quantity or an ID the catalog does not
+// know is a lost item: ToData writes back only what resolved, so the lenient
+// path's skip is how an item disappears from a character between two saves.
 func loadInventory(items []InventoryItemData, characterID string, policy effectPolicy) ([]InventoryItem, error) {
 	inventory := make([]InventoryItem, 0, len(items))
 
 	for i, itemData := range items {
+		if itemData.Quantity <= 0 {
+			err := rpgerr.NewfWithOpts(rpgerr.CodeInvalidArgument, []rpgerr.Option{
+				rpgerr.WithMeta("item_id", itemData.ID),
+				rpgerr.WithMeta("index", i),
+				rpgerr.WithMeta("quantity", itemData.Quantity),
+			}, "inventory item %d (%q) has nonpositive persisted quantity %d", i, itemData.ID, itemData.Quantity)
+			if policy == strictEffects {
+				return nil, err
+			}
+
+			warnDropped(characterID, "inventory item", core.Ref{}, err,
+				slog.Int("index", i),
+				slog.String("item", itemData.ID),
+				slog.Int("quantity", itemData.Quantity))
+
+			continue
+		}
+
 		equip, err := equipment.GetByID(itemData.ID)
 		if err != nil {
 			if policy == strictEffects {
