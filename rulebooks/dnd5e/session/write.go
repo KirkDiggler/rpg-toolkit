@@ -214,6 +214,12 @@ type EndOutput struct {
 // healthy until the first verb that needed a sheet, and would then fail
 // somewhere with no visible connection to the join that caused it.
 //
+// On the character's first-ever admission to this encounter, Join resolves a
+// normal long rest from the persisted record before projection. The rested
+// record is saved only after placement and discovery have both succeeded, and
+// before the encounter is committed. EverMembers is the durable admission
+// record, so a current duplicate and an exit/rejoin never rest or save again.
+//
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadAttack if the
 // character's own main-hand weapon cannot be compiled into their member
@@ -242,9 +248,40 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
+	// Read the durable admission record BEFORE encounter.Join can add this
+	// member to it. Current membership is deliberately not the gate: Exit keeps
+	// EverMembers, which is what makes a later Join a rejoin rather than another
+	// launch rest.
+	firstAdmission := true
+	persisted := scope.enc.ToData()
+	for _, member := range persisted.EverMembers {
+		if string(member) == in.Member {
+			firstAdmission = false
+			break
+		}
+	}
+
 	record, err := m.fetchCharacterData(ctx, "character", in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("join: %w", err)
+	}
+
+	var rested *character.Data
+	if firstAdmission {
+		resolved, restErr := resolution.LongRest(ctx, &resolution.LongRestInput{Character: record})
+		if restErr != nil {
+			// Resolution's vocabulary stays behind this seam just as it does for
+			// projection: the host can act on ErrBadCharacter, while the inner
+			// reason remains available as text for diagnosis.
+			return nil, fmt.Errorf("join: character %q: %w: long rest: %v",
+				in.Member, ErrBadCharacter, restErr)
+		}
+		if resolved == nil || resolved.Character == nil {
+			return nil, fmt.Errorf("join: character %q: %w: long rest returned no character data",
+				in.Member, ErrBadCharacter)
+		}
+		rested = resolved.Character
+		record = rested
 	}
 
 	// ONE QUESTION, ONE ANSWER. The record goes down and everything this verb
@@ -281,6 +318,22 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	}
 
 	state := characterStateFrom(projected)
+
+	// Rest is durable only once every local Join check has passed. In
+	// particular, a bad placement or a failed discovery consult must not heal a
+	// character whose encounter admission is being refused. Once this save
+	// lands, its identity rides scope.written into both a successful report and
+	// any later encounter-save failure.
+	if rested != nil {
+		if err := m.characters.SaveCharacter(ctx, rested); err != nil {
+			report := SaveReport{Failed: []string{"character:" + in.Member}}
+			return nil, &SaveError{
+				Report: report,
+				Err:    fmt.Errorf("saving character: %w", err),
+			}
+		}
+		scope.written = append(scope.written, "character:"+in.Member)
+	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
@@ -889,8 +942,10 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 
 	// Number every member's stream and BUILD the delivery batch BEFORE the
-	// save-point ToData, from a pure WorldView and the live Story — the one
-	// ordering retention-at-the-storage-boundary makes load-bearing
+	// FINAL save-point ToData, from a pure WorldView and the live Story — the
+	// ordering retention-at-the-storage-boundary makes load-bearing. Join's
+	// earlier ToData reads only the already-persisted EverMembers before that
+	// verb appends anything; it cannot trim the current verb's delta.
 	// (encounter v0.43.0, #1381/#1385): ToData trims, so a verb whose delta
 	// outgrew the retention window would lose its own early beats to any
 	// read that came after it. Numbering failure fails the verb before
@@ -910,9 +965,9 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 	events := m.projectEvents(scope, &view)
 
-	// THE storage boundary: the one ToData in this package, and the one
-	// place retention runs. Everything before this line read the whole
-	// verb's delta; everything after reads only what storage keeps.
+	// THE final storage boundary: this ToData runs after the verb's complete
+	// delta has been numbered and projected. Everything before this line read
+	// that whole delta; everything after reads only what storage keeps.
 	world := scope.enc.ToData()
 
 	report, err := m.persist(ctx, scope, world)
@@ -973,8 +1028,10 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // moves past that beat — never retried again (Copilot's own finding on
 // PR #1222).
 func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
-	// A pure view, not ToData: this is a mid-verb roster read, and the
-	// storage boundary belongs to commit alone (encounter v0.43.0, #1385).
+	// A pure view, not ToData: this is a mid-verb roster read after a verb may
+	// have appended beats, so the final storage boundary still belongs to
+	// commit (encounter v0.43.0, #1385). Join's admission check is the narrow
+	// exception: it snapshots only before that verb mutates the encounter.
 	data := scope.enc.WorldView()
 
 	// Kind, from the ENCOUNTER's own authoritative roster — never inferred
