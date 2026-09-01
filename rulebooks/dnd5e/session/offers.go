@@ -25,9 +25,10 @@ import (
 //
 // ONE COMPILED OFFER PER ACTION/SPEND VARIANT — never one per verb. Activate
 // contributes one offer per carried ability. Attack always contributes its
-// main-hand swing and, while two-weapon capacity remains, contributes a second
-// off-hand variant with a distinct slot and definition. The collision guard
-// keys every variant apart by selector material.
+// main-hand swing and, while one granted bonus-attack capacity remains,
+// contributes either Martial Arts' Unarmed Strike or the two-weapon off-hand
+// variant with a distinct slot and definition. The collision guard keys every
+// variant apart by selector material.
 //
 // The [targets] map is the shared, target-specific gate result Attack enforces
 // against a chosen target before executing: it carries each candidate's
@@ -296,11 +297,43 @@ func (m *Manager) compileOffersFor(
 	}
 	attacks := []compiledOffer{mainAttack}
 
-	// The grant is the prior-Attack evidence. Equipment is rechecked before an
-	// off-hand definition is projected, so changing either weapon makes an old
-	// selector stale instead of executing against a declaration that is no
-	// longer true.
-	if sheet.CapacityLeft(combat.CapacityOffHandAttack) > 0 && character.CanMakeOffHandAttack(sheet) {
+	// The capacity is the prior qualifying-Attack evidence. The rulebook
+	// revalidates the current sheet before compiling the explicit unarmed
+	// definition; this seam only wires its inert cost and definition through the
+	// same Attack declaration path.
+	if sheet.CapacityLeft(combat.CapacityMartialArtsBonusAttack) > 0 &&
+		character.CanMakeMartialArtsBonusAttack(sheet) {
+		martialArtsCost, costErr := character.CostOfMartialArtsBonusAttack(sheet)
+		if costErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, costErr)
+		}
+		martialArtsDefinition, assembleErr := character.AssembleMartialArtsBonusAttack(
+			sheet, &character.AssembleMartialArtsBonusAttackInput{Cost: martialArtsCost},
+		)
+		if assembleErr != nil {
+			return nil, fmt.Errorf("member %q: %w: %v", member, ErrBadAttack, assembleErr)
+		}
+		martialArtsPrice := &swingPrice{
+			cost: &resolution.Cost{
+				PayerID: price.cost.PayerID,
+				Profile: combatActions.CloneSpendProfile(martialArtsDefinition.Cost),
+				Turn:    price.cost.Turn,
+			},
+			payer: price.payer,
+		}
+		martialArtsAttack, offerErr := compileAttackOffer(&compileAttackOfferInput{
+			SessionID: sessionID, Member: member, Sheet: sheet,
+			Definition: martialArtsDefinition, Price: martialArtsPrice, Candidates: candidates,
+			Cast: cast, DependencyFailures: dependencyFailures,
+		})
+		if offerErr != nil {
+			return nil, offerErr
+		}
+		attacks = append(attacks, martialArtsAttack)
+	} else if sheet.CapacityLeft(combat.CapacityOffHandAttack) > 0 && character.CanMakeOffHandAttack(sheet) {
+		// Equipment is rechecked before an off-hand definition is projected,
+		// so changing either weapon makes an old selector stale instead of
+		// executing against a declaration that is no longer true.
 		offHandCost, costErr := character.CostOfOffHandAttack(sheet)
 		if costErr != nil {
 			return nil, fmt.Errorf("%w: %v", ErrBadCost, costErr)
@@ -361,8 +394,8 @@ func compileAttackOffer(input *compileAttackOfferInput) (compiledOffer, error) {
 	}
 
 	// Each offer gets an independent working copy. Dependency failures annotate
-	// candidates, and main/off-hand variants must share the same preflight facts
-	// without sharing those mutable annotations.
+	// candidates, and every main/bonus variant must share the same preflight
+	// facts without sharing those mutable annotations.
 	candidates := cloneTargetPreflights(input.Candidates)
 	var dependencyWhy *Shortfall
 	for _, failure := range input.DependencyFailures {
@@ -753,8 +786,8 @@ func sortDeclarations(decls []Declaration) {
 		if verbRank(decls[i].Verb) != verbRank(decls[j].Verb) {
 			return verbRank(decls[i].Verb) < verbRank(decls[j].Verb)
 		}
-		// Main-hand and banked swings precede the bonus-action off-hand attack.
-		// Slot is authored on each declaration, so this order is a server fact
+		// Main-hand and banked swings precede a bonus-action attack. Slot is
+		// authored on each declaration, so this order is a server fact
 		// rather than the order two builders happened to append their rows.
 		if decls[i].Verb == VerbAttack && decls[i].Slot != decls[j].Slot {
 			return attackSlotRank(decls[i].Slot) < attackSlotRank(decls[j].Slot)

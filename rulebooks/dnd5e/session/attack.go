@@ -88,10 +88,11 @@ type AttackOutput struct {
 // [DissolveCause] uses for defeat.
 //
 // Afford normally compiles the main-hand swing and, after a qualifying Attack
-// action, also compiles the granted off-hand bonus attack. The selector chooses
-// the complete authored definition and price; no hand flag or weapon choice
-// crosses this seam. Two-handed and ranged semantics likewise come from the
-// selected definition.
+// action, also compiles its granted bonus attack: Martial Arts' Unarmed Strike
+// or the other weapon from two-weapon fighting. The selector chooses the
+// complete authored definition and price; no hand flag or weapon choice crosses
+// this seam. Two-handed and ranged semantics likewise come from the selected
+// definition.
 //
 // # A swing costs something, in a fight
 //

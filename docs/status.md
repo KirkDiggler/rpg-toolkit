@@ -21,15 +21,15 @@ Executable character/monster action packages and producer-specific resolution
 compilers are retired. Older sections below retain the legacy module's delivery
 history and must not be read as current support.
 
-**#1366 — restore the Martial Arts bonus-attack provider (active).**
-The root D&D module now compiles the previously verified rule into ADR-0045's
-inert action model: an eligible unarmored Martial Arts Attack with an unarmed
-strike or Monk weapon (Quarterstaff included) banks a distinct capacity, with
-Martial Arts taking priority over two-weapon fighting. Its bonus definition is
-always the catalog Unarmed Strike, costs one bonus action plus the grant, and is
-independent of occupied hands. The session consumer is separately tracked by
-#1367; until that module pins this provider, the live host seam does not project
-the declaration.
+**#1366/#1367 — restore the Martial Arts bonus Attack declaration (provider
+shipped; session active).** Root D&D `v0.125.1` compiles the previously verified
+rule into ADR-0045's inert action model: an eligible unarmored Martial Arts
+Attack with an unarmed strike or Monk weapon (Quarterstaff included) banks a
+distinct capacity, with Martial Arts taking priority over two-weapon fighting.
+Its bonus definition is always the catalog Unarmed Strike, costs one bonus
+action plus the grant, and is independent of occupied hands. The session module
+now pins that provider and projects the grant through the existing Attack
+selector path; API acceptance remains separately tracked by rpg-api#870.
 
 **#1246 — production session combat offers and owner-private status (active).**
 The D&D 5e module now gives every live condition a canonical `Ref`, projects
