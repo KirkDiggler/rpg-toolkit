@@ -4,6 +4,8 @@
 package session
 
 import (
+	"sort"
+
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -149,15 +151,16 @@ func projectSightings(
 			via = append(via, string(c))
 		}
 		out = append(out, Sighting{
-			Subject:    subject,
-			Name:       names[subject],
-			Kind:       kinds[subject],
-			Seen:       projectSeen(h.Channel, h.Payload, down[subject]),
-			Payload:    append([]byte(nil), h.Payload...),
-			Channel:    string(h.Channel),
-			At:         h.At,
-			CurrentVia: via,
-			Status:     string(h.Status),
+			Subject:       subject,
+			Name:          names[subject],
+			Kind:          kinds[subject],
+			Seen:          projectSeen(h.Channel, h.Payload, down[subject]),
+			LocationState: projectLocationState(h.Channel, h.Payload),
+			Payload:       append([]byte(nil), h.Payload...),
+			Channel:       string(h.Channel),
+			At:            h.At,
+			CurrentVia:    via,
+			Status:        string(h.Status),
 		})
 	}
 	return out
@@ -169,11 +172,12 @@ func projectSightings(
 // (the composition is the only writer of sight payloads) that a wrong
 // Position would be worse than admitting to.
 //
-// The decode itself happens in encounter.DecodeSightPayload, not here: this
+// The decode itself happens in encounter.DecodeLocationPayload, not here: this
 // package never calls encoding/json on a payload. h.Channel is intel's own
 // provenance field — a holding's last accepted testimony — so a held memory
-// (CurrentVia empty) still carries the channel and payload that produced it,
-// and still gets a Seen: "a memory keeps its last Seen" (the ADR's words).
+// (CurrentVia empty) still carries the channel and payload that produced it.
+// Known testimony gets Seen; explicit unknown testimony gets LocationState
+// without a stale coordinate.
 //
 // downed is the caller's own batched Standing() answer for this subject —
 // asked once per verb over the whole roster (turn.go's own pattern), never
@@ -183,15 +187,26 @@ func projectSeen(channel intel.Channel, payload []byte, downed bool) *Seen {
 	if channel != intel.Sight {
 		return nil
 	}
-	pos, ok := encounter.DecodeSightPayload(payload)
-	if !ok {
+	location, ok := encounter.DecodeLocationPayload(payload)
+	if !ok || location.State != encounter.LocationKnown {
 		return nil
 	}
 	standing := StandingUp
 	if downed {
 		standing = StandingDowned
 	}
-	return &Seen{Position: pos, Standing: standing}
+	return &Seen{Position: location.Position, Standing: standing}
+}
+
+func projectLocationState(channel intel.Channel, payload []byte) LocationState {
+	if channel != intel.Sight {
+		return ""
+	}
+	location, ok := encounter.DecodeLocationPayload(payload)
+	if !ok {
+		return ""
+	}
+	return LocationState(location.State)
 }
 
 func projectMember(in encounter.Member) Member {
@@ -262,7 +277,7 @@ func projectOutcome(in *encounter.Outcome) *Outcome {
 // present key means "something changed for this observer", and manufacturing
 // empty entries for everyone who happened to be in the encounter would make
 // the map's size meaningless to a caller deciding whom to notify.
-func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput, down map[string]bool) map[string]Discovery {
+func projectDiscoveries(in map[encounter.MemberID]*encounter.IntelDelta, down map[string]bool) map[string]Discovery {
 	if len(in) == 0 {
 		return nil
 	}
@@ -279,7 +294,7 @@ func projectDiscoveries(in map[encounter.MemberID]*intel.SurveilOutput, down map
 	return out
 }
 
-func projectDiscovery(in *intel.SurveilOutput, down map[string]bool) Discovery {
+func projectDiscovery(in *encounter.IntelDelta, down map[string]bool) Discovery {
 	out := Discovery{}
 	for _, r := range in.FirstContact {
 		out.FirstContact = append(out.FirstContact, Report{
@@ -294,6 +309,39 @@ func projectDiscovery(in *intel.SurveilOutput, down map[string]bool) Discovery {
 	for _, s := range in.Faded {
 		out.Faded = append(out.Faded, string(s))
 	}
+	return out
+}
+
+// projectIntelCorrections converts encounter-owned correction deltas into a
+// deterministic session-owned list. Observer and subject are the only facts
+// exposed; corrected payloads never cross this seam.
+func projectIntelCorrections(in map[encounter.MemberID]*encounter.IntelDelta) []IntelCorrection {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]IntelCorrection, 0)
+	for observer, delta := range in {
+		if delta == nil {
+			continue
+		}
+		for _, subject := range delta.Corrected {
+			out = append(out, IntelCorrection{Observer: string(observer), Subject: string(subject)})
+		}
+	}
+	return sortIntelCorrections(out)
+}
+
+func sortIntelCorrections(in []IntelCorrection) []IntelCorrection {
+	if len(in) == 0 {
+		return nil
+	}
+	out := append([]IntelCorrection(nil), in...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Observer == out[j].Observer {
+			return out[i].Subject < out[j].Subject
+		}
+		return out[i].Observer < out[j].Observer
+	})
 	return out
 }
 

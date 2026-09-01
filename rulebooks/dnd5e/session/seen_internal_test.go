@@ -41,8 +41,37 @@ func TestProjectSightingsSightChannelGetsASeen(t *testing.T) {
 	require.Len(t, out, 1)
 	require.NotNil(t, out[0].Seen, "a sight-channel holding must carry Seen")
 	require.Equal(t, spatial.Position{X: 10, Y: 3}, out[0].Seen.Position)
+	require.Equal(t, LocationKnown, out[0].LocationState)
 	require.Equal(t, StandingDowned, out[0].Seen.Standing,
 		"the batched down-set this subject appears in projects onto Seen.Standing (rpg-toolkit#1137)")
+}
+
+func TestMonsterViewAdaptersCarryRememberedPathsByValue(t *testing.T) {
+	path := []spatial.Position{{X: 1, Y: 2}, {X: 2, Y: 3}}
+	in := encounter.MonsterView{
+		Self: "goblin",
+		Remembered: []encounter.RememberedMember{{
+			ID: "billy", Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 2, Y: 3}, DistanceCells: 2,
+			Path: path,
+		}},
+	}
+
+	projected := projectMonsterView(in)
+	require.Equal(t, []RememberedMember{{
+		ID: "billy", Kind: KindPlayer,
+		Position: spatial.Position{X: 2, Y: 3}, DistanceCells: 2,
+		Path: path,
+	}}, projected.Remembered)
+	projected.Remembered[0].Path[0].X = 99
+	require.Equal(t, float64(1), path[0].X, "projected path must not alias encounter view")
+
+	roundTrip, err := unprojectMonsterView(projected)
+	require.NoError(t, err)
+	require.Equal(t, float64(99), roundTrip.Remembered[0].Path[0].X)
+	roundTrip.Remembered[0].Path[1].Y = 88
+	require.Equal(t, float64(3), projected.Remembered[0].Path[1].Y,
+		"unprojected path must not alias session view")
 }
 
 // TestProjectSightingsNonSightChannelGetsNoSeen pins the other half: a
@@ -63,6 +92,7 @@ func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
 	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.Nil(t, out[0].Seen, "a non-sight channel must not carry Seen, however the payload happens to decode")
+	require.Empty(t, out[0].LocationState, "a non-sight channel carries no location state either")
 }
 
 // TestProjectSightingsHeldMemoryKeepsItsLastSeen is the ADR's own case: a
@@ -84,6 +114,31 @@ func TestProjectSightingsHeldMemoryKeepsItsLastSeen(t *testing.T) {
 	require.NotNil(t, out[0].Seen, "a held memory must keep its last Seen")
 	require.Equal(t, spatial.Position{X: 6, Y: 10}, out[0].Seen.Position)
 	require.Equal(t, StandingUp, out[0].Seen.Standing, "not in the down set: reports up")
+}
+
+func TestHeldUnknownSightProjectsExplicitUnknownLocation(t *testing.T) {
+	payload, err := encounter.EncodeLocationPayload(encounter.LocationKnowledge{State: encounter.LocationUnknown})
+	require.NoError(t, err)
+	out := projectSightings([]intel.Holding{{
+		Subject: "billy", Payload: payload, Channel: intel.Sight,
+		Status: intel.Held,
+	}}, nil, nil, nil)
+	require.Len(t, out, 1)
+	require.Equal(t, LocationUnknown, out[0].LocationState)
+	require.Nil(t, out[0].Seen)
+}
+
+func TestProjectIntelCorrectionsSortsObserverThenSubject(t *testing.T) {
+	got := projectIntelCorrections(map[encounter.MemberID]*encounter.IntelDelta{
+		"zog": {Corrected: []intel.Subject{"billy", "alice"}},
+		"abe": {Corrected: []intel.Subject{"david", "carol"}},
+	})
+	require.Equal(t, []IntelCorrection{
+		{Observer: "abe", Subject: "carol"},
+		{Observer: "abe", Subject: "david"},
+		{Observer: "zog", Subject: "alice"},
+		{Observer: "zog", Subject: "billy"},
+	}, got)
 }
 
 // TestProjectSightingsCarriesKindFromTheRoster pins rpg-toolkit#1230: kind is

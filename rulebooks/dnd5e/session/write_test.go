@@ -87,11 +87,18 @@ func (s *WriteTestSuite) TestJoinReportsWhoNoticed() {
 // TestExitCarriesKnowledgeOut pins that a departing member takes what they knew.
 func (s *WriteTestSuite) TestExitCarriesKnowledgeOut() {
 	ctx := context.Background()
+	_, err := s.mgr.Join(ctx, &session.JoinInput{
+		Session: "sess", Member: "bob", Position: hexCell(1, 0),
+	})
+	s.Require().NoError(err)
 
 	out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal("alice", out.Outcome.ID)
 	s.Equal(spatial.Position{X: 0, Y: 0}, out.Outcome.Position, "where she stood when she left")
+	s.Equal(map[string]session.Discovery{
+		"bob": {Faded: []string{"alice"}},
+	}, out.Discovered, "the remaining observer must learn that Alice faded")
 	s.Equal([]string{"encounter:world"}, out.Saved.Written)
 
 	// And she is really gone, not merely reported gone.

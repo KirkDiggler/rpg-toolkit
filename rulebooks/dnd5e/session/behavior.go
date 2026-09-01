@@ -114,13 +114,24 @@ func unprojectMonsterView(view MonsterView) (encounter.MonsterView, error) {
 			Path:          append([]spatial.Position(nil), sm.Path...),
 		}
 	}
+	remembered := make([]encounter.RememberedMember, len(view.Remembered))
+	for i, rm := range view.Remembered {
+		remembered[i] = encounter.RememberedMember{
+			ID:            encounter.MemberID(rm.ID),
+			Kind:          encounter.MemberKind(rm.Kind),
+			Position:      rm.Position,
+			DistanceCells: rm.DistanceCells,
+			Path:          append([]spatial.Position(nil), rm.Path...),
+		}
+	}
 
 	return encounter.MonsterView{
-		Self:      encounter.MemberID(view.Self),
-		Position:  view.Position,
-		Actions:   actions,
-		Targeting: view.Targeting,
-		Seen:      seen,
+		Self:       encounter.MemberID(view.Self),
+		Position:   view.Position,
+		Actions:    actions,
+		Targeting:  view.Targeting,
+		Seen:       seen,
+		Remembered: remembered,
 		Budget: encounter.TurnBudget{
 			AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet,
 		},

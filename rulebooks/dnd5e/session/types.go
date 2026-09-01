@@ -345,13 +345,17 @@ type MemberOutcome struct {
 //
 // On [Sighting], present when BOTH hold: the sighting was produced by sight
 // (gated on Holding.Channel) AND the composition's payload actually decodes
-// as a sight payload (encounter.DecodeSightPayload succeeds). Nil for every
-// other channel — that is the ordinary, expected case. Nil on a sight-channel
-// holding whose payload fails to decode is NOT a legal state a caller should
-// plan for; it means the composition wrote something projectSeen cannot
-// read, which is a defect in that layer, not a case this seam is choosing to
-// represent as "no sighting". A memory (CurrentVia empty) keeps the Seen it
-// last had — the last-known cell a client draws a faded marker on.
+// as a known location payload (encounter.DecodeLocationPayload succeeds). Nil
+// for every other channel — that is the ordinary, expected case. Nil on a
+// sight-channel holding whose payload fails to decode is NOT a legal state a
+// caller should plan for; it means the composition wrote something projectSeen
+// cannot read, which is a defect in that layer, not a case this seam is
+// choosing to represent as "no sighting". A known memory (CurrentVia empty)
+// keeps the Seen it last had — the last-known cell a client draws a faded
+// marker on. An explicit unknown location has no Seen and is represented by
+// Sighting.LocationState. Legacy untagged coordinates remain readable as
+// known; malformed or current-unknown sight testimony is rejected while the
+// encounter loads, before this package projects it.
 //
 // On [Report] this is weaker (Copilot review, PR #1159): intel.Report carries
 // no Channel of its own, so a Report's Seen is inferred by decoding its
@@ -399,7 +403,8 @@ const (
 	StandingDowned Standing = "downed"
 )
 
-// Sighting is one thing an observer currently perceives.
+// Sighting is one thing an observer knows through Intel. Status and CurrentVia
+// distinguish current perception from held memory.
 type Sighting struct {
 	// Subject names what is perceived.
 	Subject string `json:"subject"`
@@ -423,6 +428,12 @@ type Sighting struct {
 	// Payload itself.
 	Seen *Seen `json:"seen,omitempty"`
 
+	// LocationState distinguishes a known coordinate from explicit unknown
+	// location testimony. It is set for sight-channel holdings only. Held
+	// unknown testimony remains a sighting with nil Seen rather than being
+	// deleted or treated as malformed.
+	LocationState LocationState `json:"location_state,omitempty"`
+
 	// Payload is what the observer knows about it, encoded by the composition.
 	// Retained for channels the SDK has not typed; sight itself is typed
 	// through Seen above rather than asking a client to decode this.
@@ -440,6 +451,30 @@ type Sighting struct {
 
 	// Status distinguishes a live sighting from a stale memory.
 	Status string `json:"status,omitempty"`
+}
+
+// LocationState is the encounter-authored state of location knowledge mirrored
+// by this host seam. Session does not decide whether that knowledge is
+// actionable or decode the composition's payload itself.
+type LocationState string
+
+const (
+	// LocationKnown says the sight channel carries a lawful coordinate.
+	LocationKnown LocationState = "known"
+	// LocationUnknown says the subject remains known without an actionable
+	// coordinate.
+	LocationUnknown LocationState = "unknown"
+)
+
+// IntelCorrection reports that an observer corrected a subject's location
+// knowledge. It mirrors encounter-owned correction deltas by identifier only,
+// never exposes concealed truth, and does not ask session to decide behavior.
+type IntelCorrection struct {
+	// Observer is the member whose own location knowledge changed.
+	Observer string `json:"observer"`
+	// Subject is the member whose location is now explicitly unknown to the
+	// observer.
+	Subject string `json:"subject"`
 }
 
 // EventKind names what an event reports.
