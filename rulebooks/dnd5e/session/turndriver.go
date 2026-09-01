@@ -64,14 +64,24 @@ type MonsterView struct {
 	Round int
 }
 
-// RememberedMember is one other member's last-known position. Path is an
-// exact-cell route to Position, with no attack reach or standing information.
+// RememberedMember is one other member's last-known position. It carries no
+// attack reach, standing, or other concealed current-state fact.
 type RememberedMember struct {
-	ID            string
-	Kind          MemberKind
-	Position      spatial.Position
+	// ID identifies the remembered member.
+	ID string
+
+	// Kind is whether the remembered member is a player or monster.
+	Kind MemberKind
+
+	// Position is the member's last-known dungeon-absolute cell and may be stale.
+	Position spatial.Position
+
+	// DistanceCells is the grid distance from this member to Position, in cells.
 	DistanceCells float64
-	Path          []spatial.Position
+
+	// Path is the exact-cell route toward Position; it is empty or nil when the
+	// remembered cell is unreachable.
+	Path []spatial.Position
 }
 
 // ActionView is this package's own twin of encounter.ActionView: a static

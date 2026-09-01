@@ -92,6 +92,7 @@ func TestProjectSightingsNonSightChannelGetsNoSeen(t *testing.T) {
 	out := projectSightings(holdings, nil, nil, nil)
 	require.Len(t, out, 1)
 	require.Nil(t, out[0].Seen, "a non-sight channel must not carry Seen, however the payload happens to decode")
+	require.Empty(t, out[0].LocationState, "a non-sight channel carries no location state either")
 }
 
 // TestProjectSightingsHeldMemoryKeepsItsLastSeen is the ADR's own case: a
