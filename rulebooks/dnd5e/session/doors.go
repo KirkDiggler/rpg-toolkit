@@ -6,12 +6,13 @@ package session
 // doors.go carries the door verbs across the seam (rpg-project#268, design
 // rpg-project#269; reworked for concealment on rpg-toolkit#1375): Doors reads
 // door state AS ONE MEMBER KNOWS IT, OpenDoor pushes a shut one open, and
-// Unlock is where the lock's verdict lives — the session loads the sheet,
-// resolves the member's best listed approach through the one check machinery
-// (conceal.go's resolveApproaches), and TELLS the composition Beaten plus the
-// route it took. The composition compares nothing (encounter.UnlockInput's
-// law), and this seam is the layer allowed to know that a total meeting the
-// DC succeeds.
+// Unlock carries the lock's verdict — the session stages the member's stored
+// record, resolution resolves their best listed approach with the check
+// chain live (conceal.go's resolveStagedCheck → resolution.MakeCheck, the
+// re-ruled shape on rpg-project#351), and this seam TELLS the composition
+// Beaten plus the route it took. The composition compares nothing
+// (encounter.UnlockInput's law); what a total meeting the DC means lives
+// behind resolution's door with the rest of the check.
 
 import (
 	"context"

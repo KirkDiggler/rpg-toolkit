@@ -815,6 +815,23 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 // is told exactly which aggregate is missing — that is S6's whole job — and
 // repairing it needs a decision, not a retry. Making the entry verbs idempotent
 // for this case is the fix, and it is not this wave's.
+//
+// ONE MORE WEDGE, NAMED RATHER THAN PATCHED (the rebind review of
+// rpg-toolkit#1377; the same admission is on rpg-project#351's record): a
+// crash between the two saves loses the stream cursors the session save was
+// carrying, and for a NORMAL verb the next load re-derives them from the
+// persisted log — self-healing, by numberEntries' own arithmetic. For a verb
+// that appended MORE BEATS THAN THE RETENTION WINDOW, the encounter save has
+// already trimmed the blob's floor past every cursor, so re-derivation is
+// impossible and every subsequent verb refuses at the trim-outran guard,
+// permanently, as ErrInvalidWorld. That is fail-closed and TRUTHFUL — no
+// beat was delivered that was not saved (delivery waits for both saves), the
+// world never lies, and it is strictly better than the pre-fix behavior
+// (which refused the big verb outright, every time, crash or no crash). It
+// is also unhealable by retry, which is why it is admitted here in the
+// ordering's own doc: a remediation path — reseeding cursors at the cost of
+// a client resync, or journaling them beside the blob — is a named shelf,
+// not slice work.
 func (m *Manager) persist(
 	ctx context.Context, scope *writeScope, data encounter.EncounterData,
 ) (SaveReport, error) {
