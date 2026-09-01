@@ -106,10 +106,11 @@ const (
 // never quite the same claim.
 //
 // [VerbActivate] contributes one declaration per carried ability. [VerbAttack]
-// contributes the main-hand swing and, after a qualifying Attack action, a
-// bonus-slot off-hand swing. A consumer that indexes declarations BY VERB, or
-// treats a second row for a verb as a producer defect, is reading a coincidence
-// as a contract.
+// contributes the main-hand swing and, after a qualifying Attack action, its
+// granted bonus-slot variant: an Unarmed Strike from Martial Arts or the
+// off-hand weapon from two-weapon fighting. A consumer that indexes
+// declarations BY VERB, or treats a second row for a verb as a producer defect,
+// is reading a coincidence as a contract.
 //
 // It is still not one declaration per TARGET: each Attack declaration carries
 // its own candidate universe, with target-specific availability on each row.
@@ -210,7 +211,7 @@ type AffordOutput struct {
 
 // Afford reports the current compiled Attack, Move, Activate and EndTurn
 // offers for one active turn member. Activate compiles one per thing the member
-// carries; Attack compiles its main-hand variant and any granted off-hand
+// carries; Attack compiles its main-hand variant and any granted bonus-attack
 // variant. Each offer carries an opaque selector execution must echo.
 // Move reports Remaining rather than a fixed price because a walk's cost
 // depends on a path this read is never given. On the world clock declarations
