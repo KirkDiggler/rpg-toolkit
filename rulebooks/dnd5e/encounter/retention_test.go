@@ -405,6 +405,65 @@ func (s *RetentionTestSuite) TestBlobStaysBoundedAcrossSaveLoadCycles() {
 	s.Require().NoError(err, "and that bounded blob round-trips")
 }
 
+// TestWorldViewIsPure is the #1385 pin: a mid-verb world read must not pass
+// the storage boundary. After a verb's delta has grown well past the
+// retention window, WorldView hands back the WHOLE live log — and touches
+// nothing: every beat is still readable from the live Story afterwards, the
+// floor has not advanced, and the storage boundary still does its exact job
+// on the next save.
+//
+// Without a pure read, session's mid-verb `world := enc.ToData()` sites
+// would trim past their own projection baseline through a read-shaped call —
+// #1381's motivating bug reproduced fail-silent.
+func (s *RetentionTestSuite) TestWorldViewIsPure() {
+	const window = 8
+	enc := s.walkingEncounter(window)
+
+	// 40 movement beats plus setup's scene-opened beat = 41 sequences
+	// assigned, comfortably past the window: exactly the state where a read
+	// that secretly enforced retention would destroy evidence.
+	s.generateBeats(enc, 40)
+
+	view := enc.WorldView()
+	s.Len(view.Log.Entries, 41, "the view carries the whole live log, unbounded by the window")
+
+	s.Equal(41, s.storyLen(enc), "the live log is untouched: the view trims nothing")
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
+	s.Require().NoError(err, "the floor did not advance: the very first beat is still servable")
+	s.Len(entries, 41)
+	s.Equal(uint64(1), entries[0].Seq)
+
+	// However many views were taken, ToData remains the storage boundary and
+	// trims exactly as before.
+	enc.WorldView()
+	data := enc.ToData()
+	s.Len(data.Log.Entries, window, "a following ToData still trims to exactly the window")
+	s.Equal(window, s.storyLen(enc))
+	_, err = enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
+	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, never with the view")
+}
+
+// TestWorldViewShowsTrimmedStateHonestly is the view-save-view pin: the view
+// reports the world AS IT IS, before and after the boundary. Before the save
+// it holds the untrimmed live log; after, it agrees with the blob the save
+// emitted — byte for byte, because one snapshot body serves both entries and
+// an unchanged encounter snapshots deterministically.
+func (s *RetentionTestSuite) TestWorldViewShowsTrimmedStateHonestly() {
+	const window = 8
+	enc := s.walkingEncounter(window)
+	s.generateBeats(enc, 40)
+
+	before := enc.WorldView()
+	s.Len(before.Log.Entries, 41, "before the save, the view holds the whole live log")
+
+	data := enc.ToData()
+	s.Require().Len(data.Log.Entries, window)
+
+	after := enc.WorldView()
+	s.Len(after.Log.Entries, window, "after the save, the view shows the trimmed state honestly")
+	s.Equal(data, after, "view and blob agree on an unchanged encounter: one snapshot body behind both")
+}
+
 func TestRetentionSuite(t *testing.T) {
 	suite.Run(t, new(RetentionTestSuite))
 }
