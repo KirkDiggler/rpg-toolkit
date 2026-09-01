@@ -608,6 +608,8 @@ func (d *Draft) ToCharacter(ctx context.Context, characterID string, bus events.
 		subraceID:           d.subrace,
 		classID:             d.class,
 		subclassID:          d.subclass,
+		backgroundID:        d.background,
+		createdAt:           d.createdAt,
 		abilityScores:       finalScores,
 		hitPoints:           maxHP,
 		maxHitPoints:        maxHP,

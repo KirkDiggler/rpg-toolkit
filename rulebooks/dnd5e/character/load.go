@@ -71,13 +71,6 @@ type loadedEffect struct {
 // loss; that is the shape of rpg-toolkit#948, and refusing is the only way the
 // round trip can be an actual guarantee.
 //
-// Two fields of [Data] do not survive a round trip through any loader:
-// BackgroundID and CreatedAt have nowhere to live on the sheet, and ToData
-// does not write them. That is a pre-existing gap in the sheet rather than in
-// this loader — pinned by TestKnownRoundTripGaps so it cannot be mistaken for
-// a guarantee — and closing it means changing ToData, which belongs in its own
-// change.
-//
 // ctx is unused: a pure load has nothing to cancel and reads no clock. It is
 // part of the signature so that the pure and legacy loaders read the same at a
 // call site, and so that adding cancellable work here is never a breaking
@@ -230,6 +223,8 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 		subraceID:           d.SubraceID,
 		classID:             d.ClassID,
 		subclassID:          d.SubclassID,
+		backgroundID:        d.BackgroundID,
+		createdAt:           d.CreatedAt,
 		abilityScores:       d.AbilityScores,
 		hitPoints:           d.HitPoints,
 		maxHitPoints:        d.MaxHitPoints,
