@@ -602,7 +602,10 @@ func main() {
 }
 
 func showView(enc *encounter.Encounter, who core.EntityID) {
-	data := enc.ToData()
+	// A display read, not a save: WorldView never trims the live log or
+	// advances the floor, so rendering after every command costs nothing
+	// (#1385). The save command above is the one ToData call left.
+	data := enc.WorldView()
 	members, err := enc.Members()
 	if err != nil {
 		fmt.Println(" ", err)
