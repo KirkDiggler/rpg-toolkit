@@ -10,48 +10,79 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 const restTestMemberID = "member-1"
 
-func temporaryConditionFactories() map[string]func() dnd5eEvents.ConditionBehavior {
-	return map[string]func() dnd5eEvents.ConditionBehavior{
-		"Reckless Attack": func() dnd5eEvents.ConditionBehavior {
-			return NewRecklessAttackCondition(restTestMemberID)
+type temporaryConditionTestCase struct {
+	newCondition func() dnd5eEvents.ConditionBehavior
+	expectedRef  *core.Ref
+}
+
+func temporaryConditionTestCases() map[string]temporaryConditionTestCase {
+	return map[string]temporaryConditionTestCase{
+		"Reckless Attack": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewRecklessAttackCondition(restTestMemberID)
+			},
+			expectedRef: refs.Conditions.RecklessAttack(),
 		},
-		"Dodging": func() dnd5eEvents.ConditionBehavior {
-			return NewDodgingCondition(restTestMemberID)
+		"Dodging": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewDodgingCondition(restTestMemberID)
+			},
+			expectedRef: refs.Conditions.Dodging(),
 		},
-		"Disengaging": func() dnd5eEvents.ConditionBehavior {
-			return NewDisengagingCondition(restTestMemberID)
+		"Disengaging": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewDisengagingCondition(restTestMemberID)
+			},
+			expectedRef: refs.Conditions.Disengaging(),
 		},
-		"Hidden": func() dnd5eEvents.ConditionBehavior {
-			return NewHiddenCondition(restTestMemberID)
+		"Hidden": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewHiddenCondition(restTestMemberID)
+			},
+			expectedRef: refs.Conditions.Hidden(),
 		},
-		"Helped": func() dnd5eEvents.ConditionBehavior {
-			return NewHelpedCondition(restTestMemberID, "helper-1")
+		"Helped": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewHelpedCondition(restTestMemberID, "helper-1")
+			},
+			expectedRef: refs.Conditions.Helped(),
 		},
-		"Prone": func() dnd5eEvents.ConditionBehavior {
-			return NewProneCondition(restTestMemberID)
+		"Prone": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewProneCondition(restTestMemberID)
+			},
+			expectedRef: refs.Conditions.Prone(),
 		},
-		"Unconscious": func() dnd5eEvents.ConditionBehavior {
-			return NewUnconsciousCondition(restTestMemberID, nil)
+		"Unconscious": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewUnconsciousCondition(restTestMemberID, nil)
+			},
+			expectedRef: refs.Conditions.Unconscious(),
 		},
-		"Shield": func() dnd5eEvents.ConditionBehavior {
-			return NewShieldSpellCondition(restTestMemberID)
+		"Shield": {
+			newCondition: func() dnd5eEvents.ConditionBehavior {
+				return NewShieldSpellCondition(restTestMemberID)
+			},
+			expectedRef: refs.Spells.Shield(),
 		},
 	}
 }
 
 func TestTemporaryConditionsEndOnLongRest(t *testing.T) {
-	for name, factory := range temporaryConditionFactories() {
+	for name, testCase := range temporaryConditionTestCases() {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			bus := events.NewEventBus()
-			condition := factory()
+			condition := testCase.newCondition()
 
 			var removed []dnd5eEvents.ConditionRemovedEvent
 			_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx,
@@ -67,12 +98,14 @@ func TestTemporaryConditionsEndOnLongRest(t *testing.T) {
 				CharacterID: "other-member",
 			}))
 			require.Empty(t, removed, "another character's long rest must not remove the condition")
+			require.True(t, condition.IsApplied())
 
 			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
 				RestType:    coreResources.ResetShortRest,
 				CharacterID: restTestMemberID,
 			}))
 			require.Empty(t, removed, "short rest must not remove the condition")
+			require.True(t, condition.IsApplied())
 
 			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
 				RestType:    coreResources.ResetLongRest,
@@ -80,16 +113,16 @@ func TestTemporaryConditionsEndOnLongRest(t *testing.T) {
 			}))
 			require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
 				MemberID:     restTestMemberID,
-				ConditionRef: condition.Ref().String(),
+				ConditionRef: testCase.expectedRef.String(),
 				Reason:       "long rest",
 			}}, removed)
+			require.False(t, condition.IsApplied(), "the owner's long rest must remove the condition's subscriptions")
 
-			require.NoError(t, condition.Remove(ctx, bus))
 			require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
 				RestType:    coreResources.ResetLongRest,
 				CharacterID: restTestMemberID,
 			}))
-			require.Len(t, removed, 1, "Remove must unsubscribe the long-rest handler")
+			require.Len(t, removed, 1, "a removed condition must not publish a second removal")
 		})
 	}
 }
@@ -127,6 +160,34 @@ func TestRagingConditionEndsOnAnyRestControl(t *testing.T) {
 	}
 }
 
+var errConditionRemovalRefused = errors.New("condition removal publication refused")
+
+func TestTemporaryConditionLongRestKeepsSubscriptionsWhenRemovalPublicationFails(t *testing.T) {
+	for name, testCase := range temporaryConditionTestCases() {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			bus := events.NewEventBus()
+			condition := testCase.newCondition()
+
+			_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx,
+				func(_ context.Context, _ dnd5eEvents.ConditionRemovedEvent) error {
+					return errConditionRemovalRefused
+				})
+			require.NoError(t, err)
+			require.NoError(t, condition.Apply(ctx, bus))
+
+			err = dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+				RestType:    coreResources.ResetLongRest,
+				CharacterID: restTestMemberID,
+			})
+			require.ErrorIs(t, err, errConditionRemovalRefused)
+			require.True(t, condition.IsApplied(), "failed removal publication must leave the condition applied")
+
+			require.NoError(t, condition.Remove(ctx, bus))
+		})
+	}
+}
+
 var errRestSubscriptionRefused = errors.New("rest subscription refused")
 
 type rejectRestSubscribeBus struct {
@@ -153,11 +214,11 @@ func (b *rejectRestSubscribeBus) Unsubscribe(ctx context.Context, id string) err
 }
 
 func TestTemporaryConditionApplyRollsBackWhenLongRestSubscriptionFails(t *testing.T) {
-	for name, factory := range temporaryConditionFactories() {
+	for name, testCase := range temporaryConditionTestCases() {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			bus := &rejectRestSubscribeBus{EventBus: events.NewEventBus()}
-			condition := factory()
+			condition := testCase.newCondition()
 
 			err := condition.Apply(ctx, bus)
 			require.ErrorIs(t, err, errRestSubscriptionRefused)
