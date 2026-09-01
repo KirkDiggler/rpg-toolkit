@@ -118,8 +118,11 @@
 // # The bus-effect tally
 //
 // [Gather] is a step resolution runs with the bus in hand — folding a chain,
-// first and mainly. The attack chain and the damage chain do exactly that and
-// hand back the folded event. The saving throw hands the bus to
+// first and mainly. The attack chain, the damage chain and the movement chain
+// do exactly that and hand back the folded event. The post-attack-roll chain
+// folds too but hands back only the next step: its subscribers do the
+// remembering (Rage's sustain tracking is why it exists), so the folded event
+// has nobody to go back to. The saving throw hands the bus to
 // [saves.MakeSavingThrow] instead and hands back that entry's result, because
 // rpg-toolkit#1382 sealed the rules packages' bus-free entries — a save or
 // check that skips its chain is a claim they refuse to express — and folding
