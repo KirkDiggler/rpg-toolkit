@@ -103,6 +103,21 @@ type RegionInput struct {
 	// refused at construction (ErrRegionLightingMissing), and there is no
 	// default.
 	Lighting *Lighting
+
+	// Concealed is whether this region is authored as hidden space — the
+	// room that "appears to be a wall unless it is found" (rpg-project#351:
+	// the room hides with its door). DECLARED, never cascaded from a
+	// concealed door: the two are separate authored facts, moved together
+	// by choice, and the content compiler refuses the incoherent
+	// combinations before they reach this seam.
+	//
+	// CARRIED, NOT INTERPRETED — [DoorInput.Concealed]'s law: nothing in
+	// this composition's geometry or projection reads it; withholding a
+	// concealed region from a non-knower's atlas is the world layer's work
+	// (wave 1b). False is the zero value telling the truth: a region that
+	// said nothing was never concealed, which is every region authored
+	// before concealment existed.
+	Concealed bool
 }
 
 // PropInput is one thing standing in a room that is not a creature: a pillar,

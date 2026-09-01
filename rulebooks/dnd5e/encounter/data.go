@@ -159,6 +159,13 @@ type RegionData struct {
 	Cells     []PositionData `json:"cells"`
 	Archetype string         `json:"archetype"`
 	Lighting  *LightingData  `json:"lighting"`
+
+	// Concealed mirrors [RegionInput.Concealed]. NOT REQUIRED AT LOAD,
+	// unlike Lighting, and PropData.Facing states the rule: omitted and
+	// written-as-false are the same fact by design, so an old blob simply
+	// unmarshals to false and a never-concealed region writes no key at
+	// all — the exact bytes every pre-concealment blob already has.
+	Concealed bool `json:"concealed,omitempty"`
 }
 
 // LightingData is the persistent representation of a [Lighting] block.
@@ -571,7 +578,8 @@ func fieldDataFrom(f *field) FieldData {
 		intensity := r.Lighting.Intensity
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
-			Lighting: &LightingData{Intensity: &intensity},
+			Lighting:  &LightingData{Intensity: &intensity},
+			Concealed: r.Concealed,
 		}
 	}
 
@@ -1354,7 +1362,8 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		}
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
-			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
+			Lighting:  &Lighting{Intensity: *rd.Lighting.Intensity},
+			Concealed: rd.Concealed,
 		}
 	}
 

@@ -138,6 +138,17 @@ type RegionSpec struct {
 	// repaint diffs as a line change — and the compiler flattens it. A cell
 	// in two regions, or twice in one, fails.
 	Cells [][][2]int `yaml:"cells"`
+
+	// Concealed marks the region as hidden space: the room that "appears to
+	// be a wall unless it is found" (rpg-project#351 — the room hides with
+	// its door). DECLARED HERE, NEVER CASCADED from a concealed door: the
+	// room and its door are separate authored facts, moved together by
+	// choice — but not moved apart: [Validate] refuses the incoherent
+	// combinations (a room only enterable through concealed doors that is
+	// not itself concealed, and a concealed room anyone can walk into).
+	// Carried unread; what a non-knower's map withholds is the world
+	// layer's business.
+	Concealed bool `yaml:"concealed,omitempty"`
 }
 
 // LightingSpec is a region's lighting block: one field today, a block so later

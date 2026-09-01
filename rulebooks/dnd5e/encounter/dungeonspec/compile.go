@@ -163,7 +163,8 @@ func regionsOf(spec *Spec) []encounter.RegionInput {
 		intensity := *r.Lighting.Intensity
 		out = append(out, encounter.RegionInput{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
-			Lighting: &encounter.Lighting{Intensity: intensity},
+			Lighting:  &encounter.Lighting{Intensity: intensity},
+			Concealed: r.Concealed,
 		})
 	}
 	return out

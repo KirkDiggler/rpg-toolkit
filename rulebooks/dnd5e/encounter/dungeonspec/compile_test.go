@@ -174,6 +174,17 @@ func (s *CompileSuite) TestALockMayListSeveralApproaches() {
 	}}, lock, "forcing the door and picking its lock need not cost the same")
 }
 
+// secretTomb is the shipping tomb with its crypt made a coherent secret:
+// the hall-tomb door concealed behind the find check, and the tomb region
+// declared concealed with it — the two facts the coherence check refuses to
+// see apart (rpg-project#351).
+func (s *CompileSuite) secretTomb(find string) string {
+	secret := s.tombWith("    locked: [{ ability: dex, dc: 12 }]",
+		"    locked: [{ ability: dex, dc: 12 }]"+find)
+	s.Require().Contains(secret, "  - id: tomb\n")
+	return strings.Replace(secret, "  - id: tomb\n", "  - id: tomb\n    concealed: true\n", 1)
+}
+
 // TestAConcealedDoorCarriesItsFindCheckThrough — living-world slice 1, wave 1a
 // (rpg-toolkit#1369): concealment is one more property on the door
 // declaration, its find check an approach list in the same shape as a lock's,
@@ -187,22 +198,39 @@ func (s *CompileSuite) TestAConcealedDoorCarriesItsFindCheckThrough() {
 		{Ability: "investigation", DC: 12},
 	}
 
-	hidden := s.load(s.tombWith("    locked: [{ ability: dex, dc: 12 }]",
-		"    locked: [{ ability: dex, dc: 12 }]"+find))
+	hidden := s.load(s.secretTomb(find))
 	s.Equal(encounter.DoorLocked, hidden.Field.Doors[1].State.Kind(),
 		"concealment does not displace the lock underneath")
 	s.Equal(wantFind, hidden.Field.Doors[1].Concealed,
 		"the find approaches, in authored order, priced per route")
 	s.Nil(hidden.Field.Doors[0].Concealed, "and the doorway beside it is untouched")
 
-	plain := s.load(s.tombWith("    edges: [[[5,4],[6,4]]]", "    edges: [[[5,4],[6,4]]]"+find))
+	plain := s.load(s.tombWith("doors:\n",
+		"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]"+find+"\n"))
 	s.Equal(encounter.DoorOpen, plain.Field.Doors[0].State.Kind(),
 		"a concealed door can stand open underneath — a hidden passage nobody shut")
 	s.Equal(wantFind, plain.Field.Doors[0].Concealed)
 
-	shut := s.load(s.tombWith("    locked: [{ ability: dex, dc: 12 }]", "    closed: true"+find))
+	shut := s.load(strings.Replace(s.secretTomb(find),
+		"    locked: [{ ability: dex, dc: 12 }]", "    closed: true", 1))
 	s.Equal(encounter.DoorClosed, shut.Field.Doors[1].State.Kind())
 	s.Equal(wantFind, shut.Field.Doors[1].Concealed)
+}
+
+// TestARegionHidesWithItsDoor — the region half of the same slice
+// (rpg-project#351): the concealed marker is declared on the region, carried
+// opaquely to [encounter.RegionInput.Concealed], and never cascaded — the
+// door beside it stays exactly the door the author wrote.
+func (s *CompileSuite) TestARegionHidesWithItsDoor() {
+	c := s.load(s.secretTomb("\n    concealed: [{ ability: perception, dc: 15 }]"))
+	s.Equal([]bool{false, false, true},
+		[]bool{c.Field.Regions[0].Concealed, c.Field.Regions[1].Concealed, c.Field.Regions[2].Concealed},
+		"the tomb is the secret; the rooms in front of it say nothing")
+
+	base := s.load(s.tomb)
+	for i, r := range base.Field.Regions {
+		s.False(r.Concealed, "regions[%d] of the shipping tomb authors no concealment", i)
+	}
 }
 
 // TestCompile_DoorInsideARegionIsLegal — a door need not sit on a seam.

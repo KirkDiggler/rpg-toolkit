@@ -228,15 +228,28 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"doors[1].locked[0].ability", "ability"},
 		{"a locked door with no approaches", "locked: [{ ability: dex, dc: 12 }]", "locked: []",
 			"doors[1].locked", "at least one way through"},
-		{"a concealed door with no find approach", "locked: [{ ability: dex, dc: 12 }]",
-			"locked: [{ ability: dex, dc: 12 }]\n    concealed: []",
-			"doors[1].concealed", "at least one way to find it"},
-		{"a find approach with no ability", "locked: [{ ability: dex, dc: 12 }]",
-			"locked: [{ ability: dex, dc: 12 }]\n    concealed: [{ dc: 15 }]",
-			"doors[1].concealed[0].ability", "ability"},
-		{"a find approach nothing has to beat", "locked: [{ ability: dex, dc: 12 }]",
-			"locked: [{ ability: dex, dc: 12 }]\n    concealed: [{ ability: perception, dc: 0 }]",
-			"doors[1].concealed[0].dc", "nothing to beat"},
+		// The concealed-check shape cases stand on an INNER shortcut door —
+		// both endpoints in the hall — so each differs from a valid file by
+		// exactly the malformed check, with no coherence refusal beside it
+		// (a shortcut inside a room is nobody's entrance).
+		{"a concealed door with no find approach", "doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: []\n",
+			"doors[0].concealed", "at least one way to find it"},
+		{"a find approach with no ability", "doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ dc: 15 }]\n",
+			"doors[0].concealed[0].ability", "ability"},
+		{"a find approach nothing has to beat", "doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ ability: perception, dc: 0 }]\n",
+			"doors[0].concealed[0].dc", "nothing to beat"},
+		// Authoring coherence (rpg-project#351): the room hides with its
+		// door, and the incoherent halves refuse — each at the region,
+		// which is the field the form-filler flips.
+		{"a room only enterable through a concealed door", "locked: [{ ability: dex, dc: 12 }]",
+			"locked: [{ ability: dex, dc: 12 }]\n    concealed: [{ ability: perception, dc: 15 }]",
+			"regions[2].concealed", "can only be entered through a concealed door"},
+		{"a concealed room anyone can walk into", "  - id: tomb\n",
+			"  - id: tomb\n    concealed: true\n",
+			"regions[2].concealed", "a walk-in room cannot be a secret"},
 		{"a door with no edges", "edges: [[[5,4],[6,4]]]", "edges: []", "doors[0].edges", "no edges"},
 		{"a door with no id", "  - id: entrance-hall\n", "  - id: \"\"\n", "doors[0].id", "no id"},
 	} {
@@ -259,6 +272,31 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		s.Require().NotEmpty(errs)
 		s.Equal("regions[0].cells", errs[0].Path)
 		s.Contains(errs[0].Message, "no cells")
+	})
+
+	s.Run("a concealed room with a doorless open way in", func() {
+		// The coherent secret room — tomb concealed, its door concealed —
+		// with one wall of its border erased: a bare crossing no author can
+		// conceal, named in the refusal by the file's own coordinates.
+		secret := s.tombWith("locked: [{ ability: dex, dc: 12 }]",
+			"locked: [{ ability: dex, dc: 12 }]\n    concealed: [{ ability: perception, dc: 15 }]")
+		secret = strings.Replace(secret, "  - id: tomb\n", "  - id: tomb\n    concealed: true\n", 1)
+		s.Empty(s.validate(secret), "concealed door + concealed room is the coherent whole")
+
+		gap := strings.Replace(secret, "  - [[15,0],[16,0]]\n", "", 1)
+		errs := s.validate(gap)
+		s.Equal([]string{"regions[2].concealed"}, paths(errs))
+		s.Contains(errs[0].Message, "the open way between [15,0] and [16,0]")
+		s.Contains(errs[0].Message, "a walk-in room cannot be a secret")
+	})
+
+	s.Run("one open door and one concealed shortcut stays legal", func() {
+		// The room is no secret, the shortcut is (rpg-project#351): the
+		// hall keeps its two plain entrances, and a concealed inner door
+		// obliges nobody to conceal anything.
+		shortcut := s.tombWith("doors:\n",
+			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ ability: perception, dc: 15 }]\n")
+		s.Empty(s.validate(shortcut))
 	})
 
 	s.Run("two bosses in one region", func() {
