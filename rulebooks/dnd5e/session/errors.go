@@ -433,11 +433,12 @@ var (
 	// refers to a resolution that cannot be real".
 	ErrInvalidSession = errors.New("invalid session data")
 
-	// ErrSaveFailed is returned when one or more aggregates could not be
-	// persisted. The accompanying SaveReport names which landed and which did
-	// not (S6) — a partial write is never reported as success, and never as an
-	// unqualified failure either, because the difference determines whether a
-	// retry is safe.
+	// ErrSaveFailed is returned when an operation fails after persistence is
+	// involved. Usually an aggregate could not be saved. A first-admission Join
+	// can instead have saved its independently valid rest before a later local
+	// refusal; then SaveReport.Written is populated while Failed is empty. In
+	// both cases the report preserves S6's distinction between a safe retry and
+	// durable progress rather than returning an unqualified failure.
 	ErrSaveFailed = errors.New("save failed")
 
 	// ErrBadTurnOutcome is returned when a TurnDriver's Act answers with a

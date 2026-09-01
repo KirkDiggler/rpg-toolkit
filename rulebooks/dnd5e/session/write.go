@@ -215,10 +215,12 @@ type EndOutput struct {
 // somewhere with no visible connection to the join that caused it.
 //
 // On the character's first-ever admission to this encounter, Join resolves a
-// normal long rest from the persisted record before projection. The rested
-// record is saved only after placement and discovery have both succeeded, and
-// before the encounter is committed. EverMembers is the durable admission
-// record, so a current duplicate and an exit/rejoin never rest or save again.
+// normal long rest from the persisted record and immediately saves it before
+// projection or placement. That early write makes the repository authoritative
+// for every standing, cast, and driven-turn callback placement may trigger. A
+// later failure leaves the valid between-runs rest durable and reports it in a
+// SaveError. EverMembers is the durable admission record, so a current
+// duplicate and an exit/rejoin never rest or save again.
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoCharacter, ErrBadCharacter, ErrBadAttack if the
@@ -266,7 +268,6 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		return nil, fmt.Errorf("join: %w", err)
 	}
 
-	var rested *character.Data
 	if firstAdmission {
 		resolved, restErr := resolution.LongRest(ctx, &resolution.LongRestInput{Character: record})
 		if restErr != nil {
@@ -280,8 +281,19 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 			return nil, fmt.Errorf("join: character %q: %w: long rest returned no character data",
 				in.Member, ErrBadCharacter)
 		}
-		rested = resolved.Character
-		record = rested
+
+		// Persist before ANY projection or placement callback. encounter.Join
+		// can consult standing, form a fight, and drive a monster action; each
+		// of those paths reads CharacterRepository. Saving here gives all of
+		// them the same rested truth this Join projects, and any later driven
+		// write is newer than this one rather than being overwritten by it.
+		aggregate := "character:" + in.Member
+		if err := m.characters.SaveCharacter(ctx, resolved.Character); err != nil {
+			return nil, saveErrorAfterWrites(scope, aggregate,
+				fmt.Errorf("saving character: %w", err))
+		}
+		scope.written = append(scope.written, aggregate)
+		record = resolved.Character
 	}
 
 	// ONE QUESTION, ONE ANSWER. The record goes down and everything this verb
@@ -290,50 +302,32 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 	// read three of those off it; what it holds now is a record on the way in
 	// and numbers on the way out.
 	//
-	// Asked BEFORE the placement, because the placement needs the name and the
-	// speed — and still before the commit, which is the ordering that matters:
-	// this can come back with an error, and an error after the write would be
-	// returned on a join that had really happened, the member seated and the
-	// caller told it failed. R5 atomicity, the same discipline every other
-	// pre-commit check in this file keeps.
+	// Asked BEFORE the placement because the placement needs the name and
+	// speed. On first admission the rest is already durable, so every failure
+	// from here through commit must carry scope.written in its SaveError rather
+	// than masquerade as a no-write refusal.
 	projected, err := projectCharacter(ctx, in.Member, record)
 	if err != nil {
-		return nil, fmt.Errorf("join: %w", err)
+		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
 	actions, err := memberActionsFrom(projected.MainHand)
 	if err != nil {
-		return nil, fmt.Errorf("join: %w", err)
+		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
 	placed, err := place(scope, in.Member, KindPlayer, projected.Sheet.Name, in.Position,
 		projected.Sheet.SpeedFeet, defaultSightFeet, actions, "")
 	if err != nil {
-		return nil, fmt.Errorf("join: %w", err)
+		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
 	down, err := discoveryStanding(scope)
 	if err != nil {
-		return nil, fmt.Errorf("join: %w", err)
+		return nil, fmt.Errorf("join: %w", saveErrorAfterWrites(scope, "", err))
 	}
 
 	state := characterStateFrom(projected)
-
-	// Rest is durable only once every local Join check has passed. In
-	// particular, a bad placement or a failed discovery consult must not heal a
-	// character whose encounter admission is being refused. Once this save
-	// lands, its identity rides scope.written into both a successful report and
-	// any later encounter-save failure.
-	if rested != nil {
-		if err := m.characters.SaveCharacter(ctx, rested); err != nil {
-			report := SaveReport{Failed: []string{"character:" + in.Member}}
-			return nil, &SaveError{
-				Report: report,
-				Err:    fmt.Errorf("saving character: %w", err),
-			}
-		}
-		scope.written = append(scope.written, "character:"+in.Member)
-	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
@@ -359,9 +353,10 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 // the observer just perceived, so the safe set to ask about is everyone,
 // asked once per verb rather than once per report.
 //
-// Fetched BEFORE commit, deliberately: a failure here must leave nothing
-// persisted (R5 atomicity), the same discipline every other pre-commit
-// check in this file already keeps.
+// Fetched BEFORE the encounter commit, deliberately: a failure here must not
+// persist the local encounter mutation. A first-admission Join may already have
+// persisted its independently valid rest; its caller wraps this failure with
+// the durable character identity rather than claiming nothing was written.
 func discoveryStanding(scope *writeScope) (map[string]bool, error) {
 	roster, err := scope.enc.Members()
 	if err != nil {
@@ -938,7 +933,8 @@ func (m *Manager) persist(
 // cycle a failure between the two could leave half-done.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
 	if err := m.exitDissolvedCombatants(ctx, scope); err != nil {
-		return SaveReport{Written: scope.written}, DeliveryReport{}, err
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
 
 	// Number every member's stream and BUILD the delivery batch BEFORE the
@@ -956,7 +952,8 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	view := scope.enc.WorldView()
 	numbers, cursors, err := buildStreamNumbers(scope.enc, &view, scope.data.Streams)
 	if err != nil {
-		return SaveReport{Written: scope.written}, DeliveryReport{}, err
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
 	scope.numbers = numbers
 	if !cursorsEqual(scope.data.Streams, cursors) {
