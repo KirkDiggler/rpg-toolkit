@@ -83,8 +83,15 @@ func (a announcerSeam) Announce(
 		Standing:     a.scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   a.m.turnDriver,
-		Machine:      machine,
-		Roller:       &diceSeam{roller: a.m.dice},
+		// The concealment pair (rpg-toolkit#1378), bound to the same live
+		// scope openForWrite and adopt bind — the one-seam consistency law:
+		// a concealed world refuses to reconstruct without them, and
+		// resolution carries them without consulting either, since no verb
+		// runs inside an interaction.
+		CheckResolver: checkSeam(a),
+		Witness:       witnessSeam{scope: a.scope},
+		Machine:       machine,
+		Roller:        &diceSeam{roller: a.m.dice},
 	})
 	if err != nil {
 		return fmt.Errorf("announce: %w", translateResolution(err))

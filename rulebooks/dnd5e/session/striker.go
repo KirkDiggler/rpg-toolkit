@@ -120,9 +120,16 @@ func (s strikerSeam) Strike(
 		Standing:     s.scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   s.m.turnDriver,
-		Cost:         cost,
-		Machine:      machine,
-		Roller:       &diceSeam{roller: s.m.dice},
+		// The concealment pair (rpg-toolkit#1378), bound to the same live
+		// scope openForWrite and adopt bind — the one-seam consistency law:
+		// a concealed world refuses to reconstruct without them, and
+		// resolution carries them without consulting either, since no verb
+		// runs inside an interaction.
+		CheckResolver: checkSeam(s),
+		Witness:       witnessSeam{scope: s.scope},
+		Cost:          cost,
+		Machine:       machine,
+		Roller:        &diceSeam{roller: s.m.dice},
 	})
 	if err != nil {
 		return fmt.Errorf("strike: %w", translateResolution(err))

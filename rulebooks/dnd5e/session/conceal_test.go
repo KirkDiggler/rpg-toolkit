@@ -407,9 +407,7 @@ func (s *ConcealSuite) TestASearcherWithNoSheetIsRefusedBeforeTheRoomIsLookedAt(
 		s.Require().NoError(err)
 	}
 
-	// Spawned INSIDE the vault: out of everyone's sight, so no fight forms —
-	// see TestAFightOnAConcealedDungeonFailsClosedForNow for why a fight
-	// cannot yet form on a concealed world at all.
+	// Spawned INSIDE the vault: out of everyone's sight, so no fight forms.
 	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()))
 	spawnSkeleton(hexCell(9, 4))
 	_, secret := s.mgr.Search(ctx, &session.SearchInput{
@@ -426,28 +424,69 @@ func (s *ConcealSuite) TestASearcherWithNoSheetIsRefusedBeforeTheRoomIsLookedAt(
 		"the refusal is decided by the sheet, never by the room's contents")
 }
 
-// TestAFightOnAConcealedDungeonFailsClosedForNow is a TRIPWIRE, not a wish:
-// forming a fight runs the announcer, the announcer resolves through the
-// resolution module, and resolution — pinned at a version older than the
-// concealment capabilities — reloads the world WITHOUT a CheckResolver or
-// Witness, which a concealed field refuses at the door. So combat on a
-// concealed dungeon fails closed and loudly today (never silently
-// half-runs), and it stays that way until resolution grows the two
-// capability inputs — the cross-module follow-up rpg-toolkit#1378, whose
-// contract point 3 is this scene. When that lands and this scene starts
-// failing, delete it and pin the fight instead.
-func (s *ConcealSuite) TestAFightOnAConcealedDungeonFailsClosedForNow() {
+// TestAFightFormsOnAConcealedDungeon is the tripwire's promised replacement
+// (rpg-toolkit#1378): TestAFightOnAConcealedDungeonFailsClosedForNow pinned
+// that fight formation refused while resolution reloaded the world without
+// the concealment capabilities, and documented its own deletion the day
+// resolution grew them. It has. Every Resolve site now hands down the same
+// checkSeam and witnessSeam the seam's own verbs bind, so the exact path
+// that refused — fight formation, the announcer, resolution.Resolve — is
+// the one this scene drives to a formed fight.
+//
+// The second half is the law the tripwire existed to protect while the path
+// was closed: COMBAT IS NOT A REVEAL. The fight forms on a world already
+// carrying a real found fact (alice searched first, so the reload replays
+// history, not a virgin blob), and mid-fight each member still gets exactly
+// their own answer — the finder keeps her door, and the non-knower's
+// projection is the never-authored one, byte-identical to what he was told
+// before anything spawned: the hall's 36 cells and not a doorway on it.
+func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 	ctx := context.Background()
-	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()))
+	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()), sharpEyed("alice"), dullEyed("bob"))
 
-	// In plain view of the hall: contact on arrival, a fight tries to form.
-	_, err := s.mgr.Spawn(ctx, &session.SpawnInput{
+	// alice finds the veil before contact: the world under the fight holds
+	// a detection fact only she may be shown.
+	_, err := s.mgr.Search(ctx, &session.SearchInput{
+		Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err)
+
+	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+
+	// In plain view of the hall: contact on arrival, and the fight FORMS.
+	_, err = s.mgr.Spawn(ctx, &session.SpawnInput{
 		Session: "sess", ID: "skel-1", Ref: refs.Monsters.Skeleton().String(),
 		Position: hexCell(4, 4),
 	})
-	s.Require().Error(err, "the fight cannot form: resolution reloads the world without the "+
-		"concealment capabilities and the world refuses to build")
-	s.Contains(err.Error(), "no check resolver capability")
+	s.Require().NoError(err,
+		"the fight forms: resolution carries CheckResolver and Witness down to its reload now")
+
+	var started []session.Event
+	for _, e := range s.stream.published {
+		if e.Kind == session.EventFightStarted {
+			started = append(started, e)
+		}
+	}
+	s.Require().NotEmpty(started, "the spawn pulled the hall into one bubble")
+	body, ok := started[0].Body.(session.FightStartedBody)
+	s.Require().True(ok, "got %T", started[0].Body)
+	s.Contains(body.Members, "skel-1")
+	s.Contains(body.Members, "alice")
+
+	// Concealment law, knower's side: the fight did not take her door away.
+	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Len(doors.Doors, 1, "the finder keeps the veil mid-fight")
+	s.Equal("veil", doors.Doors[0].ID)
+
+	// Non-knower's side: bob's mid-fight projection is the never-authored
+	// answer — and not merely the right shape, the SAME BYTES the seam gave
+	// him before the fight existed.
+	during, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Len(during.Cells, 36, "the vault still does not exist for bob")
+	s.Empty(during.Doorways, "and no doorway leads to it")
+	s.Equal(before, during, "combat taught a non-knower nothing: projection unchanged, byte for byte")
 }
 
 // TestTheResolverAppliesTheBestListedApproach shows the selection rule
