@@ -152,6 +152,26 @@ type Input struct {
 	// would be this package deciding a rule it holds no opinion on. So it is
 	// handed over, the way Deciders, Initiative, Standing and Sight above are.
 	TurnDriver encounter.TurnDriver
+
+	// CheckResolver resolves an authored find check when a member searches.
+	// REQUIRED EXACTLY WHEN World CARRIES CONCEALED STRUCTURE, and legally
+	// nil otherwise — which is why Validate says nothing about it, unlike the
+	// five capabilities above. Whether this blob conceals anything is written
+	// in the blob, the composition's load door already refuses a concealed
+	// one without the capability (encounter.ErrNoCheckResolver,
+	// rpg-toolkit#1371), and a gate here — in either direction — would be
+	// this package reading a world it only carries.
+	//
+	// Carried, never consulted, exactly like Standing and Sight: searching is
+	// a verb of the composition's, and this package calls no verbs. It is
+	// handed over so a concealed world can be LOADED at all — which is what a
+	// fight on a concealed dungeon is (rpg-toolkit#1378).
+	CheckResolver encounter.CheckResolver
+
+	// Witness answers who currently perceives an open concealed door.
+	// Required, refused, carried and never consulted under exactly
+	// CheckResolver's rule (encounter.ErrNoWitness), one line up.
+	Witness encounter.Witness
 }
 
 // Validate reports whether this input describes a resolvable interaction.
@@ -292,6 +312,12 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		Standing:   in.Standing,
 		Sight:      in.Sight,
 		TurnDriver: in.TurnDriver,
+		// The concealment capabilities (rpg-toolkit#1378), handed over exactly
+		// as supplied: nil stays nil, so a plain world loads untouched and a
+		// concealed one is refused or admitted by the load door's own rule,
+		// never softened here.
+		CheckResolver: in.CheckResolver,
+		Witness:       in.Witness,
 		// A construction-only Striker (rpg-project#254): this package runs
 		// ONE interaction machine against a loaded snapshot and returns — it
 		// never drives a monster's whole turn (that is driveMonsterTurns'
