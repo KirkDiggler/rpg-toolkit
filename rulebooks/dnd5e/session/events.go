@@ -68,22 +68,24 @@ type DeliveryReport struct {
 	Failed bool `json:"failed,omitempty"`
 }
 
-// publish fans out everything recorded at or after the baseline sequence.
+// deliver hands an already-built batch to the stream.
 //
 // Called only AFTER the save has landed (S9). Announcing a fact that failed to
 // persist is the one ordering mistake that cannot be recovered from: a client
 // told the ogre died, and a world in which it did not, and no sequence gap to
-// betray the difference.
+// betray the difference. The batch itself is BUILT BEFORE the save
+// ([Manager.commit], from the pure view and the live Story), because the
+// save-point ToData trims the log — a batch projected afterwards would
+// silently drop whatever a big verb's delta lost to the trim. Building
+// early and delivering late keeps both laws.
 //
 // Delivery is best effort (S10). A failure is reported and the verb still
-// succeeds, because the log remains the truth and gapless sequences let a
-// client detect what it missed. Failing the verb instead would roll back
-// nothing — the world has already changed — and would turn a transient stream
-// outage into a spurious error the host must decide how to interpret.
-func (m *Manager) publish(
-	ctx context.Context, scope *writeScope, snapshot *encounter.EncounterData,
-) DeliveryReport {
-	events := m.projectEvents(scope, snapshot)
+// succeeds, because the log remains the truth and per-recipient dense
+// sequences let a client detect what it missed. Failing the verb instead
+// would roll back nothing — the world has already changed — and would turn a
+// transient stream outage into a spurious error the host must decide how to
+// interpret.
+func (m *Manager) deliver(ctx context.Context, events []Event) DeliveryReport {
 	if len(events) == 0 {
 		return DeliveryReport{}
 	}
@@ -95,6 +97,9 @@ func (m *Manager) publish(
 }
 
 // projectEvents turns the beats a verb recorded into one event per recipient.
+//
+// It reads the LIVE story — called before the save-point ToData, while the
+// log still holds the verb's whole delta (see [Manager.deliver]).
 //
 // The audience question is answered by asking the composition, not by us: for
 // each member, its own Story is queried from the baseline, and whatever it

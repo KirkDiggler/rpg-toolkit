@@ -312,9 +312,12 @@ func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]Event, error) {
 		return nil, fmt.Errorf("story: %w", translate(err))
 	}
 
-	world := enc.ToData()
+	// A pure view, not ToData: a read must not trim the log it is reading
+	// (encounter v0.43.0, #1385) — and the floor it needs is exactly what
+	// the view's retained entries answer.
+	view := enc.WorldView()
 	seqs, count, err := numberEntries(
-		in.Member, entries, data.Streams[in.Member], retainedFloor(world.Log))
+		in.Member, entries, data.Streams[in.Member], retainedFloor(view.Log))
 	if err != nil {
 		return nil, fmt.Errorf("story: %w", err)
 	}

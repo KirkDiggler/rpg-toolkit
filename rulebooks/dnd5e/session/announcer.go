@@ -73,7 +73,9 @@ func (a announcerSeam) Announce(
 		return fmt.Errorf("announce: %w", err)
 	}
 
-	world := enc.ToData()
+	// A pure view for resolution's Input.World — a mid-verb read, never the
+	// storage boundary (encounter v0.43.0, #1385).
+	world := enc.WorldView()
 	out, err := resolution.Resolve(ctx, &resolution.Input{
 		World:        world,
 		Participants: cast,

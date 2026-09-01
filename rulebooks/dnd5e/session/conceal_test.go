@@ -849,6 +849,109 @@ func (s *ConcealSuite) TestPerRecipientNumberingSurvivesLoadAndTrim() {
 	s.Require().ErrorIs(err, session.ErrStoryTrimmed)
 }
 
+// TestOneVerbBiggerThanTheRetentionWindowCommitsWhole is the review's C1
+// probe (PR #1377 review; ruled: RETENTION IS STORAGE-ONLY and may never
+// affect delivery or numbering), buildable only on encounter v0.43.0's
+// storage-boundary retention (#1381) and pure WorldView (#1385). One Move
+// whose path is DefaultRetention+8 cells appends more beats than the window
+// holds: under per-append trimming this destroyed its own early beats before
+// commit could number them — a permanent, opaque refusal of an ordinary
+// walk. Now the whole delta is numbered and DELIVERED before the save-point
+// ToData trims what storage keeps; nothing a member was owed is lost to a
+// policy about disk.
+//
+// This is also the single-verb variant of
+// TestPerRecipientNumberingSurvivesLoadAndTrim: the trim happens inside ONE
+// verb here (that scene's forty beats arrive one verb at a time), and the
+// reload at the end proves the cursors carried the un-restartable count
+// across it.
+func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
+	ctx := context.Background()
+	s.startWith(plainHallWorld(s.T()))
+
+	// A short walk first: cursors exist and are non-zero, the reviewer's
+	// own reproduction precondition (a fresh session's zero cursors would
+	// dodge the refusal by seeding).
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{cell(3, 1)}})
+	s.Require().NoError(err)
+	warmup := map[string][]session.Event{}
+	for _, name := range []string{"alice", "bob", "carol"} {
+		warmup[name] = eventsFor(s.stream.published, name)
+	}
+
+	// THE PROBE: one verb, DefaultRetention+8 beats. It must commit, and
+	// every member must be delivered every beat.
+	steps := encounter.DefaultRetention + 8
+	path := make([]spatial.Position, 0, steps)
+	for i := 0; i < steps; i++ {
+		to := cell(2, 1)
+		if i%2 == 1 {
+			to = cell(3, 1)
+		}
+		path = append(path, to)
+	}
+	s.stream.published = nil
+	out, err := s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "bob", Path: path})
+	s.Require().NoError(err, "a walk longer than the retention window is an ordinary player action")
+	s.Require().Len(out.Steps, steps, "the whole walk happened")
+
+	for _, name := range []string{"alice", "bob", "carol"} {
+		events := eventsFor(s.stream.published, name)
+		s.Require().Len(events, steps,
+			"%s is delivered every beat of the big verb — retention govern storage, not delivery", name)
+		whole := append(append([]session.Event{}, warmup[name]...), events...)
+		s.assertDense(whole, name)
+	}
+
+	// The mover's own output speaks their numbering for every step, densely.
+	for i := 1; i < len(out.Steps); i++ {
+		s.Equal(out.Steps[i-1].Seq+1, out.Steps[i].Seq)
+	}
+
+	// Storage kept only the window — retention did its one job, at the one
+	// boundary. Computed, not echoed: the blob's floor is NextSeq minus the
+	// window.
+	world, err := s.encounters.GetEncounter(ctx, "world")
+	s.Require().NoError(err)
+	s.Require().Len(world.Log.Entries, encounter.DefaultRetention,
+		"the persisted log holds exactly the window")
+	s.Equal(world.Log.NextSeq-uint64(encounter.DefaultRetention), world.Log.Entries[0].Seq)
+
+	// Catch-up below the floor refuses honestly, in bob's own numbering; at
+	// the oldest surviving number it answers, byte-equal to what was
+	// delivered live.
+	_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "bob", FromSeq: 1})
+	s.Require().ErrorIs(err, session.ErrStoryTrimmed)
+
+	bob := eventsFor(s.stream.published, "bob")
+	tail := bob[len(bob)-4:]
+	replay, err := s.mgr.Story(ctx, &session.StoryInput{
+		Session: "sess", Member: "bob", FromSeq: tail[0].Seq})
+	s.Require().NoError(err)
+	s.Require().Len(replay, len(tail))
+	for i := range tail {
+		s.Equal(tail[i], replay[i])
+	}
+
+	// And the count survives a load that happened entirely after the
+	// single-verb trim: a fresh Manager continues bob's stream exactly.
+	live := &fakeStream{}
+	mgr2, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Pass{},
+		Sessions: s.sessions, Encounters: s.encounters,
+		Characters: s.characters, Events: live,
+	})
+	s.Require().NoError(err)
+	_, err = mgr2.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "bob", Path: []spatial.Position{cell(2, 1)}})
+	s.Require().NoError(err)
+	next := eventsFor(live.published, "bob")
+	s.Require().Len(next, 1)
+	s.Equal(bob[len(bob)-1].Seq+1, next[0].Seq,
+		"the numbering neither restarted nor skipped across the in-verb trim and the reload")
+}
+
 // TestPlainDungeonNumberingIsIdentityForAFoundingMember shows exactly which
 // half of the numbering change touches a world with no concealment: none,
 // for a member whose story is the whole story — their numbers ARE the

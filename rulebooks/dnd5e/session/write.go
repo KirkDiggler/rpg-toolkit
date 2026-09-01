@@ -817,7 +817,7 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 // for this case is the fix, and it is not this wave's.
 func (m *Manager) persist(
 	ctx context.Context, scope *writeScope, data encounter.EncounterData,
-) (SaveReport, *encounter.EncounterData, error) {
+) (SaveReport, error) {
 
 	// The report opens with what the verb already made durable rather than
 	// starting from nothing, which is the whole of rpg-toolkit#1056: a swing
@@ -830,7 +830,7 @@ func (m *Manager) persist(
 
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
 		report.Failed = []string{"encounter:" + scope.encounter}
-		return report, nil, &SaveError{
+		return report, &SaveError{
 			Report: report,
 			Err:    fmt.Errorf("saving world: %w", err),
 		}
@@ -838,7 +838,7 @@ func (m *Manager) persist(
 	report.Written = append(report.Written, "encounter:"+scope.encounter)
 
 	if !scope.touched {
-		return report, &data, nil
+		return report, nil
 	}
 
 	if err := m.sessions.SaveSession(ctx, scope.data); err != nil {
@@ -847,13 +847,13 @@ func (m *Manager) persist(
 		// to tell a total failure from a half one, which is the difference
 		// between "retry the verb" and "the world moved but its record did not".
 		report.Failed = append(report.Failed, "session:"+scope.session)
-		return report, nil, &SaveError{
+		return report, &SaveError{
 			Report: report,
 			Err:    fmt.Errorf("saving session: %w", err),
 		}
 	}
 	report.Written = append(report.Written, "session:"+scope.session)
-	return report, &data, nil
+	return report, nil
 }
 
 // commit saves the mutated world and then fans out what it recorded.
@@ -871,12 +871,18 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return SaveReport{Written: scope.written}, DeliveryReport{}, err
 	}
 
-	// Number every member's stream BEFORE the save, so the advanced cursors
-	// ride the same persist as the beats they count (stream.go). A failure
-	// here fails the verb before anything lands — R5's atomicity, and the
-	// fail-closed arm of the numbering design.
-	world := scope.enc.ToData()
-	numbers, cursors, err := buildStreamNumbers(scope.enc, &world, scope.data.Streams)
+	// Number every member's stream and BUILD the delivery batch BEFORE the
+	// save-point ToData, from a pure WorldView and the live Story — the one
+	// ordering retention-at-the-storage-boundary makes load-bearing
+	// (encounter v0.43.0, #1381/#1385): ToData trims, so a verb whose delta
+	// outgrew the retention window would lose its own early beats to any
+	// read that came after it. Numbering failure fails the verb before
+	// anything lands — R5's atomicity, and the fail-closed arm of the
+	// numbering design. Delivery still WAITS for the save (S9): computed
+	// here, handed to the stream only after persist reports the world
+	// durable.
+	view := scope.enc.WorldView()
+	numbers, cursors, err := buildStreamNumbers(scope.enc, &view, scope.data.Streams)
 	if err != nil {
 		return SaveReport{Written: scope.written}, DeliveryReport{}, err
 	}
@@ -885,12 +891,18 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		scope.data.Streams = cursors
 		scope.touched = true
 	}
+	events := m.projectEvents(scope, &view)
 
-	report, snapshot, err := m.persist(ctx, scope, world)
+	// THE storage boundary: the one ToData in this package, and the one
+	// place retention runs. Everything before this line read the whole
+	// verb's delta; everything after reads only what storage keeps.
+	world := scope.enc.ToData()
+
+	report, err := m.persist(ctx, scope, world)
 	if err != nil {
 		return report, DeliveryReport{}, err
 	}
-	return report, m.publish(ctx, scope, snapshot), nil
+	return report, m.deliver(ctx, events), nil
 }
 
 // exitDissolvedCombatants clears the action economy of every player whose
@@ -944,7 +956,9 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // moves past that beat — never retried again (Copilot's own finding on
 // PR #1222).
 func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
-	data := scope.enc.ToData()
+	// A pure view, not ToData: this is a mid-verb roster read, and the
+	// storage boundary belongs to commit alone (encounter v0.43.0, #1385).
+	data := scope.enc.WorldView()
 
 	// Kind, from the ENCOUNTER's own authoritative roster — never inferred
 	// from whether an ID happens to load out of the character repository

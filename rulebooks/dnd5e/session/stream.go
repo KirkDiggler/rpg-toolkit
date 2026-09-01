@@ -99,25 +99,33 @@ func (n *streamNumbers) deliveredSeq(member string, global uint64) uint64 {
 }
 
 // buildStreamNumbers computes every ever-member's numbering from the persisted
-// cursors and the retained record, and returns the advanced cursors for this
+// cursors and the LIVE record, and returns the advanced cursors for this
 // verb's save.
+//
+// view is a pure [encounter.Encounter.WorldView] taken BEFORE the save-point
+// ToData (encounter v0.43.0): its log holds everything appended since load —
+// no mid-verb trim can hide a big verb's own delta from the numbering — and
+// its oldest entry IS the loaded blob's floor, since nothing trims between
+// load and the storage boundary. That is what makes retention storage-only
+// here: what gets numbered and delivered is the verb's whole truth, and what
+// gets trimmed is decided later, at ToData, about storage alone.
 //
 // Deterministic by construction: the answer is a function of persisted data
 // (cursors, entries) alone, so the same state numbers the same way on every
 // load — which is the whole survives-load argument.
 func buildStreamNumbers(
-	enc *encounter.Encounter, world *encounter.EncounterData, cursors map[string]StreamCursor,
+	enc *encounter.Encounter, view *encounter.EncounterData, cursors map[string]StreamCursor,
 ) (*streamNumbers, map[string]StreamCursor, error) {
-	numbers := &streamNumbers{perMember: make(map[string]map[uint64]uint64, len(world.EverMembers))}
-	advanced := make(map[string]StreamCursor, len(world.EverMembers))
+	numbers := &streamNumbers{perMember: make(map[string]map[uint64]uint64, len(view.EverMembers))}
+	advanced := make(map[string]StreamCursor, len(view.EverMembers))
 
 	watermark := uint64(0)
-	if world.Log.NextSeq > 0 {
-		watermark = world.Log.NextSeq - 1
+	if view.Log.NextSeq > 0 {
+		watermark = view.Log.NextSeq - 1
 	}
-	floor := retainedFloor(world.Log)
+	floor := retainedFloor(view.Log)
 
-	for _, member := range world.EverMembers {
+	for _, member := range view.EverMembers {
 		entries, err := enc.Story(&encounter.StoryInput{Audience: member, AfterSeq: 0})
 		if err != nil {
 			return nil, nil, fmt.Errorf("stream for %q: %w", member, translate(err))
