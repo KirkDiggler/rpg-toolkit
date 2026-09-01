@@ -239,6 +239,18 @@ func dullEyed(id string) *character.Data {
 	}
 }
 
+// armedSearcher is a finder who can also fight: attack_test.go's armedFighter
+// — longsword, martial proficiency, STR 16 — given proficient perception, so
+// ONE member can find the veil and then swing inside the fight it does not go
+// away for. WIS 12 (+1) and proficiency (+2) put testDice's flat 10 at 13,
+// one over the veil's DC 12; investigation stays +0 against DC 14, so she
+// finds it by exactly the route and margin sharpEyed does.
+func armedSearcher(id string) *character.Data {
+	sheet := armedFighter(id)
+	sheet.Skills = map[skills.Skill]shared.ProficiencyLevel{skills.Perception: shared.Proficient}
+	return sheet
+}
+
 type ConcealSuite struct {
 	suite.Suite
 
@@ -253,13 +265,23 @@ func TestConcealSuite(t *testing.T) {
 	suite.Run(t, new(ConcealSuite))
 }
 
-// startWith wires a fresh manager around the given world and cast.
+// startWith wires a fresh manager around the given world and cast. Monster
+// turns pass: every scene here but the fought-in one is about what a member
+// reads and is told, never about what a monster does on its own turn.
 func (s *ConcealSuite) startWith(world *encounter.EncounterData, cast ...*character.Data) {
+	s.startDriven(session.Pass{}, world, cast...)
+}
+
+// startDriven is startWith with the monster TurnDriver named, so one scene can
+// let the real behaviour take a monster's turn while the rest stay quiet.
+func (s *ConcealSuite) startDriven(
+	driver session.TurnDriver, world *encounter.EncounterData, cast ...*character.Data,
+) {
 	s.stream = &fakeStream{}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(cast...)
 	mgr, err := session.NewManager(&session.Config{
-		Dice: testDice{}, TurnDriver: session.Pass{},
+		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: s.stream,
 	})
@@ -440,6 +462,10 @@ func (s *ConcealSuite) TestASearcherWithNoSheetIsRefusedBeforeTheRoomIsLookedAt(
 // their own answer — the finder keeps her door, and the non-knower's
 // projection is the never-authored one, byte-identical to what he was told
 // before anything spawned: the hall's 36 cells and not a doorway on it.
+//
+// Formation is where this scene stops. What happens INSIDE the formed fight —
+// the three mid-fight Resolve sites this one never reaches — belongs to
+// TestTheFightOnAConcealedDungeonIsFoughtIn below (rpg-toolkit#1398).
 func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()), sharpEyed("alice"), dullEyed("bob"))
@@ -487,6 +513,150 @@ func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 	s.Len(during.Cells, 36, "the vault still does not exist for bob")
 	s.Empty(during.Doorways, "and no doorway leads to it")
 	s.Equal(before, during, "combat taught a non-knower nothing: projection unchanged, byte for byte")
+}
+
+// TestTheFightOnAConcealedDungeonIsFoughtIn carries the scene above past the
+// moment of formation: the fight that forms on a concealed world is then
+// FOUGHT IN — one honest round of it — and every mid-fight verb reloads that
+// world through resolution's door on the way.
+//
+// # Why a second scene exists (rpg-toolkit#1398)
+//
+// Formation drives exactly one of session's four resolution.Resolve sites,
+// the announcer's. PR #1397 supplied CheckResolver and Witness at all four,
+// and its review MEASURED the other three by mutation: dropping the pair at
+// striker.go, attack.go or activate.go each left the whole suite green. On a
+// concealed world a dropped pair is not a subtle regression — it is
+// encounter's load door refusing to reconstruct — so a refactor could ship
+// green and the first swing inside a concealed dungeon would fail mid-fight,
+// which is the exact failure #1378 existed to close. One round of combat is
+// the whole pin:
+//
+//   - alice, the finder, swings her longsword at the zombie — attack.go
+//   - bob, who never found the veil, Dodges on his own turn — activate.go
+//   - the zombie takes its turn and slams back — striker.go
+//
+// Measured the same way once it was written — drop the pair at one site, run
+// the whole suite, put the file back with cp — and all three mutants that
+// survived before die HERE, this scene the only failure in every round:
+//
+//	attack.go    attack: resolution: load world: load encounter: encounter: no check resolver capability
+//	activate.go  activate: … the same refusal, from Dodge's own reload
+//	striker.go   endturn: end turn "carol": drive monster turns "zed-1": execute: strike: strike: … the same refusal
+//
+// announcer.go's mutant still fails TestAFightFormsOnAConcealedDungeon, and
+// fails this scene too now — the one site whose coverage rested on a single
+// test has two.
+//
+// # And the law the tripwire existed to protect
+//
+// COMBAT IS NOT A REVEAL, now through a FOUGHT round rather than a formed
+// one. bob watches a swing go past, spends his own turn dodging, and shares
+// the bubble with a monster whose own turn reloaded the same concealed world;
+// his Atlas afterwards is byte-identical to the never-authored answer he was
+// handed before the zombie existed.
+func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
+	ctx := context.Background()
+	// The real monster behaviour, not Pass: the monster's own turn is what
+	// reaches strikerSeam.Strike, and a passing driver never gets there.
+	s.startDriven(session.Behavior(), concealedWorld(s.T(), encounter.DoorIsClosed()),
+		armedSearcher("alice"), armedFighter("bob"), dullEyed("carol"))
+
+	// alice finds the veil before contact, so every reload below replays a
+	// world carrying a real detection fact rather than a virgin blob.
+	_, err := s.mgr.Search(ctx, &session.SearchInput{
+		Session: "sess", Member: "alice", Region: "hall"})
+	s.Require().NoError(err)
+
+	before, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+
+	// Contact in the hall, one cell from alice: the fight forms, and she
+	// leads the order.
+	//
+	// A ZOMBIE RATHER THAN THE FORMATION SCENE'S SKELETON, for two fixture
+	// reasons this scene needs and that one does not: 22 hit points survive
+	// alice's longsword (testDice's flat d8 plus STR makes 13, and a
+	// 13-hit-point skeleton dies on the spot, ending the fight before anyone
+	// else can act), and slam is its only attack, so the monster whose turn
+	// drives the striker swings at the member standing next to it rather than
+	// choosing a bow target across the hall.
+	spawned, err := s.mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "zed-1", Ref: refs.Monsters.Zombie().String(),
+		Position: hexCell(1, 2),
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(spawned.Formed, "a monster in plain view and in reach forms the fight on the spot")
+	s.Equal([]string{"alice", "bob", "carol", "zed-1"}, spawned.Formed.Order)
+
+	// THE SWING — attack.go's own reload of the concealed world. Plain dice
+	// on purpose: nothing about this gate is about the faces.
+	swing, err := s.mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "zed-1",
+		DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "alice"),
+	})
+	s.Require().NoError(err,
+		"a swing inside a concealed dungeon reconstructs the world through resolution's load door")
+	s.Equal(10, swing.Roll, "testDice's flat d20")
+	s.Equal(15, swing.Total, "10 + STR(+3) + proficiency(+2) — the longsword compiles, it is not waved through")
+	s.Equal(8, swing.Against, "the zombie's own armour class")
+	s.True(swing.Hit, "15 beats 8")
+	s.Equal(13, swing.Damage, "flat d8 plus STR(+3) — not enough to drop a 22-hit-point zombie")
+
+	endTurn := func(who string) *session.EndTurnOutput {
+		out, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{
+			Session: "sess", Member: who,
+			DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", who)})
+		s.Require().NoError(err)
+		return out
+	}
+	s.Equal("bob", endTurn("alice").Next)
+
+	// THE ACTIVATION — activate.go's reload, on the turn of the member who
+	// knows nothing about the veil. Dodge is the ability every character
+	// already carries, so this needs no fixture of its own.
+	dodged, err := s.mgr.Activate(ctx, &session.ActivateInput{
+		Session: "sess", Member: "bob",
+		DeclarationID: activationSelector(s.T(), s.mgr, "bob", "dnd5e:combat_abilities:dodge"),
+	})
+	s.Require().NoError(err,
+		"activating inside a concealed dungeon reconstructs the world through the same door")
+	s.Equal("dnd5e:combat_abilities:dodge", dodged.Ability)
+
+	s.Equal("carol", endTurn("bob").Next)
+
+	// THE MONSTER'S TURN — striker.go's reload, driven inside carol's EndTurn
+	// because the zombie is next in the order and no player ends its turn.
+	s.stream.published = nil
+	wrapped := endTurn("carol")
+	s.True(wrapped.RoundWrapped, "the zombie closed the round")
+	s.Equal("alice", wrapped.Next, "which wraps back to whoever led it")
+
+	swungBack := false
+	for _, e := range eventsFor(s.stream.published, "alice") {
+		switch body := e.Body.(type) {
+		case session.StruckBody:
+			swungBack = swungBack || body.Attacker == "zed-1"
+		case session.MissedBody:
+			swungBack = swungBack || body.Attacker == "zed-1"
+		}
+	}
+	s.True(swungBack, "the zombie's own turn resolved a real strike through the striker seam")
+
+	// Knower's side: a fought round did not take her door away.
+	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Len(doors.Doors, 1, "the finder still holds the veil after the round")
+	s.Equal("veil", doors.Doors[0].ID)
+
+	// Non-knower's side: the never-authored answer, and the SAME BYTES he was
+	// given before any of this happened.
+	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Len(after.Cells, 36, "the vault still does not exist for bob")
+	s.Empty(after.Doorways, "and no doorway leads to it")
+	s.Equal(before, after,
+		"a fought round taught a non-knower nothing: projection unchanged, byte for byte")
 }
 
 // TestTheResolverAppliesTheBestListedApproach shows the selection rule
