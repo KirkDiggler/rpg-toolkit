@@ -479,7 +479,9 @@ func copyApproaches(approaches []CheckApproach) []CheckApproach {
 // joined by "or" when the author priced several. RENDERING, NOT
 // INTERPRETATION: every word is the author's, and nothing is compared; the
 // label exists so a refused walker is told the stakes, exactly as the
-// single-approach refusal told them.
+// single-approach refusal told them. Every route is named by whatever it
+// carries — Ability is legally empty at this seam (validateCheck says why),
+// and a tool-only route is still a route the walker deserves to hear about.
 func lockLabel(lock Lock) string {
 	parts := make([]string, 0, len(lock.Approaches))
 	for _, a := range lock.Approaches {
@@ -489,6 +491,8 @@ func lockLabel(lock Lock) string {
 			label += fmt.Sprintf(" (%s, %s)", a.Ability, a.Tool)
 		case a.Ability != "":
 			label += fmt.Sprintf(" (%s)", a.Ability)
+		case a.Tool != "":
+			label += fmt.Sprintf(" (%s)", a.Tool)
 		}
 		parts = append(parts, label)
 	}

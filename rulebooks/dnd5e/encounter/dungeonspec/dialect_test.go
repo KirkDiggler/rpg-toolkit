@@ -290,6 +290,114 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		s.Contains(errs[0].Message, "a walk-in room cannot be a secret")
 	})
 
+	s.Run("the minimal secret closet compiles", func() {
+		// The review probe that caught the entrance-local first draft
+		// (rpg-project#351's reformulation): a visible start room whose
+		// ONLY crossing is the one concealed door is slice 1's smallest
+		// honest dungeon, and the frontier form admits it.
+		closet := `
+version: 2
+key: closet
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+  - id: closet
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[2,0]]
+start: [0, 0]
+doors:
+  - id: secret
+    edges: [[[1,0],[2,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+`
+		s.Empty(s.validate(closet))
+	})
+
+	s.Run("a two-room secret suite compiles", func() {
+		// Everything wholly inside hidden space is nobody's business: the
+		// suite's interior door between two concealed rooms obliges nobody,
+		// and only the one frontier crossing must be the concealed door.
+		suite := `
+version: 2
+key: suite
+orientation: pointy
+void: opaque
+regions:
+  - id: study
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[2,0]]
+  - id: sanctum
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[3,0]]
+start: [0, 0]
+doors:
+  - id: secret
+    edges: [[[1,0],[2,0]]]
+    closed: true
+    concealed: [{ ability: perception, dc: 15 }]
+  - id: inner
+    edges: [[[2,0],[3,0]]]
+    closed: true
+`
+		s.Empty(s.validate(suite))
+	})
+
+	s.Run("a two-edge gate refuses once per door, not per edge", func() {
+		// A door is ONE state over its edges (rpg-toolkit#1123), so a
+		// plain two-edge gate into a concealed vault is one way in and one
+		// refusal — not one per crossing. Rows 0 and 2 are both even, so
+		// under pointy-top the seam has exactly the two straight crossings
+		// the gate stands in and no staggered third.
+		gate := `
+version: 2
+key: gate
+orientation: pointy
+void: opaque
+regions:
+  - id: hallway
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0]]
+      - [[0,2],[1,2]]
+  - id: vault
+    archetype: crypt
+    lighting: { intensity: 1 }
+    concealed: true
+    cells:
+      - [[2,0],[2,2]]
+start: [0, 0]
+doors:
+  - id: gate
+    edges: [[[1,0],[2,0]],[[1,2],[2,2]]]
+    closed: true
+`
+		errs := s.validate(gate)
+		s.Equal([]string{"regions[1].concealed"}, paths(errs))
+		s.Contains(errs[0].Message, `its door "gate" (doors[0])`)
+		s.Contains(errs[0].Message, "a walk-in room cannot be a secret")
+	})
+
 	s.Run("one open door and one concealed shortcut stays legal", func() {
 		// The room is no secret, the shortcut is (rpg-project#351): the
 		// hall keeps its two plain entrances, and a concealed inner door

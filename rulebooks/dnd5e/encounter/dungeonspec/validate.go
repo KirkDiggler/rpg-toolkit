@@ -441,35 +441,70 @@ func (v *validation) place() {
 // tested.
 var axialSteps = [6][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1}}
 
-// concealment is the authoring-coherence check (rpg-project#351: the room
-// hides with its door). A region's concealment is DECLARED, never cascaded
-// from its doors — but the two cannot be authored apart:
+// concealment is the authoring-coherence check (rpg-project#351,
+// reformulated after #1370's review round caught the first form
+// direction-blind). The invariant is boundary-shaped, not entrance-local:
 //
-//   - a region whose EVERY way in is a concealed door must itself be
-//     concealed, or the found door would open into a room the map never
-//     admitted was there;
-//   - a concealed region with a way in anyone can see — an unconcealed door,
-//     or a bare doorless crossing — is no secret at all.
+//	THE FRONTIER BETWEEN VISIBLE AND HIDDEN SPACE CONSISTS OF CONCEALED
+//	DOORS AND NOTHING ELSE, AND VISIBLE SPACE IS CONNECTED FROM THE
+//	PARTY START.
 //
-// A room with one open door and one concealed shortcut stays legal: the room
-// is no secret, the shortcut is. A way in is a crossing between two regions
-// that is not a wall; a door wholly inside one region is a shortcut, not an
-// entrance, and a region with no ways in at all (the whole floor of a
-// one-region dungeon) is left alone — it has nothing to cohere with.
+// A "way" is a crossing between two regions that is not a wall: a door's
+// edge, or a bare doorless gap. A door's ways count ONCE PER DOOR and
+// neighbouring pair, never once per edge — a door is one state over its
+// edges (rpg-toolkit#1123), so a two-edge gate is one way in and refuses
+// once. Two refusals fall out, both at the region's own concealed field,
+// which is the one the form-filler flips:
 //
-// Enumeration walks the authored cells in file order, so every refusal lands
-// deterministically and names the crossing in the author's own coordinates.
+//   - a way between an unconcealed region and a concealed one that is not a
+//     concealed door — a plain door, or a bare gap — is a way anyone can
+//     walk into the secret;
+//   - an unconcealed region the party cannot reach from the start over
+//     unconcealed ways through visible space is a room only a found secret
+//     ever opens, which is a secret nobody declared.
+//
+// Everything wholly inside hidden space is nobody's business — a secret
+// suite's interior doors and passages between two concealed rooms — and
+// everything wholly inside visible space is free, including a concealed
+// shortcut between two plain rooms (the room is no secret, the shortcut
+// is). The first, entrance-local draft of this check refused the minimal
+// honest dungeon — a visible start room whose only crossing is the one
+// concealed closet door — and made secret suites unauthorable; the frontier
+// form keeps every true refusal and drops the false ones.
+//
+// Deliberately NOT refused: the start's own region concealed (presence
+// pierces at runtime — the occupants begin knowing, everyone else begins
+// blind), and a region with no ways at all, concealed or not (dead content
+// is the author's own business). A dungeon that authors no concealment
+// anywhere has no frontier and is not walked at all: it compiles exactly as
+// it always did.
+//
+// Enumeration walks the authored cells in file order, so every refusal
+// lands deterministically and names the crossing in the author's own
+// coordinates.
 func (v *validation) concealment() {
 	s := v.spec
+	authored := false
+	for _, r := range s.Regions {
+		authored = authored || r.Concealed
+	}
+	for _, d := range s.Doors {
+		authored = authored || d.Concealed != nil
+	}
+	if !authored {
+		return
+	}
 
-	// One entry per distinct between-regions crossing, attributed to both
-	// regions it joins.
+	// The ways: every non-wall crossing between two regions, door ways
+	// deduped per door and pair.
 	type wayIn struct {
+		a, b      int // region indices, a <= b
 		concealed bool
 		desc      string
 	}
-	ways := make([][]wayIn, len(s.Regions))
-	seen := map[[2]spatial.Position]bool{}
+	var ways []wayIn
+	seenCrossing := map[[2]spatial.Position]bool{}
+	seenDoor := map[[3]int]bool{}
 	for _, r := range s.Regions {
 		for _, row := range r.Cells {
 			for _, at := range row {
@@ -482,55 +517,87 @@ func (v *validation) concealment() {
 						continue
 					}
 					c := normalizedCrossing(cell, n)
-					if seen[c] {
+					if seenCrossing[c] {
 						continue
 					}
-					seen[c] = true
+					seenCrossing[c] = true
 					path, claimed := v.crossings[c]
 					if claimed && strings.HasPrefix(path, "walls[") {
 						continue // a wall is not a way in
 					}
-					w := wayIn{}
+					a, b := here, there
+					if b < a {
+						a, b = b, a
+					}
+					w := wayIn{a: a, b: b}
 					if claimed {
 						d := v.doorAt[c]
+						if seenDoor[[3]int{d, a, b}] {
+							continue // one door, one way (rpg-toolkit#1123)
+						}
+						seenDoor[[3]int{d, a, b}] = true
 						w.concealed = s.Doors[d].Concealed != nil
 						w.desc = fmt.Sprintf("its door %q (doors[%d])", s.Doors[d].ID, d)
 					} else {
 						na := v.authored[n]
 						w.desc = fmt.Sprintf("the open way between [%d,%d] and [%d,%d]", at[0], at[1], na[0], na[1])
 					}
-					ways[here] = append(ways[here], w)
-					ways[there] = append(ways[there], w)
+					ways = append(ways, w)
 				}
 			}
 		}
 	}
 
+	// The frontier: a way between visible and hidden space that is not a
+	// concealed door is a hole in the secret.
+	for _, w := range ways {
+		if s.Regions[w.a].Concealed == s.Regions[w.b].Concealed || w.concealed {
+			continue
+		}
+		hidden := w.a
+		if s.Regions[w.b].Concealed {
+			hidden = w.b
+		}
+		v.fail(fmt.Sprintf("regions[%d].concealed", hidden),
+			"this room is concealed, but %s is there for anyone — "+
+				"a walk-in room cannot be a secret: conceal every way in, or unconceal the room", w.desc)
+	}
+
+	// Visible space is connected from the party start. Walked over
+	// unconcealed ways between unconcealed regions only: a concealed door
+	// does not extend visible reach (finding it is what would), and hidden
+	// space is not a corridor visible space may route through.
+	if s.Start == nil {
+		return // start defects are start()'s to report; reach needs an anchor
+	}
+	startRegion, onFloor := v.owner[v.cell(*s.Start)]
+	if !onFloor {
+		return
+	}
+	visible := map[int]bool{startRegion: true}
+	for changed := true; changed; {
+		changed = false
+		for _, w := range ways {
+			if w.concealed || s.Regions[w.a].Concealed || s.Regions[w.b].Concealed {
+				continue
+			}
+			if visible[w.a] != visible[w.b] {
+				visible[w.a], visible[w.b] = true, true
+				changed = true
+			}
+		}
+	}
+	hasWay := make([]bool, len(s.Regions))
+	for _, w := range ways {
+		hasWay[w.a], hasWay[w.b] = true, true
+	}
 	for i, r := range s.Regions {
-		p := fmt.Sprintf("regions[%d].concealed", i)
-		if r.Concealed {
-			for _, w := range ways[i] {
-				if !w.concealed {
-					v.fail(p, "this room is concealed, but %s is there for anyone — "+
-						"a walk-in room cannot be a secret: conceal every way in, or unconceal the room", w.desc)
-				}
-			}
+		if r.Concealed || visible[i] || !hasWay[i] {
 			continue
 		}
-		if len(ways[i]) == 0 {
-			continue
-		}
-		open := false
-		for _, w := range ways[i] {
-			if !w.concealed {
-				open = true
-				break
-			}
-		}
-		if !open {
-			v.fail(p, "this room can only be entered through a concealed door — "+
+		v.fail(fmt.Sprintf("regions[%d].concealed", i),
+			"this room can only be entered through a concealed door — "+
 				"conceal the room too, or give it another way in")
-		}
 	}
 }
 

@@ -533,6 +533,22 @@ func (s *DoorSuite) TestAskingADoorForWhatItHasAlreadyDoneIsRefused() {
 	s.Contains(err.Error(), "not locked", "there is nothing to beat on an unlocked door")
 }
 
+// TestARefusalNamesEveryRoute — the lock's label carries whatever each
+// approach carries: an ability, an ability with its tool, or a tool alone
+// (Ability is legally empty at this seam; the route still deserves naming).
+// Rendering, never interpretation — every word below is authored.
+func (s *DoorSuite) TestARefusalNamesEveryRoute() {
+	enc := s.doorway(encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{
+		{Ability: "str", DC: 15},
+		{Tool: "dnd5e:item:crowbar", DC: 10},
+	}}))
+
+	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})
+	s.Require().ErrorIs(err, encounter.ErrLocked)
+	s.Contains(err.Error(), "DC 15 (str)")
+	s.Contains(err.Error(), "DC 10 (dnd5e:item:crowbar)", "a tool-only route is not silently dropped")
+}
+
 // TestALockedDoorCannotBeClosedTwice: locked is closed already, so asking to
 // shut it is asking for something that has happened — and answering "done"
 // would quietly tell a caller they had shut a door somebody else's key opens.
