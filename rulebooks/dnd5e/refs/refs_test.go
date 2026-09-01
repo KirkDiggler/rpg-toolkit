@@ -83,6 +83,14 @@ func TestModuleConstants(t *testing.T) {
 	assert.Equal(t, core.Type("features"), refs.TypeFeatures)
 	assert.Equal(t, core.Type("conditions"), refs.TypeConditions)
 	assert.Equal(t, core.Type("classes"), refs.TypeClasses)
+	assert.Equal(t, core.Type("npcs"), refs.TypeNPCs)
+}
+
+func TestNPCsNamespace(t *testing.T) {
+	ref := refs.NPCs.Vendor()
+	assert.Equal(t, core.Module("dnd5e"), ref.Module)
+	assert.Equal(t, core.Type("npcs"), ref.Type)
+	assert.Equal(t, core.ID("vendor"), ref.ID)
 }
 
 func TestAbilitiesNamespace(t *testing.T) {

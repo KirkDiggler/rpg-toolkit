@@ -41,6 +41,7 @@ The three files have different jobs:
 - [Encounter](encounter/)
 - [Encounter anchoring](encounter-anchoring/)
 - [Encounter transitions](encounter-transitions/)
+- [D&D 5e NPCs](dnd5e-npcs/)
 - [Monster behavior](monster-behavior/)
 - [NPC](npc/)
 - [Play](play/)

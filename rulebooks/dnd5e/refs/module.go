@@ -38,6 +38,7 @@ const (
 	TypeArmor           core.Type = "armor"
 	TypeMonsterTraits   core.Type = "monster_traits"
 	TypeMonsters        core.Type = "monsters"
+	TypeNPCs            core.Type = "npcs"
 	TypeCombatAbilities core.Type = "combat_abilities"
 	TypeActions         core.Type = "actions"
 )
