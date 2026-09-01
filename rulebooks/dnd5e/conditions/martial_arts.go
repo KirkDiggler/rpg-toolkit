@@ -309,6 +309,15 @@ func martialArtsWeaponKind(weaponRef *core.Ref) (isUnarmed bool, monkWeapon *wea
 	return false, &weapon
 }
 
+// IsMartialArtsWeapon reports whether a weapon ref qualifies for Martial Arts:
+// an unarmed strike, a shortsword, or a simple melee weapon without Heavy or
+// Two-Handed. It is the shared static weapon predicate used by both the
+// condition folds and the character action-cost compiler.
+func IsMartialArtsWeapon(weaponRef *core.Ref) bool {
+	isUnarmed, monkWeapon := martialArtsWeaponKind(weaponRef)
+	return isUnarmed || monkWeapon != nil
+}
+
 // getMartialArtsDice returns the damage dice for unarmed strikes based on monk level
 func (ma *MartialArtsCondition) getMartialArtsDice() string {
 	switch {

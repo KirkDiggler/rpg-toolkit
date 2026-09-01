@@ -307,6 +307,22 @@ func (s *ActionEconomyTestSuite) TestLoadFromData_NilActionEconomy() {
 	s.False(loaded.InCombat())
 }
 
+func (s *ActionEconomyTestSuite) TestToolkitEconomyBridgePreservesMartialArtsCapacity() {
+	char := createTestFighterCharacter(s.T(), s.bus)
+	char.actionEconomy = &ActionEconomyData{
+		Granted: map[GrantedActionKey]int{GrantedMartialArtsBonus: 1},
+	}
+
+	toolkitEconomy := char.toToolkitActionEconomy()
+	s.Equal(1, toolkitEconomy.MartialArtsBonusAttacksRemaining,
+		"the detached fielded economy must receive the persisted grant")
+
+	toolkitEconomy.MartialArtsBonusAttacksRemaining = 2
+	char.fromToolkitActionEconomy(toolkitEconomy)
+	s.Equal(2, char.actionEconomy.Granted[GrantedMartialArtsBonus],
+		"the fielded economy must write the same persisted grant back")
+}
+
 // --- Turn lifecycle ---
 
 func (s *ActionEconomyTestSuite) TestStartTurn() {

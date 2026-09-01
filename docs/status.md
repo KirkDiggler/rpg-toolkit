@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-08-25
-confidence: high — active #1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
+updated: 2026-09-01
+confidence: high — active #1366/#1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
 # rpg-toolkit: Where We Are
@@ -21,6 +21,16 @@ Executable character/monster action packages and producer-specific resolution
 compilers are retired. Older sections below retain the legacy module's delivery
 history and must not be read as current support.
 
+**#1366 — restore the Martial Arts bonus-attack provider (active).**
+The root D&D module now compiles the previously verified rule into ADR-0045's
+inert action model: an eligible unarmored Martial Arts Attack with an unarmed
+strike or Monk weapon (Quarterstaff included) banks a distinct capacity, with
+Martial Arts taking priority over two-weapon fighting. Its bonus definition is
+always the catalog Unarmed Strike, costs one bonus action plus the grant, and is
+independent of occupied hands. The session consumer is separately tracked by
+#1367; until that module pins this provider, the live host seam does not project
+the declaration.
+
 **#1246 — production session combat offers and owner-private status (active).**
 The D&D 5e module now gives every live condition a canonical `Ref`, projects
 immutable feature/condition/non-magical-resource `character.StatusView` data,
@@ -30,8 +40,8 @@ feature key, and canonical name; strict loads reject malformed owner/private
 bounds while the legacy lenient loader drops them without normalization. Spell
 slots and legacy class resources are excluded; this wave adds no magic system.
 
-The independently versioned session module projects one compiled Attack, Move,
-and EndTurn offer per current turn. Attack selectors hash the complete validated
+The independently versioned session module projects compiled Attack variants
+plus Move and EndTurn offers per current turn. Attack selectors hash the complete validated
 definition **with its actual cloned SpendProfile**; collision equality uses
 RFC 8785-canonical variant bytes. Compilation gathers and strictly preflights one
 raw resolution cast, projecting unreadable candidates/dependencies before a

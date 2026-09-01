@@ -37,9 +37,10 @@ var _ combat.Ledger = (*Character)(nil)
 // the worst a missing alias can do is file a spend in a differently-spelled
 // drawer rather than lose it.
 var grantedKeyFor = map[combat.CapacityType]GrantedActionKey{
-	combat.CapacityAttack:        GrantedAttacks,
-	combat.CapacityOffHandAttack: GrantedOffHandStrikes,
-	combat.CapacityFlurryStrike:  GrantedFlurryStrikes,
+	combat.CapacityAttack:                 GrantedAttacks,
+	combat.CapacityOffHandAttack:          GrantedOffHandStrikes,
+	combat.CapacityMartialArtsBonusAttack: GrantedMartialArtsBonus,
+	combat.CapacityFlurryStrike:           GrantedFlurryStrikes,
 }
 
 // grantedKey translates a capacity into the key the sheet files it under.

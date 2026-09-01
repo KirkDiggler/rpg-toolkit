@@ -19,8 +19,9 @@ type ActionEconomy struct {
 	MovementRemaining int // Set at turn start from character speed
 
 	// Additional capacity granted for later resolution
-	OffHandAttacksRemaining int // Set by TwoWeaponGranter after main-hand attack
-	FlurryStrikesRemaining  int // Set by FlurryOfBlows feature (usually 2)
+	OffHandAttacksRemaining          int // Set by TwoWeaponGranter after main-hand attack
+	MartialArtsBonusAttacksRemaining int // Set after a qualifying Martial Arts Attack action
+	FlurryStrikesRemaining           int // Set by FlurryOfBlows feature (usually 2)
 }
 
 // NewActionEconomy creates a new ActionEconomy with default values (1/1/1)
@@ -85,7 +86,8 @@ func (ae *ActionEconomy) UseReaction() error {
 // Purpose: Called at the start of a combatant's turn to restore their action economy.
 // Note: Does NOT reset AttacksRemaining (stays 0 until Attack ability is used) or
 // MovementRemaining (should be set separately via SetMovement at turn start).
-// Resets turn-granted capacity (OffHandAttacks, FlurryStrikes) to 0.
+// Resets turn-granted capacity (OffHandAttacks, MartialArtsBonusAttacks,
+// FlurryStrikes) to 0.
 func (ae *ActionEconomy) Reset() {
 	ae.ActionsRemaining = 1
 	ae.BonusActionsRemaining = 1
@@ -93,6 +95,7 @@ func (ae *ActionEconomy) Reset() {
 	// Note: AttacksRemaining and MovementRemaining are NOT reset here
 	// They are set separately by abilities (Attack) and at turn start (SetMovement)
 	ae.OffHandAttacksRemaining = 0
+	ae.MartialArtsBonusAttacksRemaining = 0
 	ae.FlurryStrikesRemaining = 0
 }
 

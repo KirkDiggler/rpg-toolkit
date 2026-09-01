@@ -91,6 +91,8 @@ func (ae *ActionEconomy) CapacityLeft(key CapacityType) int {
 		return ae.MovementRemaining
 	case CapacityOffHandAttack:
 		return ae.OffHandAttacksRemaining
+	case CapacityMartialArtsBonusAttack:
+		return ae.MartialArtsBonusAttacksRemaining
 	case CapacityFlurryStrike:
 		return ae.FlurryStrikesRemaining
 	case CapacityNone:
@@ -122,6 +124,8 @@ func (ae *ActionEconomy) BankCapacity(key CapacityType, n int) {
 		ae.MovementRemaining += n
 	case CapacityOffHandAttack:
 		ae.OffHandAttacksRemaining += n
+	case CapacityMartialArtsBonusAttack:
+		ae.MartialArtsBonusAttacksRemaining += n
 	case CapacityFlurryStrike:
 		ae.FlurryStrikesRemaining += n
 	case CapacityNone:

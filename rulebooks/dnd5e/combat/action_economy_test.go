@@ -823,6 +823,12 @@ func (s *ActionEconomyTestSuite) TestResetClearsGrantedCapacity() {
 		s.Equal(0, s.economy.OffHandAttacksRemaining)
 	})
 
+	s.Run("reset clears Martial Arts bonus attacks", func() {
+		s.economy.BankCapacity(CapacityMartialArtsBonusAttack, 1)
+		s.economy.Reset()
+		s.Equal(0, s.economy.MartialArtsBonusAttacksRemaining)
+	})
+
 	s.Run("reset clears flurry strikes", func() {
 		s.economy.SetFlurryStrikes(2)
 		s.economy.Reset()

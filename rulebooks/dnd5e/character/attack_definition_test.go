@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -433,6 +434,66 @@ func (s *CharacterAttackTestSuite) TestOffHandAttackEligibilityRejectsAShield() 
 	data.EquipmentSlots[SlotOffHand] = string(armor.Shield)
 
 	s.False(CanMakeOffHandAttack(s.load(data)))
+}
+
+func (s *CharacterAttackTestSuite) TestMartialArtsBonusAttackIsUnarmedWhateverTheHandsHold() {
+	const id = "armed-martial-artist"
+	data := s.heroSheet(
+		[]proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
+		map[InventorySlot]string{
+			SlotMainHand: string(weapons.Quarterstaff),
+			SlotOffHand:  string(weapons.Scimitar),
+		},
+	)
+	data.ID = id
+	data.ClassID = classes.Monk
+	martialArts, err := conditions.NewMartialArtsCondition(conditions.MartialArtsInput{
+		MemberID: id, MonkLevel: 1,
+	}).ToJSON()
+	s.Require().NoError(err)
+	data.Conditions = append(data.Conditions, martialArts)
+	monk := s.load(data)
+
+	cost, err := CostOfMartialArtsBonusAttack(monk)
+	s.Require().NoError(err)
+	s.Require().NoError(cost.Validate())
+	s.Equal(map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1}, cost.Slots)
+	s.Equal(map[combat.CapacityType]int{combat.CapacityMartialArtsBonusAttack: 1}, cost.Capacity)
+
+	definition, err := AssembleMartialArtsBonusAttack(
+		monk, &AssembleMartialArtsBonusAttackInput{Cost: cost},
+	)
+
+	s.Require().NoError(err)
+	s.Equal(*refs.Weapons.UnarmedStrike(), definition.Ref)
+	s.Equal("Unarmed Strike", definition.Name)
+	s.Equal(cost, definition.Cost)
+	s.Require().NotNil(definition.Attack)
+	s.Equal(refs.Weapons.UnarmedStrike(), definition.Attack.Weapon.Ref)
+	s.False(definition.Attack.IsOffHandAttack,
+		"Martial Arts is unarmed, not a two-weapon attack that drops the positive modifier")
+	s.Equal([]damage.Property{damage.AddsAttackAbilityModifier}, definition.Attack.Damage[0].Properties)
+	s.Require().NoError(definition.Validate())
+}
+
+func (s *CharacterAttackTestSuite) TestMartialArtsBonusAttackRevalidatesTheFeature() {
+	data := s.heroSheet(
+		[]proficiencies.Weapon{proficiencies.WeaponSimple},
+		map[InventorySlot]string{SlotMainHand: string(weapons.Quarterstaff)},
+	)
+	data.ClassID = classes.Monk
+	monkWithoutMartialArts := s.load(data)
+
+	_, err := CostOfMartialArtsBonusAttack(monkWithoutMartialArts)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "Martial Arts")
+
+	_, err = AssembleMartialArtsBonusAttack(
+		monkWithoutMartialArts,
+		&AssembleMartialArtsBonusAttackInput{Cost: &combat.SpendProfile{}},
+	)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "Martial Arts")
 }
 
 func (s *CharacterAttackTestSuite) TestAssembleOffHandAttackUsesTheOffHandWeapon() {
