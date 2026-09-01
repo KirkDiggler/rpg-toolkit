@@ -67,10 +67,10 @@ Conditions are really "effects" but we're saving that rename for 1.0. Use `chara
 D&D 5e has two levels of resource consumption:
 
 1. **Action Economy** - What you spend (action, bonus action, reaction)
-2. **Capacity** - What you get to do (attacks, movement, off-hand attacks, flurry strikes)
+2. **Capacity** - What you get to do (attacks, movement, off-hand attacks, Martial Arts bonus attacks, flurry strikes)
 
 Example: Taking the Attack ability (spends action) grants attacks (capacity). Each Strike action consumes one attack from that capacity.
 
 Key fields in `ActionEconomy`:
 - Primary: `ActionsRemaining`, `BonusActionsRemaining`, `ReactionsRemaining`
-- Capacity: `AttacksRemaining`, `MovementRemaining`, `OffHandAttacksRemaining`, `FlurryStrikesRemaining`
+- Capacity: keyed `combat.CapacityType` values stored on characters in `ActionEconomyData.Granted`; the fielded combat ledger mirrors attacks, movement, off-hand attacks, Martial Arts bonus attacks, and flurry strikes

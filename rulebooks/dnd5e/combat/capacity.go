@@ -39,6 +39,10 @@ const (
 	// CapacityOffHandAttack means the action consumes one off-hand attack.
 	CapacityOffHandAttack CapacityType = "off_hand_attack"
 
+	// CapacityMartialArtsBonusAttack means the action consumes the unarmed
+	// bonus attack granted by a qualifying Martial Arts Attack action.
+	CapacityMartialArtsBonusAttack CapacityType = "martial_arts_bonus_attack"
+
 	// CapacityFlurryStrike means the action consumes one flurry strike.
 	CapacityFlurryStrike CapacityType = "flurry_strike"
 )
@@ -47,10 +51,11 @@ const (
 // capacity" is the answer an action gives about itself, not a currency
 // anything can hold.
 var capacities = map[CapacityType]struct{}{
-	CapacityAttack:        {},
-	CapacityMovement:      {},
-	CapacityOffHandAttack: {},
-	CapacityFlurryStrike:  {},
+	CapacityAttack:                 {},
+	CapacityMovement:               {},
+	CapacityOffHandAttack:          {},
+	CapacityMartialArtsBonusAttack: {},
+	CapacityFlurryStrike:           {},
 }
 
 // CapacityTypes returns every capacity a profile may name and every capacity a
@@ -65,6 +70,7 @@ func CapacityTypes() []CapacityType {
 		CapacityAttack,
 		CapacityMovement,
 		CapacityOffHandAttack,
+		CapacityMartialArtsBonusAttack,
 		CapacityFlurryStrike,
 	}
 }
