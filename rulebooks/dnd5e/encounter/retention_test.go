@@ -22,6 +22,13 @@ import (
 // rejecting alone would be an outage for the most common call in the system
 // (AfterSeq == 0, "I have nothing, send what you have"). Both, together, are a
 // reconnect protocol.
+//
+// WHEN the trim runs is part of the contract (#1381): retention enforces at
+// the storage boundary — ToData — never per append, so a verb's own beats
+// all survive the verb that minted them and the live Story serves a whole
+// verb's delta regardless of size. Tests that exercise trimming therefore
+// cross the boundary explicitly with ToData; a test that generates beats and
+// never saves is asserting on the UNTRIMMED live log, deliberately.
 type RetentionTestSuite struct {
 	suite.Suite
 }
@@ -65,7 +72,8 @@ func (s *RetentionTestSuite) generateBeats(enc *encounter.Encounter, n int) {
 }
 
 // storyLen returns how many entries p1's story currently holds from the
-// beginning — the caller-visible size of the retained window.
+// beginning — the caller-visible size of the live log, which matches the
+// retained window only after a save has crossed the storage boundary.
 func (s *RetentionTestSuite) storyLen(enc *encounter.Encounter) int {
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 0})
 	s.Require().NoError(err)
@@ -76,6 +84,11 @@ func (s *RetentionTestSuite) storyLen(enc *encounter.Encounter) int {
 // count NUMERICALLY rather than "fewer than we appended", because a check that
 // only proves the log shrank cannot distinguish a correct window from an
 // off-by-one or from a policy that keeps a wildly different amount.
+//
+// It also pins WHEN (#1381): before the save, every beat ever appended is
+// still readable — the live log does not trim — and it is ToData, the
+// storage boundary, that cuts both the emitted blob and the live log to
+// exactly the window.
 //
 // Mutation (#937 pin discipline): change enforceRetention's floor to
 // `nextSeq - window - 1` (retaining one extra) and this test fails on the
@@ -88,6 +101,12 @@ func (s *RetentionTestSuite) TestTrimsToExactlyTheWindow() {
 	// assigned, comfortably past the window.
 	s.generateBeats(enc, 40)
 
+	s.Equal(41, s.storyLen(enc),
+		"the live log holds everything appended since load; nothing trims per append")
+
+	data := enc.ToData()
+	s.Len(data.Log.Entries, window,
+		"the blob holds exactly the window: retention is a fact about what is written")
 	s.Equal(window, s.storyLen(enc),
 		"retention window must be enforced exactly, not approximately")
 }
@@ -105,8 +124,10 @@ func (s *RetentionTestSuite) TestLogAtExactlyTheWindowIsUntouched() {
 	enc := s.walkingEncounter(window)
 
 	// Setup contributes one scene-opened beat, so seven moves bring the log to
-	// exactly the window.
+	// exactly the window. The save is what would trim (#1381), so the guard
+	// must be proven AT the boundary, not on a log that never crossed it.
 	s.generateBeats(enc, window-1)
+	enc.ToData()
 
 	s.Equal(window, s.storyLen(enc), "a full log is not an over-full one")
 
@@ -142,6 +163,7 @@ func (s *RetentionTestSuite) TestSeqSurvivesTrimming() {
 	const window = 8
 	enc := s.walkingEncounter(window)
 	s.generateBeats(enc, 40)
+	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 0})
 	s.Require().NoError(err)
@@ -164,6 +186,7 @@ func (s *RetentionTestSuite) TestSeqSurvivesTrimming() {
 func (s *RetentionTestSuite) TestZeroIsAlwaysAnswerable() {
 	enc := s.walkingEncounter(4)
 	s.generateBeats(enc, 40)
+	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 0})
 	s.Require().NoError(err, "AfterSeq 0 must remain answerable after heavy trimming")
@@ -178,6 +201,7 @@ func (s *RetentionTestSuite) TestResumeBelowFloorIsRejected() {
 	const window = 8
 	enc := s.walkingEncounter(window)
 	s.generateBeats(enc, 40)
+	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
 	// Floor is 34; anything below it is gone.
 	_, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 33})
@@ -200,6 +224,7 @@ func (s *RetentionTestSuite) TestResumeAtFloorSucceeds() {
 	const window = 8
 	enc := s.walkingEncounter(window)
 	s.generateBeats(enc, 40)
+	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 34})
 	s.Require().NoError(err, "the floor itself is retained and must be servable")
@@ -211,6 +236,7 @@ func (s *RetentionTestSuite) TestResumeAtFloorSucceeds() {
 func (s *RetentionTestSuite) TestUnboundedKeepsEverything() {
 	enc := s.walkingEncounter(encounter.RetentionUnbounded)
 	s.generateBeats(enc, 40)
+	enc.ToData() // even the storage boundary trims nothing when unbounded
 
 	s.Equal(41, s.storyLen(enc), "unbounded retains every beat ever appended")
 
@@ -224,6 +250,7 @@ func (s *RetentionTestSuite) TestUnboundedKeepsEverything() {
 func (s *RetentionTestSuite) TestDefaultAppliesWhenUnset() {
 	enc := s.walkingEncounter(0)
 	s.generateBeats(enc, encounter.DefaultRetention+20)
+	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
 	s.Equal(encounter.DefaultRetention, s.storyLen(enc),
 		"an unset retention must take DefaultRetention, not unbounded")
@@ -245,9 +272,14 @@ func (s *RetentionTestSuite) TestRetentionSurvivesReload() {
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
 	s.Require().NoError(err)
 
-	// The reloaded encounter must still be trimming to the SAME window: keep
-	// appending and the count must hold rather than drift toward the default.
+	// The reloaded encounter must still be trimming to the SAME window at its
+	// next save: keep appending and the count must return to the window
+	// rather than drift toward the default. Between saves the live log holds
+	// window + delta — the bound the load-per-verb law guarantees (#1381).
 	s.generateBeats(reloaded, 20)
+	s.Equal(window+20, s.storyLen(reloaded),
+		"between saves the live log is the loaded window plus the new delta")
+	reloaded.ToData()
 	s.Equal(window, s.storyLen(reloaded),
 		"a reloaded encounter keeps the policy it was built with")
 }
@@ -290,6 +322,146 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 		_, err := reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: seq})
 		s.NoError(err, "seq %d was never trimmed and must be servable", seq)
 	}
+}
+
+// TestVerbBeatsSurviveTheVerb is the #1381 pin. A single engine call that
+// mints more beats than the retention window must leave ALL of them readable
+// in the live Story: PR #1377's review reproduced a verb trimming its own
+// beats mid-verb, past every cursor, so nothing could ever commit them. The
+// window is one and Pump mints two beats in one call — the tick frame and the
+// patroller's movement — so per-append enforcement would destroy the tick
+// beat before Pump returned.
+//
+// The second half is the boundary doing its job as before: the next ToData
+// emits exactly the window with the floor advanced, and a resume below that
+// floor is refused.
+func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
+	patrol := &patrolDecider{positions: []spatial.Position{cellAt(5, 5), cellAt(3, 3)}}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10), rectRegion(room2, 10, 0, 10, 10)}, Walls: twoRoomSealedWall(),
+		},
+		Members: []encounter.MemberInput{
+			// The watcher is sealed in the second room: a monster a player can
+			// see is a monster in a fight, and Pump does not move fight
+			// members — the wall is what lets the patroller patrol.
+			{ID: "watcher", Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 0}},
+			{ID: "pacer", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}, Decider: patrol},
+		},
+		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+		Retention: 1,
+	})
+	s.Require().NoError(err)
+
+	// One engine call, two beats minted — retention+1 for a window of one.
+	pumpOut, err := enc.Pump(&encounter.PumpInput{})
+	s.Require().NoError(err)
+	s.Require().Len(pumpOut.MonsterMoves, 1, "the patroller must actually have moved")
+
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 0})
+	s.Require().NoError(err)
+	s.Len(entries, 3, "scene-opened, tick, movement: the verb's own beats all survive the verb")
+	for i, entry := range entries {
+		s.Equal(uint64(i+1), entry.Seq, "nothing was trimmed out from under the verb")
+	}
+
+	data := enc.ToData()
+	s.Require().Len(data.Log.Entries, 1, "the boundary then emits exactly the window")
+	s.Equal(uint64(3), data.Log.Entries[0].Seq, "and keeps the newest beat")
+
+	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 2})
+	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, exactly as before")
+}
+
+// TestBlobStaysBoundedAcrossSaveLoadCycles is the memory pin for contract
+// point 2: under the load-per-verb law the blob is bounded by construction at
+// window + one verb's delta — a load, an arbitrarily large verb delta, and a
+// save must land the blob back at exactly the window, cycle after cycle.
+func (s *RetentionTestSuite) TestBlobStaysBoundedAcrossSaveLoadCycles() {
+	const window = 8
+	enc := s.walkingEncounter(window)
+	s.generateBeats(enc, 40)
+
+	data := enc.ToData()
+	s.Require().Len(data.Log.Entries, window, "first save: the blob holds the window, not the 41-beat history")
+
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data})
+	s.Require().NoError(err)
+
+	// A big verb delta on the reloaded encounter: the live log grows to
+	// window + delta and no further.
+	s.generateBeats(reloaded, 40)
+	s.Equal(window+40, s.storyLen(reloaded),
+		"the live log is bounded by the loaded window plus this load's own delta")
+
+	data2 := reloaded.ToData()
+	s.Len(data2.Log.Entries, window, "the next save lands the blob back at the window")
+
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{}, Data: data2})
+	s.Require().NoError(err, "and that bounded blob round-trips")
+}
+
+// TestWorldViewIsPure is the #1385 pin: a mid-verb world read must not pass
+// the storage boundary. After a verb's delta has grown well past the
+// retention window, WorldView hands back the WHOLE live log — and touches
+// nothing: every beat is still readable from the live Story afterwards, the
+// floor has not advanced, and the storage boundary still does its exact job
+// on the next save.
+//
+// Without a pure read, session's mid-verb `world := enc.ToData()` sites
+// would trim past their own projection baseline through a read-shaped call —
+// #1381's motivating bug reproduced fail-silent.
+func (s *RetentionTestSuite) TestWorldViewIsPure() {
+	const window = 8
+	enc := s.walkingEncounter(window)
+
+	// 40 movement beats plus setup's scene-opened beat = 41 sequences
+	// assigned, comfortably past the window: exactly the state where a read
+	// that secretly enforced retention would destroy evidence.
+	s.generateBeats(enc, 40)
+
+	view := enc.WorldView()
+	s.Len(view.Log.Entries, 41, "the view carries the whole live log, unbounded by the window")
+
+	s.Equal(41, s.storyLen(enc), "the live log is untouched: the view trims nothing")
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
+	s.Require().NoError(err, "the floor did not advance: the very first beat is still servable")
+	s.Len(entries, 41)
+	s.Equal(uint64(1), entries[0].Seq)
+
+	// However many views were taken, ToData remains the storage boundary and
+	// trims exactly as before.
+	enc.WorldView()
+	data := enc.ToData()
+	s.Len(data.Log.Entries, window, "a following ToData still trims to exactly the window")
+	s.Equal(window, s.storyLen(enc))
+	_, err = enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
+	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, never with the view")
+}
+
+// TestWorldViewShowsTrimmedStateHonestly is the view-save-view pin: the view
+// reports the world AS IT IS, before and after the boundary. Before the save
+// it holds the untrimmed live log; after, it agrees with the blob the save
+// emitted — deep-equal, field for field, because one snapshot body serves
+// both entries and an unchanged encounter snapshots deterministically.
+func (s *RetentionTestSuite) TestWorldViewShowsTrimmedStateHonestly() {
+	const window = 8
+	enc := s.walkingEncounter(window)
+	s.generateBeats(enc, 40)
+
+	before := enc.WorldView()
+	s.Len(before.Log.Entries, 41, "before the save, the view holds the whole live log")
+
+	data := enc.ToData()
+	s.Require().Len(data.Log.Entries, window)
+
+	after := enc.WorldView()
+	s.Len(after.Log.Entries, window, "after the save, the view shows the trimmed state honestly")
+	s.Equal(data, after, "view and blob agree on an unchanged encounter: one snapshot body behind both")
 }
 
 func TestRetentionSuite(t *testing.T) {

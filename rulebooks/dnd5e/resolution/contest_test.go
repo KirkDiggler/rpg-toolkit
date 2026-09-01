@@ -212,9 +212,8 @@ func (s *ContestTestSuite) TestRagingFoldsIntoTheContestsSave() {
 	outcome := s.contestOutcome(out)
 	s.Require().Equal(advantageRoll, outcome.Save.Result.Roll,
 		"only a rolled-twice-take-higher can produce this die")
-	s.Require().True(outcome.Save.Folded.HasAdvantage())
-	s.Require().Len(outcome.Save.Folded.AdvantageSources, 1)
-	s.Require().Equal(refs.Conditions.Raging(), outcome.Save.Folded.AdvantageSources[0].SourceRef,
+	s.Require().Len(outcome.Save.Result.AdvantageSources, 1)
+	s.Require().Equal(refs.Conditions.Raging(), outcome.Save.Result.AdvantageSources[0].SourceRef,
 		"and it is Raging that says so, through the Request")
 
 	s.Require().True(outcome.Succeeded, "the barbarian shrugs off the wolf")

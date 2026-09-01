@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
@@ -45,11 +46,15 @@ type Character struct {
 	level            int
 	proficiencyBonus int
 
-	// Race and class
-	raceID     races.Race
-	subraceID  races.Subrace
-	classID    classes.Class
-	subclassID classes.Subclass
+	// Race, class, and background
+	raceID       races.Race
+	subraceID    races.Subrace
+	classID      classes.Class
+	subclassID   classes.Subclass
+	backgroundID backgrounds.Background
+
+	// Metadata
+	createdAt time.Time
 
 	// Ability scores (includes racial modifiers)
 	abilityScores shared.AbilityScores
@@ -234,16 +239,30 @@ type MakeSavingThrowInput struct {
 	HasDisadvantage bool
 }
 
-// MakeSavingThrow makes a saving throw for this character.
-// The character's ability modifier and proficiency bonus (if proficient) are automatically applied.
+// MakeSavingThrow makes a full saving throw for this character.
+// The character's ability modifier and proficiency bonus (if proficient) are
+// automatically applied, and the SavingThrowChain fires on the character's
+// bus so attached conditions and features can modify the roll.
 // Returns the result including whether the save succeeded.
+//
+// The character must be attached to a bus ([Attach] / Draft.Finalize): a full
+// save consults the chain, and a sheet on no bus has every save-modifying
+// condition absent — refused loudly rather than rolled wrong (rpg-toolkit#1357).
 func (c *Character) MakeSavingThrow(
 	ctx context.Context, input *MakeSavingThrowInput,
 ) (*saves.SavingThrowResult, error) {
+	if c.bus == nil {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet,
+			"a full saving throw consults the chain: this character is on no bus, "+
+				"so every condition and feature that modifies saves is absent")
+	}
+
 	modifier := c.GetSavingThrowModifier(input.Ability)
 
 	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
 		Roller:          input.Roller,
+		EventBus:        c.bus,
+		SaverID:         c.GetID(),
 		Ability:         input.Ability,
 		DC:              input.DC,
 		Modifier:        modifier,
@@ -1015,6 +1034,7 @@ func (c *Character) ToData() *Data {
 		SubraceID:           c.subraceID,
 		ClassID:             c.classID,
 		SubclassID:          c.subclassID,
+		BackgroundID:        c.backgroundID,
 		AbilityScores:       c.abilityScores,
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
@@ -1025,6 +1045,7 @@ func (c *Character) ToData() *Data {
 		ArmorProficiencies:  c.armorProficiencies,
 		WeaponProficiencies: c.weaponProficiencies,
 		ToolProficiencies:   c.toolProficiencies,
+		CreatedAt:           c.createdAt,
 		UpdatedAt:           time.Now(),
 	}
 

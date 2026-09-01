@@ -137,8 +137,7 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 	s.Equal("Grog the Rager", data.Name)
 	s.Equal(races.Human, data.RaceID)
 	s.Equal(classes.Barbarian, data.ClassID)
-	// TODO: Background is not stored in Character - separate issue tracked separately
-	// s.Equal(backgrounds.Soldier, data.BackgroundID)
+	s.Equal(backgrounds.Soldier, data.BackgroundID)
 	s.Equal(1, data.Level)
 
 	// Verify class resources were initialized
@@ -153,6 +152,54 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 	s.Require().NotNil(hitDiceResource, "Character should have HitDice resource")
 	s.Equal(1, hitDiceResource.Maximum(), "Level 1 character should have 1 max hit die")
 	s.Equal(1, hitDiceResource.Current(), "Hit dice should start at maximum")
+}
+
+func (s *BarbarianFinalizeSuite) TestFinalizedCharacterPreservesMetadata() {
+	draft, err := NewDraft(&DraftConfig{
+		ID:       "metadata-draft",
+		PlayerID: "metadata-player",
+	})
+	s.Require().NoError(err)
+	expectedCreatedAt := draft.CreatedAt()
+
+	s.Require().NoError(draft.SetName(&SetNameInput{Name: "Metadata Keeper"}))
+	s.Require().NoError(draft.SetAbilityScores(&SetAbilityScoresInput{
+		Scores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 15,
+			abilities.INT: 8,
+			abilities.WIS: 12,
+			abilities.CHA: 10,
+		},
+	}))
+	s.Require().NoError(draft.SetRace(&SetRaceInput{
+		RaceID: races.Human,
+		Choices: RaceChoices{
+			Languages: []languages.Language{languages.Elvish},
+		},
+	}))
+	s.Require().NoError(draft.SetBackground(&SetBackgroundInput{
+		BackgroundID: backgrounds.Soldier,
+	}))
+	s.Require().NoError(draft.SetClass(&SetClassInput{
+		ClassID: classes.Barbarian,
+		Choices: ClassChoices{
+			Skills: []skills.Skill{skills.Athletics, skills.Intimidation},
+			Equipment: []EquipmentChoiceSelection{
+				{ChoiceID: choices.BarbarianWeaponsPrimary, OptionID: choices.BarbarianWeaponGreataxe},
+				{ChoiceID: choices.BarbarianWeaponsSecondary, OptionID: choices.BarbarianSecondaryHandaxes},
+				{ChoiceID: choices.BarbarianPack, OptionID: choices.BarbarianPackExplorer},
+			},
+		},
+	}))
+
+	finalized, err := draft.ToCharacter(context.Background(), "metadata-character", s.eventBus)
+	s.Require().NoError(err)
+
+	data := finalized.ToData()
+	s.Equal(backgrounds.Soldier, data.BackgroundID)
+	s.Equal(expectedCreatedAt, data.CreatedAt)
 }
 
 // TestBarbarianClassComplete tests the IsClassComplete method specifically

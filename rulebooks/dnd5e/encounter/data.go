@@ -568,7 +568,52 @@ type EndingData struct {
 // ToData returns a persistent snapshot of this Encounter.
 // All slices and embedded data are deep-copied; mutating the returned
 // EncounterData will not affect this Encounter (snapshot immunity).
+//
+// ToData is the storage boundary, and it is where retention enforces (#1381):
+// it first trims the live story log to the retention window — advancing the
+// floor — then snapshots, so the emitted Log holds at most the window while
+// the live Story between saves serves a whole verb's delta regardless of
+// size. It is therefore not a pure read: the one mutation it performs is the
+// trim, and two consecutive calls still emit identical snapshots because the
+// second finds nothing left to trim. For a mid-verb read that must not touch
+// the log or the floor, use [Encounter.WorldView] instead (#1385).
 func (e *Encounter) ToData() EncounterData {
+	// Trim the live log, not just the emitted copy: the host discards the
+	// runtime object after saving (load-per-verb), and for the callers that
+	// don't — examples, workbenches — the in-memory log stays bounded too,
+	// with logFloor always agreeing with the entries the log actually holds.
+	// The error is structurally impossible (NextSeq never errs, and the
+	// computed floor is always at or below it), so it surfaces loudly rather
+	// than letting the blob grow without bound in silence.
+	if err := e.enforceRetention(); err != nil {
+		panic(fmt.Errorf("encounter: retention at storage boundary: %w", err))
+	}
+
+	return e.snapshot()
+}
+
+// WorldView returns a read-only snapshot of this Encounter for mid-verb
+// world reads — the same EncounterData shape ToData emits, with the same
+// deep-copy snapshot immunity, but PURE: it does not enforce retention, does
+// not trim the live story log, and does not advance the floor, so its Log
+// carries every beat the live Story still holds, however far past the
+// retention window a verb's delta has grown (#1385).
+//
+// THE PERSISTED BLOB COMES FROM ToData AND ONLY ToData. Never hand a
+// WorldView to storage: ToData is the storage boundary and the one place
+// retention runs, and a WorldView written as a blob would persist an
+// unbounded log. Same type, different behavior on purpose — consumers reload
+// EncounterData wholesale, so the save-vs-view distinction lives here, in
+// the name and this contract, not in the shape.
+func (e *Encounter) WorldView() EncounterData {
+	return e.snapshot()
+}
+
+// snapshot renders the encounter's current state as EncounterData: the ONE
+// snapshot body behind both entries, so the storage boundary (ToData, which
+// trims first) and the pure read (WorldView, which never trims) cannot
+// drift.
+func (e *Encounter) snapshot() EncounterData {
 	// Members in sorted-ID order: an unchanged encounter must produce
 	// byte-identical snapshots (T6 review M1 — map iteration here made
 	// ToData nondeterministic and the round-trip suite ~16% flaky).

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -15,6 +16,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -161,6 +163,34 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Require().Equal(1, input.Inventory[0].Quantity)
 	s.Require().Equal("longsword", input.EquipmentSlots[character.SlotMainHand])
 	s.Require().Equal(3, input.SpellSlots[1].Used)
+}
+
+// The persistence boundary carries identity metadata through the live sheet.
+// UpdatedAt is the one exception: ToData stamps the fresh snapshot time.
+func (s *LongRestTestSuite) TestPersistedMetadataSurvivesAndUpdatedAtRefreshes() {
+	data := s.fighter()
+	createdAt := time.Date(2025, time.January, 2, 3, 4, 5, 600, time.UTC)
+	persistedUpdatedAt := time.Date(2025, time.February, 3, 4, 5, 6, 700, time.UTC)
+	data.BackgroundID = backgrounds.Soldier
+	data.CreatedAt = createdAt
+	data.UpdatedAt = persistedUpdatedAt
+
+	startedAt := time.Now()
+	out, err := LongRest(s.ctx, &LongRestInput{Character: data})
+	finishedAt := time.Now()
+
+	s.Require().NoError(err)
+	s.Require().NotNil(out)
+	s.Require().NotNil(out.Character)
+	s.Require().NotZero(out.Character.BackgroundID)
+	s.Require().Equal(backgrounds.Soldier, out.Character.BackgroundID)
+	s.Require().Equal(createdAt, out.Character.CreatedAt,
+		"the exact persisted creation time survives load, rest, and snapshot")
+	s.Require().NotEqual(persistedUpdatedAt, out.Character.UpdatedAt)
+	s.Require().False(out.Character.UpdatedAt.Before(startedAt),
+		"UpdatedAt is refreshed during this operation, not echoed from persistence")
+	s.Require().False(out.Character.UpdatedAt.After(finishedAt),
+		"the refreshed timestamp was captured before the call returned")
 }
 
 // The Barbarian pins the other class-owned pool and both retained/removed
