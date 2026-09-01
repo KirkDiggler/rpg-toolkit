@@ -7,10 +7,12 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1
+	github.com/KirkDiggler/rpg-toolkit/npc v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
 	github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.2-0.20260804104806-a8a4dd3fc92a
-	github.com/stretchr/testify v1.10.0
+	github.com/KirkDiggler/rpg-toolkit/world v0.3.0
+	github.com/stretchr/testify v1.11.1
 	go.uber.org/mock v0.5.2
 )
 
