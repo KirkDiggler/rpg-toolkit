@@ -48,6 +48,7 @@ func atlasField() encounter.FieldInput {
 func (s *AtlasRegionsSuite) open(field encounter.FieldInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 4}}},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -60,6 +61,7 @@ func (s *AtlasRegionsSuite) reload(enc *encounter.Encounter) *encounter.Encounte
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
 	s.Require().NoError(err)
 	return back

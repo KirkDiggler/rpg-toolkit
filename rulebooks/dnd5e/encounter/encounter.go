@@ -141,6 +141,23 @@ type Encounter struct {
 	// return value.
 	announcer Announcer
 
+	// world is the run's concealment knowledge — seeded from the field's
+	// concealed structure at construction, its facts persisted on
+	// EncounterData.World (rpg-toolkit#1371). NIL FOR A FIELD WITH NO
+	// CONCEALMENT, deliberately: a plain dungeon builds no world machinery
+	// at all, which is what makes zero-behavior-change structural rather
+	// than promised.
+	world *encounterWorld
+
+	// checkResolver rolls a find check when a member searches. Required at
+	// both constructors exactly when the field carries concealment; unread
+	// otherwise. See [CheckResolver].
+	checkResolver CheckResolver
+
+	// witness answers who currently perceives an open concealed door.
+	// Required under the same rule as checkResolver. See [Witness].
+	witness Witness
+
 	// driving is true for the duration of ONE driveMonsterTurns call, at
 	// any depth of Go call stack — runtime state, never persisted (there is
 	// no stack mid-verb for ToData to capture, and none is needed: a fresh
@@ -513,6 +530,23 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
+	// The two concealment capabilities, required exactly when the field
+	// carries concealed structure (rpg-toolkit#1371) — the same
+	// supplied-never-defaulted law as the four above, scoped to the fields
+	// that consult them: a plain dungeon needs neither, and a concealed one
+	// refused here is a bug report instead of a secret nobody can ever
+	// find. AFTER the field and door validation on purpose: a malformed
+	// door is the author's earlier mistake, and refusing it as a missing
+	// capability would send them to the wrong seam.
+	if fieldHasConcealment(in.Field.Regions, in.Field.Doors) {
+		if in.CheckResolver == nil {
+			return nil, fmt.Errorf("newencounter: %w", ErrNoCheckResolver)
+		}
+		if in.Witness == nil {
+			return nil, fmt.Errorf("newencounter: %w", ErrNoWitness)
+		}
+	}
+
 	// Every authored seat is a whole offset cell that some region owns. Asked
 	// here, before anything is built (R5), and named as itself rather than
 	// as a placement spatial refused.
@@ -549,6 +583,18 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		retention:   normalizeRetention(in.Retention),
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
+
+	// The world, seeded from the concealed structure — and only then: a
+	// field with none leaves e.world nil and every concealment path a
+	// no-op (rpg-toolkit#1371).
+	if fieldHasConcealment(in.Field.Regions, in.Field.Doors) {
+		e.checkResolver = in.CheckResolver
+		e.witness = in.Witness
+		e.world, err = newEncounterWorld(f, e.doors)
+		if err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
+	}
 
 	// Build clock and intel
 	e.clock, err = clock.NewTick()
@@ -637,6 +683,16 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("newencounter append beat: %w", err)
+	}
+
+	// Concealment's own first light, AFTER the scene has opened and BEFORE
+	// any fight it might start: presence pierces from the first frame — a
+	// party start inside a concealed region is legal authoring, and the
+	// occupants begin knowing — and a concealed door authored OPEN is
+	// perceivable from frame one too. A no-op for a field with no
+	// concealment.
+	if serr := e.sweepConcealment(); serr != nil {
+		return nil, fmt.Errorf("newencounter first light: %w", serr)
 	}
 
 	// Trigger detection at first light, AFTER the scene has opened. A scene
@@ -993,11 +1049,26 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		// movement when the field stopped being a set of rooms, and the
 		// connection name that used to ride here went with the room chain
 		// (rpg-project#256) — a doorway is the door standing in it.
+		//
+		// EXCEPT A CONCEALED ONE (rpg-toolkit#1371). This beat is
+		// audienced to the whole roster, and one shared payload cannot
+		// say a secret to knowers without saying it to everyone — so a
+		// concealed door never rides it, found or not: the mover's own
+		// crossing writes their recipient-scoped DOOR_REVEALED, and what
+		// a door is doing reaches its knowers through its own beats. The
+		// move itself stays narrated for everyone, doors or no doors.
 		ids := make([]string, 0, len(action.doors))
 		for _, d := range action.doors {
+			if e.world != nil {
+				if rec, ok := e.doorsByID[d.ID]; ok && rec.concealed != nil {
+					continue
+				}
+			}
 			ids = append(ids, d.ID)
 		}
-		payload["doors"] = ids
+		if len(ids) > 0 {
+			payload["doors"] = ids
+		}
 	}
 
 	// PROPAGATED, not discarded. Every movement beat in this module used to
@@ -1431,6 +1502,17 @@ func (e *Encounter) refreshSight(observers []MemberID) (map[MemberID]*IntelDelta
 	// one anyway — checking here turns that refusal into a non-event.
 	if e.outcome != nil {
 		return deltas, nil, nil
+	}
+
+	// Concealment's trigger detection rides every sight refresh, for this
+	// function's own reason: perceiving present state — an open concealed
+	// door, hidden floor underfoot — is a rule about sight, and a rule
+	// wired at the verbs is a rule some verb forgets (rpg-toolkit#1371).
+	// Its reveal beats land after the verb's own beat (the law above) and
+	// before any fight the refresh starts; a CLOSED encounter mints no new
+	// knowledge, which the early return above already said.
+	if err := e.sweepConcealment(); err != nil {
+		return nil, nil, err
 	}
 
 	formed, deltas, err := e.applyTrigger(deltas)

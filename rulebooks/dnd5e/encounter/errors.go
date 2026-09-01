@@ -260,6 +260,30 @@ var (
 	// have to invent, which rpg-toolkit#1033 forbids it to do.
 	ErrNoSight = errors.New("encounter: no sight capability")
 
+	// ErrNoCheckResolver indicates Setup or Load was given a field carrying
+	// concealed structure and no CheckResolver capability. A concealed door
+	// exists to be searched for, and this module refuses to roll the find
+	// itself exactly as it refuses to know who is standing or how far anyone
+	// sees (rpg-toolkit#1033). Refused at the door; never guarded at the use
+	// site, and never defaulted. A field with NO concealment needs no
+	// resolver, and supplying one there is harmless and unread.
+	ErrNoCheckResolver = errors.New("encounter: no check resolver capability")
+
+	// ErrNoWitness indicates Setup or Load was given a field carrying
+	// concealed structure and no Witness capability. Perceiving a concealed
+	// door standing open is what reveals it, and who perceives is the host's
+	// light-and-sight truth — a rule this module may not invent
+	// (rpg-toolkit#1033). Same door, same law as ErrNoCheckResolver.
+	ErrNoWitness = errors.New("encounter: no witness capability")
+
+	// ErrElsewhere indicates Search named a region the searcher does not
+	// stand in — v1's rule is that presence is the host's truth and a member
+	// sweeps the floor under their own feet. DELIBERATELY the same answer
+	// for a region that does not exist at all: a distinct no-such-region
+	// refusal would let a guessed ID probe for hidden rooms, which is the
+	// probe law's concern arriving at the region vocabulary.
+	ErrElsewhere = errors.New("encounter: not standing in that region")
+
 	// ErrNoTurnDriver indicates Setup or Load was given no TurnDriver
 	// capability. A member with no player can land on a fight's clock — a
 	// turn ending, or a fight forming with an unplayed member first in

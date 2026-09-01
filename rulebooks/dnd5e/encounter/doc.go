@@ -57,6 +57,46 @@
 // Pump are world-clock verbs and will not act for a fight member. Which clock somebody is on is always askable, per member, via
 // ClockOf.
 //
+// # Concealment: the run composes its world (rpg-toolkit#1371)
+//
+// A field may carry CONCEALED STRUCTURE — doors behind an authored find
+// check, regions authored as hidden space (dungeonspec carries both since
+// v0.41.0) — and the composition acts on it. Who knows what is a journal of
+// audience-scoped facts folded per member (world v0.3.0's journal + graph,
+// seeded from the field at construction, persisted on EncounterData.World);
+// two more capabilities arrive SUPPLIED, exactly when concealment exists and
+// never defaulted: [CheckResolver] rolls a find check, [Witness] answers who
+// currently perceives an open concealed door. The laws, each pinned in
+// conceal_test.go and conceallaw_test.go:
+//
+//   - [Encounter.Search] sweeps a region's concealed declarations; success
+//     is audienced to the searcher alone, and NO output — not the answer,
+//     not the story, not the blob — ever says whether there was something
+//     to find.
+//   - Two knowledge moments: finding a door reveals the DOOR; the region
+//     behind it arrives only on perceiving the door OPEN (present at the
+//     opening, walking up later, or crossing it — causes are exemplary,
+//     not a closed set). PRESENCE PIERCES: an occupant of a concealed
+//     region knows it from frame one.
+//   - [Encounter.AtlasFor] and [Encounter.DoorsFor] answer as one member
+//     under the never-authored yardstick: a concealed unfound door is
+//     absent from every list and masked as an ordinary wall between two
+//     visible spaces (at the neighbouring run's height); an unrevealed
+//     region is byte-identical to never authored — cells, entry, props and
+//     every touching boundary withheld, and a boundary shared with a
+//     still-hidden neighbour stays withheld after a reveal.
+//   - The PROBE LAW: everywhere a door id is spoken, a concealed unfound
+//     door answers not-found, byte-identical to an id that names nothing.
+//     The MOVE LAW: a step stopped by one refuses byte-identical to a wall.
+//   - Reveals reach members as recipient-scoped beats (door_revealed,
+//     region_revealed — the wire's DOOR_REVEALED/REGION_REVEALED), and a
+//     concealed door's own state beats go to its knowers alone. Everything
+//     non-detection stays full data until v1.0.
+//
+// A field with no concealment builds NONE of this — no world, no capability
+// requirement, byte-identical blobs — which keeps every existing dungeon
+// exactly as it was.
+//
 // # Atomicity, and what R5 does and does not promise
 //
 // Verbs validate before they mutate, and the first validation failure wins

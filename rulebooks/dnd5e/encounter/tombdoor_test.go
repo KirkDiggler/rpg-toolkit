@@ -148,7 +148,8 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	const missed, met = cryptDC - 1, cryptDC
 
 	failed, err := s.enc.Unlock(&encounter.UnlockInput{
-		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC), Actor: delve, Total: missed})
+		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC), Actor: delve, Total: missed,
+		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 	s.Require().NoError(err, "a failed check is an outcome, not an error")
 	s.False(failed.Beaten)
 	s.Equal([]encounter.CheckApproach{{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}},
@@ -157,7 +158,8 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	s.False(s.sees(delve, wight), "and still blind")
 
 	beaten, err := s.enc.Unlock(&encounter.UnlockInput{
-		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC), Actor: delve, Total: met})
+		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC), Actor: delve, Total: met,
+		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 	s.Require().NoError(err)
 	s.True(beaten.Beaten, "meeting the DC exactly beats it — a tie goes to the roller, per picksTheLock")
 	s.Equal(encounter.DoorOpen, beaten.State, "beaten means open, not merely unlocked")
@@ -228,7 +230,8 @@ func (s *TombDoorSuite) TestTheDoorSurvivesASave() {
 	})
 
 	s.Run("and open, once it has been beaten", func() {
-		_, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Beaten: picksTheLock(30, cryptDC)})
+		_, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Beaten: picksTheLock(30, cryptDC),
+			Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 		s.Require().NoError(err)
 
 		data := s.enc.ToData()

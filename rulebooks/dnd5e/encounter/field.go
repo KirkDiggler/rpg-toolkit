@@ -557,6 +557,20 @@ type SetupInput struct {
 	// look identical, and one of them is the bug.
 	Announcer Announcer
 
+	// CheckResolver resolves an authored find check when a member searches
+	// (rpg-toolkit#1371). REQUIRED exactly when the field carries concealed
+	// structure — a concealed door or region — and refused there at
+	// construction (ErrNoCheckResolver): a concealed door exists to be
+	// searched for, and this module may not roll the find itself
+	// (rpg-toolkit#1033). Unread, and legally nil, for a field with none.
+	CheckResolver CheckResolver
+
+	// Witness answers who currently perceives a concealed door standing
+	// open (rpg-toolkit#1371). REQUIRED under exactly the same rule as
+	// CheckResolver, refused at the same door (ErrNoWitness): perception's
+	// reach is the host's light-and-sight truth, never this module's guess.
+	Witness Witness
+
 	// Retention is how many story beats the encounter keeps. Older beats are
 	// trimmed after each append, so an encounter's blob does not grow without
 	// bound and a save does not rewrite the whole history.
