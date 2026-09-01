@@ -450,11 +450,15 @@ func (s *ConcealSuite) TestAFightOnAConcealedDungeonFailsClosedForNow() {
 	s.Contains(err.Error(), "no check resolver capability")
 }
 
-// TestTheResolverAppliesTheBestListedApproach pins WHICH route "best" means:
-// the best chance of success — modifier against the route's own DC — never
-// the biggest modifier. mira's +5 perception loses to DC 16 while her bare
-// +0 investigation beats DC 10; a resolver that grabbed the big number
-// would fail this search.
+// TestTheResolverAppliesTheBestListedApproach shows the selection rule
+// holding THROUGH THE SEAM, end to end: best = the best chance of success —
+// modifier against the route's own DC — never the biggest modifier. mira's
+// +5 perception loses to DC 16 while her bare +0 investigation beats DC 10;
+// a resolver that grabbed the big number would fail this search. The rule
+// itself lives behind resolution's door now (resolution v0.27.0's MakeCheck,
+// toolkit#1380 — its own suite pins the selection); what this scene owns is
+// that the seam hands the whole authored list down and the verdict comes
+// back through Search unchanged.
 func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 	ctx := context.Background()
 

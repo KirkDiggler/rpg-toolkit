@@ -220,10 +220,11 @@ type UnlockOutput struct {
 }
 
 // Unlock tries a locked door as Member: a real ability check against the
-// lock's authored approaches, rolled HERE, through the same machinery
-// Search's find checks use ([resolveApproaches] — the rules live once). The
-// session picks the member's best listed route, fills the composition's
-// Applied, and reports that route's DC outward.
+// lock's authored approaches, resolved through the same path Search's find
+// checks take ([Manager.resolveStagedCheck] → resolution.MakeCheck — the
+// rules live once, behind resolution's door). Resolution picks the member's
+// best listed route; this seam fills the composition's Applied with it and
+// reports that route's DC outward.
 //
 // THE LOCK IS READ THROUGH THE MEMBER'S OWN KNOWLEDGE
 // ([encounter.Encounter.DoorsFor]): a concealed door the member has not
@@ -271,8 +272,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		if err := m.stageCheck(ctx, scope, "member", in.Member); err != nil {
 			return nil, fmt.Errorf("unlock: %w", err)
 		}
-		verdict, verr := resolveApproaches(
-			scope.checks[in.Member], in.Member, lock.Approaches, m.dice)
+		verdict, verr := m.resolveStagedCheck(scope, in.Member, lock.Approaches)
 		if verr != nil {
 			return nil, fmt.Errorf("unlock %q: %w", in.Door, verr)
 		}

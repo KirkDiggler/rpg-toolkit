@@ -5,55 +5,47 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/checks"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // conceal.go is THE SEAM'S HALF OF CONCEALMENT (living-world slice 1, wave 1b
 // — rpg-toolkit#1375; ruled on rpg-project#350 and #351): the two capabilities
 // a concealed field refuses to build without, implemented from things this
 // package already owns. The composition owns every rule about what concealment
-// MEANS; what it cannot know is what a DC means to a character sheet
-// (checkSeam) and how far the host's light-and-sight truth reaches
-// (witnessSeam). Both are the [encounter.Standing] move again: the lookup
-// lives here, the rule lives where the rules live.
+// MEANS; what it cannot know is how a check resolves against a character
+// (checkSeam — answered by handing the stored record to resolution, the one
+// layer that lawfully loads sheets and folds chains) and how far the host's
+// light-and-sight truth reaches (witnessSeam). Both are the
+// [encounter.Standing] move again: the lookup lives here, the rule lives
+// where the rules live.
 
-// stagedCheck is one member's sheet made ready to roll: loaded, and holding
-// the verb's own context.
+// stagedCheck is one member's stored character record, staged for check
+// resolution, with the verb's own context.
 //
 // STAGED BY THE VERB, BEFORE THE COMPOSITION ACTS, and that ordering is a
 // secrecy law rather than a convenience. The composition consults
 // [encounter.CheckResolver] only when the swept region actually holds an
-// unfound concealed door — so a resolver that loaded the sheet lazily, at
+// unfound concealed door — so a resolver that fetched the record lazily, at
 // consult time, would fail a monster searcher (no loadable character) in
 // exactly and only the rooms with something to find, and the refusal itself
-// would answer the question the search asked. Staging up front makes "who can
-// roll checks" decided identically for every region, empty or not.
+// would answer the question the search asked. Staging up front makes "who
+// can roll checks" decided identically for every region, empty or not — and
+// the record is VALIDATED at staging for the same reason: a sheet that will
+// not load must refuse here, uniformly, not at a consult whose very
+// occurrence depends on what the room holds.
 //
-// THERE IS DELIBERATELY NO BUS HERE, AND THE CHAIN THEREFORE DOES NOT FIRE —
-// stated loudly because it is a scoped narrowing of the ruled contract, not
-// an oversight. The check rolls through [checks.MakeAbilityCheck], the one
-// function that owns dnd5e's AbilityCheckChain, under that function's own
-// nil-bus contract ("no chain events are fired"). The examples' dnd5eresolver
-// carries a bus because the examples have no other home for one; THIS module
-// does — resolution — and its ratified structural pin
-// (TestNoBusLivesInThisModule, the game-context slice) forbids a bus living
-// here, tests included, precisely so no chain can ever fold at this seam.
-// Today the narrowing is behaviorally lossless: rpg-toolkit#1357's own
-// finding is that nothing yet subscribes to the chain on either side. The
-// chain going LIVE is the already-named resolution.Resolve rung — "swaps
-// depth, not rules" lands exactly there, where the bus lawfully lives and
-// the whole cast attaches (R3). Until then a condition that would modify a
-// check is not silently degraded by wiring; it is unreachable by module law.
-// RULED on the rpg-toolkit#1375 friction report and recorded on
-// rpg-project#351: "first production subscriber" narrows to first production
-// CALLER of the check machinery, chain dormant until the resolution rung —
-// which the resolution-rung slice inherits in writing.
+// WHAT IS STAGED IS A RECORD, NOT A SHEET. Check resolution moved behind
+// resolution's door (resolution v0.27.0's MakeCheck, toolkit#1380; re-ruled
+// on rpg-project#351): resolution loads the character, attaches their
+// conditions, selects the best listed approach, and rolls with the
+// AbilityCheckChain firing on its own lawful bus — this seam holds no sheet
+// at roll time, no bus ever (TestNoBusLivesInThisModule), and no rule.
+// Records in, answers out.
 type stagedCheck struct {
 	// ctx is the staging verb's own context, carried because the
 	// composition's capability interface takes none — the consult happens
@@ -61,30 +53,32 @@ type stagedCheck struct {
 	// this context's.
 	ctx context.Context
 
-	sheet *character.Character
+	data *character.Data
 }
 
-// stageCheck loads one member's character, attaches it to a fresh bus, and
+// stageCheck fetches one member's character record, proves it loads, and
 // stages it on the scope for [checkSeam] to find.
 //
 // Characters are the only searchers in v1 (rpg-project#351): a member with no
 // loadable character — a monster — is refused here, uniformly, before the
 // composition ever looks at the region. See [stagedCheck] for why the refusal
-// must not wait for the consult.
+// must not wait for the consult. The loaded sheet is deliberately discarded:
+// it exists to make ErrBadCharacter fire at the same uniform point
+// ErrNoCharacter does, and the sheet resolution rolls is the one RESOLUTION
+// loads, inside its own interaction.
 func (m *Manager) stageCheck(ctx context.Context, scope *writeScope, role, member string) error {
 	data, err := m.fetchCharacterData(ctx, role, member)
 	if err != nil {
 		return err
 	}
-	sheet, err := character.Load(ctx, data)
-	if err != nil {
+	if _, err := character.Load(ctx, data); err != nil {
 		return fmt.Errorf("%s %q: %w: %v", role, member, ErrBadCharacter, err)
 	}
 
 	if scope.checks == nil {
 		scope.checks = make(map[string]*stagedCheck, 1)
 	}
-	scope.checks[member] = &stagedCheck{ctx: ctx, sheet: sheet}
+	scope.checks[member] = &stagedCheck{ctx: ctx, data: data}
 	return nil
 }
 
@@ -101,108 +95,76 @@ type checkSeam struct {
 // compile-time proof the seam satisfies what it is handed to.
 var _ encounter.CheckResolver = checkSeam{}
 
-// ResolveCheck rolls one authored check for one member, applying their best
-// listed approach — the whole rule lives in [resolveApproaches], shared with
-// [Manager.Unlock] so the two verbs that roll checks cannot drift.
-//
-// A member with no staged sheet is a wiring fault: the verb that reached the
-// composition without staging its actor is this package's own bug, and the
-// error says so at the point of failure rather than rolling a check for
-// nobody.
+// ResolveCheck resolves one authored check for one member through
+// [Manager.resolveStagedCheck] — shared with [Manager.Unlock] so the two
+// verbs that resolve checks cannot drift.
 func (c checkSeam) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("resolve check: %w", ErrNilInput)
 	}
-	staged, ok := c.scope.checks[string(in.Member)]
-	if !ok {
-		return nil, fmt.Errorf("resolve check for %q: no sheet was staged for this verb: %w",
-			in.Member, ErrNoSheet)
-	}
-	return resolveApproaches(staged, string(in.Member), in.Approaches, c.m.dice)
+	return c.m.resolveStagedCheck(c.scope, string(in.Member), in.Approaches)
 }
 
-// resolveApproaches is THE ONE PLACE A CHECK IS ROLLED at this seam: it picks
-// the member's best listed approach, makes the real ability check through
-// dnd5e's own machinery, and reports the verdict. Search's find checks
-// (through [checkSeam]) and Unlock's lock checks both land here — the rules
-// live once, and the later resolution.Resolve rung swaps this function's
-// depth, not its callers.
+// resolveStagedCheck is THE ONE PLACE A CHECK CROSSES TO RESOLUTION at this
+// seam: the staged record goes down, [resolution.MakeCheck] loads the
+// character with their conditions attached, selects the best listed approach
+// (net pricing — the member's modifier against each route's own DC — ties to
+// authored order; the mechanism ruling that briefly lived here, now
+// resolution's own pin), rolls it with the AbilityCheckChain firing on
+// resolution's bus, and the verdict comes back as data. Search's find checks
+// (through [checkSeam]) and Unlock's lock checks both land here.
 //
-// BEST is the approach that maximises the chance of success: the member's
-// modifier for the route minus the route's own DC, highest wins, ties broken
-// by authored order so the answer cannot move between calls. That is a
-// mechanism ruling inside the ruled principle ("the resolver applies the
-// character's best listed approach", rpg-project#350, which prices routes
-// separately — so best cannot mean best modifier alone: a +1 route at DC 10
-// beats a +3 route at DC 15). Approach choice by the PLAYER is postponed by
-// the same ruling; nothing here forecloses it.
+// A member with no staged record is a wiring fault: the verb that reached
+// the composition without staging its actor is this package's own bug, and
+// the error says so at the point of failure rather than rolling a check for
+// nobody.
 //
-// An approach's Tool rides the authored data and is deliberately not read:
-// tool proficiency is shelved with the tomb's authoring (rpg-project#269
-// §6.4), and a modifier invented for it here would be a rule nobody wrote.
-func resolveApproaches(
-	staged *stagedCheck, member string, approaches []encounter.CheckApproach, roller Roller,
+// A DirtyCharacter on the answer is written back through the same
+// save-and-report path a swing's dirty sheets use ([Manager.saveDirty]'s
+// shape): nil today — no condition yet spends itself on a check — but the
+// day guidance does, the write is already in hand instead of silently lost.
+func (m *Manager) resolveStagedCheck(
+	scope *writeScope, member string, approaches []encounter.CheckApproach,
 ) (*encounter.ResolveCheckOutput, error) {
-	if len(approaches) == 0 {
-		// A check with no route through it is content this build cannot
-		// judge — the composition validates this out of authored doors, so
-		// reaching it here is a defect, not a failed roll.
-		return nil, fmt.Errorf("member %q: check lists no approaches: %w", member, ErrInvalidWorld)
+	staged, ok := scope.checks[member]
+	if !ok {
+		return nil, fmt.Errorf("resolve check for %q: no record was staged for this verb: %w",
+			member, ErrNoSheet)
 	}
 
-	best := -1
-	bestModifier := 0
-	var bestSkill skills.Skill
-	for i, a := range approaches {
-		modifier, skill, err := approachModifier(staged.sheet, a)
-		if err != nil {
-			return nil, fmt.Errorf("member %q: %w", member, err)
-		}
-		if best < 0 || modifier-a.DC > bestModifier-approaches[best].DC {
-			best, bestModifier, bestSkill = i, modifier, skill
-		}
-	}
-	applied := approaches[best]
-
-	// No EventBus, by module law — [stagedCheck]'s own account of the
-	// narrowing. MakeAbilityCheck's nil-bus contract applies: modifier,
-	// advantage arithmetic and the verdict are the rulebook's, and no chain
-	// fires at this seam.
-	check, err := checks.MakeAbilityCheck(staged.ctx, &checks.AbilityCheckInput{
-		Roller:   &diceSeam{roller: roller},
-		Skill:    bestSkill,
-		DC:       applied.DC,
-		Modifier: bestModifier,
+	out, err := resolution.MakeCheck(staged.ctx, &resolution.CheckInput{
+		Character:  staged.data,
+		Approaches: approaches,
+		Roller:     &diceSeam{roller: m.dice},
 	})
-	if err != nil {
-		// A foreign error (rpgerr): carried as text, never wrapped into our
-		// chain (translate's own law).
+	switch {
+	case errors.Is(err, resolution.ErrBadCheck):
+		// A check the rulebook cannot judge — a route naming no rulebook
+		// skill or ability, an empty approach list — is a CONTENT defect:
+		// the world that authored it is unusable, and the host matches the
+		// same sentinel it matches for every other unreadable world.
+		// Resolution's own account rides as text so the message still names
+		// the offending ref (never a silent -5 from an unknown key).
+		return nil, fmt.Errorf("member %q: %w: %v", member, ErrInvalidWorld, err)
+	case err != nil:
+		// Anything else is foreign (rpgerr): carried as text, never wrapped
+		// into our chain (translate's own law).
 		return nil, fmt.Errorf("member %q: check failed: %v", member, err)
 	}
 
-	return &encounter.ResolveCheckOutput{
-		Beaten:  check.Success,
-		Applied: applied,
-		Total:   check.Total,
-	}, nil
-}
+	if out.DirtyCharacter != nil {
+		if err := m.characters.SaveCharacter(staged.ctx, out.DirtyCharacter); err != nil {
+			report := SaveReport{Written: scope.written, Failed: []string{"character:" + out.DirtyCharacter.ID}}
+			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
+		}
+		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
+	}
 
-// approachModifier reads the member's modifier for one authored route off
-// their real sheet: a skill ref rolls the skill (ability modifier plus
-// proficiency, [character.Character.GetSkillModifier]'s own arithmetic), a
-// bare ability ref rolls the raw ability. An identifier the rulebook has
-// neither skill nor ability for is a CONTENT defect refused loudly — never a
-// silent zero from an unknown key (the Copilot round on #1243's law).
-func approachModifier(sheet *character.Character, a encounter.CheckApproach) (int, skills.Skill, error) {
-	if skill, err := skills.GetByID(a.Ability); err == nil {
-		return sheet.GetSkillModifier(skill), skill, nil
-	}
-	ability, err := abilities.GetByID(a.Ability)
-	if err != nil {
-		return 0, "", fmt.Errorf(
-			"approach names no rulebook skill or ability (%q): %w", a.Ability, ErrInvalidWorld)
-	}
-	return sheet.GetAbilityModifier(ability), "", nil
+	return &encounter.ResolveCheckOutput{
+		Beaten:  out.Result.Success,
+		Applied: out.Applied,
+		Total:   out.Result.Total,
+	}, nil
 }
 
 // witnessSeam is this package's [encounter.Witness]: who currently perceives

@@ -121,9 +121,12 @@
 // rest — every rule that keeps a secret secret lives there, and this seam
 // adds only what it adds to every verb. The two capabilities a concealed
 // world refuses to build without are supplied from here the way Standing is
-// (conceal.go): a check resolver that stages the member's real sheet and
-// rolls through the rulebook's own check machinery, and a witness answered
-// from the same sight seam the percepts use. Member-shaped reads — Atlas,
+// (conceal.go): a check resolver that stages the member's stored record and
+// hands it to resolution — which loads the character, attaches their
+// conditions, selects the best listed approach, and rolls with the check
+// chain firing on its own lawful bus; records in, answers out — and a
+// witness answered from the same sight seam the percepts use.
+// Member-shaped reads — Atlas,
 // Doors — answer from the composition's per-member projections exclusively;
 // the unscoped reads are the host's internal whole truth and do not cross
 // the boundary for a member-shaped question.
