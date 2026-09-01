@@ -225,7 +225,8 @@ type EndTurnOutput struct {
 	// order has come back around.
 	RoundWrapped bool `json:"round_wrapped"`
 
-	// Seq is the story sequence of the recorded beat.
+	// Seq is the turn-ended beat's sequence IN THE ACTOR'S OWN delivered
+	// numbering (stream.go) — the same number their event for it carries.
 	Seq uint64 `json:"seq"`
 
 	// Corrected reports location-belief corrections made by driven turns.

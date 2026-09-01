@@ -124,6 +124,13 @@ type SpawnOutput struct {
 	// Formed is present if the spawned content arrived in sight of the party
 	// and a fight started. This is the reason Formed is not a movement-only
 	// field: nobody walked anywhere, and a fight started.
+	//
+	// Its Seq is the RECORD's numbering, like the sibling Seq above and for
+	// the same reason: Spawn has no acting member to number for. THE HOST
+	// MUST NEVER FORWARD SpawnOutput's Seq or Formed.Seq to a client beside
+	// per-recipient events — a record number next to a member's own dense
+	// stream is the gap oracle returning through a side door; clients hear
+	// about the arrival through their own numbered beats.
 	Formed *Formed
 
 	// Saved names what was persisted.

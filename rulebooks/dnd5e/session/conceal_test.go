@@ -433,9 +433,9 @@ func (s *ConcealSuite) TestASearcherWithNoSheetIsRefusedBeforeTheRoomIsLookedAt(
 // Witness, which a concealed field refuses at the door. So combat on a
 // concealed dungeon fails closed and loudly today (never silently
 // half-runs), and it stays that way until resolution grows the two
-// capability inputs — a cross-module follow-up recorded on
-// rpg-toolkit#1375. When that lands and this scene starts failing, delete
-// it and pin the fight instead.
+// capability inputs — the cross-module follow-up rpg-toolkit#1378, whose
+// contract point 3 is this scene. When that lands and this scene starts
+// failing, delete it and pin the fight instead.
 func (s *ConcealSuite) TestAFightOnAConcealedDungeonFailsClosedForNow() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(s.T(), encounter.DoorIsClosed()))

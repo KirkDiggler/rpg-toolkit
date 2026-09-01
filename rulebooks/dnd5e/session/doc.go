@@ -112,6 +112,30 @@
 // never refetches a participant after selection. EndTurn is intentionally
 // clock-only; it does not inherit Attack/Move sheet, standing, or economy gates.
 //
+// # Concealment, and the numbering that keeps it secret
+//
+// The living-world slice (rpg-toolkit#1375) added a verb and a law, both in
+// the shape this package already had.
+//
+// The verb is Search: member and region in, the composition's Search does the
+// rest — every rule that keeps a secret secret lives there, and this seam
+// adds only what it adds to every verb. The two capabilities a concealed
+// world refuses to build without are supplied from here the way Standing is
+// (conceal.go): a check resolver that stages the member's real sheet and
+// rolls through the rulebook's own check machinery, and a witness answered
+// from the same sight seam the percepts use. Member-shaped reads — Atlas,
+// Doors — answer from the composition's per-member projections exclusively;
+// the unscoped reads are the host's internal whole truth and do not cross
+// the boundary for a member-shaped question.
+//
+// The law is per-recipient dense numbering (stream.go): the record's global
+// sequence NEVER crosses this boundary. Each member's delivered stream —
+// live events and Story catch-up alike — numbers its own entries densely, so
+// a beat delivered to somebody else leaves no observable hole (the gap
+// oracle, closed), and every Seq a verb's output carries speaks its actor's
+// own numbering. What makes that durable is a persisted cursor per member on
+// the session record, advanced in the same commit as the beats it counts.
+//
 // # The suspension spine, and where it went
 //
 // S5 and S7 were laws here through v0.2.0: Pending was the one suspension

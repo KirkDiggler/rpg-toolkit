@@ -47,8 +47,6 @@ declaration, and `gorelease` gates every release.
 | `stream.go` | Per-recipient dense numbering: each member's delivered stream, counted for them |
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |
-| `suspend.go` | The suspension vocabulary and the walk's phase machine |
-| `answer.go` | `Answer`, `Pending`, and the freeze |
 | `start.go` | `StartSession` |
 | `events.go` | Per-recipient fan-out |
 | `cmd/session-workbench` | Drives a whole session; run it |
