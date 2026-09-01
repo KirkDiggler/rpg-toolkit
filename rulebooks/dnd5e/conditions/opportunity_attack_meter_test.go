@@ -10,11 +10,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -351,6 +353,90 @@ func (s *OpportunityAttackMeterSuite) TestTheMeterSurvivesTheJSONRoundTrip() {
 	restored, ok := reloaded.(*OpportunityAttackCondition)
 	s.Require().True(ok, "the loader must route this ref back to an OA condition")
 	s.True(restored.UsedThisTurn, "the meter must survive the load, not just the save")
+}
+
+func TestOpportunityAttackMeterResetsOnLongRest(t *testing.T) {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	raw := json.RawMessage(`{
+		"ref":{"module":"dnd5e","type":"conditions","id":"opportunity_attack"},
+		"member_id":"fighter-1","used_this_turn":true
+	}`)
+
+	loaded, err := LoadJSON(raw)
+	require.NoError(t, err)
+	oa, ok := loaded.(*OpportunityAttackCondition)
+	require.True(t, ok)
+	require.True(t, oa.UsedThisTurn)
+
+	var changed []dnd5eEvents.ConditionStateChangedEvent
+	_, err = dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionStateChangedEvent) error {
+			changed = append(changed, event)
+			return nil
+		})
+	require.NoError(t, err)
+	require.NoError(t, oa.Apply(ctx, bus))
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "other-fighter",
+	}))
+	require.True(t, oa.UsedThisTurn, "another character's rest must not reset this meter")
+	require.Empty(t, changed)
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetShortRest,
+		CharacterID: "fighter-1",
+	}))
+	require.True(t, oa.UsedThisTurn, "a short rest must not reset this meter")
+	require.Empty(t, changed)
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "fighter-1",
+	}))
+	require.False(t, oa.UsedThisTurn)
+	require.Len(t, changed, 1)
+	require.Equal(t, "fighter-1", changed[0].MemberID)
+	require.Equal(t, refs.Conditions.OpportunityAttack().String(), changed[0].ConditionRef.String())
+
+	serialized, err := oa.ToJSON()
+	require.NoError(t, err)
+	var data OpportunityAttackConditionData
+	require.NoError(t, json.Unmarshal(serialized, &data))
+	require.False(t, data.UsedThisTurn)
+	require.True(t, oa.IsApplied(), "long rest resets but retains opportunity attack")
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "fighter-1",
+	}))
+	require.Len(t, changed, 1, "an already-clear meter must not publish a state change")
+
+	oa.UsedThisTurn = true
+	require.NoError(t, oa.Remove(ctx, bus))
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "fighter-1",
+	}))
+	require.True(t, oa.UsedThisTurn, "a removed condition must no longer hear rests")
+	require.Len(t, changed, 1)
+}
+
+func TestOpportunityAttackMeterLongRestSubscribeFailureRollsBack(t *testing.T) {
+	ctx := context.Background()
+	bus := &failAfterBus{EventBus: events.NewEventBus(), allow: 2}
+	oa := NewOpportunityAttackCondition("fighter-1")
+
+	err := oa.Apply(ctx, bus)
+	require.ErrorIs(t, err, errRefusedSubscribe)
+	require.False(t, oa.IsApplied())
+	require.Len(t, bus.unsubscribed, 2, "both earlier subscriptions must be rolled back")
+
+	retryBus := events.NewEventBus()
+	require.NoError(t, oa.Apply(ctx, retryBus), "a rolled-back condition must be reusable")
+	require.NoError(t, oa.Remove(ctx, retryBus))
 }
 
 // A half-applied condition is worse than an unapplied one. Nil-ing the bus with

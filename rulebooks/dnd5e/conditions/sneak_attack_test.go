@@ -5,12 +5,15 @@ package conditions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -19,6 +22,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -352,6 +356,90 @@ func (s *SneakAttackTestSuite) TestSneakAttackUsedThisTurnFalseRoundTrips() {
 	s.Require().NoError(err)
 
 	s.False(loaded.UsedThisTurn, "UsedThisTurn=false must round-trip as false")
+}
+
+func TestSneakAttackMeterResetsOnLongRest(t *testing.T) {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	raw := json.RawMessage(`{
+		"ref":{"module":"dnd5e","type":"features","id":"sneak_attack"},
+		"member_id":"rogue-1","level":3,"damage_dice":2,"used_this_turn":true
+	}`)
+
+	loaded, err := LoadJSON(raw)
+	require.NoError(t, err)
+	sneak, ok := loaded.(*SneakAttackCondition)
+	require.True(t, ok)
+	require.True(t, sneak.UsedThisTurn)
+
+	var changed []dnd5eEvents.ConditionStateChangedEvent
+	_, err = dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx,
+		func(_ context.Context, event dnd5eEvents.ConditionStateChangedEvent) error {
+			changed = append(changed, event)
+			return nil
+		})
+	require.NoError(t, err)
+	require.NoError(t, sneak.Apply(ctx, bus))
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "other-rogue",
+	}))
+	require.True(t, sneak.UsedThisTurn, "another character's rest must not reset this meter")
+	require.Empty(t, changed)
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetShortRest,
+		CharacterID: "rogue-1",
+	}))
+	require.True(t, sneak.UsedThisTurn, "a short rest must not reset this meter")
+	require.Empty(t, changed)
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "rogue-1",
+	}))
+	require.False(t, sneak.UsedThisTurn)
+	require.Len(t, changed, 1)
+	require.Equal(t, "rogue-1", changed[0].MemberID)
+	require.Equal(t, refs.Features.SneakAttack().String(), changed[0].ConditionRef.String())
+
+	serialized, err := sneak.ToJSON()
+	require.NoError(t, err)
+	var data SneakAttackData
+	require.NoError(t, json.Unmarshal(serialized, &data))
+	require.False(t, data.UsedThisTurn)
+	require.True(t, sneak.IsApplied(), "long rest resets but retains sneak attack")
+
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "rogue-1",
+	}))
+	require.Len(t, changed, 1, "an already-clear meter must not publish a state change")
+
+	sneak.UsedThisTurn = true
+	require.NoError(t, sneak.Remove(ctx, bus))
+	require.NoError(t, dnd5eEvents.RestTopic.On(bus).Publish(ctx, dnd5eEvents.RestEvent{
+		RestType:    coreResources.ResetLongRest,
+		CharacterID: "rogue-1",
+	}))
+	require.True(t, sneak.UsedThisTurn, "a removed condition must no longer hear rests")
+	require.Len(t, changed, 1)
+}
+
+func TestSneakAttackMeterLongRestSubscribeFailureRollsBack(t *testing.T) {
+	ctx := context.Background()
+	bus := &failAfterBus{EventBus: events.NewEventBus(), allow: 2}
+	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue-1", Level: 3})
+
+	err := sneak.Apply(ctx, bus)
+	require.ErrorIs(t, err, errRefusedSubscribe)
+	require.False(t, sneak.IsApplied())
+	require.Len(t, bus.unsubscribed, 2, "both earlier subscriptions must be rolled back")
+
+	retryBus := events.NewEventBus()
+	require.NoError(t, sneak.Apply(ctx, retryBus), "a rolled-back condition must be reusable")
+	require.NoError(t, sneak.Remove(ctx, retryBus))
 }
 
 func (s *SneakAttackTestSuite) TestSneakAttackRequiresFinesseWeapon() {

@@ -2,15 +2,22 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -182,4 +189,87 @@ func (s *LongRestTestSuite) TestLongRest() {
 
 func TestLongRestSuite(t *testing.T) {
 	suite.Run(t, new(LongRestTestSuite))
+}
+
+func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
+	ctx := context.Background()
+	secondWind, err := json.Marshal(features.SecondWindData{
+		Ref:         refs.Features.SecondWind(),
+		ID:          "second-wind-rest",
+		Name:        "Second Wind",
+		Level:       4,
+		CharacterID: "rest-fighter",
+		Uses:        0,
+		MaxUses:     1,
+	})
+	require.NoError(t, err)
+
+	shortRestPool := coreResources.ResourceKey("test-short-rest-pool")
+	data := &Data{
+		ID:               "rest-fighter",
+		PlayerID:         "rest-player",
+		Name:             "Rest Fighter",
+		Level:            4,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Fighter,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:      11,
+		MaxHitPoints:   36,
+		ArmorClass:     16,
+		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2},
+		SpellSlots:     map[int]SpellSlotData{1: {Max: 3, Used: 2}},
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			shortRestPool:     {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.HitDice: {Current: 0, Maximum: 4, ResetType: coreResources.ResetLongRest},
+		},
+		Features: []json.RawMessage{secondWind},
+	}
+
+	char, err := Load(ctx, data)
+	require.NoError(t, err)
+	bus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+
+	require.NoError(t, char.LongRest(ctx))
+	got := char.ToData()
+	require.Equal(t, 36, got.HitPoints)
+	require.Equal(t, 36, got.MaxHitPoints)
+	if got.DeathSaveState != nil {
+		require.Zero(t, got.DeathSaveState.Successes)
+		require.Zero(t, got.DeathSaveState.Failures)
+	}
+	require.Equal(t, 2, got.Resources[shortRestPool].Current)
+	require.Equal(t, 2, got.Resources[resources.HitDice].Current,
+		"a level-four character recovers half its hit dice, not all four")
+
+	var restoredSecondWind features.SecondWindData
+	require.NoError(t, json.Unmarshal(featureByRef(t, got.Features, refs.Features.SecondWind()), &restoredSecondWind))
+	require.Equal(t, 1, restoredSecondWind.Uses)
+	require.Equal(t, 1, restoredSecondWind.MaxUses)
+
+	require.Equal(t, 0, got.SpellSlots[1].Used)
+}
+
+func featureByRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {
+	t.Helper()
+	for _, raw := range blobs {
+		var envelope struct {
+			Ref core.Ref `json:"ref"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &envelope))
+		if envelope.Ref.Equals(want) {
+			return raw
+		}
+	}
+	t.Fatalf("feature %s not found", want.String())
+	return nil
 }

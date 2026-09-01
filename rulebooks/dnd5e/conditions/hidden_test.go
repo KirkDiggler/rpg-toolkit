@@ -44,7 +44,7 @@ func (s *HiddenConditionTestSuite) TestApply() {
 		err := s.condition.Apply(s.ctx, s.bus)
 		s.Require().NoError(err)
 		s.True(s.condition.IsApplied())
-		s.Len(s.condition.subscriptionIDs, 1)
+		s.Len(s.condition.subscriptionIDs, 2)
 	})
 
 	s.Run("returns error if already applied", func() {

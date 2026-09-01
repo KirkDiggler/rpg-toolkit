@@ -1,7 +1,7 @@
 ---
 name: retired top-level encounter module
 description: Historical record of the deleted orchestrator-facing encounter SDK
-updated: 2026-08-23
+updated: 2026-09-01
 confidence: high — rpg-toolkit#1215 retired the unconsumed module after rpg-api moved to the session stack
 ---
 
@@ -232,21 +232,11 @@ Flat stat-snapshot seats (no hydrated `*character.Character`) have nothing to sw
 
 **Deferred, not part of this fix (rpg-toolkit#773):** scoping `ActionEconomy` to an encounter ID (defense-in-depth against a *future* encounter-end path forgetting to call `ExitCombat`, the same way this bug happened) requires threading encounter identity into `character.ActionEconomyData` — a real change to the character/encounter boundary that deserves its own design pass. Not bundled here.
 
-### Cross-encounter recovery: arcade recovery (rpg-toolkit#785, rpg-toolkit#795)
+### Cross-encounter recovery: arcade recovery (retired)
 
-**Death is encounter-scoped, not a persistent character state** (Kirk's decision, 2026-07-19, #785). Before this, a character record persisted at 0 HP after a TPK entered its *next* encounter unable to act — no death saves rolling, no recovery path, effectively bricked, since nothing in the toolkit ever restored a downed character across an encounter boundary.
+The persisted-data arcade reset described here was behavior of the retired top-level encounter stack and is no longer an authoritative rule. Its parallel root helper and tests have been removed so recovery has one meaning.
 
-`character.RestoreForNewEncounter(d *Data) bool` (`rulebooks/dnd5e/character/arcade_recovery.go`) does two independent things, one gated and one not. The HP/death-save branch is a no-op above 0 HP: at or below 0 HP it restores `HitPoints` to `MaxHitPoints`, clears `DeathSaveState`, and strips any `Unconscious` condition out of `Data.Conditions` by ref (peeking each blob's leading `Ref` field, the same pattern `activeConditionRefs` above uses — no full `conditions.LoadJSON` deserialization needed, since this only needs identity). Separately, and ungated by HP (#795), it restores every pool in `Data.Resources` — rage charges, ki, hit dice — to `Maximum`, regardless of whether the character was alive or dead. Both branches independently set the returned `bool` when they actually change something, so "restored" no longer means "was dead" — it means "HP/death-save recovered, or a resource pool topped up, or both." A fully-alive barbarian re-seating with spent rage now restores to full rage on that `bool` alone, HP untouched.
-
-**Where it fires — and why nowhere else may call it.** `Encounter.AddPlayer` is the only call site: it's the sole place a brand-new `PlayerData` seat is created, structurally guarded to fire at most once per player per encounter (the existing "already in encounter" check). `LoadFromData` — the per-RPC rehydration cascade this doc's hydration section above describes, which reloads an EXISTING seat on every subsequent RPC against the same encounter — never calls `AddPlayer` and therefore can never restore. Resuming an encounter is not re-seating one; `RestoreForNewEncounter`'s own doc comment states this contract directly for any future caller.
-
-**Why the Unconscious strip is load-bearing, not decorative — ties directly into the sweep two sections above.** The #752/#767 end-of-combat sweep (`endCombatForPlayers` → `char.EndCombat` → `CombatEndTopic`) never reaches the Unconscious condition: as established above, Raging is the *only* condition in this rulebook that subscribes to `CombatEndTopic`. `conditions.UnconsciousCondition` does not. So a TPK's `Data.Conditions` genuinely still carries the Unconscious blob — with its own embedded `Successes`/`Failures`/`Dead` — with nothing upstream ever removing it, even after #772/#782 wired TPK into `checkEncounterEnd`. Left alone, the next encounter's `LoadFromData` cascade would re-`Apply()` it onto a character now at full HP. `RestoreForNewEncounter`'s strip is the only thing in the toolkit that clears it.
-
-**HP-snapshot sync.** `AddPlayer` also overwrites `PlayerData.HP`/`MaxHP` to match whenever the restore actually fires (`RestoreForNewEncounter`'s `bool` return signals this). This encounter-level snapshot and the embedded `character.Data.HitPoints` are the same two representations the #781/#784 HP-sync discussion above documents as an active divergence-bug class — restoring only the embedded value while leaving a caller-supplied `HP:0` snapshot in place would have produced a third, differently-shaped incoherent seat instead of fixing the reported one.
-
-**Scope, deliberately not decided silently:** `Data.Resources` — the single live, generically-consumed pool map (rage charges, ki, hit dice) — restores to `Maximum` at every new-encounter seating, ungated by HP; this is arcade semantics (clean run start), a deliberate divergence from hit dice's own RAW half-on-long-rest recovery rule (`combat.RecoverableResource`'s `RecoveryFunc`), which this restore bypasses entirely. `Data.ClassResources` and `Data.SpellSlots` stay untouched — both are separately tracked as dead/orphaned map surfaces (rpg-toolkit#800, rpg-toolkit#799 respectively: write-once-at-creation or never-consumed, with no live read/write path), not a scope decision made here.
-
-**`Data.DeathSaveState` is dead API surface, flagged not fixed here.** Grepping the whole repo turned up zero production callers of `Character.MakeDeathSave`/`TakeDamageWhileUnconscious` (the only methods that read/write this field) outside the character package itself. The real, live death-save state lives inside the `UnconsciousCondition` instance embedded in `Data.Conditions`, auto-rolled at turn start. `RestoreForNewEncounter` still clears `Data.DeathSaveState` for API honesty, but the load-bearing half of this fix is the condition strip above, not this field. A future cleanup candidate, not acted on here.
+The published root D&D rules provide normal `Character.LongRest`, including HP, death-save state, recoverable resources, feature-owned resources, spell slots, hit dice, and condition-owned long-rest outcomes. The root module does not decide when a run admits a character. First-admission orchestration will be supplied by the `resolution` and `session` modules in separate tagged PRs; those downstream changes are not implemented by this provider cleanup.
 
 ### Snapshot-visible active conditions (rpg-toolkit#754, #778)
 

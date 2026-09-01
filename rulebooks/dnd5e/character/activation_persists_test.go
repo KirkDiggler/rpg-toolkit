@@ -61,6 +61,7 @@ func (s *ActivationPersistsTestSuite) sheet() *Data {
 func (s *ActivationPersistsTestSuite) activated(ability *core.Ref) *Data {
 	char, err := LoadFromData(s.ctx, s.sheet(), s.bus)
 	s.Require().NoError(err)
+	s.T().Cleanup(func() { s.Require().NoError(char.Cleanup(s.ctx)) })
 
 	_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)

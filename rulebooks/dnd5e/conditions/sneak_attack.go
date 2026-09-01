@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -106,6 +107,7 @@ func (s *SneakAttackCondition) Apply(ctx context.Context, bus events.EventBus) e
 	damageChain := dnd5eEvents.DamageChain.On(bus)
 	subID, err := damageChain.SubscribeWithChain(ctx, s.onDamageChain)
 	if err != nil {
+		s.bus = nil
 		return rpgerr.Wrap(err, "failed to subscribe to damage chain")
 	}
 	s.subscriptionIDs = append(s.subscriptionIDs, subID)
@@ -114,9 +116,18 @@ func (s *SneakAttackCondition) Apply(ctx context.Context, bus events.EventBus) e
 	turnEndTopic := dnd5eEvents.TurnEndTopic.On(bus)
 	turnSubID, err := turnEndTopic.Subscribe(ctx, s.onTurnEnd)
 	if err != nil {
+		_ = s.Remove(ctx, bus)
 		return rpgerr.Wrap(err, "failed to subscribe to turn end")
 	}
 	s.subscriptionIDs = append(s.subscriptionIDs, turnSubID)
+
+	restTopic := dnd5eEvents.RestTopic.On(bus)
+	restSubID, err := restTopic.Subscribe(ctx, s.onRest)
+	if err != nil {
+		_ = s.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+	}
+	s.subscriptionIDs = append(s.subscriptionIDs, restSubID)
 
 	return nil
 }
@@ -156,6 +167,18 @@ func (s *SneakAttackCondition) onTurnEnd(ctx context.Context, event dnd5eEvents.
 		return s.stateChanged(ctx)
 	}
 	return nil
+}
+
+// onRest clears a spent Sneak Attack on its owner's long rest. A short rest
+// does not reset this turn-scoped meter, and an already-clear meter publishes
+// no state change.
+func (s *SneakAttackCondition) onRest(ctx context.Context, event dnd5eEvents.RestEvent) error {
+	if event.CharacterID != s.CharacterID || event.RestType != coreResources.ResetLongRest || !s.UsedThisTurn {
+		return nil
+	}
+
+	s.UsedThisTurn = false
+	return s.stateChanged(ctx)
 }
 
 // onDamageChain adds sneak attack dice when conditions are met

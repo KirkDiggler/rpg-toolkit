@@ -54,8 +54,8 @@ func (s *UnconsciousConditionTestSuite) TestApply_SubscribesToEvents() {
 	err := uc.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
 
-	// Should have 3 subscriptions: TurnStart, DamageReceived, HealingReceived
-	s.Len(uc.subscriptionIDs, 3)
+	// Should have 4 subscriptions: TurnStart, DamageReceived, HealingReceived, Rest
+	s.Len(uc.subscriptionIDs, 4)
 	s.True(uc.IsApplied())
 }
 

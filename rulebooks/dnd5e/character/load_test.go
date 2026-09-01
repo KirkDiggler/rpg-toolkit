@@ -208,6 +208,9 @@ func (s *PureLoadTestSuite) TestLoadAppliesNothing() {
 	for _, cond := range char.GetConditions() {
 		s.Require().False(cond.IsApplied(), "a pure load applies no condition")
 	}
+	for key, resource := range char.resources {
+		s.Require().False(resource.IsApplied(), "a pure load applies no resource: %s", key)
+	}
 }
 
 // The strict path refuses a condition blob it cannot read, and the error says
@@ -463,8 +466,8 @@ func (s *PureLoadTestSuite) TestLoadThenAttachMatchesLoadFromData() {
 	s.Require().Equal(marshalData(&s.Suite, legacy.ToData()), marshalData(&s.Suite, pure.ToData()))
 }
 
-// Attach is what applies the conditions a load parsed, and what puts the
-// sheet's own resources on the bus.
+// Attach is what applies the conditions and attachable features a load parsed;
+// character-owned resources stay under the Character rest verbs.
 func (s *PureLoadTestSuite) TestAttachAppliesWhatLoadParsed() {
 	char, err := Load(s.ctx, fullSheet(&s.Suite))
 	s.Require().NoError(err)
@@ -473,6 +476,8 @@ func (s *PureLoadTestSuite) TestAttachAppliesWhatLoadParsed() {
 
 	s.Require().Len(char.GetConditions(), 1)
 	s.Require().True(char.GetConditions()[0].IsApplied())
+	s.Require().False(char.GetResource(resources.RageCharges).IsApplied(),
+		"Attach does not apply character-owned resources")
 	s.Require().NotEmpty(char.subscriptionIDs, "the sheet keeper subscribed")
 }
 
@@ -520,6 +525,29 @@ func (s *PureLoadTestSuite) TestAttachScopesEachConditionToItsRef() {
 		[]core.Ref{*refs.Conditions.Raging(), *refs.Conditions.OpportunityAttack()},
 		bus.record.asked, "the sheet's own condition, then the carried reaction")
 	s.Require().Contains(bus.record.byRef[*refs.Conditions.Raging()], events.Topic("dnd5e.saves.chain"))
+}
+
+// Attachable features use the same attribution seam as conditions. The feature
+// names itself directly, so Attach scopes its lifecycle with Feature.Ref and
+// does not infer identity from its persistence bytes.
+func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
+	secondWind, err := json.Marshal(features.SecondWindData{
+		Ref: refs.Features.SecondWind(), ID: "scoped-second-wind", Name: "Second Wind",
+		CharacterID: "scoped-fighter", Uses: 0, MaxUses: 1,
+	})
+	s.Require().NoError(err)
+	bus := newRecordingBus()
+
+	char, err := Load(s.ctx, &Data{
+		ID: "scoped-fighter", ClassID: classes.Fighter, Features: []json.RawMessage{secondWind},
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, char, bus))
+
+	s.Require().Equal(
+		[]core.Ref{*refs.Features.SecondWind(), *refs.Conditions.OpportunityAttack()},
+		bus.record.asked, "the feature attaches before the carried reaction")
+	s.Require().Contains(bus.record.byRef[*refs.Features.SecondWind()], events.Topic("dnd5e.rest"))
 }
 
 // The sheet keeper's own hooks are not laundered into an effect's name: they

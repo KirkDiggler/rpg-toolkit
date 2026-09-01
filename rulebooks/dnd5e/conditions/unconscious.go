@@ -99,6 +99,13 @@ func (c *UnconsciousCondition) Apply(ctx context.Context, bus events.EventBus) e
 	}
 	c.subscriptionIDs = append(c.subscriptionIDs, subID3)
 
+	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, c.CharacterID, c.Ref(), c.Remove)
+	if err != nil {
+		_ = c.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+	}
+	c.subscriptionIDs = append(c.subscriptionIDs, longRestSubID)
+
 	return nil
 }
 

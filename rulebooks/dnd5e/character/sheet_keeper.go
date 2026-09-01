@@ -7,11 +7,10 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 )
 
 // SheetKeeper is a character's own reaction to the world, made attachable.
@@ -21,10 +20,14 @@ import (
 // removed has to leave it, healing has to move its hit points, a condition
 // that changed its OWN persisted state has to leave this sheet needing a save,
 // and an effect that cannot reach the ledger has to be able to ask this sheet
-// to pay. Its recoverable resources have to hear a rest. That is five
-// subscriptions and a handful of resources, and until this type existed they
-// were wired invisibly inside LoadFromData — real behaviour that no caller
-// could see, name, or take back.
+// to pay. That is five subscriptions, and until this type existed they were
+// wired invisibly inside LoadFromData — real behaviour that no caller could
+// see, name, or take back.
+//
+// Character-owned recoverable resources deliberately do not subscribe here.
+// Character.LongRest and Character.ShortRest own those pools directly; putting
+// them on RestTopic as well would recover attached hit dice twice. Feature- and
+// condition-owned state listens through those effects' own lifecycle instead.
 //
 // Here it is an attachable like any other: [SheetKeeper.Apply] takes a bus,
 // [SheetKeeper.Remove] gives it back. Whoever owns the bus decides when the
@@ -42,10 +45,25 @@ type SheetKeeper struct {
 	// subscriptionIDs are the hooks this keeper granted, so Remove can revoke
 	// exactly those and nothing else.
 	subscriptionIDs []string
+
+	// attachedFeatures are the optional feature lifecycles this keeper put on a
+	// bus, paired with the exact scoped bus each Apply received so Remove uses
+	// the same attribution view.
+	attachedFeatures []attachedFeature
 }
 
-// SheetKeeper returns the attachable that carries this character's own
-// behaviour — the five self-subscriptions and its recoverable resources.
+type featureLifecycle interface {
+	Apply(context.Context, events.EventBus) error
+	Remove(context.Context, events.EventBus) error
+}
+
+type attachedFeature struct {
+	lifecycle featureLifecycle
+	bus       events.EventBus
+}
+
+// SheetKeeper returns the attachable that carries this character's five
+// self-subscriptions and optional feature lifecycles.
 //
 // The keeper is created once and kept, so that two callers asking a character
 // for its keeper get the same one and cannot accidentally subscribe the sheet
@@ -58,17 +76,14 @@ func (c *Character) SheetKeeper() *SheetKeeper {
 	return c.keeper
 }
 
-// Apply subscribes the sheet's five handlers to bus and puts the character's
-// recoverable resources on it.
+// Apply subscribes the sheet's five handlers and every feature that exposes an
+// Apply/Remove bus lifecycle.
 //
 // The handlers close over this bus rather than reading one off the character:
 // a sheet that was loaded purely has no bus of its own, and a sheet that does
-// must still react on the bus it was attached to and no other.
-//
-// A resource that fails to apply fails the whole attach on a strictly loaded
-// sheet, and is dropped from the sheet on a leniently loaded one — dropping is
-// what LoadFromData has always done, and it is exactly how a resource goes
-// missing between two saves.
+// must still react on the bus it was attached to and no other. Each attachable
+// feature receives a bus scoped to its own Ref so registration attribution is
+// preserved without widening the Feature interface or switching on refs.
 //
 // **A failed Apply is a no-op.** Whatever it managed to subscribe before the
 // failure is revoked, the sheet is left holding the bus it held before, and the
@@ -77,8 +92,6 @@ func (c *Character) SheetKeeper() *SheetKeeper {
 // sheet that still reports itself attached is worse than one that never
 // attached: the second is a failure, the first is a leak with an alibi.
 func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
-	// Read before subscribeSelf parks the new one, so the rollback below can
-	// give the sheet back exactly what it was holding.
 	var previousBus events.EventBus
 	if k.character != nil {
 		previousBus = k.character.bus
@@ -88,12 +101,9 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 		return err
 	}
 
-	if err := k.applyResources(ctx, bus); err != nil {
-		// The handlers went on before the resources did, so they are this
-		// function's to take back.
+	if err := k.applyFeatures(ctx, bus); err != nil {
 		k.unsubscribeSelf(ctx, bus)
 		k.character.bus = previousBus
-
 		return err
 	}
 
@@ -101,13 +111,8 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 }
 
 // subscribeSelf makes the five self-subscriptions, and nothing else.
-//
-// Separate from the resources because a freshly finalized character has always
-// had the handlers without its resources on the bus: Character.LongRest
-// restores its resources directly and then publishes the rest event, so a
-// character whose resources are also subscribed recovers hit dice twice. Load
-// has always attached both and inherits that; Finalize has always attached
-// neither of the two halves' resources, and this keeps it that way.
+// Character-owned resources are restored by the Character rest verbs, not by
+// subscribing the same pools to the RestTopic those verbs publish.
 func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) error {
 	if k.character == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "sheet keeper has no character")
@@ -191,12 +196,11 @@ func (k *SheetKeeper) unsubscribeSelf(ctx context.Context, bus events.EventBus) 
 	k.subscriptionIDs = nil
 }
 
-// Remove revokes every subscription this keeper granted and takes the
-// character's recoverable resources back off the bus.
+// Remove revokes every subscription this keeper granted.
 //
-// It revokes what it granted and nothing else: the sheet may be carrying
-// subscriptions from elsewhere, and a keeper that unsubscribed a list it did
-// not build would silence hooks it never made.
+// It revokes what it granted and nothing else: character-owned resources are
+// inert and belong to the Character rest verbs. Features come off newest
+// first, reversing their persisted-order Apply calls.
 func (k *SheetKeeper) Remove(ctx context.Context, bus events.EventBus) error {
 	if k.character == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "sheet keeper has no character")
@@ -207,15 +211,17 @@ func (k *SheetKeeper) Remove(ctx context.Context, bus events.EventBus) error {
 
 	var firstErr error
 
+	for i := len(k.attachedFeatures) - 1; i >= 0; i-- {
+		attached := k.attachedFeatures[i]
+		if err := attached.lifecycle.Remove(ctx, attached.bus); err != nil && firstErr == nil {
+			firstErr = rpgerr.Wrapf(err, "failed to remove feature")
+		}
+	}
+	k.attachedFeatures = nil
+
 	for _, subID := range k.subscriptionIDs {
 		if err := bus.Unsubscribe(ctx, subID); err != nil && firstErr == nil {
 			firstErr = rpgerr.Wrapf(err, "failed to unsubscribe")
-		}
-	}
-
-	for key, resource := range k.character.resources {
-		if err := resource.Remove(ctx, bus); err != nil && firstErr == nil {
-			firstErr = rpgerr.Wrapf(err, "failed to remove resource %q", key)
 		}
 	}
 
@@ -225,40 +231,48 @@ func (k *SheetKeeper) Remove(ctx context.Context, bus events.EventBus) error {
 	return firstErr
 }
 
-// applyResources puts each recoverable resource on the bus so it hears rests.
-//
-// On the strict path a resource that will not apply takes the whole attach with
-// it, and the ones already applied come back off: a sheet holding some of its
-// resources on a bus and the rest off it recovers unevenly on the next rest,
-// and nothing about the sheet says which is which.
-func (k *SheetKeeper) applyResources(ctx context.Context, bus events.EventBus) error {
+// applyFeatures attaches only features that opt into the existing Apply/Remove
+// bus lifecycle. Non-reactive features remain ordinary values. A strict
+// failure removes earlier features and leaves the sheet unchanged for retry;
+// the lenient path drops only the feature that could not attach and continues.
+func (k *SheetKeeper) applyFeatures(ctx context.Context, bus events.EventBus) error {
 	c := k.character
-	applied := make([]*combat.RecoverableResource, 0, len(c.resources))
+	kept := make([]features.Feature, 0, len(c.features))
 
-	for key, resource := range c.resources {
-		if err := resource.Apply(ctx, bus); err != nil {
-			// Clean up whatever the failed Apply managed to subscribe.
-			_ = resource.Remove(ctx, bus)
-
-			if c.policy == strictEffects {
-				for i := len(applied) - 1; i >= 0; i-- {
-					_ = applied[i].Remove(ctx, bus)
-				}
-
-				return rpgerr.Wrapf(err, "failed to apply resource %q", key)
-			}
-
-			// Lenient: the legacy path kept only the resources that applied.
-			warnDropped(c.id, "resource", core.Ref{}, err,
-				slog.String("resource", string(key)), slog.String("phase", "apply"))
-			delete(c.resources, key)
-
+	for _, feature := range c.features {
+		lifecycle, ok := feature.(featureLifecycle)
+		if !ok {
+			kept = append(kept, feature)
 			continue
 		}
 
-		applied = append(applied, resource)
+		featureBus := dnd5eEvents.BusForEffect(bus, *feature.Ref())
+		if err := lifecycle.Apply(ctx, featureBus); err != nil {
+			_ = lifecycle.Remove(ctx, featureBus)
+
+			if c.policy == strictEffects {
+				for i := len(k.attachedFeatures) - 1; i >= 0; i-- {
+					attached := k.attachedFeatures[i]
+					_ = attached.lifecycle.Remove(ctx, attached.bus)
+				}
+				k.attachedFeatures = nil
+				return rpgerr.Wrapf(err, "failed to apply feature %s", feature.Ref().String())
+			}
+
+			warnDropped(c.id, "feature", *feature.Ref(), err, slog.String("phase", "apply"))
+			continue
+		}
+
+		k.attachedFeatures = append(k.attachedFeatures, attachedFeature{
+			lifecycle: lifecycle,
+			bus:       featureBus,
+		})
+		kept = append(kept, feature)
 	}
 
+	if c.policy == lenientEffects {
+		c.features = kept
+	}
 	return nil
 }
 

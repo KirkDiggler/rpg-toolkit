@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -169,6 +170,15 @@ func (o *OpportunityAttackCondition) Apply(ctx context.Context, bus events.Event
 		return rpgerr.Wrap(err, "failed to subscribe to turn start")
 	}
 	o.subscriptionIDs = append(o.subscriptionIDs, resetID)
+
+	rests := dnd5eEvents.RestTopic.On(bus)
+	restID, err := rests.Subscribe(ctx, o.onRest)
+	if err != nil {
+		_ = o.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+	}
+	o.subscriptionIDs = append(o.subscriptionIDs, restID)
+
 	return nil
 }
 
@@ -192,6 +202,17 @@ func (o *OpportunityAttackCondition) onTurnStart(ctx context.Context, event dnd5
 		return o.stateChanged(ctx)
 	}
 	return nil
+}
+
+// onRest clears a spent reaction on its owner's long rest. A short rest does
+// not reset reactions, and an already-clear meter publishes no state change.
+func (o *OpportunityAttackCondition) onRest(ctx context.Context, event dnd5eEvents.RestEvent) error {
+	if event.CharacterID != o.MemberID || event.RestType != coreResources.ResetLongRest || !o.UsedThisTurn {
+		return nil
+	}
+
+	o.UsedThisTurn = false
+	return o.stateChanged(ctx)
 }
 
 // Remove unsubscribes the condition from all events.

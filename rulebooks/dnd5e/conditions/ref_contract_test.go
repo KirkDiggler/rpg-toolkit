@@ -5,8 +5,8 @@ package conditions
 
 import (
 	"encoding/json"
-	"os"
-	"regexp"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -85,31 +85,23 @@ func TestEveryConditionRefMatchesItsToJSON(t *testing.T) {
 
 // TestRefContractCoversEveryLoadedCondition keeps that table honest.
 //
-// A condition added to LoadJSON's switch but not to the table would leave the
-// contract unchecked for exactly the conditions most likely to be new. Rather
-// than trust a reader to notice, this reads the switch and requires one table
-// entry per routed case — the "the list is the rule" shape monstertraits uses
-// for its trait refs, and the source-reading shape resolution/truth_test.go
-// uses for its pins.
+// A condition added to the loader registry but not to the table would leave
+// the contract unchecked for exactly the conditions most likely to be new.
 func TestRefContractCoversEveryLoadedCondition(t *testing.T) {
-	src, err := os.ReadFile("loader.go")
-	require.NoError(t, err)
-
-	cases := regexp.MustCompile(`(?m)^\tcase refs\.[A-Za-z]+\.[A-Za-z]+\(\)\.ID:`).FindAllString(string(src), -1)
-	require.NotEmpty(t, cases, "found no case labels — this test's regex has drifted from loader.go")
-
 	table := refContractTable()
-	require.Len(t, table, len(cases),
-		"LoadJSON routes %d conditions but refContractTable constructs %d; add the new one to the table",
-		len(cases), len(table))
-
 	seen := map[string]string{}
 	for name, condition := range table {
-		id := condition.Ref().String()
-		if other, dup := seen[id]; dup {
-			t.Fatalf("table entries %q and %q are both %s, so the count above is met without covering everything",
-				other, name, id)
+		refString := condition.Ref().String()
+		if other, dup := seen[refString]; dup {
+			t.Fatalf("table entries %q and %q are both %s, so the set can match without covering everything",
+				other, name, refString)
 		}
-		seen[id] = name
+		seen[refString] = name
 	}
+
+	require.ElementsMatch(t,
+		slices.Collect(maps.Keys(conditionLoaders)),
+		slices.Collect(maps.Keys(seen)),
+		"the loader registry and ref contract table must name the same conditions",
+	)
 }

@@ -94,6 +94,13 @@ func (d *DodgingCondition) Apply(ctx context.Context, bus events.EventBus) error
 	}
 	d.subscriptionIDs = append(d.subscriptionIDs, subID3)
 
+	longRestSubID, err := subscribeRemoveOnLongRest(ctx, bus, d.MemberID, d.Ref(), d.Remove)
+	if err != nil {
+		_ = d.Remove(ctx, bus)
+		return rpgerr.Wrap(err, "failed to subscribe to long rest")
+	}
+	d.subscriptionIDs = append(d.subscriptionIDs, longRestSubID)
+
 	return nil
 }
 
