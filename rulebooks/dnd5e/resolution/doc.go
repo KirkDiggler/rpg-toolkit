@@ -251,10 +251,11 @@
 // TestNoCodePathProducesAReadinesslessInteraction hold all three structurally
 // rather than by example, by reading the door's source; a fourth,
 // TestOnlyTheDoorInstallsGameContext, holds that the door is the only installer
-// and that every path which folds reaches it.
+// and that every truth-bearing attached-behavior path reaches it.
 //
-// There are five such paths, and TestOnlyTheDoorInstallsGameContext holds the
-// list. [Resolve] runs an interaction. [ProjectCharacter] folds one derived
+// There are five such truth-bearing attached-behavior paths, and
+// TestOnlyTheDoorInstallsGameContext holds the list. [Resolve] runs an
+// interaction. [ProjectCharacter] folds one derived
 // number for a caller with no interaction to run — a character joining a
 // session, who is not standing anywhere yet and so gets a context whose room
 // is honestly ABSENT rather than invented. [Standing] asks who is down.
