@@ -7,7 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.1.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.123.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.125.1
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/behavior v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.40.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.25.0

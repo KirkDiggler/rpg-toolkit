@@ -6,6 +6,7 @@ package encounter
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
@@ -94,7 +95,8 @@ type OpenDoorOutput struct {
 // OpenDoor opens a door: its edges stop blocking, and whatever stood behind it
 // comes into view.
 //
-// Refuses a LOCKED door with ErrLocked, naming the DC — [Encounter.Unlock] is
+// Refuses a LOCKED door with ErrLocked, naming every route through the lock
+// and its price — [Encounter.Unlock] is
 // the way through one. Refuses an already-open door with ErrBadDoor, for the
 // reason this file's doc comment gives.
 //
@@ -114,12 +116,15 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open door: %w", err)
 	}
+	if err := e.probeDoor(door, in.Actor); err != nil {
+		return nil, fmt.Errorf("open door: %w", err)
+	}
 	if err := e.doorActorOf(in.Actor); err != nil {
 		return nil, fmt.Errorf("open door %q: %w", door.id, err)
 	}
 
 	if lock, locked := door.state.Lock(); locked {
-		return nil, fmt.Errorf("open door %q: locked, DC %d: %w", door.id, lock.DC, ErrLocked)
+		return nil, fmt.Errorf("open door %q: locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
 	}
 	if door.state.Kind() == DoorOpen {
 		return nil, fmt.Errorf("open door %q: it is already open: %w", door.id, ErrBadDoor)
@@ -194,6 +199,9 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("close door: %w", err)
 	}
+	if err := e.probeDoor(door, in.Actor); err != nil {
+		return nil, fmt.Errorf("close door: %w", err)
+	}
 	if err := e.doorActorOf(in.Actor); err != nil {
 		return nil, fmt.Errorf("close door %q: %w", door.id, err)
 	}
@@ -245,6 +253,17 @@ type UnlockInput struct {
 	// rpg-project#269), and nothing here reads it against anything. The
 	// verdict is Beaten, alone.
 	Total int
+
+	// Applied is the route the attempt actually took — the one the
+	// caller's resolver applied, which is the member's best listed
+	// approach per the standing ruling (rpg-project#350; the selection
+	// mechanism is [CheckResolver], this wave's). REQUIRED, and it must be
+	// one of the lock's listed approaches (ErrBadDoor otherwise): an
+	// attempt resolves through exactly one authored route, and the beat
+	// names that route's DC — never the whole lock's, which prices each
+	// route separately. CARRIED, never compared, like everything else on
+	// this input.
+	Applied CheckApproach
 }
 
 // UnlockOutput reports whether the lock was beaten, and what that revealed.
@@ -262,10 +281,15 @@ type UnlockOutput struct {
 	// no such door".
 	Beaten bool
 
-	// DC is the lock's authored difficulty, echoed either way so a caller
-	// narrating a near miss does not have to go looking for it. CARRIED, never
-	// compared — see [Lock].
-	DC int
+	// Approaches are the lock's authored ways through, echoed either way so
+	// a caller narrating a near miss does not have to go looking for them.
+	// CARRIED, never compared — see [Lock].
+	Approaches []CheckApproach
+
+	// Applied echoes which route the attempt took — [UnlockInput.Applied],
+	// so a caller reads the faced DC off the answer rather than off what
+	// it passed in.
+	Applied CheckApproach
 
 	// State is what state the door is in now: [DoorOpen] when beaten,
 	// [DoorLocked] when not.
@@ -315,6 +339,9 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unlock: %w", err)
 	}
+	if err := e.probeDoor(door, in.Actor); err != nil {
+		return nil, fmt.Errorf("unlock: %w", err)
+	}
 
 	if err := e.doorActorOf(in.Actor); err != nil {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
@@ -323,6 +350,10 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	lock, locked := door.state.Lock()
 	if !locked {
 		return nil, fmt.Errorf("unlock %q: it is %s, not locked: %w", door.id, door.state.Kind(), ErrBadDoor)
+	}
+	if !slices.Contains(lock.Approaches, in.Applied) {
+		return nil, fmt.Errorf("unlock %q: the applied route (DC %d) is not one the lock lists: %w",
+			door.id, in.Applied.DC, ErrBadDoor)
 	}
 
 	// The state to land in, and it is the same call either way: a failed
@@ -337,7 +368,9 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	if extra == nil {
 		extra = map[string]interface{}{}
 	}
-	extra["dc"] = lock.DC
+	extra["approaches"] = approachesDataFrom(lock.Approaches)
+	extra["applied"] = CheckApproachData(in.Applied)
+	extra["dc"] = in.Applied.DC
 	extra["beaten"] = in.Beaten
 	extra["total"] = in.Total
 
@@ -349,7 +382,8 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	return &UnlockOutput{
 		Door:        door.id,
 		Beaten:      in.Beaten,
-		DC:          lock.DC,
+		Approaches:  copyApproaches(lock.Approaches),
+		Applied:     in.Applied,
 		State:       door.state.Kind(),
 		IntelDeltas: changed.deltas,
 		Seq:         changed.seq,
@@ -393,20 +427,23 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[str
 		return doorChange{}, err
 	}
 
-	// subjectBeat: not a whole-table fact, and no one member is really "the
-	// subject" of a door — #940's eventual perception scoping is far more
-	// likely to key off who can currently see the door than off any one
-	// member, so there's no subject to pass today. v1 still sends everyone
-	// regardless (audienceFor's doc); this is the passthrough
-	// appendDoorBeat's own doc calls "the one early adopter."
-	audience := e.audienceFor(subjectBeat)
+	// The beat's audience and the refresh's scope are two different
+	// questions now (rpg-toolkit#1371). The BEAT goes to every member who
+	// KNOWS the door: for a never-concealed door that is the whole roster
+	// (full data until v1.0, unchanged), and for a concealed one it is
+	// exactly the members it has been revealed to — computed BEFORE the
+	// refresh below, whose sweep may mint new knowers; a member learning of
+	// the door on this very change gets DOOR_REVEALED there, never this
+	// beat. The REFRESH stays roster-wide regardless: a door changing what
+	// it blocks changes what everyone can see, knower or not.
+	audience := e.doorBeatAudience(door)
 
 	seq, err := e.appendDoorBeat(door, audience, extra)
 	if err != nil {
 		return doorChange{}, err
 	}
 
-	deltas, formed, err := e.refreshSight(audience)
+	deltas, formed, err := e.refreshSight(e.rosterIDs())
 	if err != nil {
 		return doorChange{}, err
 	}
@@ -414,14 +451,53 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, extra map[str
 	return doorChange{seq: seq, deltas: deltas, formed: formed}, nil
 }
 
-// appendDoorBeat records what a door did, to everybody.
+// doorBeatAudience is who hears a door's own state-change beat: everyone,
+// for a door that was never concealed (full data until v1.0), and exactly
+// the current members who KNOW the door for a concealed one — as far as
+// concealed structure requires and no further (rpg-project#350;
+// rpg-toolkit#1020's shelf coming due for doors). Sorted, like every
+// audience this module computes (C8).
+func (e *Encounter) doorBeatAudience(door *doorRecord) []MemberID {
+	if e.world == nil || door.concealed == nil {
+		return e.audienceFor(subjectBeat)
+	}
+	knowers := make([]MemberID, 0, len(e.members))
+	for _, id := range e.rosterIDs() {
+		if e.world.knowsDoor(id, door.id) {
+			knowers = append(knowers, id)
+		}
+	}
+	return knowers
+}
+
+// probeDoor is THE PROBE LAW (ruled on rpg-project#350): everywhere a door
+// id is spoken, a concealed door the acting member has not found answers
+// with the same not-found error a door that does not exist answers with —
+// byte-identical, which is why this returns doorOf's own error shape. A
+// DC-naming or state-naming refusal would confirm existence to a guessed
+// id, so this runs BEFORE any check that reads the door's state, and before
+// actor validation too: a stranger probing a secret learns exactly what a
+// stranger probing a typo does.
 //
-// THE WHOLE ROSTER HEARS IT, which is a simplification worth naming rather than
-// hiding: whether a member can SEE a door move is a perception question this
-// module does not ask yet, and #1020's asymmetric perception is where it
-// belongs. Audience routing for door beats rides in with it. Until then the
-// beat is honest about what happened and the percepts beside it are honest
-// about what each member can see.
+// An EMPTY actor is the host's own hand — an authored, unattributed change
+// from the side of the seam that composed the dungeon and holds its whole
+// truth — so it probes nothing.
+func (e *Encounter) probeDoor(door *doorRecord, actor MemberID) error {
+	if e.world == nil || door.concealed == nil || actor == "" {
+		return nil
+	}
+	if e.world.knowsDoor(actor, door.id) {
+		return nil
+	}
+	return fmt.Errorf("door %q: %w", door.id, ErrNoDoor)
+}
+
+// appendDoorBeat records what a door did, to the members who know it.
+//
+// The audience arrives computed ([Encounter.doorBeatAudience]): the whole
+// roster for a never-concealed door — whether a member can SEE it move is
+// still #1020's asymmetric perception, not this — and the door's knowers
+// for a concealed one, which is as far as concealed structure requires.
 func (e *Encounter) appendDoorBeat(door *doorRecord, audience []MemberID, extra map[string]interface{}) (uint64, error) {
 	payload := map[string]interface{}{
 		"beat":  "door",

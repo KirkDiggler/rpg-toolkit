@@ -80,7 +80,8 @@ func (s *TombDoorSuite) SetupTest() {
 			Doors: []encounter.DoorInput{{
 				ID:    cryptDoor,
 				Edges: doorEdgesAcross(15, tombdoorRow),
-				State: encounter.DoorIsLocked(encounter.Lock{DC: cryptDC, Ability: "dex", Tool: "dnd5e:item:thieves-tools"}),
+				State: encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{
+					{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}}}),
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -147,15 +148,18 @@ func (s *TombDoorSuite) TestTheLockedConnectorBlocksSightUntilItIsBeaten() {
 	const missed, met = cryptDC - 1, cryptDC
 
 	failed, err := s.enc.Unlock(&encounter.UnlockInput{
-		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC), Actor: delve, Total: missed})
+		Door: cryptDoor, Beaten: picksTheLock(missed, cryptDC), Actor: delve, Total: missed,
+		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 	s.Require().NoError(err, "a failed check is an outcome, not an error")
 	s.False(failed.Beaten)
-	s.Equal(cryptDC, failed.DC, "and it reports the DC it carries, for whoever narrates the near miss")
+	s.Equal([]encounter.CheckApproach{{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}},
+		failed.Approaches, "and it reports the approaches it carries, for whoever narrates the near miss")
 	s.Equal(encounter.DoorLocked, failed.State, "still locked")
 	s.False(s.sees(delve, wight), "and still blind")
 
 	beaten, err := s.enc.Unlock(&encounter.UnlockInput{
-		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC), Actor: delve, Total: met})
+		Door: cryptDoor, Beaten: picksTheLock(met, cryptDC), Actor: delve, Total: met,
+		Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 	s.Require().NoError(err)
 	s.True(beaten.Beaten, "meeting the DC exactly beats it — a tie goes to the roller, per picksTheLock")
 	s.Equal(encounter.DoorOpen, beaten.State, "beaten means open, not merely unlocked")
@@ -216,9 +220,8 @@ func (s *TombDoorSuite) TestTheDoorSurvivesASave() {
 		s.Require().Len(data.Doors, 1)
 		s.Equal(string(encounter.DoorLocked), data.Doors[0].State)
 		s.Require().NotNil(data.Doors[0].Lock)
-		s.Equal(cryptDC, data.Doors[0].Lock.DC)
-		s.Equal("dex", data.Doors[0].Lock.Ability, "carried verbatim; this module never looks inside it")
-		s.Equal("dnd5e:item:thieves-tools", data.Doors[0].Lock.Tool)
+		s.Equal([]encounter.CheckApproachData{{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}},
+			data.Doors[0].Lock.Approaches, "carried verbatim; this module never looks inside any of it")
 
 		back := s.reload(data)
 		_, err := back.OpenDoor(&encounter.OpenDoorInput{Door: cryptDoor})
@@ -227,7 +230,8 @@ func (s *TombDoorSuite) TestTheDoorSurvivesASave() {
 	})
 
 	s.Run("and open, once it has been beaten", func() {
-		_, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Beaten: picksTheLock(30, cryptDC)})
+		_, err := s.enc.Unlock(&encounter.UnlockInput{Door: cryptDoor, Beaten: picksTheLock(30, cryptDC),
+			Applied: encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: cryptDC}})
 		s.Require().NoError(err)
 
 		data := s.enc.ToData()

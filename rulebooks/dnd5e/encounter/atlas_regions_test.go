@@ -48,6 +48,7 @@ func atlasField() encounter.FieldInput {
 func (s *AtlasRegionsSuite) open(field encounter.FieldInput) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Field:   field,
 		Members: []encounter.MemberInput{{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 4}}},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
@@ -60,9 +61,30 @@ func (s *AtlasRegionsSuite) reload(enc *encounter.Encounter) *encounter.Encounte
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{},
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 	})
 	s.Require().NoError(err)
 	return back
+}
+
+// TestAtlas_RegionsCarryConcealment: the concealed marker round-trips through
+// ToData -> Load -> Atlas exactly as lighting does — carried, never read
+// (rpg-project#351, living-world wave 1a) — and a region that authored
+// nothing reports false on the far side, the same fact it went in as.
+func (s *AtlasRegionsSuite) TestAtlas_RegionsCarryConcealment() {
+	field := atlasField()
+	for i := range field.Regions {
+		if field.Regions[i].ID == "tomb" {
+			field.Regions[i].Concealed = true
+		}
+	}
+
+	atlas, err := s.reload(s.open(field)).Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(atlas.Regions, 3)
+	for _, r := range atlas.Regions {
+		s.Equal(r.ID == "tomb", r.Concealed, "region %q", r.ID)
+	}
 }
 
 // TestAtlas_RegionsCarryLighting: archetype and intensity round-trip through

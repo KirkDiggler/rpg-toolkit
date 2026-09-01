@@ -87,6 +87,12 @@ func doorEdgesAcross(atX int, rows ...int) []encounter.DoorEdge {
 
 // doorField is two chambers `height` tall with one door standing in the rows
 // named, in the state given.
+// oneApproachLock is the simplest legal lock: one route, one DC. What most
+// scenes here need — the multi-approach shape is pinned where it matters.
+func oneApproachLock(dc int) encounter.Lock {
+	return encounter.Lock{Approaches: []encounter.CheckApproach{{Ability: "dex", DC: dc}}}
+}
+
 func doorField(height int, state encounter.DoorState, id encounter.DoorID, rows ...int) encounter.FieldInput {
 	return encounter.FieldInput{
 		Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -246,8 +252,9 @@ func (s *DoorSuite) TestAGateIsOneThingNotFour() {
 func (s *DoorSuite) TestNoEdgeCarriesAStateOfItsOwn() {
 	s.Equal([]string{"From", "To"}, structFieldNames(encounter.DoorEdge{}),
 		"an edge is two cells and nothing else — a blocking flag here would be a second truth")
-	s.Equal([]string{"ID", "Edges", "State"}, structFieldNames(encounter.Door{}),
-		"and the state is the DOOR's, held once for however many edges it has")
+	s.Equal([]string{"ID", "Edges", "State", "Concealed"}, structFieldNames(encounter.Door{}),
+		"and the state is the DOOR's, held once for however many edges it has — "+
+			"Concealed is construction truth like the edges, not a second state")
 }
 
 // TestADoorMustSayWhatStateItIsIn is #1033's law again: a door with no declared
@@ -346,9 +353,21 @@ func (s *DoorSuite) TestADoorThatCannotBePartOfAFieldIsRefusedByName() {
 			"could not then have one state"},
 		{"a crossing already walled", []encounter.DoorInput{closedAt(theDoor, edge(2, 0, 3, 0))},
 			"already drawn"},
-		{"a lock nothing has to beat", []encounter.DoorInput{{
+		{"a lock that lists no way through", []encounter.DoorInput{{
 			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
-			State: encounter.DoorIsLocked(encounter.Lock{})}}, "nothing has to beat"},
+			State: encounter.DoorIsLocked(encounter.Lock{})}}, "lists no way through"},
+		{"a lock approach nothing has to beat", []encounter.DoorInput{{
+			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
+			State: encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{
+				{Ability: "dex", DC: 12}, {Ability: "str"}}})}}, "nothing has to beat"},
+		{"a concealment that lists no way to find it", []encounter.DoorInput{{
+			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
+			State:     encounter.DoorIsClosed(),
+			Concealed: []encounter.CheckApproach{}}}, "lists no way to find it"},
+		{"a concealment approach nothing has to beat", []encounter.DoorInput{{
+			ID: theDoor, Edges: []encounter.DoorEdge{edge(2, 1, 3, 1)},
+			State:     encounter.DoorIsClosed(),
+			Concealed: []encounter.CheckApproach{{Ability: "perception", DC: 0}}}}, "nothing has to beat"},
 	} {
 		s.Run(tc.name, func() {
 			err := s.setup(withDoors(tc.doors...))
@@ -437,6 +456,66 @@ func (s *DoorSuite) TestDoorsIsACopyOut() {
 	s.False(s.sees(enc, nessa, orin), "and it is still shut across the crossing it was authored in")
 }
 
+// TestConcealmentIsCarriedNotInterpreted — living-world slice 1, wave 1a
+// (rpg-toolkit#1369). The find check is construction truth, like the edges:
+// authored on the input, read back verbatim, ridden through the blob, and
+// untouched by the verbs — an opened door is the same authored secret. And it
+// is carried ONLY: a concealed shut door blocks exactly what a shut door
+// blocks, because who has FOUND it is the world layer's knowledge (wave 1b),
+// not a fact about the map.
+func (s *DoorSuite) TestConcealmentIsCarriedNotInterpreted() {
+	find := []encounter.CheckApproach{
+		{Ability: "perception", DC: 15},
+		{Ability: "investigation", Tool: "dnd5e:item:magnifying-glass", DC: 12},
+	}
+	field := doorField(3, encounter.DoorIsClosed(), theDoor, 1)
+	field.Doors[0].Concealed = append([]encounter.CheckApproach(nil), find...)
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+		Field: field,
+		Members: []encounter.MemberInput{
+			{ID: nessa, Kind: encounter.KindPlayer, Position: nessaCell},
+			{ID: orin, Kind: encounter.KindPlayer, Position: orinCell},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	s.False(s.sees(enc, nessa, orin), "a concealed shut door blocks exactly what a shut door blocks")
+
+	handed := enc.Doors()
+	s.Require().Len(handed, 1)
+	s.Equal(find, handed[0].Concealed, "read back verbatim, in authored order")
+	handed[0].Concealed[0] = encounter.CheckApproach{Ability: "luck", DC: 1}
+	s.Equal(find, enc.Doors()[0].Concealed, "a copy-out, like the edges")
+
+	data := enc.ToData()
+	s.Require().Len(data.Doors, 1)
+	s.Equal([]encounter.CheckApproachData{
+		{Ability: "perception", DC: 15},
+		{Ability: "investigation", Tool: "dnd5e:item:magnifying-glass", DC: 12},
+	}, data.Doors[0].Concealed, "the blob carries the find check verbatim")
+
+	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:  data,
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
+	})
+	s.Require().NoError(err)
+	_, err = back.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})
+	s.Require().NoError(err)
+	s.Equal(find, back.Doors()[0].Concealed, "reloaded and opened, still the same authored secret")
+
+	// The door that was never concealed says so by saying NOTHING: nil in,
+	// nil out, no key in the blob — which is every door in every dungeon
+	// authored before concealment existed, loading to the byte it always did.
+	plain := s.doorway(encounter.DoorIsClosed())
+	s.Nil(plain.Doors()[0].Concealed)
+	s.Nil(plain.ToData().Doors[0].Concealed)
+}
+
 // TestAskingADoorForWhatItHasAlreadyDoneIsRefused is the no-silent-no-op rule,
 // which this module applies everywhere else and would be conspicuous for
 // dropping here. Compare [Encounter.Dissolve]'s ErrNoBubble.
@@ -456,11 +535,27 @@ func (s *DoorSuite) TestAskingADoorForWhatItHasAlreadyDoneIsRefused() {
 	s.Contains(err.Error(), "not locked", "there is nothing to beat on an unlocked door")
 }
 
+// TestARefusalNamesEveryRoute — the lock's label carries whatever each
+// approach carries: an ability, an ability with its tool, or a tool alone
+// (Ability is legally empty at this seam; the route still deserves naming).
+// Rendering, never interpretation — every word below is authored.
+func (s *DoorSuite) TestARefusalNamesEveryRoute() {
+	enc := s.doorway(encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{
+		{Ability: "str", DC: 15},
+		{Tool: "dnd5e:item:crowbar", DC: 10},
+	}}))
+
+	_, err := enc.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})
+	s.Require().ErrorIs(err, encounter.ErrLocked)
+	s.Contains(err.Error(), "DC 15 (str)")
+	s.Contains(err.Error(), "DC 10 (dnd5e:item:crowbar)", "a tool-only route is not silently dropped")
+}
+
 // TestALockedDoorCannotBeClosedTwice: locked is closed already, so asking to
 // shut it is asking for something that has happened — and answering "done"
 // would quietly tell a caller they had shut a door somebody else's key opens.
 func (s *DoorSuite) TestALockedDoorCannotBeClosedTwice() {
-	enc := s.doorway(encounter.DoorIsLocked(encounter.Lock{DC: 10}))
+	enc := s.doorway(encounter.DoorIsLocked(oneApproachLock(10)))
 
 	_, err := enc.CloseDoor(&encounter.CloseDoorInput{Door: theDoor})
 	s.Require().ErrorIs(err, encounter.ErrBadDoor)
@@ -492,8 +587,16 @@ func (s *DoorSuite) TestABlobWhoseDoorMakesNoSenseIsRefusedByName() {
 			"which this build does not know"},
 		{"locked, with nothing to beat", func(d *encounter.DoorData) { d.State = "locked" },
 			"says nothing about the lock"},
-		{"closed, yet carrying a lock", func(d *encounter.DoorData) { d.Lock = &encounter.LockData{DC: 12} },
+		{"closed, yet carrying a lock", func(d *encounter.DoorData) {
+			d.Lock = &encounter.LockData{Approaches: []encounter.CheckApproachData{{DC: 12}}}
+		},
 			"carries a lock"},
+		{"locked, whose lock lists no approaches", func(d *encounter.DoorData) {
+			d.State = "locked"
+			d.Lock = &encounter.LockData{}
+		}, "lists no way through"},
+		{"concealed, with no way to find it", func(d *encounter.DoorData) { d.Concealed = []encounter.CheckApproachData{} },
+			"lists no way to find it"},
 	} {
 		s.Run(tc.name, func() {
 			data := saved()
@@ -552,7 +655,7 @@ func (s *DoorSuite) TestABlobFromBeforeDoorsExistedLoadsFine() {
 // door whose record says locked while the map says open. It does not: the view
 // is a [spatial.Room], deliberately not a [spatial.BoundaryAwareRoom].
 func (s *DoorSuite) TestTheHandedOutCanvasCannotBeUsedToOpenADoor() {
-	enc := s.doorway(encounter.DoorIsLocked(encounter.Lock{DC: 12}))
+	enc := s.doorway(encounter.DoorIsLocked(oneApproachLock(12)))
 
 	canvas, err := enc.Canvas()
 	s.Require().NoError(err)

@@ -72,6 +72,11 @@ type AtlasRegion struct {
 
 	// Lighting is the region's light level, carried unread.
 	Lighting Lighting
+
+	// Concealed is whether the region is authored as hidden space, carried
+	// unread — [RegionInput.Concealed]. What a non-knower's atlas withholds
+	// is the world layer's business (rpg-project#351), not a snapshot's.
+	Concealed bool
 }
 
 // AtlasProp is one authored thing standing on the floor, as the map reports
@@ -171,6 +176,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Cells:     append([]spatial.Position(nil), f.regionCells[r.ID]...),
 			Archetype: r.Archetype,
 			Lighting:  *r.Lighting,
+			Concealed: r.Concealed,
 		})
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })
