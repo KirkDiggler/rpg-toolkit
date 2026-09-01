@@ -102,21 +102,23 @@ func (s *ReadTestSuite) TestReadVerbsRejectMissingIdentifiers() {
 	})
 
 	s.Run("empty session id", func() {
-		_, err := s.mgr.Atlas(ctx, &session.AtlasInput{})
+		_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Member: "alice"})
 		s.ErrorIs(err, session.ErrNoSessionID)
 		_, err = s.mgr.Status(ctx, &session.StatusInput{})
 		s.ErrorIs(err, session.ErrNoSessionID)
 	})
 
 	s.Run("empty member id", func() {
-		_, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess"})
+		_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
+		s.ErrorIs(err, session.ErrNoMemberID)
+		_, err = s.mgr.View(ctx, &session.ViewInput{Session: "sess"})
 		s.ErrorIs(err, session.ErrNoMemberID)
 		_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess"})
 		s.ErrorIs(err, session.ErrNoMemberID)
 	})
 
 	s.Run("unknown session", func() {
-		_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "nope"})
+		_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "nope", Member: "alice"})
 		s.ErrorIs(err, session.ErrNoSession)
 	})
 }
@@ -132,7 +134,7 @@ func (s *ReadTestSuite) TestMissingWorldIsDistinctFromMissingSession() {
 	s.Require().NoError(s.sessions.SaveSession(ctx,
 		&session.SessionData{ID: "orphan", Encounter: "vanished"}))
 
-	_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "orphan"})
+	_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "orphan", Member: "alice"})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrNoEncounter)
 	s.NotErrorIs(err, session.ErrNoSession, "the session was found; the world was not")
@@ -147,7 +149,7 @@ func (s *ReadTestSuite) TestMissingWorldIsDistinctFromMissingSession() {
 func (s *ReadTestSuite) TestAtlasProjectsTheWholeWorld() {
 	s.startWith(hexWorld(s.T()))
 
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 
 	s.Equal(session.GridHex, atlas.Grid, "the grid family must survive as the wire enum")
@@ -250,9 +252,22 @@ func (s *ReadTestSuite) TestStoryFromSeqIsInclusive() {
 // break their error handling exactly as surely as leaking a struct would —
 // silently, with CI green throughout.
 func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
-	s.startWith(trimmedWorld(s.T()))
+	ctx := context.Background()
+	world := trimmedWorld(s.T())
+	s.startWith(world)
 
-	_, err := s.mgr.Story(context.Background(),
+	// Under per-recipient numbering a cursorless session seeds from the
+	// retained window and FromSeq 1 is answerable — the trimmed refusal
+	// needs a cursor remembering beats the window no longer holds
+	// (stream.go; the SentinelSuite's own trimmed scene says the same).
+	data, err := s.sessions.GetSession(ctx, "sess")
+	s.Require().NoError(err)
+	data.Streams = map[string]session.StreamCursor{
+		"alice": {UpTo: world.Log.NextSeq - 1, Count: uint64(len(world.Log.Entries)) + 5},
+	}
+	s.Require().NoError(s.sessions.SaveSession(ctx, data))
+
+	_, err = s.mgr.Story(ctx,
 		&session.StoryInput{Session: "sess", Member: "alice", FromSeq: 1})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrStoryTrimmed, "the caller sees our vocabulary")
@@ -304,7 +319,7 @@ func TestReadSuite(t *testing.T) {
 // happened.
 func (s *ReadTestSuite) TestAtlasSaysWhichWayTheHexesPoint() {
 	s.startWith(hexWorld(s.T()))
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(session.HexLayoutPointyTop, atlas.Layout,
 		"hexWorld is authored pointy-top, and after rpg-toolkit#1141 that IS the way to draw it")
@@ -327,7 +342,7 @@ func (s *ReadTestSuite) TestAtlasLayoutCoversBothHexLayouts() {
 	data := flat.ToData()
 	s.startWith(&data)
 
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(session.HexLayoutFlatTop, atlas.Layout, "a flat-top field must not be reported as pointy")
 }

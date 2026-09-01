@@ -400,8 +400,16 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// Both players — barbarian already down, fighter still standing — heard
 	// the same round-1 beats (rpg-toolkit#940's own current broadcast
 	// behaviour, same as TestTwoPlayersOneSession's own negative control).
+	// Since rpg-toolkit#1375 the same beats arrive under each member's OWN
+	// delivered numbering — barbarian's runs one ahead of fighter's, she
+	// was the only audience of her own join beat — so "identical set" is
+	// size plus per-member contiguity, never equal numbers.
 	round1Barbarian := recipientSeqs(round1Drive, "barbarian")
-	require.Equal(t, round1Fighter, round1Barbarian, "both players receive the identical round-1 beat set")
+	require.Len(t, round1Barbarian, len(round1Fighter), "both players receive the same round-1 beat set")
+	for i := 1; i < len(round1Barbarian); i++ {
+		require.Equal(t, round1Barbarian[i-1]+1, round1Barbarian[i],
+			"barbarian's own stream stays gap-free through the drive")
+	}
 
 	// Round 2: fighter's own end drives skel-1 a second time. This time
 	// skel-1's one attack downs fighter too — the last player standing —

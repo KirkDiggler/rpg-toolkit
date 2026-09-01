@@ -615,6 +615,21 @@ const (
 	// (rpg-toolkit#1020) narrows it.
 	EventDoor EventKind = "door"
 
+	// EventDoorRevealed is a concealed door entering THIS RECIPIENT's
+	// knowledge — their own search, a crossing, or perceiving it open. The
+	// body is the patch for the recipient's cached atlas and door list:
+	// the door's doorways and live state, plus the lock's approaches when
+	// locked. Always recipient-scoped to exactly one member (detection
+	// beats are per-player from birth).
+	EventDoorRevealed EventKind = "door_revealed"
+
+	// EventRegionRevealed is a concealed region entering THIS RECIPIENT's
+	// knowledge — perceiving its door open, or standing inside it. The
+	// body carries the region's whole atlas slice as the recipient's own
+	// atlas now answers it: entry, props, and every boundary touching its
+	// cells. Always recipient-scoped to exactly one member.
+	EventRegionRevealed EventKind = "region_revealed"
+
 	// EventUnknown is a beat this version does not recognise.
 	//
 	// Delivered rather than dropped on purpose: a client that cannot interpret
@@ -642,9 +657,13 @@ type Event struct {
 	// Session is the session this event belongs to.
 	Session string `json:"session"`
 
-	// Seq is the story sequence this event was derived from: monotonic,
-	// gapless, and never renumbered. A recipient that notices a gap in Seq has
-	// missed an event and can re-query the story from its last known value.
+	// Seq is this event's position in THE RECIPIENT'S OWN delivered stream:
+	// dense from the recipient's point of view, monotonic, and never
+	// renumbered (stream.go). A recipient that notices a gap in Seq has
+	// missed an event and can re-query the story from its last known value
+	// — and because the numbering is per-recipient, a beat delivered to
+	// somebody else leaves NO hole here: the record's global sequence stays
+	// internal to the seam (the gap-oracle ruling, rpg-project#351).
 	Seq uint64 `json:"seq"`
 
 	// At is the clock reading when the underlying beat was recorded.
@@ -862,6 +881,51 @@ type DoorBody struct {
 
 func (DoorBody) isEventBody() {}
 
+// DoorRevealedBody is EventDoorRevealed's typed body: a concealed door as
+// the recipient's own atlas and door list now carry it — the patch for both
+// cached reads.
+type DoorRevealedBody struct {
+	// Door is the door's identifier.
+	Door string `json:"door"`
+
+	// State is the door's LIVE state at reveal time — "open", "closed" or
+	// "locked". A found door is usually shut (that is what concealment
+	// looks like), but a door revealed by being perceived open arrives
+	// open.
+	State string `json:"state"`
+
+	// Doorways is every edge of the door, ready to append to the cached
+	// atlas's doorway list — a wide door's edges arrive together, Door
+	// filled on each.
+	Doorways []AtlasDoorway `json:"doorways,omitempty"`
+
+	// Approaches is the lock's authored routes, present only while the
+	// door is locked — what the recipient's Doors read would now list.
+	Approaches []DoorApproach `json:"approaches,omitempty"`
+}
+
+func (DoorRevealedBody) isEventBody() {}
+
+// RegionRevealedBody is EventRegionRevealed's typed body: the region's whole
+// atlas slice, exactly as the recipient's own Atlas read now answers it —
+// derived from that answer by the composition, so the patch and the map
+// cannot disagree.
+type RegionRevealedBody struct {
+	// Region is the region's atlas entry: id, name, cells, archetype,
+	// lighting.
+	Region AtlasRegion `json:"region"`
+
+	// Props is everything standing on the region's cells.
+	Props []AtlasProp `json:"props,omitempty"`
+
+	// Boundaries is every boundary touching the region's cells that the
+	// recipient may now see — border walls included, still withholding any
+	// shared with a hidden neighbour.
+	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
+}
+
+func (RegionRevealedBody) isEventBody() {}
+
 // Door is one door's identity and live state — the dynamic half of
 // [AtlasDoorway], which carries the same door's edges and never changes.
 // Read via [Manager.Doors] once, then updated from EventDoor beats.
@@ -877,19 +941,32 @@ type Door struct {
 	Lock *DoorLock `json:"lock,omitempty"`
 }
 
-// DoorLock is an authored lock, carried not interpreted — the DC is public
-// down to the number (full data until v1.0), and what beats it is
+// DoorLock is an authored lock, carried not interpreted — the DCs are public
+// down to the number (full data until v1.0), and what beats one is
 // [Manager.Unlock]'s ruling, never a comparison the composition makes.
+//
+// A lock is a LIST of accepted routes now, each priced separately (the
+// multi-approach ruling, rpg-project#350) — forced with Strength or picked
+// with Dexterity and tools. An attempt resolves through exactly one of them.
 type DoorLock struct {
-	// DC is the authored difficulty. No omitempty: zero would be an answer
-	// if an author wrote one (TestFalseIsAnAnswerOnTheWire's law).
-	DC int `json:"dc"`
+	// Approaches are the accepted ways through, at least one, in authored
+	// order.
+	Approaches []DoorApproach `json:"approaches"`
+}
 
-	// Ability is the opaque rulebook ref the check uses, e.g. "dex".
+// DoorApproach is one accepted route through an authored check: an ability
+// or skill ref, maybe a tool, and the DC that route must beat.
+type DoorApproach struct {
+	// Ability is the opaque ability or skill ref this route rolls, e.g.
+	// "dex" or "perception".
 	Ability string `json:"ability,omitempty"`
 
-	// Tool is the opaque item ref a lock may name; empty when none.
+	// Tool is the opaque item ref the route may name; empty when none.
 	Tool string `json:"tool,omitempty"`
+
+	// DC is this route's authored difficulty. No omitempty: zero would be
+	// an answer if an author wrote one (TestFalseIsAnAnswerOnTheWire's law).
+	DC int `json:"dc"`
 }
 
 // SaveReport names which aggregates were persisted by a verb and which were

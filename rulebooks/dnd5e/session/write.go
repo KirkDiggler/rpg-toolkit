@@ -54,7 +54,9 @@ type JoinOutput struct {
 	// Corrected reports location-belief corrections made by driven turns.
 	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
-	// Seq is the story sequence of the recorded join.
+	// Seq is the join beat's sequence IN THE JOINER'S OWN delivered
+	// numbering (stream.go) — the same number their event for it carries.
+	// The record's global sequence stays internal to the seam.
 	Seq uint64
 
 	// Outcome is present if an ending fired on the join.
@@ -109,7 +111,11 @@ type SpawnOutput struct {
 	// Corrected reports location-belief corrections made by driven turns.
 	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
-	// Seq is the story sequence of the recorded arrival.
+	// Seq is the story sequence of the recorded arrival — the RECORD's own
+	// numbering, because Spawn has no acting member to number for: the
+	// caller is the host, and the host's view is the whole record. Every
+	// member-driven verb reports in its actor's delivered numbering
+	// instead (stream.go).
 	Seq uint64
 
 	// Outcome is present if an ending fired on the spawn.
@@ -118,6 +124,13 @@ type SpawnOutput struct {
 	// Formed is present if the spawned content arrived in sight of the party
 	// and a fight started. This is the reason Formed is not a movement-only
 	// field: nobody walked anywhere, and a fight started.
+	//
+	// Its Seq is the RECORD's numbering, like the sibling Seq above and for
+	// the same reason: Spawn has no acting member to number for. THE HOST
+	// MUST NEVER FORWARD SpawnOutput's Seq or Formed.Seq to a client beside
+	// per-recipient events — a record number next to a member's own dense
+	// stream is the gap oracle returning through a side door; clients hear
+	// about the arrival through their own numbered beats.
 	Formed *Formed
 
 	// Saved names what was persisted.
@@ -151,7 +164,8 @@ type ExitOutput struct {
 	// Corrected reports location-belief corrections made by driven turns.
 	Corrected []IntelCorrection `json:"corrected,omitempty"`
 
-	// Seq is the story sequence of the recorded exit.
+	// Seq is the exit beat's sequence IN THE DEPARTING MEMBER'S OWN
+	// delivered numbering (stream.go).
 	Seq uint64
 
 	// Closed is present if the encounter auto-closed because the last member
@@ -278,9 +292,9 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Character:  state,
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Corrected:  projectIntelCorrections(placed.IntelDeltas),
-		Seq:        placed.Seq,
+		Seq:        scope.deliveredSeq(in.Member, placed.Seq),
 		Outcome:    projectOutcome(placed.Outcome),
-		Formed:     projectFormed(placed.Formed),
+		Formed:     projectFormedFor(scope, in.Member, placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -578,7 +592,7 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), down),
 		Discovered: projectDiscoveries(left.IntelDeltas, down),
 		Corrected:  projectIntelCorrections(left.IntelDeltas),
-		Seq:        left.Seq,
+		Seq:        scope.deliveredSeq(in.Member, left.Seq),
 		Closed:     projectOutcome(left.Closed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -650,7 +664,8 @@ func (m *Manager) openForWrite(ctx context.Context, sessionID string) (*writeSco
 		sight:     &sightSeam{},
 	}
 	enc, baseline, standing, err := m.loadWorldWithBaseline(
-		ctx, data, strikerSeam{m: m, scope: scope}, announcerSeam{m: m, scope: scope}, scope.sight)
+		ctx, data, strikerSeam{m: m, scope: scope}, announcerSeam{m: m, scope: scope}, scope.sight,
+		checkSeam{m: m, scope: scope}, witnessSeam{scope: scope})
 	if err != nil {
 		return nil, err
 	}
@@ -692,6 +707,16 @@ type writeScope struct {
 	// world. Writes stay proportional to what actually changed.
 	touched bool
 
+	// checks is the sheets this verb staged for check resolution, keyed by
+	// member — [stageCheck] writes it, [checkSeam] reads it at consult time.
+	// Nil for the many verbs that roll no checks.
+	checks map[string]*stagedCheck
+
+	// numbers is this verb's per-recipient numbering, computed by commit
+	// before the save and read afterwards by event projection and by the
+	// verb's own output fields (stream.go). Nil until commit runs.
+	numbers *streamNumbers
+
 	// written names what this verb made durable BEFORE reaching persist —
 	// character sheets, today, which are the only aggregate a verb writes on
 	// its own (see [Manager.saveDirty]).
@@ -706,6 +731,15 @@ type writeScope struct {
 	// unchanged — the entries are added by whoever wrote, never by persist on
 	// their behalf.
 	written []string
+}
+
+// deliveredSeq translates one recorded beat's global sequence into a member's
+// own delivered numbering — the only numbering a verb's output may carry
+// (stream.go). Zero for a beat that was never delivered to that member, which
+// for a verb's OWN beat cannot happen: every verb's beat is audienced to its
+// actor.
+func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
+	return s.numbers.deliveredSeq(member, seq)
 }
 
 // adopt replaces the scope's encounter with one loaded from a world that came
@@ -742,6 +776,12 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		// announces from inside its own verbs, so the seam the new
 		// encounter carries must be the one that reads this scope.
 		Announcer: announcerSeam{m: m, scope: scope},
+		// The concealment pair, bound to the same scope for the same
+		// reason: the world coming back may carry concealed structure, and
+		// the seams read scope.enc — which this assignment is about to
+		// replace — only at consult time.
+		CheckResolver: checkSeam{m: m, scope: scope},
+		Witness:       witnessSeam{scope: scope},
 	})
 	if err != nil {
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
@@ -775,8 +815,26 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 // is told exactly which aggregate is missing — that is S6's whole job — and
 // repairing it needs a decision, not a retry. Making the entry verbs idempotent
 // for this case is the fix, and it is not this wave's.
-func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *encounter.EncounterData, error) {
-	data := scope.enc.ToData()
+//
+// ONE MORE WEDGE, NAMED RATHER THAN PATCHED (the rebind review of
+// rpg-toolkit#1377; the same admission is on rpg-project#351's record): a
+// crash between the two saves loses the stream cursors the session save was
+// carrying, and for a NORMAL verb the next load re-derives them from the
+// persisted log — self-healing, by numberEntries' own arithmetic. For a verb
+// that appended MORE BEATS THAN THE RETENTION WINDOW, the encounter save has
+// already trimmed the blob's floor past every cursor, so re-derivation is
+// impossible and every subsequent verb refuses at the trim-outran guard,
+// permanently, as ErrInvalidWorld. That is fail-closed and TRUTHFUL — no
+// beat was delivered that was not saved (delivery waits for both saves), the
+// world never lies, and it is strictly better than the pre-fix behavior
+// (which refused the big verb outright, every time, crash or no crash). It
+// is also unhealable by retry, which is why it is admitted here in the
+// ordering's own doc: a remediation path — reseeding cursors at the cost of
+// a client resync, or journaling them beside the blob — is a named shelf,
+// not slice work.
+func (m *Manager) persist(
+	ctx context.Context, scope *writeScope, data encounter.EncounterData,
+) (SaveReport, error) {
 
 	// The report opens with what the verb already made durable rather than
 	// starting from nothing, which is the whole of rpg-toolkit#1056: a swing
@@ -789,7 +847,7 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
 		report.Failed = []string{"encounter:" + scope.encounter}
-		return report, nil, &SaveError{
+		return report, &SaveError{
 			Report: report,
 			Err:    fmt.Errorf("saving world: %w", err),
 		}
@@ -797,7 +855,7 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 	report.Written = append(report.Written, "encounter:"+scope.encounter)
 
 	if !scope.touched {
-		return report, &data, nil
+		return report, nil
 	}
 
 	if err := m.sessions.SaveSession(ctx, scope.data); err != nil {
@@ -806,13 +864,13 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, *
 		// to tell a total failure from a half one, which is the difference
 		// between "retry the verb" and "the world moved but its record did not".
 		report.Failed = append(report.Failed, "session:"+scope.session)
-		return report, nil, &SaveError{
+		return report, &SaveError{
 			Report: report,
 			Err:    fmt.Errorf("saving session: %w", err),
 		}
 	}
 	report.Written = append(report.Written, "session:"+scope.session)
-	return report, &data, nil
+	return report, nil
 }
 
 // commit saves the mutated world and then fans out what it recorded.
@@ -830,11 +888,38 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return SaveReport{Written: scope.written}, DeliveryReport{}, err
 	}
 
-	report, snapshot, err := m.persist(ctx, scope)
+	// Number every member's stream and BUILD the delivery batch BEFORE the
+	// save-point ToData, from a pure WorldView and the live Story — the one
+	// ordering retention-at-the-storage-boundary makes load-bearing
+	// (encounter v0.43.0, #1381/#1385): ToData trims, so a verb whose delta
+	// outgrew the retention window would lose its own early beats to any
+	// read that came after it. Numbering failure fails the verb before
+	// anything lands — R5's atomicity, and the fail-closed arm of the
+	// numbering design. Delivery still WAITS for the save (S9): computed
+	// here, handed to the stream only after persist reports the world
+	// durable.
+	view := scope.enc.WorldView()
+	numbers, cursors, err := buildStreamNumbers(scope.enc, &view, scope.data.Streams)
+	if err != nil {
+		return SaveReport{Written: scope.written}, DeliveryReport{}, err
+	}
+	scope.numbers = numbers
+	if !cursorsEqual(scope.data.Streams, cursors) {
+		scope.data.Streams = cursors
+		scope.touched = true
+	}
+	events := m.projectEvents(scope, &view)
+
+	// THE storage boundary: the one ToData in this package, and the one
+	// place retention runs. Everything before this line read the whole
+	// verb's delta; everything after reads only what storage keeps.
+	world := scope.enc.ToData()
+
+	report, err := m.persist(ctx, scope, world)
 	if err != nil {
 		return report, DeliveryReport{}, err
 	}
-	return report, m.publish(ctx, scope, snapshot), nil
+	return report, m.deliver(ctx, events), nil
 }
 
 // exitDissolvedCombatants clears the action economy of every player whose
@@ -888,7 +973,9 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // moves past that beat — never retried again (Copilot's own finding on
 // PR #1222).
 func (m *Manager) exitDissolvedCombatants(ctx context.Context, scope *writeScope) error {
-	data := scope.enc.ToData()
+	// A pure view, not ToData: this is a mid-verb roster read, and the
+	// storage boundary belongs to commit alone (encounter v0.43.0, #1385).
+	data := scope.enc.WorldView()
 
 	// Kind, from the ENCOUNTER's own authoritative roster — never inferred
 	// from whether an ID happens to load out of the character repository

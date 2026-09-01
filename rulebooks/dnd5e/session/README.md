@@ -42,10 +42,11 @@ declaration, and `gorelease` gates every release.
 | `types.go` | What this package returns |
 | `convert.go` | The converter layer: inner shapes → ours |
 | `read.go` | `Atlas`, `Status`, `View`, `Story`, and the shared load path |
+| `conceal.go` | The two concealment capabilities: the check resolver and the witness |
+| `search.go` | `Search` — the player's sweep of the room they stand in |
+| `stream.go` | Per-recipient dense numbering: each member's delivered stream, counted for them |
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |
-| `suspend.go` | The suspension vocabulary and the walk's phase machine |
-| `answer.go` | `Answer`, `Pending`, and the freeze |
 | `start.go` | `StartSession` |
 | `events.go` | Per-recipient fan-out |
 | `cmd/session-workbench` | Drives a whole session; run it |

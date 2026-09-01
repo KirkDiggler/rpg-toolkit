@@ -86,7 +86,7 @@ func (s *WhereSuite) TestTheAnswerIsWhereTheyAreNow() {
 // renders with. A cell that is not on the map is a member drawn outside the
 // dungeon.
 func (s *WhereSuite) TestTheAnswerAgreesWithTheMap() {
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 
 	cells := map[spatial.Position]bool{}

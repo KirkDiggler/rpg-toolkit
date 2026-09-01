@@ -89,7 +89,7 @@ func (s *AtlasRegionsSuite) started(world *encounter.EncounterData) *session.Atl
 	ctx := context.Background()
 	_, err := s.mgr.StartSession(ctx, &session.StartSessionInput{Session: "sess", Encounter: "world", World: world})
 	s.Require().NoError(err)
-	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	return atlas
 }

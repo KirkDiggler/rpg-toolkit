@@ -61,7 +61,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 	// room he would have to look up. The vault is anchored at (6,0), so this
 	// number only exists if the projection happened.
 	s.Equal(hexCell(2, 2), out.Member.Position)
-	s.Equal([]string{"encounter:world"}, out.Saved.Written)
+	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
 
 	// The proof: a fresh read sees him.
 	sightings, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "bob"})
@@ -99,7 +99,7 @@ func (s *WriteTestSuite) TestExitCarriesKnowledgeOut() {
 	s.Equal(map[string]session.Discovery{
 		"bob": {Faded: []string{"alice"}},
 	}, out.Discovered, "the remaining observer must learn that Alice faded")
-	s.Equal([]string{"encounter:world"}, out.Saved.Written)
+	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
 
 	// And she is really gone, not merely reported gone.
 	_, err = s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
@@ -113,7 +113,7 @@ func (s *WriteTestSuite) TestEndClosesTheEncounter() {
 	out, err := s.mgr.End(ctx, &session.EndInput{Session: "sess", Ending: "out"})
 	s.Require().NoError(err)
 	s.Equal("out", out.Outcome.Ending)
-	s.Equal([]string{"encounter:world"}, out.Saved.Written)
+	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
 
 	status, err := s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})
 	s.Require().NoError(err)
@@ -158,7 +158,7 @@ func (s *WriteTestSuite) TestReadVerbsStillWorkOnAClosedEncounter() {
 
 	_, err = s.mgr.Status(ctx, &session.StatusInput{Session: "sess"})
 	s.NoError(err, "status must survive closure — it is how you learn it closed")
-	_, err = s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
+	_, err = s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.NoError(err, "the map does not stop existing")
 	_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
 	s.NoError(err, "the story is the point of a finished encounter")

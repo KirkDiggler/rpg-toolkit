@@ -122,7 +122,8 @@ type DissolveOutput struct {
 	// the caller asked for. See [DissolveInput.Cause].
 	Cause DissolveKind `json:"cause"`
 
-	// Seq is the story sequence of the recorded beat.
+	// Seq is the dissolve beat's sequence IN THE ACTOR'S OWN delivered
+	// numbering (stream.go) — the member the fight was reached through.
 	Seq uint64 `json:"seq"`
 
 	// Saved names what was persisted.
@@ -195,7 +196,7 @@ func (m *Manager) Dissolve(ctx context.Context, in *DissolveInput) (*DissolveOut
 	return &DissolveOutput{
 		Members:  members,
 		Cause:    cause.Kind(),
-		Seq:      dissolved.Seq,
+		Seq:      scope.deliveredSeq(in.Member, dissolved.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil

@@ -261,7 +261,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w: %v", ErrBadAttack, err)
 	}
 
-	world := scope.enc.ToData()
+	// A pure view for resolution's Input.World — a mid-verb read, never the
+	// storage boundary (encounter v0.43.0, #1385).
+	world := scope.enc.WorldView()
 	out, err := resolution.Resolve(ctx, &resolution.Input{
 		World:        world,
 		Participants: cast,
@@ -321,7 +323,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Hit:      struck.Hit,
 		Critical: struck.Critical,
 		Damage:   struck.Damage,
-		Seq:      recorded.Seq,
+		Seq:      scope.deliveredSeq(in.Attacker, recorded.Seq),
 		Saved:    report,
 		Delivery: delivery,
 		Attack:   attackRefFor(definition),

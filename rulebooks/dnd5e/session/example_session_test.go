@@ -55,7 +55,7 @@ func Example_theSession() {
 		panic(err)
 	}
 
-	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "tomb-run"})
+	atlas, err := mgr.Atlas(ctx, &session.AtlasInput{Session: "tomb-run", Member: "bob"})
 	if err != nil {
 		panic(err)
 	}

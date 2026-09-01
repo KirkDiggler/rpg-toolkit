@@ -245,7 +245,9 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 			failures[0].member, ErrBadCharacter, failures[0].err)
 	}
 
-	world := scope.enc.ToData()
+	// A pure view for resolution's Input.World — a mid-verb read, never the
+	// storage boundary (encounter v0.43.0, #1385).
+	world := scope.enc.WorldView()
 	out, err := resolution.Resolve(ctx, &resolution.Input{
 		World:        world,
 		Participants: cast,

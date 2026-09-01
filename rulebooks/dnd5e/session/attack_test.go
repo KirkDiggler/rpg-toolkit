@@ -507,7 +507,7 @@ func (s *AttackTestSuite) TestASwingNamesTheSheetItWrote() {
 	s.Require().NoError(err)
 	s.Require().True(out.Hit)
 
-	s.Equal([]string{"character:alice", "character:bob", "encounter:world"}, out.Saved.Written,
+	s.Equal([]string{"character:alice", "character:bob", "encounter:world", "session:sess"}, out.Saved.Written,
 		"the paid attacker and damaged target are durable and the report says so")
 	s.Empty(out.Saved.Failed)
 	s.False(out.Saved.Partial(), "a whole save is not a partial one")
@@ -527,7 +527,7 @@ func (s *AttackTestSuite) TestAMissNamesNoCharacterWrite() {
 	s.Require().NoError(err)
 	s.Require().False(out.Hit)
 
-	s.Equal([]string{"character:alice", "encounter:world"}, out.Saved.Written,
+	s.Equal([]string{"character:alice", "encounter:world", "session:sess"}, out.Saved.Written,
 		"a miss changes no target sheet, but the attacker's paid economy is durable")
 }
 

@@ -11,10 +11,21 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// AtlasInput asks for a session's static world map.
+// AtlasInput asks for a session's static world map, as one member knows it.
 type AtlasInput struct {
 	// Session is the session whose world to describe.
 	Session string
+
+	// Member is whose map it is. Required — the map that crosses this seam
+	// for a member-shaped question is the member's own (rpg-toolkit#1375):
+	// concealed structure the member has not had revealed is withheld under
+	// the composition's never-authored yardstick, and for a world with no
+	// concealment the answer is byte-identical to the whole truth.
+	//
+	// THE HOST MUST BIND Member TO THE AUTHENTICATED CALLER — [Manager.Where]'s
+	// own law, and here it guards the map itself: wire a client-supplied
+	// member ID through unchecked and any player reads any other's reveals.
+	Member string
 }
 
 // AtlasOfInput asks for the static map of an authored world that no session
@@ -56,32 +67,50 @@ type StoryInput struct {
 	// Member is the viewer whose story is requested.
 	Member string
 
-	// FromSeq is the INCLUSIVE lower bound: entries begin AT this sequence.
-	// Zero means "I hold nothing, send what you have" and is always
-	// answerable, however much has aged out of the retention window.
+	// FromSeq is the INCLUSIVE lower bound: entries begin AT this sequence,
+	// IN THE MEMBER'S OWN DELIVERED NUMBERING — the same numbers their
+	// events carry (Event.Seq, stream.go), which is the only numbering that
+	// crosses this seam. Zero means "I hold nothing, send what you have"
+	// and is always answerable, however much has aged out of the retention
+	// window.
 	//
 	// To resume after entry N, pass N+1. Named for what it does, unlike the
 	// composition's own field, whose name predates its behaviour.
 	FromSeq uint64
 }
 
-// Atlas returns the session's static world map: one set of cells, the ones
-// that block sight, the walls between them, and every doorway's kissing pair.
+// Atlas returns the session's world map AS ONE MEMBER KNOWS IT: one set of
+// cells, the ones that block sight, the walls between them, and every
+// doorway's kissing pair — with concealed structure the member has not had
+// revealed withheld by the composition ([encounter.Encounter.AtlasFor]).
 //
-// Construction truth — unchanged by movement, joins, exits or endings — so a
-// host should fetch it once per session rather than per frame.
+// Knowledge truth rather than construction truth now: unchanged by movement,
+// joins, exits or endings, and PATCHED by the member's own reveal beats
+// (EventDoorRevealed, EventRegionRevealed) — the load-once, beat-refreshed
+// shape. For a world with no concealment nothing is ever withheld and the
+// answer is the whole map, exactly as before.
 //
-// Returns ErrNilInput, ErrNoSessionID, ErrNoSession, or ErrNoEncounter.
+// The unscoped read ([encounter.Encounter.Atlas]) remains the host's internal
+// whole truth and deliberately does not cross this seam for a member-shaped
+// question (rpg-toolkit#1375); [Manager.AtlasOf] still answers whole for an
+// authored world no session holds, which is the author's question, not a
+// member's.
+//
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
+// ErrNoEncounter, or ErrNoMember if the member is not in this encounter.
 func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 	if in == nil {
 		return nil, fmt.Errorf("atlas: %w", ErrNilInput)
+	}
+	if in.Member == "" {
+		return nil, fmt.Errorf("atlas: %w", ErrNoMemberID)
 	}
 	enc, err := m.open(ctx, in.Session)
 	if err != nil {
 		return nil, fmt.Errorf("atlas: %w", err)
 	}
 
-	atlas, err := enc.Atlas()
+	atlas, err := enc.AtlasFor(encounter.MemberID(in.Member))
 	if err != nil {
 		return nil, fmt.Errorf("atlas: %w", translate(err))
 	}
@@ -243,10 +272,11 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 
 // Story returns the beats a member has witnessed, from FromSeq onward
 // inclusive, projected exactly as a live [EventStream] subscriber would have
-// received them: same Kind, same typed Body, same Tags — one projection
-// ([projectEntry]) for both paths, so a client that notices a gap and
-// re-queries Story sees byte-equal entries for the same seq rather than a
-// second, thinner shape it must decode differently (rpg-api-protos#239).
+// received them: same Kind, same typed Body, same Tags, same per-recipient
+// Seq — one projection ([projectEntry]) for both paths, so a client that
+// notices a gap and re-queries Story sees byte-equal entries for the same seq
+// rather than a second, thinner shape it must decode differently
+// (rpg-api-protos#239).
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember, or ErrStoryTrimmed when the requested resume
@@ -260,28 +290,63 @@ func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]Event, error) {
 	if in.Member == "" {
 		return nil, fmt.Errorf("story: %w", ErrNoMemberID)
 	}
-	enc, err := m.open(ctx, in.Session)
+	data, err := m.loadSessionData(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
+	enc, err := m.loadWorld(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("story: %w", err)
 	}
 
+	// The member's WHOLE retained story, then this seam's own numbering over
+	// it (stream.go): FromSeq is in the member's delivered numbering now, so
+	// the retention question — "can this resume point still be honoured" —
+	// is asked in that numbering too, against the same cursor the write
+	// verbs advance. Zero stays exempt and always answerable.
 	entries, err := enc.Story(&encounter.StoryInput{
 		Audience: encounter.MemberID(in.Member),
-		// The composition's AfterSeq is an inclusive lower bound despite its
-		// name; ours says so, and the value passes through unchanged.
-		AfterSeq: in.FromSeq,
+		AfterSeq: 0,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("story: %w", translate(err))
 	}
 
+	// A pure view, not ToData: a read must not trim the log it is reading
+	// (encounter v0.43.0, #1385) — and the floor it needs is exactly what
+	// the view's retained entries answer.
+	view := enc.WorldView()
+	seqs, count, err := numberEntries(
+		in.Member, entries, data.Streams[in.Member], retainedFloor(view.Log))
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
+
+	// The oldest number the record can still serve: the first surviving
+	// entry's, or one past everything delivered when nothing survives. A
+	// resume point below it names a trimmed entry and is REJECTED rather
+	// than partially answered — the composition's own #937 reasoning, in
+	// this seam's numbering.
+	oldest := count + 1
+	if len(entries) > 0 {
+		oldest = seqs[entries[0].Seq]
+	}
+	if in.FromSeq > 0 && in.FromSeq < oldest {
+		return nil, fmt.Errorf("story: seq %d below retained floor %d: %w",
+			in.FromSeq, oldest, ErrStoryTrimmed)
+	}
+
 	// projectEntry, not a second mapping: catch-up must be byte-equal to
 	// what a live subscriber received for the same seq (rpg-api-protos#239).
 	// The requesting member IS the recipient — Story asks after one's own
-	// story, there is no other audience to address it to.
+	// story, there is no other audience to address it to — and the numbering
+	// is the same arithmetic over the same persisted cursor both paths.
 	events := make([]Event, 0, len(entries))
 	for _, e := range entries {
-		events = append(events, projectEntry(in.Session, in.Member, e))
+		if in.FromSeq > 0 && seqs[e.Seq] < in.FromSeq {
+			continue
+		}
+		events = append(events, projectEntry(in.Session, in.Member, e, seqs[e.Seq]))
 	}
 	return events, nil
 }
@@ -335,7 +400,8 @@ func (m *Manager) loadSessionData(ctx context.Context, sessionID string) (*Sessi
 // at all would be this package's own bug rather than anything a caller did.
 func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.Encounter, error) {
 	enc, _, _, err := m.loadWorldWithBaseline(
-		ctx, data, encounter.RefusingStriker{}, encounter.RefusingAnnouncer{}, &sightSeam{})
+		ctx, data, encounter.RefusingStriker{}, encounter.RefusingAnnouncer{}, &sightSeam{},
+		refusingCheckResolver{}, refusingWitness{})
 	return enc, err
 }
 
@@ -364,6 +430,7 @@ func (m *Manager) loadWorld(ctx context.Context, data *SessionData) (*encounter.
 func (m *Manager) loadWorldWithBaseline(
 	ctx context.Context, data *SessionData,
 	striker encounter.Striker, announcer encounter.Announcer, sight *sightSeam,
+	resolver encounter.CheckResolver, witness encounter.Witness,
 ) (*encounter.Encounter, uint64, encounter.Standing, error) {
 	encID := data.Encounter
 
@@ -398,6 +465,14 @@ func (m *Manager) loadWorldWithBaseline(
 		// failure, where a silently-succeeding no-op would be
 		// indistinguishable from the boundary that never got published.
 		Announcer: announcer,
+		// The concealment pair, caller-chosen the same way: real seams
+		// bound to a write verb's scope, or the refusing pair for a read
+		// that never rolls a check or refreshes sight. Supplied non-nil
+		// either way — the composition requires them exactly when the
+		// field carries concealed structure, and a stand-in that errors at
+		// use is how a read path fails closed.
+		CheckResolver: resolver,
+		Witness:       witness,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot
@@ -462,6 +537,11 @@ func translate(err error) error {
 		// split: shut is a state a caller can change (OpenDoor), not a bad
 		// coordinate.
 		return fmt.Errorf("%w", ErrDoorShut)
+	case errors.Is(err, encounter.ErrElsewhere):
+		// Search named a region the searcher does not stand in — including
+		// one that does not exist, deliberately indistinguishably (the
+		// composition's own probe reasoning; nothing to add here).
+		return fmt.Errorf("%w", ErrElsewhere)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):

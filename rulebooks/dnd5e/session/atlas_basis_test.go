@@ -21,7 +21,7 @@ import (
 // kind of test that could see the basis this seam used to hand out.
 func (s *ReadTestSuite) TestAtlasCellsDrawTheAuthoredShape() {
 	s.startWith(hexWorld(s.T()))
-	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess"})
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().Equal(session.HexLayoutPointyTop, atlas.Layout)
 

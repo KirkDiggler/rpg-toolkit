@@ -225,7 +225,8 @@ type EndTurnOutput struct {
 	// order has come back around.
 	RoundWrapped bool `json:"round_wrapped"`
 
-	// Seq is the story sequence of the recorded beat.
+	// Seq is the turn-ended beat's sequence IN THE ACTOR'S OWN delivered
+	// numbering (stream.go) — the same number their event for it carries.
 	Seq uint64 `json:"seq"`
 
 	// Corrected reports location-belief corrections made by driven turns.
@@ -306,7 +307,7 @@ func (m *Manager) EndTurn(ctx context.Context, in *EndTurnInput) (*EndTurnOutput
 	return &EndTurnOutput{
 		Next:         string(ended.Next),
 		RoundWrapped: ended.RoundWrapped,
-		Seq:          ended.Seq,
+		Seq:          scope.deliveredSeq(in.Member, ended.Seq),
 		Corrected:    projectIntelCorrections(ended.IntelDeltas),
 		Saved:        report,
 		Delivery:     delivery,

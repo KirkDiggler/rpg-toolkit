@@ -68,22 +68,24 @@ type DeliveryReport struct {
 	Failed bool `json:"failed,omitempty"`
 }
 
-// publish fans out everything recorded at or after the baseline sequence.
+// deliver hands an already-built batch to the stream.
 //
 // Called only AFTER the save has landed (S9). Announcing a fact that failed to
 // persist is the one ordering mistake that cannot be recovered from: a client
 // told the ogre died, and a world in which it did not, and no sequence gap to
-// betray the difference.
+// betray the difference. The batch itself is BUILT BEFORE the save
+// ([Manager.commit], from the pure view and the live Story), because the
+// save-point ToData trims the log — a batch projected afterwards would
+// silently drop whatever a big verb's delta lost to the trim. Building
+// early and delivering late keeps both laws.
 //
 // Delivery is best effort (S10). A failure is reported and the verb still
-// succeeds, because the log remains the truth and gapless sequences let a
-// client detect what it missed. Failing the verb instead would roll back
-// nothing — the world has already changed — and would turn a transient stream
-// outage into a spurious error the host must decide how to interpret.
-func (m *Manager) publish(
-	ctx context.Context, scope *writeScope, snapshot *encounter.EncounterData,
-) DeliveryReport {
-	events := m.projectEvents(scope, snapshot)
+// succeeds, because the log remains the truth and per-recipient dense
+// sequences let a client detect what it missed. Failing the verb instead
+// would roll back nothing — the world has already changed — and would turn a
+// transient stream outage into a spurious error the host must decide how to
+// interpret.
+func (m *Manager) deliver(ctx context.Context, events []Event) DeliveryReport {
 	if len(events) == 0 {
 		return DeliveryReport{}
 	}
@@ -95,6 +97,9 @@ func (m *Manager) publish(
 }
 
 // projectEvents turns the beats a verb recorded into one event per recipient.
+//
+// It reads the LIVE story — called before the save-point ToData, while the
+// log still holds the verb's whole delta (see [Manager.deliver]).
 //
 // The audience question is answered by asking the composition, not by us: for
 // each member, its own Story is queried from the baseline, and whatever it
@@ -125,7 +130,8 @@ func (m *Manager) projectEvents(
 		}
 
 		for _, entry := range entries {
-			events = append(events, projectEntry(scope.session, string(member), entry))
+			events = append(events, projectEntry(scope.session, string(member), entry,
+				scope.deliveredSeq(string(member), entry.Seq)))
 		}
 	}
 
@@ -144,7 +150,10 @@ func (m *Manager) projectEvents(
 // re-queried Story got a shape it had to decode a second, different way —
 // exactly the drift #239 found live in the debug feed (kind=UNKNOWN
 // body=null on every caught-up entry).
-func projectEntry(session, recipient string, e record.Entry) Event {
+// seq is the RECIPIENT's own number for this entry, computed by the caller
+// from the one persisted cursor (stream.go) — never the record's global
+// sequence, which stays internal to the seam.
+func projectEntry(session, recipient string, e record.Entry, seq uint64) Event {
 	kind, body := decodeBeat(e.Payload)
 
 	var tags map[string]string
@@ -157,7 +166,7 @@ func projectEntry(session, recipient string, e record.Entry) Event {
 
 	return Event{
 		Session:     session,
-		Seq:         e.Seq,
+		Seq:         seq,
 		At:          e.At,
 		Correlation: e.Correlation,
 		Tags:        tags,
@@ -258,6 +267,10 @@ func kindFor(beat string) EventKind {
 		return EventDowned
 	case "door":
 		return EventDoor
+	case "door_revealed":
+		return EventDoorRevealed
+	case "region_revealed":
+		return EventRegionRevealed
 	default:
 		return EventUnknown
 	}
@@ -351,6 +364,41 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 			return nil
 		}
 		return DownedBody{Member: p.Member}
+	case EventDoorRevealed:
+		// The composition writes doorways as bare from/to pairs; the body
+		// re-carries them as [AtlasDoorway] entries with Door filled, so
+		// the patch appends to the cached atlas's own list without reshaping.
+		var p struct {
+			Door       string         `json:"door"`
+			State      string         `json:"state"`
+			Doorways   []AtlasDoorway `json:"doorways"`
+			Approaches []DoorApproach `json:"approaches"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Door == "" || p.State == "" {
+			return nil
+		}
+		for i := range p.Doorways {
+			p.Doorways[i].Door = p.Door
+		}
+		return DoorRevealedBody{
+			Door: p.Door, State: p.State,
+			Doorways: p.Doorways, Approaches: p.Approaches,
+		}
+	case EventRegionRevealed:
+		// The payload's region, props and boundaries carry exactly this
+		// package's atlas field names — the beat is the recipient's own
+		// atlas answer, sliced — so the types decode directly.
+		var p struct {
+			Region     AtlasRegion     `json:"region"`
+			Props      []AtlasProp     `json:"props"`
+			Boundaries []AtlasBoundary `json:"boundaries"`
+		}
+		if json.Unmarshal(payload, &p) != nil || p.Region.ID == "" {
+			return nil
+		}
+		return RegionRevealedBody{
+			Region: p.Region, Props: p.Props, Boundaries: p.Boundaries,
+		}
 	default:
 		// EventSceneOpened, EventTick: no body member exists for these — see
 		// EventBody's own doc.
