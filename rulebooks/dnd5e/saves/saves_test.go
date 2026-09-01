@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -20,6 +21,7 @@ type SavingThrowTestSuite struct {
 	ctrl       *gomock.Controller
 	ctx        context.Context
 	mockRoller *mock_dice.MockRoller
+	bus        events.EventBus
 }
 
 func TestSavingThrowSuite(t *testing.T) {
@@ -30,6 +32,7 @@ func (s *SavingThrowTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.ctx = context.Background()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	s.bus = events.NewEventBus()
 }
 
 func (s *SavingThrowTestSuite) TearDownTest() {
@@ -43,6 +46,8 @@ func (s *SavingThrowTestSuite) TestBasicSuccess() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.CON,
 		DC:       13,
 		Modifier: 3,
@@ -67,6 +72,8 @@ func (s *SavingThrowTestSuite) TestBasicFailure() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.CON,
 		DC:       13,
 		Modifier: 3,
@@ -91,6 +98,8 @@ func (s *SavingThrowTestSuite) TestAdvantage() {
 
 	input := &SavingThrowInput{
 		Roller:       s.mockRoller,
+		EventBus:     s.bus,
+		SaverID:      "hero",
 		Ability:      abilities.WIS,
 		DC:           12,
 		Modifier:     2,
@@ -116,6 +125,8 @@ func (s *SavingThrowTestSuite) TestDisadvantage() {
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		SaverID:         "hero",
 		Ability:         abilities.DEX,
 		DC:              15,
 		Modifier:        4,
@@ -141,6 +152,8 @@ func (s *SavingThrowTestSuite) TestNatural1() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.STR,
 		DC:       5,
 		Modifier: 10, // Even with a huge modifier, nat 1 is still detected
@@ -165,6 +178,8 @@ func (s *SavingThrowTestSuite) TestNatural20() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.INT,
 		DC:       30,
 		Modifier: -2, // Even with a negative modifier, nat 20 is still detected
@@ -189,6 +204,8 @@ func (s *SavingThrowTestSuite) TestNatural20WithAdvantage() {
 
 	input := &SavingThrowInput{
 		Roller:       s.mockRoller,
+		EventBus:     s.bus,
+		SaverID:      "hero",
 		Ability:      abilities.CHA,
 		DC:           15,
 		Modifier:     1,
@@ -213,6 +230,8 @@ func (s *SavingThrowTestSuite) TestNatural1WithDisadvantage() {
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		SaverID:         "hero",
 		Ability:         abilities.CON,
 		DC:              10,
 		Modifier:        3,
@@ -236,6 +255,8 @@ func (s *SavingThrowTestSuite) TestNegativeModifier() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.INT,
 		DC:       10,
 		Modifier: -2,
@@ -257,6 +278,8 @@ func (s *SavingThrowTestSuite) TestZeroModifier() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		SaverID:  "hero",
 		Ability:  abilities.WIS,
 		DC:       14,
 		Modifier: 0,
@@ -279,6 +302,8 @@ func (s *SavingThrowTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		SaverID:         "hero",
 		Ability:         abilities.DEX,
 		DC:              15,
 		Modifier:        2,
@@ -308,10 +333,8 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 	// With advantage from chain, should roll 2d20 and take higher
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to grant advantage on DEX saves
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, event *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			// Grant advantage on DEX saves
@@ -334,7 +357,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsAdvantage() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: bus,
+		EventBus: s.bus,
 		SaverID:  "hero",
 		Ability:  abilities.DEX,
 		DC:       15,
@@ -357,10 +380,8 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 	// With disadvantage from chain, should roll 2d20 and take lower
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{18, 5}, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to impose disadvantage
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			addErr := c.Add(combat.StageConditions, "poisoned", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
@@ -380,7 +401,7 @@ func (s *SavingThrowTestSuite) TestChainGrantsDisadvantage() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: bus,
+		EventBus: s.bus,
 		SaverID:  "hero",
 		Ability:  abilities.CON,
 		DC:       15,
@@ -403,10 +424,8 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 	// Normal roll (no advantage/disadvantage)
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(10, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to add Bless bonus
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			addErr := c.Add(combat.StageConditions, "bless", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
@@ -429,7 +448,7 @@ func (s *SavingThrowTestSuite) TestChainAddsBonus() {
 
 	input := &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: bus,
+		EventBus: s.bus,
 		SaverID:  "hero",
 		Ability:  abilities.WIS,
 		DC:       15,
@@ -453,10 +472,8 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 	// Should roll normally when they cancel out
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(12, nil)
 
-	bus := events.NewEventBus()
-
 	// Subscribe to grant advantage
-	saveChain := dnd5eEvents.SavingThrowChain.On(bus)
+	saveChain := dnd5eEvents.SavingThrowChain.On(s.bus)
 	_, err := saveChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.SavingThrowChainEvent, c chain.Chain[*dnd5eEvents.SavingThrowChainEvent]) (chain.Chain[*dnd5eEvents.SavingThrowChainEvent], error) {
 			addErr := c.Add(combat.StageConditions, "dodging", func(_ context.Context, e *dnd5eEvents.SavingThrowChainEvent) (*dnd5eEvents.SavingThrowChainEvent, error) {
@@ -475,7 +492,7 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 
 	input := &SavingThrowInput{
 		Roller:          s.mockRoller,
-		EventBus:        bus,
+		EventBus:        s.bus,
 		SaverID:         "hero",
 		Ability:         abilities.DEX,
 		DC:              15,
@@ -497,27 +514,36 @@ func (s *SavingThrowTestSuite) TestChainAdvantageAndInputDisadvantageCancelOut()
 	s.Equal("Input", result.DisadvantageSources[0].Name)
 }
 
-// TestNoEventBusStillWorks tests that MakeSavingThrow works without an EventBus
-func (s *SavingThrowTestSuite) TestNoEventBusStillWorks() {
-	// Normal roll without EventBus
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	input := &SavingThrowInput{
+// TestRefusesNilEventBus pins the required-bus contract (rpg-toolkit#1357):
+// a saving throw consults the chain, so a nil bus is refused by name
+// rather than quietly skipping every condition.
+func (s *SavingThrowTestSuite) TestRefusesNilEventBus() {
+	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
 		Roller:   s.mockRoller,
-		EventBus: nil, // No event bus
+		EventBus: nil,
+		SaverID:  "hero",
 		Ability:  abilities.STR,
 		DC:       12,
 		Modifier: 3,
-	}
+	})
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "EventBus is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
+}
 
-	result, err := MakeSavingThrow(s.ctx, input)
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll, "roll should be 15")
-	s.Equal(18, result.Total, "total should be 15 + 3 = 18")
-	s.True(result.Success, "18 should succeed against DC 12")
-	s.Empty(result.AdvantageSources, "should have no advantage sources")
-	s.Empty(result.DisadvantageSources, "should have no disadvantage sources")
-	s.Empty(result.BonusSources, "should have no bonus sources")
+// TestRefusesEmptySaverID pins the other required parameter: chain
+// subscribers key off the saver's id, so an empty id is refused by name.
+func (s *SavingThrowTestSuite) TestRefusesEmptySaverID() {
+	result, err := MakeSavingThrow(s.ctx, &SavingThrowInput{
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		Ability:  abilities.STR,
+		DC:       12,
+		Modifier: 3,
+	})
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "SaverID is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
 }

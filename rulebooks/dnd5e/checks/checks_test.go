@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -20,6 +21,7 @@ type AbilityCheckTestSuite struct {
 	ctrl       *gomock.Controller
 	ctx        context.Context
 	mockRoller *mock_dice.MockRoller
+	bus        events.EventBus
 }
 
 func TestAbilityCheckSuite(t *testing.T) {
@@ -30,6 +32,7 @@ func (s *AbilityCheckTestSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.ctx = context.Background()
 	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
+	s.bus = events.NewEventBus()
 }
 
 func (s *AbilityCheckTestSuite) TearDownTest() {
@@ -43,10 +46,12 @@ func (s *AbilityCheckTestSuite) TestBasicSuccess() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(14, nil)
 
 	input := &AbilityCheckInput{
-		Roller:   s.mockRoller,
-		Skill:    skills.Stealth,
-		DC:       15, // observer's passive Perception
-		Modifier: 3,
+		Roller:    s.mockRoller,
+		EventBus:  s.bus,
+		CheckerID: "hero",
+		Skill:     skills.Stealth,
+		DC:        15, // observer's passive Perception
+		Modifier:  3,
 	}
 
 	result, err := MakeAbilityCheck(s.ctx, input)
@@ -69,10 +74,12 @@ func (s *AbilityCheckTestSuite) TestBasicFailure() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(5, nil)
 
 	input := &AbilityCheckInput{
-		Roller:   s.mockRoller,
-		Skill:    skills.Stealth,
-		DC:       15,
-		Modifier: 3,
+		Roller:    s.mockRoller,
+		EventBus:  s.bus,
+		CheckerID: "hero",
+		Skill:     skills.Stealth,
+		DC:        15,
+		Modifier:  3,
 	}
 
 	result, err := MakeAbilityCheck(s.ctx, input)
@@ -90,6 +97,8 @@ func (s *AbilityCheckTestSuite) TestAdvantage() {
 
 	input := &AbilityCheckInput{
 		Roller:       s.mockRoller,
+		EventBus:     s.bus,
+		CheckerID:    "hero",
 		Skill:        skills.Stealth,
 		DC:           12,
 		Modifier:     2,
@@ -110,6 +119,8 @@ func (s *AbilityCheckTestSuite) TestDisadvantage() {
 
 	input := &AbilityCheckInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		CheckerID:       "hero",
 		Skill:           skills.Stealth,
 		DC:              15,
 		Modifier:        4,
@@ -130,6 +141,8 @@ func (s *AbilityCheckTestSuite) TestAdvantageAndDisadvantageCancelOut() {
 
 	input := &AbilityCheckInput{
 		Roller:          s.mockRoller,
+		EventBus:        s.bus,
+		CheckerID:       "hero",
 		Skill:           skills.Stealth,
 		DC:              15,
 		Modifier:        2,
@@ -150,10 +163,12 @@ func (s *AbilityCheckTestSuite) TestNatural1AndNatural20() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(1, nil)
 
 	result, err := MakeAbilityCheck(s.ctx, &AbilityCheckInput{
-		Roller:   s.mockRoller,
-		Skill:    skills.Stealth,
-		DC:       5,
-		Modifier: 10,
+		Roller:    s.mockRoller,
+		EventBus:  s.bus,
+		CheckerID: "hero",
+		Skill:     skills.Stealth,
+		DC:        5,
+		Modifier:  10,
 	})
 	s.Require().NoError(err)
 	s.True(result.IsNat1)
@@ -167,14 +182,46 @@ func (s *AbilityCheckTestSuite) TestNilInput() {
 	s.Contains(err.Error(), "input cannot be nil")
 }
 
+// TestRefusesNilEventBus pins the required-bus contract (rpg-toolkit#1357):
+// an ability check consults the chain, so a nil bus is refused by name
+// rather than quietly skipping every condition.
+func (s *AbilityCheckTestSuite) TestRefusesNilEventBus() {
+	result, err := MakeAbilityCheck(s.ctx, &AbilityCheckInput{
+		Roller:    s.mockRoller,
+		EventBus:  nil,
+		CheckerID: "hero",
+		Skill:     skills.Stealth,
+		DC:        12,
+		Modifier:  3,
+	})
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "EventBus is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
+}
+
+// TestRefusesEmptyCheckerID pins the other required parameter: chain
+// subscribers key off the checker's id, so an empty id is refused by name.
+func (s *AbilityCheckTestSuite) TestRefusesEmptyCheckerID() {
+	result, err := MakeAbilityCheck(s.ctx, &AbilityCheckInput{
+		Roller:   s.mockRoller,
+		EventBus: s.bus,
+		Skill:    skills.Stealth,
+		DC:       12,
+		Modifier: 3,
+	})
+	s.Require().Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "CheckerID is required")
+	s.Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err), "rpg-api routes on the code, not the text")
+}
+
 // TestChainGrantsAdvantage tests that a chain subscriber (e.g. a future
 // Hidden-on-check condition) can grant advantage via AbilityCheckChain.
 func (s *AbilityCheckTestSuite) TestChainGrantsAdvantage() {
 	s.mockRoller.EXPECT().RollN(s.ctx, 2, 20).Return([]int{8, 15}, nil)
 
-	bus := events.NewEventBus()
-
-	checkChain := dnd5eEvents.AbilityCheckChain.On(bus)
+	checkChain := dnd5eEvents.AbilityCheckChain.On(s.bus)
 	_, err := checkChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, event *dnd5eEvents.AbilityCheckChainEvent,
 			c chain.Chain[*dnd5eEvents.AbilityCheckChainEvent],
@@ -200,7 +247,7 @@ func (s *AbilityCheckTestSuite) TestChainGrantsAdvantage() {
 
 	input := &AbilityCheckInput{
 		Roller:    s.mockRoller,
-		EventBus:  bus,
+		EventBus:  s.bus,
 		CheckerID: "hero",
 		Skill:     skills.Stealth,
 		DC:        15,
@@ -222,9 +269,7 @@ func (s *AbilityCheckTestSuite) TestChainGrantsAdvantage() {
 func (s *AbilityCheckTestSuite) TestChainAddsBonus() {
 	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(10, nil)
 
-	bus := events.NewEventBus()
-
-	checkChain := dnd5eEvents.AbilityCheckChain.On(bus)
+	checkChain := dnd5eEvents.AbilityCheckChain.On(s.bus)
 	_, err := checkChain.SubscribeWithChain(s.ctx,
 		func(_ context.Context, _ *dnd5eEvents.AbilityCheckChainEvent,
 			c chain.Chain[*dnd5eEvents.AbilityCheckChainEvent],
@@ -251,7 +296,7 @@ func (s *AbilityCheckTestSuite) TestChainAddsBonus() {
 
 	input := &AbilityCheckInput{
 		Roller:    s.mockRoller,
-		EventBus:  bus,
+		EventBus:  s.bus,
 		CheckerID: "hero",
 		Skill:     skills.Stealth,
 		DC:        15,
@@ -268,28 +313,4 @@ func (s *AbilityCheckTestSuite) TestChainAddsBonus() {
 	s.Len(result.BonusSources, 1)
 	s.Equal("Bless", result.BonusSources[0].Name)
 	s.Equal(3, result.BonusSources[0].Bonus)
-}
-
-// TestNoEventBusStillWorks tests that MakeAbilityCheck works without an EventBus.
-func (s *AbilityCheckTestSuite) TestNoEventBusStillWorks() {
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	input := &AbilityCheckInput{
-		Roller:   s.mockRoller,
-		EventBus: nil,
-		Skill:    skills.Stealth,
-		DC:       12,
-		Modifier: 3,
-	}
-
-	result, err := MakeAbilityCheck(s.ctx, input)
-	s.Require().NoError(err)
-	s.Require().NotNil(result)
-
-	s.Equal(15, result.Roll)
-	s.Equal(18, result.Total)
-	s.True(result.Success)
-	s.Empty(result.AdvantageSources)
-	s.Empty(result.DisadvantageSources)
-	s.Empty(result.BonusSources)
 }

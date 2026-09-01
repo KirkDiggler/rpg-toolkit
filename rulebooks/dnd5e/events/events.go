@@ -1063,7 +1063,8 @@ var (
 
 	// AbilityCheckChain provides typed chained topic for ability check modifiers
 	// (advantage/disadvantage/bonuses). Mirrors SavingThrowChain. Fired by
-	// checks.MakeAbilityCheck whenever an EventBus is provided — the same
-	// pattern SavingThrowChain uses, whether or not any subscriber exists.
+	// every checks.MakeAbilityCheck — the bus is required there, so a full
+	// check always consults this chain, whether or not any subscriber exists
+	// (rpg-toolkit#1357).
 	AbilityCheckChain = events.DefineChainedTopic[*AbilityCheckChainEvent]("dnd5e.checks.chain")
 )

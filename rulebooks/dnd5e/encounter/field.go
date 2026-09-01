@@ -572,8 +572,10 @@ type SetupInput struct {
 	Witness Witness
 
 	// Retention is how many story beats the encounter keeps. Older beats are
-	// trimmed after each append, so an encounter's blob does not grow without
-	// bound and a save does not rewrite the whole history.
+	// trimmed at the storage boundary — when ToData snapshots the encounter —
+	// so a blob does not grow without bound, a save does not rewrite the
+	// whole history, and a verb's own beats always survive the verb that
+	// minted them however many it minted (#1381).
 	//
 	// Zero selects DefaultRetention. RetentionUnbounded disables trimming —
 	// appropriate for verified-transcript scenes, which are asserting on the
