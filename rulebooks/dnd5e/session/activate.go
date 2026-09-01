@@ -255,7 +255,14 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		Standing:     scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   m.turnDriver,
-		Machine:      machine,
+		// The concealment pair (rpg-toolkit#1378), bound to the same live
+		// scope openForWrite and adopt bind — the one-seam consistency law:
+		// a concealed world refuses to reconstruct without them, and
+		// resolution carries them without consulting either, since no verb
+		// runs inside an interaction.
+		CheckResolver: checkSeam{m: m, scope: scope},
+		Witness:       witnessSeam{scope: scope},
+		Machine:       machine,
 		// Cost is nil ON PURPOSE — see this verb's own doc.
 		Roller: &diceSeam{roller: m.dice},
 	})
