@@ -10,7 +10,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -47,14 +46,18 @@ type SaveInput struct {
 
 // SaveOutcome is what a saving throw produces.
 type SaveOutcome struct {
-	// Result is the roll, its total, and whether it beat the DC.
+	// Result is the roll, its total, whether it beat the DC — and the record of
+	// *which* effects granted advantage, imposed disadvantage, or added a
+	// bonus, in its source lists. Kept per-source because a total alone can say
+	// "there was advantage" but not "Raging granted it", and the difference is
+	// the whole point of a bus.
+	//
+	// This used to travel alongside a second field, Folded, carrying the chain
+	// event resolution folded itself before rolling bus-free. The fold lives
+	// inside [saves.MakeSavingThrow] now — see [NewSave] — and the result's
+	// source lists are that fold's own record, so a second copy of it would be
+	// the dual representation this repo's rules name as a defect.
 	Result *saves.SavingThrowResult
-
-	// Folded is the chain event after every subscriber had its say — the record
-	// of *which* effects granted advantage, imposed disadvantage, or added a
-	// bonus. Kept because Result alone can say "there was advantage" but not
-	// "Raging granted it", and the difference is the whole point of a bus.
-	Folded *dnd5eEvents.SavingThrowChainEvent
 }
 
 func (SaveOutcome) isOutcome() {}
@@ -62,9 +65,18 @@ func (SaveOutcome) isOutcome() {}
 // NewSave returns the machine for a saving throw: one Gather, then Done.
 //
 // This is the smallest interaction that genuinely folds a chain, which is why
-// it is the first. It is also not a mechanic being converted — saves already
-// worked this way, with an optional bus threaded in from outside. What changes
-// is custody: the bus is resolution's, and the machine never touches it.
+// it was the first. Custody of the fold has moved once since: this machine
+// used to fold the SavingThrowChain itself and then roll through the rules
+// package bus-free. rpg-toolkit#1382 removed the bus-free entry — for a real
+// character nobody can prove no condition applies, so a save that skips the
+// chain must not be expressible — which made "fold here, roll there" a
+// double-fold waiting to happen. So the Gather now hands resolution's bus to
+// [saves.MakeSavingThrow] and the chain folds exactly once, inside the rules
+// entry that owns the arithmetic. The machine still never touches the bus
+// (R6): the closure receives it from the driver, the same way every Gather
+// does. The precedent is the damage chain's slice-1 shape — hand the lawful
+// bus to the rules entry that requires one (see "The bus-effect tally" in this
+// package's doc).
 func NewSave(in *SaveInput) Machine {
 	return &saveMachine{in: in}
 }
@@ -74,7 +86,7 @@ type saveMachine struct {
 }
 
 // Start reads the saver's own modifier off its sheet, then asks resolution to
-// fold the saving-throw chain.
+// run the saving throw on its bus.
 func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error) {
 	if m.in == nil {
 		return nil, ErrNilInput
@@ -89,73 +101,36 @@ func (m *saveMachine) Start(_ context.Context, cast *Participants) (Step, error)
 		return nil, fmt.Errorf("%w: %q", ErrNoSaver, m.in.SaverID)
 	}
 
-	event := &dnd5eEvents.SavingThrowChainEvent{
-		SaverID: m.in.SaverID,
-		Ability: m.in.Ability,
-		DC:      m.in.DC,
-		Cause:   m.in.Cause,
-	}
-
-	return gatherSavingThrow(event, func(ctx context.Context, folded *dnd5eEvents.SavingThrowChainEvent) (Step, error) {
-		return m.finish(ctx, modifier, folded)
-	}), nil
+	return gatherSavingThrow(m.in, modifier), nil
 }
 
-// finish rolls the save with whatever the fold produced already folded in.
-//
-// It calls into the rules package with no bus, deliberately: the chain has
-// already been folded by resolution, and passing a bus here would fold it a
-// second time. Everything else about a saving throw — advantage cancellation,
-// natural 1s and 20s, the totals — stays where it lives rather than being
-// reimplemented on this side of the seam.
-func (m *saveMachine) finish(
-	ctx context.Context, modifier int, folded *dnd5eEvents.SavingThrowChainEvent,
-) (Step, error) {
-	result, err := saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
-		Roller:          m.in.Roller,
-		EventBus:        nil,
-		SaverID:         m.in.SaverID,
-		Cause:           m.in.Cause,
-		Ability:         m.in.Ability,
-		DC:              m.in.DC,
-		Modifier:        modifier + folded.TotalBonus(),
-		HasAdvantage:    m.in.HasAdvantage || folded.HasAdvantage(),
-		HasDisadvantage: m.in.HasDisadvantage || folded.HasDisadvantage(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("roll saving throw: %w", err)
-	}
-
-	return Done{Outcome: SaveOutcome{Result: result, Folded: folded}}, nil
-}
-
-// gatherSavingThrow builds the Gather step that folds the saving-throw chain.
+// gatherSavingThrow builds the Gather step that makes the saving throw.
 //
 // The closure is where the bus appears, and it is built here — in resolution —
-// rather than by any machine. A machine names the fold it wants and receives a
-// typed result; it never holds a bus, and cannot subscribe during its own
-// resolution.
-func gatherSavingThrow(
-	event *dnd5eEvents.SavingThrowChainEvent,
-	next func(context.Context, *dnd5eEvents.SavingThrowChainEvent) (Step, error),
-) Gather {
+// rather than by any machine. The rules entry it hands the bus to is the one
+// place the SavingThrowChain fires: advantage cancellation, natural 1s and
+// 20s, the totals, and the fold itself all stay where they live rather than
+// being reimplemented on this side of the seam.
+func gatherSavingThrow(in *SaveInput, modifier int) Gather {
 	return Gather{
 		name: "saving throw",
 		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			saveChain := events.NewStagedChain[*dnd5eEvents.SavingThrowChainEvent](combat.ModifierStages)
-			topic := dnd5eEvents.SavingThrowChain.On(bus)
-
-			modified, err := topic.PublishWithChain(ctx, event, saveChain)
+			result, err := saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
+				Roller:          in.Roller,
+				EventBus:        bus,
+				SaverID:         in.SaverID,
+				Cause:           in.Cause,
+				Ability:         in.Ability,
+				DC:              in.DC,
+				Modifier:        modifier,
+				HasAdvantage:    in.HasAdvantage,
+				HasDisadvantage: in.HasDisadvantage,
+			})
 			if err != nil {
-				return nil, fmt.Errorf("publish saving throw chain: %w", err)
+				return nil, fmt.Errorf("roll saving throw: %w", err)
 			}
 
-			folded, err := modified.Execute(ctx, event)
-			if err != nil {
-				return nil, fmt.Errorf("execute saving throw chain: %w", err)
-			}
-
-			return next(ctx, folded)
+			return Done{Outcome: SaveOutcome{Result: result}}, nil
 		},
 	}
 }

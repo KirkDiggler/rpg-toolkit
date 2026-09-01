@@ -182,6 +182,7 @@ var foldEntries = []struct{ file, fn string }{
 	{"resolve.go", "resolveOn"},
 	{"projection.go", "projectCharacterOn"},
 	{"standing.go", "standingOn"},
+	{"check.go", "makeCheckOn"},
 }
 
 func entryNames(entries []struct{ file, fn string }) []string {
