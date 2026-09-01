@@ -954,6 +954,39 @@ func (e *Encounter) rosterIDs() []MemberID {
 	return ids
 }
 
+// frontierAudience is THE FRONTIER STOP (ruled on rpg-project#351, second
+// round): a step whose destination lies inside a concealed region is
+// delivered only to the members that region has been revealed to — the
+// trail stops at the concealment boundary, the same knowledge scoping door
+// beats already carry. The mover is always included: you saw yourself do
+// it (their own presence fact lands in this same verb's sweep, but the
+// beat precedes the sweep by the beat-order law, so the fold cannot answer
+// for them yet).
+//
+// DELIBERATELY THE CONCEALMENT-FORCED MINIMUM. Steps on visible floor stay
+// full-data to the whole roster — sight-scoped movement with last-known
+// ghosts is the ruling's own named follow-up, not this. A recipient who
+// gains the region reveal later simply starts receiving ordinary position
+// updates from then on; the hidden trail is never backfilled. Applied in
+// the ONE movement-beat writer, so a player's walk and a monster's pump
+// step are scoped by the same line.
+func (e *Encounter) frontierAudience(action executedAction, audience []MemberID) []MemberID {
+	if e.world == nil {
+		return audience
+	}
+	region, owned := e.field.regionOf(action.to)
+	if !owned || !e.world.concealedRegions[region] {
+		return audience
+	}
+	out := make([]MemberID, 0, len(audience))
+	for _, id := range audience {
+		if id == action.member.ID || e.world.knowsRegion(id, region) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // beatClass names what a story beat is about — the audience question every
 // append site used to answer alone, each in its own slightly different way.
 // Recorded once per call, honestly, so rpg-toolkit#940's eventual policy
@@ -1037,6 +1070,8 @@ func (e *Encounter) audienceFor(class beatClass, subjects ...MemberID) []MemberI
 // movement beat in one tick rather than a fresh roster read per action (see
 // Pump's own comment on why).
 func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
+	audience = e.frontierAudience(action, audience)
+
 	payload := map[string]interface{}{
 		"beat":     "moved",
 		"member":   string(action.member.ID),

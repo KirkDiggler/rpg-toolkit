@@ -90,8 +90,18 @@
 //     The MOVE LAW: a step stopped by one refuses byte-identical to a wall.
 //   - Reveals reach members as recipient-scoped beats (door_revealed,
 //     region_revealed — the wire's DOOR_REVEALED/REGION_REVEALED), and a
-//     concealed door's own state beats go to its knowers alone. Everything
-//     non-detection stays full data until v1.0.
+//     concealed door's own state beats go to its knowers alone. THE
+//     FRONTIER STOP (second-round ruling): a step whose destination lies
+//     inside a concealed region is delivered only to that region's knowers
+//     and the mover — the trail stops at the concealment boundary, resumes
+//     on reveal, and is never backfilled. Everything else non-detection
+//     stays full data until v1.0 (sight-scoped movement with last-known
+//     ghosts is the ruling's own named follow-up).
+//   - STATE IS REVERSIBLE; KNOWLEDGE IS NOT (second-round ruling).
+//     Concealment never globally ends — there is no [graph.Reveal] in the
+//     seeding, only per-member pierces — so a re-closed door is a wall to
+//     strangers again, while every member who ever perceived it keeps a
+//     visible shut door, and a mapped room stays mapped, forever.
 //
 // A field with no concealment builds NONE of this — no world, no capability
 // requirement, byte-identical blobs — which keeps every existing dungeon

@@ -365,6 +365,150 @@ func (s *ConcealLawSuite) TestUnlockCarriesTheAppliedRoute() {
 	s.Equal("dex", applied["ability"])
 }
 
+// movedBeatsAt reads one member's story down to the moved beats that landed
+// on a given cell, for the frontier-stop scenes.
+func (s *ConcealLawSuite) movedBeatsAt(enc *encounter.Encounter, member core.EntityID, cell spatial.Position) int {
+	count := 0
+	for _, beat := range s.beatsForLaw(enc, member, "moved") {
+		pos, ok := beat["position"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if pos["x"] == cell.X && pos["y"] == cell.Y {
+			count++
+		}
+	}
+	return count
+}
+
+// TestAStepInsideAHiddenRoomStopsAtTheFrontier — the ruled frontier stop
+// (rpg-project#351, second round): a step whose destination lies inside a
+// concealed region is not delivered to a recipient the region has not been
+// revealed to. The mover keeps their own trail; a stranger's story simply
+// shows no steps; a member who gains the reveal later starts receiving
+// ordinary updates from then on, with the hidden trail never backfilled.
+func (s *ConcealLawSuite) TestAStepInsideAHiddenRoomStopsAtTheFrontier() {
+	enc := s.open(findsEverything{}, true)
+
+	first := cellAt(9, concealRow)
+	_, err := enc.Step(&encounter.StepInput{Member: lurker, To: first})
+	s.Require().NoError(err)
+
+	s.Equal(1, s.movedBeatsAt(enc, lurker, first), "the mover keeps their own trail")
+	s.Zero(s.movedBeatsAt(enc, seeker, first), "a stranger's story shows no step inside the hidden room")
+	s.Zero(s.movedBeatsAt(enc, loner, first), "no matter who the stranger is")
+
+	// Buddy gains the reveal — finds the door by search, perceives it open
+	// — and ordinary updates resume for them alone, without backfill.
+	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	s.Require().NoError(err)
+	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
+	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
+	s.Require().NoError(err)
+
+	second := cellAt(10, concealRow)
+	_, err = enc.Step(&encounter.StepInput{Member: lurker, To: second})
+	s.Require().NoError(err)
+
+	s.Equal(1, s.movedBeatsAt(enc, buddy, second), "a new knower receives ordinary updates from now on")
+	s.Zero(s.movedBeatsAt(enc, buddy, first), "the hidden trail is never backfilled")
+	s.Zero(s.movedBeatsAt(enc, seeker, second), "and a stranger still receives nothing")
+}
+
+// TestAWitnessedCrossingKeepsTheWatcherReceiving — the ruled verification
+// that the frontier stop needs NO new machinery for a watched entry: the
+// crossing happens through an open door, the watcher perceives it open, so
+// the existing sweep has already handed them the door and the region — and
+// the mover's steps inside keep arriving on the watcher's story.
+func (s *ConcealLawSuite) TestAWitnessedCrossingKeepsTheWatcherReceiving() {
+	enc := s.open(findsEverything{}, false)
+
+	_, err := enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	s.Require().NoError(err)
+	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy, seeker}
+	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
+	s.Require().NoError(err)
+
+	s.Len(s.beatsForLaw(enc, seeker, "door_revealed"), 1, "the watcher perceived the door open")
+	s.Len(s.beatsForLaw(enc, seeker, "region_revealed"), 1, "and the room behind it — the existing mechanism")
+
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: cellAt(8, concealRow)})
+	s.Require().NoError(err)
+	inside := cellAt(9, concealRow)
+	_, err = enc.Step(&encounter.StepInput{Member: buddy, To: inside})
+	s.Require().NoError(err, "the open vault-door is crossable")
+
+	s.Equal(1, s.movedBeatsAt(enc, seeker, inside), "the watcher keeps receiving the mover's steps inside")
+	s.Zero(s.movedBeatsAt(enc, loner, inside), "a non-perceiver's trail of them stops at the frontier")
+	s.Equal(1, s.movedBeatsAt(enc, loner, cellAt(8, concealRow)), "having carried every visible step before it")
+}
+
+// TestClosingReConcealsForStrangersAndNeverForKnowers — ruled: state is
+// reversible, knowledge is not. Concealment never globally ends: after a
+// full open-and-close cycle on BOTH concealed doors, a member who never
+// perceived anything still holds the honestly-authored twin — mask, probe
+// and move law all intact — while every perceiver keeps what they learned
+// forever: the door as a visible shut door, the room as mapped floor.
+func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() {
+	enc := s.open(findsEverything{}, false)
+	twin := s.openTwin()
+
+	// The veil-door: seeker finds it, opens it, shuts it. Nobody perceives.
+	_, err := enc.Search(&encounter.SearchInput{Member: seeker, Region: hallRegion})
+	s.Require().NoError(err)
+	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
+	s.Require().NoError(err)
+	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: veilDoor, Actor: seeker})
+	s.Require().NoError(err)
+
+	// The vault-door: buddy finds it, opens it (perceiving it open — the
+	// region arrives), shuts it again.
+	_, err = enc.Search(&encounter.SearchInput{Member: buddy, Region: annexRegion})
+	s.Require().NoError(err)
+	s.witness.perceivers[vaultDoor] = []encounter.MemberID{buddy}
+	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: vaultDoor, Actor: buddy})
+	s.Require().NoError(err)
+	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: vaultDoor, Actor: buddy})
+	s.Require().NoError(err)
+
+	// The stranger: byte-identical to never-authored, after everything.
+	lonerAtlas, err := enc.AtlasFor(loner)
+	s.Require().NoError(err)
+	twinAtlas, err := twin.Atlas()
+	s.Require().NoError(err)
+	s.Equal(twinAtlas, lonerAtlas, "a stranger's world survives the whole cycle untouched")
+
+	_, probed := enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: loner})
+	s.Require().ErrorIs(probed, encounter.ErrNoDoor, "the probe law holds after the close")
+
+	// The move law's stranger byte-equality is knowledge-driven, not
+	// state-driven, and is pinned in its own scene; no stranger here can
+	// reach the seam (buddy's annex search found the veil too). What the
+	// close must prove is the STATE half — the crossing blocks again — and
+	// the knower's step refused BY NAME is exactly that.
+	_, named := enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(4, concealRow)})
+	s.Require().NoError(named)
+	_, refusedKnown := enc.Step(&encounter.StepInput{Member: seeker, To: cellAt(5, concealRow)})
+	s.Require().ErrorIs(refusedKnown, encounter.ErrDoorShut, "shut is shut, even for a knower")
+
+	// The knowers: knowledge is permanent. The veil stays a visible shut
+	// door for seeker; the vault stays mapped floor for buddy.
+	seekerDoors, err := enc.DoorsFor(seeker)
+	s.Require().NoError(err)
+	s.True(doorsListed(seekerDoors, veilDoor), "they saw it open and close — they know a door is there")
+
+	buddyAtlas, err := enc.AtlasFor(buddy)
+	s.Require().NoError(err)
+	holdsVault := false
+	for _, r := range buddyAtlas.Regions {
+		holdsVault = holdsVault || r.ID == vaultRegion
+	}
+	s.True(holdsVault, "a mapped room stays mapped behind a shut door")
+
+	_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: seeker})
+	s.Require().NoError(err, "and a knower may simply open it again")
+}
+
 // beatsForLaw is conceal_test.go's beatsFor, local to this suite.
 func (s *ConcealLawSuite) beatsForLaw(enc *encounter.Encounter, member core.EntityID, kind string) []map[string]any {
 	story, err := enc.Story(&encounter.StoryInput{Audience: member})
