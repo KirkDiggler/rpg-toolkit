@@ -446,8 +446,8 @@ func (s *RetentionTestSuite) TestWorldViewIsPure() {
 // TestWorldViewShowsTrimmedStateHonestly is the view-save-view pin: the view
 // reports the world AS IT IS, before and after the boundary. Before the save
 // it holds the untrimmed live log; after, it agrees with the blob the save
-// emitted — byte for byte, because one snapshot body serves both entries and
-// an unchanged encounter snapshots deterministically.
+// emitted — deep-equal, field for field, because one snapshot body serves
+// both entries and an unchanged encounter snapshots deterministically.
 func (s *RetentionTestSuite) TestWorldViewShowsTrimmedStateHonestly() {
 	const window = 8
 	enc := s.walkingEncounter(window)
