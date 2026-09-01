@@ -137,8 +137,7 @@ func (s *BarbarianFinalizeSuite) TestCompleteHumanBarbarianFinalization() {
 	s.Equal("Grog the Rager", data.Name)
 	s.Equal(races.Human, data.RaceID)
 	s.Equal(classes.Barbarian, data.ClassID)
-	// TODO: Background is not stored in Character - separate issue tracked separately
-	// s.Equal(backgrounds.Soldier, data.BackgroundID)
+	s.Equal(backgrounds.Soldier, data.BackgroundID)
 	s.Equal(1, data.Level)
 
 	// Verify class resources were initialized
