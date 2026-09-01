@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
@@ -45,11 +46,15 @@ type Character struct {
 	level            int
 	proficiencyBonus int
 
-	// Race and class
-	raceID     races.Race
-	subraceID  races.Subrace
-	classID    classes.Class
-	subclassID classes.Subclass
+	// Race, class, and background
+	raceID       races.Race
+	subraceID    races.Subrace
+	classID      classes.Class
+	subclassID   classes.Subclass
+	backgroundID backgrounds.Background
+
+	// Metadata
+	createdAt time.Time
 
 	// Ability scores (includes racial modifiers)
 	abilityScores shared.AbilityScores
@@ -1029,6 +1034,7 @@ func (c *Character) ToData() *Data {
 		SubraceID:           c.subraceID,
 		ClassID:             c.classID,
 		SubclassID:          c.subclassID,
+		BackgroundID:        c.backgroundID,
 		AbilityScores:       c.abilityScores,
 		HitPoints:           c.hitPoints,
 		MaxHitPoints:        c.maxHitPoints,
@@ -1039,6 +1045,7 @@ func (c *Character) ToData() *Data {
 		ArmorProficiencies:  c.armorProficiencies,
 		WeaponProficiencies: c.weaponProficiencies,
 		ToolProficiencies:   c.toolProficiencies,
+		CreatedAt:           c.createdAt,
 		UpdatedAt:           time.Now(),
 	}
 
