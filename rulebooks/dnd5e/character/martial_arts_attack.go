@@ -18,7 +18,7 @@ type AssembleMartialArtsBonusAttackInput struct {
 }
 
 func validateMartialArtsBonusAttack(c *Character) error {
-	if !qualifiesForMartialArtsBonusAttack(c) {
+	if !CanMakeMartialArtsBonusAttack(c) {
 		return rpgerr.New(
 			rpgerr.CodeInvalidArgument,
 			"Martial Arts bonus attack requires an eligible unarmored Martial Arts attack",

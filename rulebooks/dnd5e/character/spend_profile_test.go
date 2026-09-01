@@ -256,9 +256,12 @@ func (s *CostCompilerTestSuite) TestMartialArtsBonusRequiresItsFeatureAndLegalEq
 
 	for i, tc := range tests {
 		s.Run(tc.name, func() {
-			profile, err := CostOfAttack(s.martialArtsMonk(
+			monk := s.martialArtsMonk(
 				fmt.Sprintf("martial-eligibility-%d", i), tc.inventory, tc.slots, tc.withMartialArts,
-			))
+			)
+			s.Equal(tc.wantMartialGrant, CanMakeMartialArtsBonusAttack(monk))
+
+			profile, err := CostOfAttack(monk)
 			s.Require().NoError(err)
 			s.Equal(tc.wantMartialGrant, profile.Grants[capacity] == 1)
 		})

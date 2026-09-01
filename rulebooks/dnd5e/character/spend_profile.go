@@ -52,7 +52,7 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 	grants := map[combat.CapacityType]int{
 		combat.CapacityAttack: 1 + c.GetExtraAttacksCount(),
 	}
-	if qualifiesForMartialArtsBonusAttack(c) {
+	if CanMakeMartialArtsBonusAttack(c) {
 		grants[combat.CapacityMartialArtsBonusAttack] = 1
 	} else if CanMakeOffHandAttack(c) {
 		grants[combat.CapacityOffHandAttack] = 1
@@ -66,9 +66,11 @@ func CostOfAttack(c *Character) (*combat.SpendProfile, error) {
 	}, nil
 }
 
-// qualifiesForMartialArtsBonusAttack reports whether the sheet's current
-// main-hand Attack satisfies the static Martial Arts bonus-attack rules.
-func qualifiesForMartialArtsBonusAttack(c *Character) bool {
+// CanMakeMartialArtsBonusAttack reports whether the sheet's current main-hand
+// Attack satisfies the static Martial Arts bonus-attack rules. A granted
+// capacity separately proves that the qualifying Attack action already
+// completed; callers recheck this query before projecting or executing it.
+func CanMakeMartialArtsBonusAttack(c *Character) bool {
 	if c == nil {
 		return false
 	}
