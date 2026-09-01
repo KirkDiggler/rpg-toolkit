@@ -471,6 +471,14 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	s.Require().NoError(err)
 	s.Require().NotNil(joined.Formed, "the arrival must trigger the driven monster turn")
 	s.Equal([]string{"skel-1", "bob"}, joined.Formed.Order)
+	writtenBob := 0
+	for _, aggregate := range joined.Saved.Written {
+		if aggregate == "character:bob" {
+			writtenBob++
+		}
+	}
+	s.Equal(1, writtenBob,
+		"the early rest and newer driven damage are two saves of one aggregate, not two report identities")
 	stored := characters.stored(s.T(), "bob")
 	s.Positive(stored.HitPoints, "the driven strike starts from full rested truth, not the old seven HP")
 	s.Less(stored.HitPoints, stored.MaxHitPoints,
