@@ -234,16 +234,30 @@ type MakeSavingThrowInput struct {
 	HasDisadvantage bool
 }
 
-// MakeSavingThrow makes a saving throw for this character.
-// The character's ability modifier and proficiency bonus (if proficient) are automatically applied.
+// MakeSavingThrow makes a full saving throw for this character.
+// The character's ability modifier and proficiency bonus (if proficient) are
+// automatically applied, and the SavingThrowChain fires on the character's
+// bus so attached conditions and features can modify the roll.
 // Returns the result including whether the save succeeded.
+//
+// The character must be attached to a bus ([Attach] / Draft.Finalize): a full
+// save consults the chain, and a sheet on no bus has every save-modifying
+// condition absent — refused loudly rather than rolled wrong (rpg-toolkit#1357).
 func (c *Character) MakeSavingThrow(
 	ctx context.Context, input *MakeSavingThrowInput,
 ) (*saves.SavingThrowResult, error) {
+	if c.bus == nil {
+		return nil, rpgerr.New(rpgerr.CodePrerequisiteNotMet,
+			"a full saving throw consults the chain: this character is on no bus, "+
+				"so every condition and feature that modifies saves is absent")
+	}
+
 	modifier := c.GetSavingThrowModifier(input.Ability)
 
 	return saves.MakeSavingThrow(ctx, &saves.SavingThrowInput{
 		Roller:          input.Roller,
+		EventBus:        c.bus,
+		SaverID:         c.GetID(),
 		Ability:         input.Ability,
 		DC:              input.DC,
 		Modifier:        modifier,
