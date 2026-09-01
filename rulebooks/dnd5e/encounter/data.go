@@ -646,6 +646,13 @@ type LoadEncounterInput struct {
 	// never defaulted.
 	Striker Striker
 
+	// Mover announces a member's step before the encounter takes it.
+	// REQUIRED, exactly as it is on SetupInput and for the same reason
+	// (rpg-project#316): a loaded encounter's bubble can land on an unplayed
+	// member ready to walk the moment it is reconstituted. Refused at the
+	// door, never guarded at the use site, and never defaulted.
+	Mover Mover
+
 	// Announcer publishes the temporal boundaries a clock advance crossed.
 	// REQUIRED, exactly as it is on SetupInput and for the same reason: a
 	// loaded encounter's clock can advance the moment it is reconstituted,
@@ -681,6 +688,9 @@ func (in *LoadEncounterInput) Validate() error {
 	}
 	if in.Striker == nil {
 		return fmt.Errorf("load encounter: Striker is required: %w", ErrNoStriker)
+	}
+	if in.Mover == nil {
+		return fmt.Errorf("load encounter: Mover is required: %w", ErrNoMover)
 	}
 
 	if in.Announcer == nil {
@@ -1035,6 +1045,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		sight:       input.Sight,
 		turnDriver:  input.TurnDriver,
 		striker:     input.Striker,
+		mover:       input.Mover,
 		announcer:   input.Announcer,
 		endings:     nil,
 		retention:   normalizeRetention(data.Retention),

@@ -28,7 +28,7 @@ import (
 // save. With it, the defect is loud: ErrInvalidData, never a guess.
 func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
@@ -72,7 +72,7 @@ func TestClockOfReportsAMemberOnNoClockInsteadOfGuessing(t *testing.T) {
 func TestFormRejections(t *testing.T) {
 	newEnc := func() *Encounter {
 		enc, err := NewEncounter(&SetupInput{
-			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+			Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 			Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8), rectRegion("r2", 8, 0, 8, 8)}, Walls: sealedSeam(7, 8)},
 			Members: []MemberInput{
 				{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -185,7 +185,7 @@ func sealedSeam(atX, height int) []WallInput {
 // form directly, the same white-box reason TestFormRejections does.
 func TestFormRefusesAPlayerFreeBubble(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("r1", 0, 0, 8, 8)}},
 		Members: []MemberInput{
 			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 1, Y: 1}},
@@ -225,7 +225,7 @@ func (rogueDriver) Act(MonsterView) (TurnIntent, error) {
 func TestADriverReturningAnUnrecognisedIntentIsErrBadTurnOutcome(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
-		TurnDriver: rogueDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		TurnDriver: rogueDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{
 			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("room-1", 0, 0, 8, 8)},

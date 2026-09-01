@@ -311,6 +311,23 @@ var (
 	// world, not a legal outcome any caller is meant to recover from.
 	ErrRefusingStriker = errors.New("encounter: RefusingStriker: a driven turn reached a construction-only world")
 
+	// ErrNoMover indicates Setup or Load was given no Mover capability. A
+	// member with no player can be handed a Move intent the moment a fight
+	// forms, and a step is not the inert thing it looks like: something may
+	// be waiting to react to it (rpg-project#316). This module refuses to
+	// guess what a step provokes for exactly the reason it refuses to guess
+	// how a strike resolves. Never defaulted: a Mover that silently did
+	// nothing would put every walk back to being unobservable, which is the
+	// state this capability exists to end — and it would do it invisibly,
+	// because a walk with nothing watching it looks identical to a walk
+	// nothing wanted to react to.
+	ErrNoMover = errors.New("encounter: no mover capability")
+
+	// ErrRefusingMover is what [RefusingMover.Move] always returns: a driven
+	// turn walked in a world built only to be inspected — the exact twin of
+	// [ErrRefusingStriker], and a host bug for the identical reason.
+	ErrRefusingMover = errors.New("encounter: RefusingMover: a driven turn reached a construction-only world")
+
 	// ErrNoAnnouncer is what both constructors return when no Announcer was
 	// supplied. Every clock advance crosses boundaries — a turn ending, a
 	// fight forming — and this module refuses to guess what one MEANS to a

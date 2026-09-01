@@ -47,7 +47,7 @@ func (d *oneDown) Standing(members []MemberID) ([]MemberID, error) {
 func TestADecidedFightRefusesToCountAGhost(t *testing.T) {
 	rulebook := &oneDown{}
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: rulebook, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: rulebook, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: openAir(), Regions: []RegionInput{rectRegion("crypt", 0, 0, 12, 12)}},
 		Members: []MemberInput{
 			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 2}},

@@ -23,6 +23,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // unlimitedSight is far enough that no scene here is bounded by it.
@@ -88,5 +89,17 @@ func (noAttacksExpected) Strike(
 type quietAnnouncer struct{}
 
 func (quietAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
+}
+
+// quietMover hears every step and does nothing. Like quietAnnouncer it really
+// is called — tomb_test walks the whole dungeon — so it succeeds rather than
+// refusing. Nothing in these geometry scenes carries a condition that reacts
+// to a step, which is what a nil return says here.
+type quietMover struct{}
+
+func (quietMover) Move(
+	context.Context, *encounter.Encounter, encounter.MemberID, spatial.Position, spatial.Position,
+) error {
 	return nil
 }

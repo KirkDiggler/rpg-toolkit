@@ -27,7 +27,7 @@ import (
 // audienceFor's own contract, not any one call site's.
 func TestAudienceForPolicy(t *testing.T) {
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Field: FieldInput{Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()}, Regions: []RegionInput{rectRegion("hall", 0, 0, 6, 6)}},
 		Members: []MemberInput{
 			{ID: "zebra", Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 0}},
@@ -115,7 +115,7 @@ func TestCallSiteClassification(t *testing.T) {
 	standing := &oneDown{}
 
 	enc, err := NewEncounter(&SetupInput{
-		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Sight: everyoneSeesTheWholeMap{}, Standing: standing, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{},
 		Retention: RetentionUnbounded,
 		Field: FieldInput{
 			Canvas: CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
