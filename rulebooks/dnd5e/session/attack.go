@@ -271,8 +271,15 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		Standing:     scope.standing,
 		Sight:        &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver:   m.turnDriver,
-		Cost:         cost,
-		Machine:      machine,
+		// The concealment pair (rpg-toolkit#1378), bound to the same live
+		// scope openForWrite and adopt bind — the one-seam consistency law:
+		// a concealed world refuses to reconstruct without them, and
+		// resolution carries them without consulting either, since no verb
+		// runs inside an interaction.
+		CheckResolver: checkSeam{m: m, scope: scope},
+		Witness:       witnessSeam{scope: scope},
+		Cost:          cost,
+		Machine:       machine,
 		// The machine rolls the attack and its damage; Input.Roller only
 		// reconstitutes effects that need one. Two rollers because they
 		// are two jobs — and BOTH must be the host's, or the swing is
