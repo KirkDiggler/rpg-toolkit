@@ -26,8 +26,9 @@ import (
 )
 
 // Basic is the simplest TurnDriver that does something: attack the closest
-// standing player if one is in reach, otherwise close the distance, otherwise
-// pass. It never learns what a monster IS, and never touches a live
+// standing player if one is in reach, otherwise close the distance; when no
+// standing player is visible, close on the closest reachable remembered
+// player, otherwise pass. It never learns what a monster IS, and never touches a live
 // *encounter.Encounter — everything it reads comes off
 // [encounter.MonsterView], which stays plain data end to end (perception is
 // data; the decision layer never reaches live state).
@@ -36,28 +37,32 @@ type Basic struct{}
 // Act implements [encounter.TurnDriver].
 func (Basic) Act(view encounter.MonsterView) (encounter.TurnIntent, error) {
 	target, ok := closest(view.Seen)
-	if !ok {
+	if ok {
+		if view.Budget.AttacksLeft > 0 {
+			for _, action := range view.Actions {
+				if target.InReach[action.Ref] {
+					return encounter.Attack{Target: target.ID, Action: action.Ref}, nil
+				}
+			}
+		}
+
+		// No separate "already in reach, don't bother moving" check needed
+		// here: [SeenMember.Path] already ends wherever InReach would turn
+		// true (rpg-project#254 review), so a target within reach — whether
+		// or not this member still has an attack to spend on it — simply has
+		// an empty Path, and this falls through to Pass on its own.
+		if view.Budget.MovementFeet > 0 && len(target.Path) > 0 {
+			return encounter.Move{Path: target.Path[:1]}, nil
+		}
+
 		return encounter.Pass{}, nil
 	}
 
-	if view.Budget.AttacksLeft > 0 {
-		for _, action := range view.Actions {
-			if target.InReach[action.Ref] {
-				return encounter.Attack{Target: target.ID, Action: action.Ref}, nil
-			}
-		}
+	remembered, ok := closestRemembered(view.Remembered)
+	if !ok || view.Budget.MovementFeet <= 0 {
+		return encounter.Pass{}, nil
 	}
-
-	// No separate "already in reach, don't bother moving" check needed
-	// here: [SeenMember.Path] already ends wherever InReach would turn
-	// true (rpg-project#254 review), so a target within reach — whether
-	// or not this member still has an attack to spend on it — simply has
-	// an empty Path, and this falls through to Pass on its own.
-	if view.Budget.MovementFeet > 0 && len(target.Path) > 0 {
-		return encounter.Move{Path: target.Path[:1]}, nil
-	}
-
-	return encounter.Pass{}, nil
+	return encounter.Move{Path: remembered.Path[:1]}, nil
 }
 
 // closest picks the nearest standing player among seen — v1's whole answer
@@ -81,6 +86,25 @@ func closest(seen []encounter.SeenMember) (encounter.SeenMember, bool) {
 		if !found || sm.DistanceCells < best.DistanceCells ||
 			(sm.DistanceCells == best.DistanceCells && sm.ID < best.ID) {
 			best = sm
+			found = true
+		}
+	}
+	return best, found
+}
+
+// closestRemembered picks the nearest reachable remembered player. Remembered
+// knowledge has no standing or reach facts, so it can only produce movement,
+// never an attack.
+func closestRemembered(remembered []encounter.RememberedMember) (encounter.RememberedMember, bool) {
+	var best encounter.RememberedMember
+	found := false
+	for _, rm := range remembered {
+		if rm.Kind != encounter.KindPlayer || len(rm.Path) == 0 {
+			continue
+		}
+		if !found || rm.DistanceCells < best.DistanceCells ||
+			(rm.DistanceCells == best.DistanceCells && rm.ID < best.ID) {
+			best = rm
 			found = true
 		}
 	}
