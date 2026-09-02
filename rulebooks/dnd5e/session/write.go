@@ -557,9 +557,9 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 // already-built content rather than resolving a ref, the one place its
 // shape diverges from Spawn's.
 //
-// Returns ErrNilInput, ErrNoMemberID, ErrNoRef (a nil NPC), ErrNoSession,
-// ErrNoEncounter, ErrBadPosition if no room owns the cell, ErrClosed, or
-// ErrSaveFailed with a populated report.
+// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoRef (a nil NPC),
+// ErrNoSession, ErrNoEncounter, ErrBadPosition if no room owns the cell,
+// ErrClosed, or ErrSaveFailed with a populated report.
 func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("place npc: %w", ErrNilInput)
@@ -568,7 +568,12 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 		return nil, fmt.Errorf("place npc: %w", ErrNoMemberID)
 	}
 	if in.NPC == nil {
-		return nil, fmt.Errorf("place npc: %w", ErrNoRef)
+		// ErrNoRef's own text is "empty ref" — accurate for Spawn's empty
+		// Ref string, misleading here where the whole NPC pointer is nil,
+		// not a Ref field within it. Kept as the wrapped sentinel (Copilot,
+		// PR #1414 review) so errors.Is(err, ErrNoRef) still matches; only
+		// the message changes.
+		return nil, fmt.Errorf("place npc: NPC is required: %w", ErrNoRef)
 	}
 
 	scope, err := m.openForWrite(ctx, in.Session)
