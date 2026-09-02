@@ -215,6 +215,31 @@ func (s *RecordActivationSuite) TestRecordActivationNoResults() {
 	s.Equal(`{"beat":"activated","actor":"fighter","ability":{"ref":"dnd5e:combat-abilities:dodge","name":"Dodge"}}`, string(entries[0].Payload))
 }
 
+// TestRecordActivationHealingZeroFactsAreStored inspects the stored bytes to
+// prove all six numeric healing facts survive even when every value is zero.
+// Decoding into ints would not distinguish an explicit zero from an omitted
+// field, so this exact-byte assertion protects every numeric payload tag from
+// acquiring omitempty.
+func (s *RecordActivationSuite) TestRecordActivationHealingZeroFactsAreStored() {
+	enc := s.scene(everyoneStanding{})
+	in := validActivationInput()
+	in.Results[0].Amount = 0
+	in.Results[0].Requested = 0
+	in.Results[0].Roll = 0
+	in.Results[0].Modifier = 0
+	in.Results[0].Before = 0
+	in.Results[0].After = 0
+
+	out, err := enc.RecordActivation(in)
+	s.Require().NoError(err)
+	entries := s.storyEntries(enc, activationFighter, out.Seqs)
+	s.Require().Len(entries, 2)
+	s.Equal(
+		`{"beat":"activation-result","actor":"fighter","result":{"kind":"healing-applied","target":"fighter","amount":0,"requested":0,"roll":0,"modifier":0,"before":0,"after":0,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+		string(entries[1].Payload),
+	)
+}
+
 // TestRecordActivationPreservesRulebookArithmetic pins the boundary: encounter
 // validates shape, not D&D arithmetic. Inconsistent and negative numbers remain
 // the exact facts supplied by the rulebook.

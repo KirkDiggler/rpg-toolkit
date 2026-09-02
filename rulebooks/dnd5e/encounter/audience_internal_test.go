@@ -107,7 +107,7 @@ var wantClass = map[string]beatClass{
 // is exactly wantClass's key set — nothing missing, nothing unclassified.
 //
 // It cannot check WHICH class a runtime call passed (v1's policy erases that
-// signal for nine of the fourteen kinds — see this file's own doc), so what
+// signal for every kind except scene-opened — see this file's own doc), so what
 // it pins is completeness: every kind this module can emit has a reviewed
 // entry in wantClass, and wantClass names nothing this module does not
 // actually emit. scene-opened's declaration-order behaviour (the one
