@@ -544,6 +544,10 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrElsewhere)
 	case errors.Is(err, encounter.ErrBadPlacement):
 		return fmt.Errorf("%w", ErrBadPosition)
+	case errors.Is(err, encounter.ErrOutOfRange):
+		return fmt.Errorf("%w", ErrOutOfRange)
+	case errors.Is(err, encounter.ErrNotVisible):
+		return fmt.Errorf("%w", ErrNotVisible)
 	case errors.Is(err, encounter.ErrNoField), errors.Is(err, encounter.ErrInvalidData):
 		// Both mean the stored world cannot answer: a field that is defective
 		// or does not hold the room somebody stands in, and a blob that cannot

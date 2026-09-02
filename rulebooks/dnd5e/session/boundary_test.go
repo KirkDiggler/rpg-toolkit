@@ -96,6 +96,14 @@ var contractTypes = map[string]string{
 	// fetch it back from later the way a character does, so the content has
 	// to travel with the placement call itself (rpg-toolkit#1404).
 	"npc.Data": "contract type: the caller constructs this content field-by-field, same promise as character.Data",
+
+	// Reachable from WorldNPCDescriptor.Capabilities/CombatPolicy
+	// (interact.go) — deliberately deferred out of the npc.Data PR (#1414)
+	// because nothing used them yet; WorldNPCDescriptor is what makes them
+	// real. Same reasoning as npc.Data above: the caller constructs this
+	// content, it is never resolved from a ref the way a monster's is.
+	"npc.Capability":   "contract type: reachable from WorldNPCDescriptor, same promise as npc.Data",
+	"npc.CombatPolicy": "contract type: reachable from WorldNPCDescriptor, same promise as npc.Data",
 }
 
 // persistenceShapes are bytes the host round-trips and never builds.
