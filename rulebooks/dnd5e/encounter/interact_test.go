@@ -169,3 +169,17 @@ func (s *InteractSuite) TestACustomRangeAllowsAFartherTarget() {
 	s.Require().NoError(err)
 	s.Equal(encounter.MemberID("vendor"), out.Target)
 }
+
+// A negative Range is a caller defect, refused by name — distinct from
+// zero, which legitimately defaults to adjacent (Copilot, PR #1412 review).
+func (s *InteractSuite) TestANegativeRangeIsRefused() {
+	enc, err := s.setup(everyoneSeesTheWholeMap{},
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: cellAt(0, 0)},
+		encounter.MemberInput{ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(1, 0)},
+	)
+	s.Require().NoError(err)
+
+	_, err = enc.Interact(&encounter.InteractInput{Actor: alice, Target: "vendor", Range: -1})
+	s.Require().Error(err)
+	s.ErrorIs(err, encounter.ErrNoMember)
+}

@@ -53,19 +53,29 @@ type InteractOutput struct {
 // no feature-specific behavior. That is deliberate: this verb has nothing
 // else to say.
 //
-// Validation order (R5): nil input → empty actor/target → closed → actor
-// exists and is a player → target exists and is a world NPC → both placed
-// → target in range → target visible.
+// Validation order (R5): nil input → empty actor/target → negative Range →
+// closed → actor exists and is a player → target exists and is a world NPC
+// → both placed → target in range → target visible.
 //
-// Errors: ErrNilInput, ErrNoMember, ErrClosed, ErrNotMember (actor/target
-// missing, or present but the wrong kind), ErrBadPlacement (either member
-// has no cell), ErrOutOfRange, ErrNotVisible.
+// Errors: ErrNilInput, ErrNoMember (empty actor/target, or a negative
+// Range — the same "negative numeric input is a caller defect" convention
+// validateMemberFacts already applies to SpeedFeet/SightFeet/RangeFeet),
+// ErrClosed, ErrNotMember (actor/target missing, or present but the wrong
+// kind), ErrBadPlacement (either member has no cell), ErrOutOfRange,
+// ErrNotVisible.
 func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("interact: %w", ErrNilInput)
 	}
 	if in.Actor == "" || in.Target == "" {
 		return nil, fmt.Errorf("interact: %w", ErrNoMember)
+	}
+	// A negative Range is not a smaller reach; it is a caller defect, the
+	// same call validateMemberFacts already makes for SpeedFeet, SightFeet,
+	// and each action's RangeFeet — silently normalizing it to "adjacent"
+	// would hide the mistake rather than report it (Copilot, PR #1412 review).
+	if in.Range < 0 {
+		return nil, fmt.Errorf("interact: range %d is negative: %w", in.Range, ErrNoMember)
 	}
 	if e.outcome != nil {
 		return nil, fmt.Errorf("interact: %w", ErrClosed)
@@ -96,8 +106,9 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 		return nil, fmt.Errorf("interact: target %q: %w", in.Target, ErrBadPlacement)
 	}
 
+	// Range is non-negative here — checked above. Zero means "adjacent".
 	maxRange := in.Range
-	if maxRange <= 0 {
+	if maxRange == 0 {
 		maxRange = 1
 	}
 	if e.Distance(actorCell, targetCell) > float64(maxRange) {
@@ -139,6 +150,14 @@ func (e *Encounter) Interact(in *InteractInput) (*InteractOutput, error) {
 // subject — the same "current, not held" rule unawareOfOpposition and
 // contactBetween already apply: a subject once seen but not seen now (a
 // Held ghost) does not count, the same as one never seen at all.
+//
+// CHANNEL-BLIND ON PURPOSE, matching those same two functions: Status is
+// Current whenever ANY channel in CurrentVia currently confirms it, and this
+// does not ask which one. Today that is a distinction without a difference —
+// grepped every Channel: assignment in this package, and intel.Sight is the
+// only channel anything here ever writes — so discriminating by channel now
+// would guard against an input this package cannot yet produce. Revisit if
+// a second channel (sound, say) ever arrives (Copilot, PR #1412 review).
 func (e *Encounter) currentlyPerceives(observer, subject MemberID) (bool, error) {
 	holdings, err := e.intelLog.HeldBy(&intel.HeldByInput{Observer: observer})
 	if err != nil {
