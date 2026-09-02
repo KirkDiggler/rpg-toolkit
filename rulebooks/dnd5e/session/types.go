@@ -1004,6 +1004,11 @@ const (
 
 	// KindMonster is a member driven by the game rather than a person.
 	KindMonster MemberKind = "monster"
+
+	// KindWorld is a placed, non-combatant NPC — the host seam's twin of
+	// encounter.KindWorld (rpg-toolkit#1404). Carries no content of its own;
+	// the placed npc.Data lives in SessionData.WorldNPCs, keyed by member ID.
+	KindWorld MemberKind = "world"
 )
 
 // Member is a participant's placement in the world.

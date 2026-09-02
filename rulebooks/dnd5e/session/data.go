@@ -4,8 +4,26 @@
 package session
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
+
+// PlacedWorldNPC pairs a placed member's ID with the NPC content it was
+// placed from.
+//
+// npc.Data carries no instance/member-ID field by its own design — it is
+// reusable content, not a placed record (see npc's own package doc) — so
+// this wrapper is what makes "who is this, in this session" answerable.
+// Unlike monster.Data, which already carries its own instance ID and needs
+// no wrapper, npc.Data is the same shape whether it names a demo profile or
+// a hundred different placed instances of one.
+type PlacedWorldNPC struct {
+	// MemberID is the placed member's ID inside the encounter.
+	MemberID string `json:"member_id"`
+
+	// NPC is the content this member was placed from.
+	NPC npc.Data `json:"npc"`
+}
 
 // SessionData is the persistent representation of a session.
 //
@@ -54,6 +72,22 @@ type SessionData struct {
 	// A session written before this field has no npcs key and unmarshals to
 	// nil, which reads as "no NPCs" — so older sessions load unchanged.
 	NPCs []monster.Data `json:"npcs,omitempty"`
+
+	// WorldNPCs are placed, non-combatant KindWorld members' content — a
+	// separate field from NPCs on purpose (N1, rpg-toolkit#1404): NPCs
+	// already means spawned monster sheets, and colliding the two names
+	// would make "an NPC" ambiguous between a combatant and a bystander.
+	//
+	// Unlike a monster's sheet, a world NPC's content is never resolved
+	// from an in-code catalog by ref — no npcs.ByRef exists or is planned
+	// (docs/ideas/dnd5e-npcs/design.md). The caller builds it directly
+	// (npcs.NewMerchant, for the first shipped profile) and hands the whole
+	// value to PlaceNPC, which records it here before placement.
+	//
+	// A session written before this field has no world_npcs key and
+	// unmarshals to nil, which reads as "no world NPCs" — so older sessions
+	// load unchanged.
+	WorldNPCs []PlacedWorldNPC `json:"world_npcs,omitempty"`
 
 	// Streams is each ever-member's delivered-stream cursor — the persisted
 	// half of per-recipient dense numbering (stream.go's whole account of

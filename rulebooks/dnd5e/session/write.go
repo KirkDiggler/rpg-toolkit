@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/npc"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -131,6 +132,71 @@ type SpawnOutput struct {
 	// per-recipient events — a record number next to a member's own dense
 	// stream is the gap oracle returning through a side door; clients hear
 	// about the arrival through their own numbered beats.
+	Formed *Formed
+
+	// Saved names what was persisted.
+	Saved SaveReport
+
+	// Delivery names what reached the event stream.
+	Delivery DeliveryReport
+}
+
+// PlaceNPCInput places a caller-supplied world NPC into a session's
+// encounter (rpg-toolkit#1404).
+//
+// NPC IS CALLER-SUPPLIED, NOT RESOLVED FROM A REF — the one place this
+// verb's shape diverges from Spawn's, deliberately. instantiate() resolves
+// a monster's ref through monsters.ByRef, a real toolkit-shipped catalog of
+// code-built stat blocks; no NPC equivalent exists or is planned
+// (docs/ideas/dnd5e-npcs/design.md already ruled out a NewBlacksmith-style
+// toolkit archetype). So where Spawn takes a Ref string and builds the
+// content itself, PlaceNPC takes the already-built content directly — the
+// caller decided default-vs-explicit (npcs.NewMerchant's nil-vs-config
+// signal) before this verb is ever called, and this verb does not
+// re-interpret that decision a second time.
+type PlaceNPCInput struct {
+	// Session is the session to place into.
+	Session string
+
+	// Member is the ID the new member is known by inside the encounter.
+	Member string
+
+	// Position is the cell to place it on, in dungeon-absolute space. See
+	// JoinInput.Position.
+	Position spatial.Position
+
+	// NPC is the already-built content this member is placed from. Required
+	// — nil is refused with ErrNoRef, the same sentinel Spawn uses for an
+	// empty Ref: the same shape of caller mistake, the same error.
+	NPC *npc.Data
+}
+
+// PlaceNPCOutput reports the placement and what it revealed.
+type PlaceNPCOutput struct {
+	// Member is the new member's placement.
+	Member Member
+
+	// Discovered is what changed in each observer's perception, keyed by
+	// observer. Absent observers saw nothing new.
+	Discovered map[string]Discovery
+
+	// Corrected reports location-belief corrections made by driven turns.
+	Corrected []IntelCorrection `json:"corrected,omitempty"`
+
+	// Seq is the story sequence of the recorded arrival — the RECORD's own
+	// numbering, for the same reason SpawnOutput.Seq is (PlaceNPC has no
+	// acting member to number for either).
+	Seq uint64
+
+	// Outcome is present if an ending fired on the placement.
+	Outcome *Outcome
+
+	// Formed is present if the placed NPC arrived in sight of both sides and
+	// a fight started around it. In the MVP this should never actually
+	// happen — KindWorld is on neither side of sidesInContactOrder,
+	// structurally — but the field exists for the same reason SpawnOutput's
+	// does: this verb reports what encounter.Join actually returned rather
+	// than assuming a shape.
 	Formed *Formed
 
 	// Saved names what was persisted.
@@ -476,6 +542,77 @@ func (m *Manager) Spawn(ctx context.Context, in *SpawnInput) (*SpawnOutput, erro
 	return &SpawnOutput{
 		Member:     projectMember(placed.Member),
 		NPC:        projectMonster(sheet),
+		Discovered: projectDiscoveries(placed.IntelDeltas, down),
+		Corrected:  projectIntelCorrections(placed.IntelDeltas),
+		Seq:        placed.Seq,
+		Outcome:    projectOutcome(placed.Outcome),
+		Formed:     projectFormed(placed.Formed),
+		Saved:      report,
+		Delivery:   delivery,
+	}, nil
+}
+
+// PlaceNPC places a caller-supplied world NPC into the session's encounter
+// (rpg-toolkit#1404). See PlaceNPCInput's own doc for why this takes
+// already-built content rather than resolving a ref, the one place its
+// shape diverges from Spawn's.
+//
+// Returns ErrNilInput, ErrNoMemberID, ErrNoRef (a nil NPC), ErrNoSession,
+// ErrNoEncounter, ErrBadPosition if no room owns the cell, ErrClosed, or
+// ErrSaveFailed with a populated report.
+func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("place npc: %w", ErrNilInput)
+	}
+	if in.Member == "" {
+		return nil, fmt.Errorf("place npc: %w", ErrNoMemberID)
+	}
+	if in.NPC == nil {
+		return nil, fmt.Errorf("place npc: %w", ErrNoRef)
+	}
+
+	scope, err := m.openForWrite(ctx, in.Session)
+	if err != nil {
+		return nil, fmt.Errorf("place npc: %w", err)
+	}
+
+	// THE CONTENT IS RECORDED BEFORE THE PLACEMENT — Spawn's own exception
+	// to "ordering against persistence is free only before the commit"
+	// (write.go's Spawn doc explains the general rule and this exception to
+	// it in full). Arriving refreshes sight, and every sight refresh asks
+	// who is standing; a member placed before its record exists is asked
+	// about while the record still has nothing to say. A non-combatant
+	// world NPC has no standing question to answer, but the ordering stays
+	// identical to Spawn's on purpose — one placement shape, not two, for
+	// the same reason `place()` itself is shared rather than duplicated.
+	scope.data.WorldNPCs = append(scope.data.WorldNPCs, PlacedWorldNPC{
+		MemberID: in.Member,
+		NPC:      *in.NPC,
+	})
+	scope.touched = true
+
+	// A world NPC is stationary and non-acting by construction (design.md
+	// N4): zero speed/sight, no actions, no targeting strategy. encounter
+	// enforces the one real rule (no decider) itself; place() never sets
+	// one for either existing caller.
+	placed, err := place(scope, in.Member, KindWorld, in.NPC.DisplayName, in.Position,
+		0, 0, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("place npc: %w", err)
+	}
+
+	down, err := discoveryStanding(scope)
+	if err != nil {
+		return nil, fmt.Errorf("place npc: %w", err)
+	}
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("place npc: %w", err)
+	}
+
+	return &PlaceNPCOutput{
+		Member:     projectMember(placed.Member),
 		Discovered: projectDiscoveries(placed.IntelDeltas, down),
 		Corrected:  projectIntelCorrections(placed.IntelDeltas),
 		Seq:        placed.Seq,

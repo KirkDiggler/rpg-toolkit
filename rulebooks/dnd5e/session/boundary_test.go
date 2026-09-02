@@ -86,6 +86,16 @@ var contractTypes = map[string]string{
 	// input. What crosses is the shape the host already persists, not the
 	// object we build from it.
 	"character.Data": "contract type: the sheet the host owns, stores, and constructs",
+
+	// A world NPC's content is character.Data's shape, not monster.Data's —
+	// the caller builds it field-by-field (npcs.NewMerchant, since no
+	// toolkit catalog resolves an NPC from a bare ref the way monsters.ByRef
+	// does for monsters) and hands the whole value to PlaceNPCInput.NPC. It
+	// DOES appear directly on a verb input, unlike character.Data — that
+	// asymmetry is real: a world NPC has no durable host-owned repository to
+	// fetch it back from later the way a character does, so the content has
+	// to travel with the placement call itself (rpg-toolkit#1404).
+	"npc.Data": "contract type: the caller constructs this content field-by-field, same promise as character.Data",
 }
 
 // persistenceShapes are bytes the host round-trips and never builds.
