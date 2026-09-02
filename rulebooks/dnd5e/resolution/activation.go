@@ -5,11 +5,17 @@ package resolution
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
+	"strings"
+	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 // ActivationInput names one member using something they already carry.
@@ -43,12 +49,48 @@ type ActivationInput struct {
 	ObserverPassivePerceptions []int
 }
 
+// ActivationEffectKind identifies one closed kind of fact produced while an
+// ability runs on its interaction bus.
+type ActivationEffectKind string
+
+const (
+	// EffectHealingApplied is actual post-clamp healing applied to a target.
+	EffectHealingApplied ActivationEffectKind = "healing-applied"
+
+	// EffectConditionApplied is a condition attached to a target.
+	EffectConditionApplied ActivationEffectKind = "condition-applied"
+
+	// EffectConditionRemoved is a condition that ended on a target.
+	EffectConditionRemoved ActivationEffectKind = "condition-removed"
+
+	// EffectCapacityGranted is capacity banked by an ability, such as Dash's movement.
+	EffectCapacityGranted ActivationEffectKind = "capacity-granted"
+)
+
+// ActivationEffect is one typed, display-ready fact produced by an activation.
+// Fields not used by its Kind remain at their zero value.
+type ActivationEffect struct {
+	Kind     ActivationEffectKind
+	TargetID string
+	Ref      string
+	Name     string
+
+	Amount    int
+	Requested int
+	Roll      int
+	Modifier  int
+	Before    int
+	After     int
+
+	Description string
+	Reason      string
+}
+
 // ActivationOutcome is what an activation produced.
 //
-// Deliberately thin, for [BoundaryOutcome]'s reason: an activation's real
-// output is the DIRTY SHEETS that come back on [Output], because everything it
-// does happens inside a condition being applied to its owner or an economy
-// being spent. What is here is the part a caller cannot recover from a sheet.
+// Dirty sheets remain the durable rules state. Effects are the interaction
+// facts a caller cannot recover from those final sheets: a clamped heal's roll,
+// a condition that was removed, and the order in which those facts happened.
 type ActivationOutcome struct {
 	// Ability is the ref that ran, echoed back. A caller that dispatched by
 	// selector rather than by ref gets to learn what the selector meant
@@ -60,9 +102,178 @@ type ActivationOutcome struct {
 	// text authored by the ability, never parsed: Dash's effect on the ledger
 	// is already in the ledger.
 	GrantedCapacity string
+
+	// Effects are the typed facts emitted on this activation's interaction bus,
+	// in publication order, followed by GrantedCapacity when one was produced.
+	Effects []ActivationEffect
 }
 
 func (ActivationOutcome) isOutcome() {}
+
+// activationEffectCollector observes only the bus handed to one activation
+// step. It owns exactly the subscriptions it records in subscriptionIDs.
+// These subscriptions pass through resolution's instrumented root surface, so
+// successful resolutions include them in [Output.Hooks] with empty Participant
+// and Effect attribution; closing the collector revokes them without erasing
+// that record of what the resolution granted.
+type activationEffectCollector struct {
+	bus events.EventBus
+
+	mu      sync.Mutex
+	effects []ActivationEffect
+
+	subscriptionIDs []string
+	closeOnce       sync.Once
+	closeErr        error
+}
+
+func newActivationEffectCollector(
+	ctx context.Context, bus events.EventBus,
+) (*activationEffectCollector, error) {
+	if bus == nil {
+		return nil, errors.New("activation effect collector: event bus is required")
+	}
+
+	collector := &activationEffectCollector{bus: bus}
+
+	id, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(ctx, collector.captureHealingApplied)
+	if err != nil {
+		return nil, fmt.Errorf("activation effect collector: subscribe to healing applied: %w", err)
+	}
+	collector.subscriptionIDs = append(collector.subscriptionIDs, id)
+
+	id, err = dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(ctx, collector.captureConditionApplied)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("activation effect collector: subscribe to condition applied: %w", err),
+			collector.Close(ctx),
+		)
+	}
+	collector.subscriptionIDs = append(collector.subscriptionIDs, id)
+
+	id, err = dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx, collector.captureConditionRemoved)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("activation effect collector: subscribe to condition removed: %w", err),
+			collector.Close(ctx),
+		)
+	}
+	collector.subscriptionIDs = append(collector.subscriptionIDs, id)
+
+	return collector, nil
+}
+
+func (c *activationEffectCollector) captureHealingApplied(
+	_ context.Context, event dnd5eEvents.HealingAppliedEvent,
+) error {
+	if event.SourceRef == nil {
+		return errors.New("activation effect collector: healing source ref is required")
+	}
+
+	// Clone before validation and projection. A publisher retaining its mutable
+	// ref cannot rewrite the identity already captured by this interaction.
+	source := *event.SourceRef
+	if err := source.IsValid(); err != nil {
+		return fmt.Errorf("activation effect collector: healing source ref is invalid: %w", err)
+	}
+	if strings.TrimSpace(event.SourceName) == "" {
+		return errors.New("activation effect collector: healing source name is required")
+	}
+
+	c.append(ActivationEffect{
+		Kind: EffectHealingApplied, TargetID: event.TargetID,
+		Ref: source.String(), Name: event.SourceName,
+		Amount: event.Applied, Requested: event.Requested,
+		Roll: event.Roll, Modifier: event.Modifier,
+		Before: event.HPBefore, After: event.HPAfter,
+	})
+	return nil
+}
+
+func (c *activationEffectCollector) captureConditionApplied(
+	_ context.Context, event dnd5eEvents.ConditionAppliedEvent,
+) error {
+	if event.Target == nil {
+		return errors.New("activation effect collector: applied condition target is required")
+	}
+	if event.Condition == nil {
+		return errors.New("activation effect collector: applied condition is required")
+	}
+
+	ref, name, err := activationConditionIdentity(event.Condition.Ref())
+	if err != nil {
+		return fmt.Errorf("activation effect collector: applied condition: %w", err)
+	}
+
+	c.append(ActivationEffect{
+		Kind: EffectConditionApplied, TargetID: event.Target.GetID(), Ref: ref, Name: name,
+	})
+	return nil
+}
+
+func (c *activationEffectCollector) captureConditionRemoved(
+	_ context.Context, event dnd5eEvents.ConditionRemovedEvent,
+) error {
+	ref, err := core.ParseString(event.ConditionRef)
+	if err != nil {
+		return fmt.Errorf("activation effect collector: removed condition ref is invalid: %w", err)
+	}
+	canonical, name, err := activationConditionIdentity(ref)
+	if err != nil {
+		return fmt.Errorf("activation effect collector: removed condition: %w", err)
+	}
+
+	c.append(ActivationEffect{
+		Kind: EffectConditionRemoved, TargetID: event.MemberID,
+		Ref: canonical, Name: name, Reason: event.Reason,
+	})
+	return nil
+}
+
+func activationConditionIdentity(ref *core.Ref) (string, string, error) {
+	if ref == nil {
+		return "", "", errors.New("condition ref is required")
+	}
+
+	clone := *ref
+	if err := clone.IsValid(); err != nil {
+		return "", "", fmt.Errorf("condition ref is invalid: %w", err)
+	}
+	display, ok := conditions.DisplayFor(clone)
+	if !ok {
+		return "", "", fmt.Errorf("condition ref %s has no display catalog entry", clone.String())
+	}
+
+	return clone.String(), display.Name, nil
+}
+
+func (c *activationEffectCollector) append(effect ActivationEffect) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.effects = append(c.effects, effect)
+}
+
+// Effects returns an independently owned snapshot in synchronous publication order.
+func (c *activationEffectCollector) Effects() []ActivationEffect {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.effects)
+}
+
+// Close revokes every subscription the collector recorded. It is idempotent,
+// attempts every revocation newest-first, and preserves all cleanup failures.
+func (c *activationEffectCollector) Close(ctx context.Context) error {
+	c.closeOnce.Do(func() {
+		var errs []error
+		for i := len(c.subscriptionIDs) - 1; i >= 0; i-- {
+			if err := c.bus.Unsubscribe(ctx, c.subscriptionIDs[i]); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		c.closeErr = errors.Join(errs...)
+	})
+	return c.closeErr
+}
 
 // NewActivation returns the machine that uses one thing a character carries.
 //
@@ -242,12 +453,24 @@ func (m *activationMachine) checkTargetContract(actor *character.Character) erro
 func (m *activationMachine) step(actor *character.Character, target core.Entity) Step {
 	return Gather{
 		name: fmt.Sprintf("activate %s for %s", m.ability.String(), m.member),
-		run: func(ctx context.Context, _ events.EventBus) (Step, error) {
-			// The bus is not passed in, and that is not an oversight. The
-			// sheet was handed its own view of this interaction's bus when
-			// attachAll applied its keeper, and every verb on it publishes
-			// through that. Handing a second reference to the same bus would
-			// invite a caller to believe there was a choice.
+		run: func(ctx context.Context, bus events.EventBus) (next Step, err error) {
+			// Subscribe after every participant is attached but before the
+			// ability publishes. This bus exists for this Resolve call alone,
+			// so the collector cannot observe another interaction's facts.
+			collector, err := newActivationEffectCollector(ctx, bus)
+			if err != nil {
+				return nil, fmt.Errorf("activate %s for %q: collect effects: %w",
+					m.ability.String(), m.member, err)
+			}
+			defer func() {
+				if closeErr := collector.Close(ctx); closeErr != nil {
+					next = nil
+					err = errors.Join(err,
+						fmt.Errorf("activate %s for %q: close effect collector: %w",
+							m.ability.String(), m.member, closeErr))
+				}
+			}()
+
 			out, err := actor.ActivateAbility(ctx, &character.ActivateAbilityInput{
 				AbilityRef:                 m.ability,
 				TargetID:                   m.targetID,
@@ -275,9 +498,20 @@ func (m *activationMachine) step(actor *character.Character, target core.Entity)
 				return nil, fmt.Errorf("%w: %s", ErrActivationRefused, out.Error)
 			}
 
+			effects := collector.Effects()
+			if out.GrantedCapacity != "" {
+				// Capacity is returned as a value rather than published. It follows
+				// every bus fact because those facts happened during activation.
+				effects = append(effects, ActivationEffect{
+					Kind: EffectCapacityGranted, TargetID: m.member,
+					Description: out.GrantedCapacity,
+				})
+			}
+
 			return Done{Outcome: ActivationOutcome{
 				Ability:         m.ability.String(),
 				GrantedCapacity: out.GrantedCapacity,
+				Effects:         effects,
 			}}, nil
 		},
 	}
