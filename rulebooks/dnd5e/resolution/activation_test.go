@@ -657,6 +657,7 @@ func (s *ActivationTestSuite) TestActivationCollectorRefusesHealingWithoutCanoni
 		{name: "nil ref", sourceName: "Second Wind"},
 		{name: "invalid ref", sourceRef: &core.Ref{}, sourceName: "Second Wind"},
 		{name: "empty name", sourceRef: refs.Features.SecondWind()},
+		{name: "whitespace-only name", sourceRef: refs.Features.SecondWind(), sourceName: " \t\n "},
 	}
 
 	for _, test := range tests {
@@ -714,7 +715,11 @@ func (s *ActivationTestSuite) TestActivationCollectorCloseJoinsAllErrorsAndIsIde
 	s.Require().ErrorIs(err, second)
 	s.Require().ErrorIs(err, third)
 	s.Empty(bus.active, "every subscription is removed even when every removal reports an error")
-	s.Len(bus.unsubscribeCalls, 3)
+	s.Equal([]string{
+		collector.subscriptionIDs[2],
+		collector.subscriptionIDs[1],
+		collector.subscriptionIDs[0],
+	}, bus.unsubscribeCalls, "subscriptions are revoked newest-first")
 
 	secondCloseErr := collector.Close(s.ctx)
 	s.Require().ErrorIs(secondCloseErr, first)

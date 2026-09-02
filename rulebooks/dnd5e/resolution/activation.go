@@ -112,6 +112,10 @@ func (ActivationOutcome) isOutcome() {}
 
 // activationEffectCollector observes only the bus handed to one activation
 // step. It owns exactly the subscriptions it records in subscriptionIDs.
+// These subscriptions pass through resolution's instrumented root surface, so
+// successful resolutions include them in [Output.Hooks] with empty Participant
+// and Effect attribution; closing the collector revokes them without erasing
+// that record of what the resolution granted.
 type activationEffectCollector struct {
 	bus events.EventBus
 
