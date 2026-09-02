@@ -158,6 +158,40 @@ func TestReportUnrecordedAddsTheWorldWhenOnlyTheNestedWritePersisted(t *testing.
 	}, saveErr.Report)
 }
 
+// TestReportUnrecordedNilScopeReturnsTheOriginalError keeps this helper safe
+// at defensive call sites that have no persistence scope to report. With no
+// scope there is no outer persistence fact to add, even when the existing
+// error already carries a complete SaveError report.
+func TestReportUnrecordedNilScopeReturnsTheOriginalError(t *testing.T) {
+	t.Run("bare error", func(t *testing.T) {
+		cause := errors.New("recording refused")
+
+		err := reportUnrecorded(nil, cause)
+
+		require.Same(t, cause, err)
+		require.ErrorIs(t, err, cause)
+	})
+
+	t.Run("existing save error", func(t *testing.T) {
+		cause := errors.New("character repository refused")
+		report := SaveReport{
+			Written: []string{"character:alice"},
+			Failed:  []string{"character:bob"},
+		}
+		existing := &SaveError{Report: report, Err: cause}
+
+		err := reportUnrecorded(nil, existing)
+
+		require.Same(t, existing, err)
+		require.Equal(t, report, existing.Report)
+		require.ErrorIs(t, err, ErrSaveFailed)
+		require.ErrorIs(t, err, cause)
+		var reported *SaveError
+		require.ErrorAs(t, err, &reported)
+		require.Same(t, existing, reported)
+	})
+}
+
 // TestReportUnrecordedBareErrorCompatibility preserves the old distinction:
 // a failure after an earlier durable write needs a report, while a failure
 // with no persistence fact remains the original bare error.

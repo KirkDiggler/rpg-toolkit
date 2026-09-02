@@ -80,14 +80,26 @@ func saveErrorAfterWrites(scope *writeScope, failed string, err error) error {
 // then writes reported by the nested failure. Failed keeps the nested order and
 // adds the encounter last. Each list deduplicates independently; an aggregate
 // can truthfully occur in both when an earlier save landed and a newer save of
-// the same aggregate failed. Both returned slices are fresh allocations.
+// the same aggregate failed. Each returned list is a fresh copy when non-empty
+// and nil when that list has no identities.
+//
+// errors.As deliberately selects the first reachable SaveError. Session
+// producers create one report leaf; if this helper is called again, that first
+// SaveError is the already-complete outer report made by the earlier call. This
+// composes those producer shapes without speculatively folding arbitrary error
+// trees.
 //
 // A bare post-write error keeps the historical scope-writes plus failed-world
 // shape. With neither an earlier write nor an inner SaveError there is no
-// persistence fact to add, so the original error passes through unchanged.
+// persistence fact to add, so the original error passes through unchanged. A
+// nil scope has no outer persistence fact and therefore also returns the
+// original error unchanged.
 func reportUnrecorded(scope *writeScope, err error) error {
 	if err == nil {
 		return nil
+	}
+	if scope == nil {
+		return err
 	}
 
 	var inner *SaveError
