@@ -163,29 +163,57 @@ type LightingSpec struct {
 // [[col,row],[col,row]]. Undirected.
 type EdgeSpec [2][2]int
 
-// WallSpec is one authored wall entry. Two forms are legal (rpg-project#273):
+// WallSpec is one authored wall entry. Three forms are legal:
 //
 //   - [[5,0],[6,0]]                          # bare edge — default height
 //   - { between: [[5,1],[6,1]], height: 2 }  # edge with an authored height
+//   - { name: north wall, height: 2, edges: [...] }   # a RUN (rpg-project#355)
 //
-// The bare pair stays the common case and means default height; the object
-// form exists for the edge that carries more facts than its endpoints. The
-// EDGE carries the height rather than some named run because runs are
-// DERIVED — order-free, re-derived under editing — and giving them stored
-// identity would re-open everything the wall engine's order-invariance
-// closed. An edge is the one stable unit of authored fact.
+// The bare pair stays the common case and means default height. The grouped
+// form is what an author actually draws: one entry per wall, carrying its
+// edges in author order and its height ONCE. A dungeon its author calls eight
+// walls was written as 153 loose edges before grouping existed.
+//
+// # Why the group is stored rather than derived
+//
+// rpg-project#273 ruled that the EDGE carries the height because "runs are
+// DERIVED — order-free, re-derived under editing." That ruling is narrowed,
+// not overturned (rpg-project#355), and the distinction is which run:
+//
+//   - The RENDERER's run stays derived, exactly as before. Nothing here is
+//     read by it: a spec flattens to edges before anything draws it, so the
+//     wall engine's order-invariance is untouched.
+//   - The AUTHOR's run cannot be derived at all. Measured on a real dungeon,
+//     all 134 of its degree-2 corners turn 60° — on a hex grid a room corner
+//     and a zigzag step are the same angle, so no local rule separates them.
+//     The only thing that can is a non-local straightness tolerance in world
+//     units, which is a rendering constant, and a rendering constant must
+//     never regroup files on disk.
+//
+// What #273 was protecting survives verbatim: THE EDGE IS THE ONE UNIT OF
+// MECHANICAL FACT. A group carries no mechanical consequence whatsoever — the
+// same edges grouped differently compile byte-identically — so grouping is
+// free to follow the author's intent without the engine ever learning of it.
 type WallSpec struct {
-	// Between is the crossing: two adjacent floor cells,
-	// [[col,row],[col,row]], exactly the bare form's pair.
-	Between EdgeSpec
+	// Name is the run's display name, for the human reading the file and
+	// the errors about it: "north wall" beats "walls[7]" for the streamers
+	// this dialect is authored by. Carried, never read.
+	Name string
+
+	// Edges are the crossings this wall runs through, each two adjacent
+	// floor cells, in the order the author drew them. Never empty. The bare
+	// and `between` forms are runs of exactly one — one representation, so
+	// nothing downstream asks which form a wall was written in.
+	Edges []EdgeSpec
 
 	// Height is the authored wall-height MULTIPLIER of the standard
 	// rendered wall height, REQUIRED in [1, 3] when authored — raise-only
 	// by ruling (rpg-project#273: "I am looking to raise the walls not
 	// lower them"), so a waist-high wall cannot be authored at all. Nil
 	// means not authored: the standard height, exactly what writing 1.0
-	// means — the two are the same fact by design. VISUAL ONLY: a wall
-	// blocks movement and sight identically at every height.
+	// means — the two are the same fact by design. It applies to EVERY edge
+	// in the run, which is the whole reason a run carries it once. VISUAL
+	// ONLY: a wall blocks movement and sight identically at every height.
 	Height *float64
 }
 
@@ -196,30 +224,53 @@ type WallSpec struct {
 // strictness exists to prevent.
 func (w *WallSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.SequenceNode {
-		return value.Decode(&w.Between)
+		var one EdgeSpec
+		if err := value.Decode(&one); err != nil {
+			return err
+		}
+		w.Edges = []EdgeSpec{one}
+		return nil
 	}
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: a wall is an edge [[col,row],[col,row]] or an object {between, height}", value.Line)
+		return fmt.Errorf("line %d: a wall is an edge [[col,row],[col,row]] or an object {between, height} or {edges, height, name}", value.Line)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
 		switch key := value.Content[i].Value; key {
-		case "between", "height":
+		case "between", "edges", "height", "name":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.WallSpec", value.Content[i].Line, key)
 		}
 	}
 	var obj struct {
-		Between *EdgeSpec `yaml:"between"`
-		Height  *float64  `yaml:"height"`
+		Between *EdgeSpec  `yaml:"between"`
+		Edges   []EdgeSpec `yaml:"edges"`
+		Height  *float64   `yaml:"height"`
+		Name    string     `yaml:"name"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
-	if obj.Between == nil {
-		return fmt.Errorf("line %d: a wall object must name its edge in `between`", value.Line)
+	// `between` and `edges` are the same fact at two scales, so writing both
+	// is an author who means two different things at once — refused by name
+	// rather than resolved by precedence.
+	if obj.Between != nil && obj.Edges != nil {
+		return fmt.Errorf("line %d: a wall says `between` for one edge or `edges` for a run, never both", value.Line)
 	}
-	w.Between = *obj.Between
+	switch {
+	case obj.Between != nil:
+		w.Edges = []EdgeSpec{*obj.Between}
+	case obj.Edges != nil:
+		// `edges: []` is an authored run that runs nowhere — distinct from
+		// the key being absent, and refused, on [DoorSpec.Locked]'s law.
+		if len(obj.Edges) == 0 {
+			return fmt.Errorf("line %d: a wall run with no edges stands nowhere", value.Line)
+		}
+		w.Edges = obj.Edges
+	default:
+		return fmt.Errorf("line %d: a wall object must name its edge in `between` or its run in `edges`", value.Line)
+	}
 	w.Height = obj.Height
+	w.Name = obj.Name
 	return nil
 }
 

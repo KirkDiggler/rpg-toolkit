@@ -204,16 +204,49 @@ func propsOf(spec *Spec) []encounter.PropInput {
 // its authored height when the entry carried one — nil compiles to 0, the
 // carrier's own word for "not authored" ([encounter.WallInput.Height]).
 func wallsOf(spec *Spec) []encounter.WallInput {
-	out := make([]encounter.WallInput, 0, len(spec.Walls))
+	doors := doorCrossings(spec)
+	n := 0
 	for _, w := range spec.Walls {
-		wall := encounter.WallInput{Boundary: spatial.Boundary{
-			From: authored(w.Between[0]), To: authored(w.Between[1]),
-			BlocksMovement: true, BlocksLineOfSight: true,
-		}}
-		if w.Height != nil {
-			wall.Height = *w.Height
+		n += len(w.Edges)
+	}
+	out := make([]encounter.WallInput, 0, n)
+	for _, w := range spec.Walls {
+		for _, e := range w.Edges {
+			from, to := authored(e[0]), authored(e[1])
+			// A DOOR STANDS IN A WALL (rpg-project#355): the author writes
+			// the run unbroken and the door is subtracted here, so the
+			// engine still sees walls and doors disjoint and a file that
+			// spells the door's edge out compiles identically to one that
+			// leaves the hole. Grouping never reaches this output — the
+			// same edges grouped differently compile byte-identically,
+			// which is the whole content of "a group has no mechanical
+			// consequence".
+			if doors[normalizedCrossing(from, to)] {
+				continue
+			}
+			wall := encounter.WallInput{Boundary: spatial.Boundary{
+				From: from, To: to,
+				BlocksMovement: true, BlocksLineOfSight: true,
+			}}
+			if w.Height != nil {
+				wall.Height = *w.Height
+			}
+			out = append(out, wall)
 		}
-		out = append(out, wall)
+	}
+	return out
+}
+
+// doorCrossings is every edge a door stands in, normalized in the authored
+// offset space [wallsOf] works in — NOT the absolute axial space
+// [doorsOf] converts to, since the only question here is whether a wall entry
+// names the same authored crossing.
+func doorCrossings(spec *Spec) map[[2]spatial.Position]bool {
+	out := map[[2]spatial.Position]bool{}
+	for _, d := range spec.Doors {
+		for _, e := range d.Edges {
+			out[normalizedCrossing(authored(e[0]), authored(e[1]))] = true
+		}
 	}
 	return out
 }

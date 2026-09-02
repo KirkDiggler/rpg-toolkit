@@ -133,8 +133,6 @@ func (s *DialectSuite) TestADungeonMustBeOneDocumentOfKnownKeys() {
 	})
 }
 
-// TestValidate_PathsNameTheThing — the table: every refusal names the YAML
-// path of the thing that is wrong, because that is where the builder draws it.
 // TestWallObjectFormIsStrict — the wall object form keeps Decode's own
 // strictness even though a custom unmarshaler bypasses KnownFields: an
 // unknown key and an edgeless object are refusals naming the line, not facts
@@ -147,8 +145,41 @@ func (s *DialectSuite) TestWallObjectFormIsStrict() {
 	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { height: 2 }")))
 	s.Require().Error(err, "a wall object with no edge is not a wall")
 	s.Contains(err.Error(), "between")
+
+	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]",
+		"  - { between: [[5,1],[6,0]], edges: [[[5,1],[6,0]]] }")))
+	s.Require().Error(err, "one edge or a run — writing both means two things at once")
+	s.Contains(err.Error(), "never both")
+
+	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { edges: [] }")))
+	s.Require().Error(err, "an explicitly empty run is authored, and runs nowhere")
+	s.Contains(err.Error(), "stands nowhere")
 }
 
+// TestAWallRunNamesTheEdgeThatIsWrong — a grouped run's defect points INSIDE
+// the run (rpg-project#355). The same broken edge the flat table catches at
+// `walls[7]` is `walls[0].edges[7]` once its line is authored as a run, so the
+// builder still draws the refusal on the one crossing that is wrong rather
+// than on the whole wall.
+func (s *DialectSuite) TestAWallRunNamesTheEdgeThatIsWrong() {
+	raw := regroupedTomb(s.T(), s.tomb, 2, false)
+	broken := strings.Replace(raw, "      - [[5,3],[6,4]]", "      - [[5,3],[6,5]]", 1)
+	s.Require().NotEqual(raw, broken, "the anchor is present in the grouped file")
+
+	errs := s.validate(broken)
+	s.Require().Len(errs, 1)
+	s.Equal("walls[0].edges[7]", errs[0].Path)
+	s.Contains(errs[0].Message, "not adjacent under pointy")
+
+	spec, err := dungeonspec.Decode([]byte(raw))
+	s.Require().NoError(err)
+	s.Require().Len(spec.Walls, 2)
+	s.Equal("run 0", spec.Walls[0].Name, "the run's name is carried for whoever reads the file")
+	s.Len(spec.Walls[0].Edges, 14)
+}
+
+// TestValidate_PathsNameTheThing — the table: every refusal names the YAML
+// path of the thing that is wrong, because that is where the builder draws it.
 func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 	for _, tc := range []struct {
 		name string
@@ -169,8 +200,6 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"walls[0]", "not floor"},
 		{"a wall listed twice", "  - [[5,1],[6,0]]", "  - [[6,0],[5,0]]",
 			"walls[1]", "already listed at walls[0]"},
-		{"a door edge that is also a wall", "edges: [[[5,4],[6,4]]]", "edges: [[[5,3],[6,3]]]",
-			"doors[0].edges[0]", "also a wall (walls[6])"},
 		{"a prop without blocks_los", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true }`,
 			"place[0].blocks_los", "there is no default"},
 		{"a monster that says what it blocks", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, blocks_los: true }`,
