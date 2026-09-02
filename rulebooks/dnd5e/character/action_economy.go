@@ -141,13 +141,28 @@ func (c *Character) RefreshForTurn(
 	return &RefreshForTurnOutput{Reseeded: true}, nil
 }
 
-// EndTurn resets action economy resources to 0 and clears granted capacity.
-// The character remains in combat (actionEconomy stays non-nil).
+// EndTurn spends out what the turn owned and leaves the reaction alone. The
+// character remains in combat (actionEconomy stays non-nil).
+//
+// # The reaction is the exception, and it is not an oversight
+//
+// Action, bonus action, movement and granted capacity are TURN-SCOPED: you do
+// not carry an action into somebody else's turn, so ending yours empties them.
+// The reaction is the one resource whose whole purpose is the gap BETWEEN your
+// turns — an opportunity attack happens on another creature's turn by
+// definition. 2014 RAW refreshes it at the START of each of your turns, so it
+// must survive the end of the previous one.
+//
+// This method used to zero it too, and was safe only because nothing called it
+// (rpg-project#316). Wiring it into a turn boundary would have disarmed every
+// reactor for exactly the window the reaction governs, silently: the OA
+// condition asks CanReact, would find an empty purse, and decline — which looks
+// identical to choosing not to react. Kirk ruled it a bug rather than a hazard
+// to be guarded, so the guard is gone and the behaviour is correct instead.
 func (c *Character) EndTurn(_ context.Context, _ *EndTurnInput) (*EndTurnOutput, error) {
 	if c.actionEconomy != nil {
 		c.actionEconomy.ActionsRemaining = 0
 		c.actionEconomy.BonusActionsRemaining = 0
-		c.actionEconomy.ReactionsRemaining = 0
 		c.actionEconomy.MovementRemaining = 0
 		c.actionEconomy.Granted = make(map[GrantedActionKey]int)
 		c.economyChanged()

@@ -70,7 +70,6 @@ func (s *DisengagingConditionTestSuite) TestPreventsOpportunityAttacks() {
 		EntityType:          "character",
 		FromPosition:        dnd5eEvents.Position{X: 5, Y: 5},
 		ToPosition:          dnd5eEvents.Position{X: 6, Y: 5},
-		ThreateningEntities: []string{"goblin-1", "goblin-2"},
 		OAPreventionSources: make([]dnd5eEvents.MovementModifierSource, 0),
 	}
 
@@ -105,7 +104,6 @@ func (s *DisengagingConditionTestSuite) TestDoesNotAffectOtherCharactersMovement
 		EntityType:          "character",
 		FromPosition:        dnd5eEvents.Position{X: 5, Y: 5},
 		ToPosition:          dnd5eEvents.Position{X: 6, Y: 5},
-		ThreateningEntities: []string{"goblin-1"},
 		OAPreventionSources: make([]dnd5eEvents.MovementModifierSource, 0),
 	}
 

@@ -144,7 +144,15 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenReadinessOff() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
-	ctx := gamectx.WithRoom(s.ctx, s.room)
+	// The cast, WITHOUT WHICH THIS TEST CANNOT FAIL. canReact reads the
+	// reactor's reaction slot off the cast and falls closed when there is
+	// none, so a fold without one publishes no trigger whatever the guard
+	// under test does — every negative case in this suite passed that way
+	// until rpg-project#316 measured them (see
+	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
+	// bug behind it).
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
 	// readiness map present but OA flag false
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): false},
@@ -165,9 +173,27 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenReadinessOff() {
 	s.Empty(*collected, "no trigger expected when readiness is off")
 }
 
-func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenOAPrevented() {
-	// Mover added Disengaging-style OA prevention to the event before the
-	// OA condition runs.
+// TestPreventionIsNotThisConditionsToApply pins where the Disengage
+// short-circuit actually lives, which is NOT here.
+//
+// This test replaces TestNoTriggerWhenOAPrevented, which asserted that a
+// prevented step published no trigger and WAS HOLLOW — it could not fail for
+// its stated reason. It never installed a cast, so canReact fell closed and no
+// trigger fired no matter what the prevention sources said. Deleting the
+// condition's prevention check left it green, which is how the check itself
+// stayed dead and unnoticed (rpg-project#316).
+//
+// The check could never have worked in any case: Disengaging writes
+// OAPreventionSources from a chain STAGE, which runs during Execute, and this
+// condition is a SUBSCRIBER, which runs strictly earlier. It was reading a
+// field nothing had written yet.
+//
+// So the contract is now the opposite of what that test claimed, and this one
+// states it: the condition PUBLISHES, carrying its kind, and
+// resolution.NewMovement drops TriggerKindMovementOA triggers after the fold
+// where the answer is complete. Re-adding a prevention check here would make
+// this test fail, which is the point of writing it this way round.
+func (s *OpportunityAttackConditionSuite) TestPreventionIsNotThisConditionsToApply() {
 	s.placeEntity("fighter-1", "character", 5, 5)
 	s.placeEntity("goblin-1", "monster", 5, 6)
 
@@ -175,13 +201,18 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenOAPrevented() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
-	ctx := gamectx.WithRoom(s.ctx, s.room)
+
+	// The cast the hollow test omitted, without which this predicate never
+	// reaches its own end.
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
 	})
 
 	event := &dnd5eEvents.MovementChainEvent{
 		EntityID:     "goblin-1",
+		EntityType:   "monster",
 		FromPosition: dnd5eEvents.Position{X: 5, Y: 6},
 		ToPosition:   dnd5eEvents.Position{X: 5, Y: 8},
 		OAPreventionSources: []dnd5eEvents.MovementModifierSource{
@@ -195,7 +226,10 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenOAPrevented() {
 	_, err = mc.Execute(ctx, event)
 	s.Require().NoError(err)
 
-	s.Empty(*collected, "no trigger expected when OA is prevented")
+	s.Require().Len(*collected, 1,
+		"the condition publishes regardless of prevention; the machine decides")
+	s.Equal(dnd5eEvents.TriggerKindMovementOA, (*collected)[0].TriggerKind,
+		"and it carries the kind resolution filters on")
 }
 
 func (s *OpportunityAttackConditionSuite) TestNoTriggerOnSelfMovement() {
@@ -205,7 +239,15 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerOnSelfMovement() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
-	ctx := gamectx.WithRoom(s.ctx, s.room)
+	// The cast, WITHOUT WHICH THIS TEST CANNOT FAIL. canReact reads the
+	// reactor's reaction slot off the cast and falls closed when there is
+	// none, so a fold without one publishes no trigger whatever the guard
+	// under test does — every negative case in this suite passed that way
+	// until rpg-project#316 measured them (see
+	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
+	// bug behind it).
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
 	})
@@ -234,7 +276,15 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenStillInReach() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
-	ctx := gamectx.WithRoom(s.ctx, s.room)
+	// The cast, WITHOUT WHICH THIS TEST CANNOT FAIL. canReact reads the
+	// reactor's reaction slot off the cast and falls closed when there is
+	// none, so a fold without one publishes no trigger whatever the guard
+	// under test does — every negative case in this suite passed that way
+	// until rpg-project#316 measured them (see
+	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
+	// bug behind it).
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
 	})
@@ -263,7 +313,15 @@ func (s *OpportunityAttackConditionSuite) TestNoTriggerWhenMoverNeverInReach() {
 	s.Require().NoError(oa.Apply(s.ctx, s.bus))
 
 	collected := s.subscribeTriggers()
-	ctx := gamectx.WithRoom(s.ctx, s.room)
+	// The cast, WITHOUT WHICH THIS TEST CANNOT FAIL. canReact reads the
+	// reactor's reaction slot off the cast and falls closed when there is
+	// none, so a fold without one publishes no trigger whatever the guard
+	// under test does — every negative case in this suite passed that way
+	// until rpg-project#316 measured them (see
+	// TestPreventionIsNotThisConditionsToApply for the one that hid a real
+	// bug behind it).
+	ctx := castOf(s.ctx, &fakeConditionOwner{id: "fighter-1", hasEconomy: true, reactions: 1})
+	ctx = gamectx.WithRoom(ctx, s.room)
 	ctx = gamectx.WithReactionReadiness(ctx, gamectx.ReactionReadinessMap{
 		"fighter-1": {refs.Conditions.OpportunityAttack().String(): true},
 	})
