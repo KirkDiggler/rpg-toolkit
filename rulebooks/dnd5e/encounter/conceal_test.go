@@ -192,6 +192,29 @@ func hasBoundary(atlas encounter.Atlas, a, b spatial.Position) (encounter.AtlasB
 	return encounter.AtlasBoundary{}, false
 }
 
+// vaultFrontier is every boundary an atlas draws touching the vault's own
+// cells — the annex|vault seam's real authored walls, whatever their exact
+// count (seamWallRows emits hex diagonals as well as the straight seam, so
+// that count is not obvious by inspection). Shared by every scene that must
+// now compute what an honestly-smaller twin field cannot author: a wall
+// cannot be authored with an off-floor endpoint, so the twin has nowhere to
+// hang the annex's real far wall (rpg-toolkit#1419).
+func vaultFrontier(atlas encounter.Atlas) []encounter.AtlasBoundary {
+	vaultCells := map[spatial.Position]bool{}
+	for col := 9; col < 12; col++ {
+		for row := 0; row < 8; row++ {
+			vaultCells[cellAt(col, row)] = true
+		}
+	}
+	out := make([]encounter.AtlasBoundary, 0)
+	for _, b := range atlas.Boundaries {
+		if vaultCells[b.From] || vaultCells[b.To] {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 // hasDoorway reports whether the atlas lists any doorway for a door.
 func hasDoorway(atlas encounter.Atlas, door encounter.DoorID) bool {
 	for _, dw := range atlas.Doorways {

@@ -63,22 +63,46 @@ func (s *ConcealLawSuite) openTwin() *encounter.Encounter {
 }
 
 // TestANonKnowersAtlasIsAnHonestlyAuthoredTwin is the whole absence law in
-// one pin: a non-knower's member-scoped atlas equals — struct for struct,
-// in the same sort order — the Atlas of a dungeon HONESTLY AUTHORED as what
-// they believe: no vault (cells, region, props, every touching boundary,
-// border walls included, all gone), no doors, and a real wall at the
-// veil-door's crossing whose height is the surrounding run's own authored
-// 2.0, because a mask at any other height would be a visible notch exactly
-// where the secret is. The expectation is COMPUTED by authoring the twin,
-// not echoed from the projection.
+// one pin: a non-knower's member-scoped atlas equals the Atlas of a dungeon
+// HONESTLY AUTHORED as what they believe — no vault (cells, region, props,
+// doorways, all gone), no doors, and a real wall at the veil-door's crossing
+// whose height is the surrounding run's own authored 2.0, because a mask at
+// any other height would be a visible notch exactly where the secret is.
+//
+// Boundaries alone are no longer struct-for-struct against the twin
+// (rpg-toolkit#1419): a WallInput cannot be authored with an off-floor
+// endpoint, so the twin has nowhere to hang the annex's real far wall — but
+// an honestly authored dungeon would still have walled the room that IS
+// there. The expected addition — the annex|vault seam's real authored
+// walls — is pulled from the FULL (unscoped) atlas rather than hand-counted:
+// seamWallRows emits hex diagonals as well as the straight seam, so the
+// exact count is not obvious by inspection. Everything else is still
+// COMPUTED by authoring the twin, not echoed from the projection.
 func (s *ConcealLawSuite) TestANonKnowersAtlasIsAnHonestlyAuthoredTwin() {
-	scoped, err := s.open(findsNothing{}, false).AtlasFor(seeker)
+	enc := s.open(findsNothing{}, false)
+	scoped, err := enc.AtlasFor(seeker)
 	s.Require().NoError(err)
 
 	twin, err := s.openTwin().Atlas()
 	s.Require().NoError(err)
 
-	s.Equal(twin, scoped, "byte-identical to never-authored")
+	s.Equal(twin.Cells, scoped.Cells, "cells byte-identical to never-authored")
+	s.Equal(twin.Regions, scoped.Regions, "regions byte-identical to never-authored")
+	s.Equal(twin.Props, scoped.Props, "props byte-identical to never-authored")
+	s.Equal(twin.Doorways, scoped.Doorways, "doorways byte-identical to never-authored")
+
+	full, err := enc.Atlas()
+	s.Require().NoError(err)
+	vaultMask, present := hasBoundary(scoped, spatial.Position{X: 8, Y: concealRow}, spatial.Position{X: 9, Y: concealRow})
+	s.Require().True(present, "the vault-door's crossing reads as wall too — bare or authored, hidden space gets one")
+	s.Equal(0.0, vaultMask.Height, "no authored run at non-default height borders this seam, so standard height")
+	s.True(vaultMask.BlocksMovement)
+	s.True(vaultMask.BlocksLineOfSight)
+
+	expected := append(append([]encounter.AtlasBoundary(nil), twin.Boundaries...), vaultFrontier(full)...)
+	expected = append(expected, vaultMask)
+	s.ElementsMatch(expected, scoped.Boundaries,
+		"every twin wall, plus the annex|vault seam's real authored walls now presented instead of dropped, plus the vault-door's own mask")
 
 	mask, present := hasBoundary(scoped, spatial.Position{X: 4, Y: concealRow}, spatial.Position{X: 5, Y: concealRow})
 	s.Require().True(present, "the veil-door's crossing reads as wall, not hole")
@@ -167,12 +191,19 @@ func (s *ConcealLawSuite) TestPresencePiercesFromFrameOne() {
 	}
 }
 
-// TestABoundaryWithAStillHiddenNeighbourStaysWithheld — the Wave 1b
-// interpretation pin: reveal is the member-scoped answer, not a literal
-// every-touching-boundary sweep. Two concealed rooms share a wall; knowing
-// one must not disclose the other, so the shared wall stays withheld from
-// the atlas AND from the region reveal's own beat.
-func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourStaysWithheld() {
+// TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdinaryWall revises
+// the Wave 1b interpretation pin this test used to carry — that the shared
+// wall stayed withheld — for rpg-toolkit#1419: reveal is still the
+// member-scoped answer, not a literal every-touching-boundary sweep, but
+// the yardstick that answer obeys now governs SPACE AND CONTENTS only. Two
+// concealed rooms share a wall; knowing one must not disclose the OTHER's
+// cells, region entry or any deeper structure, but the wall itself is
+// ordinary — a real, authored boundary of the room the occupant DOES
+// know — and "a wall is a wall is a wall" draws no exception for which side
+// of it is still secret. It presents in the atlas AND rides the region
+// reveal's own beat, exactly like every other border wall of the revealed
+// room.
+func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdinaryWall() {
 	inner := core.EntityID("inner")
 	field := encounter.FieldInput{
 		Canvas: pointyCanvas(),
@@ -223,31 +254,112 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourStaysWithheld() 
 	s.True(holdsA, "the occupant knows their own room")
 	s.False(holdsB, "and nothing about the neighbour")
 
-	_, shared := hasBoundary(atlas, spatial.Position{X: 5, Y: 1}, spatial.Position{X: 6, Y: 1})
-	s.False(shared, "the shared wall stays withheld — it touches a still-hidden room")
-	_, own := hasBoundary(atlas, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 0})
-	s.True(own, "while the revealed room's other border walls arrive")
+	shared, present := hasBoundary(atlas, spatial.Position{X: 5, Y: 1}, spatial.Position{X: 6, Y: 1})
+	s.Require().True(present, "the shared wall now presents — it borders inner's own known room, ordinary as any other wall")
+	s.True(shared.BlocksMovement)
+	s.True(shared.BlocksLineOfSight)
+	_, present = hasBoundary(atlas, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 0})
+	s.True(present, "while the revealed room's other border walls arrive")
 
-	// And the region reveal's own beat kept the same silence.
+	// And the region reveal's own beat carries the same frontier wall — it
+	// touches crypt-a, the room being revealed — but nothing deeper: no
+	// boundary on the beat has BOTH endpoints inside the still-hidden
+	// neighbour, which would mean crypt-b's own interior structure leaked.
 	reveals := s.beatsForLaw(enc, inner, "region_revealed")
 	s.Require().Len(reveals, 1)
-	hiddenCells := map[string]bool{}
+	cryptBCells := map[string]bool{}
 	for col := 6; col < 9; col++ {
 		for row := 0; row < 4; row++ {
 			c := cellAt(col, row)
-			hiddenCells[posKey(c.X, c.Y)] = true
+			cryptBCells[posKey(c.X, c.Y)] = true
 		}
 	}
 	boundaries, ok := reveals[0]["boundaries"].([]any)
 	s.Require().True(ok)
 	s.Require().NotEmpty(boundaries, "the reveal carries the room's boundaries")
+	sawSharedWall := false
 	for _, b := range boundaries {
 		bd := b.(map[string]any)
-		for _, end := range []string{"from", "to"} {
-			p := bd[end].(map[string]any)
-			s.Require().False(hiddenCells[posKey(p["x"].(float64), p["y"].(float64))],
-				"no boundary on the beat touches the still-hidden neighbour")
+		from := bd["from"].(map[string]any)
+		to := bd["to"].(map[string]any)
+		fromHidden := cryptBCells[posKey(from["x"].(float64), from["y"].(float64))]
+		toHidden := cryptBCells[posKey(to["x"].(float64), to["y"].(float64))]
+		s.Require().False(fromHidden && toHidden,
+			"no boundary on the beat lies wholly inside the still-hidden neighbour")
+		if fromHidden || toHidden {
+			sawSharedWall = true
 		}
+	}
+	s.True(sawSharedWall, "the shared frontier wall rides the beat too — it borders inner's own newly-known room")
+}
+
+// TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWall covers the other
+// half of the rpg-toolkit#1419 rule that the still-hidden-neighbour scene
+// above does not reach: a visible/hidden crossing with NOTHING authored on
+// it at all — no wall, no door, the honestly bare seam a step is still
+// refused across. Every crossing in this suite's main fixture touching
+// hidden space is either a wall or a door, so this scene authors its own: a
+// concealed region reachable only through a seam that is PART raised
+// authored wall, part bare gap.
+//
+// The seam is mixed, not uniformly bare, deliberately (rpg-toolkit#1419
+// review, C1): a fixture with no authored wall anywhere near the seam
+// cannot tell a synthesized wall that calls maskHeight from one that
+// forgot to — maskHeight falls back to 0 with no run to inherit from
+// either way, so a bare-everywhere fixture passes whether or not the
+// height call is even there. One raised wall on the seam is enough to make
+// the two paths disagree: with the height call, the bare row reads as a
+// continuation of the same run; without it, the bare row would be a
+// standard-height notch exactly where the secret room borders it — the
+// very tell this rule exists to remove.
+func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWall() {
+	watcher := core.EntityID("watcher")
+	field := encounter.FieldInput{
+		Canvas: pointyCanvas(),
+		Regions: []encounter.RegionInput{
+			rectRegion("foyer", 0, 0, 3, 2),
+			func() encounter.RegionInput {
+				r := rectRegion("den", 3, 0, 3, 2)
+				r.Concealed = true
+				return r
+			}(),
+		},
+		// Row 0 carries a raised authored wall (height 3); row 1 is a bare,
+		// unauthored gap — nothing stands there but the region still hides
+		// behind it. Both border the SAME concealed region, so they are one
+		// run, and the bare row's synthesized wall must inherit the raised
+		// row's height to read as a continuation of it.
+		Walls: withHeight([]encounter.WallInput{wall(2, 0, 3, 0)}, 3),
+	}
+
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		CheckResolver: findsNothing{}, Witness: s.witness,
+		Field: field,
+		Members: []encounter.MemberInput{
+			{ID: watcher, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 0}},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().NoError(err)
+
+	atlas, err := enc.AtlasFor(watcher)
+	s.Require().NoError(err)
+
+	authoredWall, present := hasBoundary(atlas, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 0})
+	s.Require().True(present, "the raised authored wall presents — one endpoint hidden, not dropped")
+	s.Equal(3.0, authoredWall.Height, "its own authored height, unchanged")
+
+	mask, present := hasBoundary(atlas, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
+	s.Require().True(present, "the bare seam still reads as wall — nothing authored there is not the same as nothing there")
+	s.Equal(3.0, mask.Height,
+		"the SAME neighbouring run's height as the authored wall one row over — a standard-height patch here would be a notch exactly where the secret room borders it")
+	s.True(mask.BlocksMovement)
+	s.True(mask.BlocksLineOfSight)
+
+	for _, r := range atlas.Regions {
+		s.Require().NotEqual(encounter.RegionID("den"), r.ID, "the room behind the seam still hides — only the boundary changed")
 	}
 }
 
@@ -471,12 +583,28 @@ func (s *ConcealLawSuite) TestClosingReConcealsForStrangersAndNeverForKnowers() 
 	_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: vaultDoor, Actor: buddy})
 	s.Require().NoError(err)
 
-	// The stranger: byte-identical to never-authored, after everything.
+	// The stranger: cells, regions, props and doorways survive the whole
+	// cycle untouched — still the never-authored yardstick. Boundaries
+	// diverge from the twin by exactly the vault frontier rpg-toolkit#1419
+	// now presents (see TestANonKnowersAtlasIsAnHonestlyAuthoredTwin for why
+	// the twin cannot author it itself).
 	lonerAtlas, err := enc.AtlasFor(loner)
 	s.Require().NoError(err)
 	twinAtlas, err := twin.Atlas()
 	s.Require().NoError(err)
-	s.Equal(twinAtlas, lonerAtlas, "a stranger's world survives the whole cycle untouched")
+	s.Equal(twinAtlas.Cells, lonerAtlas.Cells, "a stranger's cells survive the whole cycle untouched")
+	s.Equal(twinAtlas.Regions, lonerAtlas.Regions, "and its regions")
+	s.Equal(twinAtlas.Props, lonerAtlas.Props, "and its props")
+	s.Equal(twinAtlas.Doorways, lonerAtlas.Doorways, "and its doorways")
+
+	full, err := enc.Atlas()
+	s.Require().NoError(err)
+	vaultMask, present := hasBoundary(lonerAtlas, spatial.Position{X: 8, Y: concealRow}, spatial.Position{X: 9, Y: concealRow})
+	s.Require().True(present, "the vault-door's crossing still reads as wall after the whole open-close cycle")
+	expected := append(append([]encounter.AtlasBoundary(nil), twinAtlas.Boundaries...), vaultFrontier(full)...)
+	expected = append(expected, vaultMask)
+	s.ElementsMatch(expected, lonerAtlas.Boundaries,
+		"boundaries: every twin wall, the vault seam's real walls now presented, and the vault-door's own mask — the whole cycle changes none of it for a stranger")
 
 	_, probed := enc.OpenDoor(&encounter.OpenDoorInput{Door: veilDoor, Actor: loner})
 	s.Require().ErrorIs(probed, encounter.ErrNoDoor, "the probe law holds after the close")

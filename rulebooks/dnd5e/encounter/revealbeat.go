@@ -50,9 +50,10 @@ func (e *Encounter) appendDoorRevealedBeat(recipient MemberID, d *doorRecord, at
 // appendRegionRevealedBeat records that a concealed region entered ONE
 // RECIPIENT's knowledge, carrying the region's whole atlas slice — the
 // region entry, the props standing in it, and every boundary touching its
-// cells, border walls included, since the never-authored yardstick withheld
-// them all. The beat is the patch for the recipient's cached atlas: the
-// load-once, beat-refreshed shape (rpg-project#264).
+// cells, border walls and the frontier with any still-hidden neighbour
+// included, since the never-authored yardstick withheld them all. The beat
+// is the patch for the recipient's cached atlas: the load-once,
+// beat-refreshed shape (rpg-project#264).
 //
 // BUILT FROM THE RECIPIENT'S OWN [Encounter.AtlasFor], deliberately: the
 // beat documents itself as the patch for that answer, so it is derived from
@@ -61,11 +62,14 @@ func (e *Encounter) appendDoorRevealedBeat(recipient MemberID, d *doorRecord, at
 // Minor 1: the first version rebuilt the list from the unscoped Atlas and
 // omitted the masquerade mask at the recipient's own still-unfound door
 // seam). Everything member-scoped falls out for free: a boundary shared
-// with a still-hidden neighbour stays withheld (the Wave 1b interpretation
-// pin), and the synthetic mask at a concealed door the recipient has NOT
-// found rides the slice exactly as their atlas draws it. The recipient's
-// knowledge fact is already written when this runs, so the region being
-// revealed is present in its own patch.
+// with a still-hidden neighbour now PRESENTS, ordinary as any other border
+// wall of the room being revealed (rpg-toolkit#1419 revises the Wave 1b
+// interpretation pin this comment used to state — the yardstick governs the
+// neighbour's own cells and region entry, never a boundary), and the
+// synthetic mask at a concealed door the recipient has NOT found rides the
+// slice exactly as their atlas draws it. The recipient's knowledge fact is
+// already written when this runs, so the region being revealed is present
+// in its own patch.
 func (e *Encounter) appendRegionRevealedBeat(recipient MemberID, region RegionID, at uint64) (uint64, error) {
 	scoped, err := e.AtlasFor(recipient)
 	if err != nil {

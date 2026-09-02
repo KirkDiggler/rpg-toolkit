@@ -80,11 +80,15 @@
 //     region knows it from frame one.
 //   - [Encounter.AtlasFor] and [Encounter.DoorsFor] answer as one member
 //     under the never-authored yardstick: a concealed unfound door is
-//     absent from every list and masked as an ordinary wall between two
-//     visible spaces (at the neighbouring run's height); an unrevealed
-//     region is byte-identical to never authored — cells, entry, props and
-//     every touching boundary withheld, and a boundary shared with a
-//     still-hidden neighbour stays withheld after a reveal.
+//     absent from every list and masked as an ordinary wall, whichever
+//     side or sides of it are hidden (at the neighbouring run's height); an
+//     unrevealed region's cells, entry and props are byte-identical to
+//     never authored. Its BOUNDARY with visible space is not (rpg-toolkit
+//     #1419): every crossing into hidden space — authored wall, concealed
+//     door, or bare unwalled seam — reads as an ordinary wall, because a
+//     wall a step cannot cross is the ordinary case and floor that ends in
+//     nothing is the anomaly. Only a crossing wholly inside hidden space,
+//     bordering no visible cell at all, stays withheld.
 //   - The PROBE LAW: everywhere a door id is spoken, a concealed unfound
 //     door answers not-found, byte-identical to an id that names nothing.
 //     The MOVE LAW: a step stopped by one refuses byte-identical to a wall.
