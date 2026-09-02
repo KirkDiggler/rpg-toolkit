@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -11,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -189,6 +191,155 @@ func (s *LongRestTestSuite) TestLongRest() {
 
 func TestLongRestSuite(t *testing.T) {
 	suite.Run(t, new(LongRestTestSuite))
+}
+
+func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
+	ctx := context.Background()
+	data := longRestEconomyTestData(&ActionEconomyData{
+		TurnNumber:            1,
+		ActionsRemaining:      0,
+		BonusActionsRemaining: 0,
+		ReactionsRemaining:    0,
+		MovementRemaining:     0,
+		Granted: map[GrantedActionKey]int{
+			GrantedAttacks:       0,
+			GrantedFlurryStrikes: 0,
+		},
+	})
+
+	char, err := Load(ctx, data)
+	require.NoError(t, err)
+	bus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+
+	require.NoError(t, char.LongRest(ctx))
+	got := char.ToData()
+	require.Nil(t, got.ActionEconomy, "a completed long rest must not persist a prior combat turn")
+	require.False(t, char.InCombat())
+	require.True(t, char.IsDirty(), "clearing persisted combat state must be saved")
+
+	_, err = char.StartTurn(ctx, &StartTurnInput{TurnNumber: 1, Speed: 35})
+	require.NoError(t, err)
+	fresh := char.ToData().ActionEconomy
+	require.NotNil(t, fresh)
+	require.Equal(t, 1, fresh.TurnNumber)
+	require.Equal(t, 1, fresh.ActionsRemaining)
+	require.Equal(t, 1, fresh.BonusActionsRemaining)
+	require.Equal(t, 1, fresh.ReactionsRemaining)
+	require.Equal(t, 35, fresh.MovementRemaining)
+	require.Empty(t, fresh.Granted)
+}
+
+func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T) {
+	ctx := context.Background()
+	char, err := Load(ctx, longRestEconomyTestData(&ActionEconomyData{
+		TurnNumber:            1,
+		ActionsRemaining:      0,
+		BonusActionsRemaining: 0,
+		ReactionsRemaining:    0,
+		MovementRemaining:     0,
+		Granted: map[GrantedActionKey]int{
+			GrantedAttacks:       0,
+			GrantedFlurryStrikes: 0,
+		},
+	}))
+	require.NoError(t, err)
+
+	bus := events.NewEventBus()
+	publicationFailure := errors.New("rest publication refused")
+	_, err = dnd5eEvents.RestTopic.On(bus).Subscribe(ctx,
+		func(_ context.Context, _ dnd5eEvents.RestEvent) error {
+			return publicationFailure
+		})
+	require.NoError(t, err)
+
+	// Install the failing observer before Attach so the real bus returns its
+	// error before any character-owned rest observer can react.
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+	before := char.ToData().ActionEconomy
+	require.NotNil(t, before)
+
+	err = char.LongRest(ctx)
+	require.EqualError(t, err, "failed to publish rest event: rest publication refused")
+	require.ErrorIs(t, err, publicationFailure)
+	require.True(t, char.InCombat(), "a failed rest publication must not exit combat")
+
+	after := char.ToData().ActionEconomy
+	require.NotNil(t, after)
+	require.Equal(t, before, after, "ExitCombat must run only after successful rest publication")
+}
+
+func TestLongRestKeepsAbsentActionEconomyAbsent(t *testing.T) {
+	ctx := context.Background()
+	char, err := Load(ctx, longRestEconomyTestData(nil))
+	require.NoError(t, err)
+	bus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+
+	require.NoError(t, char.LongRest(ctx))
+	require.NoError(t, char.LongRest(ctx))
+	require.Nil(t, char.ToData().ActionEconomy)
+	require.False(t, char.InCombat())
+}
+
+func TestShortRestRetainsPersistedActionEconomy(t *testing.T) {
+	ctx := context.Background()
+	char, err := Load(ctx, longRestEconomyTestData(&ActionEconomyData{
+		TurnNumber:            1,
+		ActionsRemaining:      0,
+		BonusActionsRemaining: 0,
+		ReactionsRemaining:    0,
+		MovementRemaining:     0,
+		Granted: map[GrantedActionKey]int{
+			GrantedAttacks:       0,
+			GrantedFlurryStrikes: 0,
+		},
+	}))
+	require.NoError(t, err)
+	bus := events.NewEventBus()
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+
+	require.NoError(t, char.ShortRest(ctx))
+	got := char.ToData().ActionEconomy
+	require.NotNil(t, got, "a short rest must not leave combat")
+	require.True(t, char.InCombat())
+	require.Equal(t, 1, got.TurnNumber)
+	require.Equal(t, 0, got.ActionsRemaining)
+	require.Equal(t, 0, got.BonusActionsRemaining)
+	require.Equal(t, 0, got.ReactionsRemaining)
+	require.Equal(t, 0, got.MovementRemaining)
+	require.Equal(t, map[GrantedActionKey]int{
+		GrantedAttacks:       0,
+		GrantedFlurryStrikes: 0,
+	}, got.Granted)
+}
+
+func longRestEconomyTestData(actionEconomy *ActionEconomyData) *Data {
+	return &Data{
+		ID:               "rest-economy-fighter",
+		PlayerID:         "rest-economy-player",
+		Name:             "Rest Economy Fighter",
+		Level:            4,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Fighter,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 16,
+			abilities.DEX: 14,
+			abilities.CON: 14,
+			abilities.INT: 10,
+			abilities.WIS: 12,
+			abilities.CHA: 8,
+		},
+		HitPoints:     20,
+		MaxHitPoints:  36,
+		ArmorClass:    16,
+		ActionEconomy: actionEconomy,
+	}
 }
 
 func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {

@@ -457,7 +457,8 @@ func (c *Character) ResetDeathSaveState() {
 }
 
 // LongRest performs a long rest, restoring HP to maximum and all long-rest resources.
-// Also publishes RestEvent for conditions to handle their own removal if appropriate.
+// It publishes RestEvent for conditions to handle their own removal if appropriate,
+// then leaves any prior combat turn.
 func (c *Character) LongRest(ctx context.Context) error {
 	if c.bus == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character has no event bus")
@@ -512,7 +513,8 @@ func (c *Character) LongRest(ctx context.Context) error {
 		return rpgerr.Wrapf(err, "failed to publish rest event")
 	}
 
-	return nil
+	_, err = c.ExitCombat(ctx, nil)
+	return err
 }
 
 // ShortRest restores resources that reset on a short rest (e.g., Second Wind, Ki).
