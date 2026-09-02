@@ -205,6 +205,18 @@ var (
 	// fine (rpg-toolkit#1060).
 	ErrBadPosition = errors.New("bad position")
 
+	// ErrOutOfRange is Interact's refusal when the target stands farther than
+	// the configured range (default: adjacent, one cell) from the actor —
+	// the host-seam twin of encounter.ErrOutOfRange. Distinct from
+	// ErrOutOfReach, which is Attack's own reach validation against a
+	// compiled delivery's max range; Interact has no delivery to check
+	// against, only a plain cell distance.
+	ErrOutOfRange = errors.New("target out of range")
+
+	// ErrNotVisible is Interact's refusal when the target is not in the
+	// actor's current sight — the host-seam twin of encounter.ErrNotVisible.
+	ErrNotVisible = errors.New("target not visible")
+
 	// ErrNoSessionID is returned when a verb is given an empty session ID.
 	ErrNoSessionID = errors.New("empty session id")
 
