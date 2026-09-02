@@ -156,7 +156,10 @@ func (k *SheetKeeper) subscribeSelf(ctx context.Context, bus events.EventBus) er
 			return dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx, c.onConditionRemoved)
 		}},
 		{"healing received", func() (string, error) {
-			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, c.onHealingReceived)
+			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx,
+				func(ctx context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+					return c.onHealingReceived(ctx, bus, event)
+				})
 		}},
 		{"condition state changed", func() (string, error) {
 			return dnd5eEvents.ConditionStateChangedTopic.On(bus).Subscribe(ctx, c.onConditionStateChanged)

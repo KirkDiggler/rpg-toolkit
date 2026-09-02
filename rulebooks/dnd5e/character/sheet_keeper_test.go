@@ -287,11 +287,19 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedSubscriberErrorPropagatesAft
 	markSaved(s.char)
 
 	sentinel := errors.New("healing applied subscriber failed")
+	observedHP := 0
+	observedDirty := false
 	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
 		s.ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+			observedHP = s.char.GetHitPoints()
+			observedDirty = s.char.IsDirty()
 			return sentinel
 		})
 	s.Require().NoError(err)
+
+	// The handler must publish on the bus captured by SheetKeeper.Apply, not a
+	// parked bus retained only for character verbs.
+	s.char.bus = events.NewEventBus()
 
 	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID: s.char.GetID(),
@@ -299,6 +307,8 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedSubscriberErrorPropagatesAft
 	})
 
 	s.Require().ErrorIs(err, sentinel)
+	s.Require().Equal(10, observedHP, "the callback observes post-clamp HP")
+	s.Require().True(observedDirty, "the callback observes the dirty mark")
 	s.Require().Equal(10, s.char.GetHitPoints(), "the mutation precedes applied-fact publication")
 	s.Require().True(s.char.IsDirty())
 }

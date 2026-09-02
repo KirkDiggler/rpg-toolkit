@@ -1300,7 +1300,7 @@ func (c *Character) onSpendRequested(_ context.Context, event dnd5eEvents.SpendR
 // onHealingReceived handles HealingReceivedEvent and publishes the actual
 // post-clamp result after updating the character's sheet.
 func (c *Character) onHealingReceived(
-	ctx context.Context, event dnd5eEvents.HealingReceivedEvent,
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.HealingReceivedEvent,
 ) error {
 	// Only process events for this character
 	if event.TargetID != c.id {
@@ -1325,7 +1325,7 @@ func (c *Character) onHealingReceived(
 		sourceRef = &clone
 	}
 
-	return dnd5eEvents.HealingAppliedTopic.On(c.bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
+	return dnd5eEvents.HealingAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
 		TargetID:   c.id,
 		Requested:  event.Amount,
 		Applied:    c.hitPoints - hpBefore,

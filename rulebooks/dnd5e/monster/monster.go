@@ -434,7 +434,7 @@ func (m *Monster) onDamageReceived(_ context.Context, event dnd5eEvents.DamageRe
 // onHealingReceived handles healing events and publishes the actual post-clamp
 // result after updating the monster's sheet.
 func (m *Monster) onHealingReceived(
-	ctx context.Context, event dnd5eEvents.HealingReceivedEvent,
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.HealingReceivedEvent,
 ) error {
 	if event.TargetID != m.id {
 		return nil
@@ -456,7 +456,7 @@ func (m *Monster) onHealingReceived(
 		sourceRef = &clone
 	}
 
-	return dnd5eEvents.HealingAppliedTopic.On(m.bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
+	return dnd5eEvents.HealingAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
 		TargetID:   m.id,
 		Requested:  event.Amount,
 		Applied:    m.hp - hpBefore,

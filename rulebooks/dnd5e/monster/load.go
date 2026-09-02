@@ -210,7 +210,10 @@ func (k *SheetKeeper) Apply(ctx context.Context, bus events.EventBus) error {
 			return dnd5eEvents.DamageReceivedTopic.On(bus).Subscribe(ctx, m.onDamageReceived)
 		}},
 		{"healing received", func() (string, error) {
-			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx, m.onHealingReceived)
+			return dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(ctx,
+				func(ctx context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+					return m.onHealingReceived(ctx, bus, event)
+				})
 		}},
 		{"condition applied", func() (string, error) {
 			return dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(ctx,
