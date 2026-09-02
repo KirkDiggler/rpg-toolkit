@@ -279,6 +279,14 @@ Minimum world proof:
 Do not teach `world` about vendor inventory. World declaration says "this vendor
 exists here." The `npcs.Vendor` value answers "what does this vendor display?"
 
+**Cross-reference (2026-09-01):** this is the same `world/graph` this package
+already leans on, doing living-world presence rather than combat disposition.
+`../world-npcs/design.md`'s amendment reuses the identical `graph.Relation`
+mechanism (`HostileTo`/`AlliedWith`, proven in
+`examples/world/scenarios/banditcamp`) for encounter-side hostility, so a
+vendor placed in combat via that idea and a vendor declared here share one
+disposition vocabulary rather than two.
+
 If implementation shows that current `world` has no useful way to represent a
 location beyond generic graph relationships, this leg may keep placement as a
 scenario declaration with a named relation rather than inventing a spatial

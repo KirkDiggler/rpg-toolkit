@@ -207,6 +207,13 @@ state if that runtime supports it.
 Pairwise hostility, teams, factions, charm, fear, hirelings, guards, or
 pickpocket consequences belong to runtime/world/encounter systems.
 
+**Cross-reference (2026-09-01):** `../world-npcs/design.md`'s amendment names
+the mechanism those runtime systems should use — `world/graph` `Relation`
+edges (`HostileTo`/`AlliedWith`), folded per-question, not a widened policy
+enum here or in `encounter`. This package's `DispositionPolicy` stays exactly
+what it already is: the authoring default a placement seeds from, nothing
+more.
+
 ## Runtime Defaulting
 
 `MovementPolicy` is part of generic NPC content because physical presence is not
