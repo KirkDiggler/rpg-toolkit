@@ -299,21 +299,37 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdi
 // it at all — no wall, no door, the honestly bare seam a step is still
 // refused across. Every crossing in this suite's main fixture touching
 // hidden space is either a wall or a door, so this scene authors its own: a
-// concealed region reachable only through an unwalled, doorless gap.
+// concealed region reachable only through a seam that is PART raised
+// authored wall, part bare gap.
+//
+// The seam is mixed, not uniformly bare, deliberately (rpg-toolkit#1419
+// review, C1): a fixture with no authored wall anywhere near the seam
+// cannot tell a synthesized wall that calls maskHeight from one that
+// forgot to — maskHeight falls back to 0 with no run to inherit from
+// either way, so a bare-everywhere fixture passes whether or not the
+// height call is even there. One raised wall on the seam is enough to make
+// the two paths disagree: with the height call, the bare row reads as a
+// continuation of the same run; without it, the bare row would be a
+// standard-height notch exactly where the secret room borders it — the
+// very tell this rule exists to remove.
 func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWall() {
 	watcher := core.EntityID("watcher")
 	field := encounter.FieldInput{
 		Canvas: pointyCanvas(),
 		Regions: []encounter.RegionInput{
-			rectRegion("foyer", 0, 0, 3, 1),
+			rectRegion("foyer", 0, 0, 3, 2),
 			func() encounter.RegionInput {
-				r := rectRegion("den", 3, 0, 3, 1)
+				r := rectRegion("den", 3, 0, 3, 2)
 				r.Concealed = true
 				return r
 			}(),
 		},
-		// No Walls at all: the foyer|den seam is a bare, unauthored gap —
-		// nothing stands there but the region still hides behind it.
+		// Row 0 carries a raised authored wall (height 3); row 1 is a bare,
+		// unauthored gap — nothing stands there but the region still hides
+		// behind it. Both border the SAME concealed region, so they are one
+		// run, and the bare row's synthesized wall must inherit the raised
+		// row's height to read as a continuation of it.
+		Walls: withHeight([]encounter.WallInput{wall(2, 0, 3, 0)}, 3),
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -331,14 +347,19 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 	atlas, err := enc.AtlasFor(watcher)
 	s.Require().NoError(err)
 
-	mask, present := hasBoundary(atlas, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 0})
+	authoredWall, present := hasBoundary(atlas, spatial.Position{X: 2, Y: 0}, spatial.Position{X: 3, Y: 0})
+	s.Require().True(present, "the raised authored wall presents — one endpoint hidden, not dropped")
+	s.Equal(3.0, authoredWall.Height, "its own authored height, unchanged")
+
+	mask, present := hasBoundary(atlas, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
 	s.Require().True(present, "the bare seam still reads as wall — nothing authored there is not the same as nothing there")
-	s.Equal(0.0, mask.Height, "standard height — what an authored wall there would have said (maskHeight's own rule, generalized)")
+	s.Equal(3.0, mask.Height,
+		"the SAME neighbouring run's height as the authored wall one row over — a standard-height patch here would be a notch exactly where the secret room borders it")
 	s.True(mask.BlocksMovement)
 	s.True(mask.BlocksLineOfSight)
 
 	for _, r := range atlas.Regions {
-		s.Require().NotEqual(encounter.RegionID("den"), r.ID, "the room behind the bare wall still hides — only the boundary changed")
+		s.Require().NotEqual(encounter.RegionID("den"), r.ID, "the room behind the seam still hides — only the boundary changed")
 	}
 }
 

@@ -118,9 +118,13 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	//     the two-visible-sides case and silently drop the rest.
 	//  3. Every crossing the first two passes left untouched — a bare
 	//     visible/hidden adjacency with nothing authored on it at all — is
-	//     synthesized as an ordinary wall at standard height, exactly what
-	//     an authored wall there would have said (maskHeight's own rule
-	//     for an unwalled door seam, generalized to every bare seam).
+	//     synthesized as an ordinary wall at THE SAME neighbouring run's
+	//     height maskHeight gives pass 2's masks: a raised wall on one
+	//     row of a seam and a bare gap on the next, both bordering the
+	//     same hidden room, must read as one continuous run — a
+	//     standard-height patch beside a height-2 neighbour would be the
+	//     notch exactly where the secret is, on the very boundary this
+	//     rule exists to make ordinary.
 	//
 	// doorEdge excludes every door's own crossing from pass 3 — found or
 	// not, concealed or not — so a real doorway a member already knows
@@ -176,6 +180,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 				To:                edge.To,
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
+				Height:            e.maskHeight(edge),
 			})
 		}
 	}
@@ -250,20 +255,24 @@ func (e *Encounter) unknownDoorsFor(member MemberID) map[DoorID]bool {
 	return out
 }
 
-// maskHeight is the Height the synthetic mask carries for one concealed
-// unfound door edge: the neighbouring authored run's, so the mask reads as a
-// continuation of the wall it hides in (the Wave 1b pin — walls carry
-// per-edge height, and a standard-height mask inside a height-2 run is a
-// visible notch exactly where the secret is).
+// maskHeight is the Height a synthetic boundary carries for one crossing
+// AtlasFor is not presenting as authored — a concealed unfound door's edge
+// (pass 2) or a bare visible/hidden adjacency (pass 3): the neighbouring
+// authored run's, so the synthetic boundary reads as a continuation of the
+// wall it stands beside (the Wave 1b pin, generalized by rpg-toolkit#1419 —
+// walls carry per-edge height, and a standard-height patch inside a
+// height-2 run is a visible notch exactly where the secret is, whether what
+// stands there is a masked door or an unwalled gap).
 //
 // The mechanism, since "the run" is not a first-class thing on this map: the
-// run a door punctures is the authored walls separating the same two regions
-// its edge does, and the mask takes the height of the NEAREST of them —
-// nearest by hex distance between crossing endpoints, ties broken by the
-// atlas's own boundary order so the answer cannot move between calls. A door
-// with no such wall (a crossing in an unwalled seam) masks at 0 — not
-// authored, standard height — which is what an authored wall there would
-// have said too.
+// run a crossing punctures is the authored walls separating the same two
+// regions its edge does — regardless of what kind of edge it is — and the
+// mask takes the height of the NEAREST of them — nearest by hex distance
+// between crossing endpoints, ties broken by the atlas's own boundary order
+// so the answer cannot move between calls. A crossing with no such wall (an
+// unwalled seam with no authored wall anywhere between its two regions)
+// masks at 0 — not authored, standard height — which is what an authored
+// wall there would have said too.
 func (e *Encounter) maskHeight(edge DoorEdge) float64 {
 	pairA, okA := e.field.regionOf(edge.From)
 	pairB, okB := e.field.regionOf(edge.To)
