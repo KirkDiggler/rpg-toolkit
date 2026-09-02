@@ -132,3 +132,15 @@ their first implementation arrives.
 The model can grow later into vendors, trainers, quest actors, escorts, or
 attackable NPCs by adding explicit policies. The MVP should not guess any of
 those rules, and it should not pull #1275's buy flow into the world-NPC layer.
+
+## Addendum (2026-09-01): disposition mechanism
+
+Not considered above, because it did not exist as a proven pattern when this
+brainstorm was written: `examples/world/scenarios/banditcamp/camp.go` has
+since shipped `HostileTo`/`AlliedWith` as ordinary `graph.Relation` edges
+between factions, moved by facts over time, and
+`rulebooks/dnd5e/encounter/conceal.go` has shipped a scoped `graph.World` +
+`journal.Journal` living inside an encounter for exactly this kind of
+declared-structure-plus-folded-facts question. Disposition should reuse both
+rather than growing `NPCDispositionPolicy` into a hostile/allied/etc. enum.
+See `design.md`'s amendment for what this changes and what it leaves open.

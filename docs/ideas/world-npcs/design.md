@@ -1,13 +1,63 @@
 # World NPCs - Design
 
-**Status:** PROPOSED
+**Status:** APPROVED (2026-09-02) — encounter/session integration slice
+tracked as [rpg-toolkit#1404](https://github.com/KirkDiggler/rpg-toolkit/issues/1404)
 **Issue:** [rpg-toolkit#1280](https://github.com/KirkDiggler/rpg-toolkit/issues/1280)
 **Modules:** `npc`, `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/session`
-**Why:** `brainstorm.md`. **How:** `plan.md` after this is approved.
+**Why:** `brainstorm.md`. **How:** `plan.md`.
 
 **Implementation note:** the first shipped slice is the generic `npc` package
 described in [../npc](../npc/). Encounter/session integration remains proposed
 future work in this document.
+
+## Amendment (2026-09-01) — disposition is a graph relation, not a policy enum
+
+Recorded before Task 3 of `plan.md` starts, per Task 1's gate ("record any
+design amendment needed before implementation").
+
+**What changed:** `examples/world/scenarios/banditcamp/camp.go` already proves
+a working disposition mechanism — `HostileTo` and `AlliedWith` declared as
+plain `graph.Relation` edges between `KindFaction` entities, moved over time by
+ordinary facts (a parley's `Regard` counter crossing a threshold, `Retire`
+stripping an edge from a defeated faction). `rulebooks/dnd5e/encounter/conceal.go`
+independently proves the exact hosting shape this needs: `encounterWorld`
+already embeds a scoped `graph.World` plus `journal.Journal`, seeded once from
+compiled/authored data, with present state folded fresh on every question and
+nothing cached. Both pieces predate this idea and were not designed for it, but
+they compose into a disposition model without inventing anything new.
+
+**What this supersedes:** the `NPCDispositionPolicy` sketch below (Encounter
+Model) is downgraded from "the runtime hostility mechanism" to an authoring
+default only — the word an author or a loaded profile starts with. The live
+question `classify()` asks — is this member's side hostile to that one — is
+answered by folding `HostileTo`/`AlliedWith` edges the same way `knowsDoor`
+folds concealment, never by switching on `MemberKind` or reading a stored
+enum directly. "Neutral" is not a stored state under this model; it is the
+absence of an edge, which is also why later shades (frightened, charmed,
+escorted, temporarily allied — already anticipated in this doc's disposition
+paragraph below) cost a new `Relation`/`Flag` declaration at the point some
+rulebook needs one, never a new toolkit type or a widened enum.
+
+**Correction (2026-09-01), after review:** none of this is required to ship
+this idea's MVP, and it does not gate Task 3. `KindWorld`'s neutrality falls
+out of `sidesInContactOrder`'s existing switch for free — see the Combat
+Exclusion section below. The graph-relation mechanism only has a consumer
+once something needs a *non-neutral* `KindWorld` NPC, or a `KindMonster`
+that isn't unconditionally hostile, both of which this doc lists as
+non-goals. Recording it here is forward context for that later idea, not a
+decision this one has to make. If that later idea does pick it up, the
+question it will face is where the disposition graph lives:
+
+- **Encounter-scoped**, seeded at Setup exactly the way `conceal.go` seeds
+  concealment from the compiled field — hostility authored per encounter,
+  not surviving past it; or
+- **World-owned**, computed by a governing `world` layer above both
+  `examples/world`'s living-world track and `rulebooks/dnd5e/encounter`'s
+  combat track (disconnected today) and handed down at Setup/Pump — the
+  shape that would let a bandit camp's disposition, set during exploration,
+  carry into the fight it triggers.
+
+Left unresolved here on purpose, for whichever idea actually needs it.
 
 ## Scope
 
@@ -164,6 +214,14 @@ subject of others' intel or also receives its own sight refreshes.
 Disposition is deliberately a policy word rather than a boolean so later states
 such as hostile, helpful, faction-bound, frightened, charmed, escorted, or
 temporarily allied can arrive without changing the shape.
+
+**Amended above:** `NPCDispositionPolicy` is the authoring/default word only —
+what edge (if any) gets seeded for this NPC when it is placed. It is not what
+`classify()` reads at runtime. The live hostility question is a `world/graph`
+relation lookup (`HostileTo`/`AlliedWith`, or none — see the amendment section
+above), which is exactly what lets the later states this paragraph already
+names arrive as new relations rather than new enum values or a rewritten
+switch.
 
 For `KindWorld` NPC members:
 
@@ -341,11 +399,22 @@ Sight intel about an NPC is not combat contact. A player first-contacting a
 world NPC, an observer-capable NPC first-contacting a player, or two NPCs seeing
 each other must not form or join a fight bubble.
 
-Hostility is not inferred from visibility, capability, or member kind. The MVP
-ships only neutral/non-hostile disposition with non-combatant combat policy, and
-the first vendor profile uses it toward both players and monsters. Later world
-state may make an NPC hostile or helpful, but this issue only preserves a shape
-where that can be represented later.
+Hostility is not inferred from visibility, capability, or member kind.
+**Correction (2026-09-01):** for `KindWorld` specifically, this needs no new
+mechanism at all. `sidesInContactOrder`'s `switch member.Kind` has no
+`default` case — a member typed neither `KindPlayer` nor `KindMonster`
+already falls into neither slice and never enters `classify()`'s `engaged`
+set. `KindWorld`'s neutrality is free, today, with zero changes to that
+function. Implementation should add a regression test proving this, not a
+`case KindWorld:` arm (there is nothing to write).
+
+The graph-relation amendment above still describes the right mechanism for
+the day something needs a *non-neutral* disposition — a hostile or allied
+`KindWorld` NPC, or a `KindMonster` that isn't unconditionally opposing every
+player. Both are this doc's own listed non-goals, so that day is not this
+issue's. The amendment is recorded as forward context for whichever later
+idea takes those non-goals on; it is not a prerequisite for shipping
+`KindWorld` here, and Task 3/4 should not build it.
 
 ## Placement and Blocking
 

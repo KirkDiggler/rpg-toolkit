@@ -45,10 +45,29 @@ evidence.
   runtime behavior, and
   `rulebooks/dnd5e/session` for the host seam.
 - [ ] Record any design amendment needed before implementation.
+- [ ] **Recorded (2026-09-01, see `design.md` amendment):** disposition is
+  modeled as `world/graph` `Relation` edges (`HostileTo`/`AlliedWith`, proven
+  in `examples/world/scenarios/banditcamp/camp.go`), folded per-question the
+  same way `rulebooks/dnd5e/encounter/conceal.go`'s `encounterWorld` already
+  folds concealment — not a widened `NPCDispositionPolicy` enum.
+- [ ] **Correction (2026-09-01):** `KindWorld` needs no change to
+  `sidesInContactOrder`/`classify` to be neutral — that switch has no
+  `default` case, so a `KindWorld` member already falls into neither the
+  `players` nor `monsters` slice and never enters `engaged`. Confirm this
+  with a test in Task 4; do not write a `case KindWorld:` that "excludes" it,
+  since it is already excluded by construction.
+- [ ] The graph-relation mechanism in the amendment above is **not required
+  to ship this idea's MVP.** It only matters once something wants a
+  `KindWorld` NPC that isn't neutral, or a `KindMonster`/`KindPlayer` that
+  isn't unconditionally opposing — both of which are this doc's own listed
+  non-goals (hostile NPCs, attackable neutral NPCs, faction behavior).
+  Building the graph now, before that consumer exists, is scope beyond what
+  Task 3/4 need. Keep the amendment as forward-context for whichever later
+  idea adds graded disposition; do not gate this plan's Task 3 on it.
 
 Gate: a short note in the implementation PR explaining the chosen placement
-shape, package ownership, sight-subject path, observation-policy default, and
-first disposition word.
+shape, package ownership, sight-subject path, and observation-policy
+default.
 
 ## Task 2 - Toolkit NPC Package
 
@@ -91,8 +110,14 @@ Tests:
   `npc` refs such as `dnd5e:npcs:merchant`.
 - [ ] Consume or mirror the `npc` definition/data needed to place a world
   NPC instance.
-- [ ] Add interaction capability, combat-policy, observation-policy, and
-  disposition-policy vocabulary at the encounter boundary as needed.
+- [ ] Add interaction capability and combat-policy vocabulary at the encounter
+  boundary as needed.
+- [ ] Add `NPCDispositionPolicy` as an authoring-default field only
+  (`neutral` is the only shipped value, per Task 2). It does not drive
+  runtime behavior in this MVP — `KindWorld`'s exclusion from combat is
+  structural (see Task 1's correction), not disposition-driven. Do not build
+  the `world/graph` relation mechanism from the amendment as part of this
+  task; it has no consumer yet.
 - [ ] Extend member construction/input validation for world NPC facts.
 - [ ] Forbid world NPC deciders, actions, targeting, and non-non-combatant
   policy in the MVP.
@@ -123,8 +148,10 @@ Tests:
 
 ## Task 4 - Combat Exclusion in Encounter
 
-- [ ] Update side/contact classification so world NPCs are neither players nor
-  monsters.
+- [ ] Confirm (do not implement) that `sidesInContactOrder`'s switch already
+  excludes `KindWorld` from both sides — no `default` case exists, so this is
+  free. Add the regression test; do not add a graph/relation lookup here for
+  this MVP (see Task 1/3's correction).
 - [ ] Ensure `Pump` skips world NPCs.
 - [ ] Ensure fight formation and straggler joining exclude world NPCs.
 - [ ] Ensure `ClockOf` and turn reads never put world NPCs on a turn clock.
@@ -148,7 +175,9 @@ Tests:
 - [ ] neutral/non-hostile disposition does not make the NPC an ally or enemy for
   either side;
 - [ ] a monster and player separated only by a world NPC still obey normal line
-  of sight and combat rules according to the final blocking rule.
+  of sight and combat rules according to the final blocking rule;
+- [ ] an encounter with a `KindWorld` NPC produces byte-identical trigger
+  behavior, for every other member, to one with no `KindWorld` NPC at all.
 
 ## Task 5 - Interaction Descriptor and Verb
 
