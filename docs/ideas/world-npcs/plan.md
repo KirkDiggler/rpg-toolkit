@@ -51,9 +51,22 @@ evidence.
   `npc/v0.1.0`) for reusable NPC data; `rulebooks/dnd5e/encounter` carries
   only `KindWorld` and bare member facts; `rulebooks/dnd5e/session` owns the
   actual `npc.NPC` content, keyed by member ID.
-- [ ] Define the first vendor profile as generic world NPC data (session-side
-  now, not encounter-side): known at start through authored/loaded intel,
-  `npc.CapabilityVendor`, non-combatant.
+- [ ] **Settled (2026-09-02, fourth pass):** add `npcs.NewMerchant(config
+  *MerchantConfig) (*Vendor, error)` to `rulebooks/dnd5e/npcs` — real,
+  shipped toolkit code, not a test-only fixture, but NOT the
+  `NewBlacksmith`-style fixed archetype `docs/ideas/dnd5e-npcs/design.md`
+  already ruled out either. The distinction: the general function stays
+  parameterized — a non-nil `config` is validated normally (same as
+  `npc.New` today: a non-nil config with a missing `Ref` still errors, no
+  silent defaulting *within* an explicit config) — and `config == nil`
+  means "give me the toolkit's own default," an explicit signal a caller
+  cannot produce by accident (unlike a zero-value struct, which could be a
+  forgotten field). The default values themselves live inside this
+  function, in the toolkit, because there is no host-side NPC builder yet
+  to own them instead — when one exists, `NewMerchant(config)` with a real
+  config becomes the normal path and the `nil` branch stays exactly what it
+  always was: a demo convenience, not a stand-in for a repository or
+  catalog.
 - [ ] Draw the explicit boundary with #1275: #1280 owns world placement and
   the interaction descriptor; #1275 owns stock, quote, buy, and item
   transfer.
@@ -225,30 +238,99 @@ Tests:
 **Corrected (2026-09-02):** this is where an NPC's actual content lives — see
 `design.md`'s Session Seam section.
 
-- [ ] Add a new `SessionData` field (name distinct from `NPCs`, which already
-  means monster sheets) storing placed `npc.Data`, keyed by member ID.
-- [ ] Add a placement verb mirroring `Spawn`'s exact shape: resolve
-  `npc.Ref` → `npc.NPC`, record it in the new store, call `place()` →
+- [ ] **Filled in (2026-09-02, third pass):** `npc.Data` carries no
+  instance/member-ID field (by its own documented design — it is reusable
+  content, not a placed record), so `SessionData.NPCs []monster.Data`'s
+  shape (lookup by `.ID` on the stored struct itself) does not transfer
+  directly. Add a session-owned wrapper:
+
+  ```go
+  type PlacedWorldNPC struct {
+      MemberID string
+      NPC      npc.Data
+  }
+  ```
+
+  and `SessionData.WorldNPCs []PlacedWorldNPC` — the field name distinct
+  from `NPCs`, which already means monster sheets (N1). Wire it through
+  `SessionData.ToData()`/load the same way `NPCs` already is.
+- [ ] **Corrected (2026-09-02, second pass):** the placement verb does NOT
+  mirror `Spawn`'s ref-resolution shape — `instantiate()` resolves a
+  monster's ref through `monsters.ByRef`, a real toolkit-shipped catalog,
+  and no NPC equivalent exists or is planned (already decided against in
+  `docs/ideas/dnd5e-npcs/design.md`). Instead: the verb takes an
+  already-built `npc.Data` directly from the caller — closer to how `Join`
+  accepts an already-loaded character than how `Spawn` resolves a ref. Name
+  it `PlaceNPC`:
+
+  ```go
+  type PlaceNPCInput struct {
+      Session  string
+      Member   string
+      Position spatial.Position
+      NPC      *npc.Data // caller-resolved; nil-means-default lives one
+                          // layer up in npcs.NewMerchant, not here — by the
+                          // time this verb is called, the caller has already
+                          // decided default or explicit.
+  }
+  ```
+
+  Reject `NPC == nil` here explicitly (`ErrNoRef` or similar) — this verb
+  does not itself interpret nil as "give me defaults"; that would duplicate
+  the same decision `npcs.NewMerchant` already makes, in a second place.
+  Record the content in `SessionData.WorldNPCs`, then call `place()` →
   `encounter.Join` with `KindWorld` and bare facts (same
-  sheet-recorded-before-placement ordering `Spawn` already documents and for
-  the same reason — a sight refresh mid-verb reads back what was just
+  content-recorded-before-placement ordering `Spawn` already documents and
+  for the same reason — a sight refresh mid-verb reads back what was just
   written).
-- [ ] Add `session.Interact` per Task 5.
+- [ ] Add `session.Interact` per Task 5, returning:
+
+  ```go
+  type WorldNPCDescriptor struct {
+      TargetID     string
+      Ref          string // core.Ref.String() — S2, never *core.Ref itself,
+                           // matching the existing convention (turndriver.go)
+      DisplayName  string
+      Capabilities []npc.Capability
+      CombatPolicy npc.CombatPolicy
+  }
+  ```
+
+- [ ] **Filled in (2026-09-02, third pass):** `TestNoInnerTypeCrossesTheBoundary`
+  (`boundary_test.go`) statically checks type signatures in `session`'s own
+  source, independent of runtime values — it will fail the moment
+  `PlaceNPCInput.NPC` or `WorldNPCDescriptor.Capabilities`/`CombatPolicy`
+  exist as exported fields, regardless of whether a nil-default or a real
+  caller config ever flows through them. Add to `boundary_test.go`'s
+  `contractTypes` map (not `persistenceShapes` — the caller constructs this
+  content field-by-field, exactly `character.Data`'s reasoning, not
+  `monster.Data`'s ref-resolved-by-the-toolkit one):
+  - `"npc.Data"`: host/caller constructs this — same promise as
+    `character.Data`.
+  - `"npc.Capability"`, `"npc.CombatPolicy"`: reachable from
+    `WorldNPCDescriptor`'s exported fields, same reasoning.
+  (`npc.Data`'s own nested `*core.Ref` field does not need a separate entry
+  — the test only parses `session`'s own source files, not into `npc`'s
+  package definition.)
 - [ ] Leave vendor stock, quotes, purchases, and character-inventory mutation to
   #1275; only carry `npc.NPC` identity/capabilities/policy here.
 - [ ] Do not reuse `SpawnOutput.NPC` or `SessionData.NPCs` for world NPCs (N1).
 
 Tests:
 
-- [ ] session can place a `KindWorld` NPC and later start/load an encounter
-  containing it;
-- [ ] session interaction returns a descriptor and save/delivery reports;
+- [ ] session can `PlaceNPC` and later start/load an encounter containing it;
+- [ ] `PlaceNPC` rejects a nil `NPC` field by name;
+- [ ] session interaction returns a `WorldNPCDescriptor` and save/delivery
+  reports;
 - [ ] session attack-candidate projection excludes `KindWorld` members
   (fixing `buildTargetPreflight` in `offers.go`, which today has no kind gate
   at all — visibility/range only);
 - [ ] session `Attack` rejects a `KindWorld` target before resolution;
 - [ ] existing spawned-monster behavior is unchanged — sheets still land in
-  `SessionData.NPCs`.
+  `SessionData.NPCs`;
+- [ ] `TestNoInnerTypeCrossesTheBoundary` passes with the new allowlist
+  entries — and would fail without them (the meta-pin pattern
+  `TestBoundaryTestCanActuallyFail` already establishes).
 
 ## Task 8 - Acceptance Scene and Verification
 
