@@ -200,11 +200,6 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 		got.DisadvantageSources)
 }
 
-// TestJoinedAndExitedBodiesCarryTheMember pins bodyFor's newest arms
-// (rpg-project#260 slice 4, item 2): the encounter composition's join/exit
-// beats already carry "member" (encounter.go's Join and Exit), so this is
-// the same decode-from-payload shape every other typed body uses — no new
-// field on the wire, only a typed name for what was already there.
 // TestActivationResultsMapEveryProviderFieldInOrder guards the persistence
 // adapter rather than one currently-produced ability at a time. Resolution's
 // effect values are authoritative; Session copies every field and preserves
@@ -395,6 +390,11 @@ func TestMalformedKnownActivationPayloadsKeepTheirKind(t *testing.T) {
 	}
 }
 
+// TestJoinedAndExitedBodiesCarryTheMember pins bodyFor's newest arms
+// (rpg-project#260 slice 4, item 2): the encounter composition's join/exit
+// beats already carry "member" (encounter.go's Join and Exit), so this is
+// the same decode-from-payload shape every other typed body uses — no new
+// field on the wire, only a typed name for what was already there.
 func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 	cases := []struct {
 		name string
