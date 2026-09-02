@@ -102,12 +102,14 @@ type InteractOutput struct {
 //
 // Returns ErrNilInput, ErrNoMemberID (empty actor or target), ErrNoSessionID,
 // ErrNoSession, ErrNoEncounter, ErrClosed, ErrNoMember (actor or target
-// missing from the roster, or present but the wrong kind), ErrOutOfRange,
-// ErrNotVisible, ErrNoSheet (an internal inconsistency: encounter confirmed
-// a KindWorld target but session's own WorldNPCs store has nothing recorded
-// for it — content the session itself never recorded, the same shape of
-// defect ErrNoSheet already names for a monster), or ErrSaveFailed with a
-// populated report.
+// missing from the roster, or present but the wrong kind), ErrBadPosition
+// (either member has no cell — encounter.ErrBadPlacement, translated; a
+// roster member with no canvas placement, an internal inconsistency rather
+// than an ordinary caller mistake), ErrOutOfRange, ErrNotVisible, ErrNoSheet
+// (an internal inconsistency: encounter confirmed a KindWorld target but
+// session's own WorldNPCs store has nothing recorded for it — content the
+// session itself never recorded, the same shape of defect ErrNoSheet
+// already names for a monster), or ErrSaveFailed with a populated report.
 func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("interact: %w", ErrNilInput)
