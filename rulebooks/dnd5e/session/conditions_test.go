@@ -26,22 +26,17 @@ import (
 // state does not round-trip through the character's own blob, a suspension
 // quietly ends the rage.
 //
-// WHAT THESE TESTS PIN, EXACTLY: that the SDK does not damage the host's stored
-// character. They do NOT claim a condition intercepted anything during a verb,
-// because as of this wave nothing in the composition publishes to the bus and
-// no read verb reports a character's active conditions — so "the condition
-// behaved" has no observable consequence to assert. Claiming it here would be
-// the kind of comment that survives its own mutant. Behaviour is pinned in the
-// wave that gives it something to observe.
+// WHAT THESE TESTS PIN, EXACTLY: that verbs with no character mutation do not
+// damage the host's stored character. First-ever Join is now deliberately
+// outside that set: it performs a normal long rest and persists the complete
+// outcome. The Join row below is therefore a real NON-FIRST Join, established
+// through Join then Exit so persisted EverMembers — not a test-only flag — is
+// what suppresses the second rest and save.
 //
-// The guarantee this file does carry is the one that is load-bearing right now,
-// and it is a negative: a verb leaves the character store byte-for-byte as it
-// found it. That matters because character.LoadFromData drops conditions it
-// cannot parse and Character.ToData drops conditions it cannot serialise, both
-// silently and with no error (toolkit#948). While the SDK only reads, a corrupt
-// blob stays corrupt but stays WHOLE. The moment the SDK writes a character
-// back, that loss becomes permanent on an ordinary walk. So "we do not write
-// yet" is a data-safety property, not an omission, and it is pinned as one.
+// That negative remains load-bearing. character.LoadFromData drops conditions
+// it cannot parse and Character.ToData drops conditions it cannot serialise,
+// both silently and with no error (toolkit#948). A non-first Join may project
+// leniently, but it must not save that projection and make the loss permanent.
 type ConditionsTestSuite struct {
 	suite.Suite
 
@@ -127,10 +122,10 @@ func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.M
 
 // TestAVerbLeavesTheCharacterStoreUntouched is the no-clobber pin.
 //
-// Every write verb EXCEPT Attack, which must write — see
-// TestDamagePersists. That exception is the pin getting stronger rather than
-// weaker: the rule is now "only the verb that should, does", and the guard
-// still covers every verb that has no business touching a sheet.
+// Every row is a path that has no business writing a sheet. The Join row is
+// explicitly an exit/rejoin: first admission must write its rest, while a
+// persisted EverMembers match must not. Attack remains a separate writing
+// exception — see TestDamagePersists.
 //
 // Byte comparison rather
 // than a field-by-field check on purpose: the failure this guards against is a
@@ -141,9 +136,17 @@ func (s *ConditionsTestSuite) walkIntoTheAmbush(mgr *session.Manager) *session.M
 func (s *ConditionsTestSuite) TestAVerbLeavesTheCharacterStoreUntouched() {
 	ctx := context.Background()
 
-	s.Run("join", func() {
-		before := s.storedBytes("bob")
+	s.Run("non-first join", func() {
 		_, err := s.mgr.Join(ctx, &session.JoinInput{
+			Session: "sess", Member: "bob",
+			Position: spatial.Position{X: 0, Y: 0},
+		})
+		s.Require().NoError(err, "establish the first admission through the real verb")
+		_, err = s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "bob"})
+		s.Require().NoError(err, "EverMembers must survive a real exit")
+
+		before := s.storedBytes("bob")
+		_, err = s.mgr.Join(ctx, &session.JoinInput{
 			Session: "sess", Member: "bob",
 			Position: spatial.Position{X: 0, Y: 0},
 		})
@@ -238,36 +241,37 @@ func (s *ConditionsTestSuite) requeueJSON(from any, into any) {
 	s.Require().NoError(json.Unmarshal(raw, into))
 }
 
-// TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged is where the no-clobber
-// property earns its keep.
+// TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged is where the non-first
+// no-clobber property earns its keep.
 //
-// Alice's blob carries a condition this build cannot parse — a ref from a
-// module that is not installed, a body written by a newer version, a partial
-// write. character.LoadFromData does not reject her: it logs, drops the
-// condition, and returns a perfectly usable character with no error. The join
-// therefore SUCCEEDS, and nothing in the response hints that anything was lost.
-//
-// That is toolkit#948, and it is only latent because the SDK does not write.
-// The store still holds both conditions afterwards, so whatever could not be
-// read here is still there to be read by a build that understands it. Add a
-// SaveCharacter to this path and the unreadable condition is gone forever,
-// destroyed by a verb that merely moved somebody.
+// A FIRST admission strictly rests and therefore rejects a condition this build
+// cannot parse rather than writing a lossy sheet. This test establishes a prior
+// admission while the record is clean, exits, then replaces the repository
+// record with an unreadable condition. The rejoin still uses the existing
+// lenient projection, and because EverMembers suppresses its save, the unknown
+// blob remains whole.
 func (s *ConditionsTestSuite) TestACharacterTheSDKCannotFullyLoadIsStillNotDamaged() {
+	s.characters.byID["dave"] = dwarfCharacter("dave")
+	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "dave", Position: spatial.Position{X: 0, Y: 0},
+	})
+	s.Require().NoError(err)
+	_, err = s.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "dave"})
+	s.Require().NoError(err)
+
 	corrupt := ragingDwarf("dave")
 	corrupt.Conditions = append(corrupt.Conditions,
 		json.RawMessage(`{"ref":"homebrew:conditions:hexed","character_id":"dave","stacks":3}`))
 	s.characters.byID["dave"] = corrupt
-
 	before := s.storedBytes("dave")
 
-	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "dave",
-		Position: spatial.Position{X: 0, Y: 0},
+	_, err = s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "dave", Position: spatial.Position{X: 0, Y: 0},
 	})
-	s.Require().NoError(err, "the unreadable condition does not fail the join — that is the trap")
+	s.Require().NoError(err, "the non-first projection remains lenient")
 
 	s.Equal(string(before), string(s.storedBytes("dave")),
-		"and the condition this build could not read is still in the store")
+		"the condition this build could not read is still in the store")
 
 	var held []json.RawMessage
 	s.Require().NoError(json.Unmarshal(s.storedBytes("dave"), &struct {

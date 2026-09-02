@@ -236,7 +236,7 @@ Flat stat-snapshot seats (no hydrated `*character.Character`) have nothing to sw
 
 The persisted-data arcade reset described here was behavior of the retired top-level encounter stack and is no longer an authoritative rule. Its parallel root helper and tests have been removed so recovery has one meaning.
 
-The published root D&D rules provide normal `Character.LongRest`, including HP, death-save state, recoverable resources, feature-owned resources, spell slots, hit dice, and condition-owned long-rest outcomes. The root module does not decide when a run admits a character. First-admission orchestration will be supplied by the `resolution` and `session` modules in separate tagged PRs; those downstream changes are not implemented by this provider cleanup.
+The published root D&D rules provide normal `Character.LongRest`, including HP, death-save state, recoverable resources, feature-owned resources, spell slots, hit dice, and condition-owned long-rest outcomes. The published resolution provider supplies the strict record-in/record-out LongRest operation, and the current Session implementation persists it before placement on a character's first-ever admission. The root module still does not decide when a run admits a character. Session's release tag is intentionally unnamed until CI mints it after merge, and the thin rpg-api consumer that removes its old launch reset and adopts that release remains pending.
 
 ### Snapshot-visible active conditions (rpg-toolkit#754, #778)
 

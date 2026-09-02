@@ -61,7 +61,7 @@ func (s *WriteTestSuite) TestJoinPersistsTheNewMember() {
 	// room he would have to look up. The vault is anchored at (6,0), so this
 	// number only exists if the projection happened.
 	s.Equal(hexCell(2, 2), out.Member.Position)
-	s.Equal([]string{"encounter:world", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:bob", "encounter:world", "session:sess"}, out.Saved.Written)
 
 	// The proof: a fresh read sees him.
 	sightings, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "bob"})

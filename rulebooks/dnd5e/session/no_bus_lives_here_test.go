@@ -121,7 +121,9 @@ const resolutionPath = "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resol
 
 // interactionEntries stand an interaction up. Reaching any of these from the
 // standing seam is the reentrancy R7 forbids.
-var interactionEntries = map[string]bool{"Resolve": true, "ProjectCharacter": true}
+var interactionEntries = map[string]bool{
+	"Resolve": true, "ProjectCharacter": true, "LongRest": true,
+}
 
 // TestTheStandingSeamDoesNotRunAnInteraction is the half of the reentrancy
 // question this module can honestly answer.

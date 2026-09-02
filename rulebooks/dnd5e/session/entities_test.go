@@ -78,7 +78,8 @@ func (s *EntitiesTestSuite) TestJoiningAPlayerLoadsTheirCharacter() {
 	s.Require().NotNil(out.Character, "a player join must report the loaded character")
 	s.Equal("bob", out.Character.ID)
 	s.Equal(25, out.Character.Speed, "a dwarf's speed is derived from race, not stored")
-	s.Equal(24, out.Character.HitPoints)
+	s.Equal(28, out.Character.HitPoints,
+		"a first admission projects the character after its normal long rest")
 	s.Equal(28, out.Character.MaxHitPoints)
 	s.Equal(12, out.Character.ArmorClass,
 		"AC is FOLDED (10 + DEX +2), not echoed: the sheet stores 16 and the two "+
@@ -256,31 +257,39 @@ func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected(
 	s.NotErrorIs(err, session.ErrNoCharacter, "broken is not the same as absent")
 }
 
-// TestACorruptConditionIsDroppedRatherThanRejected documents UPSTREAM
-// behaviour that this wave inherits and does not yet fix.
+// TestACorruptConditionIsDroppedRatherThanRejected documents the lenient
+// projection behavior on a NON-FIRST Join.
 //
-// character.LoadFromData logs and continues past a condition it cannot parse
-// or apply, so a corrupt blob vanishes silently instead of failing the load.
-// That matters here more than it did before: the durable-condition-state
-// invariant says a condition must survive save and reload, and this is a path
-// where one does not — with no error anywhere.
-//
-// Pinned rather than fixed because the swallow is in the character package, not
-// this one. The test exists so the behaviour is known and so a future upstream
-// change that starts returning an error is noticed here rather than in a game.
+// First admission is intentionally strict because it writes the rested sheet;
+// a corrupt effect must stop that write. Once EverMembers records a prior
+// admission, Join performs no rest and no character save, so the existing
+// projection behavior still applies: character.LoadFromData logs and drops a
+// condition it cannot parse while the rest of the record remains usable.
 func (s *EntitiesTestSuite) TestACorruptConditionIsDroppedRatherThanRejected() {
+	clean := dwarfCharacter("corrupt-one")
+	s.characters.byID[clean.ID] = clean
+	_, err := s.mgr.Join(context.Background(), &session.JoinInput{
+		Session: "sess", Member: "corrupt-one", Position: hexCell(3, 2),
+	})
+	s.Require().NoError(err)
+	_, err = s.mgr.Exit(context.Background(), &session.ExitInput{
+		Session: "sess", Member: "corrupt-one",
+	})
+	s.Require().NoError(err)
+
 	corrupt := dwarfCharacter("corrupt-one")
 	corrupt.Conditions = []json.RawMessage{json.RawMessage(`{"ref":"nonsense","x":`)}
 	s.characters.byID[corrupt.ID] = corrupt
+	beforeSaves := s.characters.saves
 
 	out, err := s.mgr.Join(context.Background(), &session.JoinInput{
-		Session: "sess", Member: "corrupt-one",
-		Position: hexCell(3, 2),
+		Session: "sess", Member: "corrupt-one", Position: hexCell(3, 2),
 	})
 
-	s.Require().NoError(err, "upstream currently swallows this; if that changes, so must this test")
+	s.Require().NoError(err, "non-first projection remains lenient")
 	s.Require().NotNil(out.Character)
 	s.Equal(25, out.Character.Speed, "the rest of the character still loaded")
+	s.Equal(beforeSaves, s.characters.saves, "a non-first Join does not save the lenient projection")
 }
 
 // nilDataCharacters violates the repository contract by reporting success with
