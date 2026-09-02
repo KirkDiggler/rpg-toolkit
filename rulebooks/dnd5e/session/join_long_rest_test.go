@@ -336,6 +336,30 @@ func (s *JoinLongRestTestSuite) TestCorruptStreamAfterEarlyRestReportsWriteAndSa
 	s.assertCompleteRest(s.characters.stored(s.T(), "bob"))
 }
 
+func (s *JoinLongRestTestSuite) TestClosedEncounterFirstAdmissionRestsOnceAndReportsTheDurableWrite() {
+	_, err := s.mgr.End(s.ctx, &session.EndInput{Session: "sess", Ending: "out"})
+	s.Require().NoError(err)
+	beforeWorld := s.storedWorldJSON()
+	beforeCharacterSaves := s.characters.saves
+	beforeSaveAttempts := s.characters.saveAttempts
+	beforeEncounterSaves := s.encounters.saves
+
+	out, err := s.mgr.Join(s.ctx, &session.JoinInput{
+		Session: "sess", Member: "bob", Position: hexCell(2, 2),
+	})
+	s.Require().Error(err)
+	s.ErrorIs(err, session.ErrClosed, "the encounter refusal remains matchable through SaveError")
+	s.assertWrittenOnly(err, "character:bob")
+	s.Nil(out)
+	s.Equal(beforeCharacterSaves+1, s.characters.saves,
+		"the first-admission rest is saved exactly once")
+	s.Equal(beforeSaveAttempts+1, s.characters.saveAttempts)
+	s.Equal(beforeEncounterSaves, s.encounters.saves,
+		"the refused Join writes no new encounter snapshot")
+	s.Equal(beforeWorld, s.storedWorldJSON(), "the closed encounter remains byte-for-byte unchanged")
+	s.assertCompleteRest(s.characters.stored(s.T(), "bob"))
+}
+
 func (s *JoinLongRestTestSuite) TestCharacterSaveFailureLeavesEncounterUnchangedAndReportsFailure() {
 	s.characters.saveErr = errBroken
 	beforeWorld := s.storedWorldJSON()
