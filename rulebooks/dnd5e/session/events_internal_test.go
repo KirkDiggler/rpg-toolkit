@@ -315,8 +315,9 @@ func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
 	}
 }
 
-// TestMalformedKnownActivationPayloadsKeepTheirKind rejects incomplete and
-// multi-shape bodies without demoting a recognized outer beat to unknown.
+// TestMalformedKnownActivationPayloadsKeepTheirKind rejects incomplete,
+// multi-shape, raw-present forbidden, and duplicate-key bodies without
+// demoting a recognized outer beat to unknown.
 func TestMalformedKnownActivationPayloadsKeepTheirKind(t *testing.T) {
 	cases := []struct {
 		name string
@@ -346,6 +347,41 @@ func TestMalformedKnownActivationPayloadsKeepTheirKind(t *testing.T) {
 		{
 			name: "healing omits a zero-valued required fact",
 			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","requested":10,"roll":7,"modifier":3,"before":30,"after":30,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "condition forbidden description is present as null",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-applied","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging","description":null}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "capacity forbidden identity is present as null",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement","ref":null}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate result with valid object last",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"teleported","target":"alice"},"result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate result with valid object first",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"},"result":{"kind":"teleported","target":"alice"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate result with identical objects",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"},"result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate nested key with identical values",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-applied","target":"alice","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "duplicate nested kind with valid value last",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"teleported","kind":"capacity-granted","target":"alice","description":"30ft movement"}}`,
 			kind: EventActivationResult,
 		},
 	}

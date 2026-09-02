@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -375,4 +376,97 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 		"the activated/result beats existed only in the discarded write scope")
 	require.Contains(t, storedConditionRefs(t, innerCharacters, "alice"), refs.Conditions.Raging().String(),
 		"the mechanical condition write remains durable and must be reported")
+}
+
+// TestActivationDissolveReportsNestedBoundarySaveFailure is the reachable
+// activation counterpart to #1403's Attack regression. Rage first lands its
+// paid sheet. RecordActivation then notices the already-down last monster,
+// dissolves the fight, and announces combat end; that boundary removes Rage,
+// but the newer save of Alice's sheet is refused.
+//
+// The recording boundary must compose the nested report rather than replace
+// it. Alice therefore truthfully occurs in both lists: the activation write
+// landed, while its newer boundary update did not. None of the activation,
+// down, or dissolve story — nor the session working copy — may become durable.
+func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
+	ctx := context.Background()
+	alice := ragingBarbarian("alice", 2)
+	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	innerCharacters := newFakeCharacters(alice, armedFighter("bob"))
+	boundaryStoreUnavailable := errors.New("boundary character store unavailable")
+	boundaryWriteRefused := errors.New("boundary character write refused")
+	characters := &failNthArmedSaveCharacters{
+		fakeCharacters: innerCharacters,
+		failAt:         2,
+		err:            errors.Join(boundaryStoreUnavailable, boundaryWriteRefused),
+	}
+	stream := &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
+		Encounters: encounters, Characters: characters, Events: stream,
+	})
+	require.NoError(t, err)
+
+	_, err = mgr.StartSession(ctx, &session.StartSessionInput{
+		Session: "sess", Encounter: "world", World: cryptWorld(t),
+	})
+	require.NoError(t, err)
+	_, err = mgr.Spawn(ctx, &session.SpawnInput{
+		Session: "sess", ID: "skeleton", Ref: refs.Monsters.Skeleton().String(),
+		Position: spatial.Position{X: 2, Y: 1},
+	})
+	require.NoError(t, err)
+	for i := range sessions.byID["sess"].NPCs {
+		if sessions.byID["sess"].NPCs[i].ID == "skeleton" {
+			sessions.byID["sess"].NPCs[i].HitPoints = 0
+		}
+	}
+
+	declaration := activationSelector(t, mgr, "alice", refs.Features.Rage().String())
+	persistedWorldBefore, err := encounters.GetEncounter(ctx, "world")
+	require.NoError(t, err)
+	persistedSessionBefore, err := sessions.GetSession(ctx, "sess")
+	require.NoError(t, err)
+	stream.published = nil
+	characters.armed = true
+
+	out, err := mgr.Activate(ctx, &session.ActivateInput{
+		Session: "sess", Member: "alice", DeclarationID: declaration,
+	})
+
+	require.Nil(t, out, "an unrecorded activation cannot be acknowledged")
+	require.ErrorIs(t, err, session.ErrSaveFailed)
+	require.ErrorIs(t, err, boundaryStoreUnavailable)
+	require.ErrorIs(t, err, boundaryWriteRefused)
+	require.Equal(t, 2, characters.attempts,
+		"Rage lands once before combat end attempts the newer sheet")
+
+	var reported *session.SaveError
+	require.ErrorAs(t, err, &reported, "ordinary errors.As must reach the complete outer report")
+	require.Equal(t, session.SaveReport{
+		Written: []string{"character:alice"},
+		Failed:  []string{"character:alice", "encounter:world"},
+	}, reported.Report)
+	require.Contains(t, reported.Report.Written, "character:alice")
+	require.Contains(t, reported.Report.Failed, "character:alice",
+		"one aggregate can truthfully have an older write and newer failure")
+
+	storedAlice := storedSheet(t, innerCharacters, "alice")
+	require.Contains(t, storedConditionRefs(t, innerCharacters, "alice"), refs.Conditions.Raging().String(),
+		"the initial activation condition is durable; combat-end removal was not")
+	require.Equal(t, 1, storedAlice.Resources[resources.RageCharges].Current,
+		"the initial activation resource spend is durable")
+	require.NotNil(t, storedAlice.ActionEconomy)
+	require.Zero(t, storedAlice.ActionEconomy.BonusActionsRemaining,
+		"the initial activation economy spend is durable")
+
+	persistedWorldAfter, getErr := encounters.GetEncounter(ctx, "world")
+	require.NoError(t, getErr)
+	require.Equal(t, persistedWorldBefore, persistedWorldAfter,
+		"activation, result, down, and dissolve beats remain only on the discarded scope")
+	persistedSessionAfter, getErr := sessions.GetSession(ctx, "sess")
+	require.NoError(t, getErr)
+	require.Equal(t, persistedSessionBefore, persistedSessionAfter,
+		"the dissolved in-memory fight must not reach the persisted session")
+	require.Empty(t, stream.published, "nothing unpersisted is delivered")
 }

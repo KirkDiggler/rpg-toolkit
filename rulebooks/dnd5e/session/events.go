@@ -4,8 +4,10 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -433,14 +435,30 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 }
 
 // activationResultBody decodes one result payload and rejects fields belonging
-// to a second result shape. Pointer fields retain JSON presence, so required
-// numeric zeroes remain distinguishable from omitted facts.
+// to a second result shape. Raw field presence is checked separately from typed
+// values: JSON null is still present, while a required numeric zero remains a
+// valid, present value. The activation-specific object scan also rejects the
+// duplicate result keys that encoding/json would otherwise resolve by keeping
+// only the last value.
 func activationResultBody(payload []byte) EventBody {
-	var p struct {
-		Actor  string          `json:"actor"`
-		Result json.RawMessage `json:"result"`
+	outer, ok := activationJSONObject(payload, false)
+	if !ok {
+		return nil
 	}
-	if json.Unmarshal(payload, &p) != nil || p.Actor == "" || len(p.Result) == 0 {
+	resultPayload, ok := outer["result"]
+	if !ok {
+		return nil
+	}
+
+	var p struct {
+		Actor string `json:"actor"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Actor == "" {
+		return nil
+	}
+
+	fields, ok := activationJSONObject(resultPayload, true)
+	if !ok {
 		return nil
 	}
 
@@ -461,20 +479,34 @@ func activationResultBody(payload []byte) EventBody {
 		Description *string `json:"description"`
 		Reason      *string `json:"reason"`
 	}
-	if json.Unmarshal(p.Result, &result) != nil || result.Target == "" {
+	if json.Unmarshal(resultPayload, &result) != nil || result.Target == "" {
 		return nil
 	}
 
-	numericPresent := result.Amount != nil || result.Requested != nil ||
-		result.Roll != nil || result.Modifier != nil || result.Before != nil || result.After != nil
-	allNumericPresent := result.Amount != nil && result.Requested != nil &&
-		result.Roll != nil && result.Modifier != nil && result.Before != nil && result.After != nil
-	identityPresent := result.Ref != nil && *result.Ref != "" && result.Name != nil && *result.Name != ""
+	_, refPresent := fields["ref"]
+	_, namePresent := fields["name"]
+	_, amountPresent := fields["amount"]
+	_, requestedPresent := fields["requested"]
+	_, rollPresent := fields["roll"]
+	_, modifierPresent := fields["modifier"]
+	_, beforePresent := fields["before"]
+	_, afterPresent := fields["after"]
+	_, descriptionPresent := fields["description"]
+	_, reasonPresent := fields["reason"]
+
+	numericPresent := amountPresent || requestedPresent || rollPresent ||
+		modifierPresent || beforePresent || afterPresent
+	allNumericPresent := amountPresent && requestedPresent && rollPresent &&
+		modifierPresent && beforePresent && afterPresent &&
+		result.Amount != nil && result.Requested != nil && result.Roll != nil &&
+		result.Modifier != nil && result.Before != nil && result.After != nil
+	identityPresent := refPresent && namePresent &&
+		result.Ref != nil && *result.Ref != "" && result.Name != nil && *result.Name != ""
 
 	body := ActivationResultBody{Actor: p.Actor}
 	switch result.Kind {
 	case encounter.ResultHealingApplied:
-		if !identityPresent || !allNumericPresent || result.Description != nil || result.Reason != nil {
+		if !identityPresent || !allNumericPresent || descriptionPresent || reasonPresent {
 			return nil
 		}
 		body.HealingApplied = &HealingAppliedBody{
@@ -484,14 +516,14 @@ func activationResultBody(payload []byte) EventBody {
 			HPBefore: *result.Before, HPAfter: *result.After,
 		}
 	case encounter.ResultConditionApplied:
-		if !identityPresent || numericPresent || result.Description != nil || result.Reason != nil {
+		if !identityPresent || numericPresent || descriptionPresent || reasonPresent {
 			return nil
 		}
 		body.ConditionApplied = &ConditionAppliedBody{
 			Target: result.Target, Ref: *result.Ref, Name: *result.Name,
 		}
 	case encounter.ResultConditionRemoved:
-		if !identityPresent || numericPresent || result.Description != nil ||
+		if !identityPresent || numericPresent || descriptionPresent || !reasonPresent ||
 			result.Reason == nil || *result.Reason == "" {
 			return nil
 		}
@@ -499,7 +531,7 @@ func activationResultBody(payload []byte) EventBody {
 			Target: result.Target, Ref: *result.Ref, Name: *result.Name, Reason: *result.Reason,
 		}
 	case encounter.ResultCapacityGranted:
-		if result.Ref != nil || result.Name != nil || numericPresent || result.Reason != nil ||
+		if refPresent || namePresent || numericPresent || reasonPresent || !descriptionPresent ||
 			result.Description == nil || *result.Description == "" {
 			return nil
 		}
@@ -511,6 +543,49 @@ func activationResultBody(payload []byte) EventBody {
 	}
 
 	return body
+}
+
+// activationJSONObject retains raw activation-result field presence while
+// walking an object one key at a time. At the outer boundary only a repeated
+// result is forbidden; inside result every duplicate is ambiguous and refused.
+// No other event decoder uses this stricter policy.
+func activationJSONObject(payload []byte, rejectEveryDuplicate bool) (map[string]json.RawMessage, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return nil, false
+	}
+
+	fields := make(map[string]json.RawMessage)
+	for decoder.More() {
+		token, tokenErr := decoder.Token()
+		if tokenErr != nil {
+			return nil, false
+		}
+		key, isString := token.(string)
+		if !isString {
+			return nil, false
+		}
+		if _, duplicate := fields[key]; duplicate && (rejectEveryDuplicate || key == "result") {
+			return nil, false
+		}
+
+		var value json.RawMessage
+		if decodeErr := decoder.Decode(&value); decodeErr != nil {
+			return nil, false
+		}
+		fields[key] = value
+	}
+
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return nil, false
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, false
+	}
+	return fields, true
 }
 
 // beatAttack is the wire shape Record's payload writes an attack identity
