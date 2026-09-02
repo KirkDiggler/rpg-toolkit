@@ -14,7 +14,7 @@ import (
 
 // audience_internal_test.go pins the shelf rpg-toolkit#940 sits on
 // (rpg-project#260 slice 4): audienceFor's v1 "everyone" policy, and the
-// classification every one of the ten Audience: call sites now records.
+// classification every Audience: call site now records.
 //
 // Both tests are deliberately white-box. audienceFor is unexported by
 // design (nothing outside this package decides who hears a beat), and the
@@ -84,28 +84,30 @@ func beatKind(t *testing.T, payload []byte) string {
 // strings — a beat kind not in this table, or a table entry no scripted
 // scene ever produces, is exactly the drift this test exists to catch.
 var wantClass = map[string]beatClass{
-	"struck":           subjectBeat,
-	"missed":           subjectBeat,
-	"down":             subjectBeat,
-	"moved":            subjectBeat,
-	"joined":           subjectBeat,
-	"door":             subjectBeat, // the early adopter — see doorverbs.go's setDoorState
-	"bubble-formed":    bubbleBeat,
-	"turn-ended":       bubbleBeat,
-	"transferred":      bubbleBeat,
-	"bubble-dissolved": bubbleBeat,
-	"scene-opened":     tableBeat,
-	"tick":             tableBeat,
-	"exited":           tableBeat,
-	"ended":            tableBeat,
+	"struck":            subjectBeat,
+	"missed":            subjectBeat,
+	"activated":         subjectBeat,
+	"activation-result": subjectBeat,
+	"down":              subjectBeat,
+	"moved":             subjectBeat,
+	"joined":            subjectBeat,
+	"door":              subjectBeat, // the early adopter — see doorverbs.go's setDoorState
+	"bubble-formed":     bubbleBeat,
+	"turn-ended":        bubbleBeat,
+	"transferred":       bubbleBeat,
+	"bubble-dissolved":  bubbleBeat,
+	"scene-opened":      tableBeat,
+	"tick":              tableBeat,
+	"exited":            tableBeat,
+	"ended":             tableBeat,
 }
 
-// TestCallSiteClassification runs one scripted scene through every one of
-// the ten Audience: sites and checks the FULL SET of beat kinds it produces
+// TestCallSiteClassification runs one scripted scene through every
+// Audience: site and checks the FULL SET of beat kinds it produces
 // is exactly wantClass's key set — nothing missing, nothing unclassified.
 //
 // It cannot check WHICH class a runtime call passed (v1's policy erases that
-// signal for nine of the fourteen kinds — see this file's own doc), so what
+// signal for every kind except scene-opened — see this file's own doc), so what
 // it pins is completeness: every kind this module can emit has a reviewed
 // entry in wantClass, and wantClass names nothing this module does not
 // actually emit. scene-opened's declaration-order behaviour (the one
@@ -162,6 +164,19 @@ func TestCallSiteClassification(t *testing.T) {
 	_, err = enc.Record(&RecordInput{
 		Kind: OutcomeMissed, Actor: "zebra", Targets: []MemberID{"goblin"},
 		Values: map[OutcomeValue]int{ValueRoll: 4, ValueAgainst: 15},
+	})
+	require.NoError(t, err)
+
+	// activated + activation-result: the transaction's cause and its ordered
+	// result are both subject beats, with honest actor/selected/result targets.
+	_, err = enc.RecordActivation(&RecordActivationInput{
+		Actor:   "alice",
+		Target:  "goblin",
+		Ability: ActivationIdentity{Ref: "dnd5e:combat-abilities:help", Name: "Help"},
+		Results: []ActivationResult{{
+			Kind: ResultConditionApplied, Target: "goblin",
+			Ref: "dnd5e:conditions:helped", Name: "Helped",
+		}},
 	})
 	require.NoError(t, err)
 
