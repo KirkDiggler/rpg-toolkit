@@ -426,4 +426,14 @@ var (
 	// caller told "bad placement" for a shut door goes looking for
 	// arithmetic that is fine.
 	ErrDoorShut = errors.New("door is shut")
+
+	// ErrOutOfRange is returned when Interact's target stands farther than
+	// the configured range (default: adjacent, one cell) from the actor.
+	ErrOutOfRange = errors.New("encounter: target out of range")
+
+	// ErrNotVisible is returned when Interact's target is not in the
+	// actor's current sight — a target once seen but not seen now refuses
+	// identically to one never seen at all, the same "current, not held"
+	// rule contactBetween and unawareOfOpposition already apply.
+	ErrNotVisible = errors.New("encounter: target not visible")
 )
