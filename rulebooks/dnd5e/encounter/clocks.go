@@ -1191,8 +1191,17 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 	if in.Member == "" {
 		return nil, fmt.Errorf("transfer: %w", ErrNoMember)
 	}
-	if _, ok := e.members[in.Member]; !ok {
+	member, ok := e.members[in.Member]
+	if !ok {
 		return nil, fmt.Errorf("transfer %q: %w", in.Member, ErrNotMember)
+	}
+	// A world NPC never enters a fight (design.md N4, rpg-toolkit#1404). This
+	// path is unreachable today — classify() only ever transfers a member it
+	// found on a side, and a KindWorld member is on neither — but Transfer is
+	// a public verb with no other kind check, so this guards the law
+	// directly rather than leaving it an emergent property of one caller.
+	if in.To == ClockTurn && member.Kind == KindWorld {
+		return nil, fmt.Errorf("transfer %q: world npc cannot enter a fight: %w", in.Member, ErrNoMember)
 	}
 	bubble, err := e.bubbleFor(in.Member)
 	if err != nil {
