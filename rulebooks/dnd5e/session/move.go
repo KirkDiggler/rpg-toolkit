@@ -362,7 +362,10 @@ func movementShortfall(needed, left int) string {
 func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *character.Character) error {
 	data := sheet.ToData()
 	if err := m.characters.SaveCharacter(ctx, data); err != nil {
-		report := SaveReport{Written: scope.written, Failed: []string{"character:" + data.ID}}
+		report := SaveReport{
+			Written: append([]string(nil), scope.written...),
+			Failed:  []string{"character:" + data.ID},
+		}
 		return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
 	}
 

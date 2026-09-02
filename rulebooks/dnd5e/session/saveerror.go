@@ -68,3 +68,77 @@ func saveErrorAfterWrites(scope *writeScope, failed string, err error) error {
 	}
 	return &SaveError{Report: report, Err: err}
 }
+
+// reportUnrecorded turns a failure AFTER persistence into one complete account
+// a caller can repair from. Recording may itself reach nested consequences — a
+// downed member can dissolve a fight, whose boundary announcement can save a
+// changed sheet — so the error can already contain a SaveError. The outer
+// report merges that account rather than hiding it behind the encounter that
+// was not recorded.
+//
+// Written follows the actual first-seen path: writes already held by the scope,
+// then writes reported by the nested failure. Failed keeps the nested order and
+// adds the encounter last. Each list deduplicates independently; an aggregate
+// can truthfully occur in both when an earlier save landed and a newer save of
+// the same aggregate failed. Both returned slices are fresh allocations.
+//
+// A bare post-write error keeps the historical scope-writes plus failed-world
+// shape. With neither an earlier write nor an inner SaveError there is no
+// persistence fact to add, so the original error passes through unchanged.
+func reportUnrecorded(scope *writeScope, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var inner *SaveError
+	hasInner := errors.As(err, &inner) && inner != nil
+	if len(scope.written) == 0 && !hasInner {
+		return err
+	}
+
+	var innerWritten, innerFailed []string
+	if hasInner {
+		innerWritten = inner.Report.Written
+		innerFailed = inner.Report.Failed
+	}
+
+	return &SaveError{
+		Report: SaveReport{
+			Written: mergeReportIdentities(scope.written, innerWritten),
+			Failed: mergeReportIdentities(
+				innerFailed,
+				[]string{"encounter:" + scope.encounter},
+			),
+		},
+		// Keep the whole original chain, including the nested SaveError and
+		// every repository cause it exposes through errors.Is.
+		Err: err,
+	}
+}
+
+// mergeReportIdentities returns the first occurrence of each aggregate across
+// the lists, in encounter order. It always copies identities into owned
+// storage; callers invoke it separately for Written and Failed so identities
+// are never deduplicated across those two independent facts.
+func mergeReportIdentities(lists ...[]string) []string {
+	total := 0
+	for _, list := range lists {
+		total += len(list)
+	}
+	if total == 0 {
+		return nil
+	}
+
+	merged := make([]string, 0, total)
+	seen := make(map[string]struct{}, total)
+	for _, list := range lists {
+		for _, identity := range list {
+			if _, ok := seen[identity]; ok {
+				continue
+			}
+			seen[identity] = struct{}{}
+			merged = append(merged, identity)
+		}
+	}
+	return merged
+}

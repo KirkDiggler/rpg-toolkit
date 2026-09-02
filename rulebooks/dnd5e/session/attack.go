@@ -361,38 +361,6 @@ func attackRefFor(definition combatActions.Definition) AttackRef {
 	return ref
 }
 
-// reportUnrecorded turns a failure AFTER the sheets landed into one a caller can
-// repair from, and leaves every other failure exactly as it was.
-//
-// This is rpg-toolkit#1056's rule reaching one more call site. Recording is the
-// last fallible step before the commit, and since the sheets are now written
-// ahead of it (see [Manager.Attack]), a bare error would say "nothing happened"
-// about a swing whose damage is durable. The host reads that as safe to retry,
-// retries, and applies the damage twice.
-//
-// The world is named as FAILED because that is what a caller has to act on: the
-// sheets describe a blow the persisted world has no beat for. It was never
-// attempted rather than attempted and refused, and the repair is the same either
-// way — which is why it is reported the same way persist reports its own
-// world-save failure rather than given a vocabulary of its own.
-//
-// Nothing written means nothing to report, and the plain error is the better
-// answer: a report of an empty ledger is noise, and wrapping would hand a host
-// ErrSaveFailed for a verb that saved nothing.
-func reportUnrecorded(scope *writeScope, err error) error {
-	if len(scope.written) == 0 {
-		return err
-	}
-
-	return &SaveError{
-		Report: SaveReport{
-			Written: append([]string(nil), scope.written...),
-			Failed:  []string{"encounter:" + scope.encounter},
-		},
-		Err: err,
-	}
-}
-
 // translateResolution maps the resolution module's sentinels onto this
 // package's own.
 //
@@ -715,7 +683,10 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 			continue
 		}
 		if err := m.characters.SaveCharacter(ctx, data); err != nil {
-			report := SaveReport{Written: scope.written, Failed: []string{"character:" + data.ID}}
+			report := SaveReport{
+				Written: append([]string(nil), scope.written...),
+				Failed:  []string{"character:" + data.ID},
+			}
 			return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
 		}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -495,6 +496,109 @@ func (b *brokenAfterWriting) GetCharacter(ctx context.Context, id string) (*char
 	}
 
 	return b.fakeCharacters.GetCharacter(ctx, id)
+}
+
+// failNthArmedSaveCharacters lets setup writes land, then refuses one exact
+// save after it is armed. The successful writes still delegate to the copying
+// store, so the assertions below inspect durable values rather than call counts.
+type failNthArmedSaveCharacters struct {
+	*fakeCharacters
+	armed    bool
+	attempts int
+	failAt   int
+	err      error
+}
+
+func (f *failNthArmedSaveCharacters) SaveCharacter(ctx context.Context, data *character.Data) error {
+	if f.armed {
+		f.attempts++
+		if f.attempts == f.failAt {
+			return f.err
+		}
+	}
+	return f.fakeCharacters.SaveCharacter(ctx, data)
+}
+
+var errBoundaryCharacterSave = errors.New("the boundary character save was refused")
+
+// TestAKillingAttackReportsTheNestedBoundarySaveFailure is the reachable
+// rpg-toolkit#1403 regression. One real Attack pays and saves Alice's sheet,
+// drops the last monster, records the blow, notices the body, dissolves the
+// fight, and announces its combat-end boundary. That announcement removes her
+// rage and attempts a newer save of the same sheet; only that second save is
+// refused.
+//
+// Record returns the nested SaveError through noticeDown. reportUnrecorded must
+// expose one complete outer report to ordinary errors.As: Alice is in Written
+// because the paid attack sheet landed, and independently in Failed because the
+// newer boundary sheet did not, followed by the encounter whose new story was
+// never committed. The stored world and NPC sheet stay at their pre-call truth,
+// while the already-written action-economy state remains durable.
+func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure() {
+	alice := armedFighter("alice")
+	rage, err := (&conditions.RagingCondition{
+		CharacterID: "alice", DamageBonus: 2, Level: 1, Source: "dnd5e:features:rage",
+	}).ToJSON()
+	s.Require().NoError(err)
+	alice.Conditions = []json.RawMessage{rage}
+
+	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
+	s.characters = newFakeCharacters(alice, armedFighter("bob"))
+	failing := &failNthArmedSaveCharacters{
+		fakeCharacters: s.characters,
+		failAt:         2,
+		err:            errBoundaryCharacterSave,
+	}
+	mgr, err := session.NewManager(&session.Config{
+		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
+		Characters: failing, Events: s.stream,
+	})
+	s.Require().NoError(err)
+	s.mgr = mgr
+
+	s.startCrypt()
+	s.spawnSkeleton()
+	for i := range s.sessions.byID["sess"].NPCs {
+		if s.sessions.byID["sess"].NPCs[i].ID == "skeleton" {
+			s.sessions.byID["sess"].NPCs[i].HitPoints = 1
+		}
+	}
+	s.Require().Equal(1, s.storedHP("skeleton"), "the next hit will decide the fight")
+
+	declaration := currentAttackID(s.T(), mgr, "sess", "alice")
+	beforeWorld, err := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(err)
+	beforeAlice, err := s.characters.GetCharacter(context.Background(), "alice")
+	s.Require().NoError(err)
+	s.Require().Nil(beforeAlice.ActionEconomy)
+	failing.armed = true
+
+	out, err := mgr.Attack(context.Background(), &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "skeleton", DeclarationID: declaration,
+	})
+
+	s.Require().Error(err)
+	s.Nil(out)
+	s.ErrorIs(err, session.ErrSaveFailed)
+	s.ErrorIs(err, errBoundaryCharacterSave, "the repository cause stays matchable")
+	s.Equal(2, failing.attempts, "the paid sheet landed before the boundary save failed")
+
+	var reported *session.SaveError
+	s.Require().True(errors.As(err, &reported), "ordinary errors.As reaches the complete report")
+	s.Equal([]string{"character:alice"}, reported.Report.Written)
+	s.Equal([]string{"character:alice", "encounter:world"}, reported.Report.Failed,
+		"the nested failed aggregate must not be hidden by the recording boundary")
+
+	afterWorld, getErr := s.encounters.GetEncounter(context.Background(), "world")
+	s.Require().NoError(getErr)
+	s.Equal(beforeWorld, afterWorld, "the failed recording never commits its in-memory story or dissolve")
+	s.Equal(1, s.storedHP("skeleton"), "the session-held monster damage was not persisted")
+
+	afterAlice, getErr := s.characters.GetCharacter(context.Background(), "alice")
+	s.Require().NoError(getErr)
+	s.NotNil(afterAlice.ActionEconomy, "the earlier paid-sheet write remains durable")
+	s.Len(afterAlice.Conditions, 1,
+		"the newer combat-end removal failed, matching the report's Failed identity")
 }
 
 // TestASwingThatCannotRecordStillNamesTheSheetItWrote is rpg-toolkit#1056's

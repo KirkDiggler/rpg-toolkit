@@ -154,7 +154,10 @@ func (m *Manager) resolveStagedCheck(
 
 	if out.DirtyCharacter != nil {
 		if err := m.characters.SaveCharacter(staged.ctx, out.DirtyCharacter); err != nil {
-			report := SaveReport{Written: scope.written, Failed: []string{"character:" + out.DirtyCharacter.ID}}
+			report := SaveReport{
+				Written: append([]string(nil), scope.written...),
+				Failed:  []string{"character:" + out.DirtyCharacter.ID},
+			}
 			return nil, &SaveError{Report: report, Err: fmt.Errorf("saving checker: %w", err)}
 		}
 		scope.written = append(scope.written, "character:"+out.DirtyCharacter.ID)
