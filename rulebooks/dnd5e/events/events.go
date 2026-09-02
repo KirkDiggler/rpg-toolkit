@@ -590,13 +590,32 @@ type DamageReceivedEvent struct {
 	IsCritical bool        // True if this was a critical hit (unconscious characters take 2 death save failures)
 }
 
-// HealingReceivedEvent is published when a member receives healing
+// HealingReceivedEvent is published when a member receives healing.
+// Source is retained for legacy publishers while SourceRef and SourceName carry
+// canonical identity for publishers that have it.
 type HealingReceivedEvent struct {
-	TargetID string // ID of the member receiving healing — character or monster
-	Amount   int    // Amount of healing
-	Roll     int    // The dice roll result (before modifiers)
-	Modifier int    // Any modifier added to the roll (e.g., fighter level)
-	Source   string // What caused this healing (e.g., "second_wind")
+	TargetID   string    // ID of the member receiving healing — character or monster
+	Amount     int       // Amount of healing requested before the target's HP cap
+	Roll       int       // The dice roll result (before modifiers)
+	Modifier   int       // Any modifier added to the roll (e.g., fighter level)
+	Source     string    // Legacy identifier for what caused this healing (e.g., "second_wind")
+	SourceRef  *core.Ref // Canonical reference for what caused the healing, when available
+	SourceName string    // Toolkit-authored display name for the source, when available
+}
+
+// HealingAppliedEvent reports the actual post-clamp healing applied by a
+// member's sheet keeper. It preserves the requested roll and source alongside
+// the target's before/after HP so observers never have to infer the clamp.
+type HealingAppliedEvent struct {
+	TargetID   string
+	Requested  int
+	Applied    int
+	HPBefore   int
+	HPAfter    int
+	Roll       int
+	Modifier   int
+	SourceRef  *core.Ref
+	SourceName string
 }
 
 // ConditionAppliedEvent is published when a condition is applied to an entity
@@ -960,6 +979,9 @@ var (
 
 	// HealingReceivedTopic provides typed pub/sub for healing received events
 	HealingReceivedTopic = events.DefineTypedTopic[HealingReceivedEvent]("dnd5e.combat.healing.received")
+
+	// HealingAppliedTopic provides typed pub/sub for actual post-clamp healing facts
+	HealingAppliedTopic = events.DefineTypedTopic[HealingAppliedEvent]("dnd5e.combat.healing.applied")
 
 	// ConditionAppliedTopic provides typed pub/sub for condition applied events
 	ConditionAppliedTopic = events.DefineTypedTopic[ConditionAppliedEvent]("dnd5e.condition.applied")

@@ -80,6 +80,8 @@ func (s *SecondWindTestSuite) TestActivatePublishesHealingEvent() {
 	s.NotNil(receivedEvent)
 	s.Equal("fighter-1", receivedEvent.TargetID)
 	s.Equal("second_wind", receivedEvent.Source)
+	s.True(receivedEvent.SourceRef.Equals(refs.Features.SecondWind()))
+	s.Equal("Second Wind", receivedEvent.SourceName)
 
 	// Healing should be 1d10 + level (3)
 	// Roll should be between 1 and 10

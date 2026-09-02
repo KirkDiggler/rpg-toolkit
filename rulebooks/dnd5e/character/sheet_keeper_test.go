@@ -6,6 +6,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -60,6 +61,16 @@ type SheetKeeperTestSuite struct {
 	char *Character
 }
 
+// HealingAppliedTestSuite isolates the applied-fact contract so the brief's
+// focused RED/GREEN command selects these tests directly.
+type HealingAppliedTestSuite struct {
+	suite.Suite
+
+	ctx  context.Context
+	bus  events.EventBus
+	char *Character
+}
+
 func (s *SheetKeeperTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
@@ -72,6 +83,21 @@ func (s *SheetKeeperTestSuite) SetupTest() {
 }
 
 func (s *SheetKeeperTestSuite) sheet() *Data {
+	return keeperSheet()
+}
+
+func (s *HealingAppliedTestSuite) SetupTest() {
+	s.ctx = context.Background()
+	s.bus = events.NewEventBus()
+
+	char, err := Load(s.ctx, keeperSheet())
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, char, s.bus))
+
+	s.char = char
+}
+
+func keeperSheet() *Data {
 	return &Data{
 		ID:               "keeper-char",
 		PlayerID:         "keeper-player",
@@ -158,6 +184,132 @@ func (s *SheetKeeperTestSuite) TestHealingReceivedMovesHitPoints() {
 
 	s.Require().NoError(err)
 	s.Require().Equal(15, s.char.GetHitPoints())
+	s.Require().True(s.char.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
+	s.char.hitPoints = 8
+	s.char.maxHitPoints = 10
+	markSaved(s.char)
+
+	source := *refs.Features.SecondWind()
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID:   s.char.GetID(),
+		Amount:     7,
+		Roll:       6,
+		Modifier:   1,
+		SourceRef:  &source,
+		SourceName: "Second Wind",
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(s.char.GetID(), got.TargetID)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Equal(2, got.Applied)
+	s.Require().Equal(8, got.HPBefore)
+	s.Require().Equal(10, got.HPAfter)
+	s.Require().Equal(6, got.Roll)
+	s.Require().Equal(1, got.Modifier)
+	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()))
+	s.Require().Equal("Second Wind", got.SourceName)
+	s.Require().NotSame(&source, got.SourceRef, "the applied fact owns its source identity")
+
+	source.ID = "mutated_by_caller"
+	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()),
+		"mutating the request after publication cannot rewrite the applied fact")
+	s.Require().True(s.char.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied() {
+	s.char.hitPoints = 30
+	markSaved(s.char)
+
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: s.char.GetID(),
+		Amount:   7,
+		Roll:     6,
+		Modifier: 1,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Zero(got.Applied)
+	s.Require().Equal(30, got.HPBefore)
+	s.Require().Equal(30, got.HPAfter)
+	s.Require().Equal(6, got.Roll)
+	s.Require().Equal(1, got.Modifier)
+	s.Require().True(s.char.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedForSomeoneElseIsIgnored() {
+	markSaved(s.char)
+
+	published := 0
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+			published++
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: "someone-else",
+		Amount:   7,
+	})
+
+	s.Require().NoError(err)
+	s.Require().Zero(published)
+	s.Require().Equal(10, s.char.GetHitPoints())
+	s.Require().False(s.char.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedSubscriberErrorPropagatesAfterMutation() {
+	s.char.hitPoints = 8
+	s.char.maxHitPoints = 10
+	markSaved(s.char)
+
+	sentinel := errors.New("healing applied subscriber failed")
+	observedHP := 0
+	observedDirty := false
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+			observedHP = s.char.GetHitPoints()
+			observedDirty = s.char.IsDirty()
+			return sentinel
+		})
+	s.Require().NoError(err)
+
+	// The handler must publish on the bus captured by SheetKeeper.Apply, not a
+	// parked bus retained only for character verbs.
+	s.char.bus = events.NewEventBus()
+
+	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: s.char.GetID(),
+		Amount:   7,
+	})
+
+	s.Require().ErrorIs(err, sentinel)
+	s.Require().Equal(10, observedHP, "the callback observes post-clamp HP")
+	s.Require().True(observedDirty, "the callback observes the dirty mark")
+	s.Require().Equal(10, s.char.GetHitPoints(), "the mutation precedes applied-fact publication")
 	s.Require().True(s.char.IsDirty())
 }
 
@@ -299,6 +451,10 @@ func (s *SheetKeeperTestSuite) TestCanReactFollowsTheReactionSlot() {
 
 func TestSheetKeeperSuite(t *testing.T) {
 	suite.Run(t, new(SheetKeeperTestSuite))
+}
+
+func TestHealingAppliedSuite(t *testing.T) {
+	suite.Run(t, new(HealingAppliedTestSuite))
 }
 
 // namelessCondition breaks [dnd5eEvents.ConditionBehavior]'s contract: its

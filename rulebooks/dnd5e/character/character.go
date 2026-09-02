@@ -1297,12 +1297,17 @@ func (c *Character) onSpendRequested(_ context.Context, event dnd5eEvents.SpendR
 	return nil
 }
 
-// onHealingReceived handles HealingReceivedEvent
-func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+// onHealingReceived handles HealingReceivedEvent and publishes the actual
+// post-clamp result after updating the character's sheet.
+func (c *Character) onHealingReceived(
+	ctx context.Context, bus events.EventBus, event dnd5eEvents.HealingReceivedEvent,
+) error {
 	// Only process events for this character
 	if event.TargetID != c.id {
 		return nil
 	}
+
+	hpBefore := c.hitPoints
 
 	// Apply healing: add Amount to hitPoints, cap at maxHitPoints
 	c.hitPoints += event.Amount
@@ -1310,10 +1315,27 @@ func (c *Character) onHealingReceived(_ context.Context, event dnd5eEvents.Heali
 		c.hitPoints = c.maxHitPoints
 	}
 
-	// HP is persisted, and ApplyDamage marks dirty for the same reason.
+	// HP is persisted, and ApplyDamage marks dirty for the same reason. This
+	// precedes publication so a failing observer cannot erase the landed heal.
 	c.dirty = true
 
-	return nil
+	var sourceRef *core.Ref
+	if event.SourceRef != nil {
+		clone := *event.SourceRef
+		sourceRef = &clone
+	}
+
+	return dnd5eEvents.HealingAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
+		TargetID:   c.id,
+		Requested:  event.Amount,
+		Applied:    c.hitPoints - hpBefore,
+		HPBefore:   hpBefore,
+		HPAfter:    c.hitPoints,
+		Roll:       event.Roll,
+		Modifier:   event.Modifier,
+		SourceRef:  sourceRef,
+		SourceName: event.SourceName,
+	})
 }
 
 // Cleanup removes active conditions, attachable features, and the sheet's own
