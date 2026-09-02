@@ -281,8 +281,15 @@ func (m *Manager) compileOffersFor(
 	// triggers a second repository read.
 	cast, dependencyFailures := m.compileResolutionCast(ctx, data, roster, price.payer)
 
+	// A world NPC is never an attack candidate (design.md N4, rpg-toolkit#1404).
+	// buildTargetPreflight itself has no kind gate at all — visibility and
+	// range only — so the exclusion happens here, at the one call site that
+	// feeds it Attack's candidate universe. Filtering the holdings rather
+	// than widening targetPreflightFunc's signature keeps that seam (and its
+	// test doubles) untouched; helpCandidates needs no equivalent filter,
+	// since it already requires a candidate's kind to match the actor's own.
 	candidates, err := m.targetPreflight(
-		enc, positions, holdings, member, definition.Attack.Delivery.MaxRangeFeet(),
+		enc, positions, excludeWorldNPCs(holdings, rosterKinds(roster)), member, definition.Attack.Delivery.MaxRangeFeet(),
 	)
 	if err != nil {
 		return nil, err
@@ -568,6 +575,23 @@ func blockedCompiledOffer(verb Verb, kind TargetKind, why Shortfall) compiledOff
 	return compiledOffer{
 		declaration: blockedDeclaration(verb, kind, why),
 	}
+}
+
+// excludeWorldNPCs drops any holding whose subject is a KindWorld member —
+// Attack's own candidate-universe gate, since buildTargetPreflight itself
+// has none. A subject missing from kinds (an internal inconsistency
+// buildTargetPreflight's own fail-closed law would catch downstream) is
+// left in rather than silently dropped here; this function's only job is
+// the one exclusion it is named for.
+func excludeWorldNPCs(holdings []intel.Holding, kinds map[string]MemberKind) []intel.Holding {
+	out := make([]intel.Holding, 0, len(holdings))
+	for _, h := range holdings {
+		if kinds[string(h.Subject)] == KindWorld {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
 }
 
 // buildTargetPreflight enumerates the ruled candidate universe for one
