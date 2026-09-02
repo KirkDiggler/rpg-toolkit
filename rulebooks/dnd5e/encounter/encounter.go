@@ -505,6 +505,12 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: player %s cannot carry a decider: %w", m.ID, ErrNoMember)
 		}
 
+		// Nor can a world NPC (rpg-toolkit#1404, design.md N4): a non-combatant
+		// never acts on its own turn, and a decider would imply it does.
+		if m.Kind == KindWorld && m.Decider != nil {
+			return nil, fmt.Errorf("newencounter: world npc %s cannot carry a decider: %w", m.ID, ErrNoMember)
+		}
+
 		// SpeedFeet, SightFeet and each action's RangeFeet are feet-
 		// denominated facts CellsFromFeet divides by FeetPerCell — a
 		// negative one is not a shorter distance, it is a caller defect
@@ -1741,6 +1747,12 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// Players cannot carry deciders (design law C2)
 	if in.Kind == KindPlayer && in.Decider != nil {
 		return nil, fmt.Errorf("join: player %s cannot carry a decider: %w", in.Member, ErrNoMember)
+	}
+
+	// Nor can a world NPC (rpg-toolkit#1404, design.md N4) — see NewEncounter's
+	// own check for why.
+	if in.Kind == KindWorld && in.Decider != nil {
+		return nil, fmt.Errorf("join: world npc %s cannot carry a decider: %w", in.Member, ErrNoMember)
 	}
 
 	// See NewEncounter's own call to validateMemberFacts for why — ASKED

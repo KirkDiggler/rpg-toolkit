@@ -11,7 +11,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// MemberKind categorizes whether a member is a player or monster.
+// MemberKind categorizes whether a member is a player, a monster, or a
+// placed world NPC.
 type MemberKind string
 
 const (
@@ -20,6 +21,24 @@ const (
 
 	// KindMonster indicates a monster member.
 	KindMonster MemberKind = "monster"
+
+	// KindWorld indicates a placed, non-combatant world NPC (rpg-toolkit#1404).
+	//
+	// Carries no content of its own — no ref, no capabilities, no policy.
+	// Placed with exactly the same bare facts any member is (ID, Name,
+	// Position, SpeedFeet, SightFeet, Actions, Targeting); the actual NPC
+	// content a KindWorld member was spawned from lives at the session
+	// layer, keyed by member ID, exactly parallel to how a monster's sheet
+	// never crosses into this package either.
+	//
+	// Being non-combatant is not a policy this package reads — it is
+	// structural. sidesInContactOrder's switch (trigger.go) has no default
+	// case, so a member whose Kind is neither KindPlayer nor KindMonster
+	// already falls into neither side and never enters classify's engaged
+	// set; Pump's monster loop is filtered to KindMonster explicitly. A
+	// KindWorld member needs no case added anywhere in either to be
+	// excluded — it already is, by construction.
+	KindWorld MemberKind = "world"
 )
 
 // MemberID is an alias for core.EntityID used for clarity in member contexts.
