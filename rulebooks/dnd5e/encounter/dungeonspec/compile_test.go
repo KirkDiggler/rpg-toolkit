@@ -10,6 +10,7 @@ package dungeonspec_test
 // golden_test.go's; this file is about the shape of each piece.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -127,6 +128,94 @@ func (s *CompileSuite) TestAWallMayAuthorItsHeight() {
 			s.Zero(w.Height, "walls[%d] authored no height", i)
 		}
 	}
+}
+
+// TestGroupingHasNoMechanicalConsequence is the ruling of rpg-project#355 as a
+// pin: a group is an AUTHORING fact and nothing else, so the same edges in the
+// same order compile to the identical wall set however they are bracketed.
+// Everything downstream — the engine, the renderer's own derived runs — is
+// entitled to never learn a group existed.
+func (s *CompileSuite) TestGroupingHasNoMechanicalConsequence() {
+	flat := s.load(s.tomb).Field.Walls
+	s.Require().Len(flat, 28)
+
+	for _, runs := range []int{1, 2, 5, 28} {
+		s.Run(fmt.Sprintf("%d runs", runs), func() {
+			raw := regroupedTomb(s.T(), s.tomb, runs, false)
+			spec, err := dungeonspec.Decode([]byte(raw))
+			s.Require().NoError(err)
+			s.Require().Empty(dungeonspec.Validate(spec))
+			s.Require().Len(spec.Walls, runs, "the FILE really is grouped differently")
+			s.Equal(flat, s.load(raw).Field.Walls, "and the atlas cannot tell")
+		})
+	}
+}
+
+// TestADoorStandsInAWall — rpg-project#355 reverses "a door cannot stand in a
+// wall". The author writes the run unbroken and lists the door separately; the
+// compiler subtracts the door's edges, so the wall set is what it always was.
+//
+// The contrast is the point: the spec carries 30 wall edges and the atlas gets
+// 28, so a compiler that forgot to subtract would fail here rather than pass
+// on a fixture with nothing to subtract.
+func (s *CompileSuite) TestADoorStandsInAWall() {
+	raw := regroupedTomb(s.T(), s.tomb, 2, true)
+	spec, err := dungeonspec.Decode([]byte(raw))
+	s.Require().NoError(err)
+	s.Empty(dungeonspec.Validate(spec), "a door in a wall is the ordinary case now")
+
+	authored := 0
+	for _, w := range spec.Walls {
+		authored += len(w.Edges)
+	}
+	s.Require().Equal(30, authored, "the file claims both door crossings as wall")
+
+	c := s.load(raw)
+	s.Len(c.Field.Walls, 28, "and the compiler hands each one back to its door")
+	s.Equal(s.load(s.tomb).Field.Walls, c.Field.Walls,
+		"an unbroken run with its doors named compiles to the punched-out list")
+
+	for _, w := range c.Field.Walls {
+		for _, d := range [][2]spatial.Position{
+			{{X: 5, Y: 4}, {X: 6, Y: 4}}, {{X: 15, Y: 4}, {X: 16, Y: 4}},
+		} {
+			s.False(w.From == d[0] && w.To == d[1], "no wall stands where a door does")
+		}
+	}
+}
+
+// TestAConcealedDoorInAWallIsStillTheWayIn is the interaction that makes "a
+// door stands in a wall" safe rather than merely convenient.
+//
+// The coherence check asks of every crossing between two regions whether it is
+// a way in, and SKIPS the ones a wall claims — "a wall is not a way in". Once a
+// wall run may name the very edge a door stands in, which of the two claims
+// that crossing decides whether the secret's only entrance is seen at all. The
+// door's claim wins (validate runs walls before doors, deliberately), so the
+// frontier still reads a door here.
+//
+// The second half is the part that can fail: uncanceal the door and the hole
+// MUST be reported. A build where the wall's claim won would skip this
+// crossing, find no way into the tomb at all, and pass silently.
+func (s *CompileSuite) TestAConcealedDoorInAWallIsStillTheWayIn() {
+	const find = "\n    concealed: [{ ability: perception, dc: 15 }]"
+	secret := regroupedTomb(s.T(), s.secretTomb(find), 2, true)
+	s.Require().Contains(secret, "      - [[15,4],[16,4]]",
+		"the hall-tomb run reclaims the edge its concealed door stands in")
+
+	spec, err := dungeonspec.Decode([]byte(secret))
+	s.Require().NoError(err)
+	s.Empty(dungeonspec.Validate(spec),
+		"the secret is coherent: its one way in is the concealed door in the wall")
+
+	open := strings.Replace(secret, find, "", 1)
+	s.Require().NotEqual(secret, open)
+	spec, err = dungeonspec.Decode([]byte(open))
+	s.Require().NoError(err)
+	errs := dungeonspec.Validate(spec)
+	s.Require().NotEmpty(errs, "a plain door into a concealed room is a hole in the secret")
+	s.Equal("regions[2].concealed", errs[0].Path,
+		"and the frontier found it THROUGH the wall run that names the same edge")
 }
 
 // TestADoorIsMintedUnderTheDungeonsKeyInItsAuthoredState — `<key>/<id>`, so two

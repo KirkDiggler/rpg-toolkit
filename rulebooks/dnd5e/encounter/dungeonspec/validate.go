@@ -260,15 +260,28 @@ func (v *validation) walls() {
 		if w.Height != nil && (*w.Height < 1 || *w.Height > 3) {
 			v.fail(p+".height", "height %g is outside [1,3]: walls raise, they never lower (rpg-project#273)", *w.Height)
 		}
-		c, ok := v.edge(p, w.Between)
-		if !ok {
-			continue
+		// A run's edges are checked one at a time and NOTHING checks that
+		// they touch. Contiguity is not a rule here by ruling
+		// (rpg-project#355): a group carries no mechanical consequence, so a
+		// grouping the author finds useful can never be wrong, and an error
+		// they cannot act on is worse than no feature at all.
+		for j, e := range w.Edges {
+			// A run of one keeps the bare form's path: there is no `edges`
+			// list in the file for the author to count along.
+			ep := p
+			if len(w.Edges) > 1 {
+				ep = fmt.Sprintf("%s.edges[%d]", p, j)
+			}
+			c, ok := v.edge(ep, e)
+			if !ok {
+				continue
+			}
+			if prev, dup := v.crossings[c]; dup {
+				v.fail(ep, "the same edge is already listed at %s", prev)
+				continue
+			}
+			v.crossings[c] = ep
 		}
-		if prev, dup := v.crossings[c]; dup {
-			v.fail(p, "the same edge is already listed at %s", prev)
-			continue
-		}
-		v.crossings[c] = p
 	}
 }
 
@@ -293,12 +306,21 @@ func (v *validation) doors() {
 			if !ok {
 				continue
 			}
-			if prev, taken := v.crossings[c]; taken {
-				if strings.HasPrefix(prev, "walls[") {
-					v.fail(ep, "this edge is also a wall (%s), and a door cannot stand in a wall", prev)
-				} else {
-					v.fail(ep, "this edge is already a door's (%s), and one edge cannot have two states", prev)
-				}
+			// A DOOR STANDS IN A WALL, and that is the ordinary case rather
+			// than a collision (rpg-project#355, Kirk: "if a door can exist
+			// on a wall at a location then it is even easier to read"). The
+			// wall runs along here and the door sits in it, so the author
+			// writes one unbroken run and lists the door separately —
+			// deleting the door then restores the wall underneath instead of
+			// leaving a hole nobody authored.
+			//
+			// The door's claim REPLACES the wall's, and both readers below
+			// depend on it: the frontier treats this crossing as a way in
+			// (through the door) rather than skipping it as wall, and
+			// `wallsOf` subtracts exactly the edges claimed here. Two doors
+			// in one edge is still two states for one crossing.
+			if prev, taken := v.crossings[c]; taken && !strings.HasPrefix(prev, "walls[") {
+				v.fail(ep, "this edge is already a door's (%s), and one edge cannot have two states", prev)
 				continue
 			}
 			v.crossings[c] = ep
