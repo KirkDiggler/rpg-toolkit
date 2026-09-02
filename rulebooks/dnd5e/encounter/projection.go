@@ -11,30 +11,42 @@ import (
 )
 
 // projection.go is THE NEVER-AUTHORED PROJECTION (rpg-project#351, review
-// findings ratified): the field as ONE MEMBER knows it. [Encounter.Atlas]
-// and [Encounter.Doors] stay what they were — the whole truth, the author's
-// and the test's view — and these two reads apply the absence law on top:
+// findings ratified; boundary rule revised by rpg-toolkit#1419): the field as
+// ONE MEMBER knows it. [Encounter.Atlas] and [Encounter.Doors] stay what
+// they were — the whole truth, the author's and the test's view — and these
+// two reads apply the absence law on top:
 //
 //   - ABSENT FROM EVERY DOOR-LIST: a concealed unfound door's doorways do
 //     not appear in the atlas, nor the door in [Encounter.DoorsFor] —
 //     presence in any list, even marked, leaks the secret.
 //
-//   - MASKED AS WALL, IN ONE CASE ONLY: for a concealed unfound door
-//     between two spaces the member can see, the atlas gains a synthetic
-//     ordinary boundary at the door's edges, indistinguishable from an
-//     authored wall (nothing marks it), at the neighbouring authored run's
-//     height — a standard-height mask inside a height-2 run would be a
-//     visible notch exactly where the secret is (the Wave 1b pin).
+//   - EVERY CROSSING INTO HIDDEN SPACE READS AS A WALL: an authored wall
+//     with one endpoint in hidden space is presented rather than dropped, a
+//     bare visible/hidden adjacency with nothing authored on it gets a
+//     synthesized ordinary one, and a concealed unfound door's edge is
+//     masked the same way regardless of which side is hidden — the
+//     door-between-two-visible-spaces case this always covered, and the
+//     door-into-a-hidden-room case that used to drop the wall along with
+//     the door. Both masks and synthesized walls stand at the neighbouring
+//     authored run's height ([Encounter.maskHeight]) — standard height
+//     inside a height-2 run would be a visible notch exactly where the
+//     secret is (the Wave 1b pin). Kirk's ruling, hit concretely while
+//     authoring: "if there is no wall but I cannot walk through it that is
+//     a tell. a wall is a wall is a wall." Every room has walls; floor that
+//     ends in nothing and still refuses a step is the anomaly the
+//     never-authored yardstick exists to prevent, reintroduced by the
+//     yardstick itself. A crossing wholly INSIDE hidden space — both
+//     endpoints hidden — stays withheld: nobody standing in visible space
+//     borders it, so there is nothing there for it to disguise.
 //
-//   - THE ROOM HIDES WITH ITS DOOR, by the never-authored yardstick: a
-//     non-knower's answer is byte-identical to an atlas in which the
-//     concealed region was never authored — its cells, its region entry,
-//     its props, and EVERY boundary touching its cells withheld, border
-//     walls included. No mask at a hidden region's border: the space
-//     already reads as solid mass, and a synthetic wall touching void would
-//     carry the same self-marking signature the yardstick exists to remove.
-//     A boundary shared with a still-hidden neighbour stays withheld even
-//     after this region is revealed — the member-scoped answer governs.
+//   - THE ROOM ITSELF STILL HIDES WITH ITS DOOR: the yardstick governs
+//     SPACE AND CONTENTS, unmoved by the boundary rule above — a
+//     non-knower's cells, region entries and props are byte-identical to an
+//     atlas in which the concealed region was never authored. Only the
+//     BOUNDARY with visible space now differs from that never-authored
+//     twin, because a wall cannot be authored with an off-floor endpoint
+//     (the twin has nowhere to hang one), and an honestly authored dungeon
+//     would still have walled the room that IS there.
 //
 // One accepted disclosure, named so it is never mistaken for a bug: a FOUND
 // door's doorways name one cell of hidden floor per entrance — knowing
@@ -93,15 +105,37 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 	}
 
-	// Boundaries: withhold every one touching hidden floor, then mask the
-	// concealed unfound doors that stand between two visible spaces, then
-	// restore the atlas's own sort — a mask that sorted differently from an
-	// authored wall would mark itself by position in the list.
+	// Boundaries, in three passes, then restored to the atlas's own sort — a
+	// mask or a synthesized wall that sorted differently from an authored
+	// one would mark itself by position in the list (rpg-toolkit#1419):
+	//
+	//  1. Every authored wall stands UNLESS it is wholly inside hidden
+	//     space (both endpoints hidden) — the never-authored yardstick
+	//     still governing a room's interior nobody visible borders.
+	//  2. Every concealed unfound door's edge is masked as an ordinary
+	//     wall unless it too is wholly inside hidden space, regardless of
+	//     which single side is hidden — the fix: this used to mask only
+	//     the two-visible-sides case and silently drop the rest.
+	//  3. Every crossing the first two passes left untouched — a bare
+	//     visible/hidden adjacency with nothing authored on it at all — is
+	//     synthesized as an ordinary wall at standard height, exactly what
+	//     an authored wall there would have said (maskHeight's own rule
+	//     for an unwalled door seam, generalized to every bare seam).
+	//
+	// doorEdge excludes every door's own crossing from pass 3 — found or
+	// not, concealed or not — so a real doorway a member already knows
+	// about never grows a phantom wall beside it, and a still-unfound
+	// concealed door's edge is masked exactly once, by pass 2, never
+	// twice.
 	for _, b := range full.Boundaries {
-		if hiddenCells[b.From] || hiddenCells[b.To] {
+		if hiddenCells[b.From] && hiddenCells[b.To] {
 			continue
 		}
 		out.Boundaries = append(out.Boundaries, b)
+	}
+	doorEdge := make(map[DoorEdge]bool, len(full.Doorways))
+	for _, dw := range full.Doorways {
+		doorEdge[normalizeDoorEdge(DoorEdge{From: dw.From, To: dw.To})] = true
 	}
 	for _, id := range e.world.concealedDoors {
 		if !unknownDoors[id] {
@@ -109,7 +143,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 		d := e.doorsByID[id]
 		for _, edge := range d.edges {
-			if hiddenCells[edge.From] || hiddenCells[edge.To] {
+			if hiddenCells[edge.From] && hiddenCells[edge.To] {
 				continue
 			}
 			out.Boundaries = append(out.Boundaries, AtlasBoundary{
@@ -118,6 +152,30 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 				BlocksMovement:    true,
 				BlocksLineOfSight: true,
 				Height:            e.maskHeight(edge),
+			})
+		}
+	}
+	authoredEdge := make(map[DoorEdge]bool, len(full.Boundaries))
+	for _, b := range full.Boundaries {
+		authoredEdge[normalizeDoorEdge(DoorEdge{From: b.From, To: b.To})] = true
+	}
+	for hidden := range hiddenCells {
+		for _, neighbor := range adjacencyGrid.GetNeighbors(hidden) {
+			if hiddenCells[neighbor] {
+				continue
+			}
+			if _, floor := e.field.regionOf(neighbor); !floor {
+				continue
+			}
+			edge := normalizeDoorEdge(DoorEdge{From: hidden, To: neighbor})
+			if authoredEdge[edge] || doorEdge[edge] {
+				continue
+			}
+			out.Boundaries = append(out.Boundaries, AtlasBoundary{
+				From:              edge.From,
+				To:                edge.To,
+				BlocksMovement:    true,
+				BlocksLineOfSight: true,
 			})
 		}
 	}
