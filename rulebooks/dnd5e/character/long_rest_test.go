@@ -3,6 +3,7 @@ package character
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -11,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -227,6 +229,46 @@ func TestLongRestClearsPersistedActionEconomy(t *testing.T) {
 	require.Equal(t, 1, fresh.ReactionsRemaining)
 	require.Equal(t, 35, fresh.MovementRemaining)
 	require.Empty(t, fresh.Granted)
+}
+
+func TestLongRestRetainsCombatEconomyWhenRestEventPublicationFails(t *testing.T) {
+	ctx := context.Background()
+	char, err := Load(ctx, longRestEconomyTestData(&ActionEconomyData{
+		TurnNumber:            1,
+		ActionsRemaining:      0,
+		BonusActionsRemaining: 0,
+		ReactionsRemaining:    0,
+		MovementRemaining:     0,
+		Granted: map[GrantedActionKey]int{
+			GrantedAttacks:       0,
+			GrantedFlurryStrikes: 0,
+		},
+	}))
+	require.NoError(t, err)
+
+	bus := events.NewEventBus()
+	publicationFailure := errors.New("rest publication refused")
+	_, err = dnd5eEvents.RestTopic.On(bus).Subscribe(ctx,
+		func(_ context.Context, _ dnd5eEvents.RestEvent) error {
+			return publicationFailure
+		})
+	require.NoError(t, err)
+
+	// Install the failing observer before Attach so the real bus returns its
+	// error before any character-owned rest observer can react.
+	require.NoError(t, Attach(ctx, char, bus))
+	t.Cleanup(func() { require.NoError(t, char.Cleanup(ctx)) })
+	before := char.ToData().ActionEconomy
+	require.NotNil(t, before)
+
+	err = char.LongRest(ctx)
+	require.EqualError(t, err, "failed to publish rest event: rest publication refused")
+	require.ErrorIs(t, err, publicationFailure)
+	require.True(t, char.InCombat(), "a failed rest publication must not exit combat")
+
+	after := char.ToData().ActionEconomy
+	require.NotNil(t, after)
+	require.Equal(t, before, after, "ExitCombat must run only after successful rest publication")
 }
 
 func TestLongRestKeepsAbsentActionEconomyAbsent(t *testing.T) {
