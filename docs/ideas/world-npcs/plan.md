@@ -16,58 +16,53 @@ evidence.
 
 ## Task 1 - Census and Placement Spike
 
-- [ ] Read `rulebooks/dnd5e/encounter/doc.go`, `field.go`, `encounter.go`,
+- [x] Read `rulebooks/dnd5e/encounter/doc.go`, `field.go`, `encounter.go`,
   `step.go`, `trigger.go`, `clocks.go`, and the current `MemberData` load path.
-- [ ] Confirm the implementation base: `origin/main` at encounter v0.37.0 or
-  the v0.38.0 location/intel-delta branch. If v0.38.0 is used, build NPC sight
-  testimony through `LocationKnowledge`, `EncodeLocationPayload`, and
-  `IntelDelta`.
-- [ ] Determine whether the current canvas treats all placed members as
-  movement-blocking and whether `MovementPolicyPassable` can be represented
-  without changing `tools/spatial`.
-- [ ] Implement the settled rule: every world NPC is a valid location-intel
-  subject, but its location is not known until authored/loaded intel or actual
-  perception creates that knowledge.
-- [ ] Decide the exact public name and default for the per-NPC observation
-  policy: subject-only versus observer.
-- [ ] Confirm observer-capable NPCs can hold intel without requiring any MVP
-  behavior to consume it.
-- [ ] Define the first vendor profile as generic world NPC data: known at start
-  through authored/loaded intel, vendor capability, non-combatant, non-hostile
-  to players and monsters.
-- [ ] Draw the explicit boundary with #1275: #1280 owns world placement,
-  interaction descriptor, and policies; #1275 owns stock, quote, buy, and item
+- [x] Confirmed the implementation base: `origin/main`, encounter v0.43.0
+  (well past the v0.37/v0.38 fork this bullet used to hedge on — moot).
+- [x] **Corrected (2026-09-02, see `design.md`'s same-dated amendment):**
+  traced how a monster's content actually flows and it never crosses into
+  `encounter` at all — `session.Spawn` resolves the ref into a sheet, stores
+  it in `SessionData.NPCs`, and calls `encounter.Join` with only bare facts
+  (Name, Position, Speed, Actions, Targeting). A world NPC is placed the
+  same way: `encounter` carries no `npc` import, no ref, no capabilities, no
+  policy field anywhere in its types. That content lives in a new
+  `session`-owned store, keyed by member ID, parallel to `SessionData.NPCs`.
+  This retires most of the "living world" framing this task originally
+  carried (movement-policy blocking, observation policy, location-learned
+  semantics as a new mechanism) — see the struck items below.
+- [x] ~~Determine whether the current canvas treats all placed members as
+  movement-blocking and whether `MovementPolicyPassable` can be represented~~
+  — checked directly: `memberEntity.BlocksMovement()` returns `false` for
+  every member today, monsters included. Not part of this slice; a
+  `KindWorld` member gets the same answer a monster already does.
+- [x] ~~Implement the settled rule: every world NPC is a valid location-intel
+  subject...~~ — not a new rule to implement. `e.clock.Join(...)` and
+  `refreshSight`/`rebuildPercepts` already run unconditionally for every
+  member kind (no kind filter) in both `NewEncounter` and `Join` — a
+  `KindWorld` member is on the world clock and gets sight-refreshed exactly
+  like anyone else, automatically, which is what makes it discoverable and
+  later interactable. Nothing to build here.
+- [x] ~~Decide the exact public name and default for the per-NPC observation
+  policy: subject-only versus observer~~ — no such policy exists in this
+  slice. A `KindWorld` member with nonzero `SightFeet` already gets its own
+  percept through the existing mechanism, same as a monster.
+- [x] Confirmed the package split still holds: toolkit-level `npc` (shipped,
+  `npc/v0.1.0`) for reusable NPC data; `rulebooks/dnd5e/encounter` carries
+  only `KindWorld` and bare member facts; `rulebooks/dnd5e/session` owns the
+  actual `npc.NPC` content, keyed by member ID.
+- [ ] Define the first vendor profile as generic world NPC data (session-side
+  now, not encounter-side): known at start through authored/loaded intel,
+  `npc.CapabilityVendor`, non-combatant.
+- [ ] Draw the explicit boundary with #1275: #1280 owns world placement and
+  the interaction descriptor; #1275 owns stock, quote, buy, and item
   transfer.
-- [ ] Confirm the package split: toolkit-level `npc` for reusable NPC
-  data, deferred `npc/npcs` only if a built-in/common profile registry becomes
-  necessary, `rulebooks/dnd5e/vendors` or the nearest existing D&D content
-  package for actual vendor types, `rulebooks/dnd5e/encounter` for placed D&D
-  runtime behavior, and
-  `rulebooks/dnd5e/session` for the host seam.
-- [ ] Record any design amendment needed before implementation.
-- [ ] **Recorded (2026-09-01, see `design.md` amendment):** disposition is
-  modeled as `world/graph` `Relation` edges (`HostileTo`/`AlliedWith`, proven
-  in `examples/world/scenarios/banditcamp/camp.go`), folded per-question the
-  same way `rulebooks/dnd5e/encounter/conceal.go`'s `encounterWorld` already
-  folds concealment — not a widened `NPCDispositionPolicy` enum.
-- [ ] **Correction (2026-09-01):** `KindWorld` needs no change to
-  `sidesInContactOrder`/`classify` to be neutral — that switch has no
-  `default` case, so a `KindWorld` member already falls into neither the
-  `players` nor `monsters` slice and never enters `engaged`. Confirm this
-  with a test in Task 4; do not write a `case KindWorld:` that "excludes" it,
-  since it is already excluded by construction.
-- [ ] The graph-relation mechanism in the amendment above is **not required
-  to ship this idea's MVP.** It only matters once something wants a
-  `KindWorld` NPC that isn't neutral, or a `KindMonster`/`KindPlayer` that
-  isn't unconditionally opposing — both of which are this doc's own listed
-  non-goals (hostile NPCs, attackable neutral NPCs, faction behavior).
-  Building the graph now, before that consumer exists, is scope beyond what
-  Task 3/4 need. Keep the amendment as forward-context for whichever later
-  idea adds graded disposition; do not gate this plan's Task 3 on it.
+- [x] Disposition: unchanged from the 2026-09-01 correction — not required
+  to ship this MVP, graph-relation mechanism is forward context only, not
+  built here.
 
 Gate: a short note in the implementation PR explaining the chosen placement
-shape, package ownership, sight-subject path, and observation-policy
-default.
+shape and package ownership — met by this task's own corrections above.
 
 ## Task 2 - Toolkit NPC Package
 
@@ -106,169 +101,165 @@ Tests:
 
 ## Task 3 - Encounter Model and Validation
 
-- [ ] Add `KindWorld` for placed world members, with NPC content identified by
-  `npc` refs such as `dnd5e:npcs:merchant`.
-- [ ] Consume or mirror the `npc` definition/data needed to place a world
-  NPC instance.
-- [ ] Add interaction capability and combat-policy vocabulary at the encounter
-  boundary as needed.
-- [ ] Add `NPCDispositionPolicy` as an authoring-default field only
-  (`neutral` is the only shipped value, per Task 2). It does not drive
-  runtime behavior in this MVP — `KindWorld`'s exclusion from combat is
-  structural (see Task 1's correction), not disposition-driven. Do not build
-  the `world/graph` relation mechanism from the amendment as part of this
-  task; it has no consumer yet.
-- [ ] Extend member construction/input validation for world NPC facts.
-- [ ] Forbid world NPC deciders, actions, targeting, and non-non-combatant
-  policy in the MVP.
-- [ ] Require subject-only NPCs to omit sight reach, or document and test why
-  the implementation keeps an inert value.
-- [ ] Allow observer-capable NPCs to carry sight reach and receive their own
-  intel refreshes.
-- [ ] Ensure setup placement accepts valid world NPCs and rejects invalid cells,
-  duplicate IDs, movement-blocking overlaps, and malformed NPC policy.
+**Corrected (2026-09-02):** `encounter` carries no NPC content of any kind.
+This task is now small — see `design.md`'s Encounter Model section.
+
+- [ ] Add `KindWorld MemberKind = "world"` (`field.go`) — no other new type.
+- [ ] Add the one new validation rule, mirroring the existing player-decider
+  check exactly: `KindWorld` + `Decider != nil` → reject with the same
+  sentinel the player check uses.
+- [ ] Do NOT add `Ref`, `Capabilities`, `CombatPolicy`, `ObservationPolicy`,
+  `MovementPolicy`, or `DispositionPolicy` to `MemberInput`, `JoinInput`,
+  `Member`, `memberRecord`, or `MemberData`. Do NOT add an `npc` dependency
+  to `rulebooks/dnd5e/encounter/go.mod`.
+- [ ] Do NOT enforce zero `SpeedFeet`/empty `Actions`/empty `Targeting` for
+  `KindWorld` — this package doesn't validate kind-appropriate field
+  combinations beyond the one Decider rule above for any other kind either;
+  trust the caller, matching house style.
+- [ ] Do NOT touch `memberEntity.BlocksMovement()` — it stays `false`
+  unconditionally, for every kind, exactly as before this feature.
 
 Tests:
 
-- [ ] setup accepts one player plus one world NPC on valid floor;
-- [ ] player sight of a world NPC produces location testimony about that NPC;
-- [ ] a player with no authored/loaded intel and no sightline does not learn
-  the NPC's location;
-- [ ] an authored/loaded vendor-profile NPC can be known to the party at
-  encounter start;
-- [ ] v0.38.0-base implementation uses tagged `LocationKnowledge` for NPC
-  sightings;
-- [ ] setup rejects a world NPC outside the authored floor;
-- [ ] setup rejects a world NPC on blocking terrain/prop;
-- [ ] setup rejects a world NPC overlapping another blocking entity;
-- [ ] setup rejects a world NPC with a decider or actions;
-- [ ] setup rejects malformed observation policy;
-- [ ] setup rejects malformed disposition policy;
-- [ ] setup does not form a fight when player and world NPC see each other.
+- [ ] setup accepts one player plus one `KindWorld` member on valid floor,
+  with the same bare fields (`ID`, `Name`, `Position`) any member needs;
+- [ ] `Join` (mid-scene) also accepts a `KindWorld` member — it is the only
+  mid-scene placement path this package has, shared with monsters (no
+  separate `AddMonster` verb exists);
+- [ ] setup and Join both reject a `KindWorld` member carrying a `Decider`;
+- [ ] a player or monster is untouched by the new check (no regression on
+  the existing player-decider rejection).
 
 ## Task 4 - Combat Exclusion in Encounter
 
 - [ ] Confirm (do not implement) that `sidesInContactOrder`'s switch already
   excludes `KindWorld` from both sides — no `default` case exists, so this is
   free. Add the regression test; do not add a graph/relation lookup here for
-  this MVP (see Task 1/3's correction).
-- [ ] Ensure `Pump` skips world NPCs.
-- [ ] Ensure fight formation and straggler joining exclude world NPCs.
-- [ ] Ensure `ClockOf` and turn reads never put world NPCs on a turn clock.
-- [ ] Ensure NPC sight deltas, including first contact, are not treated as
-  player-monster combat contact.
-- [ ] Add tests that would fail if a world NPC entered initiative or received a
-  driven turn.
+  this MVP.
+- [ ] Confirm (do not implement) `Pump` already skips `KindWorld` — its
+  monster loop is filtered to `KindMonster` explicitly.
+- [ ] Confirm fight formation and straggler joining exclude `KindWorld` —
+  both are fed exclusively from `sidesInContactOrder`, so this follows from
+  the first bullet.
+- [ ] Add a defense-in-depth guard on `Transfer`: reject moving a `KindWorld`
+  member onto `ClockTurn` directly, since `Transfer` is a public verb with no
+  other kind check today (unreachable via `classify()`'s own callers, but
+  worth guarding since nothing else does).
+- [ ] Confirm `ClockOf` for a `KindWorld` member reports the world clock —
+  automatic, from `e.clock.Join(...)` running unconditionally for every kind
+  (see Task 1). Not something to build.
 
 Tests:
 
-- [ ] first light with player + monster + world NPC forms only the
-  player/monster fight;
-- [ ] world NPC never appears in bubble order;
-- [ ] `Pump` does not consult any world NPC behavior hook;
-- [ ] observer-capable NPC first-contacting a player does not form a fight;
-- [ ] subject-only NPC does not receive an intel delta;
-- [ ] observer-capable NPC may receive an intel delta, but no MVP behavior
-  consumes it;
-- [ ] vendor-profile NPC is ignored as a target by both player and monster
-  combat logic;
-- [ ] neutral/non-hostile disposition does not make the NPC an ally or enemy for
-  either side;
-- [ ] a monster and player separated only by a world NPC still obey normal line
-  of sight and combat rules according to the final blocking rule;
-- [ ] an encounter with a `KindWorld` NPC produces byte-identical trigger
-  behavior, for every other member, to one with no `KindWorld` NPC at all.
+- [ ] first light with player + monster + `KindWorld` member forms only the
+  player/monster fight (proven via `Join`/`Step`'s public `Formed` output,
+  not by calling `sidesInContactOrder` directly);
+- [ ] a monster's `Pump`-driven walk into contact with a `KindWorld` member
+  forms no fight;
+- [ ] `ClockOf` reports the world clock for a `KindWorld` member both before
+  and after a real fight forms between a player and a monster elsewhere on
+  the map;
+- [ ] `Transfer` to `ClockTurn` refuses a `KindWorld` member by name;
+- [ ] an encounter with a `KindWorld` member produces identical trigger
+  behavior, for every other member, to one with no `KindWorld` member at all.
 
-## Task 5 - Interaction Descriptor and Verb
+## Task 5 - Interaction Verb (encounter) + Descriptor (session)
 
-- [ ] Add encounter-owned `InteractionDescriptor`.
-- [ ] Ensure the descriptor carries enough stable identity/capability data for
-  #1275 to route vendor inventory without reading encounter internals.
-- [ ] Add `Interact` or split `Interaction` read plus `Interact` write if the
-  existing event/save shape calls for it.
+**Corrected (2026-09-02):** the descriptor is a `session`-owned type, built
+from `session`'s own NPC store. `encounter` only confirms identity/adjacency/
+visibility — see `design.md`'s Read Shape / Interaction Verb sections.
+
+- [ ] Add `encounter.Interact` (`InteractInput{Actor, Target, Range}` →
+  `InteractOutput{Target, Seq}`) — no descriptor, no capabilities, no policy.
 - [ ] Default range to one cell unless a caller supplies a positive range.
 - [ ] Require actor to be a player member for MVP.
-- [ ] Require target to be a `KindWorld` NPC member.
+- [ ] Require target to be a `KindWorld` member.
 - [ ] Require adjacency plus current visibility; do not require an unobstructed
   path or movement-reachable cell beyond the visibility check.
-- [ ] Append a story beat if `Interact` is a mutating verb.
-- [ ] Return descriptor with target ID, display name, and copied capabilities.
+- [ ] Append a story beat confirming the interaction; no NPC-state mutation.
+- [ ] Add `session.WorldNPCDescriptor{TargetID, Ref, DisplayName, Capabilities,
+  CombatPolicy}` and a `session.Interact` verb: call `encounter.Interact`,
+  look up `InteractOutput.Target` in session's NPC store (Task 7), build the
+  descriptor, save if a beat was written, publish, return.
 
-Tests:
+Tests (encounter-level, black-box):
 
-- [ ] adjacent player can interact and receives ID/name/capabilities;
+- [ ] adjacent player can `Interact` and gets back the confirmed target ID;
 - [ ] adjacent but not visible target is refused;
 - [ ] visible but non-adjacent target is refused;
-- [ ] adjacent across a counter/half-wall-style setup works when sight is not
-  blocked;
 - [ ] distant player is refused;
 - [ ] non-player actor is refused;
 - [ ] monster target is refused;
-- [ ] descriptor capability slice is copy-out;
 - [ ] interaction with a closed encounter returns `ErrClosed`.
+
+Tests (session-level, added alongside Task 7):
+
+- [ ] `session.Interact` returns a `WorldNPCDescriptor` with ref/name/
+  capabilities/policy sourced from session's store, for a target `encounter`
+  confirmed reachable;
+- [ ] descriptor capability slice is copy-out.
 
 ## Task 6 - Persistence
 
-- [ ] Extend `MemberData` or add a nested world-NPC data block with explicit
-  `ref`, `movement_policy`, `combat_policy`, `observation_policy`,
-  `disposition_policy`, and capabilities.
-- [ ] Keep old player/monster blobs loadable.
-- [ ] Require explicit NPC fields when `kind == "world"`.
-- [ ] Reject unknown combat policies and malformed persisted NPCs with
-  `ErrInvalidData`.
-- [ ] Reject unknown observation policies with `ErrInvalidData`.
-- [ ] Reject unknown disposition policies with `ErrInvalidData`.
-- [ ] Preserve persisted intel about world NPC subjects.
-- [ ] Preserve instance state separately from reusable `npc` profile refs.
-- [ ] Ensure `ToData` output is deterministic.
+**Corrected (2026-09-02):** `EncounterData`/`MemberData` needs nothing new
+beyond the `"world"` kind value itself. All NPC-content persistence moves to
+Task 7 (session-owned store).
+
+- [ ] Confirm a `KindWorld` blob round-trips through `ToData`/`LoadEncounter`
+  using only the fields every member already persists (no new required
+  fields, no new `ErrInvalidData` cases beyond the existing decider check
+  applied at load).
+- [ ] Confirm old player/monster blobs — with no `"world"` kind present at
+  all — keep loading unchanged.
 
 Tests:
 
-- [ ] open encounter with world NPC round-trips byte-identically;
-- [ ] loaded world NPC can still be interacted with;
-- [ ] loaded player intel can still name a world NPC's known or unknown
-  location;
-- [ ] loaded world NPC still blocks movement;
-- [ ] missing `movement_policy` on a world NPC blob rejects by name;
-- [ ] missing or unknown `combat_policy` rejects by name;
-- [ ] missing or unknown `observation_policy` rejects by name;
-- [ ] missing or unknown `disposition_policy` rejects by name;
-- [ ] profile reload does not overwrite per-instance world state;
-- [ ] mutating the returned data/capability slices does not mutate the
-  encounter.
+- [ ] an encounter containing a `KindWorld` member round-trips through
+  `ToData`/`LoadEncounter`;
+- [ ] a loaded `KindWorld` member can still be `Interact`-ed with;
+- [ ] a pre-existing player/monster-only blob loads exactly as it did before
+  this feature.
 
 ## Task 7 - Session Seam
 
-- [ ] Add session-owned world NPC input/output types.
-- [ ] Add a session interaction verb that loads, delegates, saves if needed,
-  publishes, and returns a host-shaped descriptor.
-- [ ] Add the minimum host-shaped input needed to seed a vendor-profile NPC's
-  known starting location, if that authored/loaded intel enters through
-  `session`.
-- [ ] Update start/world authoring input if world NPCs can be authored at
-  session start in this issue.
+**Corrected (2026-09-02):** this is where an NPC's actual content lives — see
+`design.md`'s Session Seam section.
+
+- [ ] Add a new `SessionData` field (name distinct from `NPCs`, which already
+  means monster sheets) storing placed `npc.Data`, keyed by member ID.
+- [ ] Add a placement verb mirroring `Spawn`'s exact shape: resolve
+  `npc.Ref` → `npc.NPC`, record it in the new store, call `place()` →
+  `encounter.Join` with `KindWorld` and bare facts (same
+  sheet-recorded-before-placement ordering `Spawn` already documents and for
+  the same reason — a sight refresh mid-verb reads back what was just
+  written).
+- [ ] Add `session.Interact` per Task 5.
 - [ ] Leave vendor stock, quotes, purchases, and character-inventory mutation to
-  #1275; only carry the vendor capability and world-NPC identity here.
-- [ ] Do not reuse `SpawnOutput.NPC` or `SessionData.NPCs` for world NPCs.
+  #1275; only carry `npc.NPC` identity/capabilities/policy here.
+- [ ] Do not reuse `SpawnOutput.NPC` or `SessionData.NPCs` for world NPCs (N1).
 
 Tests:
 
-- [ ] session can start or load an encounter containing a world NPC;
-- [ ] session interaction returns descriptor and save/delivery reports;
-- [ ] session attack candidate projection excludes world NPCs;
-- [ ] session `Attack` rejects a world NPC target before resolution;
-- [ ] existing spawned monster behavior still stores monster sheets in
+- [ ] session can place a `KindWorld` NPC and later start/load an encounter
+  containing it;
+- [ ] session interaction returns a descriptor and save/delivery reports;
+- [ ] session attack-candidate projection excludes `KindWorld` members
+  (fixing `buildTargetPreflight` in `offers.go`, which today has no kind gate
+  at all — visibility/range only);
+- [ ] session `Attack` rejects a `KindWorld` target before resolution;
+- [ ] existing spawned-monster behavior is unchanged — sheets still land in
   `SessionData.NPCs`.
 
 ## Task 8 - Acceptance Scene and Verification
 
 - [ ] Add one narrative test with a player, a monster, and a vendor-profile
-  world NPC on the same map: the vendor's location is known at start, the player
-  stands adjacent and visible, interacts with the vendor and sees the vendor
-  capability, the player walks into monster contact, the fight forms without the
-  vendor, the monster turn driver ignores the vendor, monster targeting ignores
-  the vendor, and the vendor remains queryable afterward. No stock, quote,
-  purchase, or inventory mutation appears in this test.
+  world NPC on the same map: the player stands adjacent and visible, interacts
+  with the vendor through `session.Interact` and sees the vendor capability
+  (from session's store), the player walks into monster contact, the fight
+  forms without the vendor, the monster turn driver ignores the vendor,
+  monster targeting ignores the vendor, and the vendor remains queryable
+  afterward. No stock, quote, purchase, or inventory mutation appears in
+  this test.
 - [ ] Add or update an Example if the final API has a clean public interaction
   story worth pinning.
 - [ ] Update package docs/README text only where current behavior changes.
