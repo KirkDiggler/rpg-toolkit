@@ -91,6 +91,11 @@ func TestNPCsNamespace(t *testing.T) {
 	assert.Equal(t, core.Module("dnd5e"), ref.Module)
 	assert.Equal(t, core.Type("npcs"), ref.Type)
 	assert.Equal(t, core.ID("vendor"), ref.ID)
+
+	merchant := refs.NPCs.Merchant()
+	assert.Equal(t, core.Module("dnd5e"), merchant.Module)
+	assert.Equal(t, core.Type("npcs"), merchant.Type)
+	assert.Equal(t, core.ID("merchant"), merchant.ID)
 }
 
 func TestAbilitiesNamespace(t *testing.T) {
