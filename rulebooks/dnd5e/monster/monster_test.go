@@ -1,16 +1,27 @@
 package monster
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 type MonsterTestSuite struct {
+	suite.Suite
+}
+
+// HealingAppliedTestSuite isolates the applied-fact contract so focused test
+// commands select these tests directly.
+type HealingAppliedTestSuite struct {
 	suite.Suite
 }
 
@@ -137,4 +148,133 @@ func (s *MonsterTestSuite) TestIsAlive() {
 
 	monster.TakeDamage(5)
 	s.False(monster.IsAlive(), "monster should be dead at 0 HP")
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	monster := New(Config{ID: "healed-monster", Name: "Healed", HP: 10, AC: 10})
+	monster.TakeDamage(2)
+	s.Require().NoError(monster.SheetKeeper().Apply(ctx, bus))
+
+	source := *refs.Features.SecondWind()
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(
+		ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID:   monster.GetID(),
+		Amount:     7,
+		Roll:       6,
+		Modifier:   1,
+		SourceRef:  &source,
+		SourceName: "Second Wind",
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(monster.GetID(), got.TargetID)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Equal(2, got.Applied)
+	s.Require().Equal(8, got.HPBefore)
+	s.Require().Equal(10, got.HPAfter)
+	s.Require().Equal(6, got.Roll)
+	s.Require().Equal(1, got.Modifier)
+	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()))
+	s.Require().Equal("Second Wind", got.SourceName)
+	s.Require().NotSame(&source, got.SourceRef, "the applied fact owns its source identity")
+
+	source.ID = "mutated_by_caller"
+	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()),
+		"mutating the request after publication cannot rewrite the applied fact")
+	s.Require().True(monster.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied() {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	monster := New(Config{ID: "full-monster", Name: "Full", HP: 10, AC: 10})
+	s.Require().NoError(monster.SheetKeeper().Apply(ctx, bus))
+
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(
+		ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: monster.GetID(),
+		Amount:   7,
+		Roll:     6,
+		Modifier: 1,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Zero(got.Applied)
+	s.Require().Equal(10, got.HPBefore)
+	s.Require().Equal(10, got.HPAfter)
+	s.Require().Equal(6, got.Roll)
+	s.Require().Equal(1, got.Modifier)
+	s.Require().True(monster.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedForSomeoneElseIsIgnored() {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	monster := New(Config{ID: "bystander", Name: "Bystander", HP: 10, AC: 10})
+	s.Require().NoError(monster.SheetKeeper().Apply(ctx, bus))
+
+	published := 0
+	_, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(
+		ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+			published++
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: "someone-else",
+		Amount:   7,
+	})
+
+	s.Require().NoError(err)
+	s.Require().Zero(published)
+	s.Require().Equal(10, monster.HP())
+	s.Require().False(monster.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedSubscriberErrorPropagatesAfterMutation() {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	monster := New(Config{ID: "healed-monster", Name: "Healed", HP: 10, AC: 10})
+	monster.TakeDamage(2)
+	s.Require().NoError(monster.SheetKeeper().Apply(ctx, bus))
+
+	sentinel := errors.New("healing applied subscriber failed")
+	_, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(
+		ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+			return sentinel
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: monster.GetID(),
+		Amount:   7,
+	})
+
+	s.Require().ErrorIs(err, sentinel)
+	s.Require().Equal(10, monster.HP(), "the mutation precedes applied-fact publication")
+	s.Require().True(monster.IsDirty())
+}
+
+func TestHealingAppliedSuite(t *testing.T) {
+	suite.Run(t, new(HealingAppliedTestSuite))
 }

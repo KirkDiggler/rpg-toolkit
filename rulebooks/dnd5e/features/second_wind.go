@@ -131,11 +131,13 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 	if input.Bus != nil {
 		topic := dnd5eEvents.HealingReceivedTopic.On(input.Bus)
 		err := topic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-			TargetID: owner.GetID(),
-			Amount:   totalHealing,
-			Roll:     roll,
-			Modifier: modifier,
-			Source:   refs.Features.SecondWind().ID,
+			TargetID:   owner.GetID(),
+			Amount:     totalHealing,
+			Roll:       roll,
+			Modifier:   modifier,
+			Source:     refs.Features.SecondWind().ID,
+			SourceRef:  refs.Features.SecondWind(),
+			SourceName: "Second Wind",
 		})
 		if err != nil {
 			return rpgerr.Wrapf(err, "failed to publish healing event")

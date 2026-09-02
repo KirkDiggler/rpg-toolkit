@@ -431,18 +431,42 @@ func (m *Monster) onDamageReceived(_ context.Context, event dnd5eEvents.DamageRe
 	return nil
 }
 
-// onHealingReceived handles healing events
-func (m *Monster) onHealingReceived(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+// onHealingReceived handles healing events and publishes the actual post-clamp
+// result after updating the monster's sheet.
+func (m *Monster) onHealingReceived(
+	ctx context.Context, event dnd5eEvents.HealingReceivedEvent,
+) error {
 	if event.TargetID != m.id {
 		return nil
 	}
+
+	hpBefore := m.hp
 	m.hp += event.Amount
 	if m.hp > m.maxHP {
 		m.hp = m.maxHP
 	}
+
+	// The mutation and dirty mark precede publication so a failing observer
+	// cannot erase the landed heal.
 	m.dirty = true
 
-	return nil
+	var sourceRef *core.Ref
+	if event.SourceRef != nil {
+		clone := *event.SourceRef
+		sourceRef = &clone
+	}
+
+	return dnd5eEvents.HealingAppliedTopic.On(m.bus).Publish(ctx, dnd5eEvents.HealingAppliedEvent{
+		TargetID:   m.id,
+		Requested:  event.Amount,
+		Applied:    m.hp - hpBefore,
+		HPBefore:   hpBefore,
+		HPAfter:    m.hp,
+		Roll:       event.Roll,
+		Modifier:   event.Modifier,
+		SourceRef:  sourceRef,
+		SourceName: event.SourceName,
+	})
 }
 
 // onConditionApplied applies a live condition delivered to this monster and
