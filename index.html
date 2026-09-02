@@ -74,6 +74,13 @@
   }
   h1{max-width:850px;margin:.28em 0 .22em;font-size:clamp(3.5rem,8vw,6.5rem);letter-spacing:-.035em}
   .dek{max-width:740px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+  .origin-link{
+    display:flex;align-items:baseline;gap:1rem;max-width:780px;margin-top:1.7rem;padding:.75rem 0;
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);color:inherit;text-decoration:none;
+  }
+  .origin-link span{color:var(--accent);font:600 .73rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.11em;text-transform:uppercase}
+  .origin-link strong{color:var(--primary);font:600 1.08rem/1.2 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+  .origin-link:hover strong{color:var(--accent)}
   .opening-proof{
     display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:780px;margin-top:36px;
     border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
@@ -169,6 +176,7 @@
     }
     .page{padding:14px 14px 70px}
     header{padding:58px 14px 56px 42px}
+    .origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}
     .opening-proof{grid-template-columns:1fr}
     .opening-proof div{padding:11px 0}
     .opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}
@@ -201,6 +209,7 @@
     <div class="eyebrow">Layer 1 · Before the event bus</div>
     <h1>When Configuration Becomes a Programming Language</h1>
     <p class="dek">I love configuration-driven systems. I thought an open D&amp;D database could drive character creation all the way through. The Monk taught me where configuration ends, interpretation begins, and writing the rule can be simpler than building a language for describing it.</p>
+    <a class="origin-link" href="https://kirkdiggler.github.io/rpg-project/"><span>Why this exists</span><strong>Where Everything Meets &rarr;</strong></a>
     <div class="opening-proof" aria-label="Story coordinates">
       <div><b>Start</b><span>borrow the D&amp;D data</span></div>
       <div><b>Turn</b><span>code what Fighter means</span></div>
