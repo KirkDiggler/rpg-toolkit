@@ -577,6 +577,14 @@ const (
 	// EventMissed reports that an attack did not land. See EventStruck.
 	EventMissed EventKind = "missed"
 
+	// EventActivated reports the authored ability a member successfully used.
+	// It precedes every EventActivationResult produced by that activation.
+	EventActivated EventKind = "activated"
+
+	// EventActivationResult reports one ordered rulebook effect produced by a
+	// successful activation. Its body carries exactly one result pointer.
+	EventActivationResult EventKind = "activation_result"
+
 	// EventDowned reports that a member is DOWNED: at zero hit points, out of
 	// the fight. The opposite state is UP.
 	//
@@ -704,8 +712,9 @@ type Event struct {
 
 // EventBody is the beat, typed — a sealed interface with one struct per
 // kind Event.Body carries: TurnEndedBody, DownedBody, StruckBody,
-// MissedBody, FightStartedBody, FightEndedBody, MovedBody, JoinedBody,
-// ExitedBody, EndedBody, DoorBody. Sealed the way
+// MissedBody, ActivatedBody, ActivationResultBody, FightStartedBody,
+// FightEndedBody, MovedBody, JoinedBody, ExitedBody, EndedBody, DoorBody.
+// Sealed the way
 // DissolveCause is (dissolve.go) and for the same reason: a caller matches
 // on it with a type switch, and a second implementation declared outside
 // this package would be indistinguishable from these to anyone reading the
@@ -802,6 +811,67 @@ type MissedBody struct {
 }
 
 func (MissedBody) isEventBody() {}
+
+// ActivatedBody is EventActivated's typed body. Ability is copied from the
+// selected server-authored declaration; Session does not derive its name from
+// its ref. Target is empty for abilities that select nobody.
+type ActivatedBody struct {
+	Actor   string     `json:"actor"`
+	Ability AbilityRef `json:"ability"`
+	Target  string     `json:"target,omitempty"`
+}
+
+func (ActivatedBody) isEventBody() {}
+
+// ActivationResultBody is EventActivationResult's typed body. Exactly one of
+// its result pointers is non-nil on a valid body, and effects remain in the
+// order resolution published them.
+type ActivationResultBody struct {
+	Actor            string                `json:"actor"`
+	HealingApplied   *HealingAppliedBody   `json:"healing_applied,omitempty"`
+	ConditionApplied *ConditionAppliedBody `json:"condition_applied,omitempty"`
+	ConditionRemoved *ConditionRemovedBody `json:"condition_removed,omitempty"`
+	CapacityGranted  *CapacityGrantedBody  `json:"capacity_granted,omitempty"`
+}
+
+func (ActivationResultBody) isEventBody() {}
+
+// HealingAppliedBody carries authoritative post-clamp healing facts from the
+// rulebook, including the requested amount and the source that authored it.
+type HealingAppliedBody struct {
+	Target     string `json:"target"`
+	Amount     int    `json:"amount"`
+	Requested  int    `json:"requested"`
+	Roll       int    `json:"roll"`
+	Modifier   int    `json:"modifier"`
+	SourceRef  string `json:"source_ref"`
+	SourceName string `json:"source_name"`
+	HPBefore   int    `json:"hp_before"`
+	HPAfter    int    `json:"hp_after"`
+}
+
+// ConditionAppliedBody identifies a condition attached to a target.
+type ConditionAppliedBody struct {
+	Target string `json:"target"`
+	Ref    string `json:"ref"`
+	Name   string `json:"name"`
+}
+
+// ConditionRemovedBody identifies a condition removed from a target and the
+// provider-authored reason it ended.
+type ConditionRemovedBody struct {
+	Target string `json:"target"`
+	Ref    string `json:"ref"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// CapacityGrantedBody carries the member and provider-authored description of
+// capacity an activation banked.
+type CapacityGrantedBody struct {
+	Member      string `json:"member"`
+	Description string `json:"description"`
+}
 
 // FightStartedBody is EventFightStarted's typed body: two sides came into
 // contact and a fight began. Delivered to every member of the encounter, in

@@ -369,10 +369,10 @@ func (s *ConcealSuite) TestSearchRevealsToTheSearcherAlone() {
 	s.Require().NoError(err)
 	s.Len(blind.Cells, 36)
 	s.Empty(blind.Doorways, "bob's map shows no doorway")
-	s.Equal(len(found.Boundaries), len(blind.Boundaries),
-		"the veil borders hidden space, so bob needs no mask — the withheld room already "+
-			"reads as solid mass, exactly like the map edge beside it (the masquerade wall "+
-			"applies only between two visible spaces, pinned in the composition's own suite)")
+	s.Len(blind.Boundaries, len(found.Boundaries)+1,
+		"encounter v0.45.1's boundary rule masks the unfound veil even where it borders "+
+			"hidden space: floor that ends without a wall but still refuses movement is itself "+
+			"a tell; alice's found doorway replaces exactly that one masquerade wall")
 }
 
 // TestAFailedSearchAndNothingToFindAreIdentical carries failed-equals-empty

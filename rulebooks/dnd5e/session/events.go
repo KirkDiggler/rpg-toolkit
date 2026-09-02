@@ -249,6 +249,10 @@ func kindFor(beat string) EventKind {
 		return EventStruck
 	case "missed":
 		return EventMissed
+	case "activated":
+		return EventActivated
+	case "activation-result":
+		return EventActivationResult
 	// The third outcome beat, and the one nobody pushed. "down" is an
 	// OutcomeKind like the two above, but no caller can hand it to Record —
 	// the composition refuses that deliberately (rpg-toolkit#1077) and writes
@@ -356,6 +360,28 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return structBody(payload, true)
 	case EventMissed:
 		return structBody(payload, false)
+	case EventActivated:
+		var p struct {
+			Actor   string `json:"actor"`
+			Ability struct {
+				Ref  string `json:"ref"`
+				Name string `json:"name"`
+			} `json:"ability"`
+			Target string `json:"target"`
+		}
+		if json.Unmarshal(payload, &p) != nil ||
+			p.Actor == "" || p.Ability.Ref == "" || p.Ability.Name == "" {
+			return nil
+		}
+		return ActivatedBody{
+			Actor: p.Actor,
+			Ability: AbilityRef{
+				Ref: p.Ability.Ref, Name: p.Ability.Name,
+			},
+			Target: p.Target,
+		}
+	case EventActivationResult:
+		return activationResultBody(payload)
 	case EventDowned:
 		var p struct {
 			Member string `json:"member"`
@@ -404,6 +430,87 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		// EventBody's own doc.
 		return nil
 	}
+}
+
+// activationResultBody decodes one result payload and rejects fields belonging
+// to a second result shape. Pointer fields retain JSON presence, so required
+// numeric zeroes remain distinguishable from omitted facts.
+func activationResultBody(payload []byte) EventBody {
+	var p struct {
+		Actor  string          `json:"actor"`
+		Result json.RawMessage `json:"result"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.Actor == "" || len(p.Result) == 0 {
+		return nil
+	}
+
+	var result struct {
+		Kind   encounter.ActivationResultKind `json:"kind"`
+		Target string                         `json:"target"`
+
+		Ref  *string `json:"ref"`
+		Name *string `json:"name"`
+
+		Amount    *int `json:"amount"`
+		Requested *int `json:"requested"`
+		Roll      *int `json:"roll"`
+		Modifier  *int `json:"modifier"`
+		Before    *int `json:"before"`
+		After     *int `json:"after"`
+
+		Description *string `json:"description"`
+		Reason      *string `json:"reason"`
+	}
+	if json.Unmarshal(p.Result, &result) != nil || result.Target == "" {
+		return nil
+	}
+
+	numericPresent := result.Amount != nil || result.Requested != nil ||
+		result.Roll != nil || result.Modifier != nil || result.Before != nil || result.After != nil
+	allNumericPresent := result.Amount != nil && result.Requested != nil &&
+		result.Roll != nil && result.Modifier != nil && result.Before != nil && result.After != nil
+	identityPresent := result.Ref != nil && *result.Ref != "" && result.Name != nil && *result.Name != ""
+
+	body := ActivationResultBody{Actor: p.Actor}
+	switch result.Kind {
+	case encounter.ResultHealingApplied:
+		if !identityPresent || !allNumericPresent || result.Description != nil || result.Reason != nil {
+			return nil
+		}
+		body.HealingApplied = &HealingAppliedBody{
+			Target: result.Target, Amount: *result.Amount, Requested: *result.Requested,
+			Roll: *result.Roll, Modifier: *result.Modifier,
+			SourceRef: *result.Ref, SourceName: *result.Name,
+			HPBefore: *result.Before, HPAfter: *result.After,
+		}
+	case encounter.ResultConditionApplied:
+		if !identityPresent || numericPresent || result.Description != nil || result.Reason != nil {
+			return nil
+		}
+		body.ConditionApplied = &ConditionAppliedBody{
+			Target: result.Target, Ref: *result.Ref, Name: *result.Name,
+		}
+	case encounter.ResultConditionRemoved:
+		if !identityPresent || numericPresent || result.Description != nil ||
+			result.Reason == nil || *result.Reason == "" {
+			return nil
+		}
+		body.ConditionRemoved = &ConditionRemovedBody{
+			Target: result.Target, Ref: *result.Ref, Name: *result.Name, Reason: *result.Reason,
+		}
+	case encounter.ResultCapacityGranted:
+		if result.Ref != nil || result.Name != nil || numericPresent || result.Reason != nil ||
+			result.Description == nil || *result.Description == "" {
+			return nil
+		}
+		body.CapacityGranted = &CapacityGrantedBody{
+			Member: result.Target, Description: *result.Description,
+		}
+	default:
+		return nil
+	}
+
+	return body
 }
 
 // beatAttack is the wire shape Record's payload writes an attack identity

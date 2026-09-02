@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // testKindOf is decodeBeat's own Kind half, isolated for the tests below
@@ -204,6 +205,160 @@ func TestStruckBodyDecodesReplayDetail(t *testing.T) {
 // beats already carry "member" (encounter.go's Join and Exit), so this is
 // the same decode-from-payload shape every other typed body uses — no new
 // field on the wire, only a typed name for what was already there.
+// TestActivationResultsMapEveryProviderFieldInOrder guards the persistence
+// adapter rather than one currently-produced ability at a time. Resolution's
+// effect values are authoritative; Session copies every field and preserves
+// publication order without parsing refs or redoing arithmetic.
+func TestActivationResultsMapEveryProviderFieldInOrder(t *testing.T) {
+	effects := []resolution.ActivationEffect{
+		{
+			Kind: resolution.EffectHealingApplied, TargetID: "alice",
+			Ref: "dnd5e:features:second_wind", Name: "Second Wind",
+			Amount: 2, Requested: 11, Roll: 8, Modifier: 3, Before: 28, After: 30,
+			Description: "provider-carried", Reason: "provider-carried",
+		},
+		{
+			Kind: resolution.EffectConditionApplied, TargetID: "bob",
+			Ref: "dnd5e:conditions:raging", Name: "Raging",
+		},
+		{
+			Kind: resolution.EffectConditionRemoved, TargetID: "carol",
+			Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+		},
+		{
+			Kind: resolution.EffectCapacityGranted, TargetID: "dave",
+			Description: "30ft movement",
+		},
+	}
+
+	require.Equal(t, []encounter.ActivationResult{
+		{
+			Kind: encounter.ResultHealingApplied, Target: "alice",
+			Ref: "dnd5e:features:second_wind", Name: "Second Wind",
+			Amount: 2, Requested: 11, Roll: 8, Modifier: 3, Before: 28, After: 30,
+			Description: "provider-carried", Reason: "provider-carried",
+		},
+		{
+			Kind: encounter.ResultConditionApplied, Target: "bob",
+			Ref: "dnd5e:conditions:raging", Name: "Raging",
+		},
+		{
+			Kind: encounter.ResultConditionRemoved, Target: "carol",
+			Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+		},
+		{
+			Kind: encounter.ResultCapacityGranted, Target: "dave",
+			Description: "30ft movement",
+		},
+	}, activationResults(effects))
+}
+
+// TestActivationResultBodiesDecodeExactlyOneVariant exercises each closed
+// result shape, including condition-removed (which no current activation emits).
+// Every accepted payload populates exactly one pointer on the shared body.
+func TestActivationResultBodiesDecodeExactlyOneVariant(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		want ActivationResultBody
+	}{
+		{
+			name: "healing applied with meaningful zeroes",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","amount":0,"requested":10,"roll":7,"modifier":3,"before":30,"after":30,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+			want: ActivationResultBody{Actor: "alice", HealingApplied: &HealingAppliedBody{
+				Target: "alice", Amount: 0, Requested: 10, Roll: 7, Modifier: 3,
+				SourceRef: "dnd5e:features:second_wind", SourceName: "Second Wind",
+				HPBefore: 30, HPAfter: 30,
+			}},
+		},
+		{
+			name: "condition applied",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-applied","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging"}}`,
+			want: ActivationResultBody{Actor: "alice", ConditionApplied: &ConditionAppliedBody{
+				Target: "alice", Ref: "dnd5e:conditions:raging", Name: "Raging",
+			}},
+		},
+		{
+			name: "condition removed",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-removed","target":"bob","ref":"dnd5e:conditions:hidden","name":"Hidden","reason":"revealed"}}`,
+			want: ActivationResultBody{Actor: "alice", ConditionRemoved: &ConditionRemovedBody{
+				Target: "bob", Ref: "dnd5e:conditions:hidden", Name: "Hidden", Reason: "revealed",
+			}},
+		},
+		{
+			name: "capacity granted",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"}}`,
+			want: ActivationResultBody{Actor: "alice", CapacityGranted: &CapacityGrantedBody{
+				Member: "alice", Description: "30ft movement",
+			}},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+			require.Equal(t, EventActivationResult, kind)
+			require.Equal(t, tc.want, body)
+
+			got := body.(ActivationResultBody)
+			populated := 0
+			for _, present := range []bool{
+				got.HealingApplied != nil, got.ConditionApplied != nil,
+				got.ConditionRemoved != nil, got.CapacityGranted != nil,
+			} {
+				if present {
+					populated++
+				}
+			}
+			require.Equal(t, 1, populated, "one payload must produce exactly one result body")
+		})
+	}
+}
+
+// TestMalformedKnownActivationPayloadsKeepTheirKind rejects incomplete and
+// multi-shape bodies without demoting a recognized outer beat to unknown.
+func TestMalformedKnownActivationPayloadsKeepTheirKind(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		kind EventKind
+	}{
+		{
+			name: "activated missing authored ability name",
+			json: `{"beat":"activated","actor":"alice","ability":{"ref":"dnd5e:features:rage"}}`,
+			kind: EventActivated,
+		},
+		{
+			name: "result missing actor",
+			json: `{"beat":"activation-result","result":{"kind":"capacity-granted","target":"alice","description":"30ft movement"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "unknown result shape",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"teleported","target":"alice"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "condition and capacity fields form multiple result shapes",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"condition-applied","target":"alice","ref":"dnd5e:conditions:raging","name":"Raging","description":"30ft movement"}}`,
+			kind: EventActivationResult,
+		},
+		{
+			name: "healing omits a zero-valued required fact",
+			json: `{"beat":"activation-result","actor":"alice","result":{"kind":"healing-applied","target":"alice","requested":10,"roll":7,"modifier":3,"before":30,"after":30,"ref":"dnd5e:features:second_wind","name":"Second Wind"}}`,
+			kind: EventActivationResult,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body := decodeBeat([]byte(tc.json))
+			require.Equal(t, tc.kind, kind)
+			require.Nil(t, body)
+		})
+	}
+}
+
 func TestJoinedAndExitedBodiesCarryTheMember(t *testing.T) {
 	cases := []struct {
 		name string

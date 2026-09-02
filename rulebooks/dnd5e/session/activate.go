@@ -282,6 +282,23 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		return nil, fmt.Errorf("activate: %w", err)
 	}
 
+	// Record only after the adopted sheets are durable. RecordActivation's
+	// post-append noticeDown consult must see the same hit points and conditions
+	// the activation produced, matching Attack's save -> record -> commit path.
+	// If that consult fails, the mechanical sheet writes remain durable and are
+	// named by reportUnrecorded while this unsaved encounter scope is dropped.
+	if _, err := scope.enc.RecordActivation(&encounter.RecordActivationInput{
+		Actor:  encounter.MemberID(in.Member),
+		Target: encounter.MemberID(in.Target),
+		Ability: encounter.ActivationIdentity{
+			Ref:  selected.declaration.Ability.Ref,
+			Name: selected.declaration.Ability.Name,
+		},
+		Results: activationResults(activated.Effects),
+	}); err != nil {
+		return nil, fmt.Errorf("activate: %w", reportUnrecorded(scope, translate(err)))
+	}
+
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", err)
@@ -293,4 +310,35 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		Saved:           report,
 		Delivery:        delivery,
 	}, nil
+}
+
+// activationResults projects resolution's ordered activation effects onto the
+// encounter composition's primitive persistence carrier. Every field is copied
+// directly; the providers own kind validity, identity, arithmetic, and which
+// fields are meaningful for each kind.
+func activationResults(effects []resolution.ActivationEffect) []encounter.ActivationResult {
+	if len(effects) == 0 {
+		return nil
+	}
+
+	results := make([]encounter.ActivationResult, 0, len(effects))
+	for _, effect := range effects {
+		results = append(results, encounter.ActivationResult{
+			Kind:   encounter.ActivationResultKind(effect.Kind),
+			Target: encounter.MemberID(effect.TargetID),
+			Ref:    effect.Ref,
+			Name:   effect.Name,
+
+			Amount:    effect.Amount,
+			Requested: effect.Requested,
+			Roll:      effect.Roll,
+			Modifier:  effect.Modifier,
+			Before:    effect.Before,
+			After:     effect.After,
+
+			Description: effect.Description,
+			Reason:      effect.Reason,
+		})
+	}
+	return results
 }
