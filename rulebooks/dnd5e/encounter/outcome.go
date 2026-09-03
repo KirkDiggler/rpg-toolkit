@@ -160,14 +160,53 @@ type DeathSaveDetail struct {
 // DamageComponent carries one ordered, rulebook-neutral damage contribution.
 // It uses only primitives this module can persist without importing the
 // rulebook packages that own their meaning.
+//
+// Everything roll-shaped lives in [Roll]: the provider-owned [RollSource]
+// (canonical ref string and display name), the dice trace when this component
+// rolled dice, and the modifier when this component contributed one — present
+// even when its value is zero. The remaining fields are damage facts, not
+// roll facts: the category, the damage type, and the multiplier. A component
+// that exists only to carry a multiplier (resistance, vulnerability,
+// immunity) has a sourced Roll with neither dice nor a modifier — the same
+// shape the root rulebook's own trait producers emit.
+//
+// [Encounter.Record] validates Roll before appending: the source identity is
+// required, and any dice trace present is replayed for structural and
+// arithmetic consistency. The multiplier's MEANING is never interpreted here.
 type DamageComponent struct {
-	Source     string   `json:"source"`
-	SourceRef  string   `json:"source_ref,omitempty"`
-	Dice       string   `json:"dice,omitempty"`
-	FinalRolls []int    `json:"final_rolls,omitempty"`
-	FlatBonus  int      `json:"flat_bonus"`
+	// Source is the damage category — "weapon", "monster_trait" — in the
+	// rulebook's own words, carried through like DamageType below.
+	Source string `json:"source"`
+
+	// Roll records who provided this component's roll facts and what they
+	// were. Roll.Dice records the pool as rolled — original faces, ordered
+	// sourced rerolls, final faces, and the authoritative subtotal — and
+	// Roll.Modifier is present whenever this component contributed a
+	// modifier, even when that modifier's value is zero. Nil means the
+	// modifier did not participate; a present zero is a real zero.
+	Roll RollComponent `json:"roll"`
+
 	DamageType string   `json:"damage_type"`
 	Multiplier *float64 `json:"multiplier,omitempty"`
+}
+
+// validateDamageComponentRoll checks the roll facts of one persisted damage
+// component. Its source identity is always required, and it must contribute
+// something — dice, a modifier, or a multiplier — because a component that
+// contributes nothing has no story to tell. Whether the multiplier's FACTOR is
+// the right rule (resistance, vulnerability, immunity) is never interpreted
+// here; only a dice trace's structural and arithmetic consistency is.
+func validateDamageComponentRoll(component DamageComponent) error {
+	if err := validateRollSource(component.Roll.Source); err != nil {
+		return fmt.Errorf("source: %w", err)
+	}
+	if component.Roll.Dice == nil && component.Roll.Modifier == nil && component.Multiplier == nil {
+		return fmt.Errorf("must contain dice, a modifier, or a multiplier")
+	}
+	if component.Roll.Dice == nil {
+		return nil
+	}
+	return validateDiceTrace(component.Roll.Dice)
 }
 
 // AttackModifierSource identifies an entity/content source without carrying
@@ -297,7 +336,8 @@ type RecordOutput struct {
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (empty or unknown actor, unknown
 // target), ErrInvalidData (a kind or value name this composition does not
 // know, missing or mismatched DeathSave detail, an Attack whose Ref or Name is
-// empty, or a non-finite damage multiplier JSON cannot represent), and
+// empty, a damage component whose roll facts are missing or internally
+// inconsistent, or a non-finite damage multiplier JSON cannot represent), and
 // anything the [Participation] capability answers with — including
 // ErrNotMember for an answer naming a stranger.
 //
@@ -368,6 +408,9 @@ func (e *Encounter) Record(in *RecordInput) (*RecordOutput, error) {
 
 	if in.Kind == OutcomeStruck {
 		for i, component := range in.DamageComponents {
+			if err := validateDamageComponentRoll(component); err != nil {
+				return nil, fmt.Errorf("record: damage component %d roll: %v: %w", i, err, ErrInvalidData)
+			}
 			if component.Multiplier != nil &&
 				(math.IsNaN(*component.Multiplier) || math.IsInf(*component.Multiplier, 0)) {
 				return nil, fmt.Errorf("record: damage component %d multiplier: %w", i, ErrInvalidData)
