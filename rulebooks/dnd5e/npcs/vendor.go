@@ -172,6 +172,38 @@ func inventoryFromNPC(n *npc.NPC) (VendorInventory, error) {
 		return VendorInventory{}, ErrNoInventory
 	}
 
+	return resolveVendorInventory(raw)
+}
+
+// VendorInventoryFromNPCData resolves vendor display inventory directly from
+// a bare npc.Data record, for a caller (such as session) that has only that
+// record and not a live *NPC or *Vendor.
+//
+// Returns (inventory, true, nil) when data carries inventory bytes and they
+// resolve cleanly. Returns (VendorInventory{}, false, nil) when data is nil
+// or its Inventory field is empty — the normal outcome for any NPC that
+// isn't a vendor, not an error. Returns a non-nil error only when Inventory
+// is present but fails to unmarshal or resolve against the equipment
+// registry — a malformed record, distinct from "no inventory."
+func VendorInventoryFromNPCData(data *npc.Data) (VendorInventory, bool, error) {
+	if data == nil || len(data.Inventory) == 0 {
+		return VendorInventory{}, false, nil
+	}
+
+	inventory, err := resolveVendorInventory(data.Inventory)
+	if err != nil {
+		return VendorInventory{}, false, err
+	}
+
+	return inventory, true, nil
+}
+
+// resolveVendorInventory unmarshals opaque inventory bytes into
+// VendorInventoryData and resolves them into display inventory. Shared by
+// inventoryFromNPC (which treats absent bytes as an error) and
+// VendorInventoryFromNPCData (which treats absent bytes as a normal, non-error
+// outcome) so there is exactly one unmarshal-and-resolve path between them.
+func resolveVendorInventory(raw json.RawMessage) (VendorInventory, error) {
 	var data VendorInventoryData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return VendorInventory{}, fmt.Errorf("unmarshal vendor inventory: %w", err)
