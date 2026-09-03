@@ -51,6 +51,14 @@ type propagationStanding struct {
 }
 
 func (s *propagationStanding) Standing(members []MemberID) ([]MemberID, error) {
+	return s.reported(members), nil
+}
+
+func (s *propagationStanding) Assess(members []MemberID) (*ParticipationAssessment, error) {
+	return testAssessmentFromDown(members, s.reported(members)), nil
+}
+
+func (s *propagationStanding) reported(members []MemberID) []MemberID {
 	asked := make(map[MemberID]bool, len(members))
 	for _, id := range members {
 		asked[id] = true
@@ -62,7 +70,7 @@ func (s *propagationStanding) Standing(members []MemberID) ([]MemberID, error) {
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // newCorrectionPropagationEncounter builds the one real driven-arrival state

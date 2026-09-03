@@ -295,18 +295,24 @@ func (e *Encounter) bubbleHasPlayer(order []core.EntityID) bool {
 }
 
 func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
-	// RE-ENTRANCY GUARD (rpg-toolkit#1207). driveMonsterTurns is the single
-	// owner of driving a bubble forward, and this call may already be
-	// running deeper on THIS SAME Go call stack: a driven member's own
-	// Strike can down a teammate without deciding the fight, whose
-	// noticeDown -> Transfer(id, ClockWorld) -> driveIfStillRunning reaches
-	// back here while the OUTER driveOneMonsterTurn call is still mid-turn,
-	// budget not yet spent. Without this check that reentry would hand the
-	// SAME still-acting monster a second, undocumented turn under a fresh
-	// budget — exactly the defect this guard exists to make impossible
-	// rather than merely unlikely. A nested call is a no-op the caller
-	// ignores: the outer call already owns driving this bubble and will
-	// finish it once its own Strike call returns.
+	participation, err := e.participationNow()
+	if err != nil {
+		return false, 0, nil, fmt.Errorf("drive monster turns: %w", err)
+	}
+	return e.driveTurnsWithParticipation(bubble, participation)
+}
+
+// driveTurnsWithParticipation advances every consecutive automatic slot from
+// one validated assessment. AutoPass and unplayed Wait members share the same
+// ordinary boundary/beat path; a player-controlled Wait slot stops the loop.
+// The loop is iterative and bounded by the retained order, so consecutive
+// stabilized members cannot recurse or grow the stack.
+func (e *Encounter) driveTurnsWithParticipation(
+	bubble *clock.Turn, participation *participationState,
+) (wrapped bool, lastSeq uint64, deltas map[MemberID]*IntelDelta, err error) {
+	// RE-ENTRANCY GUARD (rpg-toolkit#1207). A driven member's own Strike can
+	// cause a nested participation pass. The outer call still owns this clock
+	// and will finish it; the nested scheduler is therefore a no-op.
 	if e.driving {
 		return false, 0, nil, nil
 	}
@@ -317,23 +323,11 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 	if err != nil {
 		return false, 0, nil, fmt.Errorf("drive monster turns: %w", err)
 	}
-
 	if !e.bubbleHasPlayer(order) {
 		return false, 0, nil, fmt.Errorf("drive monster turns: %w", ErrNoPlayerInBubble)
 	}
 
-	// Bounded by the order's own length: driving past every member once is
-	// the most this loop could ever legitimately need, and hasPlayer above
-	// already guarantees it terminates well before then.
 	for i := 0; i < len(order); i++ {
-		// A member driven earlier in THIS SAME loop can have ended the fight
-		// with its own killing blow — see driveOneMonsterTurn's own doc.
-		// bubble is then idle, and idle is a state bubble.Active() refuses
-		// with ErrIdle. Order() never does (an idle clock answers with an
-		// empty slice, by its own contract), so it is the check that lets
-		// this loop notice "nothing is left to drive" and stop cleanly,
-		// rather than asking a dissolved clock whose turn it still thinks it
-		// is.
 		remaining, oerr := bubble.Order()
 		if oerr != nil {
 			return wrapped, lastSeq, deltas, fmt.Errorf("drive monster turns: %w", oerr)
@@ -348,8 +342,32 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 		}
 		activeID := MemberID(active)
 		m, ok := e.members[activeID]
-		if !ok || m.Kind == KindPlayer {
+		if !ok {
 			break
+		}
+
+		memberParticipation, ok := participation.members[activeID]
+		if !ok {
+			return wrapped, lastSeq, deltas, fmt.Errorf(
+				"drive monster turns: participation omitted active member %q: %w", activeID, ErrInvalidData)
+		}
+		switch memberParticipation.Turn {
+		case TurnParticipationAutoPass:
+			seq, roundWrapped, aerr := e.autoPassTurn(bubble, activeID)
+			if aerr != nil {
+				return wrapped, lastSeq, deltas, fmt.Errorf("drive auto-pass %q: %w", activeID, aerr)
+			}
+			wrapped = wrapped || roundWrapped
+			lastSeq = seq
+			continue
+		case TurnParticipationWait:
+			if m.Kind == KindPlayer {
+				return wrapped, lastSeq, deltas, nil
+			}
+		case TurnParticipationRemove:
+			// Removal is applied by noticeParticipation before scheduling. A
+			// stale Remove here must not be interpreted as Wait or AutoPass.
+			return wrapped, lastSeq, deltas, nil
 		}
 
 		seq, roundWrapped, turnDeltas, derr := e.driveOneMonsterTurn(bubble, active, m)
@@ -362,6 +380,31 @@ func (e *Encounter) driveMonsterTurns(bubble *clock.Turn) (wrapped bool, lastSeq
 	}
 
 	return wrapped, lastSeq, deltas, nil
+}
+
+// autoPassTurn advances one retained slot through the same clock end, story
+// beat, and boundary announcement as every explicit or driven turn end.
+func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, bool, error) {
+	out, err := bubble.End(&clock.EndInput{Actor: core.EntityID(member)})
+	if err != nil {
+		return 0, false, err
+	}
+	order, err := bubble.Order()
+	if err != nil {
+		return 0, false, err
+	}
+	seq, err := e.appendClockBeat(map[string]interface{}{
+		"beat":   "turn-ended",
+		"member": string(member),
+		"next":   out.Next,
+	}, order...)
+	if err != nil {
+		return 0, false, err
+	}
+	if err := e.announce(out.Milestones); err != nil {
+		return 0, false, err
+	}
+	return seq, out.RoundWrapped, nil
 }
 
 // driveOneMonsterTurn runs ONE unplayed member's whole turn: build view →
@@ -1044,6 +1087,15 @@ type FormOutput struct {
 // entry), ErrNotMember (the order names somebody not in this encounter),
 // ErrInBubble.
 func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
+	return e.formWithParticipation(in, nil)
+}
+
+// formWithParticipation forms a bubble and schedules its first automatic
+// slots. Trigger detection supplies the assessment it already asked for, so
+// first light remains one participation pass rather than asking twice.
+func (e *Encounter) formWithParticipation(
+	in *FormInput, participation *participationState,
+) (*FormOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("form: %w", ErrNilInput)
 	}
@@ -1129,7 +1181,13 @@ func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	// reader replaying the story must see the fight announced before anyone's
 	// turn inside it can end, and a client reading FIGHT_STARTED sees a
 	// PLAYED member active by the time this verb returns either way.
-	_, _, intelDeltas, derr := e.driveMonsterTurns(bubble)
+	if participation == nil {
+		participation, err = e.participationNow()
+		if err != nil {
+			return nil, fmt.Errorf("form: %w", err)
+		}
+	}
+	_, _, intelDeltas, derr := e.driveTurnsWithParticipation(bubble, participation)
 	if derr != nil {
 		return nil, fmt.Errorf("form: %w", derr)
 	}
@@ -1182,6 +1240,15 @@ type TransferOutput struct {
 // To is ClockWorld for a member not in one), and play/clock's own rejections
 // — an out-of-range Pos propagates clock.ErrBadPosition.
 func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
+	return e.transfer(in, true)
+}
+
+// transfer performs Transfer, optionally scheduling the active slot inherited
+// after a removal. A participation pass removes every supplied Remove member
+// first and then schedules once from its one assessment, so that caller sets
+// driveAfterRemove false; the public verb preserves the ordinary immediate
+// scheduling behavior.
+func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*TransferOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("transfer: %w", ErrNilInput)
 	}
@@ -1270,7 +1337,7 @@ func (e *Encounter) Transfer(in *TransferInput) (*TransferOutput, error) {
 		// second, structural way; this is the semantic one — the call
 		// this branch would otherwise be making is simply the wrong one to
 		// make at all when nothing is actually stalled.
-		if departedWasActive {
+		if departedWasActive && driveAfterRemove {
 			var derr error
 			intelDeltas, derr = e.driveIfStillRunning(bubble)
 			if derr != nil {
@@ -1416,54 +1483,37 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		return nil, fmt.Errorf("end turn %q: announce: %w", in.Member, aerr)
 	}
 
-	next := MemberID(out.Next)
+	var next MemberID
 	wrapped := out.RoundWrapped
 	lastSeq := seq
 	var intelDeltas map[MemberID]*IntelDelta
 
-	// If the clock landed on a member with no player, drive them (and any
-	// consecutive unplayed members after them) forward before this verb
-	// returns — rpg-toolkit#1162. The caller learns the truth about who is
-	// actually waiting on THEM in one round trip; the intervening passes ride
-	// the story and the event stream as their own turn-ended beats.
-	if m, ok := e.members[next]; ok && m.Kind != KindPlayer {
-		moreWrapped, moreSeq, moreDeltas, derr := e.driveMonsterTurns(bubble)
-		if derr != nil {
-			return nil, fmt.Errorf("end turn %q: %w", in.Member, derr)
-		}
-		wrapped = wrapped || moreWrapped
-		intelDeltas = mergeIntelDeltas(intelDeltas, moreDeltas)
-		if moreSeq != 0 {
-			lastSeq = moreSeq
-		}
+	// Reassess at the boundary just crossed. This one pass applies Remove,
+	// retains Wait, automatically advances AutoPass, and then drives any
+	// consecutive unplayed Wait members. The caller receives the first slot
+	// that genuinely waits for player input.
+	participation, moreDeltas, nerr := e.noticeDown()
+	if nerr != nil {
+		return nil, fmt.Errorf("end turn %q: %w", in.Member, nerr)
+	}
+	wrapped = wrapped || participation.scheduledWrapped
+	intelDeltas = mergeIntelDeltas(intelDeltas, moreDeltas)
+	if participation.scheduledLastSeq != 0 {
+		lastSeq = participation.scheduledLastSeq
+	}
 
-		// The drive just run can have ended the fight this bubble was
-		// holding — a driven member's own killing blow, exactly as
-		// driveOneMonsterTurn's own doc describes. bubble.Active() refuses
-		// an idle clock with ErrIdle, so Order() is asked first: it never
-		// does (an idle clock's Order is an empty slice, not an error), and
-		// an empty one means there is no bubble left to ask whose turn it
-		// is.
-		remaining, oerr := bubble.Order()
-		if oerr != nil {
-			return nil, fmt.Errorf("end turn %q: %w", in.Member, oerr)
+	remaining, oerr := bubble.Order()
+	if oerr != nil {
+		return nil, fmt.Errorf("end turn %q: %w", in.Member, oerr)
+	}
+	if len(remaining) == 0 || e.outcome != nil {
+		next = in.Member
+	} else {
+		active, aerr := bubble.Active()
+		if aerr != nil {
+			return nil, fmt.Errorf("end turn %q: %w", in.Member, aerr)
 		}
-		if len(remaining) == 0 {
-			// There is no "next" turn in a bubble that no longer exists.
-			// in.Member — who called this verb — is the honest answer: they
-			// are the one free again, exactly as a non-driven defeat already
-			// leaves the survivor (rpg-toolkit#1078). A caller learns the
-			// fight actually ended the way it always has: the
-			// "bubble-dissolved" beat this same call's own fan-out already
-			// carries, not a new field on this output.
-			next = in.Member
-		} else {
-			active, aerr := bubble.Active()
-			if aerr != nil {
-				return nil, fmt.Errorf("end turn %q: %w", in.Member, aerr)
-			}
-			next = MemberID(active)
-		}
+		next = MemberID(active)
 	}
 
 	return &EndTurnOutput{

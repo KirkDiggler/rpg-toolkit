@@ -51,6 +51,16 @@ func (everyoneStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, er
 	return nil, nil
 }
 
+func (everyoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return assessment, nil
+}
+
 // orderAsGiven returns the roster untouched. These scenes assert that a fight
 // FORMED, never what order it formed in, and a shuffle would make the assertion
 // depend on a roll nobody is testing.

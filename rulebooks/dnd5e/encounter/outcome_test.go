@@ -256,7 +256,7 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 func (s *OutcomeTestSuite) TestAnOutcomeCarriesNoProse() {
 	s.Equal([]string{
 		"Kind", "Actor", "Targets", "Values", "Critical", "Attack",
-		"DamageComponents", "AdvantageSources", "DisadvantageSources",
+		"DamageComponents", "AdvantageSources", "DisadvantageSources", "DeathSave",
 	}, structFieldNames(encounter.RecordInput{}),
 		"a new field on RecordInput needs an argument: free text here is prose "+
 			"in a transcript other players read")

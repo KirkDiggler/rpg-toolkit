@@ -27,6 +27,10 @@ func (s *somebodyDown) Standing([]MemberID) ([]MemberID, error) {
 	return s.down, nil
 }
 
+func (s *somebodyDown) Assess(members []MemberID) (*ParticipationAssessment, error) {
+	return testAssessmentFromDown(members, s.down), nil
+}
+
 func TestAClosedEncounterIsNotClosedAgainByAnArrival(t *testing.T) {
 	stairs := spatial.Position{X: 1, Y: 1}
 	standing := &somebodyDown{}

@@ -8,9 +8,11 @@
 // and tools/spatial: it surveils percepts into intel, lets deciders act on
 // their own intel, and appends the story to record.
 // Members exit, encounters close; player activity pumps the clock, the world
-// thinks on the tick. A member the rulebook reports down keeps their place on
-// the map and in the roster, and stops acting: no turn, no side in a contact,
-// no tick action, and a beat in the story saying so.
+// thinks on the tick. Participation is supplied by the rulebook: Down writes
+// the story beat, Contact decides sides, and Turn independently retains,
+// auto-passes, or removes an initiative slot. Removed members keep their map
+// placement and roster entry. Party defeat is likewise supplied policy, never
+// a threshold inferred here.
 //
 // LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. play/intel stores channel-
 // sourced testimony opaquely; this composition gives sight payloads their
@@ -35,15 +37,13 @@
 // persistence; public Step and free-roam Pump do not independently correct
 // location testimony.
 //
-// The composition holds no rules of its own that it could hold instead: three
-// capabilities are SUPPLIED at construction and consulted during play, never
-// defaulted (rpg-toolkit#1033). InitiativeRoller says what order a fight goes
-// in; Standing says who is down; Sight says how far each member can see. All
-// three are the same move — this module cannot import the rulebook (C1), so
-// randomness, hit points and light are facts it asks for rather than facts it
-// knows. None has a default answer, because a default would be this module
-// quietly deciding a rule it is not allowed to know, and all three are refused
-// at Setup AND Load rather than guarded where they are used.
+// The composition holds no rules of its own that it could hold instead.
+// InitiativeRoller, Participation, and Sight are SUPPLIED at construction and
+// consulted during play, never defaulted (rpg-toolkit#1033). The constructor
+// fields retain their legacy Standing type, but the concrete value must satisfy
+// StandingWithParticipation or construction returns ErrNoParticipation; binary
+// Standing is never a fallback. Randomness, life-state participation and light
+// remain facts this module asks for rather than facts it knows (C1).
 //
 // Every member is on exactly one clock (R6). The world tick is the default —
 // free roam is not a mode, it is where you are when no fight has pulled you
@@ -51,8 +51,8 @@
 // clock into a caller-rolled order (R7 — initiative arrives from outside),
 // Transfer moves a straggler in or out mid-round, EndTurn advances the fight,
 // and Dissolve re-homes everyone to the tick. A fight also ENDS ITSELF when a
-// side runs out of members standing in it — [ByDefeat], with no caller, the
-// mirror of sight starting one. Everyone not in the fight keeps
+// supplied Remove leaves it without a Contact side — [ByDefeat], with no
+// caller, the mirror of sight starting one. Everyone not in the fight keeps
 // free-roaming while it runs; everyone in it is the fight's alone — Step and
 // Pump are world-clock verbs and will not act for a fight member. Which clock somebody is on is always askable, per member, via
 // ClockOf.

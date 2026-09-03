@@ -22,6 +22,31 @@ func (everyoneStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, er
 	return nil, nil
 }
 
+func (everyoneStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	return assessmentFromDown(members, nil), nil
+}
+
+func assessmentFromDown(members, reported []encounter.MemberID) *encounter.ParticipationAssessment {
+	down := make(map[encounter.MemberID]bool, len(reported))
+	for _, id := range reported {
+		down[id] = true
+	}
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		member := encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		}
+		if down[id] {
+			member.Down = true
+			member.Contact = false
+			member.Conscious = false
+			member.Turn = encounter.TurnParticipationRemove
+		}
+		assessment.Members = append(assessment.Members, member)
+	}
+	return assessment
+}
+
 // downList reports a caller-set roster down, and can be changed MID-SCENE —
 // which is how a test drops somebody, or stands them back up, without
 // rebuilding the encounter. That is the only way to test a pull: if the
@@ -36,6 +61,14 @@ type downList struct {
 }
 
 func (d *downList) Standing(members []encounter.MemberID) ([]encounter.MemberID, error) {
+	return d.reported(members), nil
+}
+
+func (d *downList) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	return assessmentFromDown(members, d.reported(members)), nil
+}
+
+func (d *downList) reported(members []encounter.MemberID) []encounter.MemberID {
 	asked := make(map[encounter.MemberID]bool, len(members))
 	for _, id := range members {
 		asked[id] = true
@@ -48,7 +81,7 @@ func (d *downList) Standing(members []encounter.MemberID) ([]encounter.MemberID,
 		}
 	}
 
-	return down, nil
+	return down
 }
 
 // strangerWhenTold is a rulebook that starts well-behaved and then answers with
@@ -65,6 +98,15 @@ func (s *strangerWhenTold) Standing([]encounter.MemberID) ([]encounter.MemberID,
 	}
 
 	return nil, nil
+}
+
+func (s *strangerWhenTold) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	if s.lying {
+		return &encounter.ParticipationAssessment{Members: []encounter.MemberParticipation{{
+			Member: "a-ghost", Turn: encounter.TurnParticipationRemove,
+		}}}, nil
+	}
+	return assessmentFromDown(members, nil), nil
 }
 
 // errRulebookUnreachable is what a rulebook that cannot answer looks like from
@@ -85,6 +127,13 @@ func (b *brokenWhenTold) Standing([]encounter.MemberID) ([]encounter.MemberID, e
 	return nil, nil
 }
 
+func (b *brokenWhenTold) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	if b.broken {
+		return nil, errRulebookUnreachable
+	}
+	return assessmentFromDown(members, nil), nil
+}
+
 // countingStanding is everyoneStanding that remembers being asked, which is how
 // a test tells "the consult did not fire" from "the consult found nobody".
 type countingStanding struct {
@@ -92,7 +141,10 @@ type countingStanding struct {
 }
 
 func (c *countingStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
-	c.calls++
-
 	return nil, nil
+}
+
+func (c *countingStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
+	c.calls++
+	return assessmentFromDown(members, nil), nil
 }

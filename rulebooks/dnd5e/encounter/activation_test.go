@@ -32,11 +32,15 @@ type countingFailingStanding struct {
 }
 
 func (s *countingFailingStanding) Standing([]encounter.MemberID) ([]encounter.MemberID, error) {
+	return nil, nil
+}
+
+func (s *countingFailingStanding) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
 	s.calls++
 	if s.broken {
 		return nil, errRulebookUnreachable
 	}
-	return nil, nil
+	return assessmentFromDown(members, nil), nil
 }
 
 func TestRecordActivationSuite(t *testing.T) {
