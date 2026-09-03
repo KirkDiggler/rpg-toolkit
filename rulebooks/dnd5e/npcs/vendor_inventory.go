@@ -167,7 +167,3 @@ func normalizeAvailability(availability Availability) Availability {
 
 	return availability
 }
-
-func (v VendorInventory) clone() VendorInventory {
-	return VendorInventory{entries: cloneEntries(v.entries)}
-}

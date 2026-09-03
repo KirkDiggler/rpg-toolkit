@@ -8,8 +8,8 @@ github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbs
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 h1:wRshHQZfLnEh03/Gqy96ZvuZ6Wc/Zl3whhBLbFGWnQY=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1/go.mod h1:LzyZd5OAAic1UnyPwCx6HnmWcOQ/jZvqMSc+Q0k7fH8=
-github.com/KirkDiggler/rpg-toolkit/npc v0.1.0 h1:E7JS1e+uIeP8LJZDGRa5bRmRvaMz4qyuaPq4VWo6q2U=
-github.com/KirkDiggler/rpg-toolkit/npc v0.1.0/go.mod h1:DgGdy1vjtL+CPPGsIl8xrh0RF2eAMQ2An6Aeu/OSDao=
+github.com/KirkDiggler/rpg-toolkit/npc v0.2.0 h1:B1N01TGvp3FvolPsFGKnIsVb0GPUZVrE1s0dXZXcDGA=
+github.com/KirkDiggler/rpg-toolkit/npc v0.2.0/go.mod h1:DgGdy1vjtL+CPPGsIl8xrh0RF2eAMQ2An6Aeu/OSDao=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 h1:MtAEpVskb0lfb+oXO8xGrSQsDoHZdQ/kjdjh7b9IOdY=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1/go.mod h1:wsyJmmf1X0iLFGy5Iyy5sUoZhXZQvuYVsKdXfc4b/T4=
 github.com/KirkDiggler/rpg-toolkit/tools/environments v0.4.0 h1:fyNqBWKRn98giYFAP7oY+e9ygHFMGjeHlF6k68FhOy0=
