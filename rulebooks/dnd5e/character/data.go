@@ -6,6 +6,7 @@ import (
 	"time"
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -130,6 +131,19 @@ type RecoverableResourceData struct {
 // missing something nobody removed (rpg-toolkit#948). Load refuses instead,
 // and names the blob.
 func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character, error) {
+	return LoadFromDataWithRoller(ctx, d, bus, nil)
+}
+
+// LoadFromDataWithRoller is [LoadFromData] with the runtime dice roller the
+// interaction owns: the sheet is built and attached exactly as [LoadFromData]
+// builds and attaches it, and the roller is offered to every condition that
+// accepts one, so the lenient path reaches the interaction's randomness
+// without reimplementing Character loading policy. Read [AttachWithRoller]
+// for what supplying a roller does and does not change; nil is
+// [LoadFromData] exactly.
+func LoadFromDataWithRoller(
+	ctx context.Context, d *Data, bus events.EventBus, roller dice.Roller,
+) (*Character, error) {
 	if bus == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
@@ -139,7 +153,7 @@ func LoadFromData(ctx context.Context, d *Data, bus events.EventBus) (*Character
 		return nil, err
 	}
 
-	if err := Attach(ctx, char, bus); err != nil {
+	if err := AttachWithRoller(ctx, char, bus, roller); err != nil {
 		return nil, err
 	}
 

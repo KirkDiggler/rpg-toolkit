@@ -48,6 +48,9 @@ type BrutalCriticalCondition struct {
 // Ensure BrutalCriticalCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*BrutalCriticalCondition)(nil)
 
+// Ensure BrutalCriticalCondition can receive a runtime roller.
+var _ RollerBinder = (*BrutalCriticalCondition)(nil)
+
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on.
 func (b *BrutalCriticalCondition) Ref() *core.Ref { return refs.Conditions.BrutalCritical() }
@@ -81,6 +84,17 @@ func calculateExtraDice(level int) int {
 	default:
 		return 0
 	}
+}
+
+// BindRoller binds the roller this condition rolls its extra critical dice
+// with, so a condition restored from persisted JSON — whose loader has no
+// roller to give it — rolls the interaction's dice instead of a
+// process-global default. A nil roller leaves the current one alone.
+func (b *BrutalCriticalCondition) BindRoller(roller dice.Roller) {
+	if roller == nil {
+		return
+	}
+	b.roller = roller
 }
 
 // IsApplied returns true if this condition is currently applied

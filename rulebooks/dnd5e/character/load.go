@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
@@ -120,6 +121,40 @@ func Load(_ context.Context, d *Data) (*Character, error) {
 // The lenient path is unchanged: it is LoadFromData's, and dropping what will
 // not apply is the behaviour its callers have.
 func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
+	return AttachWithRoller(ctx, c, bus, nil)
+}
+
+// AttachWithRoller is [Attach] with the runtime dice roller the interaction
+// owns, and is the one Character attach entry that can hand it to the sheet's
+// effects.
+//
+// A persisted condition restores with no roller: its bytes are facts about the
+// rules it carries, not about the randomness that will resolve them. A
+// condition that implements [conditions.RollerBinder] is offered the roller
+// here — every rolling rule on a Character sheet (Great Weapon Fighting,
+// Sneak Attack, Brutal Critical, Martial Arts) implements it — so the faces
+// its rules produce come from the interaction's roller instead of a
+// process-global default, and land in the roll trace like any other sourced
+// fact. The monster attach path is the precedent: its entry takes the roller
+// the same way, as a parameter rather than a loader input, a global, or a
+// context value.
+//
+// The roller is OPTIONAL. nil — the [Attach] wrapper's own case — binds
+// nothing at all, and every condition keeps whatever it holds: an explicitly
+// constructed one its constructor's roller, a loaded one its roll-time
+// default. A nil roller never erases.
+//
+// **Binding happens after every effect has applied.** A subscription callback
+// reads the receiver's current roller when it fires, so an effect is complete
+// the moment it subscribes — and binding only after the whole loop succeeded
+// means a failed strict Attach, every effect undone, leaves no condition
+// holding a roller nothing uses. A condition that failed to apply binds
+// nothing, under either policy.
+//
+// Binding changes nothing else: not the effect ordering, not the registration
+// attribution, not the serialized data (ToJSON carries no roller), not the
+// no-op rollback contract.
+func AttachWithRoller(ctx context.Context, c *Character, bus events.EventBus, roller dice.Roller) error {
 	if c == nil {
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "character is required")
 	}
@@ -172,6 +207,22 @@ func Attach(ctx context.Context, c *Character, bus events.EventBus) error {
 		}
 
 		attached = append(attached, attachedEffect{effect: effect, bus: effectBus})
+	}
+
+	// The roller is bound only HERE, after every effect has applied and the
+	// whole attach has succeeded. A subscription callback reads the receiver's
+	// current roller when it fires, so binding earlier would change nothing
+	// for the rules — but a failed strict attach would leave a condition
+	// holding a roller nothing uses, on a sheet the caller was told did not
+	// attach. Only successfully attached effects are offered the roller, and
+	// only a non-nil one is offered at all: nil binds nothing and erases
+	// nothing.
+	if roller != nil {
+		for i := range attached {
+			if binder, ok := attached[i].effect.behavior.(conditions.RollerBinder); ok {
+				binder.BindRoller(roller)
+			}
+		}
 	}
 
 	return nil

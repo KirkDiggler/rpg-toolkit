@@ -59,11 +59,25 @@ func (s *SneakAttackCondition) stateChanged(ctx context.Context) error {
 // Ensure SneakAttackCondition implements dnd5eEvents.ConditionBehavior
 var _ dnd5eEvents.ConditionBehavior = (*SneakAttackCondition)(nil)
 
+// Ensure SneakAttackCondition can receive a runtime roller.
+var _ RollerBinder = (*SneakAttackCondition)(nil)
+
 // Ref returns the canonical ref this condition names itself by — the same ref
 // its ToJSON embeds and its loader routes on. Sneak Attack's canonical ref
 // lives under refs.Features (it is a rogue feature turned active condition),
 // so that is what Ref reports.
 func (s *SneakAttackCondition) Ref() *core.Ref { return refs.Features.SneakAttack() }
+
+// BindRoller binds the roller this condition rolls its extra damage dice
+// with, so a condition restored from persisted JSON — whose loader has no
+// roller to give it — rolls the interaction's dice instead of a
+// process-global default. A nil roller leaves the current one alone.
+func (s *SneakAttackCondition) BindRoller(roller dice.Roller) {
+	if roller == nil {
+		return
+	}
+	s.roller = roller
+}
 
 // SneakAttackInput provides configuration for creating a sneak attack condition
 type SneakAttackInput struct {
