@@ -131,10 +131,12 @@ type Input struct {
 	// are handed over, and the caller that owns the sheets owns the answer.
 	Sight encounter.Sight
 
-	// Roller is used to reconstitute effects that need one — a monster's Undead
-	// Fortitude, for instance, which rolls when it is triggered rather than
-	// when it is loaded. REQUIRED. It is not the machine's roller: a machine
-	// that rolls carries its own.
+	// Roller reconstitutes runtime dice dependencies for effects that roll when
+	// triggered rather than when loaded — Character conditions such as Great
+	// Weapon Fighting and Monster traits such as Undead Fortitude. REQUIRED.
+	// Resolution offers the same roller to every attach path; it does not choose
+	// which effects bind one or switch on their refs. It is not the machine's
+	// roller: a machine that rolls carries its own.
 	//
 	// It used to say "nil takes the default roller", and that stopped being
 	// true when rpg-toolkit#1033 refused the default — a nil silently became
@@ -425,9 +427,10 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 }
 
 // attachAll reconstitutes every participant onto the surface, in sorted ID
-// order (R4). Two resolutions over identical data must grant identical
-// registrations in an identical order, or a suspension cannot be resumed into
-// the world it left.
+// order (R4), carrying one runtime roller to Character conditions and Monster
+// traits without interpreting either. Two resolutions over identical data must
+// grant identical registrations in an identical order, or a suspension cannot
+// be resumed into the world it left.
 func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
 	ordered := make([]Participant, len(in.Participants))
 	copy(ordered, in.Participants)
@@ -448,7 +451,7 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 
 		switch {
 		case p.Character != nil:
-			ch, err := attachCharacter(ctx, view, p.Character, in.DropUnreadable)
+			ch, err := attachCharacter(ctx, view, p.Character, in.Roller, in.DropUnreadable)
 			if err != nil {
 				if in.Refusals == nil {
 					return nil, fmt.Errorf("resolution: attach character %q: %w", id, err)
@@ -494,15 +497,17 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 }
 
 // attachCharacter loads a sheet and puts it on this participant's view of the
-// bus — two calls, and the split between them is the point.
+// bus — two calls, and the split between them is the point. The supplied roller
+// reconstitutes runtime dice dependencies for any Character condition that
+// accepts one; resolution neither chooses those conditions nor switches on refs.
 //
 // character.Load is data → sheet: no bus, no subscriptions, nothing applied.
-// character.Attach is the loop this package used to delegate: the sheet's own
-// keeper first, then each condition through a bus scoped to the ref its loader
-// routed on. The view implements dnd5eEvents.EffectScoper, so that scoping is
-// what fills the registration list — attribution by construction, and now by
-// construction *here*, rather than inside a constructor two modules away
-// (rpg-toolkit#985).
+// character.AttachWithRoller is the loop this package used to delegate: the
+// sheet's own keeper first, then each condition through a bus scoped to the ref
+// its loader routed on. The view implements dnd5eEvents.EffectScoper, so that
+// scoping is what fills the registration list — attribution by construction,
+// and now by construction *here*, rather than inside a constructor two modules
+// away (rpg-toolkit#985).
 //
 // Loading strictly is the behaviour change that comes with it: a condition blob
 // that will not parse fails the resolution, naming the blob, where the legacy
@@ -510,15 +515,16 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 // it hands back sheets to be persisted, so an effect quietly dropped on the way
 // in is an effect deleted on the way out (rpg-toolkit#948).
 func attachCharacter(
-	ctx context.Context, view *surface, data *character.Data, dropUnreadable bool,
+	ctx context.Context, view *surface, data *character.Data, roller dice.Roller, dropUnreadable bool,
 ) (*character.Character, error) {
-	// The lenient half is character.LoadFromData, which is the same two calls
-	// with the other policy — loadSheet then Attach, onto this same view, so
-	// attribution is made here either way. It is called rather than
-	// reimplemented: the two halves of one loader must not disagree about what
-	// a failure means, and there is exactly one place that decides.
+	// The lenient half is character.LoadFromDataWithRoller, which is the same
+	// two calls with the other policy — loadSheet then AttachWithRoller, onto
+	// this same view, so attribution and runtime dice binding are made here
+	// either way. It is called rather than reimplemented: the two halves of one
+	// loader must not disagree about what a failure means, and there is exactly
+	// one place that decides.
 	if dropUnreadable {
-		return character.LoadFromData(ctx, data, view)
+		return character.LoadFromDataWithRoller(ctx, data, view, roller)
 	}
 
 	ch, err := character.Load(ctx, data)
@@ -526,7 +532,7 @@ func attachCharacter(
 		return nil, err
 	}
 
-	if err := character.Attach(ctx, ch, view); err != nil {
+	if err := character.AttachWithRoller(ctx, ch, view, roller); err != nil {
 		return nil, err
 	}
 
@@ -628,15 +634,16 @@ type attachAllInput struct {
 	Refusals *[]ParticipantRefusal
 
 	// Roller reconstitutes effects that roll when they are triggered rather
-	// than when they are loaded. Reached only through the monster branch.
+	// than when they are loaded. The same value reaches Character conditions
+	// and Monster traits; this attach only carries it and never chooses which
+	// effects bind one or switches on their refs.
 	//
-	// REQUIRED WHENEVER A PARTICIPANT IS A MONSTER, and unlike DropUnreadable
-	// below it has no safe zero value to fall back on: a nil travels down into
-	// monstertraits and surfaces at whatever later moment a trait first rolls,
-	// which is a long way from the call that omitted it. An entry that never
-	// builds a monster participant says so by passing refusingRoller, which
-	// turns a path believed unreachable into a named refusal rather than a
-	// panic if the belief is ever wrong.
+	// REQUIRED WHENEVER A PARTICIPANT MAY NEED RUNTIME DICE, and unlike
+	// DropUnreadable below it has no safe zero value to fall back on: a nil can
+	// surface at whatever later moment an effect first rolls, which is a long
+	// way from the call that omitted it. An entry that expects no roll says so
+	// by passing refusingRoller, which turns a path believed unreachable into a
+	// named refusal rather than a panic if the belief is ever wrong.
 	Roller dice.Roller
 
 	// DropUnreadable keeps whatever parsed when a persisted blob will not load,
