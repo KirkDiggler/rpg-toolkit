@@ -158,11 +158,21 @@ func (e *Encounter) appendRegionRevealedBeat(
 // newSegments is every wall in `after` that was not in `before`, in after's
 // own order.
 //
-// A segment is identified by ITS TWO ENDS, which is the whole of what one is
-// on the wire — no name, no footprint, no doors. Both are exact halves of
-// axial steps, so they compare without a tolerance (rpg-project#360's design
-// note on why a corner needs no epsilon), and a map key over the pair is
-// honest rather than a rounding hazard.
+// `BEFORE` MUST BE THE RECIPIENT'S ACTUAL PRIOR PROJECTION — the same
+// [Encounter.AtlasFor], with their knowledge as it stood a moment earlier —
+// and never a recomputation under some other rule. A wall can already be
+// presented to somebody for more than one reason: it stands partly on floor
+// they own, it foots on a cell they can see, it is the seam their own door
+// hides in. A rule written to pick out "the room's new walls" would have to
+// rediscover every one of those reasons and would be wrong the day a new one
+// appears; a difference against the answer they actually had cannot be, because
+// it asks the same question that produced the answer.
+//
+// A segment is identified by ITS TWO ENDS, compared BY VALUE, which is the
+// whole of what one is on the wire — no name, no footprint, no doors. Both
+// ends are exact halves of axial steps, so they compare without a tolerance
+// (rpg-project#360's note on why a corner needs no epsilon) and a map key over
+// the pair is honest rather than a rounding hazard.
 func newSegments(before, after []AtlasSegment) []AtlasSegment {
 	had := make(map[[2]AxialPointF]bool, len(before))
 	for _, seg := range before {

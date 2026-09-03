@@ -114,6 +114,19 @@ func (s *RevealSegmentsSuite) vaultField() encounter.FieldInput {
 				To:        encounter.AxialPointF{Q: 5, R: 5.5},
 				Footprint: []spatial.Position{{X: 6, Y: 4}, {X: 6, Y: 5}},
 			},
+			{
+				// PRESENTED BEFORE THE REVEAL, AND NOT BY THE DOOR. Its
+				// footprint reaches one cell of the hall, so the recipient
+				// already foots it and already draws it — a second reason a
+				// wall can be visible, beside the seam's. It must stay out of
+				// the patch, and only a difference against their REAL prior
+				// projection can say so: a rule of its own, however carefully
+				// written, would have to rediscover this case.
+				Name:      "the buttress",
+				From:      encounter.AxialPointF{Q: 3, R: 4.5},
+				To:        encounter.AxialPointF{Q: 5, R: 4.5},
+				Footprint: []spatial.Position{{X: 3, Y: 4}, {X: 4, Y: 4}},
+			},
 		},
 	}
 }
@@ -177,6 +190,10 @@ var (
 	theSeam   = segKey(encounter.AxialPointF{Q: 4, R: -0.5}, encounter.AxialPointF{Q: 1, R: 5.5})
 	theSpine  = segKey(encounter.AxialPointF{Q: 6, R: 0.5}, encounter.AxialPointF{Q: 5, R: 2.5})
 	theAlcove = segKey(encounter.AxialPointF{Q: 6, R: 3.5}, encounter.AxialPointF{Q: 5, R: 5.5})
+
+	// Presented before the reveal because its footprint reaches the hall, not
+	// because of any door — the second reason a wall can already be drawn.
+	theButtress = segKey(encounter.AxialPointF{Q: 3, R: 4.5}, encounter.AxialPointF{Q: 5, R: 4.5})
 )
 
 // bodySegKey reads a beat's segment entry back into the same key.
@@ -198,8 +215,9 @@ func (s *RevealSegmentsSuite) TestBeforeTheRevealTheWallIsWholeAndTheRoomIsNotTh
 	blind, err := enc.AtlasFor(finder)
 	s.Require().NoError(err)
 
-	s.Equal([]string{theSeam}, segKeys(blind.Segments),
-		"the seam presents; the walls inside the vault are withheld with it")
+	s.ElementsMatch([]string{theSeam, theButtress}, segKeys(blind.Segments),
+		"the seam presents, and so does the wall that foots on the hall; "+
+			"the two wholly inside the vault are withheld with it")
 	s.Empty(blind.Doorways, "and no doorway cuts it — the whole wall, C19")
 	for _, r := range blind.Regions {
 		s.NotEqual(encounter.RegionID("vault"), r.ID)
@@ -227,7 +245,12 @@ func (s *RevealSegmentsSuite) TestTheRevealCarriesTheRoomsWallsAndItsSealedCells
 		byWall[bodySegKey(raw)] = raw.(map[string]any)["height"]
 	}
 	s.ElementsMatch([]string{theSpine, theAlcove}, revealed,
-		"the walls inside the room, and not the seam they already had")
+		"the walls inside the room, and neither of the two they already had")
+	s.NotContains(revealed, theSeam, "not the seam the door hides in")
+	s.NotContains(revealed, theButtress,
+		"and not the wall they already drew because it foots on their own floor — "+
+			"a wall presented for ANY reason is not news, which is why the patch is a "+
+			"difference against their real prior projection and not a rule of its own")
 
 	// Heights ride along: a client draws a raised wall raised.
 	s.Equal(3.0, byWall[theSpine], "the authored height, carried")
