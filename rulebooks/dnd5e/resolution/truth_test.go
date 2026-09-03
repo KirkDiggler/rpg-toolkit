@@ -158,14 +158,15 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 // truthEntries are the functions in this package that run attached behavior or
 // stand a fold up from nothing, and therefore must go through the door first.
 //
-// FIVE of them now, and the growth is why this is a table. Resolve runs an
+// SIX of them now, and the growth is why this is a table. Resolve runs an
 // interaction. ProjectCharacter folds one derived number for a caller with no
 // interaction to run — a character joining a session, who is not standing
-// anywhere yet. Standing answers a question about live sheets for a caller that
-// must not hold any. MakeCheck makes one character's ability check with their
-// conditions attached, for a seam that holds records and never sheets. LongRest
-// publishes a rule event to its attached sheet with no world. All five install
-// the same truth before behavior runs; none is a mode of another.
+// anywhere yet. Participation answers life-state policy about live sheets for a
+// caller that must not hold any; Standing delegates to it and owns no second
+// attached path. MakeCheck makes one character's ability check with their
+// conditions attached. LongRest publishes a rule event to its attached sheet.
+// DeathSave executes the root character rule over one attached record. All six
+// install the same truth before behavior runs; none is a mode of another.
 //
 // PREFLIGHT IS DELIBERATELY ABSENT, and its absence is the interesting entry in
 // this list. It attaches every participant and folds nothing — it is asking
@@ -184,9 +185,10 @@ func TestOnlyTheDoorInstallsGameContext(t *testing.T) {
 var truthEntries = []struct{ file, fn string }{
 	{"resolve.go", "resolveOn"},
 	{"projection.go", "projectCharacterOn"},
-	{"standing.go", "standingOn"},
+	{"participation.go", "participationOn"},
 	{"check.go", "makeCheckOn"},
 	{"long_rest.go", "longRestOn"},
+	{"death_save.go", "deathSaveOn"},
 }
 
 func entryNames(entries []struct{ file, fn string }) []string {

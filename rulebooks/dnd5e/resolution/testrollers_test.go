@@ -91,6 +91,8 @@ func (everyoneStanding) Assess(
 	return assessment, nil
 }
 
+var _ encounter.StandingWithParticipation = everyoneStanding{}
+
 // passDriver is the deterministic TurnDriver every fixture wires.
 //
 // The composition requires one to load at all (rpg-toolkit#1162), and this

@@ -20,16 +20,15 @@ var (
 	// seemed fine. Refused at the door instead.
 	ErrNoRoller = errors.New("resolution: no roller")
 
-	// ErrNoStanding indicates an interaction given no way to find out who is
-	// standing. The composition requires one to load at all, the same way it
-	// requires an initiative roller.
+	// ErrNoStanding indicates an interaction given no standing capability at
+	// all. The source-shaped field is the migration carrier for a dual
+	// encounter.StandingWithParticipation concrete value; a non-nil legacy
+	// Standing-only value is instead refused with encounter.ErrNoParticipation.
 	//
-	// Nothing in this package consults it. The world is loaded here and read
-	// back out as data, and no verb that refreshes sight runs in between — so
-	// this is a capability carried ACROSS rather than used, exactly like
-	// Deciders. Carried rather than invented, because a package that answered
-	// "nobody is down" on the caller's behalf would be deciding a rule it
-	// cannot see (rpg-toolkit#1079).
+	// Neither half is consulted here. The world is loaded and read back as
+	// data without an encounter verb between them, so the capability is carried
+	// ACROSS rather than used. It cannot be invented because only the caller
+	// owning the sheets can answer life-state participation.
 	ErrNoStanding = errors.New("resolution: no standing capability")
 
 	// ErrNoSight indicates an interaction given no way to find out how far

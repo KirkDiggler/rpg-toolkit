@@ -21,7 +21,7 @@ import (
 )
 
 // TestCloneCharacterDataOwnsEveryMutableField is the structural guard on the
-// record copy at the LongRest boundary.
+// record copy shared by the LongRest and DeathSave write boundaries.
 //
 // Reflection makes the fixture exhaustive rather than exemplary: every map,
 // slice, pointer, or interface field currently declared on character.Data must
@@ -96,8 +96,14 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 	}
 	require.Positive(t, mutableFields, "character.Data unexpectedly has no mutable fields")
 
-	// ActionEconomy is a pointer and Granted is mutable state nested beneath
-	// it. Top-level pointer ownership alone would not protect this map.
+	// The two pointers carry mutable persistence state below them. Top-level
+	// pointer ownership plus these writes guards both DeathSave's progress and
+	// capacity debit from ever reaching its caller's input record.
+	require.NotSame(t, source.DeathSaveState, clone.DeathSaveState)
+	clone.DeathSaveState.Failures = 99
+	require.Equal(t, 1, source.DeathSaveState.Failures,
+		"mutating the clone's death-save state must not reach the source")
+
 	require.NotSame(t, source.ActionEconomy, clone.ActionEconomy)
 	require.NotEqual(t,
 		reflect.ValueOf(source.ActionEconomy.Granted).Pointer(),

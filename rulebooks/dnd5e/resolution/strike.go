@@ -610,13 +610,11 @@ func (m *strikeMachine) afterDamageChain(
 // depending on who is listening.
 //
 // Slice 2's census classified it, and the answer was sharper than the question:
-// DamageReceivedTopic has FIVE subscribers across THREE meanings. One applies
-// damage (monster.onDamageReceived calls TakeDamage — the instruction). Three
-// are genuine rules that only observe: Undead Fortitude's survival save,
-// Unconscious's death-save failures, and Rage's was-I-hit upkeep. One is the
-// encounter layer, which captures the events and DRAINS them precisely to stop
-// the damage landing twice. A character subscribes for none of it, so the topic
-// is inert for half the roster.
+// DamageReceivedTopic historically had FIVE subscribers across THREE meanings.
+// One applies damage (monster.onDamageReceived calls TakeDamage — the
+// instruction), Undead Fortitude and Rage genuinely observe, the legacy
+// Unconscious shell is now inert, and the encounter layer captures and drains
+// events precisely to stop damage landing twice.
 //
 // The topic MEANS "damage has landed" — a notification. The subscriber that
 // treats it as an instruction is the defect, not the topic, and it retires with
@@ -624,8 +622,10 @@ func (m *strikeMachine) afterDamageChain(
 // would double-apply to every monster; publishing after costs nothing and buys
 // the three rules back. So this waits on that conversion, not on a question.
 //
-// What it costs meanwhile is named rather than hidden: those three rules do not
-// fire for resolution-driven damage yet.
+// What it costs meanwhile is named rather than hidden: notification-dependent
+// observers still do not fire for resolution-driven damage. Death-save failures
+// are not among them anymore: Character.ApplyDamage owns the positive-damage-
+// at-zero transition directly, including critical failures and stabilization.
 func (m *strikeMachine) afterDamage(ctx context.Context) (Step, error) {
 	return m.afterNotify(ctx)
 }

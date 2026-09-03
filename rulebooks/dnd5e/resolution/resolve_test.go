@@ -581,6 +581,15 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 		require.ErrorIs(t, err, ErrNoStanding)
 	})
 
+	t.Run("standing without participation", func(t *testing.T) {
+		out, err := Resolve(context.Background(), &Input{
+			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{},
+			Standing: standingOnly{}, Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		})
+		require.ErrorIs(t, err, encounter.ErrNoParticipation)
+		require.Nil(t, out)
+	})
+
 	t.Run("no sight", func(t *testing.T) {
 		err := (&Input{
 			Machine: machine, Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{}, Roller: dice.NewRoller(),
@@ -612,6 +621,14 @@ func TestCapabilitiesAreSuppliedNeverDefaulted(t *testing.T) {
 	})
 }
 
+// standingOnly is the legacy half of the migration bridge. Resolve must reject
+// it before handing a world to encounter.Load.
+type standingOnly struct{}
+
+func (standingOnly) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
+	return nil, nil
+}
+
 // countingStanding answers like everyoneStanding and remembers being asked
 // through its Standing method.
 type countingStanding struct{ asks int }
@@ -637,6 +654,8 @@ func (c *countingStanding) Assess(
 	}
 	return assessment, nil
 }
+
+var _ encounter.StandingWithParticipation = (*countingStanding)(nil)
 
 // TestTheStandingCapabilityIsCarriedAndNeverAsked pins both halves of what this
 // field is for, and they pull in opposite directions.
