@@ -389,9 +389,9 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			return fmt.Errorf("ending %q trigger position (%g,%g) is not an integral cell: %w",
 				ei.Key, trigger.Position.X, trigger.Position.Y, ErrNoEnding)
 		}
-		if _, floor := f.regionOf(f.cellAt(trigger.Position)); !floor {
-			return fmt.Errorf("ending %q trigger position [%g,%g] is not floor: %w",
-				ei.Key, trigger.Position.X, trigger.Position.Y, ErrNoEnding)
+		if cell := f.cellAt(trigger.Position); !f.isStandable(cell) {
+			return fmt.Errorf("ending %q trigger position [%g,%g] %s: %w",
+				ei.Key, trigger.Position.X, trigger.Position.Y, f.notStandable(cell), ErrNoEnding)
 		}
 	}
 	return nil
@@ -560,9 +560,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: member %q position (%g,%g) is not an integral cell: %w",
 				mi.ID, mi.Position.X, mi.Position.Y, ErrBadPlacement)
 		}
-		if _, floor := f.regionOf(f.cellAt(mi.Position)); !floor {
-			return nil, fmt.Errorf("newencounter: member %q position [%g,%g] is not floor: %w",
-				mi.ID, mi.Position.X, mi.Position.Y, ErrBadPlacement)
+		if cell := f.cellAt(mi.Position); !f.isStandable(cell) {
+			return nil, fmt.Errorf("newencounter: member %q position [%g,%g] %s: %w",
+				mi.ID, mi.Position.X, mi.Position.Y, f.notStandable(cell), ErrBadPlacement)
 		}
 	}
 
@@ -1776,13 +1776,13 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 		return nil, fmt.Errorf("join: position is not an integral axial cell: %w", ErrBadPlacement)
 	}
 
-	// The arrival cell must be FLOOR — some authored chamber's footprint has
-	// to hold it. The canvas spans the field's whole bounding box, so "on the
-	// map" and "somewhere a member can stand" are different questions, and
-	// this is the one that matters (the same check [Encounter.stepMember]
-	// makes for a step).
-	if _, owned := e.RegionAt(in.Cell); !owned {
-		return nil, fmt.Errorf("join: cell %v is not floor: %w", in.Cell, ErrBadPlacement)
+	// The arrival cell must be STANDABLE — some authored region has to own
+	// it. The canvas spans the field's whole bounding box, so "on the map"
+	// and "somewhere a member can stand" are different questions, and this is
+	// the one that matters (the same check [Encounter.stepMember] makes for a
+	// step). Scenery is on the map and is not somewhere anybody stands.
+	if !e.field.isStandable(in.Cell) {
+		return nil, fmt.Errorf("join: cell %v %s: %w", in.Cell, e.field.notStandable(in.Cell), ErrBadPlacement)
 	}
 
 	entity := &memberEntity{

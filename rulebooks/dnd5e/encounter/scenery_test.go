@@ -102,6 +102,20 @@ func (s *ScenerySuite) TestA5_AStepOntoSceneryIsRefused() {
 
 	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(3, 0)})
 	s.Require().ErrorIs(err, encounter.ErrBadPlacement, "nobody stands on scenery")
+	s.Contains(err.Error(), "is scenery: floor nobody stands on",
+		"the refusal Kirk reads when he walks into the strip says which of the two it met")
+	s.NotContains(err.Error(), "is not floor",
+		"scenery IS floor — saying otherwise is the composition lying about its own atlas")
+
+	// Void keeps the sentence it has always had, because for void it is true.
+	bare := theGap()
+	bare.Scenery = nil
+	void := s.open(bare, encounter.MemberInput{
+		ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 0},
+	})
+	_, err = void.Step(&encounter.StepInput{Member: alice, To: cellAt(3, 0)})
+	s.Require().ErrorIs(err, encounter.ErrBadPlacement)
+	s.Contains(err.Error(), "is not floor")
 
 	// And the cell one further, which IS a room, is still reachable — so what
 	// refused above was the scenery and not the distance.
@@ -288,6 +302,53 @@ func theYardstickTwin() encounter.FieldInput {
 	}
 }
 
+// theWalledStrip is the yardstick with the wall INSIDE the strip rather than
+// on the hall's own edge, which is the layout the compiler calls "not a way at
+// all":
+//
+//	hall [0,0] [1,0] [2,0] | scenery [3,0] |wall| scenery [4,0] | vault [5,0]
+//
+// The non-knower must still see the honest twin. What makes this the sharper
+// case is that a strip of floor they can walk onto now leads to a wall, and
+// the cell beyond the wall is scenery they can also see — so if the masquerade
+// were going to stand a phantom wall anywhere, it would stand it at the
+// strip's far crossing, and both atlases would have to grow it.
+func theWalledStrip(withVault bool) encounter.FieldInput {
+	field := encounter.FieldInput{
+		Canvas:  pointyCanvas(),
+		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 3, 1)},
+		Scenery: sceneryCells(3, 4),
+		Walls:   []encounter.WallInput{wall(3, 0, 4, 0)},
+	}
+	if withVault {
+		field.Regions = append(field.Regions, encounter.RegionInput{
+			ID: "vault", Name: "vault", Archetype: testArchetype, Lighting: fullLight(),
+			Cells: []spatial.Position{{X: 5, Y: 0}}, Concealed: true,
+		})
+	}
+	return field
+}
+
+// TestTheYardstickHoldsWithAWallInsideTheStrip — the crossing that seals a
+// secret need not be on either room's edge (rpg-project#360, C4 as ruled).
+// With it in the middle of the strip the compiler finds no way to conceal,
+// and the projection still owes the non-knower the honest twin.
+func (s *ScenerySuite) TestTheYardstickHoldsWithAWallInsideTheStrip() {
+	seat := encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0}}
+
+	scoped, err := s.open(theWalledStrip(true), seat).AtlasFor(alice)
+	s.Require().NoError(err)
+	twin, err := s.open(theWalledStrip(false), seat).Atlas()
+	s.Require().NoError(err)
+
+	s.Equal(twin.Cells, scoped.Cells)
+	s.Equal(twin.Regions, scoped.Regions)
+	s.Equal(twin.Boundaries, scoped.Boundaries,
+		"the one wall the author drew, and nothing standing at the strip's far crossing")
+	s.Contains(scoped.Cells, cellAt(4, 0), "the scenery beyond the wall is still floor on everyone's map")
+	s.NotContains(scoped.Cells, cellAt(5, 0), "and the vault is still a secret")
+}
+
 // TestA2_TheYardstickHoldsAcrossScenery is acceptance A2.
 //
 // It is the C5 and C6 pins in one scene. C5: scenery has no owner, so no
@@ -295,6 +356,13 @@ func theYardstickTwin() encounter.FieldInput {
 // scenery's far side — a bare crossing from scenery into hidden space gets no
 // synthesized wall, because scenery is not visible SPACE and there is nobody
 // standing in it for the wall to lie to.
+//
+// C6 NEEDED NO CODE, WHICH IS WHY IT NEEDS A TEST. The masquerade's third
+// pass already skips a neighbour no region owns, and scenery is by definition
+// unowned, so the rule held the day it was written down. That makes it exactly
+// the kind of invariant that breaks silently later: slice 2's footing puts
+// OWNERLESS FLOOR into a recipient's atlas on purpose, and the first thing to
+// find out is whether the masquerade starts standing walls on it.
 func (s *ScenerySuite) TestA2_TheYardstickHoldsAcrossScenery() {
 	enc := s.open(theYardstick(), encounter.MemberInput{
 		ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 0},
