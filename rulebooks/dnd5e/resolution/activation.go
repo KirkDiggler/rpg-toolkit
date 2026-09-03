@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -47,6 +48,14 @@ type ActivationInput struct {
 	// seven — and empty is a legitimate answer for Hide too (nobody is
 	// watching), so this cannot be validated by presence.
 	ObserverPassivePerceptions []int
+
+	// Roller is the dice roller this activation rolls with. REQUIRED, and
+	// refused at [NewActivation] before the world is loaded or anything is
+	// paid — the same rule resolve.Input holds: a machine that rolls carries
+	// its own roller. Second Wind is the one of the seven that rolls, and a
+	// nil here would otherwise fall back to process-global randomness mid-
+	// interaction (rpg-toolkit#1427).
+	Roller dice.Roller
 }
 
 // ActivationEffectKind identifies one closed kind of fact produced while an
@@ -77,10 +86,16 @@ type ActivationEffect struct {
 
 	Amount    int
 	Requested int
-	Roll      int
-	Modifier  int
 	Before    int
 	After     int
+
+	// Calculation is the complete sourced roll behind a healing fact — dice
+	// trace, sourced modifiers, authoritative total — deep-cloned at capture.
+	// It is the one representation of the roll's facts: the legacy scalar
+	// Roll/Modifier projection is gone, and a heal published without a
+	// calculation (legacy, non-Activate healing such as Hit Dice) is not an
+	// activation result and is not captured at all.
+	Calculation *dnd5eEvents.RollCalculation
 
 	Description string
 	Reason      string
@@ -180,12 +195,34 @@ func (c *activationEffectCollector) captureHealingApplied(
 		return errors.New("activation effect collector: healing source name is required")
 	}
 
+	// A heal with no calculation is legacy, non-Activate healing — Hit Dice's
+	// scalar-only shape. It is not a fact an ability activated, so it is not
+	// captured: neither the clamp facts nor the publisher's own scalars are
+	// mirrored onto an activation effect.
+	//
+	// The skip presupposes the identity above is VALID — the source-ref and
+	// source-name checks already ran, so a heal with a malformed identity fails
+	// closed even with no calculation. Real Hit Dice currently carries neither
+	// a calculation nor that canonical identity, and it does not cross an
+	// activation bus; this branch exists for whatever legacy publisher might.
+	if event.Calculation == nil {
+		return nil
+	}
+
+	// Validate, then deep-clone. An invalid trace is refused whole — no partial
+	// effect — and a valid one is owned from here on: a publisher mutating its
+	// calculation after publication cannot rewrite what this interaction
+	// captured.
+	if err := dnd5eEvents.ValidateRollCalculation(event.Calculation); err != nil {
+		return fmt.Errorf("activation effect collector: healing calculation is invalid: %w", err)
+	}
+
 	c.append(ActivationEffect{
 		Kind: EffectHealingApplied, TargetID: event.TargetID,
 		Ref: source.String(), Name: event.SourceName,
 		Amount: event.Applied, Requested: event.Requested,
-		Roll: event.Roll, Modifier: event.Modifier,
 		Before: event.HPBefore, After: event.HPAfter,
+		Calculation: dnd5eEvents.CloneRollCalculation(event.Calculation),
 	})
 	return nil
 }
@@ -254,10 +291,18 @@ func (c *activationEffectCollector) append(effect ActivationEffect) {
 }
 
 // Effects returns an independently owned snapshot in synchronous publication order.
+//
+// Independent all the way down: the slice is copied and each effect's
+// calculation is deep-cloned, so a caller mutating the snapshot cannot rewrite
+// what this interaction stored, and two calls never share a trace.
 func (c *activationEffectCollector) Effects() []ActivationEffect {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return slices.Clone(c.effects)
+	effects := slices.Clone(c.effects)
+	for i := range effects {
+		effects[i].Calculation = dnd5eEvents.CloneRollCalculation(effects[i].Calculation)
+	}
+	return effects
 }
 
 // Close revokes every subscription the collector recorded. It is idempotent,
@@ -316,8 +361,8 @@ func (c *activationEffectCollector) Close(ctx context.Context) error {
 // "Free action" in Cost's own doc means "this package charges nothing", not
 // "this costs nothing".
 //
-// Refuses a nil input, a member with no ID, and a missing or invalid ability
-// ref, all before the world is loaded.
+// Refuses a nil input, a member with no ID, a missing or invalid ability ref,
+// and a nil roller, all before the world is loaded.
 func NewActivation(in *ActivationInput) (Machine, error) {
 	if in == nil {
 		return nil, ErrNilInput
@@ -331,6 +376,9 @@ func NewActivation(in *ActivationInput) (Machine, error) {
 	if err := in.Ability.IsValid(); err != nil {
 		return nil, fmt.Errorf("%w: member %q named an unusable ability: %w",
 			ErrBadActivation, in.MemberID, err)
+	}
+	if in.Roller == nil {
+		return nil, fmt.Errorf("%w: member %q rolls with no roller", ErrBadActivation, in.MemberID)
 	}
 
 	// BOTH pieces of caller-owned material are copied, not just the obvious
@@ -349,6 +397,7 @@ func NewActivation(in *ActivationInput) (Machine, error) {
 		ability:   &ability,
 		targetID:  in.TargetID,
 		observers: observers,
+		roller:    in.Roller,
 	}, nil
 }
 
@@ -357,6 +406,7 @@ type activationMachine struct {
 	ability   *core.Ref
 	targetID  string
 	observers []int
+	roller    dice.Roller
 }
 
 // Start is pure preflight and runs before payment: it finds the actor and the
@@ -476,6 +526,7 @@ func (m *activationMachine) step(actor *character.Character, target core.Entity)
 				TargetID:                   m.targetID,
 				Target:                     target,
 				ObserverPassivePerceptions: m.observers,
+				Roller:                     m.roller,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("activate %s for %q: %w", m.ability.String(), m.member, err)

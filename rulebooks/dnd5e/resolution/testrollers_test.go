@@ -66,10 +66,29 @@ func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.Me
 // round trip through the world. So the fixtures hand over the one answer that
 // changes nothing, and any test that came to depend on a different one would
 // be testing a question this package does not ask.
+//
+// The same value carries the participation answer the encounter's load door
+// asks for since members became scheduled by participation (rpg-toolkit#1453):
+// nobody down, nobody removed, everybody waiting for a driver — the answer
+// these fixtures always assumed about hit points, stated out loud.
 type everyoneStanding struct{}
 
 func (everyoneStanding) Standing(_ []encounter.MemberID) ([]encounter.MemberID, error) {
 	return nil, nil
+}
+
+// Assess answers one complete participation question: every member present,
+// conscious, in contact, waiting.
+func (everyoneStanding) Assess(
+	members []encounter.MemberID,
+) (*encounter.ParticipationAssessment, error) {
+	assessment := &encounter.ParticipationAssessment{}
+	for _, id := range members {
+		assessment.Members = append(assessment.Members, encounter.MemberParticipation{
+			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+		})
+	}
+	return assessment, nil
 }
 
 // passDriver is the deterministic TurnDriver every fixture wires.
