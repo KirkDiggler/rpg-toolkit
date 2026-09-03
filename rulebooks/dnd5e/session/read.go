@@ -360,7 +360,9 @@ func (m *Manager) View(ctx context.Context, in *ViewInput) ([]Sighting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", translate(err))
 	}
-	down, err := standingSet(m.standingFor(ctx, data), rosterIDs(roster))
+	down, err := standingSet(
+		m.standingFor(ctx, data, encounterRosterKinds(roster)), rosterIDs(roster),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("view: %w", err)
 	}
@@ -546,7 +548,7 @@ func (m *Manager) loadWorldWithBaseline(
 
 	sight.members = append(sight.members, world.Members...)
 
-	standing := m.standingFor(ctx, data)
+	standing := m.standingFor(ctx, data, encounterDataKinds(world.Members))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,

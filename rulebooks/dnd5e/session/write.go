@@ -669,6 +669,14 @@ func place(
 	// and the composition's account still crosses as TEXT rather than as a
 	// chain a host could match on (the S2 leak, rpg-toolkit#1058).
 	//
+	// The same ordering applies to participation kind: Join can assess the
+	// newcomer during its own sight/contact refresh, so the shared kind snapshot
+	// must learn the authoritative declared kind first.
+	if scope.standing.kinds == nil {
+		return nil, fmt.Errorf("placing member %q without participation kinds: %w", id, ErrInvalidWorld)
+	}
+	scope.standing.kinds[id] = encounter.MemberKind(kind)
+
 	// scope.sight learns about THIS member before Join does, not after:
 	// arriving triggers its own sight refresh (does the newcomer see
 	// anyone; is the newcomer seen), and that refresh asks about the
@@ -966,6 +974,10 @@ func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
 // swap, and so the novelty has exactly one home to document.
 func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error {
 	scope.sight = &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)}
+	// Resolution returned this authoritative roster snapshot with the world.
+	// Replace kinds before constructing its encounter so every assessment made
+	// during load sees exactly that one snapshot.
+	scope.standing.kinds = encounterDataKinds(world.Members)
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       world,
 		Initiative: m.initiative,

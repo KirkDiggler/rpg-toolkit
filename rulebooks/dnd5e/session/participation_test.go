@@ -63,6 +63,11 @@ func TestParticipationMapsProviderFactsWithoutThresholds(t *testing.T) {
 			"dying": dying, "stabilized": stabilized, "dead": dead, "conscious": conscious,
 		}},
 		data: &SessionData{NPCs: []monster.Data{*monsterSheet}},
+		kinds: map[string]encounter.MemberKind{
+			"dying": encounter.KindPlayer, "stabilized": encounter.KindPlayer,
+			"dead": encounter.KindPlayer, "defeated": encounter.KindMonster,
+			"conscious": encounter.KindPlayer,
+		},
 	}
 	ids := []encounter.MemberID{"dying", "stabilized", "dead", "defeated", "conscious"}
 
@@ -98,6 +103,64 @@ func TestParticipationMapsProviderFactsWithoutThresholds(t *testing.T) {
 	require.Equal(t, ids[:4], down, "binary Standing delegates to the same rich answer")
 }
 
+func TestParticipationRoutesAuthoredSheetlessMonsterByRosterKind(t *testing.T) {
+	dying := dwarfCharacterRecord("dying", 0)
+	monsterCollision := dwarfCharacterRecord("authored-monster", 10)
+	worldCollision := dwarfCharacterRecord("world-collision", 10)
+	merchant, err := npcs.NewMerchant(nil)
+	require.NoError(t, err)
+
+	asked := map[string]int{}
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{
+			byID: map[string]*character.Data{
+				"dying": dying, "authored-monster": monsterCollision,
+				"world-collision": worldCollision,
+			},
+			asked: asked,
+		},
+		data: &SessionData{WorldNPCs: []PlacedWorldNPC{{
+			MemberID: "world-collision", NPC: *merchant.NPC().ToData(),
+		}}},
+		kinds: map[string]encounter.MemberKind{
+			"dying":            encounter.KindPlayer,
+			"authored-monster": encounter.KindMonster,
+			"world-collision":  encounter.KindWorld,
+		},
+	}
+
+	ids := []encounter.MemberID{"dying", "authored-monster", "world-collision"}
+	snapshot, err := seam.participation(ids)
+	require.NoError(t, err)
+	require.Equal(t, &encounter.ParticipationAssessment{
+		Members: []encounter.MemberParticipation{
+			{Member: "dying", Down: true, Turn: encounter.TurnParticipationWait},
+			{Member: "authored-monster", Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
+			{Member: "world-collision", Turn: encounter.TurnParticipationRemove},
+		},
+		PartyDefeated: true,
+	}, snapshot.assessment)
+	require.False(t, snapshot.assessment.KeepTurnOrder,
+		"only actual KindPlayer provider facts participate in group policy")
+	answered := make([]encounter.MemberID, 0, len(snapshot.assessment.Members))
+	for _, member := range snapshot.assessment.Members {
+		answered = append(answered, member.Member)
+	}
+	require.Equal(t, ids, answered, "one answer per request, in requested order")
+
+	require.Equal(t, 1, asked["dying"])
+	require.Zero(t, asked["authored-monster"],
+		"an authored KindMonster never falls through to the character repository")
+	require.Zero(t, asked["world-collision"],
+		"the KindWorld collision control still reaches neither combatant store")
+	require.Equal(t, LifeStateConscious, snapshot.views["authored-monster"].LifeState)
+	require.True(t, snapshot.views["authored-monster"].attackTarget,
+		"the existing sheetless-monster combat fallback remains up and targetable")
+	require.Equal(t, LifeStateUnknown, snapshot.views["world-collision"].LifeState)
+	require.False(t, snapshot.views["world-collision"].attackTarget)
+}
+
 func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
 	dying := dwarfCharacterRecord("dying", 0)
 	characterCollision := dwarfCharacterRecord("character-collision", 10)
@@ -123,6 +186,11 @@ func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
 				{MemberID: "character-collision", NPC: *merchant.NPC().ToData()},
 				{MemberID: "monster-collision", NPC: *merchant.NPC().ToData()},
 			},
+		},
+		kinds: map[string]encounter.MemberKind{
+			"dying":               encounter.KindPlayer,
+			"character-collision": encounter.KindWorld,
+			"monster-collision":   encounter.KindWorld,
 		},
 	}
 
@@ -160,6 +228,9 @@ func TestParticipationPartyDefeatUsesOnlyRequestedPlayers(t *testing.T) {
 		ctx:   context.Background(),
 		chars: participationCharacterStore{byID: map[string]*character.Data{"dying": dying}},
 		data:  &SessionData{NPCs: []monster.Data{*monsterSheet}},
+		kinds: map[string]encounter.MemberKind{
+			"dying": encounter.KindPlayer, "upright-monster": encounter.KindMonster,
+		},
 	}
 	assessment, err := seam.Assess([]encounter.MemberID{"dying", "upright-monster"})
 	require.NoError(t, err)
@@ -181,10 +252,58 @@ func TestParticipationResolutionFailuresUseSessionVocabulary(t *testing.T) {
 		chars: participationCharacterStore{byID: map[string]*character.Data{
 			"broken": {},
 		}},
+		kinds: map[string]encounter.MemberKind{"broken": encounter.KindPlayer},
 	}
 	assessment, err := seam.Assess([]encounter.MemberID{"broken"})
 	require.Nil(t, assessment)
 	require.ErrorIs(t, err, ErrBadCharacter)
+}
+
+func TestStandingForOwnsOneRosterKindSnapshot(t *testing.T) {
+	asked := map[string]int{}
+	store := participationCharacterStore{
+		byID:  map[string]*character.Data{"alice": dwarfCharacterRecord("alice", 10)},
+		asked: asked,
+	}
+	manager := &Manager{characters: store}
+	authoritative := map[string]encounter.MemberKind{"alice": encounter.KindPlayer}
+	seam := manager.standingFor(context.Background(), nil, authoritative)
+
+	// A caller changing its map later cannot change the already-built seam's
+	// answer or route one assessment through a second roster snapshot.
+	authoritative["alice"] = encounter.KindMonster
+	assessment, err := seam.Assess([]encounter.MemberID{"alice"})
+	require.NoError(t, err)
+	require.Equal(t, &encounter.ParticipationAssessment{Members: []encounter.MemberParticipation{{
+		Member: "alice", Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
+	}}}, assessment)
+	require.Equal(t, 1, asked["alice"], "the copied KindPlayer route remains authoritative")
+}
+
+func TestParticipationRefusesMissingOrUnknownRosterKindBeforeStorage(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		kinds map[string]encounter.MemberKind
+	}{
+		{name: "missing", kinds: map[string]encounter.MemberKind{}},
+		{name: "unknown", kinds: map[string]encounter.MemberKind{"alice": "future-kind"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			asked := map[string]int{}
+			seam := standingSeam{
+				ctx: context.Background(),
+				chars: participationCharacterStore{
+					byID:  map[string]*character.Data{"alice": dwarfCharacterRecord("alice", 10)},
+					asked: asked,
+				},
+				kinds: tc.kinds,
+			}
+			assessment, err := seam.Assess([]encounter.MemberID{"alice"})
+			require.Nil(t, assessment)
+			require.ErrorIs(t, err, ErrInvalidSession)
+			require.Zero(t, asked["alice"], "kind failure precedes storage guessing")
+		})
+	}
 }
 
 func TestParticipationContainsNoHitPointThreshold(t *testing.T) {
@@ -196,7 +315,10 @@ func TestParticipationContainsNoHitPointThreshold(t *testing.T) {
 
 func TestParticipationRepositoryErrorsRemainReachable(t *testing.T) {
 	hostErr := errors.New("character store unavailable")
-	seam := standingSeam{ctx: context.Background(), chars: participationCharacterStore{err: hostErr}}
+	seam := standingSeam{
+		ctx: context.Background(), chars: participationCharacterStore{err: hostErr},
+		kinds: map[string]encounter.MemberKind{"alice": encounter.KindPlayer},
+	}
 	assessment, err := seam.Assess([]encounter.MemberID{"alice"})
 	require.Nil(t, assessment)
 	require.ErrorIs(t, err, hostErr)

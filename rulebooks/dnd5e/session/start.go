@@ -157,7 +157,7 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 	}
 	// Preserve the dual concrete capability while assigning it to encounter's
 	// compatibility-shaped Standing field.
-	standing := m.standingFor(ctx, nil)
+	standing := m.standingFor(ctx, nil, encounterDataKinds(world.Members))
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,

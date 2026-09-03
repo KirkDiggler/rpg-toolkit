@@ -187,7 +187,9 @@ func (m *Manager) participantsFor(
 
 	// One provider-derived snapshot supplies both the compatibility Standing
 	// field and the explicit rich state/progress projection.
-	participation, err := richParticipationSet(m.standingFor(ctx, data), clock.Order)
+	participation, err := richParticipationSet(
+		m.standingFor(ctx, data, encounterRosterKinds(roster)), clock.Order,
+	)
 	if err != nil {
 		return nil, err
 	}

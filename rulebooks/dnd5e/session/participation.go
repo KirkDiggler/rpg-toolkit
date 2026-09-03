@@ -60,7 +60,7 @@ type participationSnapshot struct {
 func (s standingSeam) participation(
 	members []encounter.MemberID,
 ) (*participationSnapshot, error) {
-	characters, monsters, worldNPCs, err := s.recordsFor(members)
+	characters, monsters, err := s.recordsFor(members)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (s standingSeam) participation(
 
 	views := make(map[string]participantView, len(members))
 	for _, id := range members {
-		if worldNPCs[string(id)] {
+		if s.kinds[string(id)] == encounter.KindWorld {
 			member, view := neutralWorldNPCParticipation(id)
 			assessment.Members = append(assessment.Members, member)
 			views[string(id)] = view

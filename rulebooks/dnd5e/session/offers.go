@@ -245,7 +245,8 @@ func (m *Manager) compileOffersFor(
 	if requested[VerbActivate] {
 		var err error
 		activations, err = m.buildActivationOffers(
-			enc, m.standingFor(ctx, data), sessionID, member, sheet, roster, positions, holdings,
+			enc, m.standingFor(ctx, data, encounterRosterKinds(roster)),
+			sessionID, member, sheet, roster, positions, holdings,
 		)
 		if err != nil {
 			return nil, err

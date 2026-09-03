@@ -71,6 +71,11 @@ type standingSeam struct {
 	// chars is the host's sheet store, for the members it owns.
 	chars CharacterRepository
 
+	// kinds is the authoritative encounter roster classification copied at the
+	// load/setup boundary. One assessment reads this one snapshot and never
+	// guesses kind from whichever storage record happens to answer.
+	kinds map[string]encounter.MemberKind
+
 	// data is the session record, ALIASED rather than copied, so a sheet this
 	// verb has already written back is what the next consult reads.
 	//
@@ -84,8 +89,14 @@ type standingSeam struct {
 // Returning the concrete value keeps the richer answer available to session
 // projections while assignments to encounter.Standing retain the same dynamic
 // value for compatibility-shaped constructor fields.
-func (m *Manager) standingFor(ctx context.Context, data *SessionData) standingSeam {
-	return standingSeam{ctx: ctx, chars: m.characters, data: data}
+func (m *Manager) standingFor(
+	ctx context.Context, data *SessionData, kinds map[string]encounter.MemberKind,
+) standingSeam {
+	copiedKinds := make(map[string]encounter.MemberKind, len(kinds))
+	for id, kind := range kinds {
+		copiedKinds[id] = kind
+	}
+	return standingSeam{ctx: ctx, chars: m.characters, data: data, kinds: copiedKinds}
 }
 
 // Standing reports which of the given members are down — downed, in the
@@ -149,26 +160,34 @@ func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.Participa
 // unplayable. Neither is a rule this package gets to write.
 func (s standingSeam) recordsFor(
 	members []encounter.MemberID,
-) (
-	characters, monsters []resolution.Participant,
-	worldNPCs map[string]bool,
-	err error,
-) {
-	worldNPCs = worldNPCSet(s.data)
+) (characters, monsters []resolution.Participant, err error) {
 	for _, id := range members {
 		name := string(id)
-
-		// KindWorld identity wins before either combatant store. A host may own
-		// a character with the same ID, and malformed/session-seeded data may
-		// also retain an NPC sheet collision; neither turns the placed bystander
-		// into a combatant.
-		if worldNPCs[name] {
-			continue
+		kind, ok := s.kinds[name]
+		if !ok {
+			return nil, nil, fmt.Errorf(
+				"participation member %q has no roster kind: %w", name, ErrInvalidSession)
 		}
 
-		if sheet, ok := npcSheet(s.data, name); ok {
-			monsters = append(monsters, resolution.Participant{Monster: sheet})
+		switch kind {
+		case encounter.KindWorld:
+			// Explicitly neutral. Never consult either combatant store.
 			continue
+		case encounter.KindMonster:
+			// A monster can only come from the session's NPC sheets. An authored
+			// sheetless monster keeps the compatibility fallback projected later;
+			// it never falls through to a same-ID host character.
+			if sheet, found := npcSheet(s.data, name); found {
+				monsters = append(monsters, resolution.Participant{Monster: sheet})
+			}
+			continue
+		case encounter.KindPlayer:
+			// A player can only come from the host character repository. A stale
+			// same-ID monster sheet cannot change the authoritative roster kind.
+		default:
+			return nil, nil, fmt.Errorf(
+				"participation member %q has unknown roster kind %q: %w",
+				name, kind, ErrInvalidSession)
 		}
 
 		data, fetchErr := s.chars.GetCharacter(s.ctx, name)
@@ -177,31 +196,17 @@ func (s standingSeam) recordsFor(
 				continue
 			}
 
-			return nil, nil, nil, fetchErr
+			return nil, nil, fetchErr
 		}
 		if data == nil {
-			return nil, nil, nil, fmt.Errorf(
+			return nil, nil, fmt.Errorf(
 				"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
 		}
 
 		characters = append(characters, resolution.Participant{Character: data})
 	}
 
-	return characters, monsters, worldNPCs, nil
-}
-
-// worldNPCSet indexes the session's explicit non-combatant identities. It
-// reads no content and derives no rule; PlacedWorldNPC is already the
-// session-owned statement that these member IDs are KindWorld bystanders.
-func worldNPCSet(data *SessionData) map[string]bool {
-	out := make(map[string]bool)
-	if data == nil {
-		return out
-	}
-	for _, placed := range data.WorldNPCs {
-		out[placed.MemberID] = true
-	}
-	return out
+	return characters, monsters, nil
 }
 
 // npcSheet finds a session-scoped sheet by member ID.
