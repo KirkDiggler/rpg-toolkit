@@ -532,11 +532,15 @@ var axialSteps = [6][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1
 //	PARTY START.
 //
 // A "way" is a WALL-FREE PATH between two regions whose interior cells are
-// all scenery: a crossing straight from one room to the other, or a strip of
-// scenery joining them (rpg-project#360, C4). It is a CONCEALED way when a
-// concealed door stands at one of its ends — see [validation.sceneryWays] for
-// why a path with two ends is one way with two chances rather than two ways
-// that disagree.
+// all scenery: a crossing straight from one room to the other, or an area of
+// scenery joining them (rpg-project#360, C4).
+//
+// IT IS A CONCEALED WAY IFF ANY CROSSING ALONG IT IS A CONCEALED DOOR, which
+// is the same answer from either end. The author may put the secret's door on
+// the hidden room's edge, on the visible room's edge, or between two scenery
+// cells, and a crossing further along the path counts exactly as much as one
+// at its end. See [validation.waysFrom] for why the walk is a flood and what
+// classifying a way by its ENDS got wrong.
 //
 // Scenery had to enter this walk rather than be left out of it. Before it,
 // every way was one crossing long and "is this room walled off" was a
