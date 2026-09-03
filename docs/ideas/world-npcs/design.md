@@ -1,10 +1,14 @@
 # World NPCs - Design
 
-**Status:** APPROVED (2026-09-02) — encounter/session integration slice
+**Status:** SHIPPED (2026-09-03) — encounter/session integration slice
 tracked as [rpg-toolkit#1404](https://github.com/KirkDiggler/rpg-toolkit/issues/1404)
+(merged), movement-blocking follow-up as
+[rpg-toolkit#1434](https://github.com/KirkDiggler/rpg-toolkit/issues/1434)
+(merged). See `implementation.md` for final tag evidence, deviations from
+this doc, and what's still explicitly open.
 **Issue:** [rpg-toolkit#1280](https://github.com/KirkDiggler/rpg-toolkit/issues/1280)
 **Modules:** `npc`, `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/session`
-**Why:** `brainstorm.md`. **How:** `plan.md`.
+**Why:** `brainstorm.md`. **How:** `plan.md`. **What happened:** `implementation.md`.
 
 **Implementation note:** the first shipped slice is the generic `npc` package
 described in [../npc](../npc/). Encounter/session integration remains proposed
