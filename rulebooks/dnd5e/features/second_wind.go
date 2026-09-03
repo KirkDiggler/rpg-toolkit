@@ -26,7 +26,6 @@ type SecondWind struct {
 	level       int                              // Fighter level for healing calculation
 	characterID string                           // Character this feature belongs to
 	resource    *dnd5eCombat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
-	roller      dice.Roller                      // Optional deterministic roller; nil uses the default.
 }
 
 // SecondWindData is the JSON structure for persisting Second Wind state
@@ -122,32 +121,55 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 		return rpgerr.Wrapf(err, "failed to use second wind")
 	}
 
-	// Roll healing: 1d10 + fighter level
+	// Roll healing: 1d10 + fighter level, authored as one sourced calculation.
+	// The interaction-scoped roller comes from the input; nil retains the
+	// production default for direct non-resolution callers.
 	pool, err := dice.ParseNotation("1d10")
 	if err != nil {
 		return rpgerr.Wrapf(err, "failed to parse healing dice")
 	}
 
-	result := pool.RollContext(ctx, s.roller)
+	result := pool.RollContext(ctx, input.Roller)
 	if result.Error() != nil {
 		return rpgerr.Wrapf(result.Error(), "failed to roll healing dice")
 	}
 
-	roll := result.Total() // This includes just the 1d10 roll
-	modifier := s.level    // Fighter level is the modifier
-	totalHealing := roll + modifier
+	faces := append([]int(nil), result.Rolls()[0]...)
+	modifier := s.level // Fighter level is the modifier
+	calculation := &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "1d10",
+					DieSize:       10,
+					OriginalRolls: faces,
+					FinalRolls:    append([]int(nil), faces...),
+					Subtotal:      result.Total(),
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref:   refs.Classes.Fighter(),
+					Name:  "Fighter",
+					Label: "Fighter level",
+				},
+				Modifier: &modifier,
+			},
+		},
+		Total: result.Total() + modifier,
+	}
 
-	// Publish healing received event
+	// Publish healing received event with the sourced calculation.
 	if input.Bus != nil {
 		topic := dnd5eEvents.HealingReceivedTopic.On(input.Bus)
 		err := topic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-			TargetID:   owner.GetID(),
-			Amount:     totalHealing,
-			Roll:       roll,
-			Modifier:   modifier,
-			Source:     refs.Features.SecondWind().ID,
-			SourceRef:  refs.Features.SecondWind(),
-			SourceName: "Second Wind",
+			TargetID:    owner.GetID(),
+			Amount:      calculation.Total,
+			Calculation: calculation,
+			Source:      refs.Features.SecondWind().ID,
+			SourceRef:   refs.Features.SecondWind(),
+			SourceName:  "Second Wind",
 		})
 		if err != nil {
 			return rpgerr.Wrapf(err, "failed to publish healing event")

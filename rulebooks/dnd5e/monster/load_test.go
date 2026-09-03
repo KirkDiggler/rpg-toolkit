@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
@@ -289,6 +290,124 @@ func (s *MonsterKeeperTestSuite) TestHealingReceivedMovesHitPoints() {
 	s.Require().NoError(err)
 	s.Require().Equal(12, s.mon.HP())
 	s.Require().True(s.mon.IsDirty())
+}
+
+// validMonsterHealingCalculation builds a valid sourced healing calculation:
+// one 1d10 trace plus the Fighter-level modifier, totalling 7.
+func validMonsterHealingCalculation() *dnd5eEvents.RollCalculation {
+	modifier := 1
+	return &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "1d10",
+					DieSize:       10,
+					OriginalRolls: []int{6},
+					FinalRolls:    []int{6},
+					Subtotal:      6,
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level",
+				},
+				Modifier: &modifier,
+			},
+		},
+		Total: 7,
+	}
+}
+
+func (s *MonsterKeeperTestSuite) TestHealingReceivedCarriesCalculationToApplied() {
+	calculation := validMonsterHealingCalculation()
+
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID:    s.mon.GetID(),
+		Amount:      7,
+		SourceRef:   refs.Features.SecondWind(),
+		SourceName:  "Second Wind",
+		Calculation: calculation,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Equal(3, got.Applied, "10/13 heals to the 13 cap")
+	s.Require().Equal(10, got.HPBefore)
+	s.Require().Equal(13, got.HPAfter)
+	s.Require().NotNil(got.Calculation)
+	s.Require().Equal(calculation, got.Calculation)
+	s.Require().NotSame(calculation, got.Calculation, "the applied fact owns its calculation")
+
+	calculation.Components[0].Dice.FinalRolls[0] = 9
+	calculation.Total = 14
+	s.Require().Equal(7, got.Calculation.Total,
+		"mutating the received calculation cannot rewrite the applied total")
+	s.Require().Equal([]int{6}, got.Calculation.Components[0].Dice.FinalRolls,
+		"mutating the received calculation cannot rewrite the applied faces")
+}
+
+func (s *MonsterKeeperTestSuite) TestHealingReceivedRejectsInvalidCalculation() {
+	testCases := []struct {
+		name        string
+		amount      int
+		calculation *dnd5eEvents.RollCalculation
+	}{
+		{
+			name:        "amount does not match calculation total",
+			amount:      8,
+			calculation: validMonsterHealingCalculation(), // total 7
+		},
+		{
+			name:        "calculation has no components",
+			amount:      7,
+			calculation: &dnd5eEvents.RollCalculation{Total: 7},
+		},
+		{
+			name:   "calculation arithmetic disagrees with its components",
+			amount: 9,
+			calculation: func() *dnd5eEvents.RollCalculation {
+				calc := validMonsterHealingCalculation()
+				calc.Total = 9 // components sum to 7
+				return calc
+			}(),
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			published := 0
+			_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+				s.ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+					published++
+					return nil
+				})
+			s.Require().NoError(err)
+
+			err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+				TargetID:    s.mon.GetID(),
+				Amount:      tc.amount,
+				SourceRef:   refs.Features.SecondWind(),
+				SourceName:  "Second Wind",
+				Calculation: tc.calculation,
+			})
+
+			s.Require().Error(err, "an invalid calculation is refused")
+			s.Require().Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err))
+			s.Zero(published, "no applied fact precedes validation")
+			s.Equal(10, s.mon.HP(), "HP is untouched")
+			s.False(s.mon.IsDirty(), "the sheet is not dirtied")
+		})
+	}
 }
 
 func (s *MonsterKeeperTestSuite) TestConditionAppliedLandsOnTheMonster() {

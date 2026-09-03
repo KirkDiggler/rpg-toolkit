@@ -81,13 +81,32 @@ func (r *countingSecondWindRoller) RollN(_ context.Context, count, _ int) ([]int
 
 var _ dice.Roller = (*countingSecondWindRoller)(nil)
 
+// fixedSecondWindRoller always rolls the same face, keeping Second Wind's
+// published calculation exact without touching process-global randomness.
+type fixedSecondWindRoller struct {
+	face int
+}
+
+func (r *fixedSecondWindRoller) Roll(_ context.Context, _ int) (int, error) {
+	return r.face, nil
+}
+
+func (r *fixedSecondWindRoller) RollN(_ context.Context, count, _ int) ([]int, error) {
+	faces := make([]int, count)
+	for i := range faces {
+		faces[i] = r.face
+	}
+	return faces, nil
+}
+
+var _ dice.Roller = (*fixedSecondWindRoller)(nil)
+
 func (s *SecondWindTestSuite) TestDeadOwnerIsRejectedBeforeRollOrSpend() {
 	owner := &deadSecondWindOwner{
 		id:             "fighter-1",
 		deathSaveState: saves.DeathSaveState{Failures: 3, Dead: true},
 	}
 	roller := &countingSecondWindRoller{}
-	s.secondWind.roller = roller
 	published := 0
 	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
 		s.ctx,
@@ -101,7 +120,7 @@ func (s *SecondWindTestSuite) TestDeadOwnerIsRejectedBeforeRollOrSpend() {
 	)
 	s.Require().NoError(err)
 
-	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: roller})
 
 	s.Require().Error(err)
 	s.Equal(rpgerr.CodeInvalidState, rpgerr.GetCode(err))
@@ -142,7 +161,7 @@ func (s *SecondWindTestSuite) TestActivatePublishesHealingEvent() {
 	})
 	s.NoError(err)
 
-	// Activate second wind
+	// Activate second wind with no scoped roller: the production default rolls.
 	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
 	s.NoError(err)
 
@@ -153,16 +172,81 @@ func (s *SecondWindTestSuite) TestActivatePublishesHealingEvent() {
 	s.True(receivedEvent.SourceRef.Equals(refs.Features.SecondWind()))
 	s.Equal("Second Wind", receivedEvent.SourceName)
 
-	// Healing should be 1d10 + level (3)
-	// Roll should be between 1 and 10
-	s.GreaterOrEqual(receivedEvent.Roll, 1, "Roll should be at least 1")
-	s.LessOrEqual(receivedEvent.Roll, 10, "Roll should be at most 10")
+	// The sourced calculation owns the requested healing: 1d10 + level (3).
+	s.Require().NotNil(receivedEvent.Calculation, "Second Wind publishes a roll calculation")
+	s.Equal(receivedEvent.Calculation.Total, receivedEvent.Amount)
+	s.Require().Len(receivedEvent.Calculation.Components, 2)
 
-	// Modifier should be fighter level
-	s.Equal(3, receivedEvent.Modifier, "Modifier should be fighter level")
+	trace := receivedEvent.Calculation.Components[0].Dice
+	s.Require().NotNil(trace)
+	s.Equal("1d10", trace.Notation)
+	s.Equal(10, trace.DieSize)
+	s.GreaterOrEqual(trace.Subtotal, 1, "the d10 subtotal should be at least 1")
+	s.LessOrEqual(trace.Subtotal, 10, "the d10 subtotal should be at most 10")
+	s.Equal(trace.Subtotal, receivedEvent.Calculation.Components[0].Dice.Subtotal)
+	for _, face := range trace.OriginalRolls {
+		s.GreaterOrEqual(face, 1)
+		s.LessOrEqual(face, 10)
+	}
 
-	// Total should be roll + modifier
-	s.Equal(receivedEvent.Roll+receivedEvent.Modifier, receivedEvent.Amount)
+	s.Require().NotNil(receivedEvent.Calculation.Components[1].Modifier)
+	s.Equal(3, *receivedEvent.Calculation.Components[1].Modifier,
+		"Modifier should be fighter level")
+	s.Equal(trace.Subtotal+3, receivedEvent.Calculation.Total)
+}
+
+func (s *SecondWindTestSuite) TestActivatePublishesSourcedRollCalculation() {
+	owner := &StubEntity{id: "fighter-1"}
+	sw := newSecondWindForTest("second-wind-feature", 1, "fighter-1")
+	roller := &fixedSecondWindRoller{face: 6}
+
+	var receivedEvent *dnd5eEvents.HealingReceivedEvent
+	topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
+	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+		receivedEvent = &event
+		return nil
+	})
+	s.Require().NoError(err)
+
+	err = sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: roller})
+	s.Require().NoError(err)
+
+	s.Require().NotNil(receivedEvent)
+	s.Equal("fighter-1", receivedEvent.TargetID)
+	s.Equal(0, sw.resource.Current(), "the spend precedes the roll")
+
+	// One calculation, carrying the exact scoped roll and the sourced modifier.
+	s.Require().NotNil(receivedEvent.Calculation)
+	calculation := receivedEvent.Calculation
+	s.Equal(7, calculation.Total)
+	s.Equal(7, receivedEvent.Amount, "the calculation total owns the requested healing")
+	s.Require().Len(calculation.Components, 2)
+
+	dice := calculation.Components[0]
+	s.True(dice.Source.Ref.Equals(refs.Features.SecondWind()))
+	s.Equal("Second Wind", dice.Source.Name)
+	s.Require().NotNil(dice.Dice)
+	s.Equal("1d10", dice.Dice.Notation)
+	s.Equal(10, dice.Dice.DieSize)
+	s.Equal([]int{6}, dice.Dice.OriginalRolls)
+	s.Equal([]int{6}, dice.Dice.FinalRolls)
+	s.Empty(dice.Dice.Rerolls)
+	s.Empty(dice.Dice.KeptIndices)
+	s.Equal(6, dice.Dice.Subtotal)
+	s.Nil(dice.Modifier)
+
+	modifier := calculation.Components[1]
+	s.True(modifier.Source.Ref.Equals(refs.Classes.Fighter()))
+	s.Equal("Fighter", modifier.Source.Name)
+	s.Equal("Fighter level", modifier.Source.Label)
+	s.Require().NotNil(modifier.Modifier)
+	s.Equal(1, *modifier.Modifier)
+	s.Nil(modifier.Dice)
+
+	// The roll-bearing scalar path is retired for Second Wind: the calculation
+	// is the only representation of the roll.
+	s.Zero(receivedEvent.Roll)
+	s.Zero(receivedEvent.Modifier)
 }
 
 func (s *SecondWindTestSuite) TestHealingScalesWithLevel() {
@@ -193,8 +277,11 @@ func (s *SecondWindTestSuite) TestHealingScalesWithLevel() {
 			err = sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
 			s.NoError(err)
 
-			s.NotNil(receivedEvent)
-			s.Equal(tc.expectedModifier, receivedEvent.Modifier,
+			s.Require().NotNil(receivedEvent)
+			s.Require().NotNil(receivedEvent.Calculation)
+			s.Require().Len(receivedEvent.Calculation.Components, 2)
+			s.Require().NotNil(receivedEvent.Calculation.Components[1].Modifier)
+			s.Equal(tc.expectedModifier, *receivedEvent.Calculation.Components[1].Modifier,
 				"Level %d should have modifier %d", tc.level, tc.expectedModifier)
 		})
 	}

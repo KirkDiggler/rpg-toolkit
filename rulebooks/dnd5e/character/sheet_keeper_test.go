@@ -15,6 +15,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -187,12 +188,40 @@ func (s *SheetKeeperTestSuite) TestHealingReceivedMovesHitPoints() {
 	s.Require().True(s.char.IsDirty())
 }
 
+// validSecondWindCalculation builds a valid sourced healing calculation:
+// one 1d10 trace plus the Fighter-level modifier, totalling 7.
+func validSecondWindCalculation() *dnd5eEvents.RollCalculation {
+	modifier := 1
+	return &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "1d10",
+					DieSize:       10,
+					OriginalRolls: []int{6},
+					FinalRolls:    []int{6},
+					Subtotal:      6,
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level",
+				},
+				Modifier: &modifier,
+			},
+		},
+		Total: 7,
+	}
+}
+
 func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.char.hitPoints = 8
 	s.char.maxHitPoints = 10
 	markSaved(s.char)
 
 	source := *refs.Features.SecondWind()
+	calculation := validSecondWindCalculation()
 	var got *dnd5eEvents.HealingAppliedEvent
 	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
 		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
@@ -202,12 +231,11 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().NoError(err)
 
 	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
-		TargetID:   s.char.GetID(),
-		Amount:     7,
-		Roll:       6,
-		Modifier:   1,
-		SourceRef:  &source,
-		SourceName: "Second Wind",
+		TargetID:    s.char.GetID(),
+		Amount:      7,
+		SourceRef:   &source,
+		SourceName:  "Second Wind",
+		Calculation: calculation,
 	})
 
 	s.Require().NoError(err)
@@ -217,15 +245,59 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().Equal(2, got.Applied)
 	s.Require().Equal(8, got.HPBefore)
 	s.Require().Equal(10, got.HPAfter)
-	s.Require().Equal(6, got.Roll)
-	s.Require().Equal(1, got.Modifier)
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()))
 	s.Require().Equal("Second Wind", got.SourceName)
 	s.Require().NotSame(&source, got.SourceRef, "the applied fact owns its source identity")
 
+	// The applied fact carries a deep clone of the received calculation.
+	s.Require().NotNil(got.Calculation, "the applied fact carries the roll calculation")
+	s.Require().Equal(calculation, got.Calculation)
+	s.Require().NotSame(calculation, got.Calculation, "the applied fact owns its calculation")
+
 	source.ID = "mutated_by_caller"
+	calculation.Components[0].Dice.FinalRolls[0] = 9
+	calculation.Components[0].Dice.Subtotal = 9
+	*calculation.Components[1].Modifier = 5
+	calculation.Total = 14
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()),
 		"mutating the request after publication cannot rewrite the applied fact")
+	s.Require().Equal(7, got.Calculation.Total,
+		"mutating the received calculation cannot rewrite the applied total")
+	s.Require().Equal([]int{6}, got.Calculation.Components[0].Dice.FinalRolls,
+		"mutating the received calculation cannot rewrite the applied faces")
+	s.Require().Equal(1, *got.Calculation.Components[1].Modifier,
+		"mutating the received calculation cannot rewrite the applied modifier")
+	s.Require().True(s.char.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingAppliedWithoutCalculationReportsNilCalculation() {
+	s.char.hitPoints = 30
+	markSaved(s.char)
+
+	var got *dnd5eEvents.HealingAppliedEvent
+	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
+			got = &event
+			return nil
+		})
+	s.Require().NoError(err)
+
+	// Non-roll healing may publish without a calculation and stays legal; the
+	// legacy scalar fields remain the publisher's own record.
+	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: s.char.GetID(),
+		Amount:   7,
+		Roll:     6,
+		Modifier: 1,
+	})
+
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(7, got.Requested)
+	s.Require().Zero(got.Applied)
+	s.Require().Equal(30, got.HPBefore)
+	s.Require().Equal(30, got.HPAfter)
+	s.Require().Nil(got.Calculation, "non-roll healing carries no calculation")
 	s.Require().True(s.char.IsDirty())
 }
 
@@ -242,10 +314,9 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied(
 	s.Require().NoError(err)
 
 	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
-		TargetID: s.char.GetID(),
-		Amount:   7,
-		Roll:     6,
-		Modifier: 1,
+		TargetID:    s.char.GetID(),
+		Amount:      7,
+		Calculation: validSecondWindCalculation(),
 	})
 
 	s.Require().NoError(err)
@@ -254,9 +325,76 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied(
 	s.Require().Zero(got.Applied)
 	s.Require().Equal(30, got.HPBefore)
 	s.Require().Equal(30, got.HPAfter)
-	s.Require().Equal(6, got.Roll)
-	s.Require().Equal(1, got.Modifier)
+	s.Require().NotNil(got.Calculation)
+	s.Require().Equal(7, got.Calculation.Total)
 	s.Require().True(s.char.IsDirty())
+}
+
+func (s *HealingAppliedTestSuite) TestHealingReceivedRejectsInvalidCalculation() {
+	testCases := []struct {
+		name        string
+		amount      int
+		calculation *dnd5eEvents.RollCalculation
+	}{
+		{
+			name:        "amount does not match calculation total",
+			amount:      8,
+			calculation: validSecondWindCalculation(), // total 7
+		},
+		{
+			name:        "calculation has no components",
+			amount:      7,
+			calculation: &dnd5eEvents.RollCalculation{Total: 7},
+		},
+		{
+			name:   "calculation arithmetic disagrees with its components",
+			amount: 9,
+			calculation: func() *dnd5eEvents.RollCalculation {
+				calc := validSecondWindCalculation()
+				calc.Total = 9 // components sum to 7
+				return calc
+			}(),
+		},
+		{
+			name:   "calculation dice trace is malformed",
+			amount: 7,
+			calculation: func() *dnd5eEvents.RollCalculation {
+				calc := validSecondWindCalculation()
+				calc.Components[0].Dice.OriginalRolls = []int{60} // outside 1..10
+				return calc
+			}(),
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.char.hitPoints = 8
+			s.char.maxHitPoints = 10
+			markSaved(s.char)
+
+			published := 0
+			_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
+				s.ctx, func(_ context.Context, _ dnd5eEvents.HealingAppliedEvent) error {
+					published++
+					return nil
+				})
+			s.Require().NoError(err)
+
+			err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
+				TargetID:    s.char.GetID(),
+				Amount:      tc.amount,
+				SourceRef:   refs.Features.SecondWind(),
+				SourceName:  "Second Wind",
+				Calculation: tc.calculation,
+			})
+
+			s.Require().Error(err, "an invalid calculation is refused")
+			s.Require().Equal(rpgerr.CodeInvalidArgument, rpgerr.GetCode(err))
+			s.Zero(published, "no applied fact precedes validation")
+			s.Equal(8, s.char.GetHitPoints(), "HP is untouched")
+			s.False(s.char.IsDirty(), "the sheet is not dirtied")
+		})
+	}
 }
 
 func (s *HealingAppliedTestSuite) TestHealingAppliedForSomeoneElseIsIgnored() {

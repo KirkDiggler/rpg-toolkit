@@ -398,7 +398,7 @@ func (c *Character) activateCombatAbility(
 
 // activateFeature directly manages action economy for feature activation.
 // Features manage their own resources while Character manages slot consumption.
-func (c *Character) activateFeature(f features.Feature, _ *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
+func (c *Character) activateFeature(f features.Feature, input *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
 	if !c.canUseAbilityByActionType(f.ActionType()) {
 		reason := c.actionTypeExhaustedReason(f.ActionType())
 		return &ActivateAbilityOutput{
@@ -408,8 +408,10 @@ func (c *Character) activateFeature(f features.Feature, _ *ActivateAbilityInput)
 		}, nil
 	}
 
+	featureInput := features.FeatureInput{Bus: c.bus, Roller: input.Roller}
+
 	ctx := context.Background()
-	if err := f.CanActivate(ctx, c, features.FeatureInput{}); err != nil {
+	if err := f.CanActivate(ctx, c, featureInput); err != nil {
 		return &ActivateAbilityOutput{
 			Success:   false,
 			Error:     err.Error(),
@@ -418,7 +420,7 @@ func (c *Character) activateFeature(f features.Feature, _ *ActivateAbilityInput)
 	}
 
 	c.consumeActionType(f.ActionType())
-	if err := f.Activate(ctx, c, features.FeatureInput{Bus: c.bus}); err != nil {
+	if err := f.Activate(ctx, c, featureInput); err != nil {
 		c.restoreActionType(f.ActionType())
 		return &ActivateAbilityOutput{
 			Success:   false,

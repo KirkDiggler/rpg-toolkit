@@ -3,6 +3,7 @@ package character
 import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 )
 
 // EconomySlot identifies which action-economy slot a menu entry draws from, so
@@ -136,6 +137,12 @@ type ActivateAbilityInput struct {
 	// combatant that could observe this activation (e.g. Hide's Stealth
 	// check DC). Gathered by the caller via Combatant.PassivePerception().
 	ObserverPassivePerceptions []int
+
+	// Roller is the interaction-scoped dice roller for abilities that roll
+	// (e.g. Second Wind's healing d10). Nil retains the production default
+	// roller; resolution supplies the interaction's roller so exact traces
+	// never depend on process-global randomness.
+	Roller dice.Roller
 }
 
 // ActivateAbilityOutput contains the result of activating an ability.

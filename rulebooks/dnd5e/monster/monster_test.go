@@ -150,6 +150,33 @@ func (s *MonsterTestSuite) TestIsAlive() {
 	s.False(monster.IsAlive(), "monster should be dead at 0 HP")
 }
 
+// validSecondWindCalculation builds a valid sourced healing calculation:
+// one 1d10 trace plus the Fighter-level modifier, totalling 7.
+func validSecondWindCalculation() *dnd5eEvents.RollCalculation {
+	modifier := 1
+	return &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "1d10",
+					DieSize:       10,
+					OriginalRolls: []int{6},
+					FinalRolls:    []int{6},
+					Subtotal:      6,
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level",
+				},
+				Modifier: &modifier,
+			},
+		},
+		Total: 7,
+	}
+}
+
 func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	ctx := context.Background()
 	bus := events.NewEventBus()
@@ -158,6 +185,7 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().NoError(monster.SheetKeeper().Apply(ctx, bus))
 
 	source := *refs.Features.SecondWind()
+	calculation := validSecondWindCalculation()
 	var got *dnd5eEvents.HealingAppliedEvent
 	_, err := dnd5eEvents.HealingAppliedTopic.On(bus).Subscribe(
 		ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
@@ -167,12 +195,11 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().NoError(err)
 
 	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-		TargetID:   monster.GetID(),
-		Amount:     7,
-		Roll:       6,
-		Modifier:   1,
-		SourceRef:  &source,
-		SourceName: "Second Wind",
+		TargetID:    monster.GetID(),
+		Amount:      7,
+		SourceRef:   &source,
+		SourceName:  "Second Wind",
+		Calculation: calculation,
 	})
 
 	s.Require().NoError(err)
@@ -182,15 +209,28 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().Equal(2, got.Applied)
 	s.Require().Equal(8, got.HPBefore)
 	s.Require().Equal(10, got.HPAfter)
-	s.Require().Equal(6, got.Roll)
-	s.Require().Equal(1, got.Modifier)
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()))
 	s.Require().Equal("Second Wind", got.SourceName)
 	s.Require().NotSame(&source, got.SourceRef, "the applied fact owns its source identity")
 
+	// The applied fact carries a deep clone of the received calculation.
+	s.Require().NotNil(got.Calculation, "the applied fact carries the roll calculation")
+	s.Require().Equal(calculation, got.Calculation)
+	s.Require().NotSame(calculation, got.Calculation, "the applied fact owns its calculation")
+
 	source.ID = "mutated_by_caller"
+	calculation.Components[0].Dice.FinalRolls[0] = 9
+	calculation.Components[0].Dice.Subtotal = 9
+	*calculation.Components[1].Modifier = 5
+	calculation.Total = 14
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()),
 		"mutating the request after publication cannot rewrite the applied fact")
+	s.Require().Equal(7, got.Calculation.Total,
+		"mutating the received calculation cannot rewrite the applied total")
+	s.Require().Equal([]int{6}, got.Calculation.Components[0].Dice.FinalRolls,
+		"mutating the received calculation cannot rewrite the applied faces")
+	s.Require().Equal(1, *got.Calculation.Components[1].Modifier,
+		"mutating the received calculation cannot rewrite the applied modifier")
 	s.Require().True(monster.IsDirty())
 }
 
@@ -211,8 +251,6 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied(
 	err = dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID: monster.GetID(),
 		Amount:   7,
-		Roll:     6,
-		Modifier: 1,
 	})
 
 	s.Require().NoError(err)
@@ -221,8 +259,7 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedAtMaximumReportsZeroApplied(
 	s.Require().Zero(got.Applied)
 	s.Require().Equal(10, got.HPBefore)
 	s.Require().Equal(10, got.HPAfter)
-	s.Require().Equal(6, got.Roll)
-	s.Require().Equal(1, got.Modifier)
+	s.Require().Nil(got.Calculation, "non-roll healing carries no calculation")
 	s.Require().True(monster.IsDirty())
 }
 
