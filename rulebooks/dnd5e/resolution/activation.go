@@ -199,6 +199,12 @@ func (c *activationEffectCollector) captureHealingApplied(
 	// scalar-only shape. It is not a fact an ability activated, so it is not
 	// captured: neither the clamp facts nor the publisher's own scalars are
 	// mirrored onto an activation effect.
+	//
+	// The skip presupposes the identity above is VALID — the source-ref and
+	// source-name checks already ran, so a heal with a malformed identity fails
+	// closed even with no calculation. Real Hit Dice currently carries neither
+	// a calculation nor that canonical identity, and it does not cross an
+	// activation bus; this branch exists for whatever legacy publisher might.
 	if event.Calculation == nil {
 		return nil
 	}

@@ -150,13 +150,18 @@ func (m *strikeMachine) Start(ctx context.Context, cast *Participants) (Step, er
 
 	m.cast = cast
 	m.attack = m.in.Definition.Attack
-	m.sourceRef = &m.in.Definition.Ref
+	// The weapon identity is CLONED at install, both shapes of it: the
+	// definition's own ref and the profile's weapon-context ref. m.in is the
+	// caller's retained StrikeInput and m.attack is the caller's shared profile
+	// pointer, so an uncloned ref would let a caller mutation after Resolve
+	// rewrite what the folded events and the outcome already report.
+	m.sourceRef = cloneCoreRef(&m.in.Definition.Ref)
 	m.isOffHandAttack = m.attack.IsOffHandAttack
 	if m.attack.Weapon != nil {
 		m.twoHanded = m.attack.Weapon.TwoHanded
 		m.offHandWeaponRef = m.attack.Weapon.OffHandWeaponRef
 		if m.attack.Weapon.Ref != nil {
-			m.sourceRef = m.attack.Weapon.Ref
+			m.sourceRef = cloneCoreRef(m.attack.Weapon.Ref)
 		}
 	}
 	if m.attack.Ability != nil {
@@ -251,8 +256,10 @@ func (m *strikeMachine) effectiveACStep(target combat.Member, longRange bool) Ga
 				CriticalThreshold: criticalThreshold,
 			}
 			if longRange {
+				// Cloned like the weapon identity: the folded event must survive the
+				// caller mutating the retained strike input's definition afterward.
 				event.DisadvantageSources = append(event.DisadvantageSources, dnd5eEvents.AttackModifierSource{
-					SourceRef: &m.in.Definition.Ref,
+					SourceRef: cloneCoreRef(&m.in.Definition.Ref),
 					SourceID:  m.in.AttackerID,
 					Reason:    "target is beyond normal range",
 				})

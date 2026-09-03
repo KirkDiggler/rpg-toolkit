@@ -259,15 +259,30 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 	)
 	require.NoError(t, gwf.Apply(context.Background(), bus))
 
+	// The test holds the folded damage event so the custody section below can
+	// mutate the publisher's reroll in place after the strike has reported.
+	var folded *dnd5eEvents.DamageChainEvent
+	_, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(context.Background(),
+		func(_ context.Context, e *dnd5eEvents.DamageChainEvent,
+			c chain.Chain[*dnd5eEvents.DamageChainEvent],
+		) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
+			folded = e
+			return c, nil
+		})
+	require.NoError(t, err)
+
+	// A fresh copy: the custody section below mutates the caller's weapon ref
+	// after Resolve, which must never corrupt the refs package's singleton.
+	greatsword := *refs.Weapons.Greatsword()
 	definition := combatActions.Definition{
-		Ref:  *refs.Weapons.Greatsword(),
+		Ref:  greatsword,
 		Name: "Greatsword",
 		Attack: &combatActions.AttackProfile{
 			Category:    combatActions.AttackCategoryWeapon,
 			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
 			AttackBonus: 4,
 			Ability:     &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 3},
-			Weapon:      &combatActions.WeaponContext{TwoHanded: true},
+			Weapon:      &combatActions.WeaponContext{Ref: &greatsword, TwoHanded: true},
 			Damage: []damage.Damage{{
 				Dice:       "2d6",
 				Type:       damage.Slashing,
@@ -276,17 +291,21 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 		},
 	}
 
+	// The strike input is RETAINED: after Resolve the caller can still mutate
+	// through it — in.Definition is the very struct the machine read, and
+	// in.Definition.Attack is the caller's shared profile pointer.
+	in := &StrikeInput{
+		AttackerID: heroID,
+		TargetID:   wolfID,
+		Definition: definition,
+		Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{1, 5}},
+	}
 	out, err := resolveOn(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
-		Machine: NewStrike(&StrikeInput{
-			AttackerID: heroID,
-			TargetID:   wolfID,
-			Definition: definition,
-			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{1, 5}},
-		}),
+		Machine:      NewStrike(in),
 	}, newSurface(bus))
 	require.NoError(t, err)
 
@@ -334,12 +353,50 @@ func TestGreatWeaponFightingTraceSurvivesTheStrike(t *testing.T) {
 	require.Equal(t, damage.Slashing, ability.DamageType)
 
 	require.Equal(t, []damage.Instance{{Amount: 12, Type: damage.Slashing}}, outcome.DamageInstances)
+
+	// CUSTODY OF AN EXISTING REROLL ENTRY. The folded trace is publisher-owned
+	// state; rewriting its one reroll entry — scalars, display name, and source
+	// ref IN PLACE — must not rewrite what the strike reported. The reroll's
+	// source ref is the refs package's singleton (the root's GWF condition
+	// authored it that way), so it is snapshotted and restored around the
+	// mutation; the outcome's copy must already be independent of it.
+	require.NotSame(t, folded.Components[0].Roll.Dice.Rerolls[0].Source.Ref,
+		outcome.DamageComponents[0].Roll.Dice.Rerolls[0].Source.Ref,
+		"the outcome's reroll source must not alias the folded entry's")
+	canonicalGWF := *refs.Conditions.FightingStyleGreatWeaponFighting()
+	// Restored however the test exits: the mutation below corrupts the shared
+	// singleton in place, which is the point — the outcome must not care.
+	defer func() { *refs.Conditions.FightingStyleGreatWeaponFighting() = canonicalGWF }()
+	wantReroll := dnd5eEvents.DiceReroll{
+		DieIndex: 0, Before: 1, After: 4,
+		Source: dnd5eEvents.RollSource{Ref: &canonicalGWF, Name: "Great Weapon Fighting"},
+	}
+	wantWeaponRef := definition.Ref
+
+	foldedReroll := &folded.Components[0].Roll.Dice.Rerolls[0]
+	foldedReroll.After = 9
+	foldedReroll.Before = 2
+	foldedReroll.Source.Name = "tampered"
+	foldedReroll.Source.Ref.ID = "tampered"
+	// The caller still owns the strike input after Resolve; mutating its
+	// definition value and the shared weapon ref must not rewrite the report.
+	in.Definition.Ref.ID = "caller-tampered"
+	in.Definition.Attack.Weapon.Ref.ID = "caller-tampered"
+
+	require.Equal(t, wantReroll, outcome.DamageComponents[0].Roll.Dice.Rerolls[0],
+		"the outcome's reroll entry is an owned clone of what the fold settled")
+	require.Equal(t, wantWeaponRef, *outcome.Folded.WeaponRef,
+		"the folded attack event's WeaponRef is an owned clone, not the caller's definition ref")
+	require.Equal(t, wantWeaponRef, *folded.WeaponRef,
+		"the folded damage event's WeaponRef is an owned clone, not the caller's weapon ref")
+	require.Equal(t, "Great Weapon Fighting", outcome.DamageComponents[0].Roll.Dice.Rerolls[0].Source.Name)
 }
 
 // damage.Validate and dice.ParseNotation both accept uppercase D in pure dice
 // notation, so a compiled definition saying "1D6" must roll, trace, and land —
 // not fail after the dice were thrown. The trace records the physical pool the
-// dice package normalized ("1d6") with its die size, and the flat bonus lands.
+// dice package normalized ("d6" — one die carries no count) with its die size,
+// and the flat bonus lands.
 func TestUppercaseDamageNotationRollsAndTraces(t *testing.T) {
 	definition := combatActions.Definition{
 		Ref:  *refs.Weapons.Greatsword(),
@@ -400,7 +457,8 @@ func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	weaponRef := refs.Weapons.Greatsword()
+	weaponRefValue := *refs.Weapons.Greatsword()
+	weaponRef := &weaponRefValue
 	definition := combatActions.Definition{
 		Ref:  core.Ref{Module: "dnd5e", Type: "actions", ID: "longsword-strike"},
 		Name: "Longsword Strike",
@@ -414,17 +472,22 @@ func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
 	}
 	require.NoError(t, definition.Validate())
 
+	// The strike input is RETAINED: after Resolve the caller can still mutate
+	// through it — in.Definition is the very struct the machine read, and
+	// in.Definition.Attack is the caller's shared profile pointer. That is the
+	// custody surface this test exercises.
+	in := &StrikeInput{
+		AttackerID: heroID,
+		TargetID:   wolfID,
+		Definition: definition,
+		Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}},
+	}
 	out, err := resolveOn(context.Background(), &Input{
 		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
 		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
 		World:        actionWorld(t, 2),
 		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
-		Machine: NewStrike(&StrikeInput{
-			AttackerID: heroID,
-			TargetID:   wolfID,
-			Definition: definition,
-			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}},
-		}),
+		Machine:      NewStrike(in),
 	}, newSurface(bus))
 	require.NoError(t, err)
 
@@ -442,6 +505,219 @@ func TestProvenanceKeepsTheTraceSourcePairedToTheDefinition(t *testing.T) {
 	require.Equal(t, *weaponRef, *folded.WeaponRef,
 		"the damage-chain WeaponRef the weapon predicates read stays the weapon's ref")
 	require.Equal(t, 5, outcome.Damage, "3 pool + 2 flat bonus")
+
+	// CUSTODY OF THE FOLDED IDENTITY. The caller still owns the strike input
+	// and the shared attack profile after Resolve; mutating both must not
+	// rewrite what the strike already reported — neither the folded events'
+	// WeaponRef nor the trace's paired source. Snapshot the originals first.
+	wantWeapon := *weaponRef
+	wantDefinition := definition.Ref
+	wantSourceName := definition.Name
+	in.Definition.Ref.ID = "caller-tampered"
+	in.Definition.Attack.Weapon.Ref.ID = "caller-tampered"
+
+	require.Equal(t, wantWeapon, *outcome.Folded.WeaponRef,
+		"the folded attack event's WeaponRef is an owned clone, not the caller's ref")
+	require.Equal(t, wantWeapon, *folded.WeaponRef,
+		"the folded damage event's WeaponRef is an owned clone, not the caller's ref")
+	require.Equal(t, wantDefinition, *outcome.DamageComponents[0].Roll.Source.Ref,
+		"the trace's provenance ref survives caller mutation of the definition")
+	require.Equal(t, wantSourceName, outcome.DamageComponents[0].Roll.Source.Name,
+		"the trace's provenance name survives caller mutation of the definition")
+}
+
+// A CRITICAL STRIKE TRACES THE POOL AS ROLLED: the doubled pool — four physical
+// faces for a 2d6 — under the notation that describes those faces, with the
+// flat bonus and the ability modifier each applied exactly once. No reroll
+// history is invented and nothing is summed away.
+func TestCriticalStrikeTracesTheDoubledPool(t *testing.T) {
+	definition := combatActions.Definition{
+		Ref:  *refs.Weapons.Greatsword(),
+		Name: "Greatsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Ability:     &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 3},
+			Weapon:      &combatActions.WeaponContext{TwoHanded: true},
+			Damage: []damage.Damage{{
+				Dice:       "2d6",
+				Type:       damage.Slashing,
+				FlatBonus:  2,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			}},
+		},
+	}
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: definition,
+			// Natural 20, then the pool twice: [3,4] and the crit's [5,6].
+			Roller: &sequenceRoller{singles: []int{20}, pair: []int{3, 4, 5, 6}},
+		}),
+	}, newSurface(events.NewEventBus()))
+	require.NoError(t, err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.True(t, outcome.Critical)
+	require.True(t, outcome.Hit)
+	require.Len(t, outcome.DamageComponents, 2)
+
+	weapon := outcome.DamageComponents[0]
+	require.True(t, weapon.IsCritical)
+	require.NotNil(t, weapon.Roll.Dice)
+	require.Equal(t, "4d6", weapon.Roll.Dice.Notation,
+		"the trace's notation describes the four faces it carries")
+	require.Equal(t, 6, weapon.Roll.Dice.DieSize)
+	require.Equal(t, []int{3, 4, 5, 6}, weapon.Roll.Dice.OriginalRolls)
+	require.Equal(t, []int{3, 4, 5, 6}, weapon.Roll.Dice.FinalRolls)
+	require.Equal(t, 18, weapon.Roll.Dice.Subtotal)
+	require.Empty(t, weapon.Roll.Dice.Rerolls)
+	require.NotNil(t, weapon.Roll.Modifier)
+	require.Equal(t, 2, *weapon.Roll.Modifier,
+		"the declared flat bonus participates once, never doubled")
+	require.Equal(t, "Greatsword", weapon.Roll.Source.Name)
+
+	ability := outcome.DamageComponents[1]
+	require.Equal(t, dnd5eEvents.DamageSourceAbility, ability.Source)
+	require.False(t, ability.IsCritical)
+	require.NotNil(t, ability.Roll.Modifier)
+	require.Equal(t, 3, *ability.Roll.Modifier,
+		"the ability modifier participates once, never doubled")
+	require.Nil(t, ability.Roll.Dice)
+
+	require.Equal(t, 23, outcome.Damage, "doubled dice 18 + flat 2 + Strength 3")
+	require.Equal(t, []damage.Instance{{Amount: 23, Type: damage.Slashing}}, outcome.DamageInstances)
+}
+
+// AN ORDINARY NON-OFF-HAND SWING WITH A ZERO COMPILED MODIFIER KEEPS THE ZERO
+// PRESENT. The modifier pointer is non-nil and its value is a real zero — nil
+// is reserved for "the modifier did not participate", and here it did.
+func TestZeroAbilityModifierIsAPresentZero(t *testing.T) {
+	definition := combatActions.Definition{
+		Ref:  *refs.Weapons.Greatsword(),
+		Name: "Greatsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Ability:     &combatActions.AbilityContribution{Ability: abilities.STR, Modifier: 0},
+			Damage: []damage.Damage{{
+				Dice:       "1d6",
+				Type:       damage.Slashing,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			}},
+		},
+	}
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: definition,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{3}},
+		}),
+	}, newSurface(events.NewEventBus()))
+	require.NoError(t, err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.Len(t, outcome.DamageComponents, 2)
+	ability := outcome.DamageComponents[1]
+	require.Equal(t, dnd5eEvents.DamageSourceAbility, ability.Source)
+	require.NotNil(t, ability.Roll.Modifier, "a zero compiled modifier is a present zero")
+	require.Equal(t, 0, *ability.Roll.Modifier)
+	require.Equal(t, 3, outcome.Damage, "3 pool + 0 modifier")
+}
+
+// A NEGATIVE DECLARED FLAT BONUS IS A PRESENT NEGATIVE MODIFIER, and the
+// component's total arithmetic subtracts it exactly once.
+func TestNegativeFlatBonusIsAPresentNegativeModifier(t *testing.T) {
+	definition := combatActions.Definition{
+		Ref:  *refs.Weapons.Greatsword(),
+		Name: "Greatsword",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Melee: &combatActions.MeleeDelivery{ReachFeet: 5}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Slashing, FlatBonus: -2}},
+		},
+	}
+	require.NoError(t, definition.Validate(), "a negative flat bonus is a legal compiled pool")
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 2),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine: NewStrike(&StrikeInput{
+			AttackerID: heroID,
+			TargetID:   wolfID,
+			Definition: definition,
+			Roller:     &sequenceRoller{singles: []int{hitRoll}, pair: []int{5}},
+		}),
+	}, newSurface(events.NewEventBus()))
+	require.NoError(t, err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.Len(t, outcome.DamageComponents, 1)
+	require.NotNil(t, outcome.DamageComponents[0].Roll.Modifier,
+		"a declared negative bonus is a present modifier, not an absent one")
+	require.Equal(t, -2, *outcome.DamageComponents[0].Roll.Modifier)
+	require.Equal(t, 3, outcome.Damage, "5 pool − 2 penalty")
+	require.Equal(t, []damage.Instance{{Amount: 3, Type: damage.Slashing}}, outcome.DamageInstances)
+}
+
+// THE FOLDED LONG-RANGE MODIFIER SOURCE IS AN OWNED CLONE. The disadvantage
+// attribution rides outcome.Folded out of the strike; a caller mutating the
+// retained strike input's definition afterward must not rewrite it.
+func TestLongRangeModifierSourceSurvivesCallerMutation(t *testing.T) {
+	definition := combatActions.Definition{
+		Ref:  core.Ref{Module: "dnd5e", Type: "actions", ID: "test-shot"},
+		Name: "Test Shot",
+		Attack: &combatActions.AttackProfile{
+			Category:    combatActions.AttackCategoryWeapon,
+			Delivery:    combatActions.AttackDelivery{Ranged: &combatActions.RangedDelivery{NormalFeet: 20, LongFeet: 40}},
+			AttackBonus: 4,
+			Damage:      []damage.Damage{{Dice: "1d6", Type: damage.Piercing, FlatBonus: 2}},
+		},
+	}
+	in := &StrikeInput{
+		AttackerID: heroID,
+		TargetID:   wolfID,
+		Definition: definition,
+		// Disadvantage rolls two d20s; the damage pool follows in the same queue.
+		Roller: &sequenceRoller{singles: []int{hitRoll}, pair: []int{17, 4, 3}},
+	}
+
+	out, err := resolveOn(context.Background(), &Input{
+		Initiative: orderAsGiven{}, TurnDriver: passDriver{}, Standing: everyoneStanding{},
+		Sight: everyoneSeesTheWholeMap{}, Roller: dice.NewRoller(),
+		World:        actionWorld(t, 7),
+		Participants: []Participant{{Character: actionHero()}, {Monster: monsters.NewWolf(wolfID).ToData()}},
+		Machine:      NewStrike(in),
+	}, newSurface(events.NewEventBus()))
+	require.NoError(t, err)
+
+	outcome, ok := out.Outcome.(StrikeOutcome)
+	require.True(t, ok)
+	require.Len(t, outcome.Folded.DisadvantageSources, 1, "beyond long range")
+	want := definition.Ref
+	in.Definition.Ref.ID = "caller-tampered"
+	require.Equal(t, want, *outcome.Folded.DisadvantageSources[0].SourceRef,
+		"the folded long-range modifier source is an owned clone, not the caller's ref")
 }
 
 func oozeProfile(pools ...damage.Damage) combatActions.Definition {
