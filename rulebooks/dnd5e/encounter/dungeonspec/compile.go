@@ -116,13 +116,23 @@ func Compile(spec *Spec) (Compiled, error) {
 		return Compiled{}, err
 	}
 
+	// THE GEOMETRY IS RUN ONCE, HERE, and everything downstream is handed the
+	// answers (design C9, plan §0). The runtime never embeds a hex: it is
+	// given the crossings as pairs, the sealed cells as a list, and the walls
+	// as segments it draws and never measures.
+	names := authoredOf(spec)
+	derived := deriveWalls(spec, orientation, floorOf(spec, orientation), nil)
+	doorEdges := doorCrossings(spec, orientation)
+
 	field := encounter.FieldInput{
-		Canvas:  encounter.CanvasInput{Void: void, Orientation: orientation},
-		Regions: regionsOf(spec),
-		Scenery: sceneryOf(spec),
-		Props:   propsOf(spec),
-		Walls:   wallsOf(spec),
-		Doors:   doorsOf(spec, orientation),
+		Canvas:   encounter.CanvasInput{Void: void, Orientation: orientation},
+		Regions:  regionsOf(spec),
+		Scenery:  sceneryOf(spec),
+		Props:    propsOf(spec),
+		Walls:    wallsOf(derived, names, doorEdges),
+		Segments: segmentsOf(derived, names, doorEdges),
+		Sealed:   sealedOf(spec, orientation, derived),
+		Doors:    doorsOf(spec, orientation),
 	}
 
 	start, err := seatsOf(spec, orientation)
@@ -216,32 +226,28 @@ func propsOf(spec *Spec) []encounter.PropInput {
 	return out
 }
 
-// wallsOf carries every wall as an edge that blocks movement and sight, with
-// its authored height when the entry carried one — nil compiles to 0, the
-// carrier's own word for "not authored" ([encounter.WallInput.Height]).
-func wallsOf(spec *Spec) []encounter.WallInput {
-	doors := doorCrossings(spec)
-	n := 0
-	for _, w := range spec.Walls {
-		n += len(w.Edges)
-	}
-	out := make([]encounter.WallInput, 0, n)
-	for _, w := range spec.Walls {
-		for _, e := range w.Edges {
-			from, to := authored(e[0]), authored(e[1])
-			// A DOOR STANDS IN A WALL (rpg-project#355): the author writes
-			// the run unbroken and the door is subtracted here, so the
-			// engine still sees walls and doors disjoint and a file that
-			// spells the door's edge out compiles identically to one that
-			// leaves the hole. Grouping never reaches this output — the
-			// same edges grouped differently compile byte-identically,
-			// which is the whole content of "a group has no mechanical
-			// consequence".
-			if doors[normalizedCrossing(from, to)] {
+// wallsOf is THE MECHANICAL TRUTH the runtime is handed: every crossing the
+// authored lines block, as the pairs [encounter.WallInput] has always taken,
+// minus the ones a door opens.
+//
+// A DOOR STANDS IN A WALL and the door's crossing is subtracted here, exactly
+// as it was under the pair form: the engine still sees walls and doors
+// disjoint, and a wall drawn straight through a doorway compiles to the hole
+// its door makes. Two walls that block the same crossing — the corner case,
+// literally — emit it once, at the first one's height.
+func wallsOf(
+	derived wallDerivation, names map[spatial.Position][2]int, doors map[[2]spatial.Position]encounter.DoorID,
+) []encounter.WallInput {
+	var out []encounter.WallInput
+	seen := map[[2]spatial.Position]bool{}
+	for _, w := range derived.Walls {
+		for _, c := range w.Crossings {
+			if seen[c] || doors[c] != "" {
 				continue
 			}
+			seen[c] = true
 			wall := encounter.WallInput{Boundary: spatial.Boundary{
-				From: from, To: to,
+				From: authored(names[c[0]]), To: authored(names[c[1]]),
 				BlocksMovement: true, BlocksLineOfSight: true,
 			}}
 			if w.Height != nil {
@@ -250,25 +256,136 @@ func wallsOf(spec *Spec) []encounter.WallInput {
 			out = append(out, wall)
 		}
 	}
+
 	return out
 }
 
-// doorCrossings is every edge a door stands in, normalized in the authored
-// offset space [wallsOf] works in — NOT the absolute axial space
-// [doorsOf] converts to, since the only question here is whether a wall entry
-// names the same authored crossing.
-func doorCrossings(spec *Spec) map[[2]spatial.Position]bool {
-	out := map[[2]spatial.Position]bool{}
+// segmentsOf is WHAT A CLIENT DRAWS: each authored wall as the line it is, in
+// fractional axial, with the floor it stands on and the doors that open in it.
+//
+// PRESENTATION, not mechanics — the crossings above are the mechanics, and the
+// two are derived from the same line so they cannot disagree. Before this, a
+// client had to guess a wall's shape by chaining the crossings back into runs,
+// with a straightness tolerance that regrouped walls the author had drawn; the
+// line was in the file all along, and now it reaches the far end intact.
+func segmentsOf(
+	derived wallDerivation,
+	names map[spatial.Position][2]int, doors map[[2]spatial.Position]encounter.DoorID,
+) []encounter.SegmentInput {
+	var out []encounter.SegmentInput
+	for _, w := range derived.Walls {
+		seg := encounter.SegmentInput{
+			Name: w.Name,
+			From: encounter.AxialPointF{Q: w.Start.Q, R: w.Start.R},
+			To:   encounter.AxialPointF{Q: w.End.Q, R: w.End.R},
+		}
+		if w.Height != nil {
+			seg.Height = *w.Height
+		}
+		for _, c := range w.Footprint {
+			seg.Footprint = append(seg.Footprint, authored(names[c]))
+		}
+		for _, c := range w.Crossings {
+			if id := doors[c]; id != "" {
+				seg.DoorIDs = append(seg.DoorIDs, id)
+			}
+		}
+		out = append(out, seg)
+	}
+
+	return out
+}
+
+// sealedOf is every OWNED cell a wall leaves too little of to stand on
+// (C10) — the cells that keep their region and lose their feet, which is why
+// the runtime cannot work them out from region membership any more.
+//
+// Scenery a wall cuts is deliberately absent: it was never standable, and
+// saying so twice would give the runtime two lists to disagree about.
+func sealedOf(spec *Spec, o encounter.Orientation, derived wallDerivation) []spatial.Position {
+	owner := ownerOf(spec, o)
+	var out []spatial.Position
+	for cell := range derived.Sealed {
+		if _, owned := owner[cell]; !owned {
+			continue
+		}
+		out = append(out, cell)
+	}
+	names := authoredOf(spec)
+	for i, c := range out {
+		out[i] = authored(names[c])
+	}
+	sort.Slice(out, func(i, j int) bool { return cellBefore(out[i], out[j]) })
+
+	return out
+}
+
+// doorCrossings is every crossing a door opens, to the compiled door's id.
+// Absolute axial, which is the frame the derivations answer in.
+func doorCrossings(spec *Spec, o encounter.Orientation) map[[2]spatial.Position]encounter.DoorID {
+	g := geometryOf(o)
+	out := map[[2]spatial.Position]encounter.DoorID{}
 	for _, d := range spec.Doors {
-		for _, e := range d.Edges {
-			out[normalizedCrossing(authored(e[0]), authored(e[1]))] = true
+		step, ok := g.stepAt(d.At.Offset)
+		if !ok {
+			continue
+		}
+		here := encounter.HexCellAt(o, d.At.Cell[0], d.At.Cell[1])
+		there := spatial.Position{X: here.X + float64(step[0]), Y: here.Y + float64(step[1])}
+		out[normalizedCrossing(here, there)] = encounter.DoorID(spec.Key + "/" + d.ID)
+	}
+
+	return out
+}
+
+// floorOf is every floor cell — a region's or scenery's — absolute axial. What
+// the wall derivations cut against (C2, C8).
+func floorOf(spec *Spec, o encounter.Orientation) map[spatial.Position]bool {
+	out := map[spatial.Position]bool{}
+	for _, r := range spec.Regions {
+		for _, row := range r.Cells {
+			for _, at := range row {
+				out[encounter.HexCellAt(o, at[0], at[1])] = true
+			}
 		}
 	}
+	for _, row := range spec.Scenery {
+		for _, at := range row {
+			out[encounter.HexCellAt(o, at[0], at[1])] = true
+		}
+	}
+
 	return out
 }
 
-// doorsOf mints each door as `<key>/<id>`, its edges converted to the absolute
-// axial cells [encounter.DoorInput] takes, in the state the file gives it.
+// authoredOf is the reverse of the cell conversion: every floor cell back to
+// the [col,row] pair the author wrote, so a derived crossing or footprint can
+// be handed on in the frame [encounter.FieldInput] speaks.
+func authoredOf(spec *Spec) map[spatial.Position][2]int {
+	o := orientations[spec.Orientation]
+	out := map[spatial.Position][2]int{}
+	for _, r := range spec.Regions {
+		for _, row := range r.Cells {
+			for _, at := range row {
+				out[encounter.HexCellAt(o, at[0], at[1])] = at
+			}
+		}
+	}
+	for _, row := range spec.Scenery {
+		for _, at := range row {
+			out[encounter.HexCellAt(o, at[0], at[1])] = at
+		}
+	}
+
+	return out
+}
+
+// doorsOf mints each door as `<key>/<id>`, standing in THE ONE CROSSING its
+// position is the midpoint of (F11), in the state the file gives it.
+//
+// ONE DOOR, ONE CROSSING. The pair form let a door list any number of edges,
+// which made a two-cell gate and a mistake look identical; a wider doorway is
+// now two doors, and the compiler has one less thing to be wrong about.
 //
 // THE ID IS PREFIXED BY THE DUNGEON'S KEY so two dungeons in one process
 // cannot collide, and a door's STATE persists under its ID
@@ -276,15 +393,20 @@ func doorCrossings(spec *Spec) map[[2]spatial.Position]bool {
 // by — renaming a door in the file is what loses a party's progress through
 // it, and nothing else does.
 func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
+	g := geometryOf(o)
 	var out []encounter.DoorInput
 	for _, d := range spec.Doors {
-		edges := make([]encounter.DoorEdge, 0, len(d.Edges))
-		for _, e := range d.Edges {
-			edges = append(edges, encounter.DoorEdge{
-				From: encounter.HexCellAt(o, e[0][0], e[0][1]),
-				To:   encounter.HexCellAt(o, e[1][0], e[1][1]),
-			})
+		step, ok := g.stepAt(d.At.Offset)
+		if !ok {
+			continue
 		}
+		here := encounter.HexCellAt(o, d.At.Cell[0], d.At.Cell[1])
+		there := spatial.Position{X: here.X + float64(step[0]), Y: here.Y + float64(step[1])}
+		// NORMALIZED, because the SAME door can be written from either of the
+		// two cells it stands between — [-0.5,0] of one is [0.5,0] of the
+		// other — and two files describing one dungeon must compile to one
+		// door, not to two orderings of it.
+		crossing := normalizedCrossing(here, there)
 		var state encounter.DoorState
 		switch {
 		case d.Locked != nil:
@@ -295,10 +417,13 @@ func doorsOf(spec *Spec, o encounter.Orientation) []encounter.DoorInput {
 			state = encounter.DoorIsOpen()
 		}
 		out = append(out, encounter.DoorInput{
-			ID: spec.Key + "/" + d.ID, Edges: edges, State: state,
+			ID:        encounter.DoorID(spec.Key + "/" + d.ID),
+			Edges:     []encounter.DoorEdge{{From: crossing[0], To: crossing[1]}},
+			State:     state,
 			Concealed: approachesOf(d.Concealed),
 		})
 	}
+
 	return out
 }
 

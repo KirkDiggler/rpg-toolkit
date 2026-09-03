@@ -4,13 +4,19 @@
 package dungeonspec_test
 
 // compile_test.go pins what the compiler BUILDS from a version-2 file: the
-// regions verbatim, the walls and props at their absolute cells, the doors in
-// their crossings with the state the file gives them, and the two halves it
-// hands back. The forcing case — that the re-authored tomb is the tomb — is
-// golden_test.go's; this file is about the shape of each piece.
+// regions verbatim, the props at their absolute cells, the doors in their
+// crossings with the state the file gives them, and — since rpg-project#360 —
+// everything a WALL derives from the line the author drew. The forcing case,
+// that the re-authored tomb is the tomb, is golden_test.go's; this file is
+// about the shape of each piece.
+//
+// What left with the pair form: the grouping pin. A wall used to be a bag of
+// crossings an author could bracket into runs, and the ruling that bracketing
+// carried no mechanical consequence needed a test. A wall is one line now.
+// There is no grouping to have a consequence, which is a stronger answer to
+// the same question than the test was.
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -92,7 +98,8 @@ regions:
       - [[0,1],[1,1],[2,1]]
 start: [0, 0]
 walls:
-  - [[1,0],[2,1]]
+  - start: { cell: [1,0], offset: [0.375, 0.25] }
+    end:   { cell: [1,1], offset: [0.375, 0.25] }
 `)
 	s.Equal(encounter.OrientationFlatTop, flat.Field.Canvas.Orientation.Kind())
 
@@ -100,108 +107,132 @@ walls:
 	s.Equal(encounter.VoidTransparent, clear.Field.Canvas.Void.Kind())
 }
 
-// TestWallsAreEdgesThatBlockBothWays — every wall is carried as written, in
-// the authored frame, blocking movement and sight.
-func (s *CompileSuite) TestWallsAreEdgesThatBlockBothWays() {
-	c := s.load(s.tomb)
-	s.Require().Len(c.Field.Walls, 28)
-	s.Equal(encounter.WallInput{Boundary: spatial.Boundary{
-		From: spatial.Position{X: 5, Y: 0}, To: spatial.Position{X: 6, Y: 0},
-		BlocksMovement: true, BlocksLineOfSight: true,
-	}}, c.Field.Walls[0], "a bare entry compiles at height 0: not authored, the standard height")
-}
-
-// TestAWallMayAuthorItsHeight — the object form carries its multiplier
-// through the compile verbatim; every bare sibling stays at 0, the carrier's
-// word for "not authored" (rpg-project#273).
-func (s *CompileSuite) TestAWallMayAuthorItsHeight() {
-	c := s.load(s.tombWith("  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], height: 2.5 }"))
-	s.Require().Len(c.Field.Walls, 28, "the object form is one wall, exactly as the bare form is")
-	raised := c.Field.Walls[1]
-	s.Equal(spatial.Position{X: 5, Y: 1}, raised.From)
-	s.Equal(spatial.Position{X: 6, Y: 0}, raised.To)
-	s.True(raised.BlocksMovement, "height changes nothing about what a wall blocks")
-	s.True(raised.BlocksLineOfSight, "a wall cannot be seen past at ANY height (Kirk's ruling)")
-	s.Equal(2.5, raised.Height)
-	for i, w := range c.Field.Walls {
-		if i != 1 {
-			s.Zero(w.Height, "walls[%d] authored no height", i)
-		}
-	}
-}
-
-// TestGroupingHasNoMechanicalConsequence is the ruling of rpg-project#355 as a
-// pin: a group is an AUTHORING fact and nothing else, so the same edges in the
-// same order compile to the identical wall set however they are bracketed.
-// Everything downstream — the engine, the renderer's own derived runs — is
-// entitled to never learn a group existed.
-func (s *CompileSuite) TestGroupingHasNoMechanicalConsequence() {
-	flat := s.load(s.tomb).Field.Walls
-	s.Require().Len(flat, 28)
-
-	for _, runs := range []int{1, 2, 5, 28} {
-		s.Run(fmt.Sprintf("%d runs", runs), func() {
-			raw := regroupedTomb(s.T(), s.tomb, runs, false)
-			spec, err := dungeonspec.Decode([]byte(raw))
-			s.Require().NoError(err)
-			s.Require().Empty(dungeonspec.Validate(spec))
-			s.Require().Len(spec.Walls, runs, "the FILE really is grouped differently")
-			s.Equal(flat, s.load(raw).Field.Walls, "and the atlas cannot tell")
-		})
-	}
-}
-
-// TestADoorStandsInAWall — rpg-project#355 reverses "a door cannot stand in a
-// wall". The author writes the run unbroken and lists the door separately; the
-// compiler subtracts the door's edges, so the wall set is what it always was.
+// TestTheCrossingsAWallBlocksAreDerived — the file holds two positions and
+// the compiler works out the rest (design C7).
 //
-// The contrast is the point: the spec carries 30 wall edges and the atlas gets
-// 28, so a compiler that forgot to subtract would fail here rather than pass
+// The tomb's two seams are one line each; between them they block the 28
+// crossings the pair form used to list by hand, plus the two the doors open,
+// which the compiler hands back to the doors. What a reader can check by eye:
+// the line passes a quarter of a width inside column 6, so it stands in every
+// step from column 5 to column 6 — straight and staggered alike, which is a
+// hex's answer and not a parity table's.
+func (s *CompileSuite) TestTheCrossingsAWallBlocksAreDerived() {
+	c := s.load(s.tomb)
+	s.Require().Len(c.Field.Walls, 28, "two lines, 15 crossings each, less the two the doors open")
+
+	blocked := map[[2]spatial.Position]bool{}
+	for _, w := range c.Field.Walls {
+		s.True(w.BlocksMovement, "a wall stops a step")
+		s.True(w.BlocksLineOfSight, "and a sightline")
+		s.Zero(w.Height, "the tomb authors no height, which is the standard height")
+		blocked[[2]spatial.Position{w.From, w.To}] = true
+	}
+	for _, want := range [][2]spatial.Position{
+		{{X: 5, Y: 0}, {X: 6, Y: 0}}, // straight across, row 0
+		{{X: 5, Y: 1}, {X: 6, Y: 0}}, // and the two staggered steps beside it
+		{{X: 5, Y: 1}, {X: 6, Y: 2}},
+		{{X: 5, Y: 4}, {X: 6, Y: 4}}, // the crossing the pair form left for a door
+	} {
+		s.Contains(blocked, want, "the line stands in the way of %v", want)
+	}
+	s.NotContains(blocked, [2]spatial.Position{{X: 5, Y: 3}, {X: 6, Y: 4}},
+		"except the one its door opens")
+	s.NotContains(blocked, [2]spatial.Position{{X: 4, Y: 3}, {X: 5, Y: 3}},
+		"and it stands in the way of nothing inside a room")
+}
+
+// TestASegmentIsTheWallItselfCarriedWhole — the other half of the same
+// derivation: the line reaches the far end AS A LINE, so a client draws it
+// instead of chaining the crossings back into runs under a tolerance.
+func (s *CompileSuite) TestASegmentIsTheWallItselfCarriedWhole() {
+	c := s.load(s.tomb)
+	s.Require().Len(c.Field.Segments, 2, "one segment per authored wall, in authored order")
+
+	seam := c.Field.Segments[0]
+	s.Equal("the entrance seam", seam.Name, "the author's own word, carried")
+	s.Equal(encounter.AxialPointF{Q: 2, R: 7.5}, seam.From,
+		"[5,7] and its south-east midpoint, in fractional axial — a half, exactly")
+	s.Equal(encounter.AxialPointF{Q: 6, R: -0.5}, seam.To)
+	s.Equal([]encounter.DoorID{"reference-tomb/entrance-hall"}, seam.DoorIDs,
+		"and it knows which door opens in it")
+
+	s.Len(seam.Footprint, 8, "four cells of column 5 and four of column 6: the line runs inside both")
+	s.Equal(spatial.Position{X: 5, Y: 7}, seam.Footprint[0], "in order along the wall")
+	s.Equal(spatial.Position{X: 6, Y: 0}, seam.Footprint[len(seam.Footprint)-1])
+
+	s.Empty(c.Field.Sealed, "a quarter line shaves 5/24 and seals nothing")
+}
+
+// TestAWallMayAuthorItsHeight — the multiplier is on the WALL now, and reaches
+// every crossing that wall derives (rpg-project#273's "it applies to every
+// edge in the run", with the run finally being a thing).
+func (s *CompileSuite) TestAWallMayAuthorItsHeight() {
+	c := s.load(s.tombWith("    name: the entrance seam", "    height: 2.5\n    name: the entrance seam"))
+	s.Require().Len(c.Field.Walls, 28)
+
+	raised, standard := 0, 0
+	for _, w := range c.Field.Walls {
+		s.True(w.BlocksMovement, "height changes nothing about what a wall blocks")
+		s.True(w.BlocksLineOfSight, "a wall cannot be seen past at ANY height (Kirk's ruling)")
+		if w.Height == 2.5 {
+			raised++
+			s.Less(w.From.X, 7.0, "only the entrance seam was raised")
+			continue
+		}
+		s.Zero(w.Height, "the other seam authored no height")
+		standard++
+	}
+	s.Equal(14, raised, "every crossing the raised line derives carries its height")
+	s.Equal(14, standard)
+	s.Equal(2.5, c.Field.Segments[0].Height, "and so does the segment a client draws")
+	s.Zero(c.Field.Segments[1].Height)
+}
+
+// TestADoorStandsInAWall — rpg-project#355 reversed "a door cannot stand in a
+// wall", and the line form makes it the only possibility there is: a door must
+// have exactly one wall through it (F10), so every door is in a wall by
+// construction and the compiler hands that one crossing back.
+//
+// The contrast is the point. The wall derives 15 crossings and the atlas gets
+// 14, so a compiler that forgot to subtract would fail here rather than pass
 // on a fixture with nothing to subtract.
 func (s *CompileSuite) TestADoorStandsInAWall() {
-	raw := regroupedTomb(s.T(), s.tomb, 2, true)
-	spec, err := dungeonspec.Decode([]byte(raw))
-	s.Require().NoError(err)
-	s.Empty(dungeonspec.Validate(spec), "a door in a wall is the ordinary case now")
+	c := s.load(s.tomb)
 
-	authored := 0
-	for _, w := range spec.Walls {
-		authored += len(w.Edges)
-	}
-	s.Require().Equal(30, authored, "the file claims both door crossings as wall")
-
-	c := s.load(raw)
-	s.Len(c.Field.Walls, 28, "and the compiler hands each one back to its door")
-	s.Equal(s.load(s.tomb).Field.Walls, c.Field.Walls,
-		"an unbroken run with its doors named compiles to the punched-out list")
-
+	door := [2]spatial.Position{{X: 5, Y: 3}, {X: 6, Y: 4}}
 	for _, w := range c.Field.Walls {
-		for _, d := range [][2]spatial.Position{
-			{{X: 5, Y: 4}, {X: 6, Y: 4}}, {{X: 15, Y: 4}, {X: 16, Y: 4}},
-		} {
-			s.False(w.From == d[0] && w.To == d[1], "no wall stands where a door does")
-		}
+		s.False(w.From == door[0] && w.To == door[1], "no wall stands where a door does")
 	}
+	s.Require().Len(c.Field.Doors, 2)
+	s.Equal([]encounter.DoorEdge{{
+		From: encounter.HexCellAt(encounter.HexesArePointyTop(), 5, 3),
+		To:   encounter.HexCellAt(encounter.HexesArePointyTop(), 6, 4),
+	}}, c.Field.Doors[0].Edges, "and the door opens exactly the crossing the wall gave up")
+
+	// Wall the door back in and the crossing comes straight back: the line was
+	// always running through it.
+	walled := s.tombWith("  - id: entrance-hall\n    at: { cell: [6,4], offset: [-0.25, -0.375] }\n", "")
+	c2 := s.load(walled)
+	s.Len(c2.Field.Walls, 29, "the wall never had a hole in it — the door was the hole")
+	s.Len(c2.Field.Doors, 1)
 }
 
 // TestAConcealedDoorInAWallIsStillTheWayIn is the interaction that makes "a
 // door stands in a wall" safe rather than merely convenient.
 //
 // The coherence check asks of every crossing between two regions whether it is
-// a way in, and SKIPS the ones a wall claims — "a wall is not a way in". Once a
-// wall run may name the very edge a door stands in, which of the two claims
+// a way in, and SKIPS the ones a wall claims — "a wall is not a way in". Every
+// door now stands in a wall by construction (F10), so which of the two claims
 // that crossing decides whether the secret's only entrance is seen at all. The
-// door's claim wins (validate runs walls before doors, deliberately), so the
+// door's claim wins ([validation.claims] asks the doors first), so the
 // frontier still reads a door here.
 //
-// The second half is the part that can fail: uncanceal the door and the hole
+// The second half is the part that can fail: unconceal the door and the hole
 // MUST be reported. A build where the wall's claim won would skip this
 // crossing, find no way into the tomb at all, and pass silently.
 func (s *CompileSuite) TestAConcealedDoorInAWallIsStillTheWayIn() {
 	const find = "\n    concealed: [{ ability: perception, dc: 15 }]"
-	secret := regroupedTomb(s.T(), s.secretTomb(find), 2, true)
-	s.Require().Contains(secret, "      - [[15,4],[16,4]]",
-		"the hall-tomb run reclaims the edge its concealed door stands in")
+	secret := s.secretTomb(find)
 
 	spec, err := dungeonspec.Decode([]byte(secret))
 	s.Require().NoError(err)
@@ -215,7 +246,7 @@ func (s *CompileSuite) TestAConcealedDoorInAWallIsStillTheWayIn() {
 	errs := dungeonspec.Validate(spec)
 	s.Require().NotEmpty(errs, "a plain door into a concealed room is a hole in the secret")
 	s.Equal("regions[2].concealed", errs[0].Path,
-		"and the frontier found it THROUGH the wall run that names the same edge")
+		"and the frontier found it THROUGH the wall the door stands in")
 }
 
 // TestADoorIsMintedUnderTheDungeonsKeyInItsAuthoredState — `<key>/<id>`, so two
@@ -229,9 +260,9 @@ func (s *CompileSuite) TestADoorIsMintedUnderTheDungeonsKeyInItsAuthoredState() 
 	s.Equal(encounter.DoorID("reference-tomb/entrance-hall"), open.ID)
 	s.Equal(encounter.DoorOpen, open.State.Kind(), "no lock and not closed: an open doorway")
 	s.Equal([]encounter.DoorEdge{{
-		From: encounter.HexCellAt(encounter.HexesArePointyTop(), 5, 4),
+		From: encounter.HexCellAt(encounter.HexesArePointyTop(), 5, 3),
 		To:   encounter.HexCellAt(encounter.HexesArePointyTop(), 6, 4),
-	}}, open.Edges, "edges are the absolute axial cells DoorInput takes — the one conversion this package makes")
+	}}, open.Edges, "one crossing, in the absolute axial cells DoorInput takes — the one conversion this package makes")
 
 	locked := c.Field.Doors[1]
 	s.Equal(encounter.DoorID("reference-tomb/hall-tomb"), locked.ID)
@@ -261,6 +292,30 @@ func (s *CompileSuite) TestALockMayListSeveralApproaches() {
 		{Ability: "str", DC: 15},
 		{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: 12},
 	}}, lock, "forcing the door and picking its lock need not cost the same")
+}
+
+// shortcutWall and shortcutAt are a door somewhere new, and the wall it has to
+// stand in.
+//
+// A door needs exactly one wall through it (F10), so a fixture that wants a
+// door inside the hall says where its wall runs too — which is the whole
+// difference between the two dialects in five lines of YAML. The wall is a
+// quarter line down the column 8|9 seam, the same shape as the tomb's own two;
+// the door stands on it at the midpoint of the side between [8,3] and [9,4].
+const (
+	shortcutWall = "  - start: { cell: [8,7], offset: [0.25, 0.375] }\n" +
+		"    end:   { cell: [9,0], offset: [-0.25, -0.375] }\n" +
+		"    name: the hall divider\n"
+	shortcutAt = "    at: { cell: [8,3], offset: [0.25, 0.375] }"
+)
+
+// tombWithShortcut is the tomb with that wall drawn and one door on it, listed
+// first so it is Doors[0].
+func (s *CompileSuite) tombWithShortcut(door string) string {
+	raw := s.tombWith("    name: the tomb seam\n", "    name: the tomb seam\n"+shortcutWall)
+	s.Require().Contains(raw, "doors:\n")
+
+	return strings.Replace(raw, "doors:\n", "doors:\n  - id: shortcut\n"+shortcutAt+door+"\n", 1)
 }
 
 // secretTomb is the shipping tomb with its crypt made a coherent secret:
@@ -294,8 +349,7 @@ func (s *CompileSuite) TestAConcealedDoorCarriesItsFindCheckThrough() {
 		"the find approaches, in authored order, priced per route")
 	s.Nil(hidden.Field.Doors[0].Concealed, "and the doorway beside it is untouched")
 
-	plain := s.load(s.tombWith("doors:\n",
-		"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]"+find+"\n"))
+	plain := s.load(s.tombWithShortcut(find))
 	s.Equal(encounter.DoorOpen, plain.Field.Doors[0].State.Kind(),
 		"a concealed door can stand open underneath — a hidden passage nobody shut")
 	s.Equal(wantFind, plain.Field.Doors[0].Concealed)
@@ -324,9 +378,9 @@ func (s *CompileSuite) TestARegionHidesWithItsDoor() {
 
 // TestCompile_DoorInsideARegionIsLegal — a door need not sit on a seam.
 func (s *CompileSuite) TestCompile_DoorInsideARegionIsLegal() {
-	c := s.load(s.tombWith("doors:\n", "doors:\n  - id: inner\n    edges: [[[8,3],[9,3]]]\n    closed: true\n"))
+	c := s.load(s.tombWithShortcut("\n    closed: true"))
 	s.Require().Len(c.Field.Doors, 3)
-	s.Equal(encounter.DoorID("reference-tomb/inner"), c.Field.Doors[0].ID)
+	s.Equal(encounter.DoorID("reference-tomb/shortcut"), c.Field.Doors[0].ID)
 
 	_, err := encounter.NewEncounter(&encounter.SetupInput{
 		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},

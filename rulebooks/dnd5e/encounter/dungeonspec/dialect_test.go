@@ -30,9 +30,31 @@ func TestDialectSuite(t *testing.T) {
 
 func (s *DialectSuite) SetupTest() { s.tomb = tombYAML(s.T()) }
 
+// theEntranceSeam and theEntranceDoor are the two blocks most cases here swap
+// out — the first wall of the tomb and the door standing in it, quoted exactly
+// as the file writes them.
+const (
+	theEntranceSeam = "  - start: { cell: [5,7], offset: [0.25, 0.375] }\n" +
+		"    end:   { cell: [6,0], offset: [-0.25, -0.375] }\n" +
+		"    name: the entrance seam\n"
+	theEntranceDoor = "    at: { cell: [6,4], offset: [-0.25, -0.375] }\n"
+	tombSeamName    = "    name: the tomb seam\n"
+)
+
 func (s *DialectSuite) tombWith(old, new string) string {
 	s.Require().Contains(s.tomb, old, "tombWith: anchor not present in the tomb")
 	return strings.Replace(s.tomb, old, new, 1)
+}
+
+// tombWithShortcut is the tomb with an extra line drawn across the hall and
+// one door on it, listed first so it is doors[0]. A door needs exactly one
+// wall through it (F10), so a case that wants a door somewhere new brings its
+// wall with it — see compile_test.go's shortcutWall for the line itself.
+func (s *DialectSuite) tombWithShortcut(door string) string {
+	raw := s.tombWith(tombSeamName, tombSeamName+shortcutWall)
+	s.Require().Contains(raw, "doors:\n")
+
+	return strings.Replace(raw, "doors:\n", "doors:\n  - id: shortcut\n"+shortcutAt+door+"\n", 1)
 }
 
 // validate decodes and validates, returning every defect's path.
@@ -71,8 +93,12 @@ func (s *DialectSuite) TestTheShippingTombDecodes() {
 	s.Len(spec.Regions, 3)
 	s.Len(spec.Regions[0].Cells, 8, "eight rows")
 	s.Len(spec.Regions[0].Cells[0], 6, "six cells each")
-	s.Len(spec.Walls, 28)
+	s.Len(spec.Walls, 2, "two seams, one line each — 28 loose crossings before the line form")
+	s.Equal(dungeonspec.PositionSpec{Cell: [2]int{5, 7}, Offset: [2]float64{0.25, 0.375}}, spec.Walls[0].Start)
+	s.Equal(dungeonspec.PositionSpec{Cell: [2]int{6, 0}, Offset: [2]float64{-0.25, -0.375}}, spec.Walls[0].End)
+	s.Nil(spec.Walls[0].Height, "the tomb authors no height, which is not the same fact as writing 1")
 	s.Len(spec.Doors, 2)
+	s.Equal(dungeonspec.PositionSpec{Cell: [2]int{6, 4}, Offset: [2]float64{-0.25, -0.375}}, spec.Doors[0].At)
 	s.Len(spec.Place, 18)
 }
 
@@ -133,49 +159,57 @@ func (s *DialectSuite) TestADungeonMustBeOneDocumentOfKnownKeys() {
 	})
 }
 
-// TestWallObjectFormIsStrict — the wall object form keeps Decode's own
-// strictness even though a custom unmarshaler bypasses KnownFields: an
-// unknown key and an edgeless object are refusals naming the line, not facts
-// silently dropped.
-func (s *DialectSuite) TestWallObjectFormIsStrict() {
-	_, err := dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], hieght: 2 }")))
-	s.Require().Error(err, "a typo'd key is refused, not dropped")
-	s.Contains(err.Error(), "hieght")
-
-	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { height: 2 }")))
-	s.Require().Error(err, "a wall object with no edge is not a wall")
-	s.Contains(err.Error(), "between")
-
-	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]",
-		"  - { between: [[5,1],[6,0]], edges: [[[5,1],[6,0]]] }")))
-	s.Require().Error(err, "one edge or a run — writing both means two things at once")
-	s.Contains(err.Error(), "never both")
-
-	_, err = dungeonspec.Decode([]byte(s.tombWith("  - [[5,1],[6,0]]", "  - { edges: [] }")))
-	s.Require().Error(err, "an explicitly empty run is authored, and runs nowhere")
-	s.Contains(err.Error(), "stands nowhere")
+// TestThePairFormIsRefusedByName is F4 and F12: the dialect a wall used to be
+// written in is DELETED, not deprecated, and a file that speaks it is told so
+// in as many words.
+//
+// Named separately from any other unknown key on purpose. `edges` is not a
+// typo — it is last dialect's dungeon, and the difference between "field edges
+// not found" and a sentence saying what replaced it is the difference between
+// an author who knows what to do and one who does not. There is no migration
+// to offer: legacy dungeons are deleted and re-authored (C17).
+func (s *DialectSuite) TestThePairFormIsRefusedByName() {
+	for _, tc := range []struct{ name, old, new string }{
+		{"a bare edge", theEntranceSeam, "  - [[5,0],[6,0]]\n"},
+		{"a run of edges", theEntranceSeam, "  - { edges: [[[5,0],[6,0]]], height: 2 }\n"},
+		{"one edge in `between`", theEntranceSeam, "  - { between: [[5,0],[6,0]] }\n"},
+		{"a door's edges", theEntranceDoor, "    edges: [[[5,4],[6,4]]]\n"},
+	} {
+		s.Run(tc.name, func() {
+			_, err := dungeonspec.Decode([]byte(s.tombWith(tc.old, tc.new)))
+			s.Require().Error(err)
+			s.Contains(err.Error(), "the deleted pair form", "the form is named")
+			s.Contains(err.Error(), "`start` and `end`", "and so is what replaced it")
+		})
+	}
 }
 
-// TestAWallRunNamesTheEdgeThatIsWrong — a grouped run's defect points INSIDE
-// the run (rpg-project#355). The same broken edge the flat table catches at
-// `walls[7]` is `walls[0].edges[7]` once its line is authored as a run, so the
-// builder still draws the refusal on the one crossing that is wrong rather
-// than on the whole wall.
-func (s *DialectSuite) TestAWallRunNamesTheEdgeThatIsWrong() {
-	raw := regroupedTomb(s.T(), s.tomb, 2, false)
-	broken := strings.Replace(raw, "      - [[5,3],[6,4]]", "      - [[5,3],[6,5]]", 1)
-	s.Require().NotEqual(raw, broken, "the anchor is present in the grouped file")
+// TestTheLineFormIsStrict — the wall, door and position forms keep Decode's
+// own strictness even though a custom unmarshaler bypasses KnownFields: an
+// unknown key and a half-written line are refusals naming the line, not facts
+// silently dropped.
+func (s *DialectSuite) TestTheLineFormIsStrict() {
+	for _, tc := range []struct{ name, new, says string }{
+		{"a typo'd key on a wall", "  - start: { cell: [5,0], offset: [0.5, 0] }\n" +
+			"    end: { cell: [6,0], offset: [-0.5, 0] }\n    hieght: 2\n", "hieght"},
+		{"a wall with no end", "  - start: { cell: [5,0], offset: [0.5, 0] }\n", "`start` to `end`"},
+		{"a position with no offset", "  - start: { cell: [5,0] }\n" +
+			"    end: { cell: [6,0], offset: [-0.5, 0] }\n", "the centre is [0,0], written out"},
+		{"a position with no cell", "  - start: { offset: [0.5, 0] }\n" +
+			"    end: { cell: [6,0], offset: [-0.5, 0] }\n", "which cell it is named from"},
+		{"a typo'd key on a position", "  - start: { cell: [5,0], ofset: [0.5, 0] }\n" +
+			"    end: { cell: [6,0], offset: [-0.5, 0] }\n", "ofset"},
+	} {
+		s.Run(tc.name, func() {
+			_, err := dungeonspec.Decode([]byte(s.tombWith(theEntranceSeam, tc.new)))
+			s.Require().Error(err)
+			s.Contains(err.Error(), tc.says)
+		})
+	}
 
-	errs := s.validate(broken)
-	s.Require().Len(errs, 1)
-	s.Equal("walls[0].edges[7]", errs[0].Path)
-	s.Contains(errs[0].Message, "not adjacent under pointy")
-
-	spec, err := dungeonspec.Decode([]byte(raw))
-	s.Require().NoError(err)
-	s.Require().Len(spec.Walls, 2)
-	s.Equal("run 0", spec.Walls[0].Name, "the run's name is carried for whoever reads the file")
-	s.Len(spec.Walls[0].Edges, 14)
+	_, err := dungeonspec.Decode([]byte(s.tombWith(theEntranceDoor, "    closed: true\n")))
+	s.Require().Error(err, "a door that does not say where it stands is not a door")
+	s.Contains(err.Error(), "`at`, one position on a wall")
 }
 
 // TestValidate_PathsNameTheThing — the table: every refusal names the YAML
@@ -194,12 +228,28 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		{"a cell painted twice in one region", "      - [[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0]]",
 			"      - [[6,0],[7,0],[8,0],[6,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0]]",
 			"regions[1].cells[0][3]", "painted twice"},
-		{"a wall between cells that do not touch", "  - [[5,3],[6,4]]", "  - [[5,3],[6,5]]",
-			"walls[7]", "not adjacent under pointy"},
-		{"a wall off the floor", "  - [[5,0],[6,0]]", "  - [[5,0],[5,-1]]",
-			"walls[0]", "not floor"},
-		{"a wall listed twice", "  - [[5,1],[6,0]]", "  - [[6,0],[5,0]]",
-			"walls[1]", "already listed at walls[0]"},
+		// The wall-shape refusals stand on a THIRD wall added after the two
+		// the tomb ships, so each file differs from a valid one by exactly
+		// the broken line — breaking a seam would refuse its door beside it,
+		// and two refusals for one edit is a worse test of either.
+		{"an offset outside the seven", tombSeamName, tombSeamName +
+			"  - start: { cell: [8,7], offset: [0.3, 0.4] }\n" +
+			"    end:   { cell: [9,0], offset: [-0.25, -0.375] }\n",
+			"walls[2].start", "not one of the seven points a wall may stand at"},
+		{"a direction off the twelve", tombSeamName, tombSeamName +
+			"  - start: { cell: [8,7], offset: [0.25, 0.375] }\n" +
+			"    end:   { cell: [10,0], offset: [-0.25, -0.375] }\n",
+			"walls[2]", "not one of the twelve directions"},
+		{"a wall that stands nowhere", tombSeamName, tombSeamName +
+			"  - start: { cell: [8,7], offset: [0.25, 0.375] }\n" +
+			"    end:   { cell: [8,7], offset: [0.25, 0.375] }\n",
+			"walls[2]", "starts and ends at the same point"},
+		{"a wall off the floor entirely", tombSeamName, tombSeamName +
+			"  - start: { cell: [40,0], offset: [0.5, 0] }\n" +
+			"    end:   { cell: [44,0], offset: [0.5, 0] }\n",
+			"walls[2]", "passes through no floor at all"},
+		{"a wall drawn twice", tombSeamName, tombSeamName + theEntranceSeam,
+			"walls[2]", "runs exactly where walls[0] already does"},
 		{"a prop without blocks_los", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true }`,
 			"place[0].blocks_los", "there is no default"},
 		{"a monster that says what it blocks", `at: [11,3], targeting: lowest-health }`, `at: [11,3], targeting: lowest-health, blocks_los: true }`,
@@ -212,10 +262,10 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"place[0].offset", "outside [0,3]"},
 		{"an offset of four numbers", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1, 0, 0, 0] }`,
 			"place[0].offset", "must be [x,y] or [x,y,height]"},
-		{"a wall height below standard", "  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], height: 0.5 }",
-			"walls[1].height", "outside [1,3]"},
-		{"a wall height above the ceiling", "  - [[5,1],[6,0]]", "  - { between: [[5,1],[6,0]], height: 3.5 }",
-			"walls[1].height", "outside [1,3]"},
+		{"a wall height below standard", tombSeamName, tombSeamName + shortcutWall + "    height: 0.5\n",
+			"walls[2].height", "outside [1,3]"},
+		{"a wall height above the ceiling", tombSeamName, tombSeamName + shortcutWall + "    height: 3.5\n",
+			"walls[2].height", "outside [1,3]"},
 		{"an offset component out of range", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.6, 0] }`,
 			"place[0].offset", "outside [-0.5,0.5]"},
 		{"an offset that is not two numbers", `at: [1,1], blocks_movement: true, blocks_los: false }`, `at: [1,1], blocks_movement: true, blocks_los: false, offset: [0.1] }`,
@@ -257,19 +307,18 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 			"doors[1].locked[0].ability", "ability"},
 		{"a locked door with no approaches", "locked: [{ ability: dex, dc: 12 }]", "locked: []",
 			"doors[1].locked", "at least one way through"},
-		// The concealed-check shape cases stand on an INNER shortcut door —
-		// both endpoints in the hall — so each differs from a valid file by
-		// exactly the malformed check, with no coherence refusal beside it
-		// (a shortcut inside a room is nobody's entrance).
-		{"a concealed door with no find approach", "doors:\n",
-			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: []\n",
-			"doors[0].concealed", "at least one way to find it"},
-		{"a find approach with no ability", "doors:\n",
-			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ dc: 15 }]\n",
-			"doors[0].concealed[0].ability", "ability"},
-		{"a find approach nothing has to beat", "doors:\n",
-			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ ability: perception, dc: 0 }]\n",
-			"doors[0].concealed[0].dc", "nothing to beat"},
+		// The door refusals the line form makes possible (F10, F11): a door
+		// is a position on a wall, so it can miss the wall, catch two, or
+		// stand where there is no crossing to open.
+		{"a door no wall passes through", theEntranceDoor,
+			"    at: { cell: [9,3], offset: [-0.5, 0] }\n",
+			"doors[0].at", "no wall passes through this point"},
+		{"a door in the middle of a hex", theEntranceDoor,
+			"    at: { cell: [6,4], offset: [0, 0] }\n",
+			"doors[0].at", "where there is no crossing to open"},
+		{"a door offset outside the seven", theEntranceDoor,
+			"    at: { cell: [6,4], offset: [0.3, 0.4] }\n",
+			"doors[0].at", "not one of the seven points"},
 		// Authoring coherence (rpg-project#351): the room hides with its
 		// door, and the incoherent halves refuse — each at the region,
 		// which is the field the form-filler flips.
@@ -279,11 +328,30 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		{"a concealed room anyone can walk into", "  - id: tomb\n",
 			"  - id: tomb\n    concealed: true\n",
 			"regions[2].concealed", "a walk-in room cannot be a secret"},
-		{"a door with no edges", "edges: [[[5,4],[6,4]]]", "edges: []", "doors[0].edges", "no edges"},
 		{"a door with no id", "  - id: entrance-hall\n", "  - id: \"\"\n", "doors[0].id", "no id"},
 	} {
 		s.Run(tc.name, func() {
 			errs := s.validate(s.tombWith(tc.old, tc.new))
+			s.Require().NotEmpty(errs, "the defect must be found")
+			s.Equal([]string{tc.path}, paths(errs), "exactly one defect, at the thing that is wrong")
+			s.Contains(errs[0].Message, tc.says)
+		})
+	}
+
+	// The concealed-check shape cases stand on an INNER shortcut door — both
+	// endpoints in the hall — so each differs from a valid file by exactly the
+	// malformed check, with no coherence refusal beside it (a shortcut inside
+	// a room is nobody's entrance).
+	for _, tc := range []struct{ name, check, path, says string }{
+		{"a concealed door with no find approach", "\n    concealed: []",
+			"doors[0].concealed", "at least one way to find it"},
+		{"a find approach with no ability", "\n    concealed: [{ dc: 15 }]",
+			"doors[0].concealed[0].ability", "ability"},
+		{"a find approach nothing has to beat", "\n    concealed: [{ ability: perception, dc: 0 }]",
+			"doors[0].concealed[0].dc", "nothing to beat"},
+	} {
+		s.Run(tc.name, func() {
+			errs := s.validate(s.tombWithShortcut(tc.check))
 			s.Require().NotEmpty(errs, "the defect must be found")
 			s.Equal([]string{tc.path}, paths(errs), "exactly one defect, at the thing that is wrong")
 			s.Contains(errs[0].Message, tc.says)
@@ -312,7 +380,12 @@ func (s *DialectSuite) TestValidate_PathsNameTheThing() {
 		secret = strings.Replace(secret, "  - id: tomb\n", "  - id: tomb\n    concealed: true\n", 1)
 		s.Empty(s.validate(secret), "concealed door + concealed room is the coherent whole")
 
-		gap := strings.Replace(secret, "  - [[15,0],[16,0]]\n", "", 1)
+		// The tomb seam, one position short at its north end: row 0's
+		// crossing is past where the line now stops, and nothing else is.
+		gap := strings.Replace(secret,
+			"    end:   { cell: [16,0], offset: [-0.25, -0.375] }",
+			"    end:   { cell: [16,0], offset: [-0.25, 0.375] }", 1)
+		s.Require().NotEqual(secret, gap)
 		errs := s.validate(gap)
 		s.Equal([]string{"regions[2].concealed"}, paths(errs))
 		s.Contains(errs[0].Message, "the open way between [15,0] and [16,0]")
@@ -342,9 +415,12 @@ regions:
     cells:
       - [[2,0]]
 start: [0, 0]
+walls:
+  - start: { cell: [1,-1], offset: [0, 0] }
+    end:   { cell: [1,1], offset: [0, 0] }
 doors:
   - id: secret
-    edges: [[[1,0],[2,0]]]
+    at: { cell: [2,0], offset: [-0.5, 0] }
     closed: true
     concealed: [{ ability: perception, dc: 15 }]
 `
@@ -379,24 +455,31 @@ regions:
     cells:
       - [[3,0]]
 start: [0, 0]
+walls:
+  - start: { cell: [1,-1], offset: [0, 0] }
+    end:   { cell: [1,1], offset: [0, 0] }
+  - start: { cell: [2,-1], offset: [0, 0] }
+    end:   { cell: [2,1], offset: [0, 0] }
 doors:
   - id: secret
-    edges: [[[1,0],[2,0]]]
+    at: { cell: [2,0], offset: [-0.5, 0] }
     closed: true
     concealed: [{ ability: perception, dc: 15 }]
   - id: inner
-    edges: [[[2,0],[3,0]]]
+    at: { cell: [3,0], offset: [-0.5, 0] }
     closed: true
 `
 		s.Empty(s.validate(suite))
 	})
 
-	s.Run("a two-edge gate refuses once per door, not per edge", func() {
-		// A door is ONE state over its edges (rpg-toolkit#1123), so a
-		// plain two-edge gate into a concealed vault is one way in and one
-		// refusal — not one per crossing. Rows 0 and 2 are both even, so
-		// under pointy-top the seam has exactly the two straight crossings
-		// the gate stands in and no staggered third.
+	s.Run("a wider doorway is two doors, and two ways in", func() {
+		// A door is ONE crossing now (F11), so the two-cell gate the pair
+		// form wrote as one door with two edges is two doors on one wall —
+		// and each is its own way into the vault, so the frontier names
+		// both. Rows 0 and 2 are both even, so under pointy-top the seam has
+		// exactly the two straight crossings the gate stands in and no
+		// staggered third; the one wall runs through both of them and
+		// through the void between.
 		gate := `
 version: 2
 key: gate
@@ -416,24 +499,39 @@ regions:
     cells:
       - [[2,0],[2,2]]
 start: [0, 0]
+walls:
+  - start: { cell: [1,-1], offset: [0, 0] }
+    end:   { cell: [1,3], offset: [0, 0] }
+    name: the gate wall
 doors:
-  - id: gate
-    edges: [[[1,0],[2,0]],[[1,2],[2,2]]]
+  - id: gate-north
+    at: { cell: [2,0], offset: [-0.5, 0] }
+    closed: true
+  - id: gate-south
+    at: { cell: [2,2], offset: [-0.5, 0] }
     closed: true
 `
 		errs := s.validate(gate)
-		s.Equal([]string{"regions[1].concealed"}, paths(errs))
-		s.Contains(errs[0].Message, `its door "gate" (doors[0])`)
-		s.Contains(errs[0].Message, "a walk-in room cannot be a secret")
+		s.Equal([]string{"regions[1].concealed", "regions[1].concealed"}, paths(errs),
+			"two doors are two holes in the secret, and the author has to close both")
+		s.Contains(errs[0].Message, `its door "gate-north" (doors[0])`)
+		s.Contains(errs[1].Message, `its door "gate-south" (doors[1])`)
+		for _, e := range errs {
+			s.Contains(e.Message, "a walk-in room cannot be a secret")
+		}
+
+		// Conceal both and it is a coherent secret, which is the half that
+		// says the refusal above was about the doors and not about the wall.
+		sealed := strings.ReplaceAll(gate, "    closed: true\n",
+			"    closed: true\n    concealed: [{ ability: perception, dc: 15 }]\n")
+		s.Empty(s.validate(sealed))
 	})
 
 	s.Run("one open door and one concealed shortcut stays legal", func() {
 		// The room is no secret, the shortcut is (rpg-project#351): the
 		// hall keeps its two plain entrances, and a concealed inner door
 		// obliges nobody to conceal anything.
-		shortcut := s.tombWith("doors:\n",
-			"doors:\n  - id: shortcut\n    edges: [[[8,3],[9,3]]]\n    concealed: [{ ability: perception, dc: 15 }]\n")
-		s.Empty(s.validate(shortcut))
+		s.Empty(s.validate(s.tombWithShortcut("\n    concealed: [{ ability: perception, dc: 15 }]")))
 	})
 
 	s.Run("two bosses in one region", func() {
@@ -471,19 +569,56 @@ func (s *DialectSuite) TestAWrongOrientationIsTheOnlyThingReported() {
 }
 
 // TestTheSameWallIsARefusalUnderTheOtherLayout — the discriminator, in the
-// file's own terms (the rpg-toolkit#1141/#1150 lesson: one formula per
-// orientation, not a swapped pair). The tomb's seam walls are drawn for
-// pointy-top. Under flat-top the 14 straight crossings still touch, and of
-// the 14 staggered ones exactly the 7 that lean UP ([5,r]-[6,r-1]) stop
-// touching while the 7 that lean DOWN ([5,r]-[6,r+1]) still do — because
-// under odd-q the odd column 5 staggers down, not up. A symmetric mistake in
-// either formula would refuse all 14 or none.
+// file's own terms (the rpg-toolkit#1141/#1150 lesson: one table per
+// orientation, not a swapped pair).
+//
+// The seven positions TURN WITH THE HEXES. A pointy-top hex's side midpoints
+// sit a quarter of a width and three eighths of a height from its centre; a
+// flat-top hex's sit three eighths of a width and a quarter of a height, which
+// is the same six points on the same hex rotated 30°. So none of the pointy
+// values exists under flat, and the tomb read as a flat-top dungeon is refused
+// at every wall end and every door — by NAME, quoting the value back, never
+// snapped to the nearest member of the other table.
+//
+// A symmetric mistake — one table used for both layouts, or the two swapped —
+// would let this file compile under either word, which is exactly the class of
+// bug that cost this workspace twice.
 func (s *DialectSuite) TestTheSameWallIsARefusalUnderTheOtherLayout() {
 	errs := s.validate(s.tombWith("orientation: pointy", "orientation: flat"))
 	s.Require().NotEmpty(errs)
 	for _, e := range errs {
-		s.True(strings.HasPrefix(e.Path, "walls["), "only walls are refused: %s", e.Path)
-		s.Contains(e.Message, "not adjacent under flat")
+		s.Contains(e.Message, "not one of the seven points a wall may stand at under flat hexes")
 	}
-	s.Equal([]string{"walls[1]", "walls[5]", "walls[8]", "walls[12]", "walls[15]", "walls[19]", "walls[22]", "walls[26]"}, paths(errs))
+	s.Equal([]string{
+		"walls[0].start", "walls[0].end",
+		"walls[1].start", "walls[1].end",
+		"doors[0].at", "doors[1].at",
+	}, paths(errs), "every end of every line, and every door on them")
+
+	// And the mirror: a flat-top file's own positions are refused under
+	// pointy, so neither table is the one this build always reaches for.
+	flat := `
+version: 2
+key: flat-room
+orientation: flat
+void: opaque
+regions:
+  - id: room
+    archetype: crypt
+    lighting: { intensity: 1 }
+    cells:
+      - [[0,0],[1,0],[2,0]]
+      - [[0,1],[1,1],[2,1]]
+start: [0, 0]
+walls:
+  - start: { cell: [1,0], offset: [0.375, 0.25] }
+    end:   { cell: [1,1], offset: [0.375, 0.25] }
+`
+	s.Empty(s.validate(flat), "authored flat-top, it compiles")
+
+	errs = s.validate(strings.Replace(flat, "orientation: flat", "orientation: pointy", 1))
+	s.Require().Len(errs, 2)
+	for _, e := range errs {
+		s.Contains(e.Message, "under pointy hexes")
+	}
 }

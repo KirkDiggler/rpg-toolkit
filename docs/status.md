@@ -1,7 +1,7 @@
 ---
 name: rpg-toolkit status
 description: Where we are with rpg-toolkit — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-09-01
+updated: 2026-09-03
 confidence: high — active #1366/#1246 boundaries and gates are verified in their owning modules; older delivery entries are retained as dated history and are not current-state claims
 ---
 
@@ -20,6 +20,23 @@ characters assemble them, and resolution dispatches by typed profile arm.
 Executable character/monster action packages and producer-specific resolution
 compilers are retired. Older sections below retain the legacy module's delivery
 history and must not be read as current support.
+
+**#1458 — a wall is a line, and the pair form is deleted (`rulebooks/dnd5e/encounter`).**
+A `dungeonspec` wall is now two picked positions — one of seven per hex, the
+six side midpoints and the centre — running in one of twelve directions 30°
+apart. Everything else about it is derived: the crossings it blocks, the floor
+cells it passes through, and which of those it leaves too little of to stand
+in. `walls[].edges` and `doors[].edges` are REFUSED BY NAME, not migrated:
+legacy content is re-authored, and the two reference tombs in `testdata` are
+re-authored here. `FieldInput` gains `Segments` (the lines, for a client to
+draw) and `Sealed` (owned cells nobody stands on); `Atlas` gains both, and
+`Atlas.Sealed` is every floor cell nobody can stand on, scenery included,
+because region membership stopped implying standable. The geometry that derives
+all of this lives in `dungeonspec/geometry.go` and nowhere else — the runtime
+is handed the answers and never embeds a hex. `tools/spatial/room.go`'s
+corner-rule sight test is the named second customer; that file moves to
+`tools/spatial` when it arrives, and not before. Design and plan:
+rpg-project#360.
 
 **#1437 — root D&D life-state participation provider (provider complete;
 consumers pending).** `combat.IsDown` remains the canonical standing answer, not

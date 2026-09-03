@@ -39,6 +39,15 @@ import (
 //     endpoints hidden — stays withheld: nobody standing in visible space
 //     borders it, so there is nothing there for it to disguise.
 //
+//   - A PRESENTED WALL STANDS ON FLOOR THE RECIPIENT CAN SEE: every cell a
+//     presented segment passes through is in the recipient's atlas as floor
+//     nobody owns, even when the region that owns it is hidden
+//     (rpg-project#360, design C18). Floor that stops one cell short of a wall
+//     is a black sliver exactly where the secret is — the same tell the
+//     boundary rule above exists to remove, one layer down. Only PRESENTED
+//     walls foot: the footing of a withheld wall would trace the secret
+//     itself.
+//
 //   - THE ROOM ITSELF STILL HIDES WITH ITS DOOR: the yardstick governs
 //     SPACE AND CONTENTS, unmoved by the boundary rule above — a
 //     non-knower's cells, region entries and props are byte-identical to an
@@ -87,11 +96,35 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		Props:       make([]AtlasProp, 0, len(full.Props)),
 		Boundaries:  make([]AtlasBoundary, 0, len(full.Boundaries)),
 		Doorways:    make([]AtlasDoorway, 0, len(full.Doorways)),
+		Segments:    make([]AtlasSegment, 0, len(full.Segments)),
+	}
+
+	// C18: a wall wholly inside hidden space is withheld with the room, and
+	// every other wall is presented — standing on its own footprint, which
+	// enters this atlas as floor nobody owns whatever the recipient may know
+	// about the region underneath.
+	footing := make(map[spatial.Position]bool)
+	for i, seg := range e.field.segments {
+		if e.field.segmentHidden(seg, hiddenCells) {
+			continue
+		}
+		out.Segments = append(out.Segments, full.Segments[i])
+		for _, c := range seg.Footprint {
+			footing[e.field.cellAt(c)] = true
+		}
 	}
 
 	for _, c := range full.Cells {
-		if !hiddenCells[c] {
+		if !hiddenCells[c] || footing[c] {
 			out.Cells = append(out.Cells, c)
+		}
+	}
+	// EVERY CELL THIS RECIPIENT CANNOT STAND ON: the ones nobody can, and the
+	// footing of a presented wall whose owner they cannot see — ownerless
+	// floor to them, which is exactly what scenery is.
+	for _, c := range out.Cells {
+		if !e.field.isStandable(c) || hiddenCells[c] {
+			out.Sealed = append(out.Sealed, c)
 		}
 	}
 	for _, r := range full.Regions {
@@ -257,77 +290,92 @@ func (e *Encounter) unknownDoorsFor(member MemberID) map[DoorID]bool {
 
 // maskHeight is the Height a synthetic boundary carries for one crossing
 // AtlasFor is not presenting as authored — a concealed unfound door's edge
-// (pass 2) or a bare visible/hidden adjacency (pass 3): the neighbouring
-// authored run's, so the synthetic boundary reads as a continuation of the
-// wall it stands beside (the Wave 1b pin, generalized by rpg-toolkit#1419 —
-// walls carry per-edge height, and a standard-height patch inside a
-// height-2 run is a visible notch exactly where the secret is, whether what
-// stands there is a masked door or an unwalled gap).
+// (pass 2) or a bare visible/hidden adjacency (pass 3): the height of the WALL
+// STANDING THERE, so the synthetic boundary reads as part of it rather than as
+// a notch exactly where the secret is (the Wave 1b pin, generalized by
+// rpg-toolkit#1419).
 //
-// The mechanism, since "the run" is not a first-class thing on this map: the
-// run a crossing punctures is the authored walls separating the same two
-// regions its edge does — regardless of what kind of edge it is — and the
-// mask takes the height of the NEAREST of them — nearest by hex distance
-// between crossing endpoints, ties broken by the atlas's own boundary order
-// so the answer cannot move between calls. A crossing with no such wall (an
-// unwalled seam with no authored wall anywhere between its two regions)
-// masks at 0 — not authored, standard height — which is what an authored
-// wall there would have said too.
+// # The run is a first-class thing now, so it is not reconstructed
+//
+// This used to hunt: it collected every authored crossing separating the same
+// two regions the edge does, took the nearest by hex distance, and called that
+// "the run". It had to, because a run was not something the map held — the file
+// listed crossings and the shape had to be inferred back out of them.
+//
+// The file holds the LINE now (rpg-project#360), so the answer is a lookup:
+//
+//  1. the segment the door hides in, when a door stands in this crossing
+//     (design C19 — the wall a concealed door punctures is the wall it should
+//     masquerade as, and the segment names its own doors);
+//  2. otherwise the segment standing on either of the crossing's cells;
+//  3. otherwise — a field built from crossings alone, with no lines authored at
+//     all — the authored wall standing on either of those cells.
+//
+// Rule 3 is not a second mechanism for the same question: a field compiled from
+// a dungeon always carries segments and never reaches it, and a field a host
+// assembled by hand has no line to read a height off. Its answer is the same
+// shape as the other two — the wall standing HERE, not the nearest wall
+// somewhere else.
+//
+// A crossing with no wall anywhere near it masks at 0 — not authored, standard
+// height — which is what an authored wall there would have said too.
 func (e *Encounter) maskHeight(edge DoorEdge) float64 {
-	pairA, okA := e.field.regionOf(edge.From)
-	pairB, okB := e.field.regionOf(edge.To)
-	if !okA || !okB {
-		return 0
+	if id, standing := e.doorInEdge(edge); standing {
+		for _, seg := range e.field.segments {
+			for _, d := range seg.DoorIDs {
+				if d == id {
+					return seg.Height
+				}
+			}
+		}
 	}
-
-	type candidate struct {
-		from, to spatial.Position
-		height   float64
+	for _, seg := range e.field.segments {
+		for _, c := range seg.Footprint {
+			if cell := e.field.cellAt(c); cell == edge.From || cell == edge.To {
+				return seg.Height
+			}
+		}
 	}
-	var run []candidate
 	for _, w := range e.field.walls {
-		wFrom, wTo := e.field.cellAt(w.From), e.field.cellAt(w.To)
-		rFrom, okF := e.field.regionOf(wFrom)
-		rTo, okT := e.field.regionOf(wTo)
-		if !okF || !okT {
-			continue
+		from, to := e.field.cellAt(w.From), e.field.cellAt(w.To)
+		if from == edge.From || from == edge.To || to == edge.From || to == edge.To {
+			return w.Height
 		}
-		sameRun := (rFrom == pairA && rTo == pairB) || (rFrom == pairB && rTo == pairA)
-		if !sameRun {
-			continue
-		}
-		norm := normalizeDoorEdge(DoorEdge{From: wFrom, To: wTo})
-		run = append(run, candidate{from: norm.From, to: norm.To, height: w.Height})
-	}
-	if len(run) == 0 {
-		return 0
 	}
 
-	sort.Slice(run, func(i, j int) bool {
-		if run[i].from != run[j].from {
-			return cellBefore(run[i].from, run[j].from)
-		}
-		return cellBefore(run[i].to, run[j].to)
-	})
-
-	best, bestDist := 0, -1.0
-	for i, c := range run {
-		d := crossingDistance(edge, DoorEdge{From: c.from, To: c.to})
-		if bestDist < 0 || d < bestDist {
-			best, bestDist = i, d
-		}
-	}
-	return run[best].height
+	return 0
 }
 
-// crossingDistance is how far apart two crossings stand: the smallest hex
-// distance between any endpoint of one and any endpoint of the other.
-func crossingDistance(a, b DoorEdge) float64 {
-	dist := adjacencyGrid.Distance(a.From, b.From)
-	for _, pair := range [][2]spatial.Position{{a.From, b.To}, {a.To, b.From}, {a.To, b.To}} {
-		if d := adjacencyGrid.Distance(pair[0], pair[1]); d < dist {
-			dist = d
+// doorInEdge is which door stands in a crossing, if any.
+func (e *Encounter) doorInEdge(edge DoorEdge) (DoorID, bool) {
+	want := normalizeDoorEdge(edge)
+	for _, d := range e.doors {
+		for _, have := range d.edges {
+			if normalizeDoorEdge(have) == want {
+				return d.id, true
+			}
 		}
 	}
-	return dist
+
+	return "", false
+}
+
+// segmentHidden reports whether a wall stands WHOLLY inside hidden space —
+// every cell it passes through in a room this recipient cannot see. Such a wall
+// is withheld with the room it is inside; every other one is presented, because
+// a room the recipient CAN see is entitled to its walls.
+//
+// A segment with no footprint at all is presented: it stands on nothing that
+// could be hidden, so there is nothing for it to trace.
+func (f *field) segmentHidden(seg SegmentInput, hiddenCells map[spatial.Position]bool) bool {
+	if len(seg.Footprint) == 0 {
+		return false
+	}
+	for _, c := range seg.Footprint {
+		if !hiddenCells[f.cellAt(c)] {
+			return false
+		}
+	}
+
+	return true
 }

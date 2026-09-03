@@ -115,9 +115,16 @@ type validation struct {
 	// and placements against.
 	regionOK bool
 
-	// crossings is every wall's and door's normalized crossing to the path
-	// that claimed it, so an edge listed twice — or as both — is refused.
-	crossings map[[2]spatial.Position]string
+	// wallCrossings is every crossing some wall blocks, to the index of the
+	// first wall that blocks it — DERIVED, never authored (C7). A door
+	// standing in one of these opens it; everything else about a crossing is
+	// this map's answer.
+	wallCrossings map[[2]spatial.Position]int
+
+	// derived is every wall's footprint, crossings and cost — worked out
+	// once, by walls(), and read by doors(), start() and place() to say
+	// which wall is the reason a cell has nowhere to stand.
+	derived wallDerivation
 
 	// authored is the reverse of the cell conversion: every floor cell back
 	// to the [col,row] pair the author wrote, so a refusal about a crossing
@@ -261,28 +268,54 @@ func (v *validation) floor(cell spatial.Position) bool {
 	return v.sceneryAt[cell]
 }
 
-// edge checks one authored crossing: both endpoints floor, and adjacent under
-// the orientation. Returns the normalized absolute crossing and whether it
-// passed.
-func (v *validation) edge(path string, e EdgeSpec) ([2]spatial.Position, bool) {
-	a, b := v.cell(e[0]), v.cell(e[1])
-	ok := true
-	for i, end := range []spatial.Position{a, b} {
-		if !v.floor(end) {
-			v.fail(path, "endpoint [%d,%d] is not floor: the envelope is implied, never written", e[i][0], e[i][1])
-			ok = false
+// floorSet is every floor cell as a plain set — what the wall derivations ask
+// (deriveWalls), which have no business knowing who owns what.
+func (v *validation) floorSet() map[spatial.Position]bool {
+	out := make(map[spatial.Position]bool, len(v.owner)+len(v.sceneryAt))
+	for c := range v.owner {
+		out[c] = true
+	}
+	for c := range v.sceneryAt {
+		out[c] = true
+	}
+
+	return out
+}
+
+// wallPath is the YAML path of one wall entry.
+func wallPath(i int) string { return fmt.Sprintf("walls[%d]", i) }
+
+// doorPath is the YAML path of one door entry.
+func doorPath(i int) string { return fmt.Sprintf("doors[%d]", i) }
+
+// position checks one authored position: a representable cell, and an offset
+// that is one of the seven this orientation knows (F8). Returns the fractional
+// axial point it names.
+func (v *validation) position(path, which string, g hexGeom, p PositionSpec) (axialPoint, bool) {
+	for _, c := range p.Cell {
+		if c > maxAuthoredCoord || c < -maxAuthoredCoord {
+			v.fail(path+"."+which, "the %s cell [%d,%d] is outside the map", which, p.Cell[0], p.Cell[1])
+
+			return axialPoint{}, false
 		}
 	}
-	if a == b {
-		v.fail(path, "[%d,%d] is both ends of the edge", e[0][0], e[0][1])
-		return [2]spatial.Position{}, false
+	at, ok := g.axialAt(v.cell(p.Cell), p.Offset)
+	if !ok {
+		v.fail(path+"."+which,
+			"the %s offset [%g,%g] is not one of the seven points a wall may stand at "+
+				"under %s hexes: the six side midpoints, or the centre [0,0]",
+			which, p.Offset[0], p.Offset[1], v.orientation.Kind())
+
+		return axialPoint{}, false
 	}
-	if ok && adjacencyGrid.Distance(a, b) != 1 {
-		v.fail(path, "[%d,%d] and [%d,%d] are not adjacent under %s", e[0][0], e[0][1], e[1][0], e[1][1], v.orientation.Kind())
-		ok = false
-	}
-	return normalizedCrossing(a, b), ok
+
+	return at, true
 }
+
+// maxAuthoredCoord bounds an authored cell the same way the composition does,
+// so a coordinate that would overflow the embedding is refused in the file's
+// own path rather than at construction.
+const maxAuthoredCoord = 1 << 30
 
 // adjacencyGrid is the calculator every adjacency question here asks: any
 // instance of the family measures absolute cells correctly, since Distance
@@ -296,78 +329,89 @@ func normalizedCrossing(a, b spatial.Position) [2]spatial.Position {
 	return [2]spatial.Position{a, b}
 }
 
+// walls checks every wall is a line this build can read, then derives what it
+// does: the cells it passes through, the crossings it blocks, and which of
+// those cells it leaves too little of to stand on (C7, C8, C10).
+//
+// THE FILE HOLDS THE LINE AND NOTHING ELSE (design §1.5). There is no edge to
+// check for adjacency and no run to check for contiguity, because there are no
+// edges and no runs: two positions and the floor decide all of it.
 func (v *validation) walls() {
-	v.crossings = map[[2]spatial.Position]string{}
+	g := geometryOf(v.orientation)
+	v.wallCrossings = map[[2]spatial.Position]int{}
+
+	skip := map[int]bool{}
+	ends := map[[2]axialPoint]int{}
 	for i, w := range v.spec.Walls {
-		p := fmt.Sprintf("walls[%d]", i)
+		p := wallPath(i)
 		if w.Height != nil && (*w.Height < 1 || *w.Height > 3) {
 			v.fail(p+".height", "height %g is outside [1,3]: walls raise, they never lower (rpg-project#273)", *w.Height)
 		}
-		// A run's edges are checked one at a time and NOTHING checks that
-		// they touch. Contiguity is not a rule here by ruling
-		// (rpg-project#355): a group carries no mechanical consequence, so a
-		// grouping the author finds useful can never be wrong, and an error
-		// they cannot act on is worse than no feature at all.
-		for j, e := range w.Edges {
-			// A run of one keeps the bare form's path: there is no `edges`
-			// list in the file for the author to count along.
-			ep := p
-			if len(w.Edges) > 1 {
-				ep = fmt.Sprintf("%s.edges[%d]", p, j)
+		start, okStart := v.position(p, "start", g, w.Start)
+		end, okEnd := v.position(p, "end", g, w.End)
+		if !okStart || !okEnd {
+			skip[i] = true
+			continue
+		}
+		if start == end {
+			v.fail(p, "this wall starts and ends at the same point, so it stands nowhere")
+			skip[i] = true
+			continue
+		}
+		deg, straight := g.directionOf(start, end)
+		if !straight {
+			v.fail(p,
+				"this wall runs at %.1f°, which is not one of the twelve directions a wall may take: "+
+					"they are 30° apart, so move an end to a position that lines up",
+				deg)
+			skip[i] = true
+			continue
+		}
+		key := [2]axialPoint{start, end}
+		if end.Q < start.Q || (end.Q == start.Q && end.R < start.R) {
+			key = [2]axialPoint{end, start}
+		}
+		if prev, dup := ends[key]; dup {
+			v.fail(p, "this wall runs exactly where %s already does", wallPath(prev))
+			skip[i] = true
+			continue
+		}
+		ends[key] = i
+	}
+
+	v.derived = deriveWalls(v.spec, v.orientation, v.floorSet(), skip)
+
+	for _, wg := range v.derived.Walls {
+		// C2 IN THE LINE FORM. The envelope is still implied: a wall may run
+		// along the outside of the world and cut nothing, but a wall that
+		// touches no floor at all stands in a place nobody will ever be.
+		if len(wg.Footprint) == 0 {
+			v.fail(wallPath(wg.Index),
+				"this wall passes through no floor at all: move it so it stands on the map")
+			continue
+		}
+		for _, c := range wg.Crossings {
+			if _, taken := v.wallCrossings[c]; !taken {
+				v.wallCrossings[c] = wg.Index
 			}
-			c, ok := v.edge(ep, e)
-			if !ok {
-				continue
-			}
-			if prev, dup := v.crossings[c]; dup {
-				v.fail(ep, "the same edge is already listed at %s", prev)
-				continue
-			}
-			v.crossings[c] = ep
 		}
 	}
 }
 
+// doors checks every door is one position on exactly one wall, and works out
+// the single crossing it opens (C14, F10, F11).
 func (v *validation) doors() {
+	g := geometryOf(v.orientation)
 	v.doorAt = map[[2]spatial.Position]int{}
 	ids := map[string]int{}
 	for i, d := range v.spec.Doors {
-		p := fmt.Sprintf("doors[%d]", i)
+		p := doorPath(i)
 		if d.ID == "" {
 			v.fail(p+".id", "the door has no id")
 		} else if prev, dup := ids[d.ID]; dup {
 			v.fail(p+".id", "door %q is already declared at doors[%d]", d.ID, prev)
 		} else {
 			ids[d.ID] = i
-		}
-		if len(d.Edges) == 0 {
-			v.fail(p+".edges", "the door stands in no edges")
-		}
-		for j, e := range d.Edges {
-			ep := fmt.Sprintf("%s.edges[%d]", p, j)
-			c, ok := v.edge(ep, e)
-			if !ok {
-				continue
-			}
-			// A DOOR STANDS IN A WALL, and that is the ordinary case rather
-			// than a collision (rpg-project#355, Kirk: "if a door can exist
-			// on a wall at a location then it is even easier to read"). The
-			// wall runs along here and the door sits in it, so the author
-			// writes one unbroken run and lists the door separately —
-			// deleting the door then restores the wall underneath instead of
-			// leaving a hole nobody authored.
-			//
-			// The door's claim REPLACES the wall's, and both readers below
-			// depend on it: the frontier treats this crossing as a way in
-			// (through the door) rather than skipping it as wall, and
-			// `wallsOf` subtracts exactly the edges claimed here. Two doors
-			// in one edge is still two states for one crossing.
-			if prev, taken := v.crossings[c]; taken && !strings.HasPrefix(prev, "walls[") {
-				v.fail(ep, "this edge is already a door's (%s), and one edge cannot have two states", prev)
-				continue
-			}
-			v.crossings[c] = ep
-			v.doorAt[c] = i
 		}
 		if d.Locked != nil {
 			v.approaches(p+".locked",
@@ -377,7 +421,73 @@ func (v *validation) doors() {
 			v.approaches(p+".concealed",
 				"this concealed door needs at least one way to find it — an ability and a DC", d.Concealed)
 		}
+
+		at, ok := v.position(p, "at", g, d.At)
+		if !ok {
+			continue
+		}
+		// A DOOR IS A WAY THROUGH A SIDE (F11), so the centre is not a place
+		// one can stand: there is no crossing under it to open.
+		step, side := g.stepAt(d.At.Offset)
+		if !side {
+			v.fail(p+".at",
+				"this door stands at the middle of [%d,%d], where there is no crossing to open: "+
+					"put it on one of the six side midpoints",
+				d.At.Cell[0], d.At.Cell[1])
+			continue
+		}
+
+		// F10: EXACTLY ONE WALL. None is a door standing in the open; two is
+		// a door in two walls at once, and neither has an answer.
+		var through []int
+		for _, wg := range v.derived.Walls {
+			if wallPasses(wg, at) {
+				through = append(through, wg.Index)
+			}
+		}
+		switch len(through) {
+		case 0:
+			v.fail(p+".at",
+				"no wall passes through this point, and a door is an opening in a wall: "+
+					"run a wall through it, or move the door onto one")
+			continue
+		case 1:
+		default:
+			v.fail(p+".at", "two walls pass through this point (%s and %s), and a door can only open one of them",
+				v.wallLabel(through[0]), v.wallLabel(through[1]))
+			continue
+		}
+
+		here := v.cell(d.At.Cell)
+		there := spatial.Position{X: here.X + float64(step[0]), Y: here.Y + float64(step[1])}
+		// A DOOR BETWEEN TWO SEALED CELLS IS LEGAL (F11a) — nobody passes it,
+		// and open, sight passes the gap: a window. A door into the VOID is
+		// not, because there is nothing on the far side to open onto.
+		if !v.floor(here) || !v.floor(there) {
+			v.fail(p+".at",
+				"this door opens between [%d,%d] and the void, and a door needs floor on both sides",
+				d.At.Cell[0], d.At.Cell[1])
+			continue
+		}
+
+		c := normalizedCrossing(here, there)
+		if prev, taken := v.doorAt[c]; taken {
+			v.fail(p+".at", "door %q already opens this crossing (doors[%d]), and one crossing cannot have two states",
+				v.spec.Doors[prev].ID, prev)
+			continue
+		}
+		v.doorAt[c] = i
 	}
+}
+
+// wallLabel names a wall the way a refusal should: the author's own word when
+// the wall carries one, its path when it does not.
+func (v *validation) wallLabel(i int) string {
+	if name := v.spec.Walls[i].Name; name != "" {
+		return name
+	}
+
+	return wallPath(i)
 }
 
 // approaches validates one authored check: at least one approach, each naming
@@ -420,6 +530,14 @@ func (v *validation) start() {
 		v.fail("start", "the party starts at [%d,%d], which is not floor", s.Start[0], s.Start[1])
 		return
 	}
+	// C12: A CELL A WALL HAS TOO LITTLE OF IS NOT A PLACE TO STAND, and the
+	// refusal names the wall rather than the cell, because the wall is what
+	// the author moves to fix it.
+	if wall, sealed := v.derived.Sealed[start]; sealed {
+		v.fail("start", "the party starts at [%d,%d], where %s leaves no room to stand",
+			s.Start[0], s.Start[1], v.wallLabel(wall))
+		return
+	}
 	for i, pl := range s.Place {
 		if pl.At == *s.Start {
 			v.fail("start", "the party starts at [%d,%d], where %q (place[%d]) already stands", s.Start[0], s.Start[1], pl.Ref, i)
@@ -450,6 +568,14 @@ func (v *validation) place() {
 			}
 		case !owned:
 			v.fail(p+".at", "%q at [%d,%d], which is not floor", pl.Ref, pl.At[0], pl.At[1])
+		default:
+			// C12, the other half: a monster on a cell a wall has cut down to
+			// nothing has nowhere to stand. A prop on one is fine — a wall
+			// through a cell is exactly where an author puts rubble.
+			if wall, sealed := v.derived.Sealed[at]; sealed && kind == typeMonsters {
+				v.fail(p+".at", "%q at [%d,%d], where %s leaves no room to stand",
+					pl.Ref, pl.At[0], pl.At[1], v.wallLabel(wall))
+			}
 		}
 		if prev, taken := occupied[pl.At]; taken {
 			v.fail(p+".at", "%q and %q (place[%d]) are on the same cell [%d,%d]", pl.Ref, s.Place[prev].Ref, prev, pl.At[0], pl.At[1])
@@ -833,16 +959,12 @@ func (v *validation) waysFrom(origin int, pastConcealed bool) []wayIn {
 // A door's claim is not a wall's: a door standing in a wall replaces it (see
 // doors()), which is why the walk treats that crossing as a way in.
 func (v *validation) claims(c [2]spatial.Position) (door int, concealed, wall bool) {
-	path, claimed := v.crossings[c]
-	if !claimed {
-		return -1, false, false
+	if d, open := v.doorAt[c]; open {
+		return d, v.spec.Doors[d].Concealed != nil, false
 	}
-	if strings.HasPrefix(path, "walls[") {
-		return -1, false, true
-	}
-	d := v.doorAt[c]
+	_, blocked := v.wallCrossings[c]
 
-	return d, v.spec.Doors[d].Concealed != nil, false
+	return -1, false, blocked
 }
 
 // crossingDesc says how a crossing reads in the author's own coordinates, for

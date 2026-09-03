@@ -303,15 +303,22 @@ func (s *ConcealLawSuite) TestABoundaryWithAStillHiddenNeighbourPresentsAsAnOrdi
 // authored wall, part bare gap.
 //
 // The seam is mixed, not uniformly bare, deliberately (rpg-toolkit#1419
-// review, C1): a fixture with no authored wall anywhere near the seam
-// cannot tell a synthesized wall that calls maskHeight from one that
-// forgot to — maskHeight falls back to 0 with no run to inherit from
-// either way, so a bare-everywhere fixture passes whether or not the
-// height call is even there. One raised wall on the seam is enough to make
-// the two paths disagree: with the height call, the bare row reads as a
-// continuation of the same run; without it, the bare row would be a
+// review, C1): a fixture with no wall anywhere near the seam cannot tell a
+// synthesized wall that calls maskHeight from one that forgot to —
+// maskHeight falls back to 0 with no wall to inherit from either way, so a
+// bare-everywhere fixture passes whether or not the height call is even
+// there. One raised wall standing across the seam is enough to make the two
+// paths disagree: with the height call, the bare row reads as a
+// continuation of the same wall; without it, the bare row would be a
 // standard-height notch exactly where the secret room borders it — the
 // very tell this rule exists to remove.
+//
+// WHAT "THE NEIGHBOURING RUN" MEANS NOW (rpg-project#360): the wall's own
+// line, authored as a segment standing on both rows of the seam, rather
+// than a run reconstructed from the crossings of the same region pair. The
+// crossing list still walls row 0 only — that is what makes row 1 the bare
+// adjacency this scene is about — while the raised wall the author drew
+// visibly stands across both.
 func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWall() {
 	watcher := core.EntityID("watcher")
 	field := encounter.FieldInput{
@@ -325,11 +332,23 @@ func (s *ConcealLawSuite) TestABareVisibleHiddenAdjacencyPresentsAsAnOrdinaryWal
 			}(),
 		},
 		// Row 0 carries a raised authored wall (height 3); row 1 is a bare,
-		// unauthored gap — nothing stands there but the region still hides
-		// behind it. Both border the SAME concealed region, so they are one
-		// run, and the bare row's synthesized wall must inherit the raised
-		// row's height to read as a continuation of it.
+		// unauthored gap — nothing stops a step there but the region still
+		// hides behind it. The bare row's synthesized wall must inherit the
+		// raised wall's height to read as a continuation of it.
 		Walls: withHeight([]encounter.WallInput{wall(2, 0, 3, 0)}, 3),
+		// The line the author drew: the quarter line between columns 2 and
+		// 3, standing on [3,0] and [2,1] — so the wall the mask inherits
+		// from is the one that physically stands on the bare crossing's own
+		// cell, not the nearest wall of the same region pair.
+		Segments: []encounter.SegmentInput{{
+			Name:   "the seam",
+			From:   encounter.AxialPointF{Q: 3, R: -0.5},
+			To:     encounter.AxialPointF{Q: 2, R: 1.5},
+			Height: 3,
+			Footprint: []spatial.Position{
+				{X: 3, Y: 0}, {X: 2, Y: 1},
+			},
+		}},
 	}
 
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

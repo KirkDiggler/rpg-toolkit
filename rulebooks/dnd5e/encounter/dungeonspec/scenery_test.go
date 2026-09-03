@@ -17,6 +17,7 @@ package dungeonspec_test
 // out than diffed in.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -124,6 +125,42 @@ scenery:
   - [[2,0],[3,0]]
 start: [0, 0]
 ` + middle
+}
+
+// wallAcross is a wall standing in the one crossing between [col,0] and
+// [col+1,0], and in nothing else.
+//
+// EVERY SCENE HERE IS ONE ROW, so the shape has to be exact. The line runs
+// along the side those two hexes share — the thick line, which leaves both of
+// them whole — from that side's midpoint to the middle of the staggered cell
+// SOUTH of it, which is half the distance to the next position on the same
+// line.
+//
+// The half length is the whole trick, and it is worth stating because the
+// obvious longer version is wrong. A flat-side line passes through the MIDDLES
+// of the staggered cells it runs between, and a wall through a cell's middle
+// blocks every crossing out of it (design F14) — so a wall drawn from one
+// staggered middle to the next would seal whatever stands north of the
+// crossing it was meant to close. Stopping at the first middle south leaves
+// the north side untouched.
+//
+// The cells it names are in row 0 and row 1, and neither has to be floor: a
+// position names the frame a point is measured from, never a place that has to
+// exist.
+func wallAcross(col int) string {
+	return fmt.Sprintf(`walls:
+  - start: { cell: [%d,0], offset: [-0.5, 0] }
+    end:   { cell: [%d,1], offset: [0, 0] }
+`, col+1, col)
+}
+
+// doorAcross is a door standing in that same crossing: the midpoint of the
+// side between [col,0] and [col+1,0], named from the eastern of the two.
+func doorAcross(col int, body string) string {
+	return fmt.Sprintf(`doors:
+  - id: panel
+    at: { cell: [%d,0], offset: [-0.5, 0] }
+%s`, col+1, body)
 }
 
 // twoHoles is the asymmetry fixture: one scenery cell that `near` meets by TWO
@@ -237,36 +274,52 @@ func (s *ScenerySuite) TestF2_PropsSitOnSceneryAndNobodyStandsOnIt() {
 // wall stands against something other than a room (design §1.9): what it needs
 // underfoot is floor, and scenery is floor.
 func (s *ScenerySuite) TestC2_WallsAndDoorsStandOnScenery() {
-	s.Run("a wall on a scenery crossing", func() {
-		walled := theStrip("") + `walls:
-  - [[2,0],[3,0]]
-`
+	s.Run("a wall standing on a scenery cell", func() {
+		walled := theStrip("") + wallAcross(2)
 		s.Require().Empty(s.validate(walled))
 
 		compiled := s.load(walled)
 		s.Require().Len(compiled.Field.Walls, 1)
 		s.Equal(spatial.Position{X: 2, Y: 0}, compiled.Field.Walls[0].From)
+		s.Equal(spatial.Position{X: 3, Y: 0}, compiled.Field.Walls[0].To)
+
+		s.Require().Len(compiled.Field.Segments, 1)
+		s.ElementsMatch([]spatial.Position{{X: 2, Y: 0}, {X: 3, Y: 0}},
+			compiled.Field.Segments[0].Footprint,
+			"the wall stands on the scenery cell and on the room's, and takes nothing from either")
+		s.Empty(compiled.Field.Sealed, "a wall along a flat side leaves both hexes whole")
 	})
 
 	s.Run("a door standing in one", func() {
-		doored := theStrip("") + `doors:
-  - id: grate
-    edges: [[[2,0],[3,0]]]
-    closed: true
-`
+		doored := theStrip("") + wallAcross(2) + doorAcross(2, "    closed: true\n")
 		s.Require().Empty(s.validate(doored))
 		s.Require().Len(s.load(doored).Field.Doors, 1)
 	})
 
-	s.Run("a wall onto the void is still refused", func() {
-		// Scenery widened what counts as floor; it did not delete the rule.
-		// [4,0] is nothing at all.
-		offFloor := theStrip("") + `walls:
-  - [[3,0],[4,0]]
-`
-		errs := s.validate(offFloor)
+	s.Run("a wall against the void is the ordinary case", func() {
+		// THE RULE THE LINE FORM DELETED, and deliberately (design §1.9,
+		// C2). Under the pair form a wall was a crossing and both its cells
+		// had to be floor, so a wall could not be drawn along the outside of
+		// a room at all — the envelope was implied and unsayable. A line
+		// stands where it is drawn: it needs floor to stand ON, not floor on
+		// both sides, so a wall on the edge of the world compiles and blocks
+		// nothing that was ever passable.
+		edge := theStrip("") + wallAcross(3)
+		s.Require().Empty(s.validate(edge), "[4,0] is nothing at all, and that is allowed now")
+
+		compiled := s.load(edge)
+		s.Empty(compiled.Field.Walls, "the crossing into the void was impassable already")
+		s.Require().Len(compiled.Field.Segments, 1)
+		s.Equal([]spatial.Position{{X: 3, Y: 0}}, compiled.Field.Segments[0].Footprint,
+			"and the wall stands on the one floor cell it touches")
+	})
+
+	s.Run("a wall that touches no floor at all is still refused", func() {
+		// The rule that survived: a wall has to stand somewhere.
+		nowhere := theStrip("") + wallAcross(9)
+		errs := s.validate(nowhere)
 		s.Require().Equal([]string{"walls[0]"}, sceneryPaths(errs))
-		s.Contains(errs[0].Message, "the envelope is implied, never written")
+		s.Contains(errs[0].Message, "passes through no floor at all")
 	})
 }
 
@@ -289,20 +342,14 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 	})
 
 	s.Run("A3: add the wall and it compiles", func() {
-		walled := theStrip(secret) + `walls:
-  - [[2,0],[3,0]]
-`
+		walled := theStrip(secret) + wallAcross(2)
 		s.Empty(s.validate(walled), "a wall across the strip closes the way")
 	})
 
 	s.Run("a concealed door on the secret's own edge closes the way", func() {
 		// The ordinary shape: a strip of rubble in front of a hidden door.
-		doored := theStrip(secret) + `doors:
-  - id: panel
-    edges: [[[2,0],[3,0]]]
-    closed: true
-    concealed: [{ ability: perception, dc: 15 }]
-`
+		doored := theStrip(secret) + wallAcross(2) +
+			doorAcross(2, "    closed: true\n    concealed: [{ ability: perception, dc: 15 }]\n")
 		s.Empty(s.validate(doored))
 	})
 
@@ -310,12 +357,8 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 		// The other end. A non-knower meets the mask that door wears before
 		// they ever reach the strip, so their map is the honest twin's and
 		// there is nothing to give away.
-		doored := theStrip(secret) + `doors:
-  - id: panel
-    edges: [[[1,0],[2,0]]]
-    closed: true
-    concealed: [{ ability: perception, dc: 15 }]
-`
+		doored := theStrip(secret) + wallAcross(1) +
+			doorAcross(1, "    closed: true\n    concealed: [{ ability: perception, dc: 15 }]\n")
 		s.Empty(s.validate(doored))
 	})
 
@@ -324,11 +367,7 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 		// refusal points at the crossing on the secret's own side — the one
 		// its author has to wall or conceal — not at the plain door at the
 		// far end.
-		doored := theStrip(secret) + `doors:
-  - id: panel
-    edges: [[[1,0],[2,0]]]
-    closed: true
-`
+		doored := theStrip(secret) + wallAcross(1) + doorAcross(1, "    closed: true\n")
 		errs := s.validate(doored)
 		s.Require().Equal([]string{"regions[1].concealed"}, sceneryPaths(errs))
 		s.Contains(errs[0].Message, "the open way between [3,0] and the scenery at [2,0]")
@@ -345,7 +384,7 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 		// The crossing that closes a way need not be at either end. A wall
 		// between the two scenery cells stops the flood exactly as a wall on
 		// a room's own edge does, and there is no way left to conceal.
-		walled := theLongStrip(secret, "walls:\n  - [[2,0],[3,0]]\n")
+		walled := theLongStrip(secret, wallAcross(2))
 		s.Empty(s.validate(walled))
 	})
 
@@ -354,21 +393,13 @@ func (s *ScenerySuite) TestC4_TheConcealmentWalkCrossesScenery() {
 		// the secret's door in the middle of the rubble rather than on either
 		// room's edge. A rule that classified a way by its two ends would
 		// call this a walk-in secret and refuse the dungeon.
-		doored := theLongStrip(secret, `doors:
-  - id: panel
-    edges: [[[2,0],[3,0]]]
-    closed: true
-    concealed: [{ ability: perception, dc: 15 }]
-`)
+		doored := theLongStrip(secret, wallAcross(2)+
+			doorAcross(2, "    closed: true\n    concealed: [{ ability: perception, dc: 15 }]\n"))
 		s.Empty(s.validate(doored))
 
 		// And the same door left plain does not conceal it — so what made the
 		// scene above legal is the concealment, not the door.
-		plain := theLongStrip(secret, `doors:
-  - id: panel
-    edges: [[[2,0],[3,0]]]
-    closed: true
-`)
+		plain := theLongStrip(secret, wallAcross(2)+doorAcross(2, "    closed: true\n"))
 		errs := s.validate(plain)
 		s.Require().Equal([]string{"regions[1].concealed"}, sceneryPaths(errs))
 		s.Contains(errs[0].Message, "the open way between [4,0] and the scenery at [3,0]")
@@ -408,9 +439,12 @@ regions:
 scenery:
   - [[3,0]]
 start: [2, 0]
+walls:
+  - start: { cell: [3,0], offset: [-0.5, 0] }
+    end:   { cell: [2,1], offset: [0, 0] }
 doors:
   - id: panel
-    edges: [[[2,0],[3,0]]]
+    at: { cell: [3,0], offset: [-0.5, 0] }
     closed: true
     concealed: [{ ability: perception, dc: 15 }]
 `
@@ -421,8 +455,15 @@ doors:
 
 		// Conceal the vault's own crossing instead and every way in carries a
 		// concealed door, so the junction is authorable.
-		sealed := strings.Replace(three,
-			"    edges: [[[2,0],[3,0]]]", "    edges: [[[2,0],[3,0]],[[3,0],[4,0]]]", 1)
+		// A DOOR IS ONE CROSSING NOW (F11), so the second way in is a second
+		// door, standing in a second wall of its own.
+		sealed := strings.Replace(three, "doors:\n",
+			"  - start: { cell: [4,0], offset: [-0.5, 0] }\n"+
+				"    end:   { cell: [3,1], offset: [0, 0] }\n"+
+				"doors:\n  - id: vault-panel\n"+
+				"    at: { cell: [4,0], offset: [-0.5, 0] }\n"+
+				"    closed: true\n"+
+				"    concealed: [{ ability: perception, dc: 15 }]\n", 1)
 		s.Empty(s.validate(sealed))
 	})
 
@@ -511,9 +552,12 @@ regions:
 scenery:
   - [[2,0]]
 start: [0, 0]
+walls:
+  - start: { cell: [3,-1], offset: [0, 0] }
+    end:   { cell: [3,1], offset: [0, 0] }
 doors:
   - id: panel
-    edges: [[[3,0],[4,0]]]
+    at: { cell: [4,0], offset: [-0.5, 0] }
     closed: true
     concealed: [{ ability: perception, dc: 15 }]
 `
@@ -550,10 +594,13 @@ scenery:
   - [[2,0]]
 start: [0, 0]
 walls:
-  - [[1,0],[2,0]]
+  - start: { cell: [1,-1], offset: [0, 0] }
+    end:   { cell: [1,1], offset: [0, 0] }
+  - start: { cell: [3,-1], offset: [0, 0] }
+    end:   { cell: [3,1], offset: [0, 0] }
 doors:
   - id: panel
-    edges: [[[3,0],[4,0]]]
+    at: { cell: [4,0], offset: [-0.5, 0] }
     closed: true
     concealed: [{ ability: perception, dc: 15 }]
 `
