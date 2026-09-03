@@ -424,7 +424,8 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 			WeaponRef:   refs.Weapons.Rapier(),
 			IsMelee:     true,
 			Components: []dnd5eEvents.DamageComponent{
-				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{6}, FinalDiceRolls: []int{6}, DamageType: damage.Piercing},
+				{Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(6, 6)},
+					DamageType: damage.Piercing},
 			},
 		}
 
@@ -441,7 +442,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_AddsDamage() {
 		var duelingBonus int
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceFeature {
-				duelingBonus = comp.FlatBonus
+				duelingBonus = comp.Total()
 				break
 			}
 		}
@@ -473,7 +474,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_TwoHanded() {
 			WeaponRef:   refs.Weapons.Greatsword(),
 			IsMelee:     true,
 			TwoHanded:   true,
-			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
+			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
 		}
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -507,7 +508,7 @@ func (s *FighterEncounterSuite) TestFightingStyleDueling_NoBonus_DualWielding() 
 			AttackerID:  s.fighter.GetID(),
 			TargetID:    s.goblin.GetID(),
 			AbilityUsed: abilities.STR,
-			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
+			Components:  []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
 		}
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -625,12 +626,13 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					Dice:              "2d6",
-					OriginalDiceRolls: []int{1, 2}, // Both need rerolling
-					FinalDiceRolls:    []int{1, 2},
-					DamageType:        damage.Slashing,
+					Source:     dnd5eEvents.DamageSourceWeapon,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+						Dice:   testDiceTrace(6, 1, 2),
+					},
+					DamageType: damage.Slashing,
 				},
 			},
 		}
@@ -644,7 +646,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_RerollsLowDice() {
 		s.Require().NoError(err)
 
 		// Verify 1 and 2 were rerolled to 5 and 4
-		s.Equal([]int{5, 4}, finalEvent.Components[0].FinalDiceRolls, "1 and 2 should be rerolled")
+		s.Equal([]int{5, 4}, finalEvent.Components[0].Roll.Dice.FinalRolls, "1 and 2 should be rerolled")
 
 		s.T().Log("✓ Great Weapon Fighting correctly rerolls 1s and 2s")
 	})
@@ -667,12 +669,13 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
 			TargetID:   s.goblin.GetID(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					Dice:              "2d6",
-					OriginalDiceRolls: []int{3, 5}, // Both 3+, no rerolls (2d6 = 2 dice)
-					FinalDiceRolls:    []int{3, 5},
-					DamageType:        damage.Slashing,
+					Source:     dnd5eEvents.DamageSourceWeapon,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+						Dice:   testDiceTrace(6, 3, 5),
+					},
+					DamageType: damage.Slashing,
 				},
 			},
 		}
@@ -686,7 +689,7 @@ func (s *FighterEncounterSuite) TestFightingStyleGWF_KeepsHighRolls() {
 		s.Require().NoError(err)
 
 		// Dice should be unchanged
-		s.Equal([]int{3, 5}, finalEvent.Components[0].FinalDiceRolls, "3+ rolls should not be rerolled")
+		s.Equal([]int{3, 5}, finalEvent.Components[0].Roll.Dice.FinalRolls, "3+ rolls should not be rerolled")
 
 		s.T().Log("✓ Great Weapon Fighting correctly keeps 3+ rolls")
 	})
@@ -715,12 +718,13 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
 			AbilityModifier: 3,    // STR modifier to add
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					OriginalDiceRolls: []int{4},
-					FinalDiceRolls:    []int{4},
-					FlatBonus:         0, // No ability mod by default for off-hand
-					DamageType:        damage.Slashing,
+					Source:     dnd5eEvents.DamageSourceWeapon,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+						Dice:   testDiceTrace(6, 4),
+					},
+					DamageType: damage.Slashing,
 				},
 			},
 		}
@@ -735,7 +739,7 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_AddsAbilityModToOffHand() {
 
 		// Should have TWF bonus component with ability modifier
 		s.Require().Len(finalEvent.Components, 2, "Should have weapon + TWF bonus")
-		s.Equal(3, finalEvent.Components[1].FlatBonus, "TWF should add +3 (STR mod) to off-hand damage")
+		s.Equal(3, finalEvent.Components[1].Total(), "TWF should add +3 (STR mod) to off-hand damage")
 
 		s.T().Log("✓ Two-Weapon Fighting correctly adds ability modifier to off-hand")
 	})
@@ -758,7 +762,7 @@ func (s *FighterEncounterSuite) TestFightingStyleTWF_NoBonus_MainHand() {
 			TargetID:        s.goblin.GetID(),
 			IsOffHandAttack: false, // Main-hand attack
 			AbilityModifier: 3,
-			Components:      []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon}},
+			Components:      []dnd5eEvents.DamageComponent{{Source: dnd5eEvents.DamageSourceWeapon, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}}}},
 		}
 
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)

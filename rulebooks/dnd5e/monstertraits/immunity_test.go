@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -46,10 +47,13 @@ func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 		TargetID:   "monster-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				FinalDiceRolls: []int{3, 4}, // 7 damage
-				FlatBonus:      2,           // Total: 9 poison damage
-				DamageType:     damage.Poison,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Dice:     testDiceTrace(6, 3, 4),
+					Modifier: intPtr(2),
+				},
+				DamageType: damage.Poison,
 			},
 		},
 	}
@@ -70,8 +74,9 @@ func (s *ImmunityTestSuite) TestImmunityAddsZeroMultiplierComponent() {
 
 	// First component: original damage unchanged
 	s.Assert().Equal(9, result.Components[0].Total())
-	s.Assert().Equal([]int{3, 4}, result.Components[0].FinalDiceRolls)
-	s.Assert().Equal(2, result.Components[0].FlatBonus)
+	s.Assert().Equal([]int{3, 4}, result.Components[0].Roll.Dice.FinalRolls)
+	s.Require().NotNil(result.Components[0].Roll.Modifier)
+	s.Assert().Equal(2, *result.Components[0].Roll.Modifier)
 
 	// Second component: immunity multiplier (0 = negate damage)
 	s.Assert().Equal(dnd5eEvents.DamageSourceMonsterTrait, result.Components[1].Source)
@@ -95,10 +100,13 @@ func (s *ImmunityTestSuite) TestImmunityDoesNotAffectOtherDamageTypes() {
 		TargetID:   "monster-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				FinalDiceRolls: []int{3, 4}, // 7 damage
-				FlatBonus:      2,           // Total: 9 slashing damage
-				DamageType:     damage.Slashing,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Dice:     testDiceTrace(6, 3, 4),
+					Modifier: intPtr(2),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}
@@ -134,10 +142,13 @@ func (s *ImmunityTestSuite) TestImmunityIgnoresOtherTargets() {
 		TargetID:   "monster-2", // Different target
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				FinalDiceRolls: []int{3, 4}, // 7 damage
-				FlatBonus:      2,           // Total: 9 poison damage
-				DamageType:     damage.Poison,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.MonsterTraits.Immunity(), Name: "Immunity"},
+					Dice:     testDiceTrace(6, 3, 4),
+					Modifier: intPtr(2),
+				},
+				DamageType: damage.Poison,
 			},
 		},
 	}

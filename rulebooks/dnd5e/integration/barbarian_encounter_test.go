@@ -26,6 +26,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
@@ -364,9 +365,11 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 			AbilityModifier: 3,
 			IsMelee:         true,
 			Components: []dnd5eEvents.DamageComponent{{
-				Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, OriginalDiceRolls: []int{10}, FinalDiceRolls: []int{10}, DamageType: damage.Slashing,
+				Source: dnd5eEvents.DamageSourceWeapon, Properties: []damage.Property{damage.AddsAttackAbilityModifier}, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"}, Dice: testDiceTrace(10, 10)},
+				DamageType: damage.Slashing,
 			}, {
-				Source: dnd5eEvents.DamageSourceAbility, FlatBonus: 3, DamageType: damage.Slashing,
+				Source: dnd5eEvents.DamageSourceAbility, Roll: dnd5eEvents.RollComponent{Source: dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"}, Modifier: intPtr(3)},
+				DamageType: damage.Slashing,
 			}},
 		}
 		damageChain := events.NewStagedChain[*dnd5eEvents.DamageChainEvent](combat.ModifierStages)
@@ -379,9 +382,9 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		for _, component := range finalEvent.Components {
 			switch component.Source {
 			case dnd5eEvents.DamageSourceAbility:
-				abilityBonus += component.FlatBonus
+				abilityBonus += component.Total()
 			case dnd5eEvents.DamageSourceCondition:
-				rageBonus += component.FlatBonus
+				rageBonus += component.Total()
 			}
 		}
 		s.Equal(3, abilityBonus, "typed ability component should contribute +3")

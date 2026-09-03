@@ -8,8 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"strconv"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -21,9 +20,6 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
-
-// gwfDiceRegex matches dice notation like "1d8", "2d6", etc.
-var gwfDiceRegex = regexp.MustCompile(`(\d+)[dD](\d+)`)
 
 // FightingStyleGreatWeaponFightingData is the JSON structure for persisting GWF condition state
 type FightingStyleGreatWeaponFightingData struct {
@@ -124,7 +120,11 @@ func (f *FightingStyleGreatWeaponFightingCondition) loadJSON(data json.RawMessag
 	return nil
 }
 
-// onDamageChain rerolls 1s and 2s on weapon damage dice.
+// onDamageChain rerolls 1s and 2s on the marked primary weapon component's
+// dice trace. It mutates only component.Roll.Dice: final faces are cloned
+// before the first write so the producer's original faces are never rewritten,
+// each ordered reroll is sourced to this condition's canonical ref and display
+// name, and the authoritative subtotal follows the replaced faces.
 func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 	_ context.Context,
 	event *dnd5eEvents.DamageChainEvent,
@@ -145,40 +145,49 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 		if componentIndex < 0 {
 			return e, nil
 		}
-		component := &e.Components[componentIndex]
+		trace := e.Components[componentIndex].Roll.Dice
+		if trace == nil {
+			return e, nil
+		}
 
 		roller := f.roller
 		if roller == nil {
 			roller = dice.NewRoller()
 		}
 
-		dieSize, err := parseGWFWeaponDieSize(component.Dice)
-		if err != nil {
-			return e, rpgerr.Wrapf(err, "failed to parse weapon damage: %s", component.Dice)
-		}
+		cloned := false
+		for idx, face := range trace.OriginalRolls {
+			if face != 1 && face != 2 {
+				continue
+			}
+			newRoll, rollErr := roller.Roll(modCtx, trace.DieSize)
+			if rollErr != nil {
+				return e, rpgerr.Wrap(rollErr, "failed to reroll die")
+			}
 
-		newRolls := make([]int, len(component.OriginalDiceRolls))
-		copy(newRolls, component.OriginalDiceRolls)
+			if !cloned {
+				// First write to the final faces: work on a clone so the
+				// producer's original faces (and any aliased slice) survive.
+				trace.FinalRolls = slices.Clone(trace.FinalRolls)
+				cloned = true
+			}
 
-		for idx, roll := range component.OriginalDiceRolls {
-			if roll == 1 || roll == 2 {
-				newRoll, rollErr := roller.Roll(modCtx, dieSize)
-				if rollErr != nil {
-					return e, rpgerr.Wrap(rollErr, "failed to reroll die")
-				}
+			trace.Rerolls = append(trace.Rerolls, dnd5eEvents.DiceReroll{
+				DieIndex: idx,
+				Before:   face,
+				After:    newRoll,
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.Conditions.FightingStyleGreatWeaponFighting(),
+					Name: gwfDisplayName,
+				},
+			})
+			trace.FinalRolls[idx] = newRoll
 
-				component.Rerolls = append(component.Rerolls, dnd5eEvents.RerollEvent{
-					DieIndex: idx,
-					Before:   roll,
-					After:    newRoll,
-					Reason:   "great_weapon_fighting",
-				})
-
-				newRolls[idx] = newRoll
+			// A kept die contributes to the subtotal; a dropped one does not.
+			if len(trace.KeptIndices) == 0 || slices.Contains(trace.KeptIndices, idx) {
+				trace.Subtotal += newRoll - face
 			}
 		}
-
-		component.FinalDiceRolls = newRolls
 
 		return e, nil
 	}
@@ -189,6 +198,11 @@ func (f *FightingStyleGreatWeaponFightingCondition) onDamageChain(
 
 	return c, nil
 }
+
+// gwfDisplayName is the canonical display name this condition sources its
+// rerolls with — the same rulebook-owned label the conditions display catalog
+// carries for the condition's ref.
+const gwfDisplayName = "Great Weapon Fighting"
 
 // primaryWeaponComponentIndex finds the weapon component carrying the exact
 // canonical ability marker. Type and position cannot identify the primary
@@ -202,19 +216,4 @@ func primaryWeaponComponentIndex(event *dnd5eEvents.DamageChainEvent) int {
 		}
 	}
 	return -1
-}
-
-// parseGWFWeaponDieSize extracts the die size from weapon damage notation
-func parseGWFWeaponDieSize(notation string) (int, error) {
-	matches := gwfDiceRegex.FindStringSubmatch(notation)
-	if len(matches) < 3 {
-		return 0, rpgerr.Newf(rpgerr.CodeInvalidArgument, "invalid weapon damage notation: %s", notation)
-	}
-
-	dieSize, err := strconv.Atoi(matches[2])
-	if err != nil {
-		return 0, rpgerr.Wrapf(err, "invalid die size in notation: %s", notation)
-	}
-
-	return dieSize, nil
 }

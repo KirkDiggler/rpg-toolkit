@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -76,10 +77,12 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeSavesOnSuccess() {
 		TargetID:   "zombie-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				FinalDiceRolls: []int{5, 5},
-				FlatBonus:      0,
-				DamageType:     damage.Slashing,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(6, 5, 5),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}
@@ -118,10 +121,12 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeFailsOnLowRoll() {
 		TargetID:   "zombie-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				FinalDiceRolls: []int{5, 5},
-				FlatBonus:      0,
-				DamageType:     damage.Slashing,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(6, 5, 5),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}
@@ -157,10 +162,12 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeIgnoresRadiantDamage() {
 		TargetID:   "zombie-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceSpell,
-				FinalDiceRolls: []int{5, 5},
-				FlatBonus:      0,
-				DamageType:     damage.Radiant, // Radiant damage
+				Source: dnd5eEvents.DamageSourceSpell,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(6, 5, 5),
+				},
+				DamageType: damage.Radiant, // Radiant damage
 			},
 		},
 	}
@@ -196,11 +203,13 @@ func (s *UndeadFortitudeTestSuite) TestUndeadFortitudeIgnoresCriticalHits() {
 		TargetID:   "zombie-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				FinalDiceRolls: []int{5, 5},
-				FlatBonus:      0,
-				DamageType:     damage.Slashing,
-				IsCritical:     true, // Critical hit
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(6, 5, 5),
+				},
+				DamageType: damage.Slashing,
+				IsCritical: true, // Critical hit
 			},
 		},
 		IsCritical: true,

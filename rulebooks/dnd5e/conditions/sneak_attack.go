@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
@@ -234,15 +235,27 @@ func (s *SneakAttackCondition) onDamageChain(
 		if primary == nil {
 			return e, nil
 		}
+		subtotal := 0
+		for _, face := range sneakDice {
+			subtotal += face
+		}
 		e.Components = append(e.Components, dnd5eEvents.DamageComponent{
-			Source:            dnd5eEvents.DamageSourceFeature,
-			SourceRef:         refs.Features.SneakAttack(),
-			OriginalDiceRolls: sneakDice,
-			FinalDiceRolls:    sneakDice,
-			Rerolls:           nil,
-			FlatBonus:         0,
-			DamageType:        e.WeaponDamageType, // Sneak attack uses the marked primary weapon type
-			IsCritical:        event.IsCritical,
+			Source: dnd5eEvents.DamageSourceFeature,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{
+					Ref:  refs.Features.SneakAttack(),
+					Name: "Sneak Attack",
+				},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      dice.SimplePool(len(sneakDice), 6, 0).Notation(),
+					DieSize:       6,
+					OriginalRolls: sneakDice,
+					FinalRolls:    slices.Clone(sneakDice),
+					Subtotal:      subtotal,
+				},
+			},
+			DamageType: e.WeaponDamageType, // Sneak attack uses the marked primary weapon type
+			IsCritical: event.IsCritical,
 		})
 		return e, nil
 	}

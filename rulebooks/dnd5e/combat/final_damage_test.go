@@ -11,6 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type FinalDamageTestSuite struct {
@@ -21,11 +22,17 @@ func TestFinalDamageSuite(t *testing.T) {
 	suite.Run(t, new(FinalDamageTestSuite))
 }
 
-// flat builds a plain damage component contributing Amount of a type.
+// intPtr returns a pointer to v, so a present zero modifier stays present.
+func intPtr(v int) *int { return &v }
+
+// flat builds a plain modifier-only damage component contributing Amount of a type.
 func (s *FinalDamageTestSuite) flat(amount int, t damage.Type) dnd5eEvents.DamageComponent {
 	return dnd5eEvents.DamageComponent{
-		Source:     dnd5eEvents.DamageSourceWeapon,
-		FlatBonus:  amount,
+		Source: dnd5eEvents.DamageSourceWeapon,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+			Modifier: intPtr(amount),
+		},
 		DamageType: t,
 	}
 }
@@ -33,7 +40,10 @@ func (s *FinalDamageTestSuite) flat(amount int, t damage.Type) dnd5eEvents.Damag
 // multiplier builds a modifier component — resistance, vulnerability, immunity.
 func (s *FinalDamageTestSuite) multiplier(m float64, t damage.Type) dnd5eEvents.DamageComponent {
 	return dnd5eEvents.DamageComponent{
-		Source:     dnd5eEvents.DamageSourceCondition,
+		Source: dnd5eEvents.DamageSourceCondition,
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Conditions.Raging(), Name: "Raging"},
+		},
 		Multiplier: dnd5eEvents.Multiply(m),
 		DamageType: t,
 	}
@@ -211,20 +221,89 @@ func (s *FinalDamageTestSuite) TestComponentsGroupBeforeTheMultiplierApplies() {
 	s.Require().Equal(4, total)
 }
 
-// Dice ride through Total() alongside the flat bonus.
-func (s *FinalDamageTestSuite) TestDiceAndFlatBonusBothCount() {
+// Dice ride through the authoritative subtotal alongside the modifier pointer.
+func (s *FinalDamageTestSuite) TestDiceAndModifierBothCount() {
 	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
 		{
-			Source:            dnd5eEvents.DamageSourceWeapon,
-			OriginalDiceRolls: []int{4, 5},
-			FinalDiceRolls:    []int{4, 5},
-			FlatBonus:         3,
-			DamageType:        damage.Slashing,
+			Source: dnd5eEvents.DamageSourceWeapon,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "2d8",
+					DieSize:       8,
+					OriginalRolls: []int{4, 5},
+					FinalRolls:    []int{4, 5},
+					Subtotal:      9,
+				},
+				Modifier: intPtr(3),
+			},
+			DamageType: damage.Slashing,
 		},
 	})
 
 	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 4 + 5 + 3, Type: damage.Slashing}}, instances)
 	s.Require().Equal(12, total)
+}
+
+// Final damage consumes the AUTHORITATIVE subtotal and the modifier POINTER.
+// A kept-dice trace whose faces sum to more than its subtotal pins both halves:
+// summing the face array would report 22, and ignoring the present modifier
+// would report 15 — the contract is subtotal 15 plus +3, which is 18.
+func (s *FinalDamageTestSuite) TestFinalDamageConsumesSubtotalsAndModifierPointers() {
+	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
+		{
+			Source: dnd5eEvents.DamageSourceWeapon,
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greatsword(), Name: "Greatsword"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "3d8",
+					DieSize:       8,
+					OriginalRolls: []int{7, 8, 4},
+					FinalRolls:    []int{7, 8, 4},
+					KeptIndices:   []int{0, 1},
+					Subtotal:      15,
+				},
+			},
+			DamageType: damage.Slashing,
+		},
+		{
+			Source: dnd5eEvents.DamageSourceAbility,
+			Roll: dnd5eEvents.RollComponent{
+				Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+				Modifier: intPtr(3),
+			},
+			DamageType: damage.Slashing,
+		},
+	})
+
+	// The dropped third face keeps the face-array sum (19) away from the
+	// authoritative subtotal (15); only a consumer reading the subtotal plus
+	// the present modifier reports 18.
+	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 18, Type: damage.Slashing}}, instances)
+	s.Require().Equal(18, total)
+}
+
+// A present zero modifier participates: it is a real pointer carrying zero,
+// not an absent modifier, and it adds nothing to the landed damage.
+func (s *FinalDamageTestSuite) TestAPresentZeroModifierRemainsPresent() {
+	component := dnd5eEvents.DamageComponent{
+		Source: dnd5eEvents.DamageSourceAbility,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+			Modifier: intPtr(0),
+		},
+		DamageType: damage.Slashing,
+	}
+
+	s.Require().NotNil(component.Roll.Modifier, "a present zero modifier stays present")
+	s.Require().Zero(component.Total())
+
+	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
+		component,
+		s.flat(5, damage.Slashing),
+	})
+	s.Require().Equal([]combat.DamageInstanceInput{{Amount: 5, Type: damage.Slashing}}, instances)
+	s.Require().Equal(5, total)
 }
 
 // An instance that resolves to zero is not reported as landing. Resistance

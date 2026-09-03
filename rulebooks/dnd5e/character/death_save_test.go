@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -445,8 +446,12 @@ func TestApplyDamageAtZeroOwnsDeathSaveFailures(t *testing.T) {
 
 func TestZeroAppliedDamageDoesNotChangeDeathSaveProgress(t *testing.T) {
 	immunity := 0.0
+	twelve := 12
 	instances, total := combat.FinalDamage([]dnd5eEvents.DamageComponent{
-		{DamageType: damage.Fire, FlatBonus: 12},
+		{DamageType: damage.Fire, Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+			Modifier: &twelve,
+		}},
 		{DamageType: damage.Fire, Multiplier: &immunity},
 	})
 	require.Zero(t, total)

@@ -74,12 +74,14 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 		IsMelee:          true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{6},
-				FinalDiceRolls:    []int{6},
-				FlatBonus:         3,
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:     diceTrace(6, 6),
+					Modifier: intPtr(3),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 		IsCritical: true,
@@ -96,7 +98,7 @@ func (s *FightingStyleDuelingTestSuite) TestAddsDamageWithOneHandedWeapon() {
 
 	// Should have 2 components: weapon + dueling bonus
 	s.Len(finalEvent.Components, 2)
-	s.Equal(2, finalEvent.Components[1].FlatBonus)
+	s.Equal(2, finalEvent.Components[1].Total())
 	s.Equal(damage.Fire, finalEvent.Components[1].DamageType)
 	s.False(finalEvent.Components[1].IsCritical, "flat dueling damage is not doubled")
 }
@@ -117,12 +119,14 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithTwoHandedWeapon() {
 		TwoHanded:  true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{6, 6},
-				FinalDiceRolls:    []int{6, 6},
-				FlatBonus:         4,
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:     diceTrace(6, 6, 6),
+					Modifier: intPtr(4),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}
@@ -156,12 +160,14 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithOffHandWeapon() {
 		OffHandWeaponRef: offHandRef,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{6},
-				FinalDiceRolls:    []int{6},
-				FlatBonus:         3,
-				DamageType:        damage.Piercing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:     diceTrace(6, 6),
+					Modifier: intPtr(3),
+				},
+				DamageType: damage.Piercing,
 			},
 		},
 	}
@@ -197,12 +203,14 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 		// OffHandWeaponRef intentionally nil — a shield is not a weapon.
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{8},
-				FinalDiceRolls:    []int{8},
-				FlatBonus:         3,
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:     diceTrace(8, 8),
+					Modifier: intPtr(3),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}
@@ -216,7 +224,7 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithShieldInOffHand() {
 	s.Require().NoError(err)
 
 	s.Len(finalEvent.Components, 2, "a shield in the off hand still leaves Dueling eligible")
-	s.Equal(2, finalEvent.Components[1].FlatBonus)
+	s.Equal(2, finalEvent.Components[1].Total())
 }
 
 // TestDoesNotAddWithUnarmedStrike pins Copilot's finding on PR #1179: moving
@@ -240,12 +248,14 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithUnarmedStrike() {
 		IsMelee:    true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{1},
-				FinalDiceRolls:    []int{1},
-				FlatBonus:         3,
-				DamageType:        damage.Bludgeoning,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:     diceTrace(6, 1),
+					Modifier: intPtr(3),
+				},
+				DamageType: damage.Bludgeoning,
 			},
 		},
 	}
@@ -279,12 +289,14 @@ func (s *FightingStyleDuelingTestSuite) TestDoesNotAddWithNoWeaponRef() {
 		IsMelee:    true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{6},
-				FinalDiceRolls:    []int{6},
-				FlatBonus:         3,
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:     diceTrace(6, 6),
+					Modifier: intPtr(3),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}

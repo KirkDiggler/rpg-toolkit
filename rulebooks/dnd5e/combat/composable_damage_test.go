@@ -5,15 +5,18 @@ package combat_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
+	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 type ComposableDamageTestSuite struct {
@@ -41,7 +44,7 @@ func (s *ComposableDamageTestSuite) TestFlatNecroticFeatureDoesNotDoubleOnCritic
 
 	feature := componentBySourceAndType(got.components, dnd5eEvents.DamageSourceFeature, damage.Necrotic)
 	s.Require().NotNil(feature, "the synthetic feature must append typed necrotic damage")
-	s.Equal(5, feature.FlatBonus, "a +5 Charisma modifier contributes five, not a doubled ten")
+	s.Equal(5, feature.Total(), "a +5 Charisma modifier contributes five, not a doubled ten")
 	s.False(feature.IsCritical, "a flat-only feature component does not double on a critical")
 	s.True(got.featurePresentAtConditions,
 		"StageFeatures must append the feature component before StageConditions applies defenses")
@@ -49,7 +52,7 @@ func (s *ComposableDamageTestSuite) TestFlatNecroticFeatureDoesNotDoubleOnCritic
 	weapon := componentBySourceAndType(got.components, dnd5eEvents.DamageSourceWeapon, damage.Slashing)
 	s.Require().NotNil(weapon)
 	s.True(weapon.IsCritical, "the weapon's two dice are the critical contribution")
-	s.Equal([]int{8, 8}, weapon.FinalDiceRolls)
+	s.Equal([]int{8, 8}, weapon.Roll.Dice.FinalRolls)
 
 	// Slashing vulnerability doubles only the longsword's 2d8+3, while
 	// necrotic resistance halves only the flat feature contribution.
@@ -67,7 +70,7 @@ func (s *ComposableDamageTestSuite) TestFlatNecroticFeatureCanExpressMinimumOne(
 
 	feature := componentBySourceAndType(got.components, dnd5eEvents.DamageSourceFeature, damage.Necrotic)
 	s.Require().NotNil(feature)
-	s.Equal(1, feature.FlatBonus)
+	s.Equal(1, feature.Total())
 	s.False(feature.IsCritical)
 }
 
@@ -87,15 +90,19 @@ func (s *ComposableDamageTestSuite) foldCriticalPactLongsword(strengthModifier, 
 		IsCritical: true,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				OriginalDiceRolls: []int{8, 8},
-				FinalDiceRolls:    []int{8, 8},
-				DamageType:        damage.Slashing,
-				IsCritical:        true,
+				Source: dnd5eEvents.DamageSourceWeapon,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(8, 8, 8),
+				},
+				DamageType: damage.Slashing,
+				IsCritical: true,
 			},
 			{
-				Source:     dnd5eEvents.DamageSourceAbility,
-				FlatBonus:  strengthModifier,
+				Source: dnd5eEvents.DamageSourceAbility, Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(strengthModifier),
+				},
 				DamageType: damage.Slashing,
 				IsCritical: false,
 			},
@@ -124,8 +131,11 @@ func (s *ComposableDamageTestSuite) installFlatNecroticFeature(charismaModifier 
 			err := c.Add(combat.StageFeatures, "test_lifedrinker_flat_necrotic",
 				func(_ context.Context, event *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
 					event.Components = append(event.Components, dnd5eEvents.DamageComponent{
-						Source:     dnd5eEvents.DamageSourceFeature,
-						FlatBonus:  max(1, charismaModifier),
+						Source: dnd5eEvents.DamageSourceFeature,
+						Roll: dnd5eEvents.RollComponent{
+							Source:   dnd5eEvents.RollSource{Ref: refs.Features.SneakAttack(), Name: "Sneak Attack"},
+							Modifier: intPtr(max(1, charismaModifier)),
+						},
 						DamageType: damage.Necrotic,
 						IsCritical: false,
 					})
@@ -159,6 +169,21 @@ func (s *ComposableDamageTestSuite) installTypeSpecificDefenses(featurePresentAt
 			return c, err
 		})
 	s.Require().NoError(err)
+}
+
+// testDiceTrace builds a self-consistent dice trace for one pool of faces.
+func testDiceTrace(dieSize int, faces ...int) *dnd5eEvents.DiceTrace {
+	subtotal := 0
+	for _, face := range faces {
+		subtotal += face
+	}
+	return &dnd5eEvents.DiceTrace{
+		Notation:      dice.SimplePool(len(faces), dieSize, 0).Notation(),
+		DieSize:       dieSize,
+		OriginalRolls: faces,
+		FinalRolls:    slices.Clone(faces),
+		Subtotal:      subtotal,
+	}
 }
 
 func componentBySourceAndType(components []dnd5eEvents.DamageComponent, source dnd5eEvents.DamageSourceType, typ damage.Type) *dnd5eEvents.DamageComponent {

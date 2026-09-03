@@ -72,12 +72,13 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 		AbilityModifier:  3,    // STR or DEX modifier to add
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{4},
-				FinalDiceRolls:    []int{4},
-				FlatBonus:         0, // No ability modifier added yet
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+					Dice:   diceTrace(6, 4),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 		IsCritical: true,
@@ -94,7 +95,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestAddsDamageToOffHandAttack(
 
 	// Should have 2 components: weapon + TWF ability modifier
 	s.Len(finalEvent.Components, 2)
-	s.Equal(3, finalEvent.Components[1].FlatBonus) // Ability modifier added
+	s.Equal(3, finalEvent.Components[1].Total()) // Ability modifier added
 	s.Equal(damage.Fire, finalEvent.Components[1].DamageType)
 	s.False(finalEvent.Components[1].IsCritical, "flat two-weapon fighting damage is not doubled")
 }
@@ -112,14 +113,20 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddANegativeModifie
 		AbilityModifier:  -2,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:         dnd5eEvents.DamageSourceWeapon,
-				Properties:     []damage.Property{damage.AddsAttackAbilityModifier},
-				FinalDiceRolls: []int{4},
-				DamageType:     damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+					Dice:   diceTrace(6, 4),
+				},
+				DamageType: damage.Slashing,
 			},
 			{
-				Source:     dnd5eEvents.DamageSourceAbility,
-				FlatBonus:  -2,
+				Source: dnd5eEvents.DamageSourceAbility,
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+					Modifier: intPtr(-2),
+				},
 				DamageType: damage.Slashing,
 			},
 		},
@@ -132,7 +139,7 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddANegativeModifie
 	s.Require().NoError(err)
 
 	s.Len(finalEvent.Components, 2, "the base rule already retains the negative modifier")
-	s.Equal(-2, finalEvent.Components[1].FlatBonus)
+	s.Equal(-2, finalEvent.Components[1].Total())
 }
 
 func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack() {
@@ -150,12 +157,14 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToMainHandAttack
 		AbilityModifier: 3,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{8},
-				FinalDiceRolls:    []int{8},
-				FlatBonus:         3, // Already has ability modifier
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source:   dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+					Dice:     diceTrace(8, 8),
+					Modifier: intPtr(3),
+				},
+				DamageType: damage.Slashing,
 			},
 		},
 	}
@@ -188,12 +197,13 @@ func (s *FightingStyleTwoWeaponFightingTestSuite) TestDoesNotAddToOtherCharacter
 		AbilityModifier: 4,
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{4},
-				FinalDiceRolls:    []int{4},
-				FlatBonus:         0,
-				DamageType:        damage.Piercing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Shortsword(), Name: "Shortsword"},
+					Dice:   diceTrace(6, 4),
+				},
+				DamageType: damage.Piercing,
 			},
 		},
 	}

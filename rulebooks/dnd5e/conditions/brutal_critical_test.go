@@ -17,6 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // BrutalCriticalTestSuite tests the BrutalCriticalCondition behavior
@@ -54,24 +55,25 @@ func (s *BrutalCriticalTestSuite) executeCriticalDamageChain(
 ) (*dnd5eEvents.DamageChainEvent, error) {
 	// Create weapon component with base damage (already doubled for crit in real flow)
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		Dice:              weaponDamage,
-		OriginalDiceRolls: []int{6, 4}, // 2d8 rolled (crit doubles dice)
-		FinalDiceRolls:    []int{6, 4},
-		FlatBonus:         0,
-		DamageType:        damage.Slashing,
-		IsCritical:        isCritical,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+			Dice:   testDiceTrace(8, 6, 4), // 2d8 rolled (crit doubles dice)
+		},
+		DamageType: damage.Slashing,
+		IsCritical: isCritical,
 	}
 
 	// Create ability component
 	abilityComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceAbility,
-		OriginalDiceRolls: nil,
-		FinalDiceRolls:    nil,
-		FlatBonus:         4, // STR modifier
-		DamageType:        damage.Slashing,
-		IsCritical:        isCritical,
+		Source: dnd5eEvents.DamageSourceAbility,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+			Modifier: intPtr(4), // STR modifier
+		},
+		DamageType: damage.Slashing,
+		IsCritical: isCritical,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -121,7 +123,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDieLevel9() {
 	// Verify brutal critical component
 	brutalComp := finalEvent.Components[2]
 	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
-	s.Equal([]int{5}, brutalComp.FinalDiceRolls, "Should have rolled 1 extra d8")
+	s.Equal([]int{5}, brutalComp.Roll.Dice.FinalRolls, "Should have rolled 1 extra d8")
 	s.Equal(5, brutalComp.Total(), "Brutal critical should add 5 damage")
 	s.False(brutalComp.IsCritical, "the die granted by a critical is rolled once")
 }
@@ -149,7 +151,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel13() {
 
 	brutalComp := finalEvent.Components[2]
 	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
-	s.Equal([]int{5, 7}, brutalComp.FinalDiceRolls, "Should have rolled 2 extra d8s")
+	s.Equal([]int{5, 7}, brutalComp.Roll.Dice.FinalRolls, "Should have rolled 2 extra d8s")
 	s.Equal(12, brutalComp.Total(), "Brutal critical should add 12 damage (5+7)")
 }
 
@@ -176,7 +178,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalAddsExtraDiceLevel17() {
 
 	brutalComp := finalEvent.Components[2]
 	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
-	s.Equal([]int{3, 6, 8}, brutalComp.FinalDiceRolls, "Should have rolled 3 extra d8s")
+	s.Equal([]int{3, 6, 8}, brutalComp.Roll.Dice.FinalRolls, "Should have rolled 3 extra d8s")
 	s.Equal(17, brutalComp.Total(), "Brutal critical should add 17 damage (3+6+8)")
 }
 
@@ -214,13 +216,14 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalOnlyAffectsOwnAttacks() {
 
 	// Create critical damage chain for a DIFFERENT attacker
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		Dice:              "1d12",
-		OriginalDiceRolls: []int{6, 4},
-		FinalDiceRolls:    []int{6, 4},
-		DamageType:        damage.Slashing,
-		IsCritical:        true,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greataxe(), Name: "Greataxe"},
+			Dice:   testDiceTrace(12, 6, 4),
+		},
+		DamageType: damage.Slashing,
+		IsCritical: true,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -259,17 +262,18 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 		RollN(gomock.Any(), 1, 12).
 		Return([]int{10}, nil)
 
-	// Use a greataxe (1d12)
+	// Use a greataxe (1d12): a critical rolls the doubled 2d12 pool. The
+	// trace records the dice actually rolled; the event's marked WeaponDamageDice
+	// stays the printed 1d12 expression.
 	weaponComp := dnd5eEvents.DamageComponent{
 		Source:     dnd5eEvents.DamageSourceWeapon,
 		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
-		// The marked metadata is authoritative; the component deliberately
-		// carries a different notation to catch component-based parsing.
-		Dice:              "1d4",
-		OriginalDiceRolls: []int{8, 11}, // 2d12 for crit
-		FinalDiceRolls:    []int{8, 11},
-		DamageType:        damage.Slashing,
-		IsCritical:        true,
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Greataxe(), Name: "Greataxe"},
+			Dice:   testDiceTrace(12, 8, 11), // 2d12 for crit
+		},
+		DamageType: damage.Slashing,
+		IsCritical: true,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -294,7 +298,7 @@ func (s *BrutalCriticalTestSuite) TestBrutalCriticalWorksWithDifferentWeaponDice
 
 	brutalComp := finalEvent.Components[1]
 	s.Equal(dnd5eEvents.DamageSourceFeature, brutalComp.Source)
-	s.Equal([]int{10}, brutalComp.FinalDiceRolls, "Should roll extra d12 for greataxe")
+	s.Equal([]int{10}, brutalComp.Roll.Dice.FinalRolls, "Should roll extra d12 for greataxe")
 	s.Equal(damage.Fire, brutalComp.DamageType, "Brutal Critical inherits marked weapon type")
 }
 

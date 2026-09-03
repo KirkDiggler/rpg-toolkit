@@ -400,25 +400,25 @@ func (s *RagingConditionTestSuite) executeDamageChain(
 ) (*dnd5eEvents.DamageChainEvent, error) {
 	// Create weapon component with base damage
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{baseDamage},
-		FinalDiceRolls:    []int{baseDamage},
-		Rerolls:           nil,
-		FlatBonus:         0,
-		DamageType:        damage.Fire,
-		IsCritical:        false,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Battleaxe(), Name: "Battleaxe"},
+			Dice:   testDiceTrace(8, baseDamage),
+		},
+		DamageType: damage.Fire,
+		IsCritical: false,
 	}
 
 	// Create ability component with damage bonus (STR modifier)
 	abilityComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceAbility,
-		OriginalDiceRolls: nil,
-		FinalDiceRolls:    nil,
-		Rerolls:           nil,
-		FlatBonus:         damageBonus,
-		DamageType:        damage.Fire,
-		IsCritical:        false,
+		Source: dnd5eEvents.DamageSourceAbility,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+			Modifier: intPtr(damageBonus),
+		},
+		DamageType: damage.Fire,
+		IsCritical: false,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -450,16 +450,21 @@ func (s *RagingConditionTestSuite) executeDamageChainWithAbility(
 	isMelee bool,
 ) (*dnd5eEvents.DamageChainEvent, error) {
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{5},
-		FinalDiceRolls:    []int{5},
-		DamageType:        damage.Slashing,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+			Dice:   testDiceTrace(8, 5),
+		},
+		DamageType: damage.Slashing,
 	}
 
 	abilityComp := dnd5eEvents.DamageComponent{
-		Source:     dnd5eEvents.DamageSourceAbility,
-		FlatBonus:  3,
+		Source: dnd5eEvents.DamageSourceAbility,
+		Roll: dnd5eEvents.RollComponent{
+			Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+			Modifier: intPtr(3),
+		},
 		DamageType: damage.Slashing,
 	}
 
@@ -504,6 +509,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionUsesMarkedWeaponType() {
 		Components: []dnd5eEvents.DamageComponent{{
 			Source:     dnd5eEvents.DamageSourceWeapon,
 			Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+			Roll: dnd5eEvents.RollComponent{
+				Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+			},
 			DamageType: damage.Slashing,
 		}},
 	}
@@ -562,7 +570,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionDamageBonusAppliesToSTRMel
 
 	s.Require().Len(finalEvent.Components, 3, "rage damage bonus should be added for STR melee attacks")
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
-	s.Equal(2, finalEvent.Components[2].FlatBonus)
+	s.Equal(2, finalEvent.Components[2].Total())
 	s.Equal(damage.Slashing, finalEvent.Components[2].DamageType)
 }
 
@@ -596,7 +604,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionAddsDamageBonus() {
 
 	// Verify rage component was added
 	s.Equal(dnd5eEvents.DamageSourceCondition, finalEvent.Components[2].Source)
-	s.Equal(2, finalEvent.Components[2].FlatBonus, "Rage should add +2 damage")
+	s.Equal(2, finalEvent.Components[2].Total(), "Rage should add +2 damage")
 	s.Equal(2, finalEvent.Components[2].Total())
 	s.Equal(damage.Fire, finalEvent.Components[2].DamageType)
 	s.False(finalEvent.Components[2].IsCritical, "flat rage damage is not doubled")
@@ -852,11 +860,13 @@ func (s *RagingConditionTestSuite) executeDamageChainAgainstTarget(
 ) (*dnd5eEvents.DamageChainEvent, error) {
 	// Create weapon component with base damage
 	weaponComp := dnd5eEvents.DamageComponent{
-		Source:            dnd5eEvents.DamageSourceWeapon,
-		Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-		OriginalDiceRolls: []int{baseDamage},
-		FinalDiceRolls:    []int{baseDamage},
-		DamageType:        damageType,
+		Source:     dnd5eEvents.DamageSourceWeapon,
+		Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+		Roll: dnd5eEvents.RollComponent{
+			Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+			Dice:   testDiceTrace(6, baseDamage),
+		},
+		DamageType: damageType,
 	}
 
 	damageEvent := &dnd5eEvents.DamageChainEvent{
@@ -929,17 +939,21 @@ func (s *RagingConditionTestSuite) TestRagingConditionResistanceUsesComponentTyp
 		TargetID:   "barbarian-1",
 		Components: []dnd5eEvents.DamageComponent{
 			{
-				Source:            dnd5eEvents.DamageSourceWeapon,
-				Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-				OriginalDiceRolls: []int{8},
-				FinalDiceRolls:    []int{8},
-				DamageType:        damage.Slashing,
+				Source:     dnd5eEvents.DamageSourceWeapon,
+				Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(8, 8),
+				},
+				DamageType: damage.Slashing,
 			},
 			{
-				Source:            dnd5eEvents.DamageSourceFeature,
-				OriginalDiceRolls: []int{7},
-				FinalDiceRolls:    []int{7},
-				DamageType:        damage.Fire,
+				Source: dnd5eEvents.DamageSourceFeature,
+				Roll: dnd5eEvents.RollComponent{
+					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword"},
+					Dice:   testDiceTrace(7, 7),
+				},
+				DamageType: damage.Fire,
 			},
 		},
 	}

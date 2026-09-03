@@ -284,14 +284,18 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 			WeaponRef:  refs.Weapons.UnarmedStrike(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					OriginalDiceRolls: []int{1},
-					FinalDiceRolls:    []int{1},
-				},
+					Source:     dnd5eEvents.DamageSourceWeapon,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 1),
+					}},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					FlatBonus: 0, // STR +0 (should be replaced with DEX +3)
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(0), // STR +0 (should be replaced with DEX +3)
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -314,7 +318,7 @@ func (s *MonkEncounterSuite) TestMartialArts_DEXForUnarmedStrikes() {
 		var abilityBonus int
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceAbility {
-				abilityBonus = comp.FlatBonus
+				abilityBonus = comp.Total()
 				break
 			}
 		}
@@ -355,15 +359,18 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 			WeaponRef:  refs.Weapons.UnarmedStrike(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Dice:              "1d1",
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					OriginalDiceRolls: []int{7},
-					FinalDiceRolls:    []int{7},
-				},
+					Source:     dnd5eEvents.DamageSourceWeapon,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(7, 7),
+					}},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					FlatBonus: 0,
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(0),
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -388,12 +395,12 @@ func (s *MonkEncounterSuite) TestMartialArts_UnarmedDamageScaling() {
 		var weaponDice string
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceWeapon {
-				weaponRolls = comp.FinalDiceRolls
-				weaponDice = comp.Dice
+				weaponRolls = comp.Roll.Dice.FinalRolls
+				weaponDice = comp.Roll.Dice.Notation
 				break
 			}
 		}
-		s.Equal("1d4", weaponDice, "a level 1 monk's unarmed strike is upgraded from the weapon's own die to 1d4")
+		s.Equal("d4", weaponDice, "a level 1 monk's unarmed strike is upgraded from the weapon's own die to one d4 (canonical trace notation)")
 		s.Equal("1d4", finalEvent.WeaponDamageDice, "and the event carries the same upgrade for the combat log")
 
 		s.Require().Len(weaponRolls, 1, "Should have exactly 1 die roll (1d4)")
@@ -431,14 +438,18 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 			WeaponRef:  refs.Weapons.Shortsword(),
 			Components: []dnd5eEvents.DamageComponent{
 				{
-					Source:            dnd5eEvents.DamageSourceWeapon,
-					Properties:        []damage.Property{damage.AddsAttackAbilityModifier},
-					OriginalDiceRolls: []int{5},
-					FinalDiceRolls:    []int{5},
-				},
+					Source:     dnd5eEvents.DamageSourceWeapon,
+					Properties: []damage.Property{damage.AddsAttackAbilityModifier},
+					Roll: dnd5eEvents.RollComponent{
+						Source: dnd5eEvents.RollSource{Ref: refs.Weapons.UnarmedStrike(), Name: "Unarmed Strike"},
+						Dice:   testDiceTrace(6, 5),
+					}},
 				{
-					Source:    dnd5eEvents.DamageSourceAbility,
-					FlatBonus: 0, // STR +0 (will be replaced with DEX +3)
+					Source: dnd5eEvents.DamageSourceAbility,
+					Roll: dnd5eEvents.RollComponent{
+						Source:   dnd5eEvents.RollSource{Ref: refs.Abilities.Strength(), Name: "Strength"},
+						Modifier: intPtr(0), // STR +0 (will be replaced with DEX +3)
+					},
 				},
 			},
 			AbilityUsed: abilities.STR,
@@ -461,7 +472,7 @@ func (s *MonkEncounterSuite) TestMartialArts_MonkWeaponWithDEX() {
 		var abilityBonus int
 		for _, comp := range finalEvent.Components {
 			if comp.Source == dnd5eEvents.DamageSourceAbility {
-				abilityBonus = comp.FlatBonus
+				abilityBonus = comp.Total()
 				break
 			}
 		}
