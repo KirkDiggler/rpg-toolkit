@@ -992,3 +992,19 @@ func TestRegionRevealedWithoutWallsIsStillARoom(t *testing.T) {
 	require.Empty(t, region.Segments, "no walls inside it is not a defect")
 	require.Empty(t, region.Sealed, "and nothing sealed is the ordinary case")
 }
+
+func TestDeathSaveBodyPreservesAuthoritativeTypedFacts(t *testing.T) {
+	payload := []byte(`{"beat":"death_save","actor":"alice","death_save":{"roll":20,"outcome":"recovered","successes_added":0,"failures_added":0,"successes":0,"failures":0,"successes_needed":3,"failures_remaining":3,"stabilized":false,"dead":false,"recovered":true,"hp_restored":1,"continuation":"keep_turn","presentation_id":"opaque-save"}}`)
+	kind, body := decodeBeat(payload)
+	require.Equal(t, EventDeathSave, kind)
+	require.Equal(t, DeathSaveBody{
+		Actor: "alice", Roll: 20, Outcome: DeathSaveOutcomeRecovered,
+		SuccessesNeeded: 3, FailuresRemaining: 3, Recovered: true,
+		HPRestored: 1, Continuation: DeathSaveContinuationKeepTurn,
+		PresentationID: "opaque-save",
+	}, body)
+
+	kind, body = decodeBeat([]byte(`{"beat":"death_save","actor":"alice","death_save":{"outcome":"success","continuation":"end_turn"}}`))
+	require.Equal(t, EventDeathSave, kind)
+	require.Nil(t, body, "missing opaque correlation is not a complete typed body")
+}

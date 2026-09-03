@@ -39,11 +39,10 @@ var _ encounter.Announcer = announcerSeam{}
 // whole cast is attached (R3), the crossings are published in the order they
 // happened, everything is torn down (R5), and whoever changed comes back dirty.
 //
-// The effects that were waiting for this are the ones scoped to a turn —
-// dodging lapsing at its owner's next turn, disengaging and raging ending at
-// theirs, sneak-attack-used clearing, an unconscious character rolling the
-// death save that only their own turn start can ask for. Every one of them has
-// been attached and listening since long before anything published.
+// The effects that wait for this are scoped to a turn — dodging lapsing at
+// its owner's next turn, disengaging and raging ending at theirs, and
+// sneak-attack-used clearing. Death Saves are not boundary side effects: the
+// session offers and executes them only through the explicit declaration verb.
 //
 // NEVER ADOPTS A NEW *encounter.Encounter, exactly as strikerSeam does not:
 // enc is the SAME live object the composition is mid-verb over — often mid-

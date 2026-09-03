@@ -32,9 +32,10 @@ import (
 // is the only layer that both knows what a sheet is and holds every one of
 // them for the call in progress.
 //
-// NO RULE LIVES HERE. The whole of the arithmetic is [combat.IsDown], which is
-// where a monster's Undead Fortitude (rpg-toolkit#977) will change the answer
-// without a line of this file moving. What this file does is find sheets.
+// NO RULE LIVES HERE. Resolution returns the root provider's complete
+// participation answer, derived from canonical standing/life-state facts. This
+// file finds stored records; participation.go maps the typed answer without
+// recomputing a hit-point threshold.
 
 // standingSeam answers the composition's standing question out of the sheets
 // this one verb holds.
@@ -79,13 +80,17 @@ type standingSeam struct {
 	data *SessionData
 }
 
-// standingFor builds the capability for one verb.
-func (m *Manager) standingFor(ctx context.Context, data *SessionData) encounter.Standing {
+// standingFor builds the dual Standing/Participation capability for one verb.
+// Returning the concrete value keeps the richer answer available to session
+// projections while assignments to encounter.Standing retain the same dynamic
+// value for compatibility-shaped constructor fields.
+func (m *Manager) standingFor(ctx context.Context, data *SessionData) standingSeam {
 	return standingSeam{ctx: ctx, chars: m.characters, data: data}
 }
 
 // Standing reports which of the given members are down — downed, in the
-// vocabulary this seam publishes. See the note at the top of this file.
+// vocabulary this seam publishes — by selecting Down from the same rich
+// provider assessment Assess returns. See the note at the top of this file.
 //
 // ONLY ABOUT WHO WAS ASKED, and that is structural rather than a filter applied
 // afterwards: the loop is over the question. It matters because the composition
@@ -101,91 +106,28 @@ func (m *Manager) standingFor(ctx context.Context, data *SessionData) encounter.
 // against sheets nobody can read, and reading it as DOWNED kills a character
 // because a database blinked.
 func (s standingSeam) Standing(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	characters, monsters, err := s.recordsFor(members)
+	snapshot, err := s.participation(members)
 	if err != nil {
 		return nil, err
 	}
-
-	// ASKED IN TWO CALLS, SPLIT BY STORE, and the split is this seam's own
-	// existing shape rather than a new one: a character is LOADED from the
-	// host's repository and a monster is INSTANTIATED into the session record,
-	// which is the distinction every other function in this file draws.
-	//
-	// It is here because the two failures are different and a host branches on
-	// which. A stored NPC that will not reconstitute is corrupt SESSION state —
-	// this record is the only thing that could have written it — while a
-	// character that will not load is the host's own store. One call for both
-	// would come back with one error and no way to say which, so the vocabulary
-	// would have to collapse into whichever sentinel was picked.
-	//
-	// Nothing is lost by splitting. Attaching does not observe across the cast
-	// — each sheet is loaded and put on the bus on its own — and this question
-	// folds no chain, so there is no interaction between the two halves to
-	// preserve.
-	down := make(map[string]bool, len(members))
-
-	charactersDown, err := resolution.Standing(s.ctx, &resolution.StandingInput{Participants: characters})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCharacter, err)
-	}
-	for _, id := range charactersDown.Down {
-		down[id] = true
-	}
-
-	monstersDown, err := resolution.Standing(s.ctx, &resolution.StandingInput{Participants: monsters})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidSession, err)
-	}
-	for _, id := range monstersDown.Down {
-		down[id] = true
-	}
-
-	// Reported in the order asked, because the composition refuses an answer
-	// naming somebody who is not a member and this is the loop that guarantees
-	// only members are named.
-	var reported []encounter.MemberID
-	for _, id := range members {
-		if down[string(id)] {
-			reported = append(reported, id)
+	var down []encounter.MemberID
+	for _, member := range snapshot.assessment.Members {
+		if member.Down {
+			down = append(down, member.Member)
 		}
 	}
-
-	return reported, nil
+	return down, nil
 }
 
-// Assess is the composition's richer participation question, answered from the
-// same down list Standing reports — the migration bridge encounter v0.51.0
-// defines for stored-data and resolution constructors
-// (encounter.StandingWithParticipation). One answer per member asked: a downed
-// member is not in contact, not conscious, and removed from the turn order;
-// everyone standing waits for their player or driver and stays in contact.
-// Party-defeat and keep-turn-order are group POLICY the rulebook owns, and
-// nothing here rules on them — both false, exactly as the composition's own
-// bridge answers, until the rulebook says otherwise (rpg-toolkit#959).
+// Assess returns the provider-derived scheduling/contact answer. Standing and
+// Assess both delegate to participation, so neither can drift into a second
+// hit-point or life-state rule.
 func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.ParticipationAssessment, error) {
-	down, err := s.Standing(members)
+	snapshot, err := s.participation(members)
 	if err != nil {
 		return nil, err
 	}
-	downSet := make(map[encounter.MemberID]bool, len(down))
-	for _, id := range down {
-		downSet[id] = true
-	}
-
-	assessment := &encounter.ParticipationAssessment{}
-	for _, id := range members {
-		member := encounter.MemberParticipation{
-			Member: id, Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait,
-		}
-		if downSet[id] {
-			member.Down = true
-			member.Contact = false
-			member.Conscious = false
-			member.Turn = encounter.TurnParticipationRemove
-		}
-		assessment.Members = append(assessment.Members, member)
-	}
-	return assessment, nil
+	return snapshot.assessment, nil
 }
 
 // recordsFor gathers the stored record behind each member, split by the store

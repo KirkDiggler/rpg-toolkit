@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -41,7 +42,7 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	// Enough scripted rolls for the fight's initiative and nothing else:
 	// Afford is a read and rolls nothing.
 	roller := &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -217,6 +218,61 @@ func TestAffordReturnsOneAttackOfferWithEveryLiveCandidate(t *testing.T) {
 	require.Equal(t, session.SlotAction, attack.Slot)
 }
 
+func TestAttackTargetsFollowProviderParticipationAndExecutionRegenerates(t *testing.T) {
+	mgr, sessions, encounters, characters, roller := candidateFight(t)
+	ctx := context.Background()
+
+	for _, joined := range []struct {
+		id       string
+		position spatial.Position
+	}{
+		{id: "dying", position: spatial.Position{X: 1, Y: 2}},
+		{id: "stabilized", position: spatial.Position{X: 2, Y: 2}},
+		{id: "dead", position: spatial.Position{X: 3, Y: 1}},
+	} {
+		characters.byID[joined.id] = armedFighter(joined.id)
+		_, err := mgr.Join(ctx, &session.JoinInput{
+			Session: "sess", Member: joined.id, Position: joined.position,
+		})
+		require.NoError(t, err)
+	}
+
+	current := currentAttackID(t, mgr, "sess", "alice")
+	characters.byID["dying"].HitPoints = 0
+	characters.byID["stabilized"].HitPoints = 0
+	characters.byID["stabilized"].DeathSaveState = &saves.DeathSaveState{Successes: 3, Stabilized: true}
+	characters.byID["dead"].HitPoints = 0
+	characters.byID["dead"].DeathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
+	for i := range sessions.byID["sess"].NPCs {
+		if sessions.byID["sess"].NPCs[i].ID == "skeleton-near" {
+			sessions.byID["sess"].NPCs[i].HitPoints = 0
+		}
+	}
+
+	afforded, err := mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	attack := requireSingleAttackDeclaration(t, afforded.Declarations)
+	require.Equal(t, []string{"dying", "skeleton-far", "stabilized"}, candidateIDs(attack.Candidates),
+		"Dying and Stabilized remain targets; Dead and Defeated are omitted")
+
+	rollsBefore, characterSaves := roller.next, characters.saves
+	sessionSaves, encounterSaves := sessions.saves, encounters.saves
+	deadBefore, err := json.Marshal(characters.byID["dead"])
+	require.NoError(t, err)
+	out, err := mgr.Attack(ctx, &session.AttackInput{
+		Session: "sess", Attacker: "alice", Target: "dead", DeclarationID: current,
+	})
+	require.Nil(t, out)
+	require.ErrorIs(t, err, session.ErrStaleDeclaration)
+	require.Equal(t, rollsBefore, roller.next, "stale omitted target rolls nothing")
+	require.Equal(t, characterSaves, characters.saves)
+	require.Equal(t, sessionSaves, sessions.saves)
+	require.Equal(t, encounterSaves, encounters.saves)
+	deadAfter, err := json.Marshal(characters.byID["dead"])
+	require.NoError(t, err)
+	require.JSONEq(t, string(deadBefore), string(deadAfter))
+}
+
 // TestAffordProjectsThreeCompiledDeclarationsOnTheTurnClock pins the shape
 // of a full compiled turn: Attack, Move and EndTurn each carry a selector
 // ID and the fixed target kind, Move carries Remaining, EndTurn carries no
@@ -270,7 +326,7 @@ func TestAffordProjectsEveryCompiledDeclarationOnTheTurnClock(t *testing.T) {
 func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -342,10 +398,9 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	out, err := mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockTurn, out.Clock)
-	// One blocker per verb. Activate is ONE verb however many things it could
-	// compile when the sheet is readable: a member who cannot act cannot
-	// activate any of them, and the reason is identical for every one.
-	require.Len(t, out.Declarations, 4)
+	// Normal verbs are blocked, while the provider offers the active Dying
+	// character one explicit Death Save and keeps End Turn independent.
+	require.Len(t, out.Declarations, 5)
 
 	attack := requireSingleDeclaration(t, out.Declarations, session.VerbAttack)
 	require.False(t, attack.Available)
@@ -375,6 +430,13 @@ func TestDownedBlocksEveryVerbButEndTurn(t *testing.T) {
 	require.NotNil(t, move.Why)
 	require.Equal(t, session.ShortfallDowned, move.Why.Reason)
 
+	deathSave := requireSingleDeclaration(t, out.Declarations, session.VerbDeathSave)
+	require.True(t, deathSave.Available)
+	require.NotEmpty(t, deathSave.ID)
+	require.Equal(t, session.SlotNone, deathSave.Slot)
+	require.Equal(t, session.TargetNone, deathSave.TargetKind)
+	require.Equal(t, &session.DeathSaveRef{Name: "Death Saving Throw"}, deathSave.DeathSave)
+
 	endTurn := requireSingleDeclaration(t, out.Declarations, session.VerbEndTurn)
 	require.True(t, endTurn.Available, "EndTurn follows the clock alone, even downed")
 	require.NotEmpty(t, endTurn.ID, "EndTurn is still compiled with a selector ID")
@@ -398,7 +460,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(alice)
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -468,7 +530,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"))
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})

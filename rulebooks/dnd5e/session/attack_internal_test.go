@@ -576,7 +576,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 		"alice": strikeFixtureFighter("alice"),
 		"bob":   strikeFixtureFighter("bob"),
 	}}
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: DiscardEvents{},
 	})
@@ -642,7 +642,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 		"bob":   strikeFixtureFighter("bob"),
 	}}
 	roller := &scriptedDice{rolls: []int{17, 4}}
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: DiscardEvents{},
 	})
@@ -748,7 +748,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 		"alice": alice,
 		"bob":   strikeFixtureFighter("bob"),
 	}}
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters, Events: DiscardEvents{},
 	})
@@ -828,7 +828,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 	characters := &strikeCharacters{byID: map[string]*character.Data{"fighter": strikeFixtureFighter("fighter")}}
 	roller := &scriptedDice{rolls: []int{17, 4}}
 
-	mgr, err := NewManager(&Config{
+	mgr, err := NewManager(&Config{PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters, Events: DiscardEvents{},
 	})

@@ -306,7 +306,7 @@ func TestDeclarationSentinelVocabulary(t *testing.T) {
 
 func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -358,7 +358,7 @@ func (s *SentinelSuite) refusedInOurVocabulary(err error, want error) {
 // what the host stored — an empty hand, one sheet under two names — which is
 // the only part of a duel these refusals differ in.
 func (s *SentinelSuite) armedDuel(chars *fakeCharacters) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: chars, Events: session.DiscardEvents{},
 	})
@@ -629,6 +629,11 @@ func (s *SentinelSuite) TestADownedActorIsRefusedInOurWords() {
 		})
 		s.Require().NoError(err)
 	}
+	_, err := mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "alice",
+		DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "alice"),
+	})
+	s.Require().NoError(err, "Dying bob retains and receives the next turn")
 
 	_, moveErr := mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "bob", Path: []spatial.Position{{X: 2, Y: 2}},

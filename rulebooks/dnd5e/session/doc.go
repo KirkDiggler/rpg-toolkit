@@ -17,8 +17,10 @@
 //	    Sessions:   sessRepo,
 //	    Encounters: encRepo,
 //	    Characters: charRepo,
-//	    Events:     stream,
-//	    Dice:       roller,
+//	    Events:          stream,
+//	    Dice:            roller,
+//	    PresentationIDs: presentationIDs,
+//	    TurnDriver:      session.Pass{},
 //	})
 //
 //	out, err := mgr.Move(ctx, &session.MoveInput{Session: s, Member: m, Path: p})
@@ -64,19 +66,17 @@
 // the call in progress is this one.
 //
 // WHAT THIS PACKAGE CONTRIBUTES IS THE LOOKUP, NOT THE RULE. standing.go finds
-// sheets — a monster's in the session record, a character's behind the host's
-// repository — and hands each one to combat.IsDown, which is the rulebook's
-// answer and the only place a hit point is ever compared to anything. When a
-// monster's Undead Fortitude makes zero hit points survivable
-// (rpg-toolkit#977), that function changes and nothing here moves.
+// records — a monster's in the session record, a character's behind the host's
+// repository — and resolution returns the root rulebook's Participation for
+// each. participation.go maps those typed facts to encounter scheduling and the
+// session-owned LifeState/DeathSaveProgress projection. It contains no hit-point
+// threshold and never asks StatusView for unrelated display data.
 //
-// Read the file and the charter still holds: no die, no modifier, no threshold.
-// A capability implemented here is this package doing what it has always done —
-// wiring the pieces together — with the rule kept where the rules live.
-//
-// What it does DECIDE is which verbs a DOWNED member may still drive, and that
-// is not a rules question but a seam question: Attack and Move refuse a downed
-// actor (ErrDowned), the reads and the recording of outcomes do not.
+// Read the files and the charter still holds: no die, no modifier, no threshold.
+// Dying retains initiative for an explicit Death Save, Stabilized auto-passes,
+// Dead/Defeated leave the turn order, and PartyDefeated is supplied from the
+// requested player party. Those are provider answers carried through the seam,
+// not rules recreated here.
 //
 // Downed is this seam's word for zero hit points, and its opposite is up. It is
 // deliberately not "down", which also reads as PRONE — a posture condition the
@@ -89,10 +89,12 @@
 //
 // Afford is the one current action surface on the turn clock. It compiles the
 // member's Attack variants, one Move and EndTurn offer, plus one Activate offer
-// per thing the member carries. It projects only seam-owned values and gives
-// each compiled offer an opaque deterministic selector. Attack and EndTurn
-// require that ID back; Move requires it on the turn clock and requires it
-// empty on the world clock, where Afford deliberately returns no declarations.
+// per thing the member carries. An active Dying character additionally receives
+// one explicit Death Save offer before normal downed blockers. It projects only
+// seam-owned values and gives each compiled offer an opaque deterministic
+// selector. Attack, DeathSave, and EndTurn require that ID back; Move requires
+// it on the turn clock and requires it empty on the world clock, where Afford
+// deliberately returns no declarations.
 //
 // A mutating verb reloads current state, regenerates only its own offer, and
 // selects the echoed ID before touching dice, movement, storage, or story.
@@ -111,6 +113,10 @@
 // APIs resolution uses. Execution reuses those exact raw participant values and
 // never refetches a participant after selection. EndTurn is intentionally
 // clock-only; it does not inherit Attack/Move sheet, standing, or economy gates.
+// DeathSave selects before generating its one host-supplied opaque
+// PresentationID or rolling. It saves the returned character first, records the
+// same typed result second, and exposes only the actor's recipient-local Seq;
+// the pending global Story sequence remains an internal append-order assertion.
 //
 // # Concealment, and the numbering that keeps it secret
 //

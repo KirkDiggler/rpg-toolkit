@@ -41,7 +41,7 @@ func newActivationEventScene(
 		sessions: newFakeSessions(), encounters: newFakeEncounters(),
 		characters: newFakeCharacters(alice, bob), stream: &fakeStream{},
 	}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: scene.sessions, Encounters: scene.encounters,
 		Characters: scene.characters, Events: scene.stream,
@@ -322,7 +322,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	innerCharacters := newFakeCharacters(alice)
 	standingErr := errors.New("standing unavailable after character save")
 	characters := &failAfterCharacterSave{inner: innerCharacters, err: standingErr}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
 	})
@@ -403,7 +403,7 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 		err:            errors.Join(boundaryStoreUnavailable, boundaryWriteRefused),
 	}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters, Events: stream,
 	})

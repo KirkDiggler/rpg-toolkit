@@ -56,6 +56,10 @@ const (
 	// string: one verb, seven offers, and the ref is what tells them apart.
 	VerbActivate Verb = "activate"
 
+	// VerbDeathSave is [Manager.DeathSave]: the explicit saving throw offered
+	// only to the active Dying character with this turn's capacity remaining.
+	VerbDeathSave Verb = "death_save"
+
 	// VerbEndTurn is [Manager.EndTurn]: ending the member's turn. Like Move it
 	// carries no authored action definition, so its declaration selector uses a
 	// sealed variant string rather than a serialized [actions.Definition].
@@ -117,6 +121,12 @@ const (
 // The client renders availability, identity, target kind, and candidates
 // verbatim and never derives game rules; every verb regenerates the selected
 // offer before execution.
+// DeathSaveRef identifies the explicit tabletop roll without overloading an
+// attack or ability identity.
+type DeathSaveRef struct {
+	Name string `json:"name"`
+}
+
 type Declaration struct {
 	// Verb is which seam action this prices.
 	Verb Verb `json:"verb"`
@@ -178,6 +188,9 @@ type Declaration struct {
 	// early per-verb blocker. The same presence law [Declaration.Attack]
 	// keeps, for the same reason.
 	Ability *AbilityRef `json:"ability,omitempty"`
+
+	// DeathSave is present only on a compiled Death Save declaration.
+	DeathSave *DeathSaveRef `json:"death_save,omitempty"`
 
 	// TargetKind is fixed for every compiled or blocked declaration: Attack
 	// -> TargetMember, Move -> TargetPath, EndTurn -> TargetNone. A blocker
@@ -246,8 +259,9 @@ type AffordOutput struct {
 //
 // # The full current gate
 //
-// The clock-active comparison precedes every sheet load and blocks all three
-// verbs. Downed and unreadable dependencies are then applied per verb: Attack
+// The clock-active comparison precedes every sheet load and blocks every
+// ordinary verb; a non-active member receives no Death Save declaration.
+// Downed and unreadable dependencies are then applied per verb: Attack
 // and Move need a standing, readable actor; Attack additionally needs every
 // resolution participant to load and attach strictly; EndTurn needs only its
 // real clock gate. An unreadable candidate keeps its row with Unreadable, while
@@ -328,7 +342,8 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		}}, nil
 	}
 
-	// Attack and Move compile from one strict actor snapshot. loadActorSheet
+	// Attack, Move, Activate, and Death Save compile from one strict actor
+	// snapshot. loadActorSheet
 	// asks combat.IsDown on that loaded sheet before reading any offer
 	// material, so the blocker and the declaration cannot disagree across two
 	// repository reads. EndTurn remains clock-only when that actor is downed or
@@ -336,7 +351,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	actor := m.loadActorSheet(ctx, in.Member)
 	offers, err := m.compileOffersFor(
 		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbActivate, VerbEndTurn,
+		VerbAttack, VerbMove, VerbActivate, VerbDeathSave, VerbEndTurn,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)

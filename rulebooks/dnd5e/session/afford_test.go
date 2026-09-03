@@ -229,7 +229,7 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 // why nothing is spent.
 func (s *AffordSuite) TestFreeRoamAffordsNothing() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})
@@ -365,7 +365,7 @@ func (s *AffordSuite) TestShortfallCarriesTheStructuredCurrency() {
 func (s *AffordSuite) TestNotYourTurnIsAnnouncedByAfford() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters, Events: session.DiscardEvents{},
 	})

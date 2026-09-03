@@ -65,7 +65,7 @@ func backwardsWorld(t fataler) *encounter.EncounterData {
 }
 
 func (s *AtlasMapSuite) SetupTest() {
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(), Events: session.DiscardEvents{},
 	})

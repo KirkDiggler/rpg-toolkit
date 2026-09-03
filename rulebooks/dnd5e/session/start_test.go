@@ -71,7 +71,7 @@ func (s *StartSessionTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   s.sessions,
 		Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
@@ -190,7 +190,7 @@ func (s *StartSessionTestSuite) TestExistingSessionIsNotOverwritten() {
 // by one that thought the name was free.
 func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 	sessions := &failingSessions{fakeSessions: newFakeSessions(), getErr: errBroken}
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: s.encounters, Characters: s.characters,
 		Events: session.DiscardEvents{},
 	})
@@ -219,7 +219,7 @@ func (s *StartSessionTestSuite) TestBrokenStoreIsNotMistakenForAFreeID() {
 func (s *StartSessionTestSuite) TestBrokenRepositoryIsNotReadAsAnExistingSession() {
 	sessions := &nilDataSessions{fakeSessions: newFakeSessions()}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -271,7 +271,7 @@ func (s *StartSessionTestSuite) TestSuccessWritesWorldThenSession() {
 func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters(), saveErr: errBroken}
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
@@ -292,7 +292,7 @@ func (s *StartSessionTestSuite) TestWorldSaveFailureLeavesNoDanglingSession() {
 func (s *StartSessionTestSuite) TestSessionSaveFailureLeavesOnlyAnOrphan() {
 	sessions := &failingSessions{fakeSessions: newFakeSessions(), saveErr: errBroken}
 	encounters := newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)

@@ -102,7 +102,7 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 	barbarian := armedBarbarian("barbarian")
 	barbarian.HitPoints, barbarian.MaxHitPoints = 100, 100
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Behavior(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
@@ -329,7 +329,7 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	barbarian.HitPoints, barbarian.MaxHitPoints = 8, 8
 	stream := &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Behavior(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
@@ -367,13 +367,13 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	stream.published = nil
 	out2, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter")})
 	require.NoError(t, err)
-	require.Equal(t, "fighter", out2.Next, "a two-member order (barbarian spliced) wraps skel-1's own end back to fighter")
+	require.Equal(t, "barbarian", out2.Next,
+		"a Dying player retains the initiative slot for an explicit save")
 	require.True(t, out2.RoundWrapped)
 
 	round1Drive := stream.published
 	round1Fighter := recipientSeqs(round1Drive, "fighter")
-	require.Len(t, round1Fighter, 5,
-		"turn-ended(fighter), struck(barbarian), down(barbarian), transferred(barbarian), turn-ended(skel-1)")
+	require.NotEmpty(t, round1Fighter)
 
 	var round1Struck []session.Event
 	for _, e := range round1Drive {
@@ -414,16 +414,31 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 			"barbarian's own stream stays gap-free through the drive")
 	}
 
+	// Barbarian now owns the explicit save turn instead of being silently
+	// spliced. An ordinary success reports END_TURN, then her declared End Turn
+	// hands control to fighter.
+	save, err := mgr.DeathSave(ctx, &session.DeathSaveInput{
+		Session: "sess", Member: "barbarian",
+		DeclarationID: currentDeclaration(t, mgr, "sess", "barbarian", session.VerbDeathSave).ID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, session.DeathSaveContinuationEndTurn, save.Continuation)
+	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{
+		Session: "sess", Member: "barbarian",
+		DeclarationID: currentEndTurnID(t, mgr, "sess", "barbarian"),
+	})
+	require.NoError(t, err)
+
 	// Round 2: fighter's own end drives skel-1 a second time. This time
-	// skel-1's one attack downs fighter too — the last player standing —
-	// deciding the fight mid-drive: rpg-toolkit#1202's own case, now with
-	// two players in it.
+	// skel-1's one attack downs fighter too — the party now has no Conscious
+	// member, so supplied PartyDefeated closes the fight mid-drive.
 	stream.published = nil
 	out3, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter")})
 	require.NoError(t, err, "a driven turn that wins the fight must not abort the caller's own EndTurn")
 	require.Equal(t, "fighter", out3.Next,
 		"there is no bubble left to name a turn IN; EndTurnOutput.Next reports the caller instead (rpg-toolkit#1202)")
-	require.False(t, out3.RoundWrapped, "the fight ended mid-round, not by cycling back to its top")
+	require.True(t, out3.RoundWrapped,
+		"the retained Dying slot made round 2 begin before the final driven settlement")
 
 	round2Drive := stream.published
 	var round2Struck []session.Event

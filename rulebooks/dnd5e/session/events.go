@@ -48,7 +48,9 @@ type EventStream interface {
 // a host that simply forgot to wire a stream is refused at construction.
 //
 //	mgr, err := session.NewManager(&session.Config{
-//	    Sessions: repo, Encounters: enc, Events: session.DiscardEvents{},
+//	    Sessions: repo, Encounters: enc, Characters: chars,
+//	    Events: session.DiscardEvents{}, Dice: roller,
+//	    PresentationIDs: presentationIDs, TurnDriver: session.Pass{},
 //	})
 type DiscardEvents struct{}
 
@@ -244,7 +246,7 @@ func kindFor(beat string) EventKind {
 		return EventFightStarted
 	case "bubble-dissolved":
 		return EventFightEnded
-	// The two outcome beats. Unlike every other case here, these strings are
+	// The explicit outcome beats. Unlike every other case here, these strings are
 	// not the composition's own vocabulary for a verb it ran — they are the
 	// OutcomeKind a rulebook handed it (encounter's Record), which is why the
 	// mapping is worth a word: adding an outcome kind upstream means adding a
@@ -253,6 +255,8 @@ func kindFor(beat string) EventKind {
 		return EventStruck
 	case "missed":
 		return EventMissed
+	case "death_save":
+		return EventDeathSave
 	case "activated":
 		return EventActivated
 	case "activation-result":
@@ -364,6 +368,8 @@ func bodyFor(kind EventKind, payload []byte) EventBody {
 		return structBody(payload, true)
 	case EventMissed:
 		return structBody(payload, false)
+	case EventDeathSave:
+		return deathSaveEventBody(payload)
 	case EventActivated:
 		var p struct {
 			Actor   string `json:"actor"`
@@ -582,6 +588,78 @@ func activationResultBody(payload []byte) EventBody {
 	}
 
 	return body
+}
+
+func deathSaveEventBody(payload []byte) EventBody {
+	outer, ok := strictJSONObject(payload)
+	if !ok {
+		return nil
+	}
+	for key := range outer {
+		switch key {
+		case "beat", "actor", "death_save":
+		default:
+			return nil
+		}
+	}
+	for _, key := range []string{"beat", "actor", "death_save"} {
+		if _, present := outer[key]; !present || isJSONNull(outer[key]) {
+			return nil
+		}
+	}
+	var beat, actor string
+	if json.Unmarshal(outer["beat"], &beat) != nil || beat != "death_save" ||
+		json.Unmarshal(outer["actor"], &actor) != nil || actor == "" {
+		return nil
+	}
+
+	detail, ok := strictJSONObject(outer["death_save"])
+	if !ok {
+		return nil
+	}
+	required := []string{
+		"roll", "outcome", "successes_added", "failures_added", "successes", "failures",
+		"successes_needed", "failures_remaining", "stabilized", "dead", "recovered",
+		"hp_restored", "continuation", "presentation_id",
+	}
+	if len(detail) != len(required) {
+		return nil
+	}
+	for _, key := range required {
+		if _, present := detail[key]; !present || isJSONNull(detail[key]) {
+			return nil
+		}
+	}
+
+	var decoded struct {
+		Roll              int                   `json:"roll"`
+		Outcome           DeathSaveOutcome      `json:"outcome"`
+		SuccessesAdded    int                   `json:"successes_added"`
+		FailuresAdded     int                   `json:"failures_added"`
+		Successes         int                   `json:"successes"`
+		Failures          int                   `json:"failures"`
+		SuccessesNeeded   int                   `json:"successes_needed"`
+		FailuresRemaining int                   `json:"failures_remaining"`
+		Stabilized        bool                  `json:"stabilized"`
+		Dead              bool                  `json:"dead"`
+		Recovered         bool                  `json:"recovered"`
+		HPRestored        int                   `json:"hp_restored"`
+		Continuation      DeathSaveContinuation `json:"continuation"`
+		PresentationID    string                `json:"presentation_id"`
+	}
+	if json.Unmarshal(outer["death_save"], &decoded) != nil || decoded.Outcome == "" ||
+		decoded.Continuation == "" || decoded.PresentationID == "" {
+		return nil
+	}
+	return DeathSaveBody{
+		Actor: actor, Roll: decoded.Roll, Outcome: decoded.Outcome,
+		SuccessesAdded: decoded.SuccessesAdded, FailuresAdded: decoded.FailuresAdded,
+		Successes: decoded.Successes, Failures: decoded.Failures,
+		SuccessesNeeded: decoded.SuccessesNeeded, FailuresRemaining: decoded.FailuresRemaining,
+		Stabilized: decoded.Stabilized, Dead: decoded.Dead,
+		Recovered: decoded.Recovered, HPRestored: decoded.HPRestored,
+		Continuation: decoded.Continuation, PresentationID: decoded.PresentationID,
+	}
 }
 
 // strictJSONObject walks one JSON object key by key, retaining each field's

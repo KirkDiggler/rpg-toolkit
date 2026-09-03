@@ -898,7 +898,7 @@ type writeScope struct {
 	// actor has fallen (refuseIfDown). Rebuilding it at each use would compile
 	// and would quietly allow two capabilities reading different sheets within
 	// one verb.
-	standing encounter.Standing
+	standing standingSeam
 
 	// sight is the SAME *sightSeam the live encounter holds — see the
 	// type's own doc on why a pointer, not a value. place adds a member
@@ -992,6 +992,31 @@ func (m *Manager) adopt(scope *writeScope, world encounter.EncounterData) error 
 		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
 	}
 	scope.enc = enc
+	return nil
+}
+
+// saveCharacterRecord writes one authoritative character snapshot and records
+// the durable aggregate on the active write scope. It is shared by resolution
+// dirty-sheet writes and Death Save's required character-first ordering.
+func (m *Manager) saveCharacterRecord(
+	ctx context.Context, scope *writeScope, data *character.Data,
+) error {
+	aggregate := "character:" + data.ID
+	if err := m.characters.SaveCharacter(ctx, data); err != nil {
+		return &SaveError{
+			Report: SaveReport{
+				Written: append([]string(nil), scope.written...),
+				Failed:  []string{aggregate},
+			},
+			Err: fmt.Errorf("saving character: %w", err),
+		}
+	}
+	for _, written := range scope.written {
+		if written == aggregate {
+			return nil
+		}
+	}
+	scope.written = append(scope.written, aggregate)
 	return nil
 }
 

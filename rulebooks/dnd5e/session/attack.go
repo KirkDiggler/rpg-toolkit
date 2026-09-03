@@ -756,28 +756,8 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if data == nil {
 			continue
 		}
-		if err := m.characters.SaveCharacter(ctx, data); err != nil {
-			report := SaveReport{
-				Written: append([]string(nil), scope.written...),
-				Failed:  []string{"character:" + data.ID},
-			}
-			return &SaveError{Report: report, Err: fmt.Errorf("saving character: %w", err)}
-		}
-
-		// Keep the newer save — only normalize the report identity. A
-		// first-admission Join may already have saved this same character's
-		// rest before placement drove an attack. saveWalker enforces the same
-		// one-entry-per-aggregate rule for repeated movement-side writes.
-		aggregate := "character:" + data.ID
-		alreadyWritten := false
-		for _, written := range scope.written {
-			if written == aggregate {
-				alreadyWritten = true
-				break
-			}
-		}
-		if !alreadyWritten {
-			scope.written = append(scope.written, aggregate)
+		if err := m.saveCharacterRecord(ctx, scope, data); err != nil {
+			return err
 		}
 	}
 

@@ -44,6 +44,27 @@ func standingSet(standing encounter.Standing, ids []encounter.MemberID) (map[str
 	return out, nil
 }
 
+type richParticipationLookup struct {
+	members map[string]encounter.MemberParticipation
+	views   map[string]participantView
+}
+
+// richParticipationSet derives encounter scheduling, binary down, explicit
+// life state, and Death Save progress from one provider snapshot.
+func richParticipationSet(
+	standing standingSeam, ids []encounter.MemberID,
+) (*richParticipationLookup, error) {
+	snapshot, err := standing.participation(ids)
+	if err != nil {
+		return nil, err
+	}
+	members := make(map[string]encounter.MemberParticipation, len(snapshot.assessment.Members))
+	for _, member := range snapshot.assessment.Members {
+		members[string(member.Member)] = member
+	}
+	return &richParticipationLookup{members: members, views: snapshot.views}, nil
+}
+
 // rosterIDs pulls the bare ids out of a roster read, for callers that need
 // to ask Standing about everyone rather than a narrower set (View's own
 // call: the observer might hold a sighting for anyone in the roster).

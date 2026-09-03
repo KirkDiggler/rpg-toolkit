@@ -93,7 +93,7 @@ func TestDoorsSuite(t *testing.T) {
 // stream recorded — the beats are half of what this suite pins.
 func (s *DoorsSuite) startWith(world *encounter.EncounterData, cast ...*character.Data) {
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{
+	mgr, err := session.NewManager(&session.Config{PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(cast...), Events: s.stream,

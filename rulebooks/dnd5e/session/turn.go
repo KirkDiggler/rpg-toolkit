@@ -100,6 +100,14 @@ type Participant struct {
 	// turn clock — the same member TurnOutput.Active names — so a caller
 	// marks the active row without a lookup.
 	Active bool `json:"active"`
+
+	// LifeState is the root rulebook's explicit provider-derived state.
+	// Consumers do not infer it from Standing or optional DeathSaves.
+	LifeState LifeState `json:"life_state"`
+
+	// DeathSaves is provider-owned progress, present for character life states
+	// whose provider reports it and absent for conscious characters/monsters.
+	DeathSaves *DeathSaveProgress `json:"death_saves,omitempty"`
 }
 
 // Turn reports what one member is waiting on.
@@ -177,10 +185,9 @@ func (m *Manager) participantsFor(
 		kinds[string(member.ID)] = member.Kind
 	}
 
-	// The same capability every other standing consult in this package
-	// uses (standing.go) — asked fresh, not cached, exactly as the
-	// composition's own consults are.
-	downSet, err := standingSet(m.standingFor(ctx, data), clock.Order)
+	// One provider-derived snapshot supplies both the compatibility Standing
+	// field and the explicit rich state/progress projection.
+	participation, err := richParticipationSet(m.standingFor(ctx, data), clock.Order)
 	if err != nil {
 		return nil, err
 	}
@@ -189,15 +196,14 @@ func (m *Manager) participantsFor(
 	for _, id := range clock.Order {
 		key := string(id)
 		st := StandingUp
-		if downSet[key] {
+		if participation.members[key].Down {
 			st = StandingDowned
 		}
+		view := participation.views[key]
 		out = append(out, Participant{
-			Member:   key,
-			Name:     names[key],
-			Kind:     MemberKind(kinds[key]),
-			Standing: st,
-			Active:   key == string(clock.Active),
+			Member: key, Name: names[key], Kind: MemberKind(kinds[key]),
+			Standing: st, Active: key == string(clock.Active),
+			LifeState: view.LifeState, DeathSaves: view.DeathSaves,
 		})
 	}
 	return out, nil

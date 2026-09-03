@@ -155,10 +155,13 @@ func (m *Manager) loadAuthored(ctx context.Context, world *encounter.EncounterDa
 	if world == nil {
 		return nil, fmt.Errorf("nil world: %w", ErrInvalidWorld)
 	}
+	// Preserve the dual concrete capability while assigning it to encounter's
+	// compatibility-shaped Standing field.
+	standing := m.standingFor(ctx, nil)
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:       *world,
 		Initiative: m.initiative,
-		Standing:   m.standingFor(ctx, nil),
+		Standing:   standing,
 		Sight:      &sightSeam{members: append([]encounter.MemberData(nil), world.Members...)},
 		TurnDriver: m.turnDriver,
 		Striker:    encounter.RefusingStriker{},
