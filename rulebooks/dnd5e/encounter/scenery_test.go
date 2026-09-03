@@ -151,6 +151,39 @@ func (s *ScenerySuite) TestSceneryIsFloorNotVoid() {
 	s.False(s.seesNow(enc, alice, bob), "an ownerless cell nobody painted is void, and this void is opaque")
 }
 
+// TestC2_AWallStandsOnScenery — the composition's own rule, asked at the seam
+// that enforces it. A wall's endpoint must be FLOOR, and scenery is floor: a
+// wall may run along a strip nobody walks, and a door may open onto one. What
+// stays refused is an endpoint in the void, which is what "the envelope is
+// implied, never written" has always meant.
+func (s *ScenerySuite) TestC2_AWallStandsOnScenery() {
+	onStrip := theGap()
+	onStrip.Walls = []encounter.WallInput{wall(2, 0, 3, 0)}
+	atlas, err := s.open(onStrip).Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(atlas.Boundaries, 1, "a wall between a room and the strip stands")
+
+	withDoor := theGap()
+	withDoor.Doors = []encounter.DoorInput{{
+		ID:    "grate",
+		Edges: []encounter.DoorEdge{{From: cellAt(2, 0), To: cellAt(3, 0)}},
+		State: encounter.DoorIsClosed(),
+	}}
+	doorAtlas, err := s.open(withDoor).Atlas()
+	s.Require().NoError(err)
+	s.Require().Len(doorAtlas.Doorways, 1, "a door may open onto the strip")
+
+	intoVoid := theGap()
+	intoVoid.Walls = []encounter.WallInput{wall(6, 0, 7, 0)}
+	_, err = encounter.NewEncounter(&encounter.SetupInput{
+		Sight: everyoneSeesTheWholeMap{}, Standing: everyoneStanding{}, Initiative: orderAsGiven{},
+		TurnDriver: passDriver{}, Striker: passStriker{}, Announcer: quietAnnouncer{},
+		Field:   intoVoid,
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+	})
+	s.Require().ErrorIs(err, encounter.ErrEdgeOffFloor, "scenery widened the floor; it did not delete the envelope")
+}
+
 // TestA4_APropStandsOnSceneryAndAMemberMayNot — a prop drops on scenery; a
 // member seated there is refused at construction.
 func (s *ScenerySuite) TestA4_APropStandsOnSceneryAndAMemberMayNot() {

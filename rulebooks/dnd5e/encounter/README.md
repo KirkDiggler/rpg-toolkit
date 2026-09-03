@@ -222,7 +222,7 @@ other caller of the consult is a verb looking at a world something else changed.
 | `standing.go` | `Standing`, and the world noticing who is down |
 | `sight.go` | `Sight`, and how far each member can see this refresh |
 | `step.go` | one step on the map, and the one place that decides what one is |
-| `atlas.go` | the map reads — `Atlas` (every floor cell, region, prop, wall and doorway, in absolute space) and `Grid` |
+| `atlas.go` | the map reads — `Atlas` (every floor cell, region, prop, wall and doorway, in absolute space; a cell in `Cells` and in no region is scenery) and `Grid` |
 | `region.go` | a region is a named set of cells: `RegionAt`, `Region`, `MembersIn` |
 | `compilefield.go` | the one place an authored field becomes the canvas: regions to an owner map, walls and props checked, every `[col,row]` converted once |
 | `field.go` | regions, props, walls, and the per-verb output shapes |
