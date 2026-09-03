@@ -279,6 +279,60 @@ type WallInput struct {
 	Height float64
 }
 
+// AxialPointF is a point in FRACTIONAL axial coordinates: the frame every
+// cell on this map already lives in, with the halves a wall endpoint needs.
+//
+// The unit a wall's shape crosses the seam in (rpg-project#360, design §5.2).
+// A client's axial-to-world formula already accepts fractions, so no second
+// basis and no world unit ever leaves the compiler — the two hex bugs this
+// workspace has paid for (rpg-toolkit#1141, #1150) were both a second reading
+// of one basis, and there is deliberately no second reading here.
+type AxialPointF struct {
+	// Q and R are the axial coordinates, which may be halves: a wall ends at
+	// a side midpoint or a centre, and a side midpoint is exactly half a step
+	// from the centre it belongs to.
+	Q, R float64
+}
+
+// SegmentInput is one authored wall AS THE LINE IT IS: two ends, a height, the
+// floor it stands on, and the doors that open in it.
+//
+// PRESENTATION, AND THE COMPILER'S ANSWER TO IT. [FieldInput.Walls] is the
+// mechanical truth — the crossings nobody may take — and this is the same wall
+// as a thing to draw. Both are derived from one authored line by the compiler,
+// which is what makes it impossible for them to disagree; before this the
+// client chained crossings back into runs under a straightness tolerance, and
+// a rendering constant decided where one wall ended and the next began.
+//
+// This module reads Height and Footprint and DRAWS NOTHING. It carries no
+// geometry of its own and never will: a hex is embedded in the plane in
+// exactly one place, the authoring compiler (design C9).
+type SegmentInput struct {
+	// Name is the author's word for the wall, carried unread.
+	Name string
+
+	// From and To are the wall's two ends, in fractional axial.
+	From, To AxialPointF
+
+	// Height is the authored wall-height multiplier, 0 for not authored —
+	// [WallInput.Height]'s contract exactly, at the scale the author wrote it.
+	Height float64
+
+	// Footprint is every floor cell the wall passes through, in absolute
+	// authored offset [col,row] cells, in order along the wall.
+	//
+	// WHAT IT IS FOR: a wall presented to somebody who cannot see the room
+	// behind it still has to stand on something, or the floor ends in nothing
+	// and the wall marks itself (design C18). These cells enter that
+	// recipient's atlas as floor nobody owns.
+	Footprint []spatial.Position
+
+	// DoorIDs is every door standing in this wall, in crossing order.
+	// Carried so a door's masquerade can take the height of the wall it hides
+	// in rather than guess at a neighbour's.
+	DoorIDs []DoorID
+}
+
 // FieldInput describes the map: what the canvas declares, the regions that
 // make its floor, and the props, walls and doors standing on it
 // (rpg-project#256).
@@ -341,6 +395,25 @@ type FieldInput struct {
 	// Endpoint ORDER is not carried: spatial normalizes an undirected pair on
 	// registration, so From and To describe the same edge either way round.
 	Walls []WallInput
+
+	// Segments are the authored walls as LINES, one per wall the author drew,
+	// for a reader that draws them. Optional and inert: nothing in this module
+	// decides anything from a segment except what a masquerade's height is and
+	// which floor a presented wall stands on. See [SegmentInput].
+	Segments []SegmentInput
+
+	// Sealed is every cell some wall leaves too little of to stand on: a cell
+	// that KEEPS ITS OWNER and loses its feet (rpg-project#360, design C10).
+	// Absolute authored offset [col,row] cells. Optional; omitted means none.
+	//
+	// DERIVED BY THE COMPILER AND CARRIED, never recomputed here. The rule is
+	// an area fraction of a hex clipped by half-planes, which is geometry, and
+	// geometry lives in exactly one place (design C9). What this module needs
+	// is the answer, and this is the answer.
+	//
+	// Every cell listed must be a region's: scenery is unstandable already,
+	// and a second list saying so would be a second thing to be wrong.
+	Sealed []spatial.Position
 
 	// Doors are the doors standing in this field's crossings — each a set of
 	// edges sharing one state (rpg-toolkit#1123), with edges in ABSOLUTE

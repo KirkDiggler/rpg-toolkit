@@ -113,13 +113,15 @@ type Spec struct {
 	// archetype, which is the shape of defaulting rpg-toolkit#1033 forbids.
 	Start *[2]int `yaml:"start"`
 
-	// Walls are edges between adjacent floor cells that block both movement
-	// and sight. The envelope is implied, never written: a crossing from
-	// floor into void is a crossing nobody can make. Each entry is a bare
-	// edge or an object carrying an authored height — see [WallSpec].
+	// Walls are STRAIGHT LINES between two picked positions, each blocking
+	// both movement and sight along everything it stands in the way of
+	// (rpg-project#360). The envelope is implied, never written: a crossing
+	// from floor into void is a crossing nobody can make, so a wall may run
+	// along the edge of the world and cut nothing. See [WallSpec].
 	Walls []WallSpec `yaml:"walls"`
 
-	// Doors are one state each over one or more edges (rpg-toolkit#1123).
+	// Doors are one state each at one position on a wall (rpg-toolkit#1123,
+	// rpg-project#360). See [DoorSpec].
 	Doors []DoorSpec `yaml:"doors"`
 
 	// Place is everything standing on the floor — props, monsters, and the
@@ -177,130 +179,205 @@ type LightingSpec struct {
 	Intensity *float64 `yaml:"intensity"`
 }
 
-// EdgeSpec is one crossing between two adjacent floor cells:
-// [[col,row],[col,row]]. Undirected.
-type EdgeSpec [2][2]int
+// PositionSpec is ONE OF THE SEVEN POINTS a wall or a door may stand at: the
+// midpoint of one of a hex's six sides, or its centre (design §3.3).
+//
+// A cell and an offset, because a point on a hex grid has no name of its own
+// and the author already thinks in cells. The CELL names the frame; it need
+// not be floor, and often is not — a wall along the outside of a room is
+// written from the cells it walls. The OFFSET picks the point within it, in
+// BOUNDING-BOX FRACTIONS: x in widths, east positive; y in heights, south
+// positive, the same unit and the same axes a prop's offset uses.
+//
+// # The set is closed, and it compares exactly
+//
+// Seven values per orientation and nothing else (F8). Every one is a dyadic
+// rational — halves, quarters and eighths — so the file's literals compare as
+// exact floats and recognising a position needs no tolerance. An offset
+// outside the set is refused naming the wall and the value, never snapped to
+// the nearest member: a wall a hand's breadth from where its author put it is
+// a dungeon they did not draw.
+//
+// # The same point, named twice, is a corner
+//
+// Two positions that name the same physical point are the same point, whether
+// or not they name it from the same cell. That is the whole of what a corner
+// is (F5): the designer writes a join by writing the same point at both ends,
+// and this package has no corner concept and needs none.
+type PositionSpec struct {
+	// Cell is the hex the point is named from, as an absolute offset
+	// [col,row] pair. REQUIRED.
+	Cell [2]int `yaml:"cell"`
 
-// WallSpec is one authored wall entry. Three forms are legal:
-//
-//   - [[5,0],[6,0]]                          # bare edge — default height
-//   - { between: [[5,1],[6,1]], height: 2 }  # edge with an authored height
-//   - { name: north wall, height: 2, edges: [...] }   # a RUN (rpg-project#355)
-//
-// The bare pair stays the common case and means default height. The grouped
-// form is what an author actually draws: one entry per wall, carrying its
-// edges in author order and its height ONCE. A dungeon its author calls eight
-// walls was written as 153 loose edges before grouping existed.
-//
-// # Why the group is stored rather than derived
-//
-// rpg-project#273 ruled that the EDGE carries the height because "runs are
-// DERIVED — order-free, re-derived under editing." That ruling is narrowed,
-// not overturned (rpg-project#355), and the distinction is which run:
-//
-//   - The RENDERER's run stays derived, exactly as before. Nothing here is
-//     read by it: a spec flattens to edges before anything draws it, so the
-//     wall engine's order-invariance is untouched.
-//   - The AUTHOR's run cannot be derived at all. Measured on a real dungeon,
-//     all 134 of its degree-2 corners turn 60° — on a hex grid a room corner
-//     and a zigzag step are the same angle, so no local rule separates them.
-//     The only thing that can is a non-local straightness tolerance in world
-//     units, which is a rendering constant, and a rendering constant must
-//     never regroup files on disk.
-//
-// What #273 was protecting survives verbatim: THE EDGE IS THE ONE UNIT OF
-// MECHANICAL FACT. A group carries no mechanical consequence whatsoever — the
-// same edges grouped differently compile byte-identically — so grouping is
-// free to follow the author's intent without the engine ever learning of it.
-type WallSpec struct {
-	// Name is the run's display name, for the human reading the file and
-	// the errors about it: "north wall" beats "walls[7]" for the streamers
-	// this dialect is authored by. Carried, never read.
-	Name string
-
-	// Edges are the crossings this wall runs through, each two adjacent
-	// floor cells, in the order the author drew them. Never empty. The bare
-	// and `between` forms are runs of exactly one — one representation, so
-	// nothing downstream asks which form a wall was written in.
-	Edges []EdgeSpec
-
-	// Height is the authored wall-height MULTIPLIER of the standard
-	// rendered wall height, REQUIRED in [1, 3] when authored — raise-only
-	// by ruling (rpg-project#273: "I am looking to raise the walls not
-	// lower them"), so a waist-high wall cannot be authored at all. Nil
-	// means not authored: the standard height, exactly what writing 1.0
-	// means — the two are the same fact by design. It applies to EVERY edge
-	// in the run, which is the whole reason a run carries it once. VISUAL
-	// ONLY: a wall blocks movement and sight identically at every height.
-	Height *float64
+	// Offset is the point within that cell, in bounding-box fractions.
+	// REQUIRED, and one of the seven (§3.3). Written even for the centre —
+	// `[0,0]` is a real position and an author who meant it says so, which
+	// is what keeps a forgotten key from quietly becoming a thick wall.
+	Offset [2]float64 `yaml:"offset"`
 }
 
-// UnmarshalYAML reads either wall form. A sequence node is the bare edge; a
-// mapping node is the object form. Unknown keys in the object form are
-// refused HERE because a custom unmarshaler bypasses the decoder's
-// KnownFields, and a typo silently dropped is exactly what Decode's
-// strictness exists to prevent.
-func (w *WallSpec) UnmarshalYAML(value *yaml.Node) error {
-	if value.Kind == yaml.SequenceNode {
-		var one EdgeSpec
-		if err := value.Decode(&one); err != nil {
-			return err
-		}
-		w.Edges = []EdgeSpec{one}
-		return nil
-	}
+// UnmarshalYAML reads a position, refusing an unknown key and a missing one by
+// name. Written by hand because a custom unmarshaler anywhere above this in
+// the tree bypasses the decoder's KnownFields, and a typo silently dropped is
+// exactly what Decode's strictness exists to prevent.
+func (p *PositionSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: a wall is an edge [[col,row],[col,row]] or an object {between, height} or {edges, height, name}", value.Line)
+		return fmt.Errorf("line %d: a position is { cell: [col,row], offset: [x,y] }", value.Line)
 	}
+	var sawCell, sawOffset bool
 	for i := 0; i < len(value.Content); i += 2 {
 		switch key := value.Content[i].Value; key {
-		case "between", "edges", "height", "name":
+		case "cell":
+			sawCell = true
+		case "offset":
+			sawOffset = true
 		default:
-			return fmt.Errorf("line %d: field %s not found in type dungeonspec.WallSpec", value.Content[i].Line, key)
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PositionSpec",
+				value.Content[i].Line, key)
 		}
 	}
+	if !sawCell {
+		return fmt.Errorf("line %d: a position does not say which cell it is named from", value.Line)
+	}
+	if !sawOffset {
+		return fmt.Errorf(
+			"line %d: a position does not say its offset within the cell (the centre is [0,0], written out)",
+			value.Line)
+	}
 	var obj struct {
-		Between *EdgeSpec  `yaml:"between"`
-		Edges   []EdgeSpec `yaml:"edges"`
-		Height  *float64   `yaml:"height"`
-		Name    string     `yaml:"name"`
+		Cell   [2]int     `yaml:"cell"`
+		Offset [2]float64 `yaml:"offset"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
-	// `between` and `edges` are the same fact at two scales, so writing both
-	// is an author who means two different things at once — refused by name
-	// rather than resolved by precedence.
-	if obj.Between != nil && obj.Edges != nil {
-		return fmt.Errorf("line %d: a wall says `between` for one edge or `edges` for a run, never both", value.Line)
-	}
-	switch {
-	case obj.Between != nil:
-		w.Edges = []EdgeSpec{*obj.Between}
-	case obj.Edges != nil:
-		// `edges: []` is an authored run that runs nowhere — distinct from
-		// the key being absent, and refused, on [DoorSpec.Locked]'s law.
-		if len(obj.Edges) == 0 {
-			return fmt.Errorf("line %d: a wall run with no edges stands nowhere", value.Line)
-		}
-		w.Edges = obj.Edges
-	default:
-		return fmt.Errorf("line %d: a wall object must name its edge in `between` or its run in `edges`", value.Line)
-	}
-	w.Height = obj.Height
-	w.Name = obj.Name
+	p.Cell, p.Offset = obj.Cell, obj.Offset
+
 	return nil
 }
 
-// DoorSpec is one door: one state over one or more edges.
+// WallSpec is one authored wall: A STRAIGHT LINE BETWEEN TWO POSITIONS, and
+// the file holds nothing else (design §1.5, F3).
+//
+//	walls:
+//	  - start: { cell: [1, 2],  offset: [-0.25, -0.375] }
+//	    end:   { cell: [1, 10], offset: [-0.25,  0.375] }
+//	    height: 2
+//	    name: the long seam
+//
+// The crossings it blocks, the cells it passes through and which of those it
+// leaves too little of to stand on are ALL DERIVED (§4.2) and never written.
+// Kirk: "edges just need the starting and ending hex coordinate… not only be
+// easy to read it would be easy to edit."
+//
+// # The pair form is deleted, not deprecated
+//
+// The old dialect wrote a wall as the list of crossings it blocked —
+// `[[5,0],[6,0]]`, `{between: …}`, `{edges: […]}` — which made a wall a
+// bookkeeping exercise in what a line already says, and made a wall standing
+// against the void unsayable. A file that uses it is refused by name (F4),
+// with no migration: legacy dungeons are deleted and re-authored (C17).
+//
+// # Thin and thick are not in here
+//
+// A line along a row of side midpoints shaves a twenty-fourth off its
+// neighbours; the one through their centres seals them. Those are COSTS, shown
+// by the designer at pick time, not kinds of wall (F16a). This struct knows
+// seven positions and twelve directions, and the compiler knows the area rule.
+// There is no lower-level decision to relax.
+type WallSpec struct {
+	// Start and End are the wall's two ends. REQUIRED, both.
+	Start PositionSpec `yaml:"start"`
+	End   PositionSpec `yaml:"end"`
+
+	// Height is the authored wall-height MULTIPLIER of the standard rendered
+	// wall height, REQUIRED in [1, 3] when authored — raise-only by ruling
+	// (rpg-project#273: "I am looking to raise the walls not lower them"), so
+	// a waist-high wall cannot be authored at all. Nil means not authored:
+	// the standard height, exactly what writing 1.0 means. VISUAL ONLY: a
+	// wall blocks movement and sight identically at every height.
+	Height *float64 `yaml:"height"`
+
+	// Name is the wall's display name, for the human reading the file and the
+	// errors about it: "north wall" beats "walls[7]" for the streamers this
+	// dialect is authored by. Carried, and read by nothing but a refusal.
+	Name string `yaml:"name"`
+}
+
+// UnmarshalYAML reads a wall, refusing the deleted pair form by name.
+//
+// Unknown keys are refused HERE because a custom unmarshaler bypasses the
+// decoder's KnownFields, and a typo silently dropped is exactly what Decode's
+// strictness exists to prevent. `edges` and `between` are called out
+// separately from any other unknown key: a file carrying them is not a typo,
+// it is last dialect's dungeon, and saying so is the difference between an
+// author who knows what to do and one who does not.
+func (w *WallSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.SequenceNode {
+		return fmt.Errorf(
+			"line %d: %s", value.Line, pairFormRefusal)
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf(
+			"line %d: a wall is { start: {cell, offset}, end: {cell, offset} }, with an optional height and name",
+			value.Line)
+	}
+	var sawStart, sawEnd bool
+	for i := 0; i < len(value.Content); i += 2 {
+		switch key := value.Content[i].Value; key {
+		case "edges", "between":
+			return fmt.Errorf("line %d: %s", value.Content[i].Line, pairFormRefusal)
+		case "start":
+			sawStart = true
+		case "end":
+			sawEnd = true
+		case "height", "name":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.WallSpec",
+				value.Content[i].Line, key)
+		}
+	}
+	if !sawStart || !sawEnd {
+		return fmt.Errorf("line %d: a wall runs from `start` to `end`, and this one does not say both", value.Line)
+	}
+	var obj struct {
+		Start  PositionSpec `yaml:"start"`
+		End    PositionSpec `yaml:"end"`
+		Height *float64     `yaml:"height"`
+		Name   string       `yaml:"name"`
+	}
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	w.Start, w.End, w.Height, w.Name = obj.Start, obj.End, obj.Height, obj.Name
+
+	return nil
+}
+
+// pairFormRefusal is the one sentence a last-dialect file gets, wherever it is
+// met (F4, F12). It names the form, says what replaced it, and stops — there
+// is no migration to offer.
+const pairFormRefusal = "`edges` is the deleted pair form: a wall is now a line, " +
+	"`start` and `end`, each a cell and one of the seven offsets, and a door is `at` one position on it"
+
+// DoorSpec is one door: A POSITION ON A WALL, plus the state it is in.
+//
+//	doors:
+//	  - id: crypt-door
+//	    at: { cell: [1, 6], offset: [-0.25, 0.375] }
+//	    closed: true
+//
+// The door opens the ONE crossing of the side it is the midpoint of (F11), and
+// exactly one wall must pass through it (F10). A wider doorway is two doors.
 type DoorSpec struct {
 	// ID names the door within this dungeon; the compiled door is
 	// `<key>/<id>`.
 	ID string `yaml:"id"`
 
-	// Edges are the crossings the door stands in — at least one. An edge
-	// need not sit on a region seam: a door inside a region is legal.
-	Edges []EdgeSpec `yaml:"edges"`
+	// At is where the door stands: one position, which must be a SIDE
+	// MIDPOINT rather than a centre — a door in the middle of a hex opens no
+	// crossing — and must have exactly one wall through it. REQUIRED.
+	At PositionSpec `yaml:"at"`
 
 	// Locked, when present, makes the door locked behind the check it
 	// carries. Nil with Closed false is an open doorway.
@@ -323,6 +400,43 @@ type DoorSpec struct {
 	// (rpg-project#350). Nil vs empty is Locked's law: `concealed: []` is a
 	// door hidden with no way to ever find it, refused at validate by name.
 	Concealed CheckSpec `yaml:"concealed,omitempty"`
+}
+
+// UnmarshalYAML reads a door, refusing the deleted pair form by name (F12) and
+// any unknown key, for [WallSpec.UnmarshalYAML]'s reason.
+func (d *DoorSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: a door is { id, at: {cell, offset} } with an optional state", value.Line)
+	}
+	var sawAt bool
+	for i := 0; i < len(value.Content); i += 2 {
+		switch key := value.Content[i].Value; key {
+		case "edges", "between":
+			return fmt.Errorf("line %d: %s", value.Content[i].Line, pairFormRefusal)
+		case "at":
+			sawAt = true
+		case "id", "locked", "closed", "concealed":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.DoorSpec",
+				value.Content[i].Line, key)
+		}
+	}
+	if !sawAt {
+		return fmt.Errorf("line %d: a door does not say where it stands (`at`, one position on a wall)", value.Line)
+	}
+	var obj struct {
+		ID        string       `yaml:"id"`
+		At        PositionSpec `yaml:"at"`
+		Locked    CheckSpec    `yaml:"locked"`
+		Closed    bool         `yaml:"closed"`
+		Concealed CheckSpec    `yaml:"concealed"`
+	}
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	d.ID, d.At, d.Locked, d.Closed, d.Concealed = obj.ID, obj.At, obj.Locked, obj.Closed, obj.Concealed
+
+	return nil
 }
 
 // CheckSpec is one authored check: the accepted approaches through it, AT

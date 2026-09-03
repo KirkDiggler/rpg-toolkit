@@ -164,16 +164,27 @@
 //     SCENERY IS THE FLOOR THAT BELONGS TO NOBODY (rpg-project#360): a wall
 //     stands on it, a prop sits on it, a sightline crosses it whatever
 //     [Void] says, it is in every member's map, and nobody's feet touch it.
-//     Standing is what an OWNER grants, so a seat, a step and an ending's
-//     trigger cell all ask [Encounter.RegionAt], not merely whether there
-//     is ground.
-//   - W3 (a door edge joins two adjacent floor cells) — every authored
-//     edge, wall or door, has both endpoints on the floor — a region's or
-//     the scenery's — and adjacent under the declared orientation
-//     (ErrEdgeOffFloor, ErrEdgeNotAdjacent).
+//     Standing is what an OWNER grants MINUS what a wall takes away: a cell
+//     a wall leaves too little of is in [FieldInput.Sealed], and keeps its
+//     region, its lighting and its archetype while losing its feet. So a
+//     seat, a step and an ending's trigger cell ask STANDABLE, which is
+//     owned-and-not-sealed, rather than merely whether there is ground —
+//     and the atlas reports [Atlas.Sealed] because membership in a region
+//     stopped implying it.
+//   - W3 (a door edge joins two adjacent floor cells) — every crossing
+//     handed to this module, wall or door, has both endpoints on the floor —
+//     a region's or the scenery's — and adjacent under the declared
+//     orientation (ErrEdgeOffFloor, ErrEdgeNotAdjacent).
 //     The envelope is implied, never written: a crossing from floor into
 //     void is a crossing nobody can make, and [Void] already says whether
 //     sight crosses it.
+//     THE AUTHOR NO LONGER WRITES THESE (rpg-project#360). A wall is a LINE
+//     between two picked positions, and the compiler derives the crossings
+//     it blocks, the cells it stands on ([SegmentInput.Footprint]) and the
+//     cells it seals. What arrives here is still pairs, because pairs are
+//     what a canvas registers; what a client DRAWS is [Atlas.Segments], the
+//     lines themselves. Both come from one authored line, so they cannot
+//     disagree.
 //   - W4 (projection is a read) — RETIRED by #1106, and worth stating as
 //     history because the whole shape of this module used to follow from it.
 //     Rules and verbs stayed room-local and absolute coordinates appeared

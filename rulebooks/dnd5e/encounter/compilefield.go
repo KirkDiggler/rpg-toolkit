@@ -74,6 +74,15 @@ type field struct {
 	// frame — what ToData writes back out, beside regions/props/walls.
 	scenery []spatial.Position
 
+	// segments is the authored walls as lines, deep-copied, in the AUTHORED
+	// frame. Carried, drawn by somebody else, and read here only for a
+	// masquerade's height and a presented wall's footing.
+	segments []SegmentInput
+
+	// sealed is the authored sealed cells, deep-copied, in the AUTHORED
+	// frame — what ToData writes back out beside scenery.
+	sealed []spatial.Position
+
 	void        Void
 	orientation Orientation
 
@@ -98,6 +107,12 @@ type field struct {
 	// cells is the whole floor — owner ∪ scenery — absolute axial, sorted by
 	// coordinate.
 	cells []spatial.Position
+
+	// sealedCells is every OWNED cell a wall leaves no room to stand in,
+	// absolute axial (rpg-project#360, design C10). The one thing that makes
+	// [field.isStandable] narrower than [field.regionOf]: a sealed cell keeps
+	// its region, its lighting and its archetype, and nobody's feet go on it.
+	sealedCells map[spatial.Position]bool
 
 	// width and height are the span of the one hex grid that holds the
 	// floor's bounding box (W6).
@@ -148,6 +163,7 @@ func compileField(in FieldInput) (*field, error) {
 		owner:        make(map[spatial.Position]RegionID),
 		regionCells:  make(map[RegionID][]spatial.Position, len(in.Regions)),
 		sceneryCells: make(map[spatial.Position]bool, len(in.Scenery)),
+		sealedCells:  make(map[spatial.Position]bool, len(in.Sealed)),
 	}
 
 	if err := f.compileRegions(in.Regions); err != nil {
@@ -163,6 +179,14 @@ func compileField(in FieldInput) (*field, error) {
 		return nil, err
 	}
 	if err := f.compileWalls(in.Walls); err != nil {
+		return nil, err
+	}
+	// SEALED AFTER THE WALLS, because a sealed cell is what a wall does to
+	// one, and after the regions because a sealed cell must be a region's.
+	if err := f.compileSealed(in.Sealed); err != nil {
+		return nil, err
+	}
+	if err := f.compileSegments(in.Segments); err != nil {
 		return nil, err
 	}
 
@@ -358,6 +382,65 @@ func (f *field) compileWalls(walls []WallInput) error {
 	return nil
 }
 
+// compileSealed marks every cell a wall has left no room to stand in, refusing
+// one that is not a region's.
+//
+// NOT RECOMPUTED, CARRIED. The area rule that produced this list is geometry,
+// and this module embeds no hexes (design C9): Load restores standability from
+// the list the compiler wrote, exactly as Setup does, so a saved encounter and
+// a fresh one answer the same question the same way without either of them
+// measuring anything.
+func (f *field) compileSealed(sealed []spatial.Position) error {
+	if len(sealed) == 0 {
+		return nil
+	}
+	for i, c := range sealed {
+		if !isAuthoredCell(c) {
+			return fmt.Errorf("sealed[%d] (%g,%g) is not a representable integral cell: %w",
+				i, c.X, c.Y, ErrNoField)
+		}
+		cell := f.cellAt(c)
+		if _, owned := f.regionOf(cell); !owned {
+			return fmt.Errorf("sealed[%d] [%g,%g] is not a region's cell, so nothing was sealed there: %w",
+				i, c.X, c.Y, ErrNoField)
+		}
+		f.sealedCells[cell] = true
+	}
+	f.sealed = append([]spatial.Position(nil), sealed...)
+
+	return nil
+}
+
+// compileSegments carries the authored walls as lines, refusing a segment
+// whose footprint is not floor — the one thing about a segment this module is
+// in a position to check, and the one that matters, since a presented wall's
+// footing enters a recipient's atlas as floor.
+func (f *field) compileSegments(segments []SegmentInput) error {
+	if len(segments) == 0 {
+		return nil
+	}
+	f.segments = make([]SegmentInput, len(segments))
+	for i, s := range segments {
+		for j, c := range s.Footprint {
+			if !isAuthoredCell(c) {
+				return fmt.Errorf("segments[%d] footprint[%d] (%g,%g) is not a representable integral cell: %w",
+					i, j, c.X, c.Y, ErrNoField)
+			}
+			if !f.isFloor(f.cellAt(c)) {
+				return fmt.Errorf("segments[%d] footprint[%d] [%g,%g] is not floor: %w",
+					i, j, c.X, c.Y, ErrEdgeOffFloor)
+			}
+		}
+		f.segments[i] = SegmentInput{
+			Name: s.Name, From: s.From, To: s.To, Height: s.Height,
+			Footprint: append([]spatial.Position(nil), s.Footprint...),
+			DoorIDs:   append([]DoorID(nil), s.DoorIDs...),
+		}
+	}
+
+	return nil
+}
+
 // wallEdges is every authored wall as a normalized absolute crossing — what
 // validateDoorInputs checks a door against. Only called on a compiled field,
 // whose walls have already passed edgeOf.
@@ -455,10 +538,16 @@ func (f *field) isFloor(cell spatial.Position) bool {
 // both, which is exactly why the difference had to be named the moment a cell
 // could be one without the other.
 //
-// SLICE 2 SUBTRACTS THE SEALED CELLS HERE and nowhere else: a cell a wall
-// halves keeps its owner and loses its feet, which is this predicate's
-// business and not isFloor's.
+// THE SEALED CELLS ARE SUBTRACTED HERE AND NOWHERE ELSE (rpg-project#360,
+// design C10): a cell a wall halves keeps its owner and loses its feet, which
+// is this predicate's business and not isFloor's. That is the whole of what
+// slice 2 changed about standing: every caller that asks this question — a
+// seat, a step, an arrival, an ending's trigger — got the new answer without
+// being touched.
 func (f *field) isStandable(cell spatial.Position) bool {
+	if f.sealedCells[cell] {
+		return false
+	}
 	_, owned := f.regionOf(cell)
 
 	return owned
@@ -473,6 +562,9 @@ func (f *field) isStandable(cell spatial.Position) bool {
 // that sentence is true. Derived from the two predicates rather than from the
 // scenery mask, so this adds no second reader of it.
 func (f *field) notStandable(cell spatial.Position) string {
+	if f.sealedCells[cell] {
+		return "is sealed: a wall leaves no room to stand there"
+	}
 	if f.isFloor(cell) {
 		return "is scenery: floor nobody stands on"
 	}

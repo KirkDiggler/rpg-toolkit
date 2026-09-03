@@ -3,16 +3,25 @@
 
 package dungeonspec_test
 
-// contentgolden_test.go is ACCEPTANCE A1 for the scenery slice
-// (rpg-project#360, wall-geometry design §7): EVERY CONTENT FILE THIS
-// REPOSITORY SHIPS COMPILES TO THE ATLAS IT ALREADY COMPILED TO.
+// contentgolden_test.go is THE WHOLE PICTURE, COMMITTED: every content file
+// this repository ships, compiled, in one reviewable file each.
 //
-// Scenery is additive — a file that authors none must be untouched by the
-// feature existing — and the only honest way to say that is a golden captured
-// from the build BEFORE the feature. testdata/*.compiled.json was written by a
-// throwaway generator run on origin/main at 304e0645, the commit this branch
-// was cut from, and is never regenerated from the new code: a golden a feature
-// wrote about itself proves the feature agrees with itself.
+// It began as ACCEPTANCE A1 for the scenery slice — every content file
+// compiles to the atlas it already compiled to — against a golden captured
+// before scenery existed. Scenery was additive and that claim was exactly
+// right for it. THE WALL SLICE IS NOT ADDITIVE (rpg-project#360): the pair
+// form is deleted and every fixture is re-authored as lines, so byte-identity
+// is not something the new dialect could honestly promise. The design says so
+// itself — A6 "is the forcing case and the regression net that replaces
+// byte-identity."
+//
+// So these goldens were regenerated once, on this branch, and what they are
+// now is a CHARACTERIZATION: any later change to the compiler shows up here as
+// a diff a reviewer reads, rather than as a surprise in the game. That is
+// worth having and it is not proof of anything on its own — a golden a feature
+// wrote about itself proves only that the feature agrees with itself. The
+// independent claim lives next door in golden_test.go, against the atlas
+// version 1 produced before any of this existed.
 //
 // It covers more than golden_test.go's does, deliberately. That one is the
 // version-1 atlas — cells, walls, doorways, props — and stops where version 1
@@ -67,11 +76,14 @@ func contentGoldenOf(t *testing.T, path string) contentGolden {
 	}
 }
 
-// TestA1_EveryContentFileCompilesToItsPreSceneryGolden walks every authored
-// dungeon in testdata and compares the whole compile against the golden
-// captured before scenery existed. A file with no `scenery:` block must be
-// bit-for-bit the dungeon it was.
-func TestA1_EveryContentFileCompilesToItsPreSceneryGolden(t *testing.T) {
+// TestEveryContentFileCompilesToItsCommittedPicture walks every authored
+// dungeon in testdata and compares the whole compile against the picture
+// committed beside it.
+//
+// Regenerate deliberately, never reflexively: `CONTENT_GOLDEN=write go test
+// ./dungeonspec/ -run TestEveryContentFile`, then READ THE DIFF. A golden that
+// is rewritten whenever it disagrees is a test that cannot fail.
+func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 	files, err := filepath.Glob("testdata/*.yaml")
 	require.NoError(t, err)
 	require.Len(t, files, 3, "the three authored dungeons this package ships")
@@ -79,14 +91,20 @@ func TestA1_EveryContentFileCompilesToItsPreSceneryGolden(t *testing.T) {
 	for _, path := range files {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			goldenPath := strings.TrimSuffix(path, ".yaml") + ".compiled.json"
-			want, err := os.ReadFile(goldenPath)
-			require.NoError(t, err, "the golden was captured on origin/main before scenery")
 
 			got, err := json.Marshal(contentGoldenOf(t, path))
 			require.NoError(t, err)
+			if os.Getenv("CONTENT_GOLDEN") == "write" {
+				require.NoError(t, os.WriteFile(goldenPath, got, 0o600))
+				t.Log("golden rewritten — read the diff before committing it")
+				return
+			}
+
+			want, err := os.ReadFile(goldenPath)
+			require.NoError(t, err, "the compiled picture is committed beside the file")
 
 			require.JSONEq(t, string(want), string(got),
-				"%s compiles to a different world than it did before scenery existed", path)
+				"%s compiles to a different world than the picture committed beside it", path)
 		})
 	}
 }

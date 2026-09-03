@@ -144,6 +144,22 @@ type FieldData struct {
 	// AUTHORED offset frame.
 	Walls []BoundaryData `json:"walls,omitempty"`
 
+	// Segments are the authored walls AS LINES, in authored order
+	// ([FieldInput.Segments], rpg-project#360). Scenery's omitempty rule:
+	// omitted and empty are the same fact, and a blob written before lines
+	// existed simply loads with none.
+	Segments []SegmentData `json:"segments,omitempty"`
+
+	// Sealed is every cell a wall leaves no room to stand in, in the AUTHORED
+	// offset frame ([FieldInput.Sealed], rpg-project#360).
+	//
+	// PERSISTED, NOT RECOMPUTED. The rule that produced it is an area
+	// fraction of a clipped hex, which lives in the authoring compiler and
+	// nowhere else (design C9): a Load that re-derived it here would be a
+	// second implementation of the one rule, free to drift from the compiler
+	// that wrote the dungeon. Scenery's omitempty rule again.
+	Sealed []PositionData `json:"sealed,omitempty"`
+
 	// Rooms and Connections are TOMBSTONES: the keys the room chain wrote
 	// (rpg-toolkit#1106 through #1139), kept solely so a blob carrying either
 	// is refused by name rather than loaded as a field with no regions.
@@ -241,6 +257,37 @@ type BoundaryData struct {
 	// not an authorable value ([1, 3] bounds) — so absent always means "not
 	// authored," never a lost fact.
 	Height float64 `json:"height,omitempty"`
+}
+
+// SegmentData is the persistent representation of [SegmentInput]: one authored
+// wall as the line it is.
+type SegmentData struct {
+	// Name is the author's word for the wall.
+	Name string `json:"name,omitempty"`
+
+	// From and To are the wall's ends in FRACTIONAL axial — halves, since a
+	// wall ends at a side midpoint or a centre.
+	From AxialPointData `json:"from"`
+	To   AxialPointData `json:"to"`
+
+	// Height is the authored wall-height multiplier; BoundaryData.Height's
+	// contract and its omitempty reasoning exactly.
+	Height float64 `json:"height,omitempty"`
+
+	// Footprint is every floor cell the wall passes through, in the AUTHORED
+	// offset frame, in order along the wall.
+	Footprint []PositionData `json:"footprint,omitempty"`
+
+	// DoorIDs is every door standing in this wall.
+	DoorIDs []DoorID `json:"door_ids,omitempty"`
+}
+
+// AxialPointData is the persistent representation of [AxialPointF]. Written
+// without omitempty: a wall end at axial 0 is an ordinary place to be, and an
+// absent coordinate would be indistinguishable from it.
+type AxialPointData struct {
+	Q float64 `json:"q"`
+	R float64 `json:"r"`
 }
 
 // DoorData is the persistent representation of a door: what it is called,
@@ -807,6 +854,30 @@ func fieldDataFrom(f *field) FieldData {
 				Facing:            p.Facing,
 				Offset:            p.Offset,
 			}
+		}
+	}
+
+	if len(f.sealed) > 0 {
+		out.Sealed = make([]PositionData, len(f.sealed))
+		for i, c := range f.sealed {
+			out.Sealed[i] = PositionData{X: c.X, Y: c.Y}
+		}
+	}
+
+	if len(f.segments) > 0 {
+		out.Segments = make([]SegmentData, len(f.segments))
+		for i, seg := range f.segments {
+			sd := SegmentData{
+				Name:   seg.Name,
+				From:   AxialPointData{Q: seg.From.Q, R: seg.From.R},
+				To:     AxialPointData{Q: seg.To.Q, R: seg.To.R},
+				Height: seg.Height,
+			}
+			for _, c := range seg.Footprint {
+				sd.Footprint = append(sd.Footprint, PositionData{X: c.X, Y: c.Y})
+			}
+			sd.DoorIDs = append(sd.DoorIDs, seg.DoorIDs...)
+			out.Segments[i] = sd
 		}
 	}
 
@@ -1657,6 +1728,24 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, sd := range fd.Scenery {
 		in.Scenery = append(in.Scenery, spatial.Position{X: sd.X, Y: sd.Y})
+	}
+
+	for _, sd := range fd.Sealed {
+		in.Sealed = append(in.Sealed, spatial.Position{X: sd.X, Y: sd.Y})
+	}
+
+	for _, sd := range fd.Segments {
+		seg := SegmentInput{
+			Name:   sd.Name,
+			From:   AxialPointF{Q: sd.From.Q, R: sd.From.R},
+			To:     AxialPointF{Q: sd.To.Q, R: sd.To.R},
+			Height: sd.Height,
+		}
+		for _, c := range sd.Footprint {
+			seg.Footprint = append(seg.Footprint, spatial.Position{X: c.X, Y: c.Y})
+		}
+		seg.DoorIDs = append(seg.DoorIDs, sd.DoorIDs...)
+		in.Segments = append(in.Segments, seg)
 	}
 
 	for _, pd := range fd.Props {

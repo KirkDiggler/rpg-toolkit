@@ -57,6 +57,43 @@ type Atlas struct {
 	// them; what state that door is in is [Encounter.Doors]' business, not
 	// a snapshot's.
 	Doorways []AtlasDoorway
+
+	// Segments is every authored wall AS THE LINE IT IS, in authored order:
+	// what a host draws, instead of chaining [Atlas.Boundaries] back into runs
+	// under a straightness tolerance (rpg-project#360).
+	//
+	// PRESENTATION, AND THE SAME WALLS. Boundaries stay the mechanical truth —
+	// every crossing nobody may take — and these are the lines those crossings
+	// came from. A door's gap is the reader's own arithmetic: it is the
+	// doorway's crossing, projected onto the segment it stands in.
+	Segments []AtlasSegment
+
+	// Sealed is every cell in [Atlas.Cells] NOBODY CAN STAND ON, sorted by
+	// coordinate: scenery, and the cells walls leave no room in.
+	//
+	// Needed because region membership stopped implying standable the moment a
+	// wall could halve a cell (rpg-project#360, design §5.2 as amended). A
+	// sealed cell keeps its region, its lighting and its archetype — a host
+	// draws it exactly as it draws the floor beside it — and refusing a step
+	// onto it is the engine's answer, not the client's guess.
+	Sealed []spatial.Position
+}
+
+// AtlasSegment is one authored wall as a line: two ends in fractional axial,
+// and the height it is drawn at. See [SegmentInput], which is the authoring
+// side of the same fact.
+//
+// NO DOOR IDS AND NO FOOTPRINT. What a recipient may know about a door is
+// [Atlas.Doorways]' business and is withheld from a non-knower there; a
+// segment that carried its doors would say through the back door what the
+// front one refuses. The footing is in [Atlas.Cells], where floor belongs.
+type AtlasSegment struct {
+	// From and To are the wall's two ends, in fractional axial.
+	From, To AxialPointF
+
+	// Height is the authored wall-height multiplier, carried verbatim.
+	// 0 = not authored = standard height, [WallInput.Height]'s contract.
+	Height float64
 }
 
 // AtlasRegion is one region: a NAMED SET OF CELLS, enumerated, with the
@@ -173,6 +210,24 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		Props:       make([]AtlasProp, 0, len(f.props)),
 		Boundaries:  make([]AtlasBoundary, 0, len(f.walls)),
 		Doorways:    make([]AtlasDoorway, 0, len(e.doors)),
+		Segments:    make([]AtlasSegment, 0, len(f.segments)),
+	}
+
+	for _, s := range f.segments {
+		out.Segments = append(out.Segments, AtlasSegment{From: s.From, To: s.To, Height: s.Height})
+	}
+	// ONLY WHEN THERE IS SOMETHING TO FIND. A cell of this floor fails
+	// isStandable for exactly two reasons — it belongs to no region, or a wall
+	// sealed it — so a field with neither has no unstandable cell and the walk
+	// would be a pass over every cell to produce nothing. Measured at 21% of
+	// AtlasFor on a dungeon ten times the reference tomb, all of it wasted,
+	// because a dungeon of plain rooms and thin walls is exactly that field.
+	if len(f.sceneryCells) > 0 || len(f.sealedCells) > 0 {
+		for _, c := range f.cells {
+			if !f.isStandable(c) {
+				out.Sealed = append(out.Sealed, c)
+			}
+		}
 	}
 
 	for _, r := range f.regions {

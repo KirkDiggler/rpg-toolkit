@@ -29,10 +29,15 @@ session seam above it holds no rules either.
   on. They do not share a world model, and there is deliberately no adapter
   between them.
 - **Not a room chain.** Since rpg-project#256 a dungeon is authored as
-  REGIONS — named sets of absolute `[col,row]` cells — plus walls and doors as
-  edges between adjacent floor cells. There are no rooms, origins or
-  connections; `dungeonspec` version 2 is the file format, and
+  REGIONS — named sets of absolute `[col,row]` cells. There are no rooms,
+  origins or connections; `dungeonspec` version 2 is the file format, and
   `docs/adr/0044-regions-replace-rooms.md` is the decision.
+- **Not a bag of crossings.** Since rpg-project#360 a WALL IS A LINE: two
+  picked positions — a hex side midpoint or a centre — and the crossings it
+  blocks, the cells it passes through and how much room it leaves in them are
+  all derived. The pair form (`edges`) is deleted, not deprecated. The
+  geometry that derives it lives in `dungeonspec/geometry.go` and nowhere
+  else; this module is handed the answers and never embeds a hex.
 - **Not the host's interface.** That is `rulebooks/dnd5e/session`.
 
 ## Why it exists
@@ -222,10 +227,11 @@ other caller of the consult is a verb looking at a world something else changed.
 | `standing.go` | `Standing`, and the world noticing who is down |
 | `sight.go` | `Sight`, and how far each member can see this refresh |
 | `step.go` | one step on the map, and the one place that decides what one is |
-| `atlas.go` | the map reads — `Atlas` (every floor cell, region, prop, wall and doorway, in absolute space; a cell in `Cells` and in no region is scenery) and `Grid` |
+| `atlas.go` | the map reads — `Atlas` (every floor cell, region, prop, wall, doorway and wall SEGMENT, in absolute space; a cell in `Cells` and in no region is scenery, and `Sealed` is every cell nobody stands on) and `Grid` |
 | `region.go` | a region is a named set of cells: `RegionAt`, `Region`, `MembersIn` |
-| `compilefield.go` | the one place an authored field becomes the canvas: regions to an owner map, walls and props checked, every `[col,row]` converted once |
-| `field.go` | regions, props, walls, and the per-verb output shapes |
+| `compilefield.go` | the one place an authored field becomes the canvas: regions to an owner map, walls and props checked, sealed cells subtracted from standable, every `[col,row]` converted once |
+| `field.go` | regions, props, walls, segments, and the per-verb output shapes |
+| `projection.go` | the field as ONE member knows it: the masquerade, a presented wall's footing, and the height a mask wears |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 
 ## Reading it
