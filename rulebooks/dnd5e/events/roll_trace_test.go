@@ -125,6 +125,12 @@ func TestRollCalculationValidation(t *testing.T) {
 			},
 		},
 		{
+			name: "final face is outside die range",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.FinalRolls[0] = 9
+			},
+		},
+		{
 			name: "notation cardinality does not match rolls",
 			change: func(calc *RollCalculation) {
 				calc.Components[0].Dice.Notation = "1d6"
@@ -140,6 +146,12 @@ func TestRollCalculationValidation(t *testing.T) {
 			name: "reroll index is outside rolls",
 			change: func(calc *RollCalculation) {
 				calc.Components[0].Dice.Rerolls[0].DieIndex = 2
+			},
+		},
+		{
+			name: "reroll index is negative",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.Rerolls[0].DieIndex = -1
 			},
 		},
 		{
@@ -170,6 +182,12 @@ func TestRollCalculationValidation(t *testing.T) {
 			name: "kept index is outside final rolls",
 			change: func(calc *RollCalculation) {
 				calc.Components[0].Dice.KeptIndices = []int{2}
+			},
+		},
+		{
+			name: "kept index is negative",
+			change: func(calc *RollCalculation) {
+				calc.Components[0].Dice.KeptIndices = []int{-1}
 			},
 		},
 		{
@@ -252,6 +270,7 @@ func TestCloneRollCalculation(t *testing.T) {
 	require.NotSame(t, original.Components[0].Dice.Rerolls[0].Source.Ref,
 		clone.Components[0].Dice.Rerolls[0].Source.Ref)
 	require.NotSame(t, original.Components[1].Modifier, clone.Components[1].Modifier)
+	require.NotSame(t, original.Components[2].Modifier, clone.Components[2].Modifier)
 
 	original.Components[0].Source.Ref.Module = "changed"
 	original.Components[0].Source.Name = "Changed"
@@ -263,6 +282,8 @@ func TestCloneRollCalculation(t *testing.T) {
 	*original.Components[1].Modifier = 10
 	original.Components[1].Source.Label = "Changed"
 	original.Components[1] = RollComponent{}
+	*original.Components[2].Modifier = 5
+	original.Components[2].Source.Name = "Changed"
 
 	require.Equal(t, "dnd5e", clone.Components[0].Source.Ref.Module)
 	require.Equal(t, "Greatsword", clone.Components[0].Source.Name)
@@ -275,6 +296,8 @@ func TestCloneRollCalculation(t *testing.T) {
 	require.Equal(t, 3, *clone.Components[1].Modifier)
 	require.Equal(t, "Strength", clone.Components[1].Source.Name)
 	require.Equal(t, "Ability modifier", clone.Components[1].Source.Label)
+	require.Equal(t, 0, *clone.Components[2].Modifier)
+	require.Equal(t, "Dexterity", clone.Components[2].Source.Name)
 }
 
 func TestCloneRollCalculationNil(t *testing.T) {
