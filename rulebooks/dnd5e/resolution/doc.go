@@ -93,8 +93,8 @@
 // That inversion has landed. [Resolve] loads each participant purely —
 // character.Load, monstertraits.LoadMonster: data → sheet, no bus in the call —
 // and then attaches it to the bus this package made, through
-// character.Attach and monstertraits.AttachMonster. Each of those runs the
-// loop this package used to delegate: the sheet's own keeper first, then every
+// character.AttachWithRoller and monstertraits.AttachMonster. Each of those
+// runs the loop this package used to delegate: the sheet's own keeper first, then every
 // persisted effect through a view stamped with the ref its loader routed on.
 // The entity's own machinery — the handlers a character keeps for itself, the
 // two a monster does, the recoverable resources — is a sheet-keeper attachable,

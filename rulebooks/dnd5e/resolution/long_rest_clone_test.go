@@ -13,6 +13,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -28,7 +29,11 @@ import (
 // be populated and separately owned by the clone. A future mutable field starts
 // nil here and fails until its fixture value and clone policy are both explicit.
 func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
+	hairColor := uint32(0x102030)
 	source := &character.Data{
+		Appearance: &customization.Appearance{
+			Hair: &customization.HairCustomization{ColorSRGB: &hairColor},
+		},
 		AbilityScores:  shared.AbilityScores{abilities.STR: 16},
 		DeathSaveState: &saves.DeathSaveState{Failures: 1},
 		Skills: map[skills.Skill]shared.ProficiencyLevel{
@@ -96,9 +101,15 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 	}
 	require.Positive(t, mutableFields, "character.Data unexpectedly has no mutable fields")
 
-	// The two pointers carry mutable persistence state below them. Top-level
-	// pointer ownership plus these writes guards both DeathSave's progress and
-	// capacity debit from ever reaching its caller's input record.
+	// The three pointers carry mutable persistence state below them. Top-level
+	// pointer ownership plus these writes guards appearance, DeathSave's
+	// progress, and capacity debit from ever reaching its caller's input record.
+	require.NotSame(t, source.Appearance.Hair, clone.Appearance.Hair)
+	require.NotSame(t, source.Appearance.Hair.ColorSRGB, clone.Appearance.Hair.ColorSRGB)
+	*clone.Appearance.Hair.ColorSRGB = 0
+	require.Equal(t, uint32(0x102030), *source.Appearance.Hair.ColorSRGB,
+		"mutating the clone's nested appearance must not reach the source")
+
 	require.NotSame(t, source.DeathSaveState, clone.DeathSaveState)
 	clone.DeathSaveState.Failures = 99
 	require.Equal(t, 1, source.DeathSaveState.Failures,

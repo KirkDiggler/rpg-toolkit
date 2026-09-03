@@ -20,9 +20,11 @@ type PreflightInput struct {
 	// attach whole.
 	Participants []Participant
 
-	// Roller is the dice source a monster's traits may reach for while
-	// attaching. REQUIRED, and refused when absent rather than defaulted:
-	// silently rolling on a real roller here would let a preflight consume
+	// Roller reconstitutes runtime dice dependencies for both Character
+	// conditions and Monster traits while attaching. REQUIRED, and refused when
+	// absent rather than defaulted. Preflight only carries the value into the
+	// generic attach APIs; it does not choose which effects bind or switch on
+	// their refs. Silently using a real roller here would let a preflight consume
 	// randomness the interaction it is predicting has not spent yet.
 	Roller dice.Roller
 }
