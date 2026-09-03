@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -41,6 +42,46 @@ func (g literalPresentationIDs) Generate() string {
 		*g.calls++
 	}
 	return g.value
+}
+
+// deathSaveForbiddenIO satisfies every host I/O seam while recording any call.
+// Empty declaration validation must return before any of these methods becomes
+// reachable.
+type deathSaveForbiddenIO struct {
+	calls []string
+}
+
+func (f *deathSaveForbiddenIO) called(name string) error {
+	f.calls = append(f.calls, name)
+	return errors.New("unexpected death save I/O: " + name)
+}
+
+func (f *deathSaveForbiddenIO) GetSession(context.Context, string) (*session.SessionData, error) {
+	return nil, f.called("GetSession")
+}
+
+func (f *deathSaveForbiddenIO) SaveSession(context.Context, *session.SessionData) error {
+	return f.called("SaveSession")
+}
+
+func (f *deathSaveForbiddenIO) GetEncounter(context.Context, string) (*encounter.EncounterData, error) {
+	return nil, f.called("GetEncounter")
+}
+
+func (f *deathSaveForbiddenIO) SaveEncounter(context.Context, string, *encounter.EncounterData) error {
+	return f.called("SaveEncounter")
+}
+
+func (f *deathSaveForbiddenIO) GetCharacter(context.Context, string) (*character.Data, error) {
+	return nil, f.called("GetCharacter")
+}
+
+func (f *deathSaveForbiddenIO) SaveCharacter(context.Context, *character.Data) error {
+	return f.called("SaveCharacter")
+}
+
+func (f *deathSaveForbiddenIO) Publish(context.Context, []session.Event) error {
+	return f.called("Publish")
 }
 
 type deathSaveFixture struct {
@@ -114,6 +155,28 @@ func (f *deathSaveFixture) execute(id string) (*session.DeathSaveOutput, error) 
 	return f.mgr.DeathSave(context.Background(), &session.DeathSaveInput{
 		Session: "sess", Member: "alice", DeclarationID: id,
 	})
+}
+
+func TestDeathSaveRejectsEmptyDeclarationBeforeAnyIO(t *testing.T) {
+	stores := &deathSaveForbiddenIO{}
+	rolls, ids := 0, 0
+	mgr, err := session.NewManager(&session.Config{
+		Sessions: stores, Encounters: stores, Characters: stores, Events: stores,
+		Dice:            literalDeathSaveDice{face: 10, calls: &rolls},
+		PresentationIDs: literalPresentationIDs{value: "must-not-generate", calls: &ids},
+		TurnDriver:      session.Pass{},
+	})
+	require.NoError(t, err)
+
+	out, err := mgr.DeathSave(context.Background(), &session.DeathSaveInput{
+		Session: "sess", Member: "alice",
+	})
+	require.Nil(t, out)
+	require.EqualError(t, err, "death save: empty declaration id")
+	require.ErrorIs(t, err, session.ErrNoDeclarationID)
+	require.Empty(t, stores.calls, "empty declaration must precede openForWrite and repository I/O")
+	require.Zero(t, ids, "empty declaration must precede offer selection and presentation ID generation")
+	require.Zero(t, rolls, "empty declaration must precede dice")
 }
 
 func TestDeathSaveAffordIsExplicitAndExclusive(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -122,17 +123,19 @@ func (s *StandingSplitSuite) TestACorruptNPCIsCorruptSessionState() {
 		"and NOT a character problem — that is the distinction the split exists to keep")
 }
 
-// A CHARACTER RECORD THE HOST'S STORE CANNOT ANSWER FOR is ErrBadCharacter.
+// A CHARACTER RECORD THE HOST'S STORE CANNOT LOAD is ErrBadCharacter.
 //
-// The mirror of the case above, and the reason both calls exist. A record with
-// no identity cannot be read back out of the cast it was put into, so the entry
-// refuses it — and it refuses as a CHARACTER problem, which is where the repair
-// is.
+// The mirror of the case above, and the reason both calls exist. This record
+// keeps the identity its repository key promises, then supplies malformed
+// character data that resolution cannot load. The entry refuses it as a
+// CHARACTER problem, which is where the repair is.
 func (s *StandingSplitSuite) TestAnUnusableCharacterRecordIsACharacterProblem() {
 	s.spawnSkeleton()
 
 	stored := s.characters.byID["alice"]
-	stored.ID = "" // a record that cannot say who it is
+	stored.Appearance = &customization.Appearance{Hair: &customization.HairCustomization{
+		Scalp: &customization.StyleSelection{Kind: "unknown"},
+	}}
 
 	_, err := s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "skeleton"})
 

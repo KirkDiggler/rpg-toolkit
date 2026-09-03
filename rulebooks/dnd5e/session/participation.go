@@ -56,7 +56,9 @@ type participationSnapshot struct {
 // projection for every available stored record, then maps that answer without
 // inspecting hit points or recomputing thresholds. Missing authored sheets keep
 // the legacy Standing answer (conscious/up) so authored encounter fixtures
-// remain loadable; they are not counted as player characters for party policy.
+// remain loadable. An authoritative KindPlayer's fallback is the same final
+// fact used by its assessment row, view, Attack targeting, and party policy;
+// KindMonster and KindWorld facts never enter that policy.
 func (s standingSeam) participation(
 	members []encounter.MemberID,
 ) (*participationSnapshot, error) {
@@ -66,7 +68,6 @@ func (s standingSeam) participation(
 	}
 
 	facts := make(map[string]resolution.ParticipantParticipation, len(members))
-	playerFacts := make([]combat.Participation, 0, len(characters))
 
 	characterParticipation, err := resolution.Participation(s.ctx, &resolution.ParticipationInput{
 		Participants: characters,
@@ -76,7 +77,6 @@ func (s standingSeam) participation(
 	}
 	for _, member := range characterParticipation.Members {
 		facts[member.Member] = member
-		playerFacts = append(playerFacts, member.Participation)
 	}
 
 	monsterParticipation, err := resolution.Participation(s.ctx, &resolution.ParticipationInput{
@@ -89,19 +89,12 @@ func (s standingSeam) participation(
 		facts[member.Member] = member
 	}
 
-	assessment := &encounter.ParticipationAssessment{
-		PartyDefeated: combat.PartyDefeated(combat.PartyState{Members: playerFacts}),
-	}
-	var dyingPlayer, consciousPlayer bool
-	for _, participation := range playerFacts {
-		dyingPlayer = dyingPlayer || participation.NeedsDeathSave
-		consciousPlayer = consciousPlayer || participation.Conscious
-	}
-	assessment.KeepTurnOrder = dyingPlayer && consciousPlayer
-
+	assessment := &encounter.ParticipationAssessment{}
 	views := make(map[string]participantView, len(members))
+	playerFacts := make([]combat.Participation, 0, len(characters))
 	for _, id := range members {
-		if s.kinds[string(id)] == encounter.KindWorld {
+		kind := s.kinds[string(id)]
+		if kind == encounter.KindWorld {
 			member, view := neutralWorldNPCParticipation(id)
 			assessment.Members = append(assessment.Members, member)
 			views[string(id)] = view
@@ -112,8 +105,8 @@ func (s standingSeam) participation(
 		if !ok {
 			// Existing authored worlds can contain members without a stored sheet.
 			// Binary Standing historically answered those members as up. Preserve
-			// that compatibility while still returning the complete assessment
-			// encounter requires.
+			// that compatibility in the one final fact used by the assessment,
+			// public view, Attack targeting, and KindPlayer party policy.
 			fact = resolution.ParticipantParticipation{
 				Member:        string(id),
 				Participation: combat.ParticipationFor(combat.LifeStateConscious),
@@ -130,7 +123,18 @@ func (s standingSeam) participation(
 			DeathSaves:   projectDeathSaveProgress(fact.DeathSaves),
 			attackTarget: fact.Participation.AttackTarget,
 		}
+		if kind == encounter.KindPlayer {
+			playerFacts = append(playerFacts, fact.Participation)
+		}
 	}
+
+	assessment.PartyDefeated = combat.PartyDefeated(combat.PartyState{Members: playerFacts})
+	var dyingPlayer, consciousPlayer bool
+	for _, participation := range playerFacts {
+		dyingPlayer = dyingPlayer || participation.NeedsDeathSave
+		consciousPlayer = consciousPlayer || participation.Conscious
+	}
+	assessment.KeepTurnOrder = dyingPlayer && consciousPlayer
 
 	return &participationSnapshot{assessment: assessment, views: views}, nil
 }

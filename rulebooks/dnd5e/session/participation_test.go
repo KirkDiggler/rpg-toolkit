@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/npcs"
@@ -161,6 +162,64 @@ func TestParticipationRoutesAuthoredSheetlessMonsterByRosterKind(t *testing.T) {
 	require.False(t, snapshot.views["world-collision"].attackTarget)
 }
 
+func TestParticipationMissingPlayerFallbackDrivesTheSameViewsAndPolicy(t *testing.T) {
+	dying := dwarfCharacterRecord("dying", 0)
+	asked := map[string]int{}
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{
+			byID:  map[string]*character.Data{"dying": dying},
+			asked: asked,
+		},
+		kinds: map[string]encounter.MemberKind{
+			"dying": encounter.KindPlayer, "missing-player": encounter.KindPlayer,
+		},
+	}
+
+	ids := []encounter.MemberID{"dying", "missing-player"}
+	snapshot, err := seam.participation(ids)
+	require.NoError(t, err)
+	require.Equal(t, &encounter.ParticipationAssessment{
+		Members: []encounter.MemberParticipation{
+			{Member: "dying", Down: true, Turn: encounter.TurnParticipationWait},
+			{Member: "missing-player", Contact: true, Conscious: true, Turn: encounter.TurnParticipationWait},
+		},
+		KeepTurnOrder: true,
+	}, snapshot.assessment)
+	require.False(t, snapshot.assessment.PartyDefeated,
+		"the Conscious KindPlayer fallback used by the row must also keep the party alive")
+	require.Equal(t, LifeStateConscious, snapshot.views["missing-player"].LifeState)
+	require.Nil(t, snapshot.views["missing-player"].DeathSaves)
+	require.True(t, snapshot.views["missing-player"].attackTarget)
+	require.Equal(t, 1, asked["dying"])
+	require.Equal(t, 1, asked["missing-player"])
+}
+
+func TestParticipationRefusesWrongPlayerRecordIDBeforeResolutionOrPolicy(t *testing.T) {
+	asked := map[string]int{}
+	seam := standingSeam{
+		ctx: context.Background(),
+		chars: participationCharacterStore{
+			byID: map[string]*character.Data{
+				"dying": dwarfCharacterRecord("dying", 0),
+				"alice": dwarfCharacterRecord("different-player", 10),
+			},
+			asked: asked,
+		},
+		kinds: map[string]encounter.MemberKind{
+			"dying": encounter.KindPlayer, "alice": encounter.KindPlayer,
+		},
+	}
+
+	snapshot, err := seam.participation([]encounter.MemberID{"dying", "alice"})
+	require.Nil(t, snapshot, "a wrong-ID repository answer must not return a partially computed policy")
+	require.ErrorIs(t, err, ErrBadRepository)
+	require.Contains(t, err.Error(), `character "alice"`)
+	require.Contains(t, err.Error(), `returned "different-player"`)
+	require.Equal(t, 1, asked["dying"])
+	require.Equal(t, 1, asked["alice"])
+}
+
 func TestParticipationWorldNPCIdentityWinsBeforeCombatantLookup(t *testing.T) {
 	dying := dwarfCharacterRecord("dying", 0)
 	characterCollision := dwarfCharacterRecord("character-collision", 10)
@@ -250,7 +309,12 @@ func TestParticipationResolutionFailuresUseSessionVocabulary(t *testing.T) {
 	seam := standingSeam{
 		ctx: context.Background(),
 		chars: participationCharacterStore{byID: map[string]*character.Data{
-			"broken": {},
+			"broken": {
+				ID: "broken",
+				Appearance: &customization.Appearance{Hair: &customization.HairCustomization{
+					Scalp: &customization.StyleSelection{Kind: "unknown"},
+				}},
+			},
 		}},
 		kinds: map[string]encounter.MemberKind{"broken": encounter.KindPlayer},
 	}

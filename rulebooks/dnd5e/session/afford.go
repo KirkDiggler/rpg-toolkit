@@ -92,6 +92,13 @@ const (
 	SlotReaction Slot = "reaction"
 )
 
+// DeathSaveRef identifies the explicit tabletop roll without overloading an
+// attack or ability identity.
+type DeathSaveRef struct {
+	// Name is the provider-authored display name of the saving throw.
+	Name string `json:"name"`
+}
+
 // Declaration is one server-compiled action/cost variant a member could
 // still declare this turn, and whether every gate applicable to it currently
 // passes. Mirrors the merged proto's Declaration (rpg-project#272/273).
@@ -121,12 +128,9 @@ const (
 // The client renders availability, identity, target kind, and candidates
 // verbatim and never derives game rules; every verb regenerates the selected
 // offer before execution.
-// DeathSaveRef identifies the explicit tabletop roll without overloading an
-// attack or ability identity.
-type DeathSaveRef struct {
-	Name string `json:"name"`
-}
-
+//
+// [VerbDeathSave] contributes one no-target declaration only for the active
+// Dying character while the provider reports this turn's capacity available.
 type Declaration struct {
 	// Verb is which seam action this prices.
 	Verb Verb `json:"verb"`
@@ -153,10 +157,10 @@ type Declaration struct {
 	// Remaining is how much of this verb's own currency is left, in the
 	// currency's natural unit — feet, for Move (rpg-toolkit#1169).
 	//
-	// PRESENT ONLY FOR VERB_MOVE. Attack and EndTurn carry no such number — a
-	// swing either happens or it does not, and EndTurn has no currency — so
-	// the field is nil for them. A POINTER, not an omitted zero: false-vs-absent
-	// for an int (types.go's law, generalised) — Remaining:0 is a real answer
+	// PRESENT ONLY FOR VERB_MOVE. Attack, Activate, DeathSave, and EndTurn
+	// carry no such number, so the field is nil for them. A POINTER, not an
+	// omitted zero: false-vs-absent for an int (types.go's law, generalised) —
+	// Remaining:0 is a real answer
 	// (nothing left this turn) and must not collide with "this verb carries no
 	// such number at all".
 	Remaining *int `json:"remaining,omitempty"`
@@ -171,37 +175,38 @@ type Declaration struct {
 	Why *Shortfall `json:"why,omitempty"`
 
 	// ID is the opaque deterministic selector for this current compiled
-	// offer. Non-empty on every compiled Attack, turn-clock Move, and EndTurn
-	// declaration; empty on an early per-verb blocker. The client echoes it
-	// and never parses it.
+	// offer. Non-empty on every compiled Attack, Activate, DeathSave,
+	// turn-clock Move, and EndTurn declaration; empty on an early per-verb
+	// blocker. The client echoes it and never parses it.
 	ID string `json:"id"`
 
 	// Attack is the sole public Attack identity. Present on every compiled
 	// Attack declaration — including one disabled by budget or target gates,
-	// which still carries its compiled ref — and absent for Move, EndTurn,
-	// and early per-verb blockers.
+	// which still carries its compiled ref — and absent for Activate,
+	// DeathSave, Move, EndTurn, and early per-verb blockers.
 	Attack *AttackRef `json:"attack,omitempty"`
 
 	// Ability is the sole public activation identity, present on every
 	// compiled Activate declaration — including one disabled by a budget,
-	// charge or feature gate — and absent for Attack, Move, EndTurn and every
-	// early per-verb blocker. The same presence law [Declaration.Attack]
+	// charge or feature gate — and absent for Attack, DeathSave, Move, EndTurn,
+	// and every early per-verb blocker. The same presence law [Declaration.Attack]
 	// keeps, for the same reason.
 	Ability *AbilityRef `json:"ability,omitempty"`
 
 	// DeathSave is present only on a compiled Death Save declaration.
 	DeathSave *DeathSaveRef `json:"death_save,omitempty"`
 
-	// TargetKind is fixed for every compiled or blocked declaration: Attack
-	// -> TargetMember, Move -> TargetPath, EndTurn -> TargetNone. A blocker
-	// keeps the fixed kind even with empty candidates, so a client always
-	// knows which selector shape the verb carries.
+	// TargetKind follows the fixed mapping Attack -> TargetMember, Move ->
+	// TargetPath, DeathSave -> TargetNone, and EndTurn -> TargetNone. Activate
+	// is ability-defined: Help uses TargetMember and every other currently
+	// supported ability uses TargetNone. A blocker keeps the shape known at
+	// its compilation point even with empty candidates.
 	TargetKind TargetKind `json:"target_kind"`
 
 	// Candidates is every member in the ruled candidate universe exactly
 	// once, including unavailable targets and their server-authored
 	// reasons. ShortfallNoTargetInReach does not remove these rows. Empty
-	// (non-nil) for Move, EndTurn, and early per-verb blockers.
+	// (non-nil) for Move, DeathSave, EndTurn, and early per-verb blockers.
 	Candidates []TargetCandidate `json:"candidates"`
 }
 
@@ -213,8 +218,9 @@ type AffordOutput struct {
 	Clock ClockKind `json:"clock"`
 
 	// Declarations is one entry per compiled OFFER — one per current Attack
-	// variant, one each for Move and EndTurn, and one per activatable thing the
-	// member carries — empty on the world clock — where empty IS the answer rather than a shorter way
+	// variant, one each for Move and EndTurn, one per activatable thing the
+	// member carries, and one DeathSave when eligible — empty on the world clock
+	// — where empty IS the answer rather than a shorter way
 	// of asking again, so it is never omitted from the wire either: the same
 	// false-vs-absent law types.go keeps for every bool at this seam applies
 	// here to the list itself. A non-Go client must read "declarations": [],
@@ -222,10 +228,11 @@ type AffordOutput struct {
 	Declarations []Declaration `json:"declarations"`
 }
 
-// Afford reports the current compiled Attack, Move, Activate and EndTurn
-// offers for one active turn member. Activate compiles one per thing the member
-// carries; Attack compiles its main-hand variant and any granted bonus-attack
-// variant. Each offer carries an opaque selector execution must echo.
+// Afford reports the current compiled Attack, Move, Activate, DeathSave, and
+// EndTurn offers for one active turn member. Activate compiles one per thing the
+// member carries; Attack compiles its main-hand variant and any granted bonus-
+// attack variant; DeathSave appears only for an eligible active Dying character.
+// Each offer carries an opaque selector execution must echo.
 // Move reports Remaining rather than a fixed price because a walk's cost
 // depends on a path this read is never given. On the world clock declarations
 // is the complete empty answer.

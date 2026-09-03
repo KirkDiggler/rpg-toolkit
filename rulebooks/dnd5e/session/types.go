@@ -444,16 +444,19 @@ type Seen struct {
 // this is that answer projected onto Participant and Seen, the same
 // treatment Where gives position.
 //
-// TWO VALUES, AND NOT "DOWN". Downed is at zero hit points and out of the
-// fight; a bare "down" also reads as PRONE, a posture condition on a member
-// still acting (Kirk's ruling, rpg-toolkit#1084 — see ErrDowned).
+// TWO VALUES, AND NOT "DOWN". Downed is at zero hit points; it does not by
+// itself say whether initiative retains the member. Dying retains a waiting
+// slot, Stabilized retains an auto-pass slot, and only Dead/Defeated removes
+// one. [Participant.LifeState] carries that distinction. A bare "down" also
+// reads as PRONE, a posture condition on a member still acting (Kirk's ruling,
+// rpg-toolkit#1084 — see ErrDowned).
 type Standing string
 
 const (
-	// StandingUp is on their feet, in the fight.
+	// StandingUp is on their feet and able to act normally.
 	StandingUp Standing = "up"
-	// StandingDowned is at zero hit points, out of the fight — still on the
-	// map and in the roster.
+	// StandingDowned is at zero hit points and still on the map and roster.
+	// LifeState, not Standing, says whether initiative retains the member.
 	StandingDowned Standing = "downed"
 )
 
@@ -644,8 +647,10 @@ const (
 	// every other witness; Seq remains recipient-local.
 	EventDeathSave EventKind = "death_save"
 
-	// EventDowned reports that a member is DOWNED: at zero hit points, out of
-	// the fight. The opposite state is UP.
+	// EventDowned reports that a member is DOWNED: at zero hit points. It does
+	// not claim initiative removed them: Dying and Stabilized retain provider-
+	// defined slots, while Dead characters and Defeated monsters are removed.
+	// The opposite standing is UP.
 	//
 	// Downed rather than "down" because a bare "down" also reads as PRONE, and
 	// prone is a different thing entirely — a posture condition the rulebook
@@ -653,10 +658,9 @@ const (
 	// the same way would say somebody died every time they were knocked flat.
 	// Kirk's ruling, rpg-toolkit#1084.
 	//
-	// There is no event for coming back UP, and that absence is deliberate
-	// rather than an omission: nothing in v1 can revive a downed member, so an
-	// event for it would be vocabulary against a future nobody has built. It
-	// earns its own name when death saves arrive.
+	// There is no separate event for coming back UP. A natural-20 Death Save
+	// reports recovery, restored hit points, and its continuation through
+	// EventDeathSave, so a second event would duplicate the same transition.
 	//
 	// The world NOTICED it; nobody announced it. There is no downing verb and
 	// no way to push this beat in — the composition asks the rulebook who is
@@ -800,9 +804,10 @@ type TurnEndedBody struct {
 
 func (TurnEndedBody) isEventBody() {}
 
-// DownedBody is EventDowned's typed body: who is at zero hit points and out
-// of the fight. Who, and nothing else — see EventDowned's own doc for why
-// hit points are not here.
+// DownedBody is EventDowned's typed body: who is at zero hit points. It says
+// nothing about initiative retention or removal; provider-derived LifeState
+// carries that distinction. Who, and nothing else — see EventDowned's own doc
+// for why hit points are not here.
 type DownedBody struct {
 	Member string `json:"member"`
 }
@@ -1728,26 +1733,25 @@ type Shortfall struct {
 }
 
 // TargetKind tells a client which selector shape a Declaration accepts. A
-// closed set owned at the seam, mirroring the merged proto's TargetKind: the
-// currently executable verbs fix their kind — Activate by which ABILITY it is
-// rather than by the verb, since Help prompts for an ally and the rest prompt
-// for nobody — and a new kind arrives the
-// day a proven executor for it lands — never in advance.
+// closed set owned at the seam, mirroring the merged proto's TargetKind. The
+// fixed verb mapping is Attack -> TargetMember, Move -> TargetPath, DeathSave
+// -> TargetNone, and EndTurn -> TargetNone. Activate is ability-defined rather
+// than globally fixed: Help uses TargetMember, while every other currently
+// supported ability uses TargetNone. A new kind arrives only with a proven
+// executor for it, never in advance.
 //
-// FIXED FOR EVERY COMPILED OR BLOCKED DECLARATION: Attack -> TargetMember,
-// Move -> TargetPath, EndTurn -> TargetNone. A blocker keeps the fixed kind
-// even with empty candidates, so a client always knows which selector shape
-// the verb carries.
+// A blocked declaration keeps the shape known at its compilation point even
+// with empty candidates, so a client knows which selector shape it carries.
 type TargetKind string
 
 const (
-	// TargetNone is EndTurn's selector shape: no target. EndTurn is governed
-	// solely by its clock/turn gate and carries no candidate.
+	// TargetNone is the no-target selector shape used by DeathSave, EndTurn,
+	// and every currently supported Activate ability except Help.
 	TargetNone TargetKind = "none"
 
-	// TargetMember is Attack's selector shape: one member from the compiled
-	// candidate universe. Every live CurrentVia-nonempty holding except the
-	// actor appears exactly once in the declaration's Candidates.
+	// TargetMember is the one-member selector shape used by Attack and the
+	// Help Activate ability. Attack's compiled candidate universe contains
+	// every live CurrentVia-nonempty holding except the actor exactly once.
 	TargetMember TargetKind = "member"
 
 	// TargetPath is Move's selector shape: a walk along a path on the turn

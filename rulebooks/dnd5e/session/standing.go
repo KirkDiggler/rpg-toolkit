@@ -151,13 +151,15 @@ func (s standingSeam) Assess(members []encounter.MemberID) (*encounter.Participa
 //
 // # No sheet, no death
 //
-// A member neither store answers for is in neither list, so nothing is asked
-// about it and nothing is reported. That is an ordinary state rather than a
-// defect: authored content placed straight into a world has no sheet until
-// something spawns it, which is exactly what every tomb fixture's monsters are.
-// Answering DOWNED instead would kill every authored monster in the toolkit the
-// moment anybody looked at one; answering with an error would make those worlds
-// unplayable. Neither is a rule this package gets to write.
+// A member whose authoritative store says not found is in neither provider
+// input list. participation.go then supplies one final Conscious compatibility
+// fact for its required answer row. For KindPlayer that exact fact also enters
+// party policy; KindMonster and KindWorld never do. This is an ordinary state
+// rather than a defect: authored content placed straight into a world has no
+// sheet until something spawns it, which is exactly what every tomb fixture's
+// monsters are. Answering DOWNED instead would kill every authored monster in
+// the toolkit the moment anybody looked at one; answering with an error would
+// make those worlds unplayable. Neither is a rule this package gets to write.
 func (s standingSeam) recordsFor(
 	members []encounter.MemberID,
 ) (characters, monsters []resolution.Participant, err error) {
@@ -202,6 +204,10 @@ func (s standingSeam) recordsFor(
 			return nil, nil, fmt.Errorf(
 				"character %q: GetCharacter reported success with no data: %w", name, ErrBadRepository)
 		}
+		if data.ID != name {
+			return nil, nil, fmt.Errorf(
+				"character %q: GetCharacter returned %q instead: %w", name, data.ID, ErrBadRepository)
+		}
 
 		characters = append(characters, resolution.Participant{Character: data})
 	}
@@ -226,30 +232,30 @@ func npcSheet(data *SessionData, id string) (*monster.Data, bool) {
 	return nil, false
 }
 
-// refuseIfDown refuses a verb whose ACTOR is DOWNED: at zero hit points, out
-// of the fight. It answers [ErrDowned], which is where the word is explained.
+// refuseIfDown refuses a normal action whose ACTOR is DOWNED: at zero hit
+// points. It answers [ErrDowned], which is where the word is explained.
 //
 // # Which verbs, and why only those
 //
-// The two where a downed member could still act: [Manager.Attack] and
-// [Manager.Move]. Inside a fight the swing already stops without a gate,
-// because the composition splices them out of the turn order and the seam
-// above has nothing left to offer them (rpg-toolkit#1077). Free roam has no
-// turn order, so the same member can still walk, and can still initiate —
-// which is rpg-toolkit#845's shape reproduced on the new stack. The composition
-// deliberately did not invent this refusal; it is ruled here, where the sheets
-// are, and it is one refusal covering both clocks rather than a rule that only
-// works when somebody happens to be in a fight.
+// The two normal actions a downed member could otherwise take are
+// [Manager.Attack] and [Manager.Move]. Downed no longer means absent from a
+// fight's initiative: provider participation retains Dying with a waiting slot
+// for an explicit Death Save and Stabilized with an auto-pass slot; only
+// Dead/Defeated removes the slot. This gate therefore remains necessary on the
+// turn clock as well as in free roam, where there is no turn order at all. The
+// composition deliberately did not invent this refusal; it is ruled here,
+// where the sheets are, and it is one refusal covering both clocks.
 //
 // # And which are deliberately left open
 //
-// Not the reads: Where, View, Story, Status and Turn all answer about a downed
-// member, because a downed member is still a member (ruled fork (a) on
-// rpg-toolkit#959) and a client that could not ask where it fell could not
-// render the moment it happened. Not recording an outcome ABOUT a downed member
-// either — the killing stroke is itself a beat about somebody who is now down.
-// Not a downed TARGET: swinging at one may be narratively silly, and refusing
-// it is a different ruling that nobody has made.
+// DeathSave and EndTurn are the explicit ways a retained downed slot proceeds,
+// so neither uses this normal-action gate. The reads — Where, View, Story,
+// Status, and Turn — all answer about a downed member, because a downed member
+// is still a member (ruled fork (a) on rpg-toolkit#959) and a client that could
+// not ask where it fell could not render the moment it happened. Recording an
+// outcome ABOUT a downed member remains legal too — the killing stroke is
+// itself a beat about somebody who is now down. Dying and Stabilized targets
+// remain provider-approved Attack candidates; Dead/Defeated targets do not.
 //
 // It asks about ONE member, which is the whole question. The capability is
 // roster-scoped by construction, so a single-ID question gets a single-ID
