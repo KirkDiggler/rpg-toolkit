@@ -215,13 +215,59 @@ func validSecondWindCalculation() *dnd5eEvents.RollCalculation {
 	}
 }
 
+// validSecondWindCalculationWithRerolls builds a valid sourced healing
+// calculation exercising the full trace shape: a 2d10 pool with one reroll
+// (Great Weapon Fighting), drop-lowest kept indices, and the Fighter-level
+// modifier — totalling 3. Component and reroll source refs are fresh copies so
+// the mutation proof below can scribble on them without corrupting the shared
+// identity singletons.
+func validSecondWindCalculationWithRerolls() *dnd5eEvents.RollCalculation {
+	modifier := 1
+	componentRef := *refs.Features.SecondWind()
+	rerollRef := *refs.Conditions.FightingStyleGreatWeaponFighting()
+	fighterRef := *refs.Classes.Fighter()
+	return &dnd5eEvents.RollCalculation{
+		Components: []dnd5eEvents.RollComponent{
+			{
+				Source: dnd5eEvents.RollSource{Ref: &componentRef, Name: "Second Wind"},
+				Dice: &dnd5eEvents.DiceTrace{
+					Notation:      "2d10",
+					DieSize:       10,
+					OriginalRolls: []int{4, 6},
+					Rerolls: []dnd5eEvents.DiceReroll{
+						{
+							DieIndex: 1,
+							Before:   6,
+							After:    2,
+							Source: dnd5eEvents.RollSource{
+								Ref:  &rerollRef,
+								Name: "Great Weapon Fighting",
+							},
+						},
+					},
+					FinalRolls:  []int{4, 2},
+					KeptIndices: []int{1},
+					Subtotal:    2,
+				},
+			},
+			{
+				Source: dnd5eEvents.RollSource{
+					Ref: &fighterRef, Name: "Fighter", Label: "Fighter level",
+				},
+				Modifier: &modifier,
+			},
+		},
+		Total: 3,
+	}
+}
+
 func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.char.hitPoints = 8
 	s.char.maxHitPoints = 10
 	markSaved(s.char)
 
 	source := *refs.Features.SecondWind()
-	calculation := validSecondWindCalculation()
+	calculation := validSecondWindCalculationWithRerolls()
 	var got *dnd5eEvents.HealingAppliedEvent
 	_, err := dnd5eEvents.HealingAppliedTopic.On(s.bus).Subscribe(
 		s.ctx, func(_ context.Context, event dnd5eEvents.HealingAppliedEvent) error {
@@ -234,7 +280,7 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	// never lets them coexist with a calculation on the applied fact.
 	err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
 		TargetID:    s.char.GetID(),
-		Amount:      7,
+		Amount:      3,
 		Roll:        6,
 		Modifier:    1,
 		SourceRef:   &source,
@@ -245,7 +291,7 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().NoError(err)
 	s.Require().NotNil(got)
 	s.Require().Equal(s.char.GetID(), got.TargetID)
-	s.Require().Equal(7, got.Requested)
+	s.Require().Equal(3, got.Requested)
 	s.Require().Equal(2, got.Applied)
 	s.Require().Equal(8, got.HPBefore)
 	s.Require().Equal(10, got.HPAfter)
@@ -263,19 +309,45 @@ func (s *HealingAppliedTestSuite) TestHealingAppliedReportsPostClampFacts() {
 	s.Require().Equal(calculation, got.Calculation)
 	s.Require().NotSame(calculation, got.Calculation, "the applied fact owns its calculation")
 
+	// Publisher-side mutation of every recorded roll fact — the fields the
+	// trace carries end to end: original faces, kept indices, rerolls with
+	// their own source ref, final faces, subtotal, an inner component's source
+	// ref, the modifier, and the total. The fixture's refs are fresh copies, so
+	// this scribbling corrupts nothing shared.
 	source.ID = "mutated_by_caller"
-	calculation.Components[0].Dice.FinalRolls[0] = 9
+	calculation.Components[0].Dice.OriginalRolls[0] = 9
+	calculation.Components[0].Dice.OriginalRolls[1] = 3
+	calculation.Components[0].Dice.KeptIndices[0] = 0
+	calculation.Components[0].Dice.Rerolls[0].After = 9
+	calculation.Components[0].Dice.Rerolls[0].Source.Ref.ID = "mutated_reroll_ref"
+	calculation.Components[0].Dice.FinalRolls[1] = 9
 	calculation.Components[0].Dice.Subtotal = 9
 	*calculation.Components[1].Modifier = 5
+	calculation.Components[1].Source.Ref.ID = "mutated_component_ref"
 	calculation.Total = 14
+
+	wantRerollRef := *refs.Conditions.FightingStyleGreatWeaponFighting()
+	wantFighterRef := *refs.Classes.Fighter()
 	s.Require().True(got.SourceRef.Equals(refs.Features.SecondWind()),
 		"mutating the request after publication cannot rewrite the applied fact")
-	s.Require().Equal(7, got.Calculation.Total,
+	s.Require().Equal(3, got.Calculation.Total,
 		"mutating the received calculation cannot rewrite the applied total")
-	s.Require().Equal([]int{6}, got.Calculation.Components[0].Dice.FinalRolls,
+	s.Require().Equal([]int{4, 6}, got.Calculation.Components[0].Dice.OriginalRolls,
+		"mutating the received calculation cannot rewrite the applied original faces")
+	s.Require().Equal([]int{1}, got.Calculation.Components[0].Dice.KeptIndices,
+		"mutating the received calculation cannot rewrite the applied kept indices")
+	s.Require().Equal(2, got.Calculation.Components[0].Dice.Rerolls[0].After,
+		"mutating the received calculation cannot rewrite the applied reroll face")
+	s.Require().True(got.Calculation.Components[0].Dice.Rerolls[0].Source.Ref.Equals(&wantRerollRef),
+		"mutating the received reroll source ref cannot rewrite the applied clone")
+	s.Require().Equal([]int{4, 2}, got.Calculation.Components[0].Dice.FinalRolls,
 		"mutating the received calculation cannot rewrite the applied faces")
+	s.Require().Equal(2, got.Calculation.Components[0].Dice.Subtotal,
+		"mutating the received calculation cannot rewrite the applied subtotal")
 	s.Require().Equal(1, *got.Calculation.Components[1].Modifier,
 		"mutating the received calculation cannot rewrite the applied modifier")
+	s.Require().True(got.Calculation.Components[1].Source.Ref.Equals(&wantFighterRef),
+		"mutating an inner component source ref cannot rewrite the applied clone")
 	s.Require().True(s.char.IsDirty())
 }
 

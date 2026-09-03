@@ -136,10 +136,17 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 
 	faces := append([]int(nil), result.Rolls()[0]...)
 	modifier := s.level // Fighter level is the modifier
+	// The published event graph is mutable and handed to strangers: publish
+	// fresh copies of the identity refs, never the package singletons, so a
+	// receiver mutating a published ref cannot corrupt refs.Features.SecondWind()
+	// or refs.Classes.Fighter() for everyone else.
+	sourceRef := *refs.Features.SecondWind()
+	diceSourceRef := *refs.Features.SecondWind()
+	modifierSourceRef := *refs.Classes.Fighter()
 	calculation := &dnd5eEvents.RollCalculation{
 		Components: []dnd5eEvents.RollComponent{
 			{
-				Source: dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind"},
+				Source: dnd5eEvents.RollSource{Ref: &diceSourceRef, Name: "Second Wind"},
 				Dice: &dnd5eEvents.DiceTrace{
 					Notation:      "1d10",
 					DieSize:       10,
@@ -150,7 +157,7 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 			},
 			{
 				Source: dnd5eEvents.RollSource{
-					Ref:   refs.Classes.Fighter(),
+					Ref:   &modifierSourceRef,
 					Name:  "Fighter",
 					Label: "Fighter level",
 				},
@@ -167,8 +174,8 @@ func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input Feat
 			TargetID:    owner.GetID(),
 			Amount:      calculation.Total,
 			Calculation: calculation,
-			Source:      refs.Features.SecondWind().ID,
-			SourceRef:   refs.Features.SecondWind(),
+			Source:      sourceRef.ID,
+			SourceRef:   &sourceRef,
 			SourceName:  "Second Wind",
 		})
 		if err != nil {

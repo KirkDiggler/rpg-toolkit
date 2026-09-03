@@ -249,6 +249,54 @@ func (s *SecondWindTestSuite) TestActivatePublishesSourcedRollCalculation() {
 	s.Zero(receivedEvent.Modifier)
 }
 
+// TestActivatePublishesOwnRefsNotSharedSingletons proves the published healing
+// event never carries the package-singleton refs: the event graph is mutable
+// and published to strangers, so a receiver mutating a published ref must not
+// corrupt refs.Features.SecondWind() or refs.Classes.Fighter() for everyone else.
+func (s *SecondWindTestSuite) TestActivatePublishesOwnRefsNotSharedSingletons() {
+	owner := &StubEntity{id: "fighter-1"}
+	sw := newSecondWindForTest("second-wind-feature", 1, "fighter-1")
+
+	var receivedEvent *dnd5eEvents.HealingReceivedEvent
+	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
+		s.ctx,
+		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
+			receivedEvent = &event
+			return nil
+		},
+	)
+	s.Require().NoError(err)
+
+	err = sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: &fixedSecondWindRoller{face: 6}})
+	s.Require().NoError(err)
+	s.Require().NotNil(receivedEvent)
+	s.Require().NotNil(receivedEvent.SourceRef, "Second Wind publishes a source ref")
+	s.Require().NotNil(receivedEvent.Calculation)
+	s.Require().Len(receivedEvent.Calculation.Components, 2)
+
+	// The published refs are fresh copies, not the shared singletons.
+	s.Require().NotSame(refs.Features.SecondWind(), receivedEvent.SourceRef,
+		"the top-level SourceRef must be a fresh copy")
+	s.Require().NotSame(refs.Features.SecondWind(), receivedEvent.Calculation.Components[0].Source.Ref,
+		"the dice component source ref must be a fresh copy")
+	s.Require().NotSame(refs.Classes.Fighter(), receivedEvent.Calculation.Components[1].Source.Ref,
+		"the modifier component source ref must be a fresh copy")
+
+	// A hostile receiver scribbles on every published ref in the event graph.
+	receivedEvent.SourceRef.ID = "corrupted"
+	receivedEvent.Calculation.Components[0].Source.Ref.ID = "corrupted"
+	receivedEvent.Calculation.Components[1].Source.Ref.ID = "corrupted"
+
+	s.Equal("second_wind", refs.Features.SecondWind().ID,
+		"mutating the published top-level SourceRef must not corrupt the shared ref")
+	s.Equal("fighter", refs.Classes.Fighter().ID,
+		"mutating the published modifier source ref must not corrupt the shared ref")
+	s.Equal(core.Ref{Module: refs.Module, Type: refs.TypeFeatures, ID: "second_wind"},
+		*refs.Features.SecondWind(), "the singleton keeps its full identity")
+	s.Equal(core.Ref{Module: refs.Module, Type: refs.TypeClasses, ID: "fighter"},
+		*refs.Classes.Fighter(), "the singleton keeps its full identity")
+}
+
 func (s *SecondWindTestSuite) TestHealingScalesWithLevel() {
 	testCases := []struct {
 		level            int
