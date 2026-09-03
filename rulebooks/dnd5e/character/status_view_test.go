@@ -18,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/backgrounds"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -27,6 +28,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -379,6 +381,29 @@ func TestStatusViewReturnsDetachedValues(t *testing.T) {
 	// Mutate the live sheet.
 	fighter.hitPoints = fighter.hitPoints - 1
 	require.Equal(t, hpBefore, out.View.HitPoints.Current, "view is detached from the live sheet")
+}
+
+func TestStatusViewProjectsExplicitLifeStateAndCopiedDeathSaveProgress(t *testing.T) {
+	char := bareCharacterAtZero(&saves.DeathSaveState{Successes: 1, Failures: 2})
+
+	out, err := char.StatusView(&StatusViewInput{})
+	require.NoError(t, err)
+	require.Equal(t, combat.LifeStateDying, out.View.LifeState)
+	require.Equal(t, &DeathSaveProgress{
+		Successes: 1, Failures: 2, SuccessesNeeded: 2, FailuresRemaining: 1,
+	}, out.View.DeathSaves)
+
+	out.View.DeathSaves.Successes = 99
+	again, err := char.StatusView(&StatusViewInput{})
+	require.NoError(t, err)
+	require.Equal(t, 1, again.View.DeathSaves.Successes,
+		"the status projection must not expose mutable provider state")
+
+	char.hitPoints = 1
+	conscious, err := char.StatusView(&StatusViewInput{})
+	require.NoError(t, err)
+	require.Equal(t, combat.LifeStateConscious, conscious.View.LifeState)
+	require.Nil(t, conscious.View.DeathSaves)
 }
 
 // --- helpers ---

@@ -45,6 +45,10 @@ const (
 
 	// CapacityFlurryStrike means the action consumes one flurry strike.
 	CapacityFlurryStrike CapacityType = "flurry_strike"
+
+	// CapacityDeathSave means the action consumes the one death save granted
+	// to a Dying character for its current turn.
+	CapacityDeathSave CapacityType = "death_save"
 )
 
 // capacities is the closed set, as a set. CapacityNone is not in it: "no
@@ -56,6 +60,7 @@ var capacities = map[CapacityType]struct{}{
 	CapacityOffHandAttack:          {},
 	CapacityMartialArtsBonusAttack: {},
 	CapacityFlurryStrike:           {},
+	CapacityDeathSave:              {},
 }
 
 // CapacityTypes returns every capacity a profile may name and every capacity a
@@ -72,6 +77,7 @@ func CapacityTypes() []CapacityType {
 		CapacityOffHandAttack,
 		CapacityMartialArtsBonusAttack,
 		CapacityFlurryStrike,
+		CapacityDeathSave,
 	}
 }
 

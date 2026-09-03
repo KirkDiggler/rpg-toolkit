@@ -10,6 +10,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -98,6 +99,13 @@ type StatusView struct {
 	// HitPoints is the character's current/maximum hit points.
 	HitPoints HitPointView
 
+	// LifeState is the current provider-derived tabletop life state.
+	LifeState combat.LifeState
+
+	// DeathSaves is a detached copy of current progress while the character is
+	// Dying, Stabilized, or Dead. It is nil while Conscious.
+	DeathSaves *DeathSaveProgress
+
 	// BaseSpeedFeet is the character's base walking speed in feet, before
 	// condition modifiers.
 	BaseSpeedFeet int
@@ -153,9 +161,18 @@ func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 		return nil, err
 	}
 
+	lifeState := c.lifeState()
+	var progress *DeathSaveProgress
+	if lifeState != combat.LifeStateConscious {
+		copyProgress := deathSaveProgress(c.deathSaveState)
+		progress = &copyProgress
+	}
+
 	view := &StatusView{
 		Level:         c.level,
 		HitPoints:     HitPointView{Current: c.hitPoints, Maximum: c.maxHitPoints},
+		LifeState:     lifeState,
+		DeathSaves:    progress,
 		BaseSpeedFeet: c.GetSpeed(),
 		Features:      featureViews,
 		Conditions:    conditionViews,

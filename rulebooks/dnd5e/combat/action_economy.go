@@ -22,6 +22,7 @@ type ActionEconomy struct {
 	OffHandAttacksRemaining          int // Set by TwoWeaponGranter after main-hand attack
 	MartialArtsBonusAttacksRemaining int // Set after a qualifying Martial Arts Attack action
 	FlurryStrikesRemaining           int // Set by FlurryOfBlows feature (usually 2)
+	DeathSavesRemaining              int // Set once for a Dying character's turn
 }
 
 // NewActionEconomy creates a new ActionEconomy with default values (1/1/1)
@@ -97,6 +98,7 @@ func (ae *ActionEconomy) Reset() {
 	ae.OffHandAttacksRemaining = 0
 	ae.MartialArtsBonusAttacksRemaining = 0
 	ae.FlurryStrikesRemaining = 0
+	ae.DeathSavesRemaining = 0
 }
 
 // GrantExtraAction grants an additional action

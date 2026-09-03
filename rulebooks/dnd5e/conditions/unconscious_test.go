@@ -5,546 +5,107 @@ package conditions
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-	"go.uber.org/mock/gomock"
+	"github.com/stretchr/testify/require"
 
-	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
-// UnconsciousConditionTestSuite tests the UnconsciousCondition behavior
-type UnconsciousConditionTestSuite struct {
-	suite.Suite
-	ctrl       *gomock.Controller
-	ctx        context.Context
-	bus        events.EventBus
-	mockRoller *mock_dice.MockRoller
-}
-
-func TestUnconsciousConditionTestSuite(t *testing.T) {
-	suite.Run(t, new(UnconsciousConditionTestSuite))
-}
-
-func (s *UnconsciousConditionTestSuite) SetupTest() {
-	s.ctrl = gomock.NewController(s.T())
-	s.ctx = context.Background()
-	s.bus = events.NewEventBus()
-	s.mockRoller = mock_dice.NewMockRoller(s.ctrl)
-}
-
-func (s *UnconsciousConditionTestSuite) TearDownTest() {
-	s.ctrl.Finish()
-}
-
-func (s *UnconsciousConditionTestSuite) newCondition(characterID string) *UnconsciousCondition {
-	return &UnconsciousCondition{
-		CharacterID:    characterID,
-		Roller:         s.mockRoller,
-		deathSaveState: &saves.DeathSaveState{},
+func TestUnconsciousConditionRemainsLoadableButDeathSaveHandlersAreInert(t *testing.T) {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	roller := &countingLegacyRoller{value: 1}
+	condition := &UnconsciousCondition{
+		CharacterID: "char-1",
+		Roller:      roller,
+		deathSaveState: &saves.DeathSaveState{
+			Successes: 2,
+			Failures:  1,
+		},
 	}
-}
-
-func (s *UnconsciousConditionTestSuite) TestApply_SubscribesToEvents() {
-	uc := s.newCondition("char-1")
-
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Should have 4 subscriptions: TurnStart, DamageReceived, HealingReceived, Rest
-	s.Len(uc.subscriptionIDs, 4)
-	s.True(uc.IsApplied())
-}
-
-func (s *UnconsciousConditionTestSuite) TestApply_AlreadyApplied_ReturnsError() {
-	uc := s.newCondition("char-1")
-
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	err = uc.Apply(s.ctx, s.bus)
-	s.Require().Error(err)
-	s.Contains(err.Error(), "already applied")
-}
-
-func (s *UnconsciousConditionTestSuite) TestRemove_Unsubscribes() {
-	uc := s.newCondition("char-1")
-
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.True(uc.IsApplied())
-
-	err = uc.Remove(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.False(uc.IsApplied())
-	s.Nil(uc.subscriptionIDs)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnTurnStart_RollsDeathSave() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Track death save rolled event
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Mock: roll a 15 (success)
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	// Publish turn start
-	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
-	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		SubjectID: "char-1",
-		Round:     1,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(rolledEvent)
-	s.Equal("char-1", rolledEvent.CharacterID)
-	s.Equal(15, rolledEvent.Roll)
-	s.True(rolledEvent.IsSuccess)
-	s.Equal(1, rolledEvent.Successes)
-	s.Equal(0, rolledEvent.Failures)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnTurnStart_IgnoresOtherCharacters() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Track death save rolled event
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Publish turn start for a different character - no roller mock expected
-	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
-	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		SubjectID: "char-2",
-		Round:     1,
-	})
-	s.Require().NoError(err)
-
-	s.Nil(rolledEvent, "should not roll death save for other characters")
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnTurnStart_CriticalFail_TwoFailures() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Mock: roll a 1 (critical fail)
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(1, nil)
-
-	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
-	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		SubjectID: "char-1",
-		Round:     1,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(rolledEvent)
-	s.True(rolledEvent.IsCriticalFail)
-	s.Equal(2, rolledEvent.Failures)
-	s.Equal(0, rolledEvent.Successes)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnTurnStart_CriticalSuccess_RegainsConsciousness() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Track condition removal
-	var removedEvent *dnd5eEvents.ConditionRemovedEvent
-	removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
-	_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-		removedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Track healing event
-	var healingEvent *dnd5eEvents.HealingReceivedEvent
-	healingTopic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-	_, err = healingTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-		healingEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Mock: roll a 20 (critical success)
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(20, nil)
-
-	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
-	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		SubjectID: "char-1",
-		Round:     1,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(rolledEvent)
-	s.True(rolledEvent.IsSuccess)
-	s.True(rolledEvent.IsCriticalSuccess)
-	s.True(rolledEvent.RegainedConsciousness)
-	s.Equal(1, rolledEvent.HPRestored)
-
-	// Condition should have published removal
-	s.Require().NotNil(removedEvent)
-	s.Equal("char-1", removedEvent.MemberID)
-	s.Equal("dnd5e:conditions:unconscious", removedEvent.ConditionRef)
-
-	// Healing event should have been published
-	s.Require().NotNil(healingEvent)
-	s.Equal("char-1", healingEvent.TargetID)
-	s.Equal(1, healingEvent.Amount)
-
-	// Condition should be removed
-	s.False(uc.IsApplied())
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnTurnStart_ThreeFailures_Dies() {
-	uc := s.newCondition("char-1")
-	// Start with 2 failures already
-	uc.deathSaveState.Failures = 2
-
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var diedEvent *dnd5eEvents.CharacterDiedEvent
-	diedTopic := dnd5eEvents.CharacterDiedTopic.On(s.bus)
-	_, err = diedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.CharacterDiedEvent) error {
-		diedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Mock: roll a 5 (failure, bringing total to 3)
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(5, nil)
-
-	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
-	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		SubjectID: "char-1",
-		Round:     1,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(diedEvent)
-	s.Equal("char-1", diedEvent.CharacterID)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnTurnStart_ThreeSuccesses_Stabilizes() {
-	uc := s.newCondition("char-1")
-	// Start with 2 successes already
-	uc.deathSaveState.Successes = 2
-
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var stabilizedEvent *dnd5eEvents.CharacterStabilizedEvent
-	stabilizedTopic := dnd5eEvents.CharacterStabilizedTopic.On(s.bus)
-	_, err = stabilizedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.CharacterStabilizedEvent) error {
-		stabilizedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Mock: roll a 15 (success, bringing total to 3)
-	s.mockRoller.EXPECT().Roll(s.ctx, 20).Return(15, nil)
-
-	turnStartTopic := dnd5eEvents.TurnStartTopic.On(s.bus)
-	err = turnStartTopic.Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-		SubjectID: "char-1",
-		Round:     1,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(stabilizedEvent)
-	s.Equal("char-1", stabilizedEvent.CharacterID)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnDamageReceived_AddsFailure() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Publish damage event
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   "char-1",
-		SourceID:   "goblin-1",
-		Amount:     5,
-		IsCritical: false,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(rolledEvent)
-	s.Equal("char-1", rolledEvent.CharacterID)
-	s.Equal(0, rolledEvent.Roll, "damage events should have roll=0")
-	s.Equal(1, rolledEvent.Failures)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnDamageReceived_CriticalHit_AddsTwoFailures() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Publish critical damage event
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   "char-1",
-		SourceID:   "goblin-1",
-		Amount:     10,
-		IsCritical: true,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(rolledEvent)
-	s.Equal(2, rolledEvent.Failures)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnDamageReceived_IgnoresOtherCharacters() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Publish damage for different character
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   "char-2",
-		SourceID:   "goblin-1",
-		Amount:     5,
-		IsCritical: false,
-	})
-	s.Require().NoError(err)
-
-	s.Nil(rolledEvent, "should not process damage for other characters")
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnHealingReceived_RemovesCondition() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.True(uc.IsApplied())
-
-	// Track condition removal
-	var removedEvent *dnd5eEvents.ConditionRemovedEvent
-	removedTopic := dnd5eEvents.ConditionRemovedTopic.On(s.bus)
-	_, err = removedTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-		removedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Publish healing event
-	healingTopic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-	err = healingTopic.Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
-		TargetID: "char-1",
-		Amount:   5,
-		Source:   "cure_wounds",
-	})
-	s.Require().NoError(err)
-
-	// Condition should be removed
-	s.False(uc.IsApplied())
-	s.Require().NotNil(removedEvent)
-	s.Equal("char-1", removedEvent.MemberID)
-	s.Equal("dnd5e:conditions:unconscious", removedEvent.ConditionRef)
-	s.Equal("healed", removedEvent.Reason)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnHealingReceived_IgnoresOtherCharacters() {
-	uc := s.newCondition("char-1")
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Publish healing for different character
-	healingTopic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-	err = healingTopic.Publish(s.ctx, dnd5eEvents.HealingReceivedEvent{
-		TargetID: "char-2",
-		Amount:   5,
-		Source:   "cure_wounds",
-	})
-	s.Require().NoError(err)
-
-	// Condition should still be applied
-	s.True(uc.IsApplied())
-}
-
-func (s *UnconsciousConditionTestSuite) TestToJSON_RoundTrip() {
-	uc := &UnconsciousCondition{
-		CharacterID:    "char-1",
-		deathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2},
-	}
-
-	data, err := uc.ToJSON()
-	s.Require().NoError(err)
-
-	// Load from JSON
-	uc2 := &UnconsciousCondition{}
-	err = uc2.loadJSON(data)
-	s.Require().NoError(err)
-
-	s.Equal("char-1", uc2.CharacterID)
-	s.Equal(1, uc2.deathSaveState.Successes)
-	s.Equal(2, uc2.deathSaveState.Failures)
-}
-
-func (s *UnconsciousConditionTestSuite) TestOnDamageReceived_StabilizedCreature_LosesStabilization() {
-	uc := s.newCondition("char-1")
-	// Start stabilized (3 successes)
-	uc.deathSaveState.Successes = 3
-	uc.deathSaveState.Stabilized = true
-
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	var rolledEvent *dnd5eEvents.DeathSaveRolledEvent
-	rolledTopic := dnd5eEvents.DeathSaveRolledTopic.On(s.bus)
-	_, err = rolledTopic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.DeathSaveRolledEvent) error {
-		rolledEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	// Publish damage event to stabilized creature
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   "char-1",
-		SourceID:   "goblin-1",
-		Amount:     5,
-		IsCritical: false,
-	})
-	s.Require().NoError(err)
-
-	// Should have processed the damage
-	s.Require().NotNil(rolledEvent)
-	s.Equal("char-1", rolledEvent.CharacterID)
-	s.Equal(1, rolledEvent.Failures, "should gain a death save failure")
-
-	// Stabilization should be lost
-	s.False(uc.deathSaveState.Stabilized, "stabilization should be reset")
-}
-
-// TestReload_NoRollerAfterReload_StillRollsRealDeathSave is the rpg-toolkit#733
-// regression test: loadJSON restores CharacterID + death-save counters but
-// NEVER Roller (it isn't part of UnconsciousData — nothing to unmarshal it
-// from). In production, Encounter/Character are reconstructed fresh on every
-// RPC: a player goes unconscious this RPC (Roller injected via
-// NewUnconsciousCondition, fine), the encounter persists, the next RPC
-// reloads via conditions.LoadJSON — a BRAND NEW instance with Roller == nil —
-// and Apply()s it onto a fresh bus. This proves that reload-then-fire-again
-// shape actually works: no panic, no nil dereference, a real death save still
-// rolls (onTurnStart's lazy dice.NewRoller() fallback, mirroring
-// BrutalCriticalCondition/SneakAttackCondition's onDamageChain).
-func (s *UnconsciousConditionTestSuite) TestReload_NoRollerAfterReload_StillRollsRealDeathSave() {
-	original := NewUnconsciousCondition("char-reload", s.mockRoller)
-	err := original.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	data, err := original.ToJSON()
-	s.Require().NoError(err)
-
-	// Simulate the next RPC's reload: a fresh instance via the same
-	// registration path unconscious_test's sibling loader.go uses.
-	reloadedAny, err := LoadJSON(data)
-	s.Require().NoError(err)
-	reloaded, ok := reloadedAny.(*UnconsciousCondition)
-	s.Require().True(ok)
-	s.Nil(reloaded.Roller, "reload must not carry over the original Roller — this is the bug's precondition")
-
-	// Apply to a fresh bus, mirroring LoadFromData reconstructing e.bus fresh
-	// every RPC.
-	freshBus := events.NewEventBus()
-	s.Require().NoError(reloaded.Apply(s.ctx, freshBus))
-
-	var rolled *dnd5eEvents.DeathSaveRolledEvent
-	_, err = dnd5eEvents.DeathSaveRolledTopic.On(freshBus).Subscribe(s.ctx,
-		func(_ context.Context, e dnd5eEvents.DeathSaveRolledEvent) error {
-			rolled = &e
+	require.NoError(t, condition.Apply(ctx, bus))
+	require.True(t, condition.IsApplied())
+	require.Len(t, condition.subscriptionIDs, 4,
+		"legacy topic subscriptions remain attach-compatible but their handlers are inert")
+
+	var rolled int
+	_, err := dnd5eEvents.DeathSaveRolledTopic.On(bus).Subscribe(ctx,
+		func(context.Context, dnd5eEvents.DeathSaveRolledEvent) error {
+			rolled++
 			return nil
 		})
-	s.Require().NoError(err)
+	require.NoError(t, err)
 
-	s.Require().NotPanics(func() {
-		err = dnd5eEvents.TurnStartTopic.On(freshBus).Publish(s.ctx, dnd5eEvents.TurnStartEvent{
-			SubjectID: "char-reload",
-			Round:     1,
-		})
-	}, "a nil Roller after reload must not panic")
-	s.Require().NoError(err)
+	require.NoError(t, dnd5eEvents.TurnStartTopic.On(bus).Publish(ctx, dnd5eEvents.TurnStartEvent{
+		SubjectID: "char-1", Round: 1,
+	}))
+	require.NoError(t, dnd5eEvents.DamageReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.DamageReceivedEvent{
+		TargetID: "char-1", Amount: 5, IsCritical: true,
+	}))
+	require.NoError(t, dnd5eEvents.HealingReceivedTopic.On(bus).Publish(ctx, dnd5eEvents.HealingReceivedEvent{
+		TargetID: "char-1", Amount: 5, Source: "cure_wounds",
+	}))
 
-	s.Require().NotNil(rolled, "a real death save must still roll after reload with a nil Roller")
-	s.Equal("char-reload", rolled.CharacterID)
-	s.GreaterOrEqual(rolled.Roll, 1, "roll must be a real d20 result, not a zero-value stand-in")
-	s.LessOrEqual(rolled.Roll, 20)
+	require.Zero(t, roller.calls, "legacy blobs never auto-roll")
+	require.Zero(t, rolled, "legacy blobs never publish authoritative outcomes")
+	require.Equal(t, &saves.DeathSaveState{Successes: 2, Failures: 1}, condition.deathSaveState,
+		"damage and healing cannot mutate the legacy progress ledger")
+	require.True(t, condition.IsApplied(), "healing does not let the legacy blob author condition lifetime")
 }
 
-func (s *UnconsciousConditionTestSuite) TestIsApplied_ReflectsBusState() {
-	uc := s.newCondition("char-1")
+func TestUnconsciousConditionPersistenceCompatibility(t *testing.T) {
+	original := &UnconsciousCondition{
+		CharacterID: "char-1",
+		deathSaveState: &saves.DeathSaveState{
+			Successes: 3, Failures: 2, Stabilized: true,
+		},
+	}
 
-	// Not applied yet
-	s.False(uc.IsApplied())
+	raw, err := original.ToJSON()
+	require.NoError(t, err)
 
-	// Apply
-	err := uc.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.True(uc.IsApplied())
+	loadedBehavior, err := LoadJSON(raw)
+	require.NoError(t, err)
+	loaded, ok := loadedBehavior.(*UnconsciousCondition)
+	require.True(t, ok)
+	require.Equal(t, original.CharacterID, loaded.CharacterID)
+	require.Equal(t, original.deathSaveState, loaded.deathSaveState)
+	require.Nil(t, loaded.Roller)
 
-	// Remove
-	err = uc.Remove(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.False(uc.IsApplied())
+	var data UnconsciousData
+	require.NoError(t, json.Unmarshal(raw, &data))
+	require.Equal(t, original.CharacterID, data.MemberID)
+	require.Equal(t, 3, data.Successes)
+	require.Equal(t, 2, data.Failures)
+	require.True(t, data.Stabilized)
+}
+
+func TestUnconsciousConditionApplyAndRemove(t *testing.T) {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	condition := NewUnconsciousCondition("char-1", nil)
+
+	require.NoError(t, condition.Apply(ctx, bus))
+	require.Error(t, condition.Apply(ctx, bus))
+	require.NoError(t, condition.Remove(ctx, bus))
+	require.False(t, condition.IsApplied())
+	require.Nil(t, condition.subscriptionIDs)
+}
+
+type countingLegacyRoller struct {
+	value int
+	calls int
+}
+
+func (r *countingLegacyRoller) Roll(context.Context, int) (int, error) {
+	r.calls++
+	return r.value, nil
+}
+
+func (r *countingLegacyRoller) RollN(context.Context, int, int) ([]int, error) {
+	return nil, nil
 }

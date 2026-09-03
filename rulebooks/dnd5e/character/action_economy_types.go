@@ -173,6 +173,10 @@ const (
 
 	// GrantedMartialArtsBonus tracks martial arts bonus strike (from Martial Arts).
 	GrantedMartialArtsBonus GrantedActionKey = "martial_arts_bonus"
+
+	// GrantedDeathSaves tracks the one death save available to a Dying
+	// character during its current turn.
+	GrantedDeathSaves GrantedActionKey = "death_saves"
 )
 
 // ActionEconomyData is the serializable form of the action economy state.
